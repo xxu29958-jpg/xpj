@@ -12,11 +12,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
@@ -47,6 +50,10 @@ internal fun MissingAmountSheetContent(
     val originalMinor = parseMinorAmount(input, currency)
     val invalid = input.isNotBlank() && (originalMinor == null || originalMinor <= 0)
     val canSave = originalMinor != null && originalMinor > 0 && !saving
+    // P1-2: auto-focus the single amount field so the keyboard pops on open
+    // (this is the highest-frequency补录 in the OCR flow).
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
@@ -70,7 +77,7 @@ internal fun MissingAmountSheetContent(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             label = { Text("金额 (${currency.storageKey})") },
             placeholder = { Text(if (currency.noFractionDigits) "例如 1200" else "例如 12.34") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             enabled = !saving,
             isError = invalid,
             supportingText = if (invalid) {
