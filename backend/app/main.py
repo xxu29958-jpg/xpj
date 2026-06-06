@@ -43,6 +43,7 @@ from app.routes import (
     rules,
     settings,
     stats,
+    tags,
     tasks,
     uploads,
     user_preferences,
@@ -243,6 +244,7 @@ app.include_router(rules.router)
 app.include_router(settings.router)
 app.include_router(user_preferences.router)
 app.include_router(stats.router)
+app.include_router(tags.router)
 app.include_router(tasks.router)
 app.include_router(bill_split.sender_router)
 app.include_router(bill_split.inbox_router)

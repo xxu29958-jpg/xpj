@@ -27,7 +27,14 @@ from app.models.auth import (
 from app.models.background_task import BackgroundTask
 from app.models.bill_split import BillSplitInvitation
 from app.models.budget import Budget, BudgetCategory, DashboardCardPreference, Goal
-from app.models.catalog import DuplicateIgnore, ExpenseTag, MerchantAlias, Tag
+from app.models.catalog import (
+    DuplicateIgnore,
+    ExpenseTag,
+    MerchantAlias,
+    Tag,
+    TagMutationUndoGroup,
+    TagMutationUndoItem,
+)
 from app.models.classification import (
     CategoryRule,
     RuleApplicationBatch,
@@ -95,6 +102,8 @@ __all__ = [
     "RuleApplicationChange",
     "SchemaMigration",
     "Tag",
+    "TagMutationUndoGroup",
+    "TagMutationUndoItem",
     "UploadLink",
     "UploadLinkDailyUsage",
     "UploadLinkRemoteAttempt",

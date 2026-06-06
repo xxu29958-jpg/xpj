@@ -131,6 +131,7 @@ def confirmed_query(
             .join(Tag, Tag.id == ExpenseTag.tag_id)
             .where(ExpenseTag.tenant_id == tenant_id)
             .where(Tag.tenant_id == tenant_id)
+            .where(Tag.deleted_at.is_(None))  # ADR-0043: exclude soft-deleted tags
             .where(Tag.key == tag_filter)
         )
         query = query.where(Expense.id.in_(tagged_expense_ids))

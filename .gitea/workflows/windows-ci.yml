@@ -116,6 +116,143 @@ jobs:
           .\.ci-venv\Scripts\python.exe -m pip install pip-audit
           .\.ci-venv\Scripts\python.exe -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt
 
+  backend-postgres:
+    name: Backend (PostgreSQL)
+    # ADR-0041 dialect-proofing on the live (gitea) CI. backend-full above runs
+    # the suite on SQLite (dev dialect); this lane exercises the production
+    # PostgreSQL engine so dialect drift fails a PR instead of surfacing in prod.
+    # The original lane was .github/workflows/ci.yml on a Linux runner with a
+    # postgres service container — dead since the GitHub→Gitea move. The gitea
+    # runner is Windows + no Docker, so we spin an ephemeral PostgreSQL via the
+    # locally-installed initdb (PG 17 on the home-server runner) on port 5433, so
+    # it never touches the prod cluster on 5432. The cluster is started, used and
+    # stopped inside a single step's try/finally (see the WaitDelay note below).
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    defaults:
+      run:
+        working-directory: backend
+        shell: powershell
+
+    steps:
+      - name: Checkout (offline — local Gitea, no github.com)
+        working-directory: ${{ github.workspace }}
+        env:
+          REPO_TOKEN: ${{ github.token }}
+        run: |
+          $ws = $env:GITHUB_WORKSPACE
+          New-Item -ItemType Directory -Force -Path $ws | Out-Null
+          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          git init -q $ws
+          if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+          $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $origin = "$server/$env:GITHUB_REPOSITORY.git"
+          if (@(git -C $ws remote) -contains "origin") {
+            git -C $ws remote set-url origin $origin
+          } else {
+            git -C $ws remote add origin $origin
+          }
+          if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
+          $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
+          git -C $ws checkout -q -f $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws log --oneline -1
+
+      - name: Install backend dependencies
+        run: |
+          if (Test-Path .ci-venv) { Remove-Item -Recurse -Force .ci-venv }
+          python -m venv .ci-venv
+          .\.ci-venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.ci-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+
+      - name: PostgreSQL lane — ephemeral cluster + smoke + suite
+        # initdb spins a throwaway PG (PG 17 on the runner) on :5433, isolated
+        # from the prod cluster on :5432. start + smoke + suite + stop run in ONE
+        # step with the stop in a finally on purpose: the postmaster is a
+        # long-lived child that inherits this step's stdio, and the gitea runner
+        # post-step I/O drain waits for that handle to close — if the postmaster
+        # is still alive at step exit the drain fails with "WaitDelay expired
+        # before I/O complete" (the first red run). Stopping it inside the
+        # finally guarantees it is gone before the PowerShell exits. xpj_test
+        # (suite) is separate from xpj_smoke so the smoke's rows never collide.
+        run: |
+          $pgctl = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\pg_ctl.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $pgctl) { throw "PostgreSQL not installed on runner (expected C:\Program Files\PostgreSQL\<ver>\bin)" }
+          $pgbin = $pgctl.DirectoryName
+          $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
+          $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
+          if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir }
+          $pmpid = $null
+          $failed = $false
+          try {
+            & "$pgbin\initdb.exe" -D $datadir -U postgres --auth=trust -E UTF8 --locale=C | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "initdb failed" }
+            & "$pgbin\pg_ctl.exe" -D $datadir -o "-p 5433 -c listen_addresses=localhost" -l "$datadir\server.log" -w start
+            if ($LASTEXITCODE -ne 0) { if (Test-Path "$datadir\server.log") { Get-Content "$datadir\server.log" }; throw "pg_ctl start failed" }
+            $pmpid = (Get-Content (Join-Path $datadir "postmaster.pid") -TotalCount 1 -ErrorAction SilentlyContinue)
+            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_smoke
+            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_smoke failed" }
+            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_test
+            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_test failed" }
+            Write-Host "ephemeral PostgreSQL up on 127.0.0.1:5433 (xpj_smoke + xpj_test)"
+
+            # Reachability guard: fail loud if the URL ever silently falls back to SQLite.
+            $env:SMOKE_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_smoke"
+            .\.ci-venv\Scripts\python.exe -c "import os, psycopg; u = os.environ['SMOKE_DATABASE_URL']; assert u.startswith('postgresql'), u; psycopg.connect(u.replace('+psycopg','')).close(); print('PG reachable:', u.rsplit('@',1)[-1])"
+            if ($LASTEXITCODE -ne 0) { throw "PG reachability guard failed" }
+
+            # End-to-end smoke: bootstrap -> upload -> OCC-token confirm against real
+            # PG. Proves create_all + Alembic replay (incl. 20260606_0001) is
+            # dialect-safe and the SQLite-only startup machinery no-ops cleanly.
+            Write-Host "--- PostgreSQL end-to-end smoke ---"
+            .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL smoke failed" }
+
+            # Full suite on real PG — the comprehensive dialect catch the SQLite lane
+            # can't see. conftest skips SQLite-only machinery + test_database_migration_*
+            # on a non-sqlite engine. Own xpj_test DB so the smoke's rows never collide.
+            Write-Host "--- PostgreSQL pytest suite ---"
+            $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_test"
+            .\.ci-venv\Scripts\python.exe -m pytest -q -ra --tb=short -p no:cacheprovider
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL pytest suite failed" }
+          }
+          catch {
+            $failed = $true
+            Write-Host "##[error]PostgreSQL lane failed: $_"
+          }
+          finally {
+            # Teardown MUST leave no live postgres (else the runner's post-step I/O
+            # drain hits "WaitDelay expired") and MUST NOT fail the step on its own
+            # hiccups. pg_ctl stop -m fast hung 60s on Windows (run 28), so force-kill
+            # the ephemeral cluster's OWN process tree by its postmaster PID. NEVER
+            # kill by binary path — the prod PG on :5432 shares these binaries.
+            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
+            if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
+            $global:LASTEXITCODE = 0
+            Write-Host "ephemeral PostgreSQL torn down"
+          }
+          if ($failed) { exit 1 } else { exit 0 }
+
+      - name: Stop ephemeral PostgreSQL (backstop)
+        if: always()
+        # The lane step's finally already stops PG on the normal + failure paths
+        # (required so the postmaster is gone before that step's I/O drain). This
+        # only cleans up after an abnormal kill (e.g. job timeout) that skipped
+        # the finally — it never runs the WaitDelay-prevention path.
+        run: |
+          $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
+          $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
+          $pidfile = Join-Path $datadir "postmaster.pid"
+          if (Test-Path $pidfile) {
+            $pmpid = (Get-Content $pidfile -TotalCount 1 -ErrorAction SilentlyContinue)
+            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
+          }
+          if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
+          $global:LASTEXITCODE = 0
+
   desktop-manager:
     name: Desktop manager
     runs-on: windows-latest

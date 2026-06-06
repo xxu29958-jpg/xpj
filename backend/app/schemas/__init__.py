@@ -209,6 +209,17 @@ from app.schemas._stats import (
     TagsResponse,
     TagStatsResponse,
 )
+from app.schemas._tags import (
+    TagDeleteRequest,
+    TagDetailResponse,
+    TagListItem,
+    TagManagementListResponse,
+    TagMergeRequest,
+    TagMutationResponse,
+    TagRenameRequest,
+    TagUndoRequest,
+    TagUndoResponse,
+)
 
 __all__ = [
     "AdminDeviceRenameRequest",
@@ -358,7 +369,16 @@ __all__ = [
     "RulePreviewResponse",
     "ServerSettingsResponse",
     "StatusResponse",
+    "TagDeleteRequest",
+    "TagDetailResponse",
+    "TagListItem",
+    "TagManagementListResponse",
+    "TagMergeRequest",
+    "TagMutationResponse",
+    "TagRenameRequest",
     "TagStatsResponse",
+    "TagUndoRequest",
+    "TagUndoResponse",
     "TagsResponse",
     "UploadResponse",
     "UserUiPreferencesResponse",

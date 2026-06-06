@@ -250,6 +250,7 @@ def _tag_stats_for_filtered_query(db: Session, tenant_id: str, filtered) -> list
             & (ExpenseTag.tenant_id == tenant_id),
         )
         .join(Tag, (Tag.id == ExpenseTag.tag_id) & (Tag.tenant_id == tenant_id))
+        .where(Tag.deleted_at.is_(None))  # ADR-0043: exclude soft-deleted tags
         .group_by(Tag.name)
     )
     stats = [

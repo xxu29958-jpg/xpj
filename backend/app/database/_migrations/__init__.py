@@ -5,7 +5,11 @@ it ALTERs missing columns, creates missing indexes, and backfills derived
 fields. :func:`record_schema_migration` /
 :func:`is_schema_migration_applied` add a forward-looking ledger so future
 incremental migrations can short-circuit once they have been applied; the
-legacy migrator itself does not gate on it yet.
+legacy migrator itself does not gate on it yet. ADR-0043's one-time
+``expense_tags`` mirror reconcile is the first real consumer of that ledger —
+but it gates via its own cross-dialect read (``_seed._tag_mirror_reconcile_done``),
+not :func:`is_schema_migration_applied`, which is SQLite-only and would re-run
+the reconcile every boot on Postgres.
 
 Per-table helpers live in private sub-modules (``_identity_runtime``,
 ``_expenses``, ``_rules``, ``_budgets_tags``, ``_csv_imports``,

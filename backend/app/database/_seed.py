@@ -8,12 +8,21 @@ arrives.
 
 from __future__ import annotations
 
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 
-from app.database._core import SessionLocal
+from app.database._core import SessionLocal, engine
+from app.database._migrations import record_schema_migration
 from app.database._validate import _validate_legacy_tenant_ids
+from app.version import BACKEND_VERSION
 
-__all__ = ["seed_identity_data", "seed_runtime_data"]
+__all__ = [
+    "reconcile_expense_tag_mirror_once",
+    "seed_identity_data",
+    "seed_runtime_data",
+]
+
+# ADR-0043 slice A: marker for the one-time expense_tags mirror reconcile.
+_TAG_MIRROR_RECONCILE_MARKER = "tag-mirror-reconcile-v1"
 
 
 def _tenant_scoped_models() -> tuple[type, ...]:
@@ -43,6 +52,8 @@ def _tenant_scoped_models() -> tuple[type, ...]:
         RuleApplicationBatch,
         RuleApplicationChange,
         Tag,
+        TagMutationUndoGroup,
+        TagMutationUndoItem,
     )
 
     return (
@@ -54,6 +65,8 @@ def _tenant_scoped_models() -> tuple[type, ...]:
         CategoryRule,
         MerchantAlias,
         Tag,
+        TagMutationUndoGroup,
+        TagMutationUndoItem,
         ExpenseTag,
         DuplicateIgnore,
         Budget,
@@ -104,3 +117,45 @@ def seed_runtime_data() -> None:
             normalize_existing_expense_categories(db, ledger_id)
             backfill_expense_tags(db, ledger_id)
             seed_default_rules(db, ledger_id)
+
+
+def _tag_mirror_reconcile_done() -> bool:
+    """Cross-dialect 'already reconciled' check.
+
+    ``is_schema_migration_applied`` short-circuits to False on Postgres
+    (it is SQLite-only), which would re-run the reconcile on every startup.
+    This reads the same ``schema_migrations`` ledger on either engine.
+    """
+    with engine.connect() as connection:
+        if "schema_migrations" not in set(inspect(connection).get_table_names()):
+            return False
+        row = connection.execute(
+            text("SELECT 1 FROM schema_migrations WHERE name = :name LIMIT 1"),
+            {"name": _TAG_MIRROR_RECONCILE_MARKER},
+        ).first()
+    return row is not None
+
+
+def reconcile_expense_tag_mirror_once() -> None:
+    """One-time ADR-0043 ``expense_tags`` mirror repair across every ledger.
+
+    Runs after the schema migration (columns exist on both dialects) and
+    once-only via a ``schema_migrations`` marker — the per-startup seed passes
+    above can't host an unbounded full-table scan. Crash-safe: each ledger's
+    batches commit independently and the marker is recorded only after the full
+    sweep, so a crash mid-sweep leaves the marker absent and the next boot
+    re-sweeps every ledger — already-repaired rows are a no-op (drift = False).
+    """
+    if _tag_mirror_reconcile_done():
+        return
+    from app.services.identity_service import ledger_ids
+    from app.services.tag_service import reconcile_expense_tag_mirror
+
+    with SessionLocal() as db:
+        for ledger_id in ledger_ids(db):
+            reconcile_expense_tag_mirror(db, ledger_id)
+    record_schema_migration(
+        _TAG_MIRROR_RECONCILE_MARKER,
+        backend_version=BACKEND_VERSION,
+        note="ADR-0043 expense_tags mirror reconcile",
+    )
