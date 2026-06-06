@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}标签管理 — 小票夹{% endblock %}
+{% block content %}
+<h1>标签管理</h1>
+<p class="meta">标签在记账时自动创建。这里可以重命名、合并重复标签，或删除不再需要的标签；改动会同步到所有相关账单。</p>
+{% if not can_write %}
+<div class="readonly-callout">只读角色可以查看标签，但不能重命名、合并或删除。</div>
+{% endif %}
+
+{% if flash_message %}
+<div class="dt-alert success{% if undo_mutation_public_id and can_write %} undo-banner{% endif %}">
+  <span>{{ flash_message }}</span>
+  {% if undo_mutation_public_id and can_write %}
+  {# ADR-0043 undo: 5s 撤销 affordance (CSS auto-dismisses the banner). Carries
+     BOTH the mutation handle and the soft-deleted tag's undo token (契约 2). #}
+  <form method="post" action="/web/tags/mutations/{{ undo_mutation_public_id }}/undo" class="undo-banner-action">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ undo_row_version }}">
+    <button type="submit" class="dt-btn">撤销</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid two-col">
+  <section class="dt-card">
+    <h2>整理建议</h2>
+    <ul class="meta">
+      <li>使用次数为 0 的标签是孤儿标签，可以安全删除。</li>
+      <li>遇到「出差 / 差旅 / 出差报销」这类重复写法，用『合并』归并到一个标签。</li>
+      <li>重命名会改写所有账单上的标签文字；分类规则会按新名字匹配。</li>
+    </ul>
+  </section>
+
+  <section class="dt-card">
+    <h2>使用边界</h2>
+    <ul class="meta">
+      <li>删除、合并后 5 秒内可撤销；超时后需要重新整理。</li>
+      <li>不同账本各自独立的标签，互不串账。</li>
+      <li>若标签名已被占用，重命名会失败，请改用『合并』。</li>
+    </ul>
+  </section>
+</div>
+
+<section class="dt-card">
+  <div class="card-header">
+    <h2>当前标签（{{ tags|length }} 个）</h2>
+    <a class="dt-btn" href="/web/stats{{ q }}">按标签看统计</a>
+  </div>
+  {% if tags %}
+  <table class="dt-table">
+    <thead>
+      <tr>
+        <th>标签</th>
+        <th style="width:90px">使用</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for item in tags %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td>
+          {% if item.usage_count %}<span class="dt-pill ok">{{ item.usage_count }} 笔</span>
+          {% else %}<span class="dt-pill muted">孤儿</span>{% endif %}
+        </td>
+        <td>
+          {% if can_write %}
+          <div class="tag-actions">
+            <form method="post" action="/web/tags/{{ item.public_id }}/rename" class="dt-inline-form">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+              <input type="text" class="dt-input" name="name" value="{{ item.name }}" required maxlength="64" aria-label="重命名标签">
+              <button type="submit" class="dt-btn">重命名</button>
+            </form>
+            {% if tags|length > 1 %}
+            <form method="post" action="/web/tags/{{ item.public_id }}/merge" class="dt-inline-form"
+                  data-confirm="把标签 [{{ item.name }}] 合并到所选标签？该标签下的账单会改用目标标签。">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+              <select class="dt-input" name="target" required aria-label="合并到">
+                <option value="" disabled selected>合并到…</option>
+                {% for other in tags if other.public_id != item.public_id %}
+                <option value="{{ other.public_id }}:{{ other.row_version }}">{{ other.name }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="dt-btn">合并</button>
+            </form>
+            {% endif %}
+            <form method="post" action="/web/tags/{{ item.public_id }}/delete" class="dt-inline-form"
+                  data-confirm="删除标签 [{{ item.name }}]？{% if item.usage_count %}（{{ item.usage_count }} 笔账单将移除该标签）{% endif %}">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+              <button type="submit" class="dt-btn danger">删除</button>
+            </form>
+          </div>
+          {% else %}
+          <span class="readonly-inline">只读</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">还没有标签</div>
+    <div class="empty-state-hint">在记账时给账单添加标签后，这里就能统一整理它们。</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

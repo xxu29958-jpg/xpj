@@ -43,6 +43,7 @@ import com.ticketbox.data.repository.MarkNotDuplicateDispatcher
 import com.ticketbox.data.repository.RejectExpenseDispatcher
 import com.ticketbox.data.repository.RetryOcrDispatcher
 import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.data.repository.TagRepository
 import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
@@ -372,5 +373,14 @@ class AppContainer(context: Context) {
         outbox = outboxRepository,
         merchantAliasDeleteAdapter = merchantAliasDeleteAdapter,
         merchantAliasUpdateAdapter = merchantAliasUpdateAdapter,
+    )
+
+    // ADR-0043 slice C — tag management. Online-only (契约 7): no outbox / no
+    // idempotency adapters, unlike MerchantRepository.
+    val tagRepository = TagRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
     )
 }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Category
@@ -116,6 +117,7 @@ fun SettingsRootScreen(
     onOpenDashboardCards: () -> Unit,
     onOpenCategoryRules: () -> Unit,
     onOpenMerchantAliases: () -> Unit,
+    onOpenTagManagement: () -> Unit,
     onOpenDataExport: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSecurity: () -> Unit,
@@ -188,6 +190,12 @@ fun SettingsRootScreen(
                     subtitle = "把不同写法归到同一商家",
                     icon = Icons.Filled.Tune,
                     onClick = onOpenMerchantAliases,
+                )
+                SettingsEntryRow(
+                    title = "标签管理",
+                    subtitle = "重命名、合并、删除标签",
+                    icon = Icons.AutoMirrored.Filled.Label,
+                    onClick = onOpenTagManagement,
                 )
                 SettingsEntryRow(
                     title = "通知与提醒",

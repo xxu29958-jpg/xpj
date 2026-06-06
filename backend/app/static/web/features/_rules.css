@@ -18,3 +18,9 @@
     border-radius: 6px;
     font-size: 13px;
 }
+
+/* ADR-0043 标签管理 · 每行操作区(重命名/合并/删除三个内联表单纵向排列;
+ * 输入/下拉占满剩余宽度,按钮跟在右侧)。新增样式走 token,不硬编码 px。 */
+.tag-actions { display: flex; flex-direction: column; gap: var(--space-2); align-items: stretch; max-width: 340px; }
+.tag-actions .dt-inline-form { display: flex; gap: var(--space-2); align-items: center; }
+.tag-actions .dt-inline-form .dt-input { flex: 1 1 auto; min-width: 0; }

@@ -42,6 +42,11 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         "permission_denied" -> "当前角色为只读，无法修改账本。"
         "merchant_alias_not_found" -> "商家别名不存在。"
         "merchant_alias_conflict" -> "商家别名已指向其他商家。"
+        // ADR-0043 tag management. tag_conflict steers the user to 合并 (契约 5);
+        // tag_undo_not_found is the elapsed 5-minute undo window.
+        "tag_not_found" -> "标签不存在或已删除。"
+        "tag_conflict" -> "标签名已被占用，请改用合并。"
+        "tag_undo_not_found" -> "撤销窗口已过，无法撤销。"
         "recurring_candidate_not_found" -> "没有找到可确认的固定支出候选。"
         "recurring_item_not_found" -> "固定支出不存在。"
         "recurring_frequency_invalid" -> "固定支出设置不正确。"

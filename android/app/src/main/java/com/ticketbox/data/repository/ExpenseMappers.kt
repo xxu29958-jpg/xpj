@@ -17,7 +17,10 @@ import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.RuleApplyPreviewItemDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
+import com.ticketbox.data.remote.dto.TagListItemDto
+import com.ticketbox.data.remote.dto.TagMutationDto
 import com.ticketbox.data.remote.dto.TagStatsDto
+import com.ticketbox.data.remote.dto.TagUndoDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyCode
@@ -35,8 +38,11 @@ import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplicationRollback
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.RuleApplyPreviewItem
+import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.TagMutationResult
 import com.ticketbox.domain.model.TagStats
+import com.ticketbox.domain.model.TagUndoResult
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -312,6 +318,31 @@ fun MerchantAliasDto.toDomain(): MerchantAlias = MerchantAlias(
     createdAt = createdAt,
     updatedAt = updatedAt,
     rowVersion = rowVersion,
+)
+
+// ADR-0043 slice C — tag management DTO → domain.
+fun TagListItemDto.toDomain(): ManagedTag = ManagedTag(
+    publicId = publicId,
+    name = name,
+    usageCount = usageCount,
+    rowVersion = rowVersion,
+)
+
+fun TagMutationDto.toDomain(): TagMutationResult = TagMutationResult(
+    mutationPublicId = mutationPublicId,
+    op = op,
+    sourceTagPublicId = sourceTagPublicId,
+    sourceTagRowVersion = sourceTagRowVersion,
+    targetTagPublicId = targetTagPublicId,
+    targetTagRowVersion = targetTagRowVersion,
+    affectedExpenseCount = affectedExpenseCount,
+)
+
+fun TagUndoDto.toDomain(): TagUndoResult = TagUndoResult(
+    restoredTagPublicId = restoredTagPublicId,
+    restoredTagRowVersion = restoredTagRowVersion,
+    applied = applied,
+    skipped = skipped,
 )
 
 fun RuleApplicationBatchDto.toDomain(): RuleApplicationBatch = RuleApplicationBatch(

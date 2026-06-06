@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.data.repository.TagRepository
 import com.ticketbox.viewmodel.repositoryViewModelFactory as createRepositoryViewModelFactory
 
 internal class MainScreenFactory(
@@ -18,6 +19,7 @@ internal class MainScreenFactory(
     val reportsRepository: ReportsActions,
     val incomePlanRepository: IncomePlanActions,
     val outboxRepository: OutboxRepository,
+    val tagRepository: TagRepository,
     val settingsViewModelFactory: ViewModelProvider.Factory,
     val categoryRulesViewModelFactory: ViewModelProvider.Factory,
     val merchantAliasViewModelFactory: ViewModelProvider.Factory,

@@ -258,6 +258,30 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             {"ledger_id": ledger_id, "expected_row_version": 999999},
         ),
         (
+            "tag rename",
+            "/web/tags/missing/rename",
+            {"ledger_id": ledger_id, "expected_row_version": 999999, "name": "x"},
+        ),
+        (
+            "tag delete",
+            "/web/tags/missing/delete",
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
+        ),
+        (
+            "tag merge",
+            "/web/tags/missing/merge",
+            {
+                "ledger_id": ledger_id,
+                "expected_row_version": 999999,
+                "target": "other:999999",
+            },
+        ),
+        (
+            "tag undo",
+            "/web/tags/mutations/missing/undo",
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
+        ),
+        (
             "csv import confirm",
             "/web/import/confirm",
             {"ledger_id": ledger_id, "payload": import_payload},
