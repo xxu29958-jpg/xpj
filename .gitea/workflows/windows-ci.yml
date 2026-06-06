@@ -185,11 +185,14 @@ jobs:
           $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
           $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
           if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir }
+          $pmpid = $null
+          $failed = $false
           try {
             & "$pgbin\initdb.exe" -D $datadir -U postgres --auth=trust -E UTF8 --locale=C | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "initdb failed" }
             & "$pgbin\pg_ctl.exe" -D $datadir -o "-p 5433 -c listen_addresses=localhost" -l "$datadir\server.log" -w start
             if ($LASTEXITCODE -ne 0) { if (Test-Path "$datadir\server.log") { Get-Content "$datadir\server.log" }; throw "pg_ctl start failed" }
+            $pmpid = (Get-Content (Join-Path $datadir "postmaster.pid") -TotalCount 1 -ErrorAction SilentlyContinue)
             & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_smoke
             if ($LASTEXITCODE -ne 0) { throw "createdb xpj_smoke failed" }
             & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_test
@@ -216,11 +219,22 @@ jobs:
             .\.ci-venv\Scripts\python.exe -m pytest -q -ra --tb=short -p no:cacheprovider
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL pytest suite failed" }
           }
+          catch {
+            $failed = $true
+            Write-Host "##[error]PostgreSQL lane failed: $_"
+          }
           finally {
-            if (Test-Path "$datadir\postmaster.pid") { & "$pgbin\pg_ctl.exe" -D $datadir stop -m fast -w }
+            # Teardown MUST leave no live postgres (else the runner's post-step I/O
+            # drain hits "WaitDelay expired") and MUST NOT fail the step on its own
+            # hiccups. pg_ctl stop -m fast hung 60s on Windows (run 28), so force-kill
+            # the ephemeral cluster's OWN process tree by its postmaster PID. NEVER
+            # kill by binary path — the prod PG on :5432 shares these binaries.
+            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
             if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
+            $global:LASTEXITCODE = 0
             Write-Host "ephemeral PostgreSQL torn down"
           }
+          if ($failed) { exit 1 } else { exit 0 }
 
       - name: Stop ephemeral PostgreSQL (backstop)
         if: always()
@@ -231,9 +245,13 @@ jobs:
         run: |
           $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
           $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
-          $pgctl = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\pg_ctl.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
-          if ($pgctl -and (Test-Path "$datadir\postmaster.pid")) { & "$($pgctl.DirectoryName)\pg_ctl.exe" -D $datadir stop -m immediate }
+          $pidfile = Join-Path $datadir "postmaster.pid"
+          if (Test-Path $pidfile) {
+            $pmpid = (Get-Content $pidfile -TotalCount 1 -ErrorAction SilentlyContinue)
+            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
+          }
           if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
+          $global:LASTEXITCODE = 0
 
   desktop-manager:
     name: Desktop manager
