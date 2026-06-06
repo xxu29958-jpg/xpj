@@ -32,12 +32,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.annotation.StringRes
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
@@ -53,10 +57,10 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.RecurringUiState
 import com.valentinilk.shimmer.shimmer
 
-private enum class RecurringTab(val label: String) {
-    Upcoming("即将"),
-    Active("活跃"),
-    Paused("暂停"),
+private enum class RecurringTab(@StringRes val labelRes: Int) {
+    Upcoming(R.string.recurring_tab_upcoming),
+    Active(R.string.recurring_tab_active),
+    Paused(R.string.recurring_tab_paused),
 }
 
 @Composable
@@ -100,16 +104,16 @@ fun RecurringScreen(
                     TextButton(onClick = it) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回统计",
+                            contentDescription = stringResource(R.string.recurring_back_to_stats),
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text("返回统计")
+                        Text(stringResource(R.string.recurring_back_to_stats))
                     }
                 }
                 AppPageHeader(
-                    title = "固定支出",
-                    subtitle = "候选需手动确认；正式记录只做提醒和对比，不会自动入账。",
+                    title = stringResource(R.string.recurring_header_title),
+                    subtitle = stringResource(R.string.recurring_header_subtitle),
                 ) {
                     SafeBadge()
                 }
@@ -122,11 +126,11 @@ fun RecurringScreen(
             }
         }
         state.message?.let {
-            item { Text(it, color = MaterialTheme.colorScheme.secondary) }
+            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
         }
         item {
             RecurringItemsCard(
-                title = selectedTab.label,
+                title = stringResource(selectedTab.labelRes),
                 items = visibleItems,
                 loading = state.loading,
                 currencyDisplay = currencyDisplay,
@@ -165,7 +169,7 @@ private fun RecurringTabRow(
             FilterChip(
                 selected = selected == tab,
                 onClick = { onSelect(tab) },
-                label = { Text("${tab.label} $count") },
+                label = { Text(stringResource(R.string.recurring_tab_label_count, stringResource(tab.labelRes), count)) },
             )
         }
     }
@@ -194,12 +198,12 @@ private fun RecurringItemsCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "$title 固定支出",
+                    text = stringResource(R.string.recurring_items_card_title, title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
-                    text = "${items.size} 项",
+                    text = stringResource(R.string.recurring_items_card_count, items.size),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
@@ -211,7 +215,7 @@ private fun RecurringItemsCard(
                     }
                 } else {
                     Text(
-                        text = "还没有这一类固定支出。",
+                        text = stringResource(R.string.recurring_items_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -242,6 +246,7 @@ private fun RecurringItemRow(
     onResume: (String, Long) -> Unit,
     onArchive: (String) -> Unit,
 ) {
+    val merchantFallback = stringResource(R.string.recurring_item_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -255,7 +260,7 @@ private fun RecurringItemRow(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
-                    text = item.merchant.ifBlank { "未填写商家" },
+                    text = item.merchant.ifBlank { merchantFallback },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -285,7 +290,7 @@ private fun RecurringItemRow(
                 if (item.anomalyStatus == "higher_than_average") {
                     AssistChip(
                         onClick = {},
-                        label = { Text("本月偏高 ${item.amountDeltaPercent ?: 0}%") },
+                        label = { Text(stringResource(R.string.recurring_item_anomaly_higher, item.amountDeltaPercent ?: 0)) },
                     )
                 }
             }
@@ -305,12 +310,16 @@ private fun RecurringActions(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         when (item.status) {
-            "active" -> TextButton(onClick = { onPause(item.publicId, item.rowVersion) }) { Text("暂停") }
-            "paused" -> TextButton(onClick = { onResume(item.publicId, item.rowVersion) }) { Text("恢复") }
+            "active" -> TextButton(onClick = { onPause(item.publicId, item.rowVersion) }) {
+                Text(stringResource(R.string.recurring_action_pause))
+            }
+            "paused" -> TextButton(onClick = { onResume(item.publicId, item.rowVersion) }) {
+                Text(stringResource(R.string.recurring_action_resume))
+            }
         }
         TextButton(onClick = { onArchive(item.publicId) }) {
-            Icon(Icons.Filled.DeleteOutline, contentDescription = "归档固定支出")
-            Text("归档")
+            Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.recurring_action_archive_description))
+            Text(stringResource(R.string.recurring_action_archive))
         }
     }
 }
@@ -329,12 +338,12 @@ private fun RecurringCandidatesCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Text(
-                text = "固定支出候选（未确认）",
+                text = stringResource(R.string.recurring_candidates_card_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
-                text = "根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。",
+                text = stringResource(R.string.recurring_candidates_card_subtitle),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -345,7 +354,7 @@ private fun RecurringCandidatesCard(
                     }
                 } else {
                     Text(
-                        text = "暂无新的固定支出候选。",
+                        text = stringResource(R.string.recurring_candidates_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -366,6 +375,7 @@ private fun CandidateRow(
     canModify: Boolean,
     onConfirmCandidate: (RecurringCandidate) -> Unit,
 ) {
+    val merchantFallback = stringResource(R.string.recurring_candidate_merchant_fallback)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -378,14 +388,19 @@ private fun CandidateRow(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(
-                text = candidate.merchant.ifBlank { "未填写商家" },
+                text = candidate.merchant.ifBlank { merchantFallback },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${formatDisplayAmount(candidate.amountCents, currencyDisplay)} · ${candidate.occurrenceCount} 次 · ${candidate.confidence}",
+                text = stringResource(
+                    R.string.recurring_candidate_meta,
+                    formatDisplayAmount(candidate.amountCents, currencyDisplay),
+                    candidate.occurrenceCount,
+                    candidate.confidence,
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -394,8 +409,8 @@ private fun CandidateRow(
         }
         if (canModify) {
             Button(onClick = { onConfirmCandidate(candidate) }) {
-                Icon(Icons.Filled.Add, contentDescription = "确认固定支出候选")
-                Text("确认")
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.recurring_candidate_confirm_description))
+                Text(stringResource(R.string.recurring_candidate_confirm))
             }
         }
     }
@@ -405,9 +420,9 @@ private fun CandidateRow(
 private fun StatusChip(status: String) {
     val visuals = LocalThemeVisuals.current
     val label = when (status) {
-        "active" -> "活跃"
-        "paused" -> "暂停"
-        "archived" -> "归档"
+        "active" -> stringResource(R.string.recurring_status_active)
+        "paused" -> stringResource(R.string.recurring_status_paused)
+        "archived" -> stringResource(R.string.recurring_status_archived)
         else -> status
     }
     Box(
@@ -424,13 +439,18 @@ private fun StatusChip(status: String) {
     }
 }
 
+@Composable
 private fun recurringMeta(item: RecurringItem, currencyDisplay: CurrencyDisplay): String {
-    val next = item.nextExpectedDate?.let { "下次 $it" } ?: "下次未估算"
-    val count = "${item.occurrenceCount} 次"
+    val next = item.nextExpectedDate?.let { stringResource(R.string.recurring_meta_next, it) }
+        ?: stringResource(R.string.recurring_meta_next_unknown)
+    val count = stringResource(R.string.recurring_meta_count, item.occurrenceCount)
     val anomaly = if (item.anomalyStatus == "higher_than_average") {
-        " · 本月 ${formatDisplayAmount(item.currentMonthAmountCents, currencyDisplay)}"
+        stringResource(
+            R.string.recurring_meta_anomaly_current_amount,
+            formatDisplayAmount(item.currentMonthAmountCents, currencyDisplay),
+        )
     } else {
         ""
     }
-    return "$next · $count$anomaly"
+    return stringResource(R.string.recurring_meta_combined, next, count, anomaly)
 }

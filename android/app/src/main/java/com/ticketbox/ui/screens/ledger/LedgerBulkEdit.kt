@@ -24,7 +24,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
 
@@ -51,15 +53,15 @@ internal fun LedgerSelectionBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onExit, enabled = !applying) {
-                Icon(Icons.Filled.Close, contentDescription = "退出多选")
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.ledger_selection_exit_description))
             }
             Text(
-                text = "已选 $selectedCount 笔",
+                text = stringResource(R.string.ledger_selection_count, selectedCount),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onSelectAll, enabled = !applying) { Text("全选") }
-            Button(onClick = onEdit, enabled = selectedCount > 0 && !applying) { Text("编辑") }
+            TextButton(onClick = onSelectAll, enabled = !applying) { Text(stringResource(R.string.ledger_selection_select_all)) }
+            Button(onClick = onEdit, enabled = selectedCount > 0 && !applying) { Text(stringResource(R.string.ledger_selection_edit)) }
         }
     }
 }
@@ -91,7 +93,7 @@ internal fun LedgerBulkEditSheet(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(text = "批量编辑 $selectedCount 笔", style = MaterialTheme.typography.titleMedium)
+        Text(text = stringResource(R.string.ledger_bulk_title, selectedCount), style = MaterialTheme.typography.titleMedium)
 
         // 分类 —— 主操作。
         ExpenseEditCategoryField(
@@ -105,13 +107,13 @@ internal fun LedgerBulkEditSheet(
             enabled = category.isNotBlank() && !applying,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("应用分类到 $selectedCount 笔")
+            Text(stringResource(R.string.ledger_bulk_apply_category, selectedCount))
         }
 
         // 标签 —— 默认关闭；整串替换语义，需显式开启。
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "替换标签",
+                text = stringResource(R.string.ledger_bulk_replace_tags_title),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
@@ -122,13 +124,13 @@ internal fun LedgerBulkEditSheet(
                 value = tags,
                 onValueChange = { tags = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("标签") },
-                placeholder = { Text("真香、必要支出") },
+                label = { Text(stringResource(R.string.ledger_bulk_tags_label)) },
+                placeholder = { Text(stringResource(R.string.ledger_bulk_tags_placeholder)) },
                 singleLine = true,
                 enabled = !applying,
             )
             Text(
-                text = "将整串覆盖所选账单的现有标签。",
+                text = stringResource(R.string.ledger_bulk_tags_replace_warning),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -140,7 +142,7 @@ internal fun LedgerBulkEditSheet(
                 enabled = tags.isNotBlank() && !applying,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("替换标签到 $selectedCount 笔")
+                Text(stringResource(R.string.ledger_bulk_apply_tags, selectedCount))
             }
         }
     }
@@ -148,16 +150,16 @@ internal fun LedgerBulkEditSheet(
     if (showTagConfirm) {
         AlertDialog(
             onDismissRequest = { showTagConfirm = false },
-            title = { Text("替换标签？") },
-            text = { Text("所选账单的现有标签将被整串覆盖。") },
+            title = { Text(stringResource(R.string.ledger_bulk_tags_confirm_title)) },
+            text = { Text(stringResource(R.string.ledger_bulk_tags_confirm_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     showTagConfirm = false
                     onApplyTags(tags)
-                }) { Text("替换") }
+                }) { Text(stringResource(R.string.ledger_bulk_tags_confirm_replace)) }
             },
             dismissButton = {
-                TextButton(onClick = { showTagConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showTagConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }

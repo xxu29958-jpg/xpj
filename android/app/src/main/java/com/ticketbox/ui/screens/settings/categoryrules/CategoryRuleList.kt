@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.CategoryRuleCard
@@ -20,7 +22,7 @@ internal fun CategoryRuleList(
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         if (rules.isEmpty()) {
             Text(
-                text = "暂无分类规则。",
+                text = stringResource(R.string.category_rule_list_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {

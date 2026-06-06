@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import android.util.Log
 import com.ticketbox.BuildConfig
+import com.ticketbox.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
@@ -20,6 +21,7 @@ import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.screens.expense.evenSplitActiveCents
 import java.math.BigDecimal
@@ -74,14 +76,14 @@ data class ExpenseEditUiState(
     val itemEditorOpen: Boolean = false,
     val itemDrafts: List<EditableItem> = emptyList(),
     val itemsSaving: Boolean = false,
-    val itemsMessage: String? = null,
+    val itemsMessage: UiText? = null,
     val splitEditorOpen: Boolean = false,
     val splitDrafts: List<EditableSplit> = emptyList(),
     val splitMembersLoading: Boolean = false,
     val splitsSaving: Boolean = false,
-    val splitsMessage: String? = null,
+    val splitsMessage: UiText? = null,
     val recognizeTextDialogOpen: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     val done: Boolean = false,
 )
 
@@ -127,7 +129,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             expenseLoading = false,
-                            message = error.message ?: "账单暂时加载失败，请稍后再试。",
+                            message = error.toUiText(R.string.expense_edit_load_failed),
                         )
                     }
                 }
@@ -176,7 +178,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             itemsLoading = false,
-                            itemsMessage = error.message ?: "小票明细暂时加载失败。",
+                            itemsMessage = error.toUiText(R.string.expense_edit_items_load_failed),
                         )
                     }
                 }
@@ -191,7 +193,7 @@ class ExpenseEditViewModel(
         val currentItems = _uiState.value.expenseItems
         if (expense == null || currentItems == null) {
             _uiState.update {
-                it.copy(itemsMessage = "账单还在加载，请稍后再点。")
+                it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_tap))
             }
             return
         }
@@ -219,7 +221,7 @@ class ExpenseEditViewModel(
                                     expense = refreshedExpense ?: it.expense,
                                     expenseItems = outcome.items,
                                     itemsLoading = false,
-                                    message = "已确认原小票如此。",
+                                    message = UiText.res(R.string.expense_edit_items_ack_synced),
                                 )
                             }
                         }
@@ -231,7 +233,7 @@ class ExpenseEditViewModel(
                                 it.copy(
                                     expenseItems = outcome.items,
                                     itemsLoading = false,
-                                    message = "已离线确认，联网后同步",
+                                    message = UiText.res(R.string.expense_edit_items_ack_offline_queued),
                                 )
                             }
                         }
@@ -241,7 +243,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             itemsLoading = false,
-                            itemsMessage = error.message ?: "确认差异失败，请稍后重试。",
+                            itemsMessage = error.toUiText(R.string.expense_edit_items_ack_failed),
                         )
                     }
                 }
@@ -300,7 +302,7 @@ class ExpenseEditViewModel(
         val expense = _uiState.value.expense
         val currentItems = _uiState.value.expenseItems
         if (expense == null || currentItems == null) {
-            _uiState.update { it.copy(itemsMessage = "账单还在加载，请稍后再试。") }
+            _uiState.update { it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_retry)) }
             return
         }
         val drafts = _uiState.value.itemDrafts
@@ -324,7 +326,7 @@ class ExpenseEditViewModel(
                                     itemEditorOpen = false,
                                     itemDrafts = emptyList(),
                                     itemsSaving = false,
-                                    message = "小票明细已更新。",
+                                    message = UiText.res(R.string.expense_edit_items_saved),
                                 )
                             }
                         }
@@ -335,7 +337,7 @@ class ExpenseEditViewModel(
                                     itemEditorOpen = false,
                                     itemDrafts = emptyList(),
                                     itemsSaving = false,
-                                    message = "已离线保存，联网后同步。",
+                                    message = UiText.res(R.string.expense_edit_items_saved_offline_queued),
                                 )
                             }
                         }
@@ -345,7 +347,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             itemsSaving = false,
-                            itemsMessage = error.message ?: "明细保存失败，请稍后再试。",
+                            itemsMessage = error.toUiText(R.string.expense_edit_items_save_failed),
                         )
                     }
                 }
@@ -387,7 +389,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             splitsLoading = false,
-                            splitsMessage = error.message ?: "家庭拆账暂时加载失败。",
+                            splitsMessage = error.toUiText(R.string.expense_edit_splits_load_failed),
                         )
                     }
                 }
@@ -401,7 +403,7 @@ class ExpenseEditViewModel(
      *  splits — see [loadSplitMembers]). No-op until splits have loaded. */
     fun openSplitsEditor() {
         if (_uiState.value.expenseSplits == null) {
-            _uiState.update { it.copy(splitsMessage = "家庭拆账还在加载，请稍后再点。") }
+            _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_tap)) }
             return
         }
         _uiState.update { it.copy(splitEditorOpen = true, splitsMessage = null) }
@@ -429,7 +431,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             splitMembersLoading = false,
-                            splitsMessage = error.message ?: "家庭成员暂时加载失败。",
+                            splitsMessage = error.toUiText(R.string.expense_edit_splits_members_load_failed),
                         )
                     }
                 }
@@ -499,7 +501,7 @@ class ExpenseEditViewModel(
         val expense = _uiState.value.expense
         val currentSplits = _uiState.value.expenseSplits
         if (expense == null || currentSplits == null) {
-            _uiState.update { it.copy(splitsMessage = "账单还在加载，请稍后再试。") }
+            _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_items_not_loaded_retry)) }
             return
         }
         // ADR-0042 P1 data-loss guard: the sheet opens BEFORE the member roster
@@ -510,7 +512,7 @@ class ExpenseEditViewModel(
         // not-loaded; an intentional "remove everyone" still has the unchecked
         // rows in splitDrafts, so this only blocks the never-loaded case).
         if (_uiState.value.splitMembersLoading || _uiState.value.splitDrafts.isEmpty()) {
-            _uiState.update { it.copy(splitsMessage = "家庭拆账还在加载，请稍候再保存。") }
+            _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_save)) }
             return
         }
         val drafts = _uiState.value.splitDrafts
@@ -534,7 +536,7 @@ class ExpenseEditViewModel(
                                     splitEditorOpen = false,
                                     splitDrafts = emptyList(),
                                     splitsSaving = false,
-                                    message = "家庭拆账已更新。",
+                                    message = UiText.res(R.string.expense_edit_splits_saved),
                                 )
                             }
                         }
@@ -545,7 +547,7 @@ class ExpenseEditViewModel(
                                     splitEditorOpen = false,
                                     splitDrafts = emptyList(),
                                     splitsSaving = false,
-                                    message = "已离线保存，联网后同步。",
+                                    message = UiText.res(R.string.expense_edit_splits_saved_offline_queued),
                                 )
                             }
                         }
@@ -555,7 +557,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             splitsSaving = false,
-                            splitsMessage = error.message ?: "拆账保存失败，请稍后再试。",
+                            splitsMessage = error.toUiText(R.string.expense_edit_splits_save_failed),
                         )
                     }
                 }
@@ -625,7 +627,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             imageLoading = false,
-                            message = error.message ?: "截图暂时打不开，请稍后再试。",
+                            message = error.toUiText(R.string.expense_edit_image_open_failed),
                         )
                     }
                 }
@@ -652,22 +654,22 @@ class ExpenseEditViewModel(
                 // will surface whatever error appropriate.
                 repository.updateExpense(expenseId, draft, baseline = null)
                     .onSuccess { expense ->
-                        _uiState.update { it.copy(expense = expense, saving = false, message = "已保存", done = true) }
+                        _uiState.update { it.copy(expense = expense, saving = false, message = UiText.res(R.string.expense_edit_save_success), done = true) }
                     }
-                    .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
+                    .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.toUiText(R.string.expense_edit_save_failed)) } }
                 return@launch
             }
             repository.saveExpenseAllowingOffline(expenseId, draft, baseline)
                 .onSuccess { outcome ->
                     val message = when (outcome) {
-                        is SaveOutcome.Synced -> "已保存"
+                        is SaveOutcome.Synced -> UiText.res(R.string.expense_edit_save_success)
                         // codex round-8 P2: queued state is honestly
                         // surfaced to the user — they typed an edit
                         // while offline, the worker will sync when
                         // network returns. PR-2g.5 banner adds the
                         // "你有 N 笔待同步" pill globally; this
                         // message is the per-save signal.
-                        is SaveOutcome.Queued -> "已离线保存，联网后同步"
+                        is SaveOutcome.Queued -> UiText.res(R.string.expense_edit_save_offline_queued)
                     }
                     _uiState.update {
                         it.copy(
@@ -678,19 +680,19 @@ class ExpenseEditViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.toUiText(R.string.expense_edit_save_failed)) } }
         }
     }
 
     fun confirm(draft: ExpenseDraft) {
         if (blockReadOnlyWrite()) return
         if (draft.amountCents == null && draft.originalAmountMinor == null) {
-            _uiState.update { it.copy(message = "请先填写金额。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_amount_required)) }
             return
         }
         val baseline = _uiState.value.expense
         if (baseline == null) {
-            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded)) }
             return
         }
         viewModelScope.launch {
@@ -713,10 +715,10 @@ class ExpenseEditViewModel(
                             }
                         }
                         .onFailure { error ->
-                            _uiState.update { state -> state.copy(saving = false, message = error.message ?: "没有确认成功，请稍后再试。") }
+                            _uiState.update { state -> state.copy(saving = false, message = error.toUiText(R.string.expense_edit_confirm_failed)) }
                         }
                 }
-                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.toUiText(R.string.expense_edit_save_failed)) } }
         }
     }
 
@@ -724,7 +726,7 @@ class ExpenseEditViewModel(
         if (blockReadOnlyWrite()) return
         val expense = _uiState.value.expense
         if (expense == null) {
-            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded)) }
             return
         }
         viewModelScope.launch {
@@ -735,11 +737,11 @@ class ExpenseEditViewModel(
                     // Queued surfaces the offline hint (mirrors save).
                     val message = when (outcome) {
                         is ExpenseStateOutcome.Synced -> null
-                        is ExpenseStateOutcome.Queued -> "已离线删除，联网后同步"
+                        is ExpenseStateOutcome.Queued -> UiText.res(R.string.expense_edit_reject_offline_queued)
                     }
                     _uiState.update { it.copy(saving = false, message = message, done = true) }
                 }
-                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有删除成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.toUiText(R.string.expense_edit_reject_failed)) } }
         }
     }
 
@@ -747,7 +749,7 @@ class ExpenseEditViewModel(
         if (blockReadOnlyWrite()) return
         val expense = _uiState.value.expense
         if (expense == null) {
-            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded)) }
             return
         }
         viewModelScope.launch {
@@ -755,13 +757,13 @@ class ExpenseEditViewModel(
             repository.retryOcrAllowingOffline(expense)
                 .onSuccess { outcome ->
                     val message = when (outcome) {
-                        is ExpenseStateOutcome.Synced -> "识别已重试"
-                        is ExpenseStateOutcome.Queued -> "已离线，联网后重试识别"
+                        is ExpenseStateOutcome.Synced -> UiText.res(R.string.expense_edit_ocr_retried)
+                        is ExpenseStateOutcome.Queued -> UiText.res(R.string.expense_edit_ocr_retry_offline_queued)
                     }
                     _uiState.update { it.copy(expense = outcome.expense, ocrRunning = false, message = message) }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(ocrRunning = false, message = error.message ?: "没有识别成功，请稍后再试。") }
+                    _uiState.update { it.copy(ocrRunning = false, message = error.toUiText(R.string.expense_edit_recognize_failed)) }
                 }
         }
     }
@@ -771,7 +773,7 @@ class ExpenseEditViewModel(
      *  expense hasn't loaded so the dialog never opens on a half-loaded page. */
     fun openRecognizeTextDialog() {
         if (_uiState.value.expense == null) {
-            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded)) }
             return
         }
         _uiState.update { it.copy(recognizeTextDialogOpen = true) }
@@ -795,12 +797,12 @@ class ExpenseEditViewModel(
         if (blockReadOnlyWrite()) return
         val expense = _uiState.value.expense
         if (expense == null) {
-            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded)) }
             return
         }
         val text = rawText.trim()
         if (text.isBlank()) {
-            _uiState.update { it.copy(message = "请先粘贴小票文字。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_recognize_text_required)) }
             return
         }
         viewModelScope.launch {
@@ -811,13 +813,13 @@ class ExpenseEditViewModel(
                         // Server parsed the text and returned the refreshed expense;
                         // the Screen re-derives its field state from it (parsed
                         // result already filled the empty fields server-side).
-                        is ExpenseStateOutcome.Synced -> "已识别（识别结果已填入空白项）"
-                        is ExpenseStateOutcome.Queued -> "已离线，联网后识别"
+                        is ExpenseStateOutcome.Synced -> UiText.res(R.string.expense_edit_recognize_done)
+                        is ExpenseStateOutcome.Queued -> UiText.res(R.string.expense_edit_recognize_offline_queued)
                     }
                     _uiState.update { it.copy(expense = outcome.expense, ocrRunning = false, message = message) }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(ocrRunning = false, message = error.message ?: "没有识别成功，请稍后再试。") }
+                    _uiState.update { it.copy(ocrRunning = false, message = error.toUiText(R.string.expense_edit_recognize_failed)) }
                 }
         }
     }
@@ -826,19 +828,19 @@ class ExpenseEditViewModel(
         if (blockReadOnlyWrite()) return
         val expense = _uiState.value.expense
         if (expense == null) {
-            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded)) }
             return
         }
         viewModelScope.launch {
             repository.markNotDuplicateAllowingOffline(expense)
                 .onSuccess { outcome ->
                     val message = when (outcome) {
-                        is ExpenseStateOutcome.Synced -> "已保留这条账单"
-                        is ExpenseStateOutcome.Queued -> "已离线保留，联网后同步"
+                        is ExpenseStateOutcome.Synced -> UiText.res(R.string.expense_edit_keep_duplicate_success)
+                        is ExpenseStateOutcome.Queued -> UiText.res(R.string.expense_edit_keep_duplicate_offline_queued)
                     }
                     _uiState.update { it.copy(expense = outcome.expense, message = message) }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "暂时没处理成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.expense_edit_keep_duplicate_failed)) } }
         }
     }
 
@@ -855,7 +857,7 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(readOnly = false) }
             return false
         }
-        _uiState.update { it.copy(readOnly = true, saving = false, ocrRunning = false, message = READ_ONLY_LEDGER_MESSAGE) }
+        _uiState.update { it.copy(readOnly = true, saving = false, ocrRunning = false, message = UiText.res(R.string.common_readonly_ledger)) }
         return true
     }
 }

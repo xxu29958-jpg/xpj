@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ADR-0044 wave 1，cluster stats_budget（统计 / 预算 / 固定支出 三屏 Compose 用户可见中文）。
+  命名约定与复用规则见 res/values/strings.xml 头部；只放中文，不建第二语言。
+-->
+<resources>
+    <!-- StatsScreen：统计主屏 -->
+    <string name="stats_month_picker_description">选择后刷新统计。本页按消费时间统计，没有消费时间时按确认时间。</string>
+    <string name="stats_category_empty_title">%1$s 暂无分类支出</string>
+    <string name="stats_category_empty_body">确认几笔账单后，这里会显示分类占比。</string>
+    <string name="stats_all_cards_hidden_title">首页卡片已全部隐藏</string>
+    <string name="stats_all_cards_hidden_body">可以在设置 > 首页卡片中恢复默认卡片。</string>
+    <string name="stats_header_title">统计</string>
+    <string name="stats_header_open_budget">预算 →</string>
+    <string name="stats_header_open_recurring">固定支出 →</string>
+    <string name="stats_filter_all_months">全部月份</string>
+    <string name="stats_filter_pick_month_description">选择月份</string>
+    <string name="stats_filter_all_tags">全部标签</string>
+    <string name="stats_filter_clear_tag_description">清除标签筛选</string>
+
+    <!-- StatsOverviewCard：本月支出 hero 卡 -->
+    <string name="stats_overview_month_spend_label">本月支出</string>
+    <string name="stats_overview_local_estimate_badge">本机估算</string>
+    <string name="stats_overview_count_label">账单</string>
+    <string name="stats_overview_count_value">%1$d 笔</string>
+    <string name="stats_overview_recent7_label">最近 7 天</string>
+    <string name="stats_overview_delta_flat">持平</string>
+
+    <!-- StatsMetricGrid：统计指标网格 + 月度预算进度 -->
+    <string name="stats_metric_ai_subscription_label">AI 订阅</string>
+    <string name="stats_metric_max_expense_label">最大一笔</string>
+    <string name="stats_metric_frequent_merchant_label">常去商家</string>
+    <string name="stats_metric_category_concentration_label">分类集中度</string>
+    <string name="stats_metric_empty_value">暂无记录</string>
+    <string name="stats_metric_merchant_count">%1$d 笔</string>
+    <string name="stats_metric_category_count">%1$d 个分类</string>
+    <string name="stats_metric_top_share">占本月 %1$d%%</string>
+    <string name="stats_budget_progress_title">月度预算</string>
+    <string name="stats_budget_progress_over">已超过预算</string>
+    <string name="stats_budget_progress_remaining">还可花 %1$s</string>
+    <string name="stats_budget_progress_percent">%1$d%%</string>
+    <string name="stats_budget_progress_hint">可在设置 > 数据与导出里调整，只用于提醒。</string>
+
+    <!-- CategoryStructureCard：分类结构 -->
+    <string name="stats_category_structure_title">分类结构</string>
+    <string name="stats_category_structure_top">主要花在「%1$s」</string>
+    <string name="stats_category_structure_empty">还没有分类支出</string>
+    <string name="stats_category_structure_insight">占本月 %1$d%% · %2$d 个分类</string>
+    <string name="stats_category_structure_count">%1$d 个分类</string>
+    <string name="stats_category_structure_percent">%1$d%%</string>
+
+    <!-- TagStatsCard：标签分布 -->
+    <string name="stats_tag_distribution_title">标签分布</string>
+    <string name="stats_tag_distribution_subtitle">按本月已确认账单的标签聚合</string>
+    <string name="stats_tag_distribution_row_label">#%1$s</string>
+    <string name="stats_tag_distribution_percent_count">%1$d%% · %2$d 笔</string>
+
+    <!-- RecentTrendCard / RecentUploadCard：最近趋势 + 最近上传 -->
+    <string name="stats_recent_trend_title">最近 7 天趋势</string>
+    <string name="stats_recent_trend_source">本地账本</string>
+    <string name="stats_recent_trend_empty">手机里暂无最近支出，更新后会显示每日变化。</string>
+    <string name="stats_recent_upload_title">最近上传</string>
+    <string name="stats_recent_upload_empty">还没有上传记录</string>
+    <string name="stats_recent_upload_hint">用于确认手机端和电脑端最近一次上传状态。</string>
+
+    <!-- LifestyleCard / FrequentMerchantsCard：生活统计 + 高频商家 -->
+    <string name="stats_lifestyle_title">生活统计</string>
+    <string name="stats_lifestyle_ai_subscription">AI 订阅</string>
+    <string name="stats_lifestyle_digital">数码消费</string>
+    <string name="stats_lifestyle_max_expense">最大一笔</string>
+    <string name="stats_lifestyle_max_expense_value">%1$s · %2$s</string>
+    <string name="stats_lifestyle_merchant_fallback">未填写商家</string>
+    <string name="stats_lifestyle_empty">暂无特别统计项。</string>
+    <string name="stats_frequent_merchants_title">高频商家</string>
+    <string name="stats_frequent_merchants_count">%1$d 笔</string>
+
+    <!-- PendingOverviewCard：待确认概况 -->
+    <string name="stats_pending_overview_title">待确认概况</string>
+    <string name="stats_pending_overview_oldest">最久 %1$d 天</string>
+    <string name="stats_pending_overview_oldest_empty">—</string>
+    <string name="stats_pending_overview_hint">去待确认页处理，整理后这里会清零。</string>
+
+    <!-- ReportsInsightCards：动态图表 + 月度目标 -->
+    <string name="stats_reports_chart_title">动态图表</string>
+    <string name="stats_reports_chart_subtitle">%1$s · 服务端聚合 · %2$d 笔</string>
+    <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
+    <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，数据还太少；多记几笔后这里会显示每日支出柱状趋势。</string>
+    <string name="stats_reports_merchant_ranking_title">商家排行</string>
+    <string name="stats_reports_merchant_fallback">未填写商家</string>
+    <string name="stats_reports_category_comparison_title">分类环比</string>
+    <string name="stats_reports_category_delta_more">多 %1$s</string>
+    <string name="stats_reports_category_delta_less">少 %1$s</string>
+    <string name="stats_reports_category_delta_flat">持平</string>
+    <string name="stats_reports_bar_count">%1$d 笔</string>
+    <string name="stats_reports_goals_title">月度目标</string>
+    <string name="stats_reports_goals_empty">本月还没有目标。</string>
+    <string name="stats_reports_goal_total">总支出</string>
+    <string name="stats_reports_goal_progress">%1$s · 已花 %2$s · 剩 %3$s</string>
+    <string name="stats_reports_goal_percent">%1$d%%</string>
+
+    <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
+    <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>
+    <string name="stats_recurring_candidates_count">%1$d 项</string>
+    <string name="stats_recurring_candidates_subtitle">根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。</string>
+    <string name="stats_recurring_items_title">正式固定支出</string>
+    <string name="stats_recurring_items_active_count">%1$d 活跃</string>
+    <string name="stats_recurring_items_subtitle">这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。</string>
+    <string name="stats_recurring_candidate_meta">%1$d 次 · %2$s</string>
+    <string name="stats_recurring_merchant_fallback">未填写商家</string>
+
+    <!-- StatsEmptyStates：统计空态卡 + 骨架占位 -->
+    <string name="stats_empty_month_chip_all">全部月份</string>
+    <string name="stats_empty_month_chip_description">选择统计月份</string>
+    <string name="stats_empty_card_title">还没有统计数据</string>
+    <string name="stats_empty_card_body">确认账单后刷新统计，这里会显示本月总支出、分类占比和高频商家。</string>
+    <string name="stats_empty_card_refresh">刷新统计</string>
+    <string name="stats_empty_skeleton_month_spend">本月总支出</string>
+    <string name="stats_empty_skeleton_category_share">分类占比</string>
+    <string name="stats_empty_skeleton_frequent_merchants">高频商家</string>
+
+    <!-- RecurringScreen：固定支出独立屏 -->
+    <string name="recurring_back_to_stats">返回统计</string>
+    <string name="recurring_header_title">固定支出</string>
+    <string name="recurring_header_subtitle">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</string>
+    <string name="recurring_items_card_title">%1$s 固定支出</string>
+    <string name="recurring_items_card_count">%1$d 项</string>
+    <string name="recurring_items_empty">还没有这一类固定支出。</string>
+    <string name="recurring_item_merchant_fallback">未填写商家</string>
+    <string name="recurring_item_anomaly_higher">本月偏高 %1$d%%</string>
+    <string name="recurring_action_pause">暂停</string>
+    <string name="recurring_action_resume">恢复</string>
+    <string name="recurring_action_archive">归档</string>
+    <string name="recurring_action_archive_description">归档固定支出</string>
+    <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
+    <string name="recurring_candidates_card_subtitle">根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。</string>
+    <string name="recurring_candidates_empty">暂无新的固定支出候选。</string>
+    <string name="recurring_candidate_merchant_fallback">未填写商家</string>
+    <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
+    <string name="recurring_candidate_confirm">确认</string>
+    <string name="recurring_candidate_confirm_description">确认固定支出候选</string>
+
+    <!-- BudgetHeader / MonthSwitcher：预算屏头部 + 月份切换 -->
+    <string name="budget_back_to_stats">返回统计</string>
+    <string name="budget_header_title">预算</string>
+    <string name="budget_header_subtitle">%1$s 月度可花额度</string>
+    <string name="budget_month_previous">上月</string>
+    <string name="budget_month_next">下月</string>
+
+    <!-- BudgetSummaryCard：本月预算概况卡 -->
+    <string name="budget_summary_title">本月预算</string>
+    <string name="budget_summary_percent">%1$d%%</string>
+    <string name="budget_summary_unconfigured">未配置</string>
+    <string name="budget_summary_loading">正在读取预算。</string>
+    <string name="budget_summary_metric_total">总额</string>
+    <string name="budget_summary_metric_overspent">超支</string>
+    <string name="budget_summary_metric_remaining">剩余</string>
+    <string name="budget_summary_metric_spent">已花</string>
+    <string name="budget_summary_metric_flex">灵活可花</string>
+    <string name="budget_summary_metric_fixed">固定支出</string>
+    <string name="budget_summary_metric_excluded">剔除</string>
+
+    <!-- BudgetEditorCard / BudgetFields：预算编辑卡 + 输入字段。
+         只读提示复用 common_readonly_ledger、保存中复用 common_saving（strings.xml 已有同值）。 -->
+    <string name="budget_editor_title">预算设置</string>
+    <string name="budget_editor_save">保存预算</string>
+    <string name="budget_editor_total_label">月度总预算</string>
+    <string name="budget_editor_total_placeholder">3000</string>
+    <string name="budget_editor_rollover_label">结转</string>
+    <string name="budget_editor_rollover_placeholder">0</string>
+    <string name="budget_editor_non_monthly_label">非月度预留</string>
+    <string name="budget_editor_non_monthly_placeholder">0</string>
+    <string name="budget_editor_excluded_label">剔除分类</string>
+    <string name="budget_editor_excluded_placeholder">医疗，报销</string>
+    <string name="budget_editor_category_section_title">分类预算</string>
+    <string name="budget_editor_add_category">增加分类</string>
+    <string name="budget_editor_add_category_description">增加分类预算</string>
+    <string name="budget_field_category_label">分类</string>
+    <string name="budget_field_category_placeholder">餐饮</string>
+    <string name="budget_field_amount_label">预算金额</string>
+    <string name="budget_field_amount_placeholder">1000</string>
+    <string name="budget_field_remove_category_named">删除 %1$s 分类预算</string>
+    <string name="budget_field_remove_category">删除分类预算</string>
+
+    <!-- BudgetBreakdownCards：分类执行 + 剔除明细 -->
+    <string name="budget_category_card_title">分类执行</string>
+    <string name="budget_category_card_empty">未设置分类预算。</string>
+    <string name="budget_category_spent">已花 %1$s</string>
+    <string name="budget_category_overspent">超 %1$s</string>
+    <string name="budget_category_remaining">剩 %1$s</string>
+    <string name="budget_excluded_card_title">剔除明细</string>
+    <string name="budget_excluded_card_empty">本月没有被剔除的消费。</string>
+    <string name="budget_excluded_count">%1$d 笔</string>
+
+    <!-- ADR-0044 wave 2：ViewModel + 端内非 Composable helper 的用户可见文案。 -->
+
+    <!-- MonthlyStatsViewModel / StatsReportsViewModel：统计屏 Snackbar/提示文案 -->
+    <string name="stats_message_lifestyle_failed">生活统计暂时打不开，请稍后再试。</string>
+    <string name="stats_message_local_fallback">已显示本机账本统计，联网后会自动更新。</string>
+    <string name="stats_message_stats_failed">统计暂时打不开，请稍后再试。</string>
+    <string name="stats_message_dashboard_cards_failed">首页卡片设置暂时打不开，已显示默认顺序。</string>
+    <string name="stats_message_reports_failed">动态图表暂时打不开，稍后再试。</string>
+    <string name="stats_message_trend_failed">趋势图暂时打不开，稍后再试。</string>
+
+    <!-- StatsScreen：分段控件 tab 兜底标题（后端无 title 时） -->
+    <string name="stats_tab_overview">概览</string>
+    <string name="stats_tab_trend">趋势</string>
+    <string name="stats_tab_category">分类</string>
+    <string name="stats_tab_budget">预算</string>
+    <string name="stats_tab_goals">目标</string>
+
+    <!-- PendingOverviewCard：待确认指标格标签 -->
+    <string name="stats_pending_metric_pending_total">待确认</string>
+    <string name="stats_pending_metric_ready">可确认</string>
+    <string name="stats_pending_metric_missing_amount">缺金额</string>
+    <string name="stats_pending_metric_missing_merchant">缺商家</string>
+    <string name="stats_pending_metric_missing_category">未分类</string>
+    <string name="stats_pending_metric_duplicates">重复</string>
+
+    <!-- 固定支出状态 / 置信度 chip 标签（统计屏摘要卡 + 固定支出独立屏共用） -->
+    <string name="recurring_status_active">活跃</string>
+    <string name="recurring_status_paused">暂停</string>
+    <string name="recurring_status_archived">归档</string>
+    <string name="recurring_confidence_high">高</string>
+    <string name="recurring_confidence_medium">中</string>
+    <string name="recurring_confidence_low">低</string>
+
+    <!-- 固定支出 meta 行（下次 / 次数 / 异常段）——非 Composable helper 逐段拼接，保持字符不变 -->
+    <string name="recurring_meta_next">下次 %1$s</string>
+    <string name="recurring_meta_next_unknown">下次未估算</string>
+    <string name="recurring_meta_count">%1$d 次</string>
+    <string name="recurring_meta_anomaly_higher_percent"> · 本月偏高 %1$d%%</string>
+    <string name="recurring_meta_anomaly_current_amount"> · 本月 %1$s</string>
+    <string name="recurring_meta_combined">%1$s · %2$s%3$s</string>
+
+    <!-- RecurringScreen：分段 tab 标签（即将 / 活跃 / 暂停） + tab 计数 -->
+    <string name="recurring_tab_upcoming">即将</string>
+    <string name="recurring_tab_active">活跃</string>
+    <string name="recurring_tab_paused">暂停</string>
+    <string name="recurring_tab_label_count">%1$s %2$d</string>
+
+    <!-- BudgetViewModel：预算屏 Snackbar/提示文案 -->
+    <string name="budget_message_load_failed">预算暂时打不开，请稍后再试。</string>
+    <string name="budget_message_content_invalid">预算内容不正确。</string>
+    <string name="budget_message_saved">预算已保存。</string>
+
+    <!-- Budget 本地校验文案（parseBudgetUpdate / parseRequiredCents / parseOptionalCents） -->
+    <string name="budget_validation_total_required">请输入月度总预算。</string>
+    <string name="budget_validation_total_positive">月度总预算必须大于 0。</string>
+    <string name="budget_validation_amount_invalid">金额格式不正确。</string>
+    <string name="budget_validation_rollover_amount_invalid">结转 金额格式不正确。</string>
+    <string name="budget_validation_rollover_negative">结转 不能为负数。</string>
+    <string name="budget_validation_nonmonthly_amount_invalid">非月度预留 金额格式不正确。</string>
+    <string name="budget_validation_nonmonthly_negative">非月度预留 不能为负数。</string>
+    <string name="budget_validation_category_name_required">请输入分类名称。</string>
+    <string name="budget_validation_category_amount_required">请输入分类预算金额。</string>
+    <string name="budget_validation_category_amount_negative">分类预算不能为负数。</string>
+    <string name="budget_message_save_failed">预算没有保存成功。</string>
+
+    <!-- RecurringViewModel：固定支出屏 Snackbar/提示文案 -->
+    <string name="recurring_message_candidate_expired">固定支出候选已过期，请刷新后再试。</string>
+    <string name="recurring_message_updated">固定支出已更新。</string>
+    <string name="recurring_message_action_failed">操作失败。</string>
+</resources>

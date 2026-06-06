@@ -20,8 +20,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatMinorAmountInput
@@ -59,9 +61,13 @@ internal fun MissingAmountSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("补一下金额", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
-            text = "金额按原始币种输入，例如 12.34。保存后由后端按消费时间计算入账金额。",
+            stringResource(R.string.pending_missing_amount_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(
+            text = stringResource(R.string.pending_missing_amount_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -75,25 +81,33 @@ internal fun MissingAmountSheetContent(
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            label = { Text("金额 (${currency.storageKey})") },
-            placeholder = { Text(if (currency.noFractionDigits) "例如 1200" else "例如 12.34") },
+            label = { Text(stringResource(R.string.pending_missing_amount_label, currency.storageKey)) },
+            placeholder = {
+                Text(
+                    if (currency.noFractionDigits) {
+                        stringResource(R.string.pending_missing_amount_placeholder_no_fraction)
+                    } else {
+                        stringResource(R.string.pending_missing_amount_placeholder_fraction)
+                    },
+                )
+            },
             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             enabled = !saving,
             isError = invalid,
             supportingText = if (invalid) {
-                { Text("请输入大于 0 的金额", color = MaterialTheme.colorScheme.error) }
+                { Text(stringResource(R.string.pending_missing_amount_invalid), color = MaterialTheme.colorScheme.error) }
             } else null,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppSecondaryButton(
-                text = "取消",
+                text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),
                 enabled = !saving,
                 onClick = onDismiss,
             )
             AppSecondaryButton(
-                text = if (saving) "保存中" else "仅保存",
+                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_missing_amount_save_draft),
                 modifier = Modifier.weight(1f),
                 enabled = canSave,
                 onClick = { originalMinor?.let(onSaveDraft) },
@@ -103,12 +117,12 @@ internal fun MissingAmountSheetContent(
                 enabled = canSave,
                 onClick = { originalMinor?.let(onSaveAndConfirm) },
             ) {
-                Text(if (saving) "处理中" else "保存并确认")
+                Text(if (saving) stringResource(R.string.pending_missing_amount_processing) else stringResource(R.string.pending_missing_amount_save_and_confirm))
             }
         }
 
         Text(
-            text = "保存并确认会先保存金额，再确认入账。没填金额不会被确认。",
+            text = stringResource(R.string.pending_missing_amount_footnote),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
         )

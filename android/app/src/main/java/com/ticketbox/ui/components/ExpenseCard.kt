@@ -40,11 +40,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.design.AppMotion
@@ -86,8 +88,8 @@ fun ExpenseCard(
     if (showRejectDialog) {
         AlertDialog(
             onDismissRequest = { if (actionsEnabled) showRejectDialog = false },
-            title = { Text("删除这笔待确认账单？") },
-            text = { Text("删除后这张截图会标记为已拒绝，不会进入账本。") },
+            title = { Text(stringResource(R.string.components_expense_card_reject_dialog_title)) },
+            text = { Text(stringResource(R.string.components_expense_card_reject_dialog_body)) },
             confirmButton = {
                 TextButton(
                     enabled = actionsEnabled,
@@ -96,7 +98,7 @@ fun ExpenseCard(
                         onReject()
                     },
                 ) {
-                    Text("确定删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.components_expense_card_reject_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -104,7 +106,7 @@ fun ExpenseCard(
                     enabled = actionsEnabled,
                     onClick = { showRejectDialog = false },
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
@@ -126,7 +128,7 @@ fun ExpenseCard(
                 if (expense.imagePath != null) {
                     AppAsyncImage(
                         image = thumbnail,
-                        placeholder = "截图缩略图加载中",
+                        placeholder = stringResource(R.string.components_expense_card_thumbnail_placeholder),
                         contentScale = ContentScale.Crop,
                         compact = true,
                         compactSize = imageSize,
@@ -139,7 +141,7 @@ fun ExpenseCard(
                     verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp),
                 ) {
                     Text(
-                        text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
+                        text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.components_expense_card_merchant_placeholder),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = AppTextHierarchy.body.weight,
@@ -148,7 +150,11 @@ fun ExpenseCard(
                     )
                     Text(
                         text = "${displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt)} · ${
-                            if (expense.status == "pending") "截图待确认" else "已入账"
+                            if (expense.status == "pending") {
+                                stringResource(R.string.components_expense_card_status_pending)
+                            } else {
+                                stringResource(R.string.components_expense_card_status_recorded)
+                            }
                         }",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -156,7 +162,7 @@ fun ExpenseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (expense.amountCents == null) "等待你确认金额" else formatExpensePrimaryAmount(expense, currencyDisplay),
+                        text = if (expense.amountCents == null) stringResource(R.string.components_expense_card_amount_placeholder) else formatExpensePrimaryAmount(expense, currencyDisplay),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = AppTypography.amountMedium.size,
                             lineHeight = 28.sp,
@@ -185,12 +191,12 @@ fun ExpenseCard(
                             active = true,
                         )
                         if (expense.amountCents == null) {
-                            StatusPill(text = "待补金额", active = false)
+                            StatusPill(text = stringResource(R.string.components_expense_card_pill_amount_missing), active = false)
                         } else if ((expense.confidence ?: 1.0) < 0.62) {
-                            StatusPill(text = "请核对", active = false)
+                            StatusPill(text = stringResource(R.string.components_expense_card_pill_review), active = false)
                         }
                         if (expense.duplicateStatus == "suspected") {
-                            StatusPill(text = "疑似新账", active = false)
+                            StatusPill(text = stringResource(R.string.components_expense_card_pill_duplicate), active = false)
                         }
                     }
                 }
@@ -208,9 +214,9 @@ fun ExpenseCard(
 
             if (expense.imagePath != null && previewMode == ExpensePreviewMode.Comfortable) {
                 val imagePlaceholder = if (expense.thumbnailPath != null) {
-                    "截图缩略图加载中"
+                    stringResource(R.string.components_expense_card_thumbnail_placeholder)
                 } else {
-                    "截图已保存，点开后可查看"
+                    stringResource(R.string.components_expense_card_image_placeholder_saved)
                 }
                 AppAsyncImage(
                     image = thumbnail,
@@ -225,7 +231,7 @@ fun ExpenseCard(
 
             expense.tags?.takeIf { it.isNotBlank() }?.let {
                 Text(
-                    text = "标签：$it",
+                    text = stringResource(R.string.components_expense_card_tags, it),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -240,7 +246,7 @@ fun ExpenseCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     QuietOutlinedButton(
-                        text = "编辑",
+                        text = stringResource(R.string.components_expense_card_edit),
                         modifier = Modifier.weight(1f),
                         enabled = actionsEnabled,
                         onClick = onEdit,
@@ -279,14 +285,14 @@ fun ExpenseCard(
                             ) { ready ->
                                 if (ready) {
                                     Text(
-                                        text = "入账",
+                                        text = stringResource(R.string.components_expense_card_confirm),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 } else {
                                     Icon(
                                         imageVector = Icons.Filled.Check,
-                                        contentDescription = "已入账",
+                                        contentDescription = stringResource(R.string.components_expense_card_confirm_done),
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
@@ -300,7 +306,7 @@ fun ExpenseCard(
                             onClick = { showRejectDialog = true },
                         ) {
                             Text(
-                                text = "忽略",
+                                text = stringResource(R.string.components_expense_card_ignore),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -313,7 +319,7 @@ fun ExpenseCard(
                         onClick = onKeepDuplicate,
                     ) {
                         Text(
-                            text = "不是重复，保留",
+                            text = stringResource(R.string.components_expense_card_keep_duplicate),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -326,6 +332,7 @@ fun ExpenseCard(
 
 @Composable
 private fun CategoryMark(category: String) {
+    val fallbackMark = stringResource(R.string.components_expense_card_category_fallback)
     Box(
         modifier = Modifier
             .size(54.dp)
@@ -334,7 +341,7 @@ private fun CategoryMark(category: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = category.take(1).ifBlank { "账" },
+            text = category.take(1).ifBlank { fallbackMark },
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = AppTextHierarchy.heading.weight,

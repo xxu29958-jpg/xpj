@@ -2,10 +2,12 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +16,7 @@ import kotlinx.coroutines.launch
 
 data class AppearanceUiState(
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 class AppearanceViewModel(
@@ -38,23 +40,23 @@ class AppearanceViewModel(
     fun saveBackgroundImage(path: String) {
         viewModelScope.launch {
             runCatching { settingsStore.saveBackgroundImagePath(path) }
-                .onSuccess { _uiState.update { it.copy(message = "背景已更新") } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "背景没有保存成功。") } }
+                .onSuccess { _uiState.update { it.copy(message = UiText.res(R.string.appearance_message_background_updated)) } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.appearance_message_background_save_failed)) } }
         }
     }
 
     fun applyBackgroundSettings(settings: BackgroundSettings) {
         viewModelScope.launch {
             runCatching { settingsStore.saveBackgroundSettings(settings) }
-                .onSuccess { _uiState.update { it.copy(message = "背景已应用") } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "背景没有保存成功。") } }
+                .onSuccess { _uiState.update { it.copy(message = UiText.res(R.string.appearance_message_background_applied)) } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.appearance_message_background_save_failed)) } }
         }
     }
 
     fun resetThemeBackground() {
         viewModelScope.launch {
             settingsStore.saveBackgroundSettings(_uiState.value.backgroundSettings.withoutBackground())
-            _uiState.update { it.copy(message = "已恢复跟随主题背景") }
+            _uiState.update { it.copy(message = UiText.res(R.string.appearance_message_background_theme_restored)) }
         }
     }
 
@@ -64,7 +66,7 @@ class AppearanceViewModel(
             _uiState.update {
                 it.copy(
                     backgroundSettings = it.backgroundSettings.withoutBackground(),
-                    message = "已恢复跟随主题背景",
+                    message = UiText.res(R.string.appearance_message_background_theme_restored),
                 )
             }
         }
@@ -73,32 +75,45 @@ class AppearanceViewModel(
     fun setBackgroundCropMode(mode: BackgroundCropMode) {
         viewModelScope.launch {
             settingsStore.setBackgroundCropMode(mode)
-            _uiState.update { it.copy(message = "构图已切换为${mode.displayName}") }
+            _uiState.update { it.copy(message = UiText.res(R.string.appearance_message_crop_mode_changed, mode.displayName)) }
         }
     }
 
     fun setImmersionMode(mode: ImmersionMode) {
         viewModelScope.launch {
             settingsStore.setImmersionMode(mode)
-            _uiState.update { it.copy(message = "已切换为${mode.displayName}模式") }
+            _uiState.update { it.copy(message = UiText.res(R.string.appearance_message_immersion_mode_changed, mode.displayName)) }
         }
     }
 
     fun setParallaxEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsStore.setParallaxEnabled(enabled)
-            _uiState.update { it.copy(message = if (enabled) "视差动效已开启" else "视差动效已关闭") }
+            val message = if (enabled) {
+                UiText.res(R.string.appearance_message_parallax_on)
+            } else {
+                UiText.res(R.string.appearance_message_parallax_off)
+            }
+            _uiState.update { it.copy(message = message) }
         }
     }
 
     fun setReduceMotion(enabled: Boolean) {
         viewModelScope.launch {
             settingsStore.setReduceMotion(enabled)
-            _uiState.update { it.copy(message = if (enabled) "已减少背景动效" else "已恢复轻微动效") }
+            val message = if (enabled) {
+                UiText.res(R.string.appearance_message_reduce_motion_on)
+            } else {
+                UiText.res(R.string.appearance_message_reduce_motion_off)
+            }
+            _uiState.update { it.copy(message = message) }
         }
     }
 
     fun backgroundImageCopyFailed(message: String) {
-        _uiState.update { it.copy(message = message) }
+        // The host (SettingsDestinationHost) already resolves the failure copy from a
+        // string resource via context.getString and passes the resolved text here, so
+        // carry it through as an already-resolved UiText.Raw (byte-identical output).
+        _uiState.update { it.copy(message = UiText.raw(message)) }
     }
 }

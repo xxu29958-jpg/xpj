@@ -14,7 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -28,6 +30,7 @@ import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.nowUtcIso
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
@@ -155,10 +158,19 @@ fun ExpenseEditScreen(
     var showTimePicker by remember(currentExpense.id) { mutableStateOf(false) }
     var showRejectDialog by remember(currentExpense.id) { mutableStateOf(false) }
     var showLargeImage by remember(currentExpense.id) { mutableStateOf(false) }
-    val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() } ?: "第一版为空"
+    val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.expense_edit_raw_text_empty)
     val previewImage = state.fullImage ?: state.thumbnail
     val readOnly = state.readOnly
     val haptics = rememberAppHaptics()
+    // ADR-0044: stringResource is @Composable-only, but the validation messages
+    // below are assigned inside non-composable local functions / onClick lambdas.
+    // Hoist the resolved strings (the out-of-range one as a format template) here.
+    val valueScoreLabel = stringResource(R.string.expense_edit_score_value_label)
+    val regretScoreLabel = stringResource(R.string.expense_edit_score_regret_label)
+    val scoreOutOfRangeTemplate = stringResource(R.string.expense_edit_score_out_of_range)
+    val amountInvalidMessage = stringResource(R.string.expense_edit_amount_invalid)
+    val amountRequiredMessage = stringResource(R.string.expense_edit_amount_required)
 
     if (showDatePicker) {
         ExpenseEditDatePicker(
@@ -189,7 +201,7 @@ fun ExpenseEditScreen(
         if (raw.isBlank()) return null
         val score = raw.toIntOrNull()
         if (score == null || score !in 1..5) {
-            message = "$label 只能填写 1 到 5。"
+            message = scoreOutOfRangeTemplate.format(label)
             return null
         }
         return score
@@ -198,11 +210,11 @@ fun ExpenseEditScreen(
     fun draftOrMessage(): ExpenseDraft? {
         val originalMinor = parseMinorAmount(originalAmountText, currency)
         if (originalAmountText.isNotBlank() && originalMinor == null) {
-            message = "金额格式不正确"
+            message = amountInvalidMessage
             return null
         }
-        val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, "值不值评分") ?: return null)
-        val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, "后悔指数") ?: return null)
+        val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, valueScoreLabel) ?: return null)
+        val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, regretScoreLabel) ?: return null)
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
@@ -224,11 +236,17 @@ fun ExpenseEditScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         AppPageHeader(
-            title = "确认账单",
-            subtitle = "识别只是草稿，补全后再正式入账",
+            title = stringResource(R.string.expense_edit_header_title),
+            subtitle = stringResource(R.string.expense_edit_header_subtitle),
             eyebrow = "",
         ) {
-            StatusPill(if (currentExpense.status == "pending") "待确认" else "已入账")
+            StatusPill(
+                if (currentExpense.status == "pending") {
+                    stringResource(R.string.expense_edit_status_pending)
+                } else {
+                    stringResource(R.string.expense_edit_status_confirmed)
+                }
+            )
         }
 
         EditDraftPreviewCard(
@@ -251,9 +269,9 @@ fun ExpenseEditScreen(
             AppAsyncImage(
                 image = state.fullImage ?: previewImage,
                 placeholder = if (state.imageLoading) {
-                    "原图加载中"
+                    stringResource(R.string.expense_edit_large_image_loading)
                 } else {
-                    "原图暂时加载失败，截图已保存"
+                    stringResource(R.string.expense_edit_large_image_failed)
                 },
                 contentScale = ContentScale.Fit,
                 displayHeight = 420.dp,
@@ -264,7 +282,7 @@ fun ExpenseEditScreen(
             DuplicateNotice(reason = currentExpense.duplicateReason)
             if (!readOnly) {
                 AppOutlinedButton(onClick = onKeepDuplicate) {
-                    Text("不是重复，保留")
+                    Text(stringResource(R.string.expense_edit_keep_duplicate_button))
                 }
             }
         }
@@ -347,7 +365,7 @@ fun ExpenseEditScreen(
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
         state.message?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
+            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
 
         ExpenseEditPrimaryActions(
@@ -368,7 +386,7 @@ fun ExpenseEditScreen(
             onConfirm = {
                 val draft = draftOrMessage() ?: return@ExpenseEditConfirmActions
                 if (draft.originalAmountMinor == null) {
-                    message = "请先填写金额。"
+                    message = amountRequiredMessage
                     return@ExpenseEditConfirmActions
                 }
                 haptics.confirm()

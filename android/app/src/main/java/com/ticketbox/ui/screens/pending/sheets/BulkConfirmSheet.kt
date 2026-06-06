@@ -11,7 +11,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -42,9 +44,13 @@ internal fun BulkConfirmSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("批量确认这一批账单", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
-            text = "会逐条确认这批账单，单条失败不影响其他。",
+            stringResource(R.string.pending_bulk_sheet_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(
+            text = stringResource(R.string.pending_bulk_sheet_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -54,19 +60,28 @@ internal fun BulkConfirmSheetContent(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                StatLine(label = "本次将确认", value = "$readyCount 条")
+                StatLine(
+                    label = stringResource(R.string.pending_bulk_sheet_stat_will_confirm),
+                    value = stringResource(R.string.pending_bulk_sheet_stat_count, readyCount),
+                )
                 if (missingAmountSkipCount > 0) {
-                    StatLine(label = "缺金额跳过", value = "$missingAmountSkipCount 条")
+                    StatLine(
+                        label = stringResource(R.string.pending_bulk_sheet_stat_skip_missing_amount),
+                        value = stringResource(R.string.pending_bulk_sheet_stat_count, missingAmountSkipCount),
+                    )
                 }
                 if (duplicateSkipCount > 0) {
-                    StatLine(label = "疑似重复跳过", value = "$duplicateSkipCount 条（请单独二次确认）")
+                    StatLine(
+                        label = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate),
+                        value = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate_count, duplicateSkipCount),
+                    )
                 }
             }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppSecondaryButton(
-                text = "取消",
+                text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),
                 enabled = !inProgress,
                 onClick = onDismiss,
@@ -76,7 +91,7 @@ internal fun BulkConfirmSheetContent(
                 enabled = !inProgress && readyCount > 0,
                 onClick = onConfirmReady,
             ) {
-                Text(if (inProgress) "确认中…" else "确认 $readyCount 条")
+                Text(if (inProgress) stringResource(R.string.pending_bulk_sheet_in_progress) else stringResource(R.string.pending_bulk_sheet_confirm_button, readyCount))
             }
         }
     }

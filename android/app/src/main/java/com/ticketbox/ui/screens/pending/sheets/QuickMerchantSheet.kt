@@ -20,8 +20,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -48,9 +50,13 @@ internal fun QuickMerchantSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("补一下商家", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
-            text = "保存后不会自动确认。空商家不能保存。",
+            stringResource(R.string.pending_quick_merchant_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(
+            text = stringResource(R.string.pending_quick_merchant_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -60,19 +66,19 @@ internal fun QuickMerchantSheetContent(
             onValueChange = { value = it.take(40) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
-            label = { Text("商家名称") },
-            placeholder = { Text("例如：星巴克 / 美团外卖") },
+            label = { Text(stringResource(R.string.pending_quick_merchant_label)) },
+            placeholder = { Text(stringResource(R.string.pending_quick_merchant_placeholder)) },
             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             enabled = !saving,
             isError = value.isNotEmpty() && cleaned.isEmpty(),
             supportingText = if (value.isNotEmpty() && cleaned.isEmpty()) {
-                { Text("不能只填空格", color = MaterialTheme.colorScheme.error) }
+                { Text(stringResource(R.string.pending_quick_merchant_blank_error), color = MaterialTheme.colorScheme.error) }
             } else null,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppSecondaryButton(
-                text = "取消",
+                text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),
                 enabled = !saving,
                 onClick = onDismiss,
@@ -82,7 +88,7 @@ internal fun QuickMerchantSheetContent(
                 enabled = !saving && cleaned.isNotEmpty(),
                 onClick = { onSave(cleaned) },
             ) {
-                Text(if (saving) "保存中" else "保存商家")
+                Text(if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_quick_merchant_save_button))
             }
         }
     }

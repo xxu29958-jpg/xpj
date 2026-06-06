@@ -1,10 +1,12 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.TagActions
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.TagMutationResult
 import com.ticketbox.domain.model.TagUndoResult
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -58,7 +60,7 @@ class TagManagementViewModelTest {
         vm.renameTag(tag("a", "餐饮", 5), "餐厅")
         advanceUntilIdle()
         assertEquals(0, repo.renameCalls)
-        assertEquals(READ_ONLY_LEDGER_MESSAGE, vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
     }
 
     @Test
@@ -150,7 +152,10 @@ class TagManagementViewModelTest {
         repo.failNext = RepositoryException("标签名已被占用，请改用合并。", "tag_conflict")
         vm.renameTag(tag("a", "出差", 1), "差旅")
         advanceUntilIdle()
-        assertTrue(vm.uiState.value.message?.contains("合并") == true)
+        // tag_conflict with no live target → failWith → toUiText maps the code to
+        // R.string.error_tag_conflict ("标签名已被占用，请改用合并。"), byte-identical
+        // to the prior resolved message.
+        assertEquals(UiText.res(R.string.error_tag_conflict), vm.uiState.value.message)
         // The colliding key isn't a live tag in the list (e.g. soft-deleted) →
         // no merge prefill, just the steering message (契约 5 fallback).
         assertNull(vm.uiState.value.mergeSuggestion)
@@ -224,7 +229,7 @@ class TagManagementViewModelTest {
         repo.failNext = RepositoryException("", "state_conflict")
         vm.deleteTag(tag("a", "出差", 1))
         advanceUntilIdle()
-        assertTrue(vm.uiState.value.message?.contains("其它端") == true)
+        assertEquals(UiText.res(R.string.tag_management_error_state_conflict), vm.uiState.value.message)
     }
 }
 

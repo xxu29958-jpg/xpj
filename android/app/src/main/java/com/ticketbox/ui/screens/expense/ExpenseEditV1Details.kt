@@ -12,9 +12,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItemKind
@@ -22,7 +24,9 @@ import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ItemsSumStatus
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSolidCard
@@ -37,8 +41,8 @@ internal fun ExpenseEditV1DetailsSection(
     expenseSplits: ExpenseSplits?,
     itemsLoading: Boolean,
     splitsLoading: Boolean,
-    itemsMessage: String?,
-    splitsMessage: String?,
+    itemsMessage: UiText?,
+    splitsMessage: UiText?,
     onAcknowledgeItemsMismatch: () -> Unit = {},
     onEditItems: (() -> Unit)? = null,
     onEditSplits: (() -> Unit)? = null,
@@ -66,7 +70,7 @@ internal fun ExpenseEditV1DetailsSection(
 private fun ExpenseItemsPanel(
     expenseItems: ExpenseItems?,
     loading: Boolean,
-    message: String?,
+    message: UiText?,
     currencyDisplay: CurrencyDisplay,
     onAcknowledgeMismatch: () -> Unit,
     onEditItems: (() -> Unit)? = null,
@@ -77,8 +81,8 @@ private fun ExpenseItemsPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             DetailHeader(
-                title = "小票明细",
-                subtitle = "商品级记录不改变账单金额、统计或导出",
+                title = stringResource(R.string.expense_edit_v1_items_title),
+                subtitle = stringResource(R.string.expense_edit_v1_items_subtitle),
                 trailing = expenseItems?.itemsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
             )
             if (onEditItems != null && !loading) {
@@ -87,17 +91,23 @@ private fun ExpenseItemsPanel(
                     horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(onClick = onEditItems) {
-                        Text(if (expenseItems?.items.isNullOrEmpty()) "添加明细" else "编辑明细")
+                        Text(
+                            if (expenseItems?.items.isNullOrEmpty()) {
+                                stringResource(R.string.expense_edit_v1_items_add_button)
+                            } else {
+                                stringResource(R.string.expense_edit_v1_items_edit_button)
+                            }
+                        )
                     }
                 }
             }
             when {
                 loading -> DetailLoadingState(
-                    title = "明细加载中",
-                    body = "商品级记录加载完成后会显示在这里。",
+                    title = stringResource(R.string.expense_edit_v1_items_loading_title),
+                    body = stringResource(R.string.expense_edit_v1_items_loading_body),
                 )
-                message != null -> DetailEmptyState(message)
-                expenseItems == null || expenseItems.items.isEmpty() -> DetailEmptyState("暂无商品明细")
+                message != null -> DetailEmptyState(message.asString())
+                expenseItems == null || expenseItems.items.isEmpty() -> DetailEmptyState(stringResource(R.string.expense_edit_v1_items_empty))
                 else -> {
                     TotalReconcileLine(
                         parentAmountCents = expenseItems.parentAmountCents,
@@ -160,11 +170,12 @@ private fun ExpenseItemsPanel(
     }
 }
 
+@Composable
 private fun kindGroupTitle(kind: String): String = when (kind) {
-    ExpenseItemKind.PRODUCT -> "商品"
-    ExpenseItemKind.DISCOUNT -> "优惠 / 折扣"
-    ExpenseItemKind.TAX -> "税"
-    ExpenseItemKind.SERVICE_FEE -> "服务费"
+    ExpenseItemKind.PRODUCT -> stringResource(R.string.expense_edit_item_group_product)
+    ExpenseItemKind.DISCOUNT -> stringResource(R.string.expense_edit_item_group_discount)
+    ExpenseItemKind.TAX -> stringResource(R.string.expense_edit_item_group_tax)
+    ExpenseItemKind.SERVICE_FEE -> stringResource(R.string.expense_edit_item_group_service_fee)
     else -> kind
 }
 
@@ -181,18 +192,18 @@ private fun ItemsSumMismatchBanner(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "明细合计与账单金额相差 $diff",
+                text = stringResource(R.string.expense_edit_v1_items_mismatch_title, diff),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "检查商品行，或如果原小票本身就是这个金额，可以确认差异。",
+                text = stringResource(R.string.expense_edit_v1_items_mismatch_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onAcknowledge) {
-                Text("原小票如此")
+                Text(stringResource(R.string.expense_edit_v1_items_mismatch_ack_button))
             }
         }
     }
@@ -210,7 +221,7 @@ private fun ItemsSumAcknowledgedBanner(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "已确认原小票合计与明细存在 $diff 差异",
+                text = stringResource(R.string.expense_edit_v1_items_mismatch_acknowledged, diff),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -222,7 +233,7 @@ private fun ItemsSumAcknowledgedBanner(
 private fun ExpenseSplitsPanel(
     expenseSplits: ExpenseSplits?,
     loading: Boolean,
-    message: String?,
+    message: UiText?,
     currencyDisplay: CurrencyDisplay,
     onEditSplits: (() -> Unit)? = null,
 ) {
@@ -232,8 +243,8 @@ private fun ExpenseSplitsPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             DetailHeader(
-                title = "家庭拆账",
-                subtitle = "拆账只记录家庭分摊，不改动原始账单金额",
+                title = stringResource(R.string.expense_edit_v1_splits_title),
+                subtitle = stringResource(R.string.expense_edit_v1_splits_subtitle),
                 trailing = expenseSplits?.splitsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
             )
             if (onEditSplits != null && !loading) {
@@ -242,17 +253,23 @@ private fun ExpenseSplitsPanel(
                     horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(onClick = onEditSplits) {
-                        Text(if (expenseSplits?.splits.isNullOrEmpty()) "添加拆账" else "编辑拆账")
+                        Text(
+                            if (expenseSplits?.splits.isNullOrEmpty()) {
+                                stringResource(R.string.expense_edit_v1_splits_add_button)
+                            } else {
+                                stringResource(R.string.expense_edit_v1_splits_edit_button)
+                            }
+                        )
                     }
                 }
             }
             when {
                 loading -> DetailLoadingState(
-                    title = "拆账加载中",
-                    body = "家庭成员分摊加载完成后会显示在这里。",
+                    title = stringResource(R.string.expense_edit_v1_splits_loading_title),
+                    body = stringResource(R.string.expense_edit_v1_splits_loading_body),
                 )
-                message != null -> DetailEmptyState(message)
-                expenseSplits == null || expenseSplits.splits.isEmpty() -> DetailEmptyState("暂无家庭拆账")
+                message != null -> DetailEmptyState(message.asString())
+                expenseSplits == null || expenseSplits.splits.isEmpty() -> DetailEmptyState(stringResource(R.string.expense_edit_v1_splits_empty))
                 else -> {
                     TotalReconcileLine(
                         parentAmountCents = expenseSplits.parentAmountCents,
@@ -320,11 +337,19 @@ private fun TotalReconcileLine(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StatusPill(
-            if (mismatch == 0L) "合计一致" else "差额 ${formatDisplayAmount(mismatch, currencyDisplay)}",
+            if (mismatch == 0L) {
+                stringResource(R.string.expense_edit_v1_reconcile_match_pill)
+            } else {
+                stringResource(R.string.expense_edit_v1_reconcile_diff_pill, formatDisplayAmount(mismatch, currencyDisplay))
+            },
             active = mismatch == 0L,
         )
         Text(
-            text = "账单 ${formatDisplayAmount(parentAmountCents, currencyDisplay)} · 明细 ${formatDisplayAmount(detailTotalAmountCents, currencyDisplay)}",
+            text = stringResource(
+                R.string.expense_edit_v1_reconcile_amounts,
+                formatDisplayAmount(parentAmountCents, currencyDisplay),
+                formatDisplayAmount(detailTotalAmountCents, currencyDisplay),
+            ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -446,18 +471,22 @@ private fun DetailEmptyState(text: String) {
     }
 }
 
+@Composable
 private fun itemSubtitle(item: ExpenseItem, currencyDisplay: CurrencyDisplay): String {
     val parts = mutableListOf<String>()
     item.quantityText?.takeIf { it.isNotBlank() }?.let { parts += it }
-    item.unitPriceCents?.let { parts += "单价 ${formatDisplayAmount(it, currencyDisplay)}" }
+    item.unitPriceCents?.let {
+        parts += stringResource(R.string.expense_edit_item_subtitle_unit_price, formatDisplayAmount(it, currencyDisplay))
+    }
     item.category.takeIf { it.isNotBlank() }?.let { parts += it }
-    if (item.isOcrDraft) parts += "OCR草稿"
-    return parts.joinToString(" · ").ifBlank { "未补充明细信息" }
+    if (item.isOcrDraft) parts += stringResource(R.string.expense_edit_item_subtitle_ocr_draft)
+    return parts.joinToString(" · ").ifBlank { stringResource(R.string.expense_edit_item_subtitle_empty) }
 }
 
+@Composable
 private fun splitSubtitle(split: ExpenseSplit): String {
     val parts = mutableListOf(ledgerRoleLabel(split.role))
     split.note?.takeIf { it.isNotBlank() }?.let { parts += it }
-    if (split.isDisabledMember) parts += "成员已停用"
+    if (split.isDisabledMember) parts += stringResource(R.string.expense_edit_split_subtitle_member_disabled)
     return parts.joinToString(" · ")
 }

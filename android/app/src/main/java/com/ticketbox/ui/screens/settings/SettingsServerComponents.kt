@@ -65,10 +65,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -125,9 +127,9 @@ internal fun AccountStatusCard(
     onCheckConnection: (() -> Unit)? = null,
     onSync: (() -> Unit)? = null,
 ) {
-    val displayAccount = serverSettings?.accountName?.takeIf { it.isNotBlank() } ?: accountName?.takeIf { it.isNotBlank() } ?: "我"
-    val displayLedger = serverSettings?.ledgerName?.takeIf { it.isNotBlank() } ?: ledgerName?.takeIf { it.isNotBlank() } ?: "我的小票夹"
-    val displayDevice = serverSettings?.deviceName?.takeIf { it.isNotBlank() } ?: deviceName?.takeIf { it.isNotBlank() } ?: "当前设备"
+    val displayAccount = serverSettings?.accountName?.takeIf { it.isNotBlank() } ?: accountName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.settings_account_default_account)
+    val displayLedger = serverSettings?.ledgerName?.takeIf { it.isNotBlank() } ?: ledgerName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.settings_account_default_ledger)
+    val displayDevice = serverSettings?.deviceName?.takeIf { it.isNotBlank() } ?: deviceName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.settings_account_default_device)
     val displayRole = ledgerRoleLabel(
         serverSettings?.role?.takeIf { it.isNotBlank() }
             ?: role?.takeIf { it.isNotBlank() }
@@ -149,7 +151,7 @@ internal fun AccountStatusCard(
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
                 ) {
                     Text(
-                        text = "当前账本",
+                        text = stringResource(R.string.settings_account_current_ledger_label),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
                     )
@@ -168,14 +170,21 @@ internal fun AccountStatusCard(
                     StatusPill(connected = serverSettings != null)
                 }
             }
-            AccountInfoLine(text = "当前账号：$displayAccount")
-            AccountInfoLine(text = "当前设备：$displayDevice")
-            AccountInfoLine(text = "角色：$displayRole")
+            AccountInfoLine(text = stringResource(R.string.settings_account_account_line, displayAccount))
+            AccountInfoLine(text = stringResource(R.string.settings_account_device_line, displayDevice))
+            AccountInfoLine(text = stringResource(R.string.settings_account_role_line, displayRole))
             AccountInfoLine(
-                text = "最近上传：${(lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) } ?: "还没有上传"}",
+                text = stringResource(
+                    R.string.settings_account_last_upload_line,
+                    (lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) }
+                        ?: stringResource(R.string.settings_account_no_upload),
+                ),
             )
             AccountInfoLine(
-                text = "最近更新：${lastSyncAt?.let { displayTime(it) } ?: "还没有更新"} · 存储正常",
+                text = stringResource(
+                    R.string.settings_account_last_sync_line,
+                    lastSyncAt?.let { displayTime(it) } ?: stringResource(R.string.settings_account_no_sync),
+                ),
             )
             if (onCheckConnection != null && onSync != null) {
                 Row(
@@ -183,7 +192,11 @@ internal fun AccountStatusCard(
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
                     QuietOutlinedButton(
-                        text = if (busy) "处理中" else "检查连接",
+                        text = if (busy) {
+                            stringResource(R.string.settings_account_button_busy)
+                        } else {
+                            stringResource(R.string.settings_account_button_check_connection)
+                        },
                         modifier = Modifier.weight(1f),
                         enabled = !busy,
                         onClick = onCheckConnection,
@@ -193,7 +206,7 @@ internal fun AccountStatusCard(
                         enabled = !busy,
                         onClick = onSync,
                     ) {
-                        Text("更新账本")
+                        Text(stringResource(R.string.settings_account_button_update_ledger))
                     }
                 }
             }
@@ -224,11 +237,11 @@ internal fun AdvancedStatusCard(
 ) {
     val title = diagnostics?.let {
         when {
-            it.failedCount > 0 -> "发现 ${it.failedCount} 个问题"
-            it.warningCount > 0 -> "可用，有 ${it.warningCount} 个提醒"
-            else -> "连接检测正常"
+            it.failedCount > 0 -> stringResource(R.string.settings_account_diagnostics_failed, it.failedCount)
+            it.warningCount > 0 -> stringResource(R.string.settings_account_diagnostics_warning, it.warningCount)
+            else -> stringResource(R.string.settings_account_diagnostics_ok)
         }
-    } ?: "尚未运行检测"
+    } ?: stringResource(R.string.settings_account_diagnostics_not_run)
 
     AppGlassCard(containerAlpha = 0.98f) {
         Column(
@@ -237,7 +250,11 @@ internal fun AdvancedStatusCard(
         ) {
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(
-                text = "连接地址：${serverUrl?.takeIf { it.isNotBlank() } ?: "未绑定"}",
+                text = stringResource(
+                    R.string.settings_account_connection_address,
+                    serverUrl?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.settings_account_connection_address_unbound),
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -266,7 +283,13 @@ internal fun AdvancedStatusCard(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onToggleExpanded,
                 ) {
-                    Text(if (expanded) "收起详情" else "查看详情")
+                    Text(
+                        if (expanded) {
+                            stringResource(R.string.settings_account_toggle_collapse)
+                        } else {
+                            stringResource(R.string.settings_account_toggle_expand)
+                        },
+                    )
                 }
             }
         }
@@ -293,7 +316,11 @@ internal fun StatusPill(connected: Boolean) {
             modifier = Modifier.size(16.dp),
         )
         Text(
-            text = if (connected) "已连接" else "连接中",
+            text = if (connected) {
+                stringResource(R.string.settings_account_status_connected)
+            } else {
+                stringResource(R.string.settings_account_status_connecting)
+            },
             color = content,
             style = MaterialTheme.typography.labelMedium,
         )

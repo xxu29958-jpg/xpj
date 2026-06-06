@@ -24,8 +24,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -36,7 +40,7 @@ fun MerchantAliasesScreen(
     aliases: List<MerchantAlias>,
     busy: Boolean,
     readOnly: Boolean,
-    message: String?,
+    message: UiText?,
     onBack: () -> Unit,
     onCreateAlias: (String, String) -> Unit,
     onToggleAlias: (MerchantAlias) -> Unit,
@@ -49,12 +53,23 @@ fun MerchantAliasesScreen(
     var aliasText by remember { mutableStateOf("") }
     var localMessage by remember { mutableStateOf<String?>(null) }
     var deletingAlias by remember { mutableStateOf<MerchantAlias?>(null) }
+    // ADR-0044: stringResource is @Composable-only, but this validation message is
+    // assigned inside a non-composable onClick lambda below. Hoist the resolved string here.
+    val createValidationMessage = stringResource(R.string.merchant_aliases_create_validation)
 
     deletingAlias?.let { item ->
         AlertDialog(
             onDismissRequest = { deletingAlias = null },
-            title = { Text("删除这个别名？") },
-            text = { Text("删除后，“${item.alias}”不再自动归到“${item.canonicalMerchant}”。") },
+            title = { Text(stringResource(R.string.merchant_aliases_delete_dialog_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.merchant_aliases_delete_dialog_text,
+                        item.alias,
+                        item.canonicalMerchant,
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -62,19 +77,19 @@ fun MerchantAliasesScreen(
                         onDeleteAlias(item)
                     },
                 ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.merchant_aliases_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deletingAlias = null }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
     }
 
     SettingsPageFrame(
-        title = "商家别名",
+        title = stringResource(R.string.merchant_aliases_page_title),
         subtitle = merchantAliasSummary(aliases),
         onBack = onBack,
     ) {
@@ -94,19 +109,19 @@ fun MerchantAliasesScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "已删除「${undoable.alias}」",
+                        text = stringResource(R.string.merchant_aliases_undo_deleted, undoable.alias),
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(AppSpacing.compactGap))
-                    TextButton(onClick = onUndoDelete) { Text("撤销") }
+                    TextButton(onClick = onUndoDelete) { Text(stringResource(R.string.merchant_aliases_undo_button)) }
                 }
             }
         }
 
         if (!readOnly) {
-            SettingsSection(title = "新增别名", icon = Icons.Filled.Tune) {
+            SettingsSection(title = stringResource(R.string.merchant_aliases_section_create), icon = Icons.Filled.Tune) {
                 AppGlassCard(containerAlpha = 0.96f) {
                     Column(
                         modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -116,15 +131,15 @@ fun MerchantAliasesScreen(
                             value = canonicalMerchant,
                             onValueChange = { canonicalMerchant = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("标准商家名") },
-                            placeholder = { Text("星巴克") },
+                            label = { Text(stringResource(R.string.merchant_aliases_canonical_label)) },
+                            placeholder = { Text(stringResource(R.string.merchant_aliases_canonical_placeholder)) },
                             singleLine = true,
                         )
                         OutlinedTextField(
                             value = aliasText,
                             onValueChange = { aliasText = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("别名") },
+                            label = { Text(stringResource(R.string.merchant_aliases_alias_label)) },
                             placeholder = { Text("Starbucks") },
                             singleLine = true,
                         )
@@ -133,7 +148,7 @@ fun MerchantAliasesScreen(
                             enabled = !busy,
                             onClick = {
                                 if (canonicalMerchant.isBlank() || aliasText.isBlank()) {
-                                    localMessage = "请填写标准商家名和别名。"
+                                    localMessage = createValidationMessage
                                     return@Button
                                 }
                                 localMessage = null
@@ -142,7 +157,13 @@ fun MerchantAliasesScreen(
                                 aliasText = ""
                             },
                         ) {
-                            Text(if (busy) "处理中" else "添加别名")
+                            Text(
+                                if (busy) {
+                                    stringResource(R.string.merchant_aliases_create_busy)
+                                } else {
+                                    stringResource(R.string.merchant_aliases_create_button)
+                                },
+                            )
                         }
                         localMessage?.let {
                             Text(it, color = MaterialTheme.colorScheme.secondary)
@@ -152,16 +173,16 @@ fun MerchantAliasesScreen(
             }
         } else {
             Text(
-                text = "当前角色为只读，无法修改账本。",
+                text = stringResource(R.string.common_readonly_ledger),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        SettingsSection(title = "别名列表", icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.merchant_aliases_section_list), icon = Icons.Filled.Tune) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 if (aliases.isEmpty()) {
                     Text(
-                        text = "暂无商家别名。",
+                        text = stringResource(R.string.merchant_aliases_list_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
@@ -178,7 +199,7 @@ fun MerchantAliasesScreen(
             }
         }
 
-        message?.takeIf { it.isNotBlank() }?.let {
+        message?.asString()?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
     }
@@ -206,7 +227,7 @@ private fun MerchantAliasCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "归到 ${alias.canonicalMerchant}",
+                        text = stringResource(R.string.merchant_aliases_card_canonical, alias.canonicalMerchant),
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
@@ -215,7 +236,11 @@ private fun MerchantAliasCard(
                 }
                 Spacer(Modifier.width(AppSpacing.compactGap))
                 Text(
-                    text = if (alias.enabled) "已启用" else "已停用",
+                    text = if (alias.enabled) {
+                        stringResource(R.string.merchant_aliases_card_status_enabled)
+                    } else {
+                        stringResource(R.string.merchant_aliases_card_status_disabled)
+                    },
                     color = if (alias.enabled) {
                         MaterialTheme.colorScheme.primary
                     } else {
@@ -238,14 +263,20 @@ private fun MerchantAliasCard(
                         enabled = !busy,
                         onClick = onToggleAlias,
                     ) {
-                        Text(if (alias.enabled) "停用" else "启用")
+                        Text(
+                            if (alias.enabled) {
+                                stringResource(R.string.merchant_aliases_card_action_disable)
+                            } else {
+                                stringResource(R.string.merchant_aliases_card_action_enable)
+                            },
+                        )
                     }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         enabled = !busy,
                         onClick = onDeleteAlias,
                     ) {
-                        Text("删除")
+                        Text(stringResource(R.string.merchant_aliases_card_action_delete))
                     }
                 }
             }
@@ -253,11 +284,12 @@ private fun MerchantAliasCard(
     }
 }
 
+@Composable
 private fun merchantAliasSummary(aliases: List<MerchantAlias>): String {
     val enabled = aliases.count { it.enabled }
     return if (aliases.isEmpty()) {
-        "暂无别名"
+        stringResource(R.string.merchant_aliases_summary_empty)
     } else {
-        "$enabled 条启用 · 共 ${aliases.size} 条"
+        stringResource(R.string.merchant_aliases_summary_count, enabled, aliases.size)
     }
 }

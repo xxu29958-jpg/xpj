@@ -73,10 +73,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.ticketbox.BuildConfig
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -94,6 +96,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
@@ -130,15 +133,19 @@ fun SettingsRootScreen(
     onOpenIncomePlans: () -> Unit = {},
     onOpenAbout: () -> Unit,
 ) {
-    val connectionTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
-    val connectionSubtitle = if (showAdvancedTools) {
-        "连接测试、联调自检、同步状态"
+    val connectionTitle = if (showAdvancedTools) {
+        stringResource(R.string.settings_root_connection_title_advanced)
     } else {
-        "检查连接、更新账本状态"
+        stringResource(R.string.settings_root_connection_title_basic)
+    }
+    val connectionSubtitle = if (showAdvancedTools) {
+        stringResource(R.string.settings_root_connection_subtitle_advanced)
+    } else {
+        stringResource(R.string.settings_root_connection_subtitle_basic)
     }
     SettingsPageFrame(
-        title = "设置",
-        subtitle = "账本状态、外观和本机数据。",
+        title = stringResource(R.string.settings_root_page_title),
+        subtitle = stringResource(R.string.settings_root_page_subtitle),
         onBack = null,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
@@ -152,7 +159,7 @@ fun SettingsRootScreen(
                 lastSyncAt = state.lastConfirmedSyncAt,
             )
             // 16 入口按功能域分 5 组（高频靠前、罕用靠后），用已有 SettingsSection 做分组标题。
-            SettingsSection(title = "账本与同步", icon = Icons.Filled.CloudDone) {
+            SettingsSection(title = stringResource(R.string.settings_root_section_ledger_sync), icon = Icons.Filled.CloudDone) {
                 SettingsEntryRow(
                     title = connectionTitle,
                     subtitle = connectionSubtitle,
@@ -160,116 +167,116 @@ fun SettingsRootScreen(
                     onClick = onOpenServer,
                 )
                 SettingsEntryRow(
-                    title = "离线同步",
-                    subtitle = "离线改动的同步状态，处理冲突与失败",
+                    title = stringResource(R.string.settings_root_entry_offline_sync_title),
+                    subtitle = stringResource(R.string.settings_root_entry_offline_sync_subtitle),
                     icon = Icons.Filled.Sync,
                     onClick = onOpenSyncStatus,
                 )
                 SettingsEntryRow(
-                    title = "后台任务",
-                    subtitle = "CSV 导入 / v1.0 迁移等长任务的状态",
+                    title = stringResource(R.string.settings_root_entry_background_tasks_title),
+                    subtitle = stringResource(R.string.settings_root_entry_background_tasks_subtitle),
                     icon = Icons.Filled.Tune,
                     onClick = onOpenBackgroundTasks,
                 )
                 SettingsEntryRow(
-                    title = "账本 (实验)",
-                    subtitle = "查看、切换、新建账本",
+                    title = stringResource(R.string.settings_root_entry_ledgers_title),
+                    subtitle = stringResource(R.string.settings_root_entry_ledgers_subtitle),
                     icon = Icons.Filled.FolderShared,
                     onClick = onOpenLedgers,
                 )
             }
-            SettingsSection(title = "记账设置", icon = Icons.Filled.Category) {
+            SettingsSection(title = stringResource(R.string.settings_root_section_bookkeeping), icon = Icons.Filled.Category) {
                 SettingsEntryRow(
-                    title = "分类规则",
-                    subtitle = "商家关键词和自动分类建议",
+                    title = stringResource(R.string.settings_root_entry_category_rules_title),
+                    subtitle = stringResource(R.string.settings_root_entry_category_rules_subtitle),
                     icon = Icons.Filled.Category,
                     onClick = onOpenCategoryRules,
                 )
                 SettingsEntryRow(
-                    title = "商家别名",
-                    subtitle = "把不同写法归到同一商家",
+                    title = stringResource(R.string.settings_root_entry_merchant_aliases_title),
+                    subtitle = stringResource(R.string.settings_root_entry_merchant_aliases_subtitle),
                     icon = Icons.Filled.Tune,
                     onClick = onOpenMerchantAliases,
                 )
                 SettingsEntryRow(
-                    title = "标签管理",
-                    subtitle = "重命名、合并、删除标签",
+                    title = stringResource(R.string.settings_root_entry_tag_management_title),
+                    subtitle = stringResource(R.string.settings_root_entry_tag_management_subtitle),
                     icon = Icons.AutoMirrored.Filled.Label,
                     onClick = onOpenTagManagement,
                 )
                 SettingsEntryRow(
-                    title = "通知与提醒",
-                    subtitle = "待确认、大额和固定支出提醒开关",
+                    title = stringResource(R.string.settings_root_entry_notifications_title),
+                    subtitle = stringResource(R.string.settings_root_entry_notifications_subtitle),
                     icon = Icons.Filled.Notifications,
                     onClick = onOpenNotifications,
                 )
                 SettingsEntryRow(
-                    title = "收入计划",
-                    subtitle = "记录月度收入，算「本月可自由支配」",
+                    title = stringResource(R.string.settings_root_entry_income_plans_title),
+                    subtitle = stringResource(R.string.settings_root_entry_income_plans_subtitle),
                     icon = Icons.Filled.AccountBalanceWallet,
                     onClick = onOpenIncomePlans,
                 )
             }
-            SettingsSection(title = "家庭协作", icon = Icons.Filled.Group) {
+            SettingsSection(title = stringResource(R.string.settings_root_section_family), icon = Icons.Filled.Group) {
                 SettingsEntryRow(
-                    title = "家庭成员",
-                    subtitle = "查看当前账本成员、角色和状态",
+                    title = stringResource(R.string.settings_root_entry_family_members_title),
+                    subtitle = stringResource(R.string.settings_root_entry_family_members_subtitle),
                     icon = Icons.Filled.Group,
                     onClick = onOpenFamilyMembers,
                 )
                 SettingsEntryRow(
-                    title = "加入家庭账本",
-                    subtitle = "使用本机管理后台生成的邀请明文",
+                    title = stringResource(R.string.settings_root_entry_join_family_title),
+                    subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),
                     icon = Icons.Filled.GroupAdd,
                     onClick = onOpenJoinFamilyLedger,
                 )
                 SettingsEntryRow(
-                    title = "拆账",
-                    subtitle = "收到的拆账邀请与你发出的拆账",
+                    title = stringResource(R.string.settings_root_entry_bill_splits_title),
+                    subtitle = stringResource(R.string.settings_root_entry_bill_splits_subtitle),
                     icon = Icons.Filled.Group,
                     onClick = onOpenBillSplits,
                 )
             }
-            SettingsSection(title = "外观与数据", icon = Icons.Filled.Palette) {
+            SettingsSection(title = stringResource(R.string.settings_root_section_appearance_data), icon = Icons.Filled.Palette) {
                 SettingsEntryRow(
-                    title = "外观与主题",
-                    subtitle = "主题皮肤、自定义背景、沉浸强度",
+                    title = stringResource(R.string.settings_root_entry_appearance_title),
+                    subtitle = stringResource(R.string.settings_root_entry_appearance_subtitle),
                     icon = Icons.Filled.Palette,
                     onClick = onOpenAppearance,
                 )
                 SettingsEntryRow(
-                    title = "首页卡片",
-                    subtitle = "调整统计页卡片显示、隐藏和排序",
+                    title = stringResource(R.string.settings_root_entry_dashboard_cards_title),
+                    subtitle = stringResource(R.string.settings_root_entry_dashboard_cards_subtitle),
                     icon = Icons.Filled.DashboardCustomize,
                     onClick = onOpenDashboardCards,
                 )
                 SettingsEntryRow(
-                    title = "数据与导出",
-                    subtitle = "本地缓存、表格导出说明",
+                    title = stringResource(R.string.settings_root_entry_data_export_title),
+                    subtitle = stringResource(R.string.settings_root_entry_data_export_subtitle),
                     icon = Icons.Filled.FileDownload,
                     onClick = onOpenDataExport,
                 )
             }
-            SettingsSection(title = "安全与关于", icon = Icons.Filled.Security) {
+            SettingsSection(title = stringResource(R.string.settings_root_section_security_about), icon = Icons.Filled.Security) {
                 SettingsEntryRow(
-                    title = "安全与隐私",
+                    title = stringResource(R.string.settings_root_entry_security_title),
                     subtitle = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
-                        "本机解锁、本地数据、退出账本"
+                        stringResource(R.string.settings_root_entry_security_subtitle_locked)
                     } else {
-                        "本机验证已关闭、本地数据、退出账本"
+                        stringResource(R.string.settings_root_entry_security_subtitle_unlocked)
                     },
                     icon = Icons.Filled.Security,
                     onClick = onOpenSecurity,
                 )
                 SettingsEntryRow(
-                    title = "关于",
-                    subtitle = "版本和产品边界",
+                    title = stringResource(R.string.settings_root_entry_about_title),
+                    subtitle = stringResource(R.string.settings_root_entry_about_subtitle),
                     icon = Icons.Filled.Info,
                     onClick = onOpenAbout,
                 )
             }
             state.message?.let {
-                Text(it, color = MaterialTheme.colorScheme.secondary)
+                Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
             }
         }
     }

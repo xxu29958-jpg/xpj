@@ -1,9 +1,11 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -77,7 +79,7 @@ class BudgetViewModelTest {
         assertEquals(listOf("医疗", "报销"), request.excludedCategories)
         assertEquals("吃饭", request.categoryBudgets.single().category)
         assertEquals(120000L, request.categoryBudgets.single().amountCents)
-        assertEquals("预算已保存。", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.budget_message_saved), vm.uiState.value.message)
     }
 
     @Test
@@ -92,7 +94,7 @@ class BudgetViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, fake.savedRequests.size)
-        assertEquals("非月度预留 不能为负数。", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.budget_validation_nonmonthly_negative), vm.uiState.value.message)
     }
 
     @Test
@@ -109,7 +111,7 @@ class BudgetViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, fake.savedRequests.size)
-        assertEquals(READ_ONLY_LEDGER_MESSAGE, vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
         assertFalse(vm.uiState.value.canModify)
     }
 

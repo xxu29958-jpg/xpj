@@ -65,10 +65,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -108,8 +110,8 @@ fun AboutScreen(
     onBack: () -> Unit,
 ) {
     SettingsPageFrame(
-        title = "关于",
-        subtitle = "小票夹是私人半自动账本。",
+        title = stringResource(R.string.settings_about_page_title),
+        subtitle = stringResource(R.string.settings_about_page_subtitle),
         onBack = onBack,
     ) {
         AppGlassCard(containerAlpha = 0.96f) {
@@ -117,13 +119,13 @@ fun AboutScreen(
                 modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("小票夹", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
+                Text(stringResource(R.string.settings_about_app_name), style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                 Text(
-                    text = "版本 $appVersionName ($appVersionCode)",
+                    text = stringResource(R.string.settings_about_version, appVersionName, appVersionCode),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "截图上传后不会自动入账，需要你确认后才会记录。OCR 只填草稿，重复检测只提示。",
+                    text = stringResource(R.string.settings_about_boundary),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

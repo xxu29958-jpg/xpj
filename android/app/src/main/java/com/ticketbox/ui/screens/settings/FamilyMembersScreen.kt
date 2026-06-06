@@ -24,8 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
@@ -34,6 +36,7 @@ import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.domain.model.ledgerRoleLabel
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
@@ -75,15 +78,18 @@ fun FamilyMembersScreen(
     }
 
     SettingsPageFrame(
-        title = "家庭成员",
+        title = stringResource(R.string.family_members_page_title),
         subtitle = if (canManageMembers) {
-            "管理当前账本成员、角色和拥有者。"
+            stringResource(R.string.family_members_page_subtitle_manage)
         } else {
-            "查看当前账本成员和权限状态。只有拥有者能管理成员。"
+            stringResource(R.string.family_members_page_subtitle_view)
         },
         onBack = onBack,
     ) {
-        SettingsSection(title = "当前账本成员", icon = Icons.Filled.Group) {
+        SettingsSection(
+            title = stringResource(R.string.family_members_section_members),
+            icon = Icons.Filled.Group,
+        ) {
             AppGlassCard(containerAlpha = 0.96f) {
                 Column(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -95,7 +101,7 @@ fun FamilyMembersScreen(
                         }
                     } else if (state.members.isEmpty()) {
                         Text(
-                            text = "还没有可显示的成员。",
+                            text = stringResource(R.string.family_members_members_empty),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -118,11 +124,11 @@ fun FamilyMembersScreen(
                     ) {
                         Text(
                             if (state.loading) {
-                                "刷新中…"
+                                stringResource(R.string.family_members_refresh_loading)
                             } else if (canManageMembers) {
-                                "刷新成员和记录"
+                                stringResource(R.string.family_members_refresh_members_and_audit)
                             } else {
-                                "刷新成员"
+                                stringResource(R.string.family_members_refresh_members)
                             },
                         )
                     }
@@ -130,7 +136,10 @@ fun FamilyMembersScreen(
             }
         }
         if (canManageMembers) {
-            SettingsSection(title = "成员记录", icon = Icons.Filled.Info) {
+            SettingsSection(
+                title = stringResource(R.string.family_members_section_audit),
+                icon = Icons.Filled.Info,
+            ) {
                 AppGlassCard(containerAlpha = 0.96f) {
                     Column(
                         modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -142,7 +151,7 @@ fun FamilyMembersScreen(
                             }
                         } else if (state.auditItems.isEmpty()) {
                             Text(
-                                text = "还没有成员变更记录。",
+                                text = stringResource(R.string.family_members_audit_empty),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -151,7 +160,7 @@ fun FamilyMembersScreen(
                         }
                         if (state.auditLoading && state.auditItems.isNotEmpty()) {
                             Text(
-                                text = "正在刷新成员记录…",
+                                text = stringResource(R.string.family_members_audit_refreshing),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -161,7 +170,7 @@ fun FamilyMembersScreen(
         }
         state.message?.let {
             Text(
-                text = it,
+                text = it.asString(),
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -197,12 +206,18 @@ private fun LedgerAuditRow(item: LedgerAuditEntry) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "操作者：${item.actorName ?: "系统"}",
+            text = stringResource(
+                R.string.family_members_audit_actor,
+                item.actorName ?: stringResource(R.string.family_members_audit_actor_unknown),
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "目标：${item.targetName ?: "未记录"}",
+            text = stringResource(
+                R.string.family_members_audit_target,
+                item.targetName ?: stringResource(R.string.family_members_audit_target_unknown),
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -253,7 +268,7 @@ private fun FamilyMemberRow(
                     if (member.isSelf) {
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "我",
+                            text = stringResource(R.string.family_members_row_self_badge),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -261,16 +276,16 @@ private fun FamilyMemberRow(
                 }
                 Text(
                     text = if (member.joinedAt.isNullOrBlank()) {
-                        "加入时间：未记录"
+                        stringResource(R.string.family_members_row_joined_unknown)
                     } else {
-                        "加入时间：${displayTime(member.joinedAt)}"
+                        stringResource(R.string.family_members_row_joined, displayTime(member.joinedAt))
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (member.isDisabled) {
                     Text(
-                        text = "已停用：${displayTime(member.disabledAt)}",
+                        text = stringResource(R.string.family_members_row_disabled_at, displayTime(member.disabledAt)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -282,7 +297,11 @@ private fun FamilyMemberRow(
             ) {
                 SettingsRoleChip(role = member.role)
                 Text(
-                    text = if (member.isDisabled) "已停用" else "活跃",
+                    text = if (member.isDisabled) {
+                        stringResource(R.string.family_members_row_status_disabled)
+                    } else {
+                        stringResource(R.string.family_members_row_status_active)
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = if (member.isDisabled) {
                         MaterialTheme.colorScheme.error
@@ -307,21 +326,27 @@ private fun FamilyMemberRow(
                     enabled = !busy && member.role in setOf(LEDGER_ROLE_MEMBER, LEDGER_ROLE_VIEWER),
                     onClick = { onChangeRole(targetRole) },
                 ) {
-                    Text(if (targetRole == LEDGER_ROLE_VIEWER) "改为只读" else "改为成员")
+                    Text(
+                        if (targetRole == LEDGER_ROLE_VIEWER) {
+                            stringResource(R.string.family_members_action_make_viewer)
+                        } else {
+                            stringResource(R.string.family_members_action_make_member)
+                        },
+                    )
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
                     onClick = onTransferOwner,
                 ) {
-                    Text("转让拥有者")
+                    Text(stringResource(R.string.family_members_action_transfer_owner))
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
                     onClick = onDisable,
                 ) {
-                    Text("停用")
+                    Text(stringResource(R.string.family_members_action_disable))
                 }
             }
         }
@@ -331,12 +356,14 @@ private fun FamilyMemberRow(
 private val FamilyMember.canBeManaged: Boolean
     get() = !isSelf && !isDisabled && role != LEDGER_ROLE_OWNER
 
+@Composable
 private fun roleChangeText(item: LedgerAuditEntry): String? {
     val before = item.previousRole?.let { ledgerRoleLabel(it) }
     val after = item.newRole?.let { ledgerRoleLabel(it) }
     return when {
-        before != null && after != null -> "角色：$before → $after"
-        after != null -> "角色：$after"
+        before != null && after != null ->
+            stringResource(R.string.family_members_audit_role_change, before, after)
+        after != null -> stringResource(R.string.family_members_audit_role_set, after)
         else -> null
     }
 }
@@ -349,21 +376,25 @@ private fun FamilyMemberActionDialog(
 ) {
     val (title, text, confirm) = when (action) {
         is FamilyMemberAction.ChangeRole -> Triple(
-            "调整成员角色？",
-            "将${action.member.displayName}调整为${ledgerRoleLabel(action.targetRole)}。已有会话下次请求会立即按新角色生效。",
-            "确认调整",
+            stringResource(R.string.family_members_dialog_change_role_title),
+            stringResource(
+                R.string.family_members_dialog_change_role_text,
+                action.member.displayName,
+                ledgerRoleLabel(action.targetRole),
+            ),
+            stringResource(R.string.family_members_dialog_change_role_confirm),
         )
 
         is FamilyMemberAction.Disable -> Triple(
-            "停用成员？",
-            "停用后${action.member.displayName}将不能继续访问当前账本，当前账本下的活跃会话会被吊销。",
-            "确认停用",
+            stringResource(R.string.family_members_dialog_disable_title),
+            stringResource(R.string.family_members_dialog_disable_text, action.member.displayName),
+            stringResource(R.string.family_members_dialog_disable_confirm),
         )
 
         is FamilyMemberAction.TransferOwner -> Triple(
-            "转让拥有者？",
-            "转让后${action.member.displayName}会成为唯一拥有者，你会降为成员。此操作会立即影响成员管理权限。",
-            "确认转让",
+            stringResource(R.string.family_members_dialog_transfer_owner_title),
+            stringResource(R.string.family_members_dialog_transfer_owner_text, action.member.displayName),
+            stringResource(R.string.family_members_dialog_transfer_owner_confirm),
         )
     }
     AlertDialog(
@@ -377,7 +408,7 @@ private fun FamilyMemberActionDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )

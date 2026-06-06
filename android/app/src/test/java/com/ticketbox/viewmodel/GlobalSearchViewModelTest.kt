@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.GlobalSearchActions
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -90,7 +91,7 @@ class GlobalSearchViewModelTest {
 
         val state = vm.uiState.value
         assertTrue(state.pendingLoaded)
-        assertEquals("pending offline", state.message)
+        assertEquals(UiText.raw("pending offline"), state.message)
         assertEquals(listOf(2L), state.results.map { it.expense.id })
     }
 

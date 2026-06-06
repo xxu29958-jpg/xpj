@@ -11,7 +11,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppGlassCard
@@ -112,12 +114,16 @@ internal fun BulkConfirmEntry(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "可直接确认 $readyCount 条",
+                text = stringResource(R.string.pending_bulk_entry_ready, readyCount),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = AppTextHierarchy.heading.weight,
             )
             AppSecondaryButton(
-                text = if (inProgress) "确认中…" else "批量确认",
+                text = if (inProgress) {
+                    stringResource(R.string.pending_bulk_entry_in_progress)
+                } else {
+                    stringResource(R.string.pending_bulk_entry_button)
+                },
                 enabled = !inProgress,
                 onClick = onOpen,
             )

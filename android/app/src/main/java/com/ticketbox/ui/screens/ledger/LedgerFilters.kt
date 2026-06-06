@@ -16,8 +16,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSegmentedControl
@@ -61,19 +63,21 @@ private fun LedgerViewModeToggle(
     selectedMode: LedgerViewMode,
     onViewModeChange: (LedgerViewMode) -> Unit,
 ) {
+    val cardLabel = stringResource(R.string.ledger_view_mode_card)
+    val listLabel = stringResource(R.string.ledger_view_mode_list)
+    val tableLabel = stringResource(R.string.ledger_view_mode_table)
     AppSegmentedControl(
         options = LedgerViewMode.entries.map { mode ->
-            AppSegmentedItem(value = mode, label = ledgerViewModeLabel(mode))
+            val label = when (mode) {
+                LedgerViewMode.Card -> cardLabel
+                LedgerViewMode.List -> listLabel
+                LedgerViewMode.Table -> tableLabel
+            }
+            AppSegmentedItem(value = mode, label = label)
         },
         selectedValue = selectedMode,
         onValueChange = onViewModeChange,
     )
-}
-
-private fun ledgerViewModeLabel(mode: LedgerViewMode): String = when (mode) {
-    LedgerViewMode.Card -> "卡片"
-    LedgerViewMode.List -> "列表"
-    LedgerViewMode.Table -> "表格"
 }
 
 @Composable
@@ -92,11 +96,12 @@ private fun LedgerInlineFilters(
             AppFilterChip(
                 selected = true,
                 onClick = onOpenMonthPicker,
-                label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() } ?: "全部月份",
+                label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                    ?: stringResource(R.string.ledger_inline_month_all),
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Filled.ExpandMore,
-                        contentDescription = "选择月份",
+                        contentDescription = stringResource(R.string.ledger_inline_month_picker_description),
                         modifier = Modifier.size(FilterChipDefaults.IconSize),
                     )
                 },
@@ -105,7 +110,7 @@ private fun LedgerInlineFilters(
         item {
             SelectableFilterChip(
                 selected = state.categoryFilter.isBlank(),
-                label = "全部分类",
+                label = stringResource(R.string.ledger_inline_category_all),
                 onClick = { onCategoryChange("") },
             )
         }
@@ -120,7 +125,11 @@ private fun LedgerInlineFilters(
             AppFilterChip(
                 selected = hasQuery,
                 onClick = onOpenTools,
-                label = if (hasQuery) "已搜索" else "搜索备注",
+                label = if (hasQuery) {
+                    stringResource(R.string.ledger_inline_searched)
+                } else {
+                    stringResource(R.string.ledger_inline_search_note)
+                },
                 leadingIcon = if (hasQuery) {
                     {
                         Icon(
@@ -154,7 +163,7 @@ private fun LedgerInlineFilters(
             AppFilterChip(
                 selected = selectedOutsideQuick,
                 onClick = onOpenTools,
-                label = if (selectedOutsideQuick) state.categoryFilter else "更多",
+                label = if (selectedOutsideQuick) state.categoryFilter else stringResource(R.string.ledger_inline_more),
             )
         }
     }

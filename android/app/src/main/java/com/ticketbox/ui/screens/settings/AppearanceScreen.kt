@@ -63,10 +63,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -86,6 +88,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
@@ -96,13 +99,13 @@ import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
-import com.ticketbox.viewmodel.SettingsUiState
+import com.ticketbox.viewmodel.AppearanceUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
 fun AppearanceScreen(
-    state: SettingsUiState,
+    state: AppearanceUiState,
     currentSkin: AppSkin,
     currentCurrency: CurrencyCode,
     onBack: () -> Unit,
@@ -117,11 +120,11 @@ fun AppearanceScreen(
     onReduceMotionChange: (Boolean) -> Unit,
 ) {
     SettingsPageFrame(
-        title = "外观与主题",
-        subtitle = "纸本作为默认推荐，背景参与氛围但不抢账单内容。",
+        title = stringResource(R.string.appearance_page_title),
+        subtitle = stringResource(R.string.appearance_page_subtitle),
         onBack = onBack,
     ) {
-        SettingsSection(title = "主题皮肤", icon = Icons.Filled.Palette) {
+        SettingsSection(title = stringResource(R.string.appearance_section_skin_title), icon = Icons.Filled.Palette) {
             AppSkin.entries.chunked(2).forEach { rowSkins ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -145,7 +148,7 @@ fun AppearanceScreen(
             currentCurrency = currentCurrency,
             onCurrencyChange = onCurrencyChange,
         )
-        SettingsSection(title = "背景", icon = Icons.Filled.Image) {
+        SettingsSection(title = stringResource(R.string.appearance_section_background_title), icon = Icons.Filled.Image) {
             AppGlassCard(containerAlpha = 0.96f) {
                 Column(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -161,7 +164,7 @@ fun AppearanceScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("当前背景", style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.appearance_background_current_label), style = MaterialTheme.typography.titleSmall)
                             Text(
                                 text = AppearanceDefaults.backgroundSourceLabel(state.backgroundSettings),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -176,24 +179,24 @@ fun AppearanceScreen(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                         BackgroundActionButton(
-                            text = "背景图库",
+                            text = stringResource(R.string.appearance_background_open_gallery),
                             modifier = Modifier.weight(1f),
                             onClick = onOpenGallery,
                         )
                         BackgroundActionButton(
-                            text = "从相册选择",
+                            text = stringResource(R.string.appearance_background_pick_image),
                             modifier = Modifier.weight(1f),
                             onClick = onPickCustomImage,
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                         BackgroundActionButton(
-                            text = "跟随主题包",
+                            text = stringResource(R.string.appearance_background_follow_theme),
                             modifier = Modifier.weight(1f),
                             onClick = onPreviewThemeDefault,
                         )
                         BackgroundActionButton(
-                            text = "移除自定义图",
+                            text = stringResource(R.string.appearance_background_clear_image),
                             modifier = Modifier.weight(1f),
                             enabled = state.backgroundSettings.source == BackgroundSource.CustomImage &&
                                 state.backgroundSettings.customImagePath != null,
@@ -201,35 +204,35 @@ fun AppearanceScreen(
                         )
                     }
                     Text(
-                        text = "自定义图只存在本机。想重新使用松雾、港湾等主题氛围时，点“跟随主题包”即可切回。",
+                        text = stringResource(R.string.appearance_background_local_hint),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
         }
-        SettingsSection(title = "沉浸强度", icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.appearance_section_immersion_title), icon = Icons.Filled.Tune) {
             ImmersionModePicker(
                 selected = state.backgroundSettings.immersionMode,
                 onSelect = onImmersionModeChange,
             )
             BackgroundSwitchLine(
-                title = "视差动效",
-                subtitle = "背景轻微参与层次变化",
+                title = stringResource(R.string.appearance_parallax_title),
+                subtitle = stringResource(R.string.appearance_parallax_subtitle),
                 checked = state.backgroundSettings.enableParallax && !state.backgroundSettings.reduceMotion,
                 enabled = !state.backgroundSettings.reduceMotion,
                 onCheckedChange = onParallaxChange,
             )
             BackgroundSwitchLine(
-                title = "减少动效",
-                subtitle = "关闭背景动效，保持录入稳定",
+                title = stringResource(R.string.appearance_reduce_motion_title),
+                subtitle = stringResource(R.string.appearance_reduce_motion_subtitle),
                 checked = state.backgroundSettings.reduceMotion,
                 enabled = true,
                 onCheckedChange = onReduceMotionChange,
             )
         }
         state.message?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
+            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

@@ -25,9 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppGlassCard
@@ -42,18 +44,22 @@ internal fun CurrencySection(
     onCurrencyChange: (CurrencyCode) -> Unit,
 ) {
     val rateLine = if (currentCurrency == FxContract.HomeCurrency) {
-        "账本汇总、统计和预算按 ${FxContract.HomeCurrency.storageKey} 基准金额显示。"
+        stringResource(R.string.currency_section_rate_home, FxContract.HomeCurrency.storageKey)
     } else {
-        "${currentCurrency.storageKey} 会作为新记账时的默认原始币种；汇总金额仍以后端 ${FxContract.HomeCurrency.storageKey} 结果为准。"
+        stringResource(
+            R.string.currency_section_rate_foreign,
+            currentCurrency.storageKey,
+            FxContract.HomeCurrency.storageKey,
+        )
     }
-    SettingsSection(title = "默认记账币种", icon = Icons.Filled.AttachMoney) {
+    SettingsSection(title = stringResource(R.string.currency_section_title), icon = Icons.Filled.AttachMoney) {
         AppGlassCard(containerAlpha = 0.96f) {
             Column(
                 modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 Text(
-                    text = "这里影响新账单录入时的默认币种，不改变历史账单金额，也不在本机重算汇总。",
+                    text = stringResource(R.string.currency_section_intro),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -150,7 +156,7 @@ private fun CurrencyOptionCard(
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
-                    contentDescription = "已选中",
+                    contentDescription = stringResource(R.string.currency_section_option_selected_content_description),
                     tint = visuals.primary,
                     modifier = Modifier.size(18.dp),
                 )

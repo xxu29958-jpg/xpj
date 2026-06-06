@@ -65,10 +65,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -115,8 +117,8 @@ fun BackgroundPreviewScreen(
     var previewSettings by remember(initialSettings) { mutableStateOf(initialSettings) }
     val homeCurrency = LocalCurrencyDisplay.current.homeCurrency
     SettingsPageFrame(
-        title = "背景预览",
-        subtitle = "$title · 只有点击应用才会保存",
+        title = stringResource(R.string.background_preview_page_title),
+        subtitle = stringResource(R.string.background_preview_page_subtitle, title),
         onBack = onBack,
     ) {
         ImmersionModePicker(
@@ -124,41 +126,41 @@ fun BackgroundPreviewScreen(
             onSelect = { mode -> previewSettings = previewSettings.copy(immersionMode = mode) },
         )
         PreviewRoleCard(
-            title = "待确认",
+            title = stringResource(R.string.background_preview_role_pending),
             role = SurfaceRole.Pending,
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            PreviewReceipt("美团外卖", formatAmount(3680, homeCurrency), "餐饮 · 请核对")
-            PreviewReceipt("建行提醒", "等待你确认金额", "识别建议")
+            PreviewReceipt(stringResource(R.string.background_preview_pending_meituan_merchant), formatAmount(3680, homeCurrency), stringResource(R.string.background_preview_pending_meituan_note))
+            PreviewReceipt(stringResource(R.string.background_preview_pending_ccb_merchant), stringResource(R.string.background_preview_pending_ccb_amount), stringResource(R.string.background_preview_pending_ccb_note))
         }
         PreviewRoleCard(
-            title = "账本",
+            title = stringResource(R.string.background_preview_role_ledger),
             role = SurfaceRole.Ledger,
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            PreviewReceipt("OpenAI", formatAmount(20000, homeCurrency), "AI订阅 · 2026年5月")
-            PreviewReceipt("美团外卖", formatAmount(3680, homeCurrency), "餐饮 · 午饭")
+            PreviewReceipt(stringResource(R.string.background_preview_ledger_openai_merchant), formatAmount(20000, homeCurrency), stringResource(R.string.background_preview_ledger_openai_note))
+            PreviewReceipt(stringResource(R.string.background_preview_ledger_meituan_merchant), formatAmount(3680, homeCurrency), stringResource(R.string.background_preview_ledger_meituan_note))
         }
         PreviewRoleCard(
-            title = "统计",
+            title = stringResource(R.string.background_preview_role_stats),
             role = SurfaceRole.Stats,
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            Text("本月支出 ${formatAmount(428690, homeCurrency)}", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
-            Text("餐饮 42% · AI订阅 ${formatAmount(20000, homeCurrency)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.background_preview_stats_total, formatAmount(428690, homeCurrency)), style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
+            Text(stringResource(R.string.background_preview_stats_breakdown, formatAmount(20000, homeCurrency)), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PreviewRoleCard(
-            title = "编辑确认",
+            title = stringResource(R.string.background_preview_role_edit),
             role = SurfaceRole.Edit,
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            PreviewReceipt("金额", formatAmount(3680, homeCurrency), "商家 美团外卖 · 分类 餐饮")
+            PreviewReceipt(stringResource(R.string.background_preview_edit_amount_label), formatAmount(3680, homeCurrency), stringResource(R.string.background_preview_edit_amount_note))
             AppPrimaryButton(
-                text = "确认入账",
+                text = stringResource(R.string.background_preview_edit_confirm_button),
                 icon = Icons.Filled.Check,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {},
@@ -166,13 +168,13 @@ fun BackgroundPreviewScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             AppSecondaryButton(
-                text = "取消预览",
+                text = stringResource(R.string.background_preview_cancel_button),
                 modifier = Modifier.weight(1f),
                 leadingIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 onClick = onBack,
             )
             AppPrimaryButton(
-                text = "应用背景",
+                text = stringResource(R.string.background_preview_apply_button),
                 icon = Icons.Filled.Check,
                 modifier = Modifier.weight(1f),
                 onClick = { onApply(previewSettings) },

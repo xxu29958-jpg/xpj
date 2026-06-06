@@ -1,20 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ADR-0044: Android UI 字符串外置（string-resourcing，非翻译）。
-  只放中文；不建第二语言文件。命名 `模块_位置_用途`，不缩写，别撞车。
-  `common_*` = 跨屏复用的 UI 原子（取消/保存中/删除…），其余按 screen/module。
+  ADR-0044: Android UI 字符串外置（string-resourcing，非翻译）。只放中文，不建第二语言。
   日志/调试中文不进这里；只放用户可见的。
+
+  命名（业界收敛 + 团队调研背书，详见 ADR-0044）：`screen/feature_位置_用途` snake_case，
+  不缩写、别撞车，按 screen 分段加注释。
+
+  ⚠️ common_* 极小、严格管控：**默认每处一个 key，不按中文值去重**（一个中文词按语境会
+  变：确定/确认/好；保存/储存；删除/移除——共享 key=冻结措辞，且「按值去重」非纯重构、
+  会违反零-UI-变化红线）。判据：「**这串会不会有任何一个屏想改成不同措辞?**」会→screen key；
+  纯不变原子（取消/确定/关闭/加载中/重试）才进 common_*。保存/删除/编辑默认走 screen key。
 -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
     <string name="app_name">小票夹</string>
 
     <!-- 通用：跨屏复用的 UI 原子 -->
     <string name="common_cancel">取消</string>
+    <string name="common_confirm">确定</string>
     <string name="common_saving">保存中</string>
+    <string name="common_readonly_ledger">当前角色为只读，无法修改账本。</string>
+
+    <!-- MerchantAlias：设置→商家别名 屏的状态/结果文案 -->
+    <string name="merchant_alias_load_failed">商家别名暂时打不开。</string>
+    <string name="merchant_alias_added">商家别名已添加</string>
+    <string name="merchant_alias_add_failed">没有添加成功，请稍后再试。</string>
+    <string name="merchant_alias_enabled">商家别名已启用</string>
+    <string name="merchant_alias_disabled">商家别名已停用</string>
+    <string name="merchant_alias_enabled_offline">已离线启用，联网后同步</string>
+    <string name="merchant_alias_disabled_offline">已离线停用，联网后同步</string>
+    <string name="merchant_alias_update_failed">没有更新成功，请稍后再试。</string>
+    <string name="merchant_alias_deleted">商家别名已删除</string>
+    <string name="merchant_alias_deleted_offline">已离线删除，联网后同步</string>
+    <string name="merchant_alias_delete_failed">没有删除成功，请稍后再试。</string>
+    <string name="merchant_alias_restored">已恢复商家别名</string>
+    <string name="merchant_alias_restore_failed">没有恢复成功，请稍后再试。</string>
 
     <!-- QuickCategory：待确认流「补一下分类」sheet -->
     <string name="quick_category_sheet_title">补一下分类</string>
     <string name="quick_category_sheet_hint">选一个常用分类，或自定义。保存后不会自动确认入账。</string>
     <string name="quick_category_custom_label">或者输入新分类</string>
     <string name="quick_category_save_button">保存分类</string>
+
+    <!-- 后端错误码 → 用户文案（ADR-0044 纯②：repo 只带 code，presentation 经 toUiText 映射到这里。
+         每码自己的 key，即使中文相同也不共享——free to diverge）。serverMessage 直传走 UiText.Raw。 -->
+    <string name="error_invalid_token">绑定已失效，请重新绑定账本。</string>
+    <string name="error_legacy_auth_removed">请使用新版绑定方式。</string>
+    <string name="error_invalid_pairing_code">绑定码无效，请重新获取。</string>
+    <string name="error_file_too_large">上传文件超过大小限制。</string>
+    <string name="error_unsupported_file_type">不支持的图片格式。</string>
+    <string name="error_expense_not_found">账单不存在。</string>
+    <string name="error_amount_required">请先填写金额。</string>
+    <string name="error_amount_invalid">金额格式不正确。</string>
+    <string name="error_currency_not_supported">暂不支持这个币种。</string>
+    <string name="error_exchange_rate_required">请先填写这一天的汇率。</string>
+    <string name="error_exchange_rate_pending">汇率还没同步完成，稍后再确认。</string>
+    <string name="error_exchange_rate_invalid">汇率格式不正确。</string>
+    <string name="error_exchange_rate_base_currency">人民币是基准币种，不需要维护汇率。</string>
+    <string name="error_image_not_found">图片不存在。</string>
+    <string name="error_rule_not_found">分类规则不存在。</string>
+    <string name="error_rule_in_use">分类规则仍在使用，不能删除。</string>
+    <string name="error_permission_denied">当前角色为只读，无法修改账本。</string>
+    <string name="error_merchant_alias_not_found">商家别名不存在。</string>
+    <string name="error_merchant_alias_conflict">商家别名已指向其他商家。</string>
+    <string name="error_tag_not_found">标签不存在或已删除。</string>
+    <string name="error_tag_conflict">标签名已被占用，请改用合并。</string>
+    <string name="error_tag_undo_not_found">撤销窗口已过，无法撤销。</string>
+    <string name="error_recurring_candidate_not_found">没有找到可确认的固定支出候选。</string>
+    <string name="error_recurring_item_not_found">固定支出不存在。</string>
+    <string name="error_recurring_frequency_invalid">固定支出设置不正确。</string>
+    <string name="error_recurring_status_invalid">固定支出设置不正确。</string>
+    <string name="error_recurring_item_archived">固定支出已归档，不能继续修改。</string>
+    <string name="error_notification_source_invalid">通知来源暂不支持。</string>
+    <string name="error_server_error">暂时处理不了，请稍后再试。</string>
+    <string name="error_invalid_request">请求参数不正确。</string>
+    <string name="error_idempotency_key_required">操作未能完成，请重试。</string>
+    <string name="error_idempotency_key_in_progress">操作正在处理，请稍后再试。</string>
+    <string name="error_idempotency_key_reused">操作已处理，请勿重复提交。</string>
+    <string name="error_route_not_found">账本版本过旧，请重启电脑上的小票夹后再试。</string>
+    <string name="error_method_not_allowed">操作方式不正确，请更新 App 后再试。</string>
+    <string name="error_generic">操作失败。</string>
 </resources>

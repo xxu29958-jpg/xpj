@@ -2,8 +2,10 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.InvitationPreview
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,8 +23,8 @@ data class JoinFamilyLedgerUiState(
     val preview: InvitationPreview? = null,
     val previewing: Boolean = false,
     val submitting: Boolean = false,
-    val error: String? = null,
-    val success: String? = null,
+    val error: UiText? = null,
+    val success: UiText? = null,
 )
 
 class JoinFamilyLedgerViewModel(
@@ -32,10 +34,10 @@ class JoinFamilyLedgerViewModel(
     private val _uiState = MutableStateFlow(JoinFamilyLedgerUiState())
     val uiState: StateFlow<JoinFamilyLedgerUiState> = _uiState.asStateFlow()
 
-    val currentAccountName: String
-        get() = repository.currentAccountName().displayOr("未绑定")
-    val currentLedgerName: String
-        get() = repository.currentLedgerName().displayOr("未绑定")
+    val currentAccountName: UiText
+        get() = repository.currentAccountName().displayOr(R.string.join_family_ledger_binding_unbound)
+    val currentLedgerName: UiText
+        get() = repository.currentLedgerName().displayOr(R.string.join_family_ledger_binding_unbound)
     val currentLedgerRole: String?
         get() = repository.currentLedgerRole()
 
@@ -56,7 +58,7 @@ class JoinFamilyLedgerViewModel(
                         it.copy(
                             previewing = false,
                             preview = null,
-                            error = err.message ?: "预览邀请失败。",
+                            error = err.toUiText(R.string.join_family_ledger_message_preview_failed),
                         )
                     }
                 }
@@ -83,7 +85,11 @@ class JoinFamilyLedgerViewModel(
                     it.copy(
                         submitting = false,
                         preview = null,
-                        success = "已加入“${ledger.name}”，当前角色：${ledger.role}",
+                        success = UiText.res(
+                            R.string.join_family_ledger_message_accepted,
+                            ledger.name,
+                            ledger.role,
+                        ),
                     )
                 }
                 onConsumed()
@@ -93,7 +99,7 @@ class JoinFamilyLedgerViewModel(
                     it.copy(
                         submitting = false,
                         preview = acceptedPreview,
-                        error = err.message ?: "接受邀请失败。",
+                        error = err.toUiText(R.string.join_family_ledger_message_accept_failed),
                     )
                 }
             }
@@ -101,5 +107,5 @@ class JoinFamilyLedgerViewModel(
     }
 }
 
-private fun String?.displayOr(fallback: String): String =
-    this?.takeIf { it.isNotBlank() } ?: fallback
+private fun String?.displayOr(@androidx.annotation.StringRes fallback: Int): UiText =
+    this?.takeIf { it.isNotBlank() }?.let { UiText.raw(it) } ?: UiText.res(fallback)

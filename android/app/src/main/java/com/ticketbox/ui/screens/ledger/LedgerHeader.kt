@@ -31,8 +31,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppRadius
@@ -47,11 +49,15 @@ internal fun LedgerHeader(
     onManualAdd: () -> Unit,
 ) {
     val summary = state.summary
-    val monthLabel = summary.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
+    val monthLabel = summary.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+        ?: stringResource(R.string.ledger_header_month_all)
     val statusText = when {
-        summary.syncing -> "更新中"
-        summary.lastSyncAt != null -> "已更新 ${ledgerSyncClock(summary.lastSyncAt)}"
-        else -> "本机账本可用"
+        summary.syncing -> stringResource(R.string.ledger_header_status_syncing)
+        summary.lastSyncAt != null -> stringResource(
+            R.string.ledger_header_status_synced,
+            ledgerSyncClock(summary.lastSyncAt),
+        )
+        else -> stringResource(R.string.ledger_header_status_offline)
     }
     PaperLedgerPanel {
         Column(
@@ -71,13 +77,13 @@ internal fun LedgerHeader(
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
                 ) {
                     Text(
-                        text = "纸本账本",
+                        text = stringResource(R.string.ledger_header_eyebrow),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = AppTextHierarchy.body.weight,
                     )
                     Text(
-                        text = "账本",
+                        text = stringResource(R.string.ledger_header_title),
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = AppTextHierarchy.heading.weight,
@@ -91,14 +97,14 @@ internal fun LedgerHeader(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 LedgerKpiCell(
-                    label = "$monthLabel 合计",
+                    label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
                     value = formatAmount(summary.totalAmountCents),
                     modifier = Modifier.weight(1.45f),
                     emphasized = true,
                 )
                 LedgerKpiCell(
-                    label = "账单",
-                    value = "${summary.itemCount} 笔",
+                    label = stringResource(R.string.ledger_header_count_label),
+                    value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -108,7 +114,7 @@ internal fun LedgerHeader(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "已确认支出 · 可离线查看",
+                    text = stringResource(R.string.ledger_header_subtitle),
                     modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
@@ -127,7 +133,7 @@ internal fun LedgerHeader(
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
-                        Text("记一笔")
+                        Text(stringResource(R.string.ledger_header_add_button))
                     }
                 }
             }

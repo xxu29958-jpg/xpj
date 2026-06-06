@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
@@ -61,7 +63,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val state = vm.uiState.value
         assertEquals(1, state.bulkConfirm.succeeded)
         assertEquals(1, state.bulkConfirm.failed)
-        assertEquals("确认完成：成功 1，失败 1", state.message)
+        assertEquals(UiText.res(R.string.pending_review_bulk_partial, 1, 1), state.message)
         assertEquals(listOf(21L), state.items.map { it.id })
     }
 
@@ -76,7 +78,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         advanceUntilIdle()
 
         assertEquals(0, fake.confirmCalls)
-        assertEquals("没有可直接确认的账单。", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_review_bulk_none_ready), vm.uiState.value.message)
     }
 
     @Test
@@ -94,7 +96,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val state = vm.uiState.value
         assertEquals("none", state.items.single().duplicateStatus)
         assertEquals(PendingSheet.None, state.activeSheet)
-        assertEquals("已保留这条账单", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_kept), state.message)
     }
 
     @Test
@@ -119,7 +121,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val state = vm.uiState.value
         assertEquals("none", state.items.single().duplicateStatus, "queued mark-not-dup keeps the item")
         assertEquals(PendingSheet.None, state.activeSheet)
-        assertEquals("已离线保留，联网后同步", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_kept_offline), state.message)
         assertEquals(1, fake.markNotDuplicateCalls)
     }
 
@@ -137,7 +139,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
 
         assertTrue(vm.uiState.value.items.isEmpty())
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
-        assertEquals("已删除", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_msg_rejected), vm.uiState.value.message)
     }
 
     @Test
@@ -159,7 +161,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.items.isEmpty(), "queued confirm still removes from pending")
-        assertEquals("已离线确认，联网后同步", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_msg_confirmed_offline), vm.uiState.value.message)
         assertEquals(1, fake.confirmCalls)
     }
 
@@ -181,7 +183,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
 
         assertTrue(vm.uiState.value.items.isEmpty())
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
-        assertEquals("已离线删除，联网后同步", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_msg_rejected_offline), vm.uiState.value.message)
         assertEquals(1, fake.rejectCalls)
     }
 }

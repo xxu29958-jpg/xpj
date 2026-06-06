@@ -2,16 +2,13 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
-import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
-import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.NotificationPreferences
-import com.ticketbox.domain.model.RuleApplicationBatch
-import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,13 +17,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Composite UI state exposed to [com.ticketbox.ui.screens.SettingsScreen].
+ * UI state for the connection / sync / diagnostics / notifications /
+ * monthly-budget slice of the settings tree — the part SettingsViewModel
+ * actually owns.
  *
- * SettingsViewModel owns the connection / sync / diagnostics / notifications /
- * monthly-budget slice. The category-rule, merchant-alias and appearance fields
- * are owned by their own ViewModels and merged into this shape at the Route
- * layer (see SettingsRoute). The data class keeps the full schema so the
- * screen contract stays stable.
+ * Category-rule, merchant-alias and appearance state live in their own
+ * ViewModels ([CategoryRulesViewModel], [MerchantAliasViewModel],
+ * [AppearanceViewModel]); [com.ticketbox.ui.navigation.SettingsRoute] passes
+ * each one to its own screen directly instead of merging them into this shape.
+ * Each settings sub-screen therefore renders its own ViewModel's busy / message,
+ * so status feedback no longer bleeds across sub-screens.
  */
 data class SettingsUiState(
     val serverUrl: String? = null,
@@ -39,21 +39,10 @@ data class SettingsUiState(
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
-    val categoryRules: List<CategoryRule> = emptyList(),
-    // ADR-0038 undo: just-deleted rule surfaced as a 5s 撤销 affordance
-    // (merged in from CategoryRulesViewModel by SettingsRoute).
-    val categoryRuleUndoable: CategoryRule? = null,
-    val merchantAliases: List<MerchantAlias> = emptyList(),
-    // ADR-0038 undo: just-deleted alias surfaced as a 5s 撤销 affordance
-    // (merged in from MerchantAliasViewModel by SettingsRoute).
-    val merchantAliasUndoable: MerchantAlias? = null,
-    val ruleApplications: List<RuleApplicationBatch> = emptyList(),
-    val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
     val lastUploadAt: String? = null,
     val lastConfirmedSyncAt: String? = null,
-    val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val busy: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 class SettingsViewModel(
@@ -73,7 +62,7 @@ class SettingsViewModel(
 
     private fun SettingsUiState.withLocalBindingFields(
         busy: Boolean = this.busy,
-        message: String? = this.message,
+        message: UiText? = this.message,
     ): SettingsUiState {
         val localAccountName = settingsStore.accountName()
         val localLedgerName = settingsStore.ledgerName()
@@ -109,8 +98,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
             repository.testConnection()
-                .onSuccess { _uiState.update { it.copy(busy = false, message = "连接正常") } }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "暂时连不上小票夹，请稍后再试。") } }
+                .onSuccess { _uiState.update { it.copy(busy = false, message = UiText.res(R.string.settings_vm_connection_ok)) } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.settings_vm_connection_failed)) } }
         }
     }
 
@@ -122,7 +111,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.withLocalBindingFields(
                             busy = false,
-                            message = "更新完成",
+                            message = UiText.res(R.string.settings_vm_sync_done),
                         )
                     }
                 }
@@ -130,7 +119,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.withLocalBindingFields(
                             busy = false,
-                            message = error.message ?: "暂时更新不了，请稍后再试。",
+                            message = error.toUiText(R.string.settings_vm_sync_failed),
                         )
                     }
                 }
@@ -147,9 +136,9 @@ class SettingsViewModel(
                             busy = false,
                             diagnostics = diagnostics,
                             message = if (diagnostics.isHealthy) {
-                                "连接检测通过"
+                                UiText.res(R.string.settings_vm_diagnostics_passed)
                             } else {
-                                "连接检测发现 ${diagnostics.failedCount} 个问题"
+                                UiText.res(R.string.settings_vm_diagnostics_failed_count, diagnostics.failedCount)
                             },
                         )
                     }
@@ -158,7 +147,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             busy = false,
-                            message = error.message ?: "没有完成检测，请稍后再试。",
+                            message = error.toUiText(R.string.settings_vm_diagnostics_incomplete),
                         )
                     }
                 }
@@ -197,11 +186,11 @@ class SettingsViewModel(
                         }
                     }
                 }
-                .onFailure { error ->
+                .onFailure {
                     _uiState.update {
                         it.copy(
                             busy = if (showBusy) false else it.busy,
-                            message = "账本状态暂时没有更新，稍后再试。",
+                            message = UiText.res(R.string.settings_vm_server_settings_failed),
                         )
                     }
                 }
@@ -214,7 +203,7 @@ class SettingsViewModel(
             _uiState.update {
                 it.copy(
                     lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
-                    message = "手机缓存已清除",
+                    message = UiText.res(R.string.settings_vm_cache_cleared),
                 )
             }
         }
@@ -226,9 +215,9 @@ class SettingsViewModel(
             it.copy(
                 monthlyBudgetCents = amountCents?.takeIf { value -> value > 0L },
                 message = if (amountCents == null || amountCents <= 0L) {
-                    "月预算已关闭"
+                    UiText.res(R.string.settings_vm_monthly_budget_off)
                 } else {
-                    "月预算已保存"
+                    UiText.res(R.string.settings_vm_monthly_budget_saved)
                 },
             )
         }
@@ -245,9 +234,9 @@ class SettingsViewModel(
             it.copy(
                 notificationPreferences = savedPreferences,
                 message = if (preferences.autoCaptureEnabled && !savedPreferences.autoCaptureEnabled) {
-                    READ_ONLY_LEDGER_MESSAGE
+                    UiText.res(R.string.common_readonly_ledger)
                 } else {
-                    "通知偏好已保存"
+                    UiText.res(R.string.settings_vm_notifications_saved)
                 },
             )
         }

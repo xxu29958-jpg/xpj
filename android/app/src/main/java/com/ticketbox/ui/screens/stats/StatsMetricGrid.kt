@@ -16,8 +16,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -43,20 +45,30 @@ internal fun StatsMetricGrid(
         .firstOrNull { it.category == "AI订阅" || it.category == "AI 订阅" }
         ?.amountCents
         ?.takeIf { it > 0L }
+    val emptyValue = stringResource(R.string.stats_metric_empty_value)
+    val frequentMerchant = lifestyle?.frequentMerchants?.firstOrNull()
+    val frequentMerchantCaption = frequentMerchant?.let {
+        stringResource(R.string.stats_metric_merchant_count, it.count)
+    }
+    val concentrationValue = insight?.topCategory
+        ?: stringResource(R.string.stats_metric_category_count, stats.byCategory.count { it.amountCents > 0L })
+    val concentrationCaption = insight?.let {
+        stringResource(R.string.stats_metric_top_share, it.topSharePercent)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
-                label = "AI 订阅",
+                label = stringResource(R.string.stats_metric_ai_subscription_label),
                 value = lifestyle?.aiSubscriptionAmountCents?.takeIf { it > 0L }?.let { formatDisplayAmount(it, currencyDisplay) }
                     ?: aiCategoryAmount?.let { formatDisplayAmount(it, currencyDisplay) }
-                    ?: "暂无记录",
+                    ?: emptyValue,
                 accent = 0,
             )
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
-                label = "最大一笔",
-                value = lifestyle?.maxExpense?.amountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: "暂无记录",
+                label = stringResource(R.string.stats_metric_max_expense_label),
+                value = lifestyle?.maxExpense?.amountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: emptyValue,
                 caption = lifestyle?.maxExpense?.merchant?.takeIf { it.isNotBlank() },
                 accent = 1,
             )
@@ -64,16 +76,16 @@ internal fun StatsMetricGrid(
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
-                label = "常去商家",
-                value = lifestyle?.frequentMerchants?.firstOrNull()?.merchant ?: "暂无记录",
-                caption = lifestyle?.frequentMerchants?.firstOrNull()?.let { "${it.count} 笔" },
+                label = stringResource(R.string.stats_metric_frequent_merchant_label),
+                value = frequentMerchant?.merchant ?: emptyValue,
+                caption = frequentMerchantCaption,
                 accent = 2,
             )
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
-                label = "分类集中度",
-                value = insight?.topCategory ?: "${stats.byCategory.count { it.amountCents > 0L }} 个分类",
-                caption = insight?.let { "占本月 ${it.topSharePercent}%" },
+                label = stringResource(R.string.stats_metric_category_concentration_label),
+                value = concentrationValue,
+                caption = concentrationCaption,
                 accent = 3,
             )
         }
@@ -99,15 +111,26 @@ private fun BudgetProgressCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                    Text("月度预算", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        text = if (budget.overBudget) "已超过预算" else "还可花 ${formatDisplayAmount(budget.remainingCents, currencyDisplay)}",
+                        stringResource(R.string.stats_budget_progress_title),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = if (budget.overBudget) {
+                            stringResource(R.string.stats_budget_progress_over)
+                        } else {
+                            stringResource(
+                                R.string.stats_budget_progress_remaining,
+                                formatDisplayAmount(budget.remainingCents, currencyDisplay),
+                            )
+                        },
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = AppTextHierarchy.heading.weight,
                     )
                 }
                 Text(
-                    text = "${(progress * 100).toInt()}%",
+                    text = stringResource(R.string.stats_budget_progress_percent, (progress * 100).toInt()),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = AppTextHierarchy.body.weight,
@@ -129,7 +152,7 @@ private fun BudgetProgressCard(
                 )
             }
             Text(
-                text = "可在设置 > 数据与导出里调整，只用于提醒。",
+                text = stringResource(R.string.stats_budget_progress_hint),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -146,7 +169,7 @@ private fun StatsMetricCard(
     accent: Int = 0,
 ) {
     val visuals = LocalThemeVisuals.current
-    val isEmptyValue = value == "暂无记录"
+    val isEmptyValue = value == stringResource(R.string.stats_metric_empty_value)
     val accentColors = listOf(
         visuals.chipSelected,
         visuals.warningTint.copy(alpha = 0.28f),

@@ -14,7 +14,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import com.ticketbox.R
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.BudgetCategoryInput
 
@@ -44,13 +46,19 @@ internal fun CategoryInputRow(
     onChange: (String, String) -> Unit,
     onRemove: () -> Unit,
 ) {
+    val trimmedCategory = row.category.takeIf { it.isNotBlank() }
+    val removeDescription = if (trimmedCategory != null) {
+        stringResource(R.string.budget_field_remove_category_named, trimmedCategory)
+    } else {
+        stringResource(R.string.budget_field_remove_category)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         OutlinedTextField(
             value = row.category,
             onValueChange = { onChange(it, row.amount) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("分类") },
-            placeholder = { Text("餐饮") },
+            label = { Text(stringResource(R.string.budget_field_category_label)) },
+            placeholder = { Text(stringResource(R.string.budget_field_category_placeholder)) },
             singleLine = true,
         )
         Row(
@@ -61,8 +69,8 @@ internal fun CategoryInputRow(
             MoneyField(
                 value = row.amount,
                 onValueChange = { onChange(row.category, it) },
-                label = "预算金额",
-                placeholder = "1000",
+                label = stringResource(R.string.budget_field_amount_label),
+                placeholder = stringResource(R.string.budget_field_amount_placeholder),
                 modifier = Modifier.weight(1f),
             )
             IconButton(
@@ -71,9 +79,7 @@ internal fun CategoryInputRow(
             ) {
                 Icon(
                     Icons.Filled.DeleteOutline,
-                    contentDescription = row.category.takeIf { it.isNotBlank() }?.let {
-                        "删除 $it 分类预算"
-                    } ?: "删除分类预算",
+                    contentDescription = removeDescription,
                 )
             }
         }

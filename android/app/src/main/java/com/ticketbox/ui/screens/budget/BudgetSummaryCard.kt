@@ -10,8 +10,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppGlassCard
@@ -54,12 +56,16 @@ private fun BudgetSummaryTitle(budget: BudgetMonthly?) {
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
     ) {
         Text(
-            text = "本月预算",
+            text = stringResource(R.string.budget_summary_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
-            text = if (budget?.configured == true) "${budget.spentPercent}%" else "未配置",
+            text = if (budget?.configured == true) {
+                stringResource(R.string.budget_summary_percent, budget.spentPercent)
+            } else {
+                stringResource(R.string.budget_summary_unconfigured)
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelLarge,
         )
@@ -85,7 +91,7 @@ private fun BudgetSummaryPlaceholder(loading: Boolean) {
         return
     }
     Text(
-        text = "正在读取预算。",
+        text = stringResource(R.string.budget_summary_loading),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -98,12 +104,16 @@ private fun BudgetMetricRows(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         MetricPill(
-            label = "总额",
+            label = stringResource(R.string.budget_summary_metric_total),
             value = formatDisplayAmount(budget.availableAmountCents, currencyDisplay),
             modifier = Modifier.weight(1f),
         )
         MetricPill(
-            label = if (budget.isOverBudget) "超支" else "剩余",
+            label = if (budget.isOverBudget) {
+                stringResource(R.string.budget_summary_metric_overspent)
+            } else {
+                stringResource(R.string.budget_summary_metric_remaining)
+            },
             value = formatDisplayAmount(
                 if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents,
                 currencyDisplay,
@@ -113,24 +123,24 @@ private fun BudgetMetricRows(
     }
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         MetricPill(
-            label = "已花",
+            label = stringResource(R.string.budget_summary_metric_spent),
             value = formatDisplayAmount(budget.spentAmountCents, currencyDisplay),
             modifier = Modifier.weight(1f),
         )
         MetricPill(
-            label = "灵活可花",
+            label = stringResource(R.string.budget_summary_metric_flex),
             value = formatDisplayAmount(budget.flexBudgetCents, currencyDisplay),
             modifier = Modifier.weight(1f),
         )
     }
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         MetricPill(
-            label = "固定支出",
+            label = stringResource(R.string.budget_summary_metric_fixed),
             value = formatDisplayAmount(budget.fixedAmountCents, currencyDisplay),
             modifier = Modifier.weight(1f),
         )
         MetricPill(
-            label = "剔除",
+            label = stringResource(R.string.budget_summary_metric_excluded),
             value = formatDisplayAmount(budget.excludedAmountCents, currencyDisplay),
             modifier = Modifier.weight(1f),
         )

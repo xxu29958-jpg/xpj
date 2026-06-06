@@ -1,7 +1,9 @@
 package com.ticketbox.viewmodel
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.PendingThumbnailLoader
 import com.ticketbox.data.repository.PendingReviewActions
@@ -9,6 +11,7 @@ import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +51,7 @@ data class PendingUiState(
     val readOnly: Boolean = false,
     val loading: Boolean = false,
     val uploading: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     val activeSheet: PendingSheet = PendingSheet.None,
     val categoryOptions: List<String> = emptyList(),
     val bulkConfirm: BulkConfirmRunState = BulkConfirmRunState(),
@@ -105,7 +108,7 @@ class PendingViewModel(
 
     init {
         val readOnly = !repository.canModifyLedger()
-        _uiState.update { it.copy(readOnly = readOnly, message = if (readOnly) READ_ONLY_LEDGER_MESSAGE else it.message) }
+        _uiState.update { it.copy(readOnly = readOnly, message = if (readOnly) readOnlyMessage() else it.message) }
         observeLedgerChanges()
         refresh()
         loadCategoryOptions()
@@ -123,7 +126,7 @@ class PendingViewModel(
                     _uiState.value = PendingUiState(
                         readOnly = readOnly,
                         loading = true,
-                        message = if (readOnly) READ_ONLY_LEDGER_MESSAGE else null,
+                        message = if (readOnly) readOnlyMessage() else null,
                     )
                     refresh()
                     loadCategoryOptions()
@@ -151,7 +154,7 @@ class PendingViewModel(
                 uploading = false,
                 undoableExpense = null,
                 activeSheet = if (closeSheet) PendingSheet.None else it.activeSheet,
-                message = READ_ONLY_LEDGER_MESSAGE,
+                message = readOnlyMessage(),
             )
         }
         return true
@@ -188,7 +191,7 @@ class PendingViewModel(
                 .onFailure { error ->
                     if (requestGeneration != generation) return@onFailure
                     if (refreshSkipEpoch != skipEpoch) return@onFailure
-                    _uiState.update { it.copy(loading = false, message = error.message ?: "暂时加载不了，请稍后再试。") }
+                    _uiState.update { it.copy(loading = false, message = error.toUiText(R.string.pending_msg_load_failed)) }
                 }
         }
     }
@@ -202,7 +205,7 @@ class PendingViewModel(
         return true
     }
 
-    fun uploadPreparationFailed(message: String = "这张图片暂时无法读取，请换一张试试。") {
+    fun uploadPreparationFailed(message: UiText = UiText.res(R.string.pending_msg_upload_unreadable)) {
         uploadLedgerIdAtStart = null
         _uiState.update { it.copy(uploading = false, message = message) }
     }
@@ -229,7 +232,7 @@ class PendingViewModel(
                 _uiState.update {
                     it.copy(
                         uploading = false,
-                        message = "账本已切换，请重新选择截图上传。",
+                        message = UiText.res(R.string.pending_msg_upload_ledger_switched),
                     )
                 }
                 return@launch
@@ -246,7 +249,7 @@ class PendingViewModel(
                     if (uploadGenerationAtStart != requestGeneration) return@onSuccess
                     uploadLedgerIdAtStart = null
                     _uiState.update { state ->
-                        state.copy(uploading = false, message = "截图已上传，等你确认。")
+                        state.copy(uploading = false, message = UiText.res(R.string.pending_msg_upload_succeeded))
                     }
                     refresh()
                 }
@@ -256,7 +259,7 @@ class PendingViewModel(
                     _uiState.update {
                         it.copy(
                             uploading = false,
-                            message = error.message ?: "没有上传成功，请稍后再试。",
+                            message = error.toUiText(R.string.pending_msg_upload_failed),
                         )
                     }
                 }
@@ -298,12 +301,12 @@ class PendingViewModel(
     private fun launchStateTransition(
         expense: Expense,
         dismissBanner: Boolean = true,
-        preCheck: () -> String? = { null },
+        preCheck: () -> UiText? = { null },
         repoCall: suspend (Expense) -> Result<ExpenseStateOutcome>,
-        syncedMessage: String,
-        queuedMessage: String,
-        failureFallback: String,
-        onOutcome: (state: PendingUiState, outcome: ExpenseStateOutcome, message: String) -> PendingUiState,
+        syncedMessage: UiText,
+        queuedMessage: UiText,
+        @StringRes failureFallback: Int,
+        onOutcome: (state: PendingUiState, outcome: ExpenseStateOutcome, message: UiText) -> PendingUiState,
         afterSyncedSuccess: ((Expense) -> Unit)? = null,
     ) {
         if (dismissBanner) dismissUndoable()
@@ -333,7 +336,7 @@ class PendingViewModel(
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,
-                            message = error.message ?: failureFallback,
+                            message = error.toUiText(failureFallback),
                         )
                     }
                 }
@@ -342,11 +345,11 @@ class PendingViewModel(
 
     fun confirm(expense: Expense) = launchStateTransition(
         expense = expense,
-        preCheck = { if (expense.amountCents == null) "请先填写金额。" else null },
+        preCheck = { if (expense.amountCents == null) UiText.res(R.string.error_amount_required) else null },
         repoCall = { repository.confirmExpenseAllowingOffline(it) },
-        syncedMessage = "已确认入账",
-        queuedMessage = "已离线确认，联网后同步",
-        failureFallback = "没有确认成功，请稍后再试。",
+        syncedMessage = UiText.res(R.string.pending_msg_confirmed),
+        queuedMessage = UiText.res(R.string.pending_msg_confirmed_offline),
+        failureFallback = R.string.pending_msg_confirm_failed,
         onOutcome = { state, outcome, message ->
             PendingUiStateReducer.afterConfirmed(state, outcome.expense, message = message)
         },
@@ -360,9 +363,9 @@ class PendingViewModel(
         // server-side undoable within its 5-min retention).
         dismissBanner = false,
         repoCall = { repository.rejectExpenseAllowingOffline(it) },
-        syncedMessage = "已删除",
-        queuedMessage = "已离线删除，联网后同步",
-        failureFallback = "没有删除成功，请稍后再试。",
+        syncedMessage = UiText.res(R.string.pending_msg_rejected),
+        queuedMessage = UiText.res(R.string.pending_msg_rejected_offline),
+        failureFallback = R.string.pending_msg_reject_failed,
         onOutcome = { state, outcome, message ->
             val updated = PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
             when (outcome) {
@@ -436,7 +439,7 @@ class PendingViewModel(
                         state.copy(
                             items = merged,
                             actionInProgressIds = state.actionInProgressIds - target.id,
-                            message = "已撤销，账单已恢复待确认。",
+                            message = UiText.res(R.string.pending_msg_undo_restored),
                         )
                     }
                     // V3 — afterRejected dropped the thumbnail; rehydrate
@@ -456,7 +459,7 @@ class PendingViewModel(
                             _uiState.update {
                                 it.copy(
                                     actionInProgressIds = it.actionInProgressIds - target.id,
-                                    message = "无法撤销：账单已超过 5 分钟保留窗口，或已被清理。",
+                                    message = UiText.res(R.string.pending_msg_undo_window_closed),
                                 )
                             }
                         }
@@ -475,12 +478,12 @@ class PendingViewModel(
                                     state.copy(
                                         actionInProgressIds = state.actionInProgressIds - target.id,
                                         undoableExpense = target,
-                                        message = error.message ?: "撤销失败，请稍后再试。",
+                                        message = error.toUiText(R.string.pending_msg_undo_failed),
                                     )
                                 } else {
                                     state.copy(
                                         actionInProgressIds = state.actionInProgressIds - target.id,
-                                        message = error.message ?: "撤销失败，请稍后再试。",
+                                        message = error.toUiText(R.string.pending_msg_undo_failed),
                                     )
                                 }
                             }
@@ -543,9 +546,9 @@ class PendingViewModel(
     fun ignoreDuplicate(expense: Expense) = launchStateTransition(
         expense = expense,
         repoCall = { repository.rejectExpenseAllowingOffline(it) },
-        syncedMessage = "已忽略重复",
-        queuedMessage = "已离线忽略，联网后同步",
-        failureFallback = "没有处理成功，请稍后再试。",
+        syncedMessage = UiText.res(R.string.pending_msg_ignored_duplicate),
+        queuedMessage = UiText.res(R.string.pending_msg_ignored_duplicate_offline),
+        failureFallback = R.string.pending_msg_ignore_duplicate_failed,
         onOutcome = { state, outcome, message ->
             PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
         },
@@ -554,9 +557,9 @@ class PendingViewModel(
     fun markNotDuplicate(expense: Expense) = launchStateTransition(
         expense = expense,
         repoCall = { repository.markNotDuplicateAllowingOffline(it) },
-        syncedMessage = "已保留这条账单",
-        queuedMessage = "已离线保留，联网后同步",
-        failureFallback = "暂时没处理成功，请稍后再试。",
+        syncedMessage = UiText.res(R.string.pending_msg_kept),
+        queuedMessage = UiText.res(R.string.pending_msg_kept_offline),
+        failureFallback = R.string.pending_msg_keep_failed,
         onOutcome = { state, outcome, message ->
             PendingUiStateReducer.afterUpdated(
                 current = state,
@@ -567,6 +570,11 @@ class PendingViewModel(
         },
     )
 }
+
+// ADR-0044 wave 2: read-only ledger copy, resource-backed like every other
+// message. Byte-identical to the former READ_ONLY_LEDGER_MESSAGE const (now
+// removed — every VM resolves this copy from common_readonly_ledger).
+internal fun readOnlyMessage(): UiText = UiText.res(R.string.common_readonly_ledger)
 
 internal fun reconcileActiveSheet(sheet: PendingSheet, items: List<Expense>): PendingSheet {
     if (sheet is PendingSheet.None || sheet is PendingSheet.BulkConfirm) return sheet

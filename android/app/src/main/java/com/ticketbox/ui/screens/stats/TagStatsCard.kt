@@ -18,8 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.TagStats
 import com.ticketbox.ui.components.AppGlassCard
@@ -49,9 +51,13 @@ internal fun TagStatsCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("标签分布", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                 Text(
-                    text = "按本月已确认账单的标签聚合",
+                    stringResource(R.string.stats_tag_distribution_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                )
+                Text(
+                    text = stringResource(R.string.stats_tag_distribution_subtitle),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -102,7 +108,7 @@ private fun TagStatsRow(
                     .background(colors[colorIndex % colors.size]),
             )
             Text(
-                text = "#${tag.tag}",
+                text = stringResource(R.string.stats_tag_distribution_row_label, tag.tag),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -116,7 +122,7 @@ private fun TagStatsRow(
                 fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
-                text = "$percent% · ${tag.count} 笔",
+                text = stringResource(R.string.stats_tag_distribution_percent_count, percent, tag.count),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

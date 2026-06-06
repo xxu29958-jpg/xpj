@@ -23,8 +23,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppSpacing
@@ -59,11 +63,14 @@ fun LedgerSwitcherScreen(
     }
 
     SettingsPageFrame(
-        title = "账本",
-        subtitle = "切换个人账本和共享账本。",
+        title = stringResource(R.string.ledger_switcher_page_title),
+        subtitle = stringResource(R.string.ledger_switcher_page_subtitle),
         onBack = onBack,
     ) {
-        SettingsSection(title = "已加入的账本", icon = Icons.Filled.FolderShared) {
+        SettingsSection(
+            title = stringResource(R.string.ledger_switcher_section_joined),
+            icon = Icons.Filled.FolderShared,
+        ) {
             AppGlassCard(containerAlpha = 0.96f) {
                 Column(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -75,7 +82,7 @@ fun LedgerSwitcherScreen(
                         }
                     } else if (state.ledgers.isEmpty()) {
                         Text(
-                            text = "还没有可显示的账本。请稍后下拉刷新。",
+                            text = stringResource(R.string.ledger_switcher_ledgers_empty),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -102,7 +109,7 @@ fun LedgerSwitcherScreen(
                                     if (isActive) {
                                         Spacer(Modifier.width(6.dp))
                                         Text(
-                                            text = "当前",
+                                            text = stringResource(R.string.ledger_switcher_row_current_badge),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
@@ -116,7 +123,7 @@ fun LedgerSwitcherScreen(
                                             viewModel.switchTo(ledger.ledgerId, onSwitched)
                                         }
                                     },
-                                ) { Text("切换") }
+                                ) { Text(stringResource(R.string.ledger_switcher_row_switch_button)) }
                             }
                         }
                     }
@@ -124,19 +131,30 @@ fun LedgerSwitcherScreen(
                         onClick = { viewModel.refresh() },
                         enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (state.loading) "刷新中…" else "刷新列表") }
+                    ) {
+                        Text(
+                            if (state.loading) {
+                                stringResource(R.string.ledger_switcher_refresh_loading)
+                            } else {
+                                stringResource(R.string.ledger_switcher_refresh_button)
+                            },
+                        )
+                    }
                 }
             }
         }
 
-        SettingsSection(title = "新建账本", icon = Icons.Filled.FolderShared) {
+        SettingsSection(
+            title = stringResource(R.string.ledger_switcher_section_create),
+            icon = Icons.Filled.FolderShared,
+        ) {
             AppGlassCard(containerAlpha = 0.96f) {
                 Column(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = "账本名称最多 $LEDGER_NAME_MAX 个字。新建后不会自动切换，可以在上方点击“切换”。",
+                        text = stringResource(R.string.ledger_switcher_create_hint, LEDGER_NAME_MAX),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     OutlinedTextField(
@@ -145,7 +163,7 @@ fun LedgerSwitcherScreen(
                             // Trim hard upper bound on input to prevent oversize requests.
                             newLedgerName = value.take(LEDGER_NAME_MAX)
                         },
-                        label = { Text("账本名称") },
+                        label = { Text(stringResource(R.string.ledger_switcher_field_ledger_name)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -153,21 +171,23 @@ fun LedgerSwitcherScreen(
                         onClick = {
                             val name = newLedgerName.trim()
                             if (name.isEmpty()) {
-                                viewModel.showInputError("请填写账本名称。")
+                                viewModel.showInputError(
+                                    UiText.res(R.string.ledger_switcher_message_name_required),
+                                )
                                 return@Button
                             }
                             viewModel.create(name) { newLedgerName = "" }
                         },
                         enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("新建账本") }
+                    ) { Text(stringResource(R.string.ledger_switcher_create_button)) }
                 }
             }
         }
 
         state.message?.let {
             Text(
-                text = it,
+                text = it.asString(),
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.padding(top = 4.dp),
             )

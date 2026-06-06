@@ -9,7 +9,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import com.ticketbox.R
 import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
@@ -23,12 +25,12 @@ internal fun MonthSwitcher(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onPreviousMonth) { Text("上月") }
+        TextButton(onClick = onPreviousMonth) { Text(stringResource(R.string.budget_month_previous)) }
         Text(
             text = month,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = AppTextHierarchy.heading.weight,
         )
-        TextButton(onClick = onNextMonth) { Text("下月") }
+        TextButton(onClick = onNextMonth) { Text(stringResource(R.string.budget_month_next)) }
     }
 }

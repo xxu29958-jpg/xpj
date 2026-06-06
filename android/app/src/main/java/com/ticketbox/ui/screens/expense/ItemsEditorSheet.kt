@@ -33,19 +33,24 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.viewmodel.EditableItem
 import kotlin.math.abs
 
-private val ITEM_KINDS: List<Pair<String, String>> = listOf(
-    ExpenseItemKind.PRODUCT to "商品",
-    ExpenseItemKind.DISCOUNT to "折扣",
-    ExpenseItemKind.TAX to "税",
-    ExpenseItemKind.SERVICE_FEE to "服务费",
+// ADR-0044 wave 2: the label is held as a @StringRes id (resolved in the composable
+// via stringResource) so this top-level table stays string-resource-backed without a
+// Context here. The kind key (.first) is the ADR-0035 enum value, not user-visible.
+private val ITEM_KINDS: List<Pair<String, Int>> = listOf(
+    ExpenseItemKind.PRODUCT to R.string.expense_edit_items_kind_product,
+    ExpenseItemKind.DISCOUNT to R.string.expense_edit_items_kind_discount,
+    ExpenseItemKind.TAX to R.string.expense_edit_items_kind_tax,
+    ExpenseItemKind.SERVICE_FEE to R.string.expense_edit_items_kind_service_fee,
 )
 
 private fun draftSignedCents(draft: EditableItem): Long {
@@ -80,10 +85,10 @@ fun ItemsEditorSheet(
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding(),
         ) {
-            Text("编辑小票明细", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.expense_edit_items_sheet_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text(
-                "逐项录入商品 / 折扣 / 税 / 服务费；折扣按正数填写，合计会自动相减。",
+                stringResource(R.string.expense_edit_items_sheet_subtitle),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -107,7 +112,7 @@ fun ItemsEditorSheet(
                     TextButton(onClick = onAddRow) {
                         Icon(Icons.Filled.Add, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
-                        Text("添加项目")
+                        Text(stringResource(R.string.expense_edit_items_add_row_button))
                     }
                 }
             }
@@ -124,12 +129,20 @@ fun ItemsEditorSheet(
                     onClick = onDismiss,
                     enabled = !saving,
                     modifier = Modifier.weight(1f),
-                ) { Text("取消") }
+                ) { Text(stringResource(R.string.common_cancel)) }
                 Button(
                     onClick = onSave,
                     enabled = !saving,
                     modifier = Modifier.weight(1f),
-                ) { Text(if (saving) "保存中…" else "保存") }
+                ) {
+                    Text(
+                        if (saving) {
+                            stringResource(R.string.expense_edit_items_saving_button)
+                        } else {
+                            stringResource(R.string.expense_edit_items_save_button)
+                        }
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -155,21 +168,21 @@ private fun ItemEditorRow(
                 onValueChange = { onUpdate(index, it, null, null) },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                label = { Text("名称") },
+                label = { Text(stringResource(R.string.expense_edit_items_row_name_label)) },
             )
             OutlinedTextField(
                 value = draft.amountText,
                 onValueChange = { onUpdate(index, null, it, null) },
                 modifier = Modifier.width(112.dp),
                 singleLine = true,
-                label = { Text("金额") },
+                label = { Text(stringResource(R.string.expense_edit_items_row_amount_label)) },
                 prefix = { Text("¥") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             )
             IconButton(onClick = onRemove) {
                 Icon(
                     Icons.Filled.Close,
-                    contentDescription = "删除该项",
+                    contentDescription = stringResource(R.string.expense_edit_items_row_remove_desc),
                     tint = MaterialTheme.colorScheme.error,
                 )
             }
@@ -181,7 +194,7 @@ private fun ItemEditorRow(
                     selected = draft.kind == pair.first,
                     onClick = { onUpdate(index, null, null, pair.first) },
                     shape = SegmentedButtonDefaults.itemShape(index = i, count = ITEM_KINDS.size),
-                ) { Text(pair.second) }
+                ) { Text(stringResource(pair.second)) }
             }
         }
     }
@@ -199,7 +212,7 @@ private fun ReconciliationFooter(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("合计", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.expense_edit_items_footer_total_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(formatDisplayAmount(total), style = MaterialTheme.typography.bodyMedium)
         }
         if (parentAmountCents != null) {
@@ -208,7 +221,7 @@ private fun ReconciliationFooter(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("票面", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.expense_edit_items_footer_face_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(formatDisplayAmount(parentAmountCents), style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -218,7 +231,7 @@ private fun ReconciliationFooter(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("差额", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.expense_edit_items_footer_diff_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 Text(
                     formatDisplayAmount(diff),
                     style = MaterialTheme.typography.bodyMedium,

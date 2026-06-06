@@ -27,8 +27,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.ExpenseCard
@@ -207,7 +210,7 @@ fun PendingScreen(
         }
 
         state.message?.let { message ->
-            item { PendingMessageCard(message = message) }
+            item { PendingMessageCard(message = message.asString()) }
         }
 
         if (state.uploading) {
@@ -273,7 +276,7 @@ fun PendingScreen(
                     // 右滑揭示 ignore 动作（直接 reject）。background 颜色完全走 LocalSwipeActionTokens，深色主题下也可读。
                     val leftAction = if (canSwipe) SwipeActionConfig(
                         icon = Icons.Filled.CheckCircle,
-                        label = "确认",
+                        label = stringResource(R.string.pending_swipe_confirm_label),
                         bg = swipeTokens.confirm.bg,
                         fg = swipeTokens.confirm.fg,
                         onTriggered = {
@@ -288,7 +291,7 @@ fun PendingScreen(
                     ) else null
                     val rightAction = if (canSwipe) SwipeActionConfig(
                         icon = Icons.Filled.DeleteOutline,
-                        label = "忽略",
+                        label = stringResource(R.string.pending_swipe_ignore_label),
                         bg = swipeTokens.ignore.bg,
                         fg = swipeTokens.ignore.fg,
                         onTriggered = { onReject(expense) },

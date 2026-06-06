@@ -2,11 +2,13 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.isValidPayDay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,10 +29,10 @@ data class IncomePlanUiState(
     val activePlans: List<IncomePlan> = emptyList(),
     val archivedPlans: List<IncomePlan> = emptyList(),
     val totalActiveAmountCents: Long = 0L,
-    val error: String? = null,
+    val error: UiText? = null,
     val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(),
     val isSubmitting: Boolean = false,
-    val flashMessage: String? = null,
+    val flashMessage: UiText? = null,
 )
 
 data class IncomePlanDraftUi(
@@ -38,7 +40,7 @@ data class IncomePlanDraftUi(
     val sourceType: IncomeSourceType = IncomeSourceType.SALARY,
     val amountYuanInput: String = "",
     val payDayInput: String = "10",
-    val validationError: String? = null,
+    val validationError: UiText? = null,
 ) {
     val isValid: Boolean
         get() = label.trim().isNotEmpty() &&
@@ -91,7 +93,7 @@ class IncomePlanViewModel(
                 onFailure = { err ->
                     _state.value.copy(
                         isLoading = false,
-                        error = err.message ?: "加载收入计划失败。",
+                        error = err.toUiText(R.string.income_plan_load_failed),
                     )
                 },
             )
@@ -134,7 +136,7 @@ class IncomePlanViewModel(
             _state.update {
                 it.copy(
                     addDraft = it.addDraft.copy(
-                        validationError = "请填写名称、合法金额和 1-31 之间的发薪日。",
+                        validationError = UiText.res(R.string.income_plan_validation_error),
                     ),
                 )
             }
@@ -156,7 +158,7 @@ class IncomePlanViewModel(
                         it.copy(
                             isSubmitting = false,
                             addDraft = IncomePlanDraftUi(),
-                            flashMessage = "已添加收入计划",
+                            flashMessage = UiText.res(R.string.income_plan_added),
                         )
                     }
                     refresh()
@@ -166,7 +168,7 @@ class IncomePlanViewModel(
                         it.copy(
                             isSubmitting = false,
                             addDraft = it.addDraft.copy(
-                                validationError = err.message ?: "添加失败，请稍后重试。",
+                                validationError = err.toUiText(R.string.income_plan_add_failed),
                             ),
                         )
                     }
@@ -178,14 +180,14 @@ class IncomePlanViewModel(
     fun archive(publicId: String, expectedRowVersion: Long) {
         viewModelScope.launch {
             val result = repository.archive(publicId, expectedRowVersion)
-            handleSimpleResult(result, success = "已归档")
+            handleSimpleResult(result, success = UiText.res(R.string.income_plan_archived))
         }
     }
 
     fun restore(publicId: String, expectedRowVersion: Long) {
         viewModelScope.launch {
             val result = repository.restore(publicId, expectedRowVersion)
-            handleSimpleResult(result, success = "已恢复")
+            handleSimpleResult(result, success = UiText.res(R.string.income_plan_restored))
         }
     }
 
@@ -193,14 +195,14 @@ class IncomePlanViewModel(
         _state.update { it.copy(flashMessage = null) }
     }
 
-    private fun handleSimpleResult(result: Result<IncomePlan>, success: String) {
+    private fun handleSimpleResult(result: Result<IncomePlan>, success: UiText) {
         result.fold(
             onSuccess = {
                 _state.update { it.copy(flashMessage = success) }
                 refresh()
             },
             onFailure = { err ->
-                _state.update { it.copy(error = err.message ?: "操作失败。") }
+                _state.update { it.copy(error = err.toUiText(R.string.error_generic)) }
             },
         )
     }

@@ -29,9 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -108,13 +111,13 @@ fun TagManagementScreen(
     deleting?.let { tag ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("删除标签？") },
+            title = { Text(stringResource(R.string.tag_management_delete_dialog_title)) },
             text = {
                 Text(
                     if (tag.usageCount > 0) {
-                        "“${tag.name}”会从 ${tag.usageCount} 笔账单上移除。5 秒内可撤销。"
+                        stringResource(R.string.tag_management_delete_dialog_text_used, tag.name, tag.usageCount)
                     } else {
-                        "“${tag.name}”没有任何账单使用，可以安全删除。"
+                        stringResource(R.string.tag_management_delete_dialog_text_unused, tag.name)
                     },
                 )
             },
@@ -126,17 +129,17 @@ fun TagManagementScreen(
                         viewModel.deleteTag(tag)
                     },
                 ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.tag_management_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleting = null }) { Text("取消") }
+                TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }
 
     SettingsPageFrame(
-        title = "标签管理",
+        title = stringResource(R.string.tag_management_page_title),
         subtitle = tagSummary(state.tags),
         onBack = onBack,
     ) {
@@ -156,7 +159,7 @@ fun TagManagementScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "已处理「${handle.label}」",
+                        text = stringResource(R.string.tag_management_undo_processed, handle.label),
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -164,23 +167,23 @@ fun TagManagementScreen(
                     Spacer(Modifier.width(AppSpacing.compactGap))
                     // Disabled while a mutate is in flight: a stale undo banner from
                     // an earlier op must not fire concurrently with it (VM also gates).
-                    TextButton(enabled = !state.busy, onClick = viewModel::undo) { Text("撤销") }
+                    TextButton(enabled = !state.busy, onClick = viewModel::undo) { Text(stringResource(R.string.tag_management_undo_button)) }
                 }
             }
         }
 
         if (readOnly) {
             Text(
-                text = "当前角色为只读，无法修改标签。",
+                text = stringResource(R.string.tag_management_readonly_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        SettingsSection(title = "全部标签", icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.tag_management_section_all), icon = Icons.Filled.Tune) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 if (state.tags.isEmpty()) {
                     Text(
-                        text = "还没有标签。记账时给账单添加标签后，这里就能统一整理它们。",
+                        text = stringResource(R.string.tag_management_list_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
@@ -202,7 +205,7 @@ fun TagManagementScreen(
             }
         }
 
-        state.message?.takeIf { it.isNotBlank() }?.let {
+        state.message?.asString()?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
     }
@@ -237,7 +240,11 @@ private fun TagCard(
                 )
                 Spacer(Modifier.width(AppSpacing.compactGap))
                 Text(
-                    text = if (tag.usageCount > 0) "${tag.usageCount} 笔" else "孤儿",
+                    text = if (tag.usageCount > 0) {
+                        stringResource(R.string.tag_management_card_usage_count, tag.usageCount)
+                    } else {
+                        stringResource(R.string.tag_management_card_orphan)
+                    },
                     color = if (tag.usageCount > 0) {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
@@ -253,17 +260,17 @@ private fun TagCard(
                         modifier = Modifier.weight(1f),
                         enabled = !busy,
                         onClick = onRename,
-                    ) { Text("重命名") }
+                    ) { Text(stringResource(R.string.tag_management_card_action_rename)) }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         enabled = !busy && canMerge,
                         onClick = onMerge,
-                    ) { Text("合并") }
+                    ) { Text(stringResource(R.string.tag_management_card_action_merge)) }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         enabled = !busy,
                         onClick = onDelete,
-                    ) { Text("删除") }
+                    ) { Text(stringResource(R.string.tag_management_card_action_delete)) }
                 }
             }
         }
@@ -280,13 +287,13 @@ private fun RenameTagDialog(
     var name by remember { mutableStateOf(tag.name) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("重命名标签") },
+        title = { Text(stringResource(R.string.tag_management_rename_dialog_title)) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("标签名") },
+                label = { Text(stringResource(R.string.tag_management_rename_dialog_label)) },
                 singleLine = true,
             )
         },
@@ -294,10 +301,10 @@ private fun RenameTagDialog(
             TextButton(
                 enabled = !busy && name.trim().isNotBlank() && name.trim() != tag.name,
                 onClick = { onConfirm(name) },
-            ) { Text("保存") }
+            ) { Text(stringResource(R.string.tag_management_rename_dialog_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -316,7 +323,7 @@ private fun MergeTagDialog(
     var selected by remember { mutableStateOf(initialTarget) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("合并标签") },
+        title = { Text(stringResource(R.string.tag_management_merge_dialog_title)) },
         text = {
             Column(
                 modifier = Modifier
@@ -326,7 +333,7 @@ private fun MergeTagDialog(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
-                    text = "把「${source.name}」下的账单改用哪个标签？合并后「${source.name}」会被删除，5 秒内可撤销。",
+                    text = stringResource(R.string.tag_management_merge_dialog_text, source.name),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -348,7 +355,11 @@ private fun MergeTagDialog(
                         )
                         Spacer(Modifier.width(AppSpacing.smallGap))
                         Text(
-                            text = if (target.usageCount > 0) "${target.name}（${target.usageCount} 笔）" else target.name,
+                            text = if (target.usageCount > 0) {
+                                stringResource(R.string.tag_management_merge_dialog_target_with_count, target.name, target.usageCount)
+                            } else {
+                                target.name
+                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -360,16 +371,21 @@ private fun MergeTagDialog(
             TextButton(
                 enabled = !busy && selected != null,
                 onClick = { selected?.let(onConfirm) },
-            ) { Text("合并") }
+            ) { Text(stringResource(R.string.tag_management_merge_dialog_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
 
+@Composable
 private fun tagSummary(tags: List<ManagedTag>): String {
-    if (tags.isEmpty()) return "暂无标签"
+    if (tags.isEmpty()) return stringResource(R.string.tag_management_summary_empty)
     val orphans = tags.count { it.usageCount == 0 }
-    return if (orphans > 0) "共 ${tags.size} 个 · ${orphans} 个孤儿" else "共 ${tags.size} 个标签"
+    return if (orphans > 0) {
+        stringResource(R.string.tag_management_summary_with_orphans, tags.size, orphans)
+    } else {
+        stringResource(R.string.tag_management_summary_count, tags.size)
+    }
 }

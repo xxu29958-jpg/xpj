@@ -20,7 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayMonthLabel
@@ -41,16 +43,20 @@ internal fun EmptyLedgerState(
     val hasTag = state.tagFilter.isNotBlank()
     val hasActiveFilters = state.filter.hasFilters
     val title = when {
-        hasTag -> "暂无 #${state.tagFilter} 标签账单"
-        hasMonth && hasCategory -> "${displayMonthLabel(state.monthFilter)} 暂无 ${state.categoryFilter} 分类账单"
-        hasMonth -> "${displayMonthLabel(state.monthFilter)} 暂无已确认账单"
-        hasCategory -> "暂无 ${state.categoryFilter} 分类账单"
-        else -> "本地还没有已确认账单"
+        hasTag -> stringResource(R.string.ledger_empty_title_tag, state.tagFilter)
+        hasMonth && hasCategory -> stringResource(
+            R.string.ledger_empty_title_month_category,
+            displayMonthLabel(state.monthFilter),
+            state.categoryFilter,
+        )
+        hasMonth -> stringResource(R.string.ledger_empty_title_month, displayMonthLabel(state.monthFilter))
+        hasCategory -> stringResource(R.string.ledger_empty_title_category, state.categoryFilter)
+        else -> stringResource(R.string.ledger_empty_title_default)
     }
     val body = when {
-        hasMonth || hasCategory || hasTag -> "可以切换月份、分类或标签，或先更新账本。"
-        state.readOnly -> "当前角色可查看已入账记录，不能手动记账。"
-        else -> "在待确认页确认几笔账单后，账本会在这里显示。"
+        hasMonth || hasCategory || hasTag -> stringResource(R.string.ledger_empty_body_filtered)
+        state.readOnly -> stringResource(R.string.ledger_empty_body_readonly)
+        else -> stringResource(R.string.ledger_empty_body_default)
     }
 
     AppEmptyStateCard {
@@ -79,10 +85,10 @@ internal fun EmptyLedgerState(
                         modifier = Modifier.weight(1f),
                         onClick = onClearFilters,
                     ) {
-                        Text("重置筛选")
+                        Text(stringResource(R.string.ledger_empty_reset_filters))
                     }
                     QuietOutlinedButton(
-                        text = "更新账本",
+                        text = stringResource(R.string.ledger_empty_update_ledger),
                         modifier = Modifier.weight(1f),
                         enabled = !state.syncing,
                         onClick = onSync,
@@ -92,17 +98,17 @@ internal fun EmptyLedgerState(
                         modifier = Modifier.weight(1f),
                         onClick = onManualAdd,
                     ) {
-                        Text("手动记一笔")
+                        Text(stringResource(R.string.ledger_empty_manual_add))
                     }
                     QuietOutlinedButton(
-                        text = "更新账本",
+                        text = stringResource(R.string.ledger_empty_update_ledger),
                         modifier = Modifier.weight(1f),
                         enabled = !state.syncing,
                         onClick = onSync,
                     )
                 } else {
                     QuietOutlinedButton(
-                        text = "更新账本",
+                        text = stringResource(R.string.ledger_empty_update_ledger),
                         modifier = Modifier.weight(1f),
                         enabled = !state.syncing,
                         onClick = onSync,

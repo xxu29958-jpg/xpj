@@ -15,8 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
@@ -41,16 +43,16 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("最近 7 天趋势", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.stats_recent_trend_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "本地账本",
+                    text = stringResource(R.string.stats_recent_trend_source),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
             if (trend.isEmpty() || maxAmount == 0L) {
                 Text(
-                    text = "手机里暂无最近支出，更新后会显示每日变化。",
+                    text = stringResource(R.string.stats_recent_trend_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
@@ -83,15 +85,19 @@ internal fun RecentUploadCard(lastUploadAt: String?) {
             ),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            Text("最近上传", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
             Text(
-                text = lastUploadAt?.let { displayTime(it) } ?: "还没有上传记录",
+                stringResource(R.string.stats_recent_upload_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+            Text(
+                text = lastUploadAt?.let { displayTime(it) } ?: stringResource(R.string.stats_recent_upload_empty),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "用于确认手机端和电脑端最近一次上传状态。",
+                text = stringResource(R.string.stats_recent_upload_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )

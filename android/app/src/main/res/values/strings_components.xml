@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0044 wave 1, cluster components, see strings.xml for convention. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
+
+    <!-- AppAsyncImage：异步图片加载器的占位与无障碍描述 -->
+    <string name="components_async_image_placeholder">截图已保存</string>
+    <string name="components_async_image_content_description">账单截图</string>
+
+    <!-- SafeBadge：安全状态徽标 -->
+    <string name="components_safe_badge_label">安全</string>
+
+    <!-- ScreenHeader / AppPageHeader：页眉小标默认文案 -->
+    <string name="components_page_header_eyebrow">小票夹</string>
+
+    <!-- DuplicateNotice：疑似重复上传提示卡 -->
+    <string name="components_duplicate_notice_title">可能重复上传</string>
+    <string name="components_duplicate_notice_image_hash">这张截图和之前上传过的一张完全一致。确认前先看一眼，确实要记账就点“不是重复，保留”。</string>
+    <string name="components_duplicate_notice_field_match">这笔账单和已有记录很接近。确认前先看一眼，避免重复入账。</string>
+    <string name="components_duplicate_notice_generic">这笔账单可能已经上传过。确认前先看一眼，避免重复入账。</string>
+
+    <!-- ExpenseCard：账单卡片 -->
+    <string name="components_expense_card_thumbnail_placeholder">截图缩略图加载中</string>
+    <string name="components_expense_card_merchant_placeholder">待填写商家</string>
+    <string name="components_expense_card_status_pending">截图待确认</string>
+    <string name="components_expense_card_status_recorded">已入账</string>
+    <string name="components_expense_card_amount_placeholder">等待你确认金额</string>
+    <string name="components_expense_card_pill_amount_missing">待补金额</string>
+    <string name="components_expense_card_pill_review">请核对</string>
+    <string name="components_expense_card_pill_duplicate">疑似新账</string>
+    <string name="components_expense_card_image_placeholder_saved">截图已保存，点开后可查看</string>
+    <string name="components_expense_card_tags">标签：%1$s</string>
+    <string name="components_expense_card_edit">编辑</string>
+    <string name="components_expense_card_confirm">入账</string>
+    <string name="components_expense_card_confirm_done">已入账</string>
+    <string name="components_expense_card_ignore">忽略</string>
+    <string name="components_expense_card_keep_duplicate">不是重复，保留</string>
+    <string name="components_expense_card_category_fallback">账</string>
+
+    <!-- ExpenseCard 删除确认对话框 -->
+    <string name="components_expense_card_reject_dialog_title">删除这笔待确认账单？</string>
+    <string name="components_expense_card_reject_dialog_body">删除后这张截图会标记为已拒绝，不会进入账本。</string>
+    <string name="components_expense_card_reject_dialog_confirm">确定删除</string>
+
+    <!-- MonthPickerSheet：月份选择 -->
+    <string name="components_month_picker_title">选择月份</string>
+    <string name="components_month_picker_all_months">全部月份</string>
+    <string name="components_month_picker_empty">更新后会显示可选月份。</string>
+
+</resources>

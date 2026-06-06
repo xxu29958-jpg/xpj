@@ -19,9 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppFilterChip
@@ -58,7 +60,11 @@ internal fun EditDraftPreviewCard(
             if (expense.imagePath != null) {
                 AppAsyncImage(
                     image = previewImage,
-                    placeholder = if (imageLoading) "截图加载中" else "截图已保存",
+                    placeholder = if (imageLoading) {
+                        stringResource(R.string.expense_edit_preview_image_loading)
+                    } else {
+                        stringResource(R.string.expense_edit_preview_image_saved)
+                    },
                     contentScale = ContentScale.Crop,
                     compact = true,
                     compactSize = DpSize(width = 104.dp, height = 136.dp),
@@ -69,12 +75,13 @@ internal fun EditDraftPreviewCard(
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 Text(
-                    text = "识别草稿",
+                    text = stringResource(R.string.expense_edit_preview_draft_label),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelLarge,
                 )
                 Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
+                    text = expense.merchant?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.expense_edit_preview_merchant_empty),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -93,7 +100,10 @@ internal fun EditDraftPreviewCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatusPill(expense.category)
                     expense.confidence?.let {
-                        StatusPill("可信度 ${(it * 100).toInt()}%", active = false)
+                        StatusPill(
+                            stringResource(R.string.expense_edit_preview_confidence_pill, (it * 100).toInt()),
+                            active = false,
+                        )
                     }
                 }
                 if (expense.imagePath != null) {
@@ -108,9 +118,9 @@ internal fun EditDraftPreviewCard(
                         ) {
                             Text(
                                 when {
-                                    imageLoading -> "加载中"
-                                    showLargeImage -> "收起截图"
-                                    else -> "看原图"
+                                    imageLoading -> stringResource(R.string.expense_edit_preview_image_button_loading)
+                                    showLargeImage -> stringResource(R.string.expense_edit_preview_image_button_collapse)
+                                    else -> stringResource(R.string.expense_edit_preview_image_button_open)
                                 },
                                 maxLines = 1,
                                 softWrap = false,
@@ -129,7 +139,11 @@ internal fun EditDraftPreviewCard(
                                 onClick = onRetryOcr,
                             ) {
                                 Text(
-                                    if (ocrRunning) "识别中" else "重新识别",
+                                    if (ocrRunning) {
+                                        stringResource(R.string.expense_edit_preview_recognize_running_button)
+                                    } else {
+                                        stringResource(R.string.expense_edit_preview_recognize_retry_button)
+                                    },
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis,
@@ -148,8 +162,8 @@ internal fun EditDraftPreviewCard(
 @Composable
 internal fun OcrProgressCard() {
     AppLoadingState(
-        title = "正在重新识别截图",
-        body = "识别结果只会更新草稿，仍需要你核对后确认入账。",
+        title = stringResource(R.string.expense_edit_ocr_progress_title),
+        body = stringResource(R.string.expense_edit_ocr_progress_body),
     )
 }
 
@@ -198,28 +212,28 @@ internal fun ExpenseDateField(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("消费时间", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.expense_edit_date_section_title), style = MaterialTheme.typography.titleSmall)
                     Text(
                         text = displayDateTime(expenseTime),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 AppOutlinedButton(enabled = enabled, onClick = onPickDate) {
-                    Text("选日期")
+                    Text(stringResource(R.string.expense_edit_date_pick_date_button))
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(enabled = enabled, onClick = onPickTime) {
-                    Text("选时间")
+                    Text(stringResource(R.string.expense_edit_date_pick_time_button))
                 }
                 TextButton(enabled = enabled, onClick = onUseNow) {
-                    Text("设为现在")
+                    Text(stringResource(R.string.expense_edit_date_use_now_button))
                 }
                 TextButton(
                     enabled = enabled && expenseTime.isNotBlank(),
                     onClick = onClear,
                 ) {
-                    Text("清除")
+                    Text(stringResource(R.string.expense_edit_date_clear_button))
                 }
             }
         }

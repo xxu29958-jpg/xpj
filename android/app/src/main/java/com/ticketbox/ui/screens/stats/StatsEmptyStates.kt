@@ -19,7 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.displayMonthLabel
@@ -39,11 +41,12 @@ internal fun StatsMonthChip(
         AppFilterChip(
             selected = true,
             onClick = onClick,
-            label = selectedMonth.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份",
+            label = selectedMonth.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+                ?: stringResource(R.string.stats_empty_month_chip_all),
             trailingIcon = {
                 Icon(
                     imageVector = Icons.Filled.ExpandMore,
-                    contentDescription = "选择统计月份",
+                    contentDescription = stringResource(R.string.stats_empty_month_chip_description),
                     modifier = Modifier.size(18.dp),
                 )
             },
@@ -53,8 +56,8 @@ internal fun StatsMonthChip(
 
 @Composable
 internal fun EmptyStatsCard(
-    title: String = "还没有统计数据",
-    body: String = "确认账单后刷新统计，这里会显示本月总支出、分类占比和高频商家。",
+    title: String = stringResource(R.string.stats_empty_card_title),
+    body: String = stringResource(R.string.stats_empty_card_body),
     onRefresh: (() -> Unit)? = null,
 ) {
     AppEmptyStateCard {
@@ -73,7 +76,7 @@ internal fun EmptyStatsCard(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = it,
                 ) {
-                    Text("刷新统计")
+                    Text(stringResource(R.string.stats_empty_card_refresh))
                 }
             }
         }
@@ -91,9 +94,9 @@ private fun StatsSkeletonPlaceholder() {
             .padding(AppSpacing.cardPaddingTight),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        SkeletonBlock(title = "本月总支出", widthFraction = 0.72f)
-        SkeletonBlock(title = "分类占比", widthFraction = 0.88f)
-        SkeletonBlock(title = "高频商家", widthFraction = 0.64f)
+        SkeletonBlock(title = stringResource(R.string.stats_empty_skeleton_month_spend), widthFraction = 0.72f)
+        SkeletonBlock(title = stringResource(R.string.stats_empty_skeleton_category_share), widthFraction = 0.88f)
+        SkeletonBlock(title = stringResource(R.string.stats_empty_skeleton_frequent_merchants), widthFraction = 0.64f)
     }
 }
 

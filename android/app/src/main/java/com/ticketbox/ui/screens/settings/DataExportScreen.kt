@@ -62,9 +62,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -82,6 +84,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
@@ -106,8 +109,8 @@ fun DataExportScreen(
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            title = { Text("清除手机本地数据？") },
-            text = { Text("清除后，手机里已缓存的账单会移除。账本数据不会删除，之后可以重新更新。") },
+            title = { Text(stringResource(R.string.settings_data_export_clear_dialog_title)) },
+            text = { Text(stringResource(R.string.settings_data_export_clear_dialog_text)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -115,25 +118,25 @@ fun DataExportScreen(
                         onClearCache()
                     },
                 ) {
-                    Text("确定清除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.settings_data_export_clear_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearCacheDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
     }
 
     SettingsPageFrame(
-        title = "数据与导出",
-        subtitle = "缓存和导出只处理已入账账单。",
+        title = stringResource(R.string.settings_data_export_page_title),
+        subtitle = stringResource(R.string.settings_data_export_page_subtitle),
         onBack = onBack,
     ) {
-        SettingsSection(title = "更新与缓存", icon = Icons.Filled.RestartAlt) {
+        SettingsSection(title = stringResource(R.string.settings_data_export_section_refresh_cache), icon = Icons.Filled.RestartAlt) {
             Text(
-                text = "已确认账单会缓存在手机，离线时账本页仍可查看本地记录。",
+                text = stringResource(R.string.settings_data_export_cache_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -143,7 +146,13 @@ fun DataExportScreen(
                     enabled = !state.busy,
                     onClick = onSync,
                 ) {
-                    Text(if (state.busy) "更新中" else "重新更新")
+                    Text(
+                        if (state.busy) {
+                            stringResource(R.string.settings_data_export_button_refreshing)
+                        } else {
+                            stringResource(R.string.settings_data_export_button_refresh)
+                        },
+                    )
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -152,15 +161,15 @@ fun DataExportScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Text("清除缓存")
+                    Text(stringResource(R.string.settings_data_export_button_clear_cache))
                 }
             }
             Text(
-                text = "表格导出请在账本页选择月份和分类后点击导出账单；没有账单时按钮会禁用。",
+                text = stringResource(R.string.settings_data_export_export_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
+        state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
     }
 }

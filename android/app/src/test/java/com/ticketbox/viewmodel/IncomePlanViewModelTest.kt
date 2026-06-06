@@ -1,11 +1,13 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.IncomeSourceType
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -77,7 +79,7 @@ class IncomePlanViewModelTest {
         assertEquals(IncomeSourceType.SALARY, repo.lastDraft?.sourceType)
         assertEquals(1_000_000L, repo.lastDraft?.amountCents)
         assertEquals(10, repo.lastDraft?.payDay)
-        assertEquals("已添加收入计划", viewModel.state.value.flashMessage)
+        assertEquals(UiText.res(R.string.income_plan_added), viewModel.state.value.flashMessage)
         assertEquals("", viewModel.state.value.addDraft.label) // reset
     }
 
@@ -91,7 +93,7 @@ class IncomePlanViewModelTest {
         viewModel.updateDraftPayDay("1")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals("网络异常", viewModel.state.value.addDraft.validationError)
+        assertEquals(UiText.raw("网络异常"), viewModel.state.value.addDraft.validationError)
         assertFalse(viewModel.state.value.isSubmitting)
     }
 
@@ -103,7 +105,7 @@ class IncomePlanViewModelTest {
         viewModel.archive("some-id", 1L)
         advanceUntilIdle()
         assertEquals("some-id", repo.lastArchiveId)
-        assertEquals("已归档", viewModel.state.value.flashMessage)
+        assertEquals(UiText.res(R.string.income_plan_archived), viewModel.state.value.flashMessage)
     }
 
     @Test
@@ -114,7 +116,7 @@ class IncomePlanViewModelTest {
         viewModel.restore("some-id", 1L)
         advanceUntilIdle()
         assertEquals("some-id", repo.lastRestoreId)
-        assertEquals("已恢复", viewModel.state.value.flashMessage)
+        assertEquals(UiText.res(R.string.income_plan_restored), viewModel.state.value.flashMessage)
     }
 
     @Test

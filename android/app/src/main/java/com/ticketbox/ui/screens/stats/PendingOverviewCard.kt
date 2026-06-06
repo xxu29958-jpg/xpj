@@ -14,7 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.LocalThemeVisuals
@@ -42,12 +44,17 @@ internal fun PendingOverviewCard(summary: DataQualitySummary) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "待确认概况",
+                    text = stringResource(R.string.stats_pending_overview_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
+                val oldestDays = summary.oldestPendingAgeDays
                 Text(
-                    text = summary.oldestPendingAgeDays?.let { "最久 $it 天" } ?: "—",
+                    text = if (oldestDays != null) {
+                        stringResource(R.string.stats_pending_overview_oldest, oldestDays)
+                    } else {
+                        stringResource(R.string.stats_pending_overview_oldest_empty)
+                    },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
@@ -69,7 +76,7 @@ internal fun PendingOverviewCard(summary: DataQualitySummary) {
                 }
             }
             Text(
-                text = "去待确认页处理，整理后这里会清零。",
+                text = stringResource(R.string.stats_pending_overview_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -115,14 +122,23 @@ private data class PendingOverviewMetric(
     val value: Int,
 )
 
+@Composable
 private fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOverviewMetric> {
     val metrics = mutableListOf(
-        PendingOverviewMetric("待确认", summary.pendingTotal),
-        PendingOverviewMetric("可确认", summary.readyToConfirm),
+        PendingOverviewMetric(stringResource(R.string.stats_pending_metric_pending_total), summary.pendingTotal),
+        PendingOverviewMetric(stringResource(R.string.stats_pending_metric_ready), summary.readyToConfirm),
     )
-    if (summary.missingAmount > 0) metrics += PendingOverviewMetric("缺金额", summary.missingAmount)
-    if (summary.missingMerchant > 0) metrics += PendingOverviewMetric("缺商家", summary.missingMerchant)
-    if (summary.missingCategory > 0) metrics += PendingOverviewMetric("未分类", summary.missingCategory)
-    if (summary.suspectedDuplicates > 0) metrics += PendingOverviewMetric("重复", summary.suspectedDuplicates)
+    if (summary.missingAmount > 0) {
+        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_missing_amount), summary.missingAmount)
+    }
+    if (summary.missingMerchant > 0) {
+        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_missing_merchant), summary.missingMerchant)
+    }
+    if (summary.missingCategory > 0) {
+        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_missing_category), summary.missingCategory)
+    }
+    if (summary.suspectedDuplicates > 0) {
+        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_duplicates), summary.suspectedDuplicates)
+    }
     return metrics.take(6)
 }

@@ -65,10 +65,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -86,6 +88,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
@@ -111,11 +114,15 @@ fun ServerSettingsScreen(
     onSync: () -> Unit,
 ) {
     var showDiagnosticsDetails by remember { mutableStateOf(false) }
-    val pageTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
-    val pageSubtitle = if (showAdvancedTools) {
-        "普通版只显示连接状态，内部版保留检测明细。"
+    val pageTitle = if (showAdvancedTools) {
+        stringResource(R.string.settings_server_page_title_advanced)
     } else {
-        "查看当前账本是否连接正常。"
+        stringResource(R.string.settings_server_page_title_basic)
+    }
+    val pageSubtitle = if (showAdvancedTools) {
+        stringResource(R.string.settings_server_page_subtitle_advanced)
+    } else {
+        stringResource(R.string.settings_server_page_subtitle_basic)
     }
     SettingsPageFrame(
         title = pageTitle,
@@ -138,9 +145,9 @@ fun ServerSettingsScreen(
             },
         )
         if (showAdvancedTools) {
-            SettingsSection(title = "内部工具", icon = Icons.Filled.Settings) {
+            SettingsSection(title = stringResource(R.string.settings_server_section_internal_tools), icon = Icons.Filled.Settings) {
                 Text(
-                    text = "仅内部版显示，用于服务拥有者调试和排障；灰度用户版不会出现这些信息。",
+                    text = stringResource(R.string.settings_server_internal_tools_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -150,14 +157,14 @@ fun ServerSettingsScreen(
                         enabled = !state.busy,
                         onClick = onRunDiagnostics,
                     ) {
-                        Text("运行检测")
+                        Text(stringResource(R.string.settings_server_button_run_diagnostics))
                     }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         enabled = !state.busy,
                         onClick = onRefreshServerSettings,
                     ) {
-                        Text("刷新设置")
+                        Text(stringResource(R.string.settings_server_button_refresh_settings))
                     }
                 }
                 AdvancedStatusCard(
@@ -169,7 +176,7 @@ fun ServerSettingsScreen(
             }
         }
         state.message?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
+            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

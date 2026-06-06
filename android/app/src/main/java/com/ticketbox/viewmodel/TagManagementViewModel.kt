@@ -2,9 +2,11 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.TagActions
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +21,7 @@ import kotlinx.coroutines.launch
 data class TagManagementUiState(
     val tags: List<ManagedTag> = emptyList(),
     val busy: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     val undoable: TagUndoHandle? = null,
     // 契约 5: a rename that collided with an existing live tag — the screen opens
     // the merge dialog preselected on [MergeSuggestion.target] (still user-
@@ -60,7 +62,7 @@ class TagManagementViewModel(
         viewModelScope.launch {
             tagRepository.tags()
                 .onSuccess { tags -> _uiState.update { it.copy(tags = tags.sortedByUsage()) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "标签暂时打不开。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.tag_management_load_failed)) } }
         }
     }
 
@@ -68,13 +70,13 @@ class TagManagementViewModel(
         if (_uiState.value.busy) return
         if (newName.trim() == tag.name) return
         if (!tagRepository.canModifyLedger()) {
-            _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
             tagRepository.renameTag(tag.publicId, tag.rowVersion, newName)
-                .onSuccess { finishWithReload(message = "标签已重命名为「${newName.trim()}」") }
+                .onSuccess { finishWithReload(message = UiText.res(R.string.tag_management_renamed, newName.trim())) }
                 .onFailure { error -> handleRenameFailure(error, source = tag, attemptedName = newName) }
         }
     }
@@ -102,7 +104,7 @@ class TagManagementViewModel(
                 _uiState.update {
                     it.copy(
                         busy = false,
-                        message = "「${target.name}」已存在，合并到它？",
+                        message = UiText.res(R.string.tag_management_rename_conflict_merge_prompt, target.name),
                         mergeSuggestion = MergeSuggestion(source, target),
                     )
                 }
@@ -122,7 +124,7 @@ class TagManagementViewModel(
     fun deleteTag(tag: ManagedTag) {
         if (_uiState.value.busy) return
         if (!tagRepository.canModifyLedger()) {
-            _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -130,7 +132,7 @@ class TagManagementViewModel(
             tagRepository.deleteTag(tag.publicId, tag.rowVersion)
                 .onSuccess { result ->
                     finishWithReload(
-                        message = "已删除标签「${tag.name}」",
+                        message = UiText.res(R.string.tag_management_deleted, tag.name),
                         undoable = TagUndoHandle(result.mutationPublicId, result.sourceTagRowVersion, tag.name),
                     )
                 }
@@ -142,7 +144,7 @@ class TagManagementViewModel(
         if (_uiState.value.busy) return
         if (source.publicId == target.publicId) return
         if (!tagRepository.canModifyLedger()) {
-            _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -150,7 +152,7 @@ class TagManagementViewModel(
             tagRepository.mergeTags(source.publicId, source.rowVersion, target.publicId, target.rowVersion)
                 .onSuccess { result ->
                     finishWithReload(
-                        message = "已把「${source.name}」合并到「${target.name}」",
+                        message = UiText.res(R.string.tag_management_merged, source.name, target.name),
                         undoable = TagUndoHandle(result.mutationPublicId, result.sourceTagRowVersion, source.name),
                     )
                 }
@@ -173,9 +175,9 @@ class TagManagementViewModel(
             tagRepository.undoTagMutation(handle.mutationPublicId, handle.rowVersion)
                 .onSuccess { result ->
                     val msg = if (result.skipped > 0) {
-                        "已撤销（恢复 ${result.applied} 笔，${result.skipped} 笔已改动跳过）"
+                        UiText.res(R.string.tag_management_undo_partial, result.applied, result.skipped)
                     } else {
-                        "已撤销「${handle.label}」"
+                        UiText.res(R.string.tag_management_undo_done, handle.label)
                     }
                     finishWithReload(message = msg)
                 }
@@ -191,7 +193,7 @@ class TagManagementViewModel(
         _uiState.update { it.copy(undoable = null) }
     }
 
-    private suspend fun finishWithReload(message: String, undoable: TagUndoHandle? = null) {
+    private suspend fun finishWithReload(message: UiText, undoable: TagUndoHandle? = null) {
         val tags = tagRepository.tags().getOrNull()?.sortedByUsage() ?: _uiState.value.tags
         _uiState.update { it.copy(tags = tags, busy = false, message = message, undoable = undoable) }
     }
@@ -202,11 +204,13 @@ class TagManagementViewModel(
 }
 
 /** state_conflict has no entry in the shared error map (it's surface-agnostic);
- *  give it a tag-friendly line here without changing other surfaces' copy. */
-private fun tagErrorMessage(error: Throwable): String {
+ *  give it a tag-friendly line here without changing other surfaces' copy. Every
+ *  other failure routes through [toUiText] (known code → R.string.error_*; else
+ *  the resolved message; else the tag-action fallback). */
+private fun tagErrorMessage(error: Throwable): UiText {
     val code = (error as? RepositoryException)?.errorCode
-    if (code == "state_conflict") return "标签已在其它端被修改，请刷新后重试。"
-    return error.message ?: "操作没有成功，请稍后再试。"
+    if (code == "state_conflict") return UiText.res(R.string.tag_management_error_state_conflict)
+    return error.toUiText(R.string.tag_management_action_failed)
 }
 
 private fun List<ManagedTag>.sortedByUsage(): List<ManagedTag> =

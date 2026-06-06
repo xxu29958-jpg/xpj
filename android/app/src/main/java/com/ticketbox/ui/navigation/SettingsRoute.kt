@@ -40,23 +40,13 @@ internal fun SettingsRoute(
     val merchantState by merchantAliasViewModel.uiState.collectAsStateWithLifecycle()
     val appearanceState by appearanceViewModel.uiState.collectAsStateWithLifecycle()
 
-    val mergedState = settingsState.copy(
-        categoryRules = rulesState.categoryRules,
-        ruleApplications = rulesState.ruleApplications,
-        confirmedRulesPreview = rulesState.confirmedRulesPreview,
-        categoryRuleUndoable = rulesState.undoableRule,
-        merchantAliases = merchantState.merchantAliases,
-        merchantAliasUndoable = merchantState.undoableAlias,
-        backgroundSettings = appearanceState.backgroundSettings,
-        busy = settingsState.busy || rulesState.busy || merchantState.busy,
-        message = settingsState.message
-            ?: rulesState.message
-            ?: merchantState.message
-            ?: appearanceState.message,
-    )
-
     SettingsDestinationHost(
-        state = mergedState,
+        states = SettingsRouteStates(
+            settings = settingsState,
+            rules = rulesState,
+            merchant = merchantState,
+            appearance = appearanceState,
+        ),
         currentSkin = currentSkin,
         currentCurrency = currentCurrency,
         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,

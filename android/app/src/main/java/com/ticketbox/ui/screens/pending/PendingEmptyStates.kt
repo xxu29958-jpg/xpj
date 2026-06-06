@@ -14,7 +14,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppSectionHeader
@@ -24,7 +26,7 @@ import com.ticketbox.ui.components.AppSecondaryButton
 internal fun UploadFlowCard() {
     AppContentCard {
         Text(
-            text = "上传后怎么处理",
+            text = stringResource(R.string.pending_upload_flow_title),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.heading.weight,
         )
@@ -32,9 +34,24 @@ internal fun UploadFlowCard() {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FlowStep("1", "上传", "选截图", modifier = Modifier.weight(1f))
-            FlowStep("2", "核对", "补金额", modifier = Modifier.weight(1f))
-            FlowStep("3", "入账", "确认后记录", modifier = Modifier.weight(1f))
+            FlowStep(
+                "1",
+                stringResource(R.string.pending_upload_flow_step1_title),
+                stringResource(R.string.pending_upload_flow_step1_subtitle),
+                modifier = Modifier.weight(1f),
+            )
+            FlowStep(
+                "2",
+                stringResource(R.string.pending_upload_flow_step2_title),
+                stringResource(R.string.pending_upload_flow_step2_subtitle),
+                modifier = Modifier.weight(1f),
+            )
+            FlowStep(
+                "3",
+                stringResource(R.string.pending_upload_flow_step3_title),
+                stringResource(R.string.pending_upload_flow_step3_subtitle),
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -43,12 +60,12 @@ internal fun UploadFlowCard() {
 internal fun UploadProgressCard() {
     AppContentCard {
         Text(
-            text = "正在创建待确认账单",
+            text = stringResource(R.string.pending_upload_progress_title),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
-            text = "上传完成后会自动刷新。新截图仍然只是草稿，不会直接入账。",
+            text = stringResource(R.string.pending_upload_progress_body),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -98,25 +115,33 @@ internal fun EmptyPendingState(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         AppSectionHeader(
-            title = if (loading) "正在整理待确认" else "待处理",
-            subtitle = if (readOnly) {
-                "当前角色可查看待确认账单，不能新增或修改"
-            } else if (loading) {
-                "同步完成后，这里会立刻显示需要核对的账单"
+            title = if (loading) {
+                stringResource(R.string.pending_empty_header_title_loading)
             } else {
-                "上传截图后，会出现在这里等你确认"
+                stringResource(R.string.pending_empty_header_title)
+            },
+            subtitle = if (readOnly) {
+                stringResource(R.string.pending_empty_header_subtitle_readonly)
+            } else if (loading) {
+                stringResource(R.string.pending_empty_header_subtitle_loading)
+            } else {
+                stringResource(R.string.pending_empty_header_subtitle)
             },
         )
         AppContentCard {
             PendingStateTitle(
                 icon = Icons.Filled.AddPhotoAlternate,
-                title = if (loading) "正在整理待确认账单" else "还没有待确认账单",
-                body = if (readOnly) {
-                    "当前账本没有需要查看的待确认账单。"
-                } else if (loading) {
-                    "截图上传后会先进入待确认区，确认后才会入账。"
+                title = if (loading) {
+                    stringResource(R.string.pending_empty_card_title_loading)
                 } else {
-                    "截图上传后会先进入待确认区。核对清楚后，再把它记到账本里。"
+                    stringResource(R.string.pending_empty_card_title)
+                },
+                body = if (readOnly) {
+                    stringResource(R.string.pending_empty_card_body_readonly)
+                } else if (loading) {
+                    stringResource(R.string.pending_empty_card_body_loading)
+                } else {
+                    stringResource(R.string.pending_empty_card_body)
                 },
             )
             if (loading) {
@@ -126,7 +151,11 @@ internal fun EmptyPendingState(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (!readOnly) {
                 AppSecondaryButton(
-                    text = if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令",
+                    text = if (showUploadGuide) {
+                        stringResource(R.string.pending_empty_guide_collapse)
+                    } else {
+                        stringResource(R.string.pending_empty_guide_expand)
+                    },
                     modifier = Modifier.weight(1.25f),
                     leadingIcon = Icons.Filled.Info,
                     enabled = !loading,
@@ -134,7 +163,7 @@ internal fun EmptyPendingState(
                 )
             }
             AppSecondaryButton(
-                text = "刷新",
+                text = stringResource(R.string.pending_empty_refresh_button),
                 modifier = Modifier.weight(if (readOnly) 1f else 0.75f),
                 enabled = !uploading && !loading,
                 onClick = onRefresh,
@@ -145,10 +174,10 @@ internal fun EmptyPendingState(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("iPhone 上传方法", style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.heading.weight)
-                    Text("1. 打开账单截图，点分享。")
-                    Text("2. 选择\u201C上传到小票夹\u201D快捷指令。")
-                    Text("3. 上传成功后回到这里刷新。")
+                    Text(stringResource(R.string.pending_empty_guide_title), style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.heading.weight)
+                    Text(stringResource(R.string.pending_empty_guide_step1))
+                    Text(stringResource(R.string.pending_empty_guide_step2))
+                    Text(stringResource(R.string.pending_empty_guide_step3))
                 }
             }
         }

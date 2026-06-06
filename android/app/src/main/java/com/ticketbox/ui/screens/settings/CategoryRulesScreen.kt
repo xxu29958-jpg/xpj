@@ -20,7 +20,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
@@ -57,6 +59,8 @@ fun CategoryRulesScreen(
     var form by remember { mutableStateOf(CategoryRuleDraftForm()) }
     var deletingRule by remember { mutableStateOf<CategoryRule?>(null) }
     var rollbackApplication by remember { mutableStateOf<RuleApplicationBatch?>(null) }
+    val validationFieldsMessage = stringResource(R.string.category_rule_form_validation_fields)
+    val validationPriorityMessage = stringResource(R.string.category_rule_form_validation_priority)
 
     deletingRule?.let { rule ->
         DeleteCategoryRuleDialog(
@@ -81,7 +85,7 @@ fun CategoryRulesScreen(
     }
 
     SettingsPageFrame(
-        title = "分类规则",
+        title = stringResource(R.string.category_rules_page_title),
         subtitle = categoryRuleSummary(rules),
         onBack = onBack,
     ) {
@@ -101,19 +105,23 @@ fun CategoryRulesScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "已删除「${undoable.keyword}」",
+                        text = stringResource(R.string.category_rules_undo_deleted, undoable.keyword),
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(AppSpacing.compactGap))
-                    TextButton(onClick = onUndoDelete) { Text("撤销") }
+                    TextButton(onClick = onUndoDelete) { Text(stringResource(R.string.category_rules_undo_button)) }
                 }
             }
         }
         if (!readOnly) {
             SettingsSection(
-                title = if (form.editingRule == null) "新增规则" else "编辑规则",
+                title = if (form.editingRule == null) {
+                    stringResource(R.string.category_rules_section_create)
+                } else {
+                    stringResource(R.string.category_rules_section_edit)
+                },
                 icon = Icons.Filled.Category,
             ) {
                 CategoryRuleEditorCard(
@@ -122,6 +130,8 @@ fun CategoryRulesScreen(
                     onFormChange = { form = it },
                     onSubmit = {
                         form.submit(
+                            fieldsRequiredMessage = validationFieldsMessage,
+                            priorityInvalidMessage = validationPriorityMessage,
                             onInvalid = { message -> form = form.copy(localMessage = message) },
                             onValid = { rule, keyword, category, priority ->
                                 if (rule == null) {
@@ -138,11 +148,11 @@ fun CategoryRulesScreen(
             }
         } else {
             Text(
-                text = "当前角色为只读，无法修改账本。",
+                text = stringResource(R.string.common_readonly_ledger),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        SettingsSection(title = "规则列表", icon = Icons.Filled.Category) {
+        SettingsSection(title = stringResource(R.string.category_rules_section_list), icon = Icons.Filled.Category) {
             CategoryRuleList(
                 rules = rules,
                 readOnly = readOnly,
@@ -159,7 +169,7 @@ fun CategoryRulesScreen(
                 },
             )
         }
-        SettingsSection(title = "已入账应用", icon = Icons.Filled.RestartAlt) {
+        SettingsSection(title = stringResource(R.string.category_rules_section_confirmed_apply), icon = Icons.Filled.RestartAlt) {
             ConfirmedRuleApplyPanel(
                 preview = confirmedPreview,
                 busy = busy,
@@ -168,7 +178,7 @@ fun CategoryRulesScreen(
                 onConfirm = onConfirmApplyConfirmedRules,
             )
         }
-        SettingsSection(title = "最近应用记录", icon = Icons.Filled.RestartAlt) {
+        SettingsSection(title = stringResource(R.string.category_rules_section_history), icon = Icons.Filled.RestartAlt) {
             RuleApplicationHistory(
                 applications = applications,
                 readOnly = readOnly,
@@ -180,16 +190,18 @@ fun CategoryRulesScreen(
 }
 
 private fun CategoryRuleDraftForm.submit(
+    fieldsRequiredMessage: String,
+    priorityInvalidMessage: String,
     onInvalid: (String) -> Unit,
     onValid: (CategoryRule?, String, String, Int) -> Unit,
 ) {
     val priority = priorityText.toIntOrNull()
     if (keyword.isBlank() || category.isBlank()) {
-        onInvalid("请填写关键词和分类。")
+        onInvalid(fieldsRequiredMessage)
         return
     }
     if (priority == null) {
-        onInvalid("优先级必须是数字。")
+        onInvalid(priorityInvalidMessage)
         return
     }
     onValid(editingRule, keyword, category, priority)

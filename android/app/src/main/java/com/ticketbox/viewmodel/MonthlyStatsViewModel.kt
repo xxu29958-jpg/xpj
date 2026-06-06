@@ -2,10 +2,12 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.filterConfirmedExpenses
 import com.ticketbox.domain.model.monthlyCategoryInsight
 import com.ticketbox.domain.model.monthlyStatsFromConfirmedExpenses
@@ -248,7 +250,7 @@ class MonthlyStatsViewModel(
                         statsSource = StatsSource.Backend,
                         categoryInsight = monthlyCategoryInsight(stats),
                         loading = false,
-                        message = error.message ?: "生活统计暂时打不开，请稍后再试。",
+                        message = error.toUiText(R.string.stats_message_lifestyle_failed),
                     )
                 }
             }
@@ -277,9 +279,9 @@ class MonthlyStatsViewModel(
                 categoryInsight = monthlyCategoryInsight(visibleStats),
                 loading = false,
                 message = if (fallbackStats != null) {
-                    "已显示本机账本统计，联网后会自动更新。"
+                    UiText.res(R.string.stats_message_local_fallback)
                 } else {
-                    error.message ?: "统计暂时打不开，请稍后再试。"
+                    error.toUiText(R.string.stats_message_stats_failed)
                 },
             )
         }

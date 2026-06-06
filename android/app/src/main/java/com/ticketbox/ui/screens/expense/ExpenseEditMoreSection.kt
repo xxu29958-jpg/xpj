@@ -12,8 +12,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
 
@@ -51,15 +53,21 @@ internal fun ExpenseEditMoreSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("更多记录", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.expense_edit_more_title), style = MaterialTheme.typography.titleSmall)
                     Text(
-                        text = "标签、值不值、后悔指数和识别原文",
+                        text = stringResource(R.string.expense_edit_more_subtitle),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 AppOutlinedButton(onClick = onToggleMore) {
-                    Text(if (moreExpanded) "收起" else "展开")
+                    Text(
+                        if (moreExpanded) {
+                            stringResource(R.string.expense_edit_more_collapse_button)
+                        } else {
+                            stringResource(R.string.expense_edit_more_expand_button)
+                        }
+                    )
                 }
             }
 
@@ -68,15 +76,15 @@ internal fun ExpenseEditMoreSection(
                     value = tags,
                     onValueChange = onTagsChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("标签") },
-                    placeholder = { Text("真香、必要支出") },
+                    label = { Text(stringResource(R.string.expense_edit_more_tags_label)) },
+                    placeholder = { Text(stringResource(R.string.expense_edit_more_tags_placeholder)) },
                     enabled = !readOnly,
                 )
                 OutlinedTextField(
                     value = valueScoreText,
                     onValueChange = onValueScoreChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("值不值评分，1-5") },
+                    label = { Text(stringResource(R.string.expense_edit_more_value_score_label)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     enabled = !readOnly,
@@ -85,21 +93,33 @@ internal fun ExpenseEditMoreSection(
                     value = regretScoreText,
                     onValueChange = onRegretScoreChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("后悔指数，1-5") },
+                    label = { Text(stringResource(R.string.expense_edit_more_regret_score_label)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     enabled = !readOnly,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onToggleRawText) {
-                        Text(if (rawTextExpanded) "收起识别原文" else "查看识别原文")
+                        Text(
+                            if (rawTextExpanded) {
+                                stringResource(R.string.expense_edit_more_raw_text_collapse_button)
+                            } else {
+                                stringResource(R.string.expense_edit_more_raw_text_expand_button)
+                            }
+                        )
                     }
                     if (!readOnly && canRecognize) {
                         AppOutlinedButton(
                             enabled = !ocrRunning && !saving,
                             onClick = onRetryOcr,
                         ) {
-                            Text(if (ocrRunning) "识别中" else "重新识别")
+                            Text(
+                                if (ocrRunning) {
+                                    stringResource(R.string.expense_edit_more_recognize_running_button)
+                                } else {
+                                    stringResource(R.string.expense_edit_more_recognize_retry_button)
+                                }
+                            )
                         }
                         // ADR-0042 Slice E-2: paste the receipt text by hand and
                         // let the server parse it into the empty fields (distinct
@@ -108,12 +128,15 @@ internal fun ExpenseEditMoreSection(
                             enabled = !ocrRunning && !saving,
                             onClick = onRecognizeText,
                         ) {
-                            Text("粘贴文字识别")
+                            Text(stringResource(R.string.expense_edit_more_recognize_paste_button))
                         }
                     }
                 }
                 if (rawTextExpanded) {
-                    Text("识别原文：$rawTextDisplay", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        stringResource(R.string.expense_edit_more_raw_text_value, rawTextDisplay),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }

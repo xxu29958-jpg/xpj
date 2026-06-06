@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0044 wave 1, cluster misc_screens, see strings.xml for convention. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
+
+    <!-- IncomePlanScreen：收入计划 -->
+    <string name="income_plan_topbar_title">收入计划</string>
+    <string name="income_plan_topbar_back">返回</string>
+    <string name="income_plan_fab_add">添加收入</string>
+    <string name="income_plan_intro_body">声明每月收入，用于算「本月可自由支配」。</string>
+    <string name="income_plan_section_active">在用</string>
+    <string name="income_plan_card_archive_action">归档</string>
+    <string name="income_plan_section_archived">已归档</string>
+    <string name="income_plan_card_restore_action">恢复</string>
+    <string name="income_plan_total_label">月度收入总额</string>
+    <string name="income_plan_total_hint">来自下方所有 “在用” 状态的收入计划。</string>
+    <string name="income_plan_card_payday">每月 %1$d 号</string>
+    <string name="income_plan_empty_title">还没有收入计划</string>
+    <string name="income_plan_empty_body">点右下角 “添加收入”，写好后「本月可自由支配」才能算出来。</string>
+    <string name="income_plan_sheet_title">添加收入</string>
+    <string name="income_plan_sheet_label_name">名称</string>
+    <string name="income_plan_sheet_label_type">类型</string>
+    <string name="income_plan_sheet_label_amount">金额（元 / 月）</string>
+    <string name="income_plan_sheet_label_payday">发薪日 (1-31)</string>
+    <string name="income_plan_sheet_submitting">提交中…</string>
+    <string name="income_plan_sheet_save">保存</string>
+
+    <!-- GlobalSearchScreen：全局搜索 -->
+    <string name="global_search_header_title">搜索</string>
+    <string name="global_search_header_subtitle">从待确认和本机账本缓存里找一笔账。</string>
+    <string name="global_search_clear_action">清空</string>
+    <string name="global_search_field_label">关键词</string>
+    <string name="global_search_field_placeholder">咖啡、地铁、房租</string>
+    <string name="global_search_scope_all">全部 %1$d</string>
+    <string name="global_search_scope_pending">待确认 %1$d</string>
+    <string name="global_search_scope_confirmed">已确认 %1$d</string>
+    <string name="global_search_empty_blank_title">输入关键词</string>
+    <string name="global_search_empty_blank_subtitle">商家、分类、备注、标签和原文都可以匹配。</string>
+    <string name="global_search_empty_nomatch_title">没有匹配项</string>
+    <string name="global_search_empty_nomatch_subtitle">换一个更短的商家名、分类名或备注关键词。</string>
+    <string name="global_search_result_matched">命中：%1$s</string>
+    <string name="global_search_badge_pending">待确认</string>
+    <string name="global_search_badge_confirmed">已确认</string>
+
+    <!-- BillSplitScreen：拆账 -->
+    <string name="bill_split_topbar_title">拆账</string>
+    <string name="bill_split_topbar_back">返回</string>
+    <string name="bill_split_tab_inbox">收件箱 (%1$d)</string>
+    <string name="bill_split_tab_sent">已发出 (%1$d)</string>
+    <string name="bill_split_inbox_empty">暂无拆账邀请。</string>
+    <string name="bill_split_inbox_accept">接受到 %1$s</string>
+    <string name="bill_split_inbox_reject">拒绝</string>
+    <string name="bill_split_sent_empty">暂无已发出的拆账邀请。</string>
+    <string name="bill_split_sent_cancel">撤回</string>
+
+    <!-- BindServerScreen：绑定私人账本 -->
+    <string name="bind_server_header_title">绑定私人账本</string>
+    <string name="bind_server_header_subtitle">完成绑定后，即可在小票夹查看账本。</string>
+    <string name="bind_server_hint_with_url">服务拥有者会提供账本地址和绑定码。</string>
+    <string name="bind_server_hint_no_url">服务拥有者已配置账本地址，请输入绑定码。</string>
+    <string name="bind_server_field_url_label">账本地址</string>
+    <string name="bind_server_field_url_placeholder">向服务拥有者获取</string>
+    <string name="bind_server_field_code_label">绑定码</string>
+    <string name="bind_server_field_code_placeholder">8 位数字</string>
+    <string name="bind_server_button_binding">正在绑定</string>
+    <string name="bind_server_button_bind">绑定账本</string>
+    <string name="bind_server_button_scan">扫码绑定</string>
+
+    <!-- LoginScreen：本机验证解锁 -->
+    <string name="login_header_title">验证后查看账单</string>
+    <string name="login_header_subtitle">本机验证通过后，才会读取账本会话凭证。</string>
+    <string name="login_unlock_button">解锁账本</string>
+
+    <!-- AuthScreenHeader：绑定 / 解锁页共享标题骨架 -->
+    <string name="auth_header_app_label">小票夹</string>
+
+    <!-- IncomePlanViewModel：收入计划 VM 状态/结果文案（ADR-0044 wave 2） -->
+    <string name="income_plan_load_failed">加载收入计划失败。</string>
+    <string name="income_plan_validation_error">请填写名称、合法金额和 1-31 之间的发薪日。</string>
+    <string name="income_plan_added">已添加收入计划</string>
+    <string name="income_plan_add_failed">添加失败，请稍后重试。</string>
+    <string name="income_plan_archived">已归档</string>
+    <string name="income_plan_restored">已恢复</string>
+
+    <!-- GlobalSearchViewModel：全局搜索 VM 状态/命中字段标签（ADR-0044 wave 2） -->
+    <string name="global_search_pending_load_failed">待确认账单暂时加载不了，先看本机账本。</string>
+    <string name="global_search_field_merchant">商家</string>
+    <string name="global_search_field_category">分类</string>
+    <string name="global_search_field_note">备注</string>
+    <string name="global_search_field_tags">标签</string>
+    <string name="global_search_field_source">来源</string>
+    <string name="global_search_field_raw_text">原文</string>
+
+    <!-- AppViewModel：绑定 / 解锁 / 外观切换 全局状态文案（ADR-0044 wave 2） -->
+    <string name="app_bind_restore_failed">已绑定，但历史账本恢复失败，可稍后在账本页更新。</string>
+    <string name="app_bind_failed">绑定没成功，请检查账本地址和绑定码。</string>
+    <string name="app_unlock_no_biometric">请先在系统中设置指纹或面容。</string>
+    <string name="app_skin_switched">已切换为%1$s</string>
+    <string name="app_currency_switched">已切换为%1$s默认记账币种</string>
+
+</resources>

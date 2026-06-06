@@ -11,9 +11,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetExcludedCategory
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -28,19 +30,28 @@ internal fun CategoryBudgetCard(
     currencyDisplay: CurrencyDisplay,
 ) {
     BudgetListCard(
-        title = "分类执行",
-        emptyText = "未设置分类预算。",
+        title = stringResource(R.string.budget_category_card_title),
+        emptyText = stringResource(R.string.budget_category_card_empty),
         hasItems = items.isNotEmpty(),
     ) {
         items.forEachIndexed { index, item ->
             if (index > 0) HorizontalDivider()
             AmountRow(
                 title = item.category,
-                detail = "已花 ${formatDisplayAmount(item.spentAmountCents, currencyDisplay)}",
+                detail = stringResource(
+                    R.string.budget_category_spent,
+                    formatDisplayAmount(item.spentAmountCents, currencyDisplay),
+                ),
                 amount = if (item.overspentAmountCents > 0L) {
-                    "超 ${formatDisplayAmount(item.overspentAmountCents, currencyDisplay)}"
+                    stringResource(
+                        R.string.budget_category_overspent,
+                        formatDisplayAmount(item.overspentAmountCents, currencyDisplay),
+                    )
                 } else {
-                    "剩 ${formatDisplayAmount(item.remainingAmountCents, currencyDisplay)}"
+                    stringResource(
+                        R.string.budget_category_remaining,
+                        formatDisplayAmount(item.remainingAmountCents, currencyDisplay),
+                    )
                 },
             )
         }
@@ -53,15 +64,15 @@ internal fun ExcludedBreakdownCard(
     currencyDisplay: CurrencyDisplay,
 ) {
     BudgetListCard(
-        title = "剔除明细",
-        emptyText = "本月没有被剔除的消费。",
+        title = stringResource(R.string.budget_excluded_card_title),
+        emptyText = stringResource(R.string.budget_excluded_card_empty),
         hasItems = items.isNotEmpty(),
     ) {
         items.forEachIndexed { index, item ->
             if (index > 0) HorizontalDivider()
             AmountRow(
                 title = item.category,
-                detail = "${item.count} 笔",
+                detail = stringResource(R.string.budget_excluded_count, item.count),
                 amount = formatDisplayAmount(item.amountCents, currencyDisplay),
             )
         }

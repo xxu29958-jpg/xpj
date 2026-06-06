@@ -65,11 +65,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.BuildConfig
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -113,8 +115,8 @@ fun SecurityPrivacyScreen(
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            title = { Text("清除手机本地数据？") },
-            text = { Text("账本数据不会删除。之后可重新更新已入账账单。") },
+            title = { Text(stringResource(R.string.settings_security_clear_dialog_title)) },
+            text = { Text(stringResource(R.string.settings_security_clear_dialog_text)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -122,17 +124,17 @@ fun SecurityPrivacyScreen(
                         onClearCache()
                     },
                 ) {
-                    Text("确定清除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.settings_security_clear_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { showClearCacheDialog = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { showClearCacheDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     if (showClearBindingDialog) {
         AlertDialog(
             onDismissRequest = { showClearBindingDialog = false },
-            title = { Text("退出当前账本？") },
-            text = { Text("退出后需要重新绑定小票夹。手机本地口令会被清除，账本数据不会删除。") },
+            title = { Text(stringResource(R.string.settings_security_logout_dialog_title)) },
+            text = { Text(stringResource(R.string.settings_security_logout_dialog_text)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -140,24 +142,28 @@ fun SecurityPrivacyScreen(
                         onBindingCleared()
                     },
                 ) {
-                    Text("确定退出", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.settings_security_logout_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { showClearBindingDialog = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { showClearBindingDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 
     SettingsPageFrame(
-        title = "安全与隐私",
+        title = stringResource(R.string.settings_security_page_title),
         subtitle = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
-            "口令保存在本机安全区，背景图片不会上传。"
+            stringResource(R.string.settings_security_page_subtitle_locked)
         } else {
-            "本机验证当前关闭，会话凭证仍保存在本机安全区。"
+            stringResource(R.string.settings_security_page_subtitle_unlocked)
         },
         onBack = onBack,
     ) {
         SettingsSection(
-            title = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) "本机解锁" else "本机验证",
+            title = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
+                stringResource(R.string.settings_security_section_unlock_locked)
+            } else {
+                stringResource(R.string.settings_security_section_unlock_unlocked)
+            },
             icon = Icons.Filled.Security,
         ) {
             AppGlassCard(containerAlpha = 0.96f) {
@@ -167,28 +173,28 @@ fun SecurityPrivacyScreen(
                 ) {
                     Text(
                         if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
-                            "指纹 / 面容只用于本地解锁"
+                            stringResource(R.string.settings_security_unlock_card_title_locked)
                         } else {
-                            "指纹、面容和锁屏密码验证已关闭"
+                            stringResource(R.string.settings_security_unlock_card_title_unlocked)
                         },
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
                         text = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
-                            "账本访问使用绑定时保存的会话凭证。App 切到后台超过 5 分钟后会要求重新解锁。"
+                            stringResource(R.string.settings_security_unlock_card_body_locked)
                         } else {
-                            "当前版本不会要求本机解锁。账本访问仍使用绑定时保存的会话凭证。"
+                            stringResource(R.string.settings_security_unlock_card_body_unlocked)
                         },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "自定义背景只保存在手机私有目录，不上传到小票夹服务。",
+                        text = stringResource(R.string.settings_security_background_privacy),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
-        SettingsSection(title = "危险操作", icon = Icons.Filled.DeleteOutline) {
+        SettingsSection(title = stringResource(R.string.settings_security_section_danger), icon = Icons.Filled.DeleteOutline) {
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -197,9 +203,9 @@ fun SecurityPrivacyScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Icon(Icons.Filled.DeleteOutline, contentDescription = "清除手机本地数据", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.settings_security_clear_data_icon_desc), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("清除数据")
+                    Text(stringResource(R.string.settings_security_button_clear_data))
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -208,9 +214,9 @@ fun SecurityPrivacyScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "退出当前账本", modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.settings_security_logout_icon_desc), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("退出账本")
+                    Text(stringResource(R.string.settings_security_button_logout))
                 }
             }
         }

@@ -20,10 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -60,9 +62,17 @@ internal fun CategoryStructureCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text("分类结构", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                     Text(
-                        text = topCategory?.let { "主要花在「${it.category}」" } ?: "还没有分类支出",
+                        stringResource(R.string.stats_category_structure_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = AppTextHierarchy.heading.weight,
+                    )
+                    Text(
+                        text = if (topCategory != null) {
+                            stringResource(R.string.stats_category_structure_top, topCategory.category)
+                        } else {
+                            stringResource(R.string.stats_category_structure_empty)
+                        },
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
@@ -70,8 +80,15 @@ internal fun CategoryStructureCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = insight?.let { "占本月 ${it.topSharePercent}% · ${it.categoryCount} 个分类" }
-                            ?: "${categories.size} 个分类",
+                        text = if (insight != null) {
+                            stringResource(
+                                R.string.stats_category_structure_insight,
+                                insight.topSharePercent,
+                                insight.categoryCount,
+                            )
+                        } else {
+                            stringResource(R.string.stats_category_structure_count, categories.size)
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
@@ -138,7 +155,7 @@ private fun CategoryStructureBarRow(
                 fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
-                text = "$percent%",
+                text = stringResource(R.string.stats_category_structure_percent, percent),
                 modifier = Modifier.width(38.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

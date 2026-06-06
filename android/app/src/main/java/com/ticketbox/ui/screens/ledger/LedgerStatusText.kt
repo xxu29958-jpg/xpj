@@ -1,26 +1,38 @@
 package com.ticketbox.ui.screens.ledger
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.viewmodel.LedgerUiState
 
+@Composable
 internal fun ledgerCombinedStatusLine(state: LedgerUiState): String {
     val summary = state.summary
     val syncText = when {
-        summary.syncing -> "更新中"
-        summary.lastSyncAt != null -> "更新完成 · ${ledgerSyncClock(summary.lastSyncAt)}"
-        else -> "离线可用"
+        summary.syncing -> stringResource(R.string.ledger_status_syncing)
+        summary.lastSyncAt != null -> stringResource(
+            R.string.ledger_status_synced_at,
+            ledgerSyncClock(summary.lastSyncAt),
+        )
+        else -> stringResource(R.string.ledger_status_offline)
     }
-    return "$syncText · ${ledgerFilterSummary(state)}"
+    return stringResource(R.string.ledger_status_line, syncText, ledgerFilterSummary(state))
 }
 
+@Composable
 internal fun ledgerFilterSummary(state: LedgerUiState): String {
     val filter = state.filter
-    val month = filter.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
-    val category = filter.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
-    val tag = filter.tagFilter.takeIf { it.isNotBlank() }?.let { " · 标签“$it”" }.orEmpty()
-    val query = filter.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
-    return "当前查看：$month · $category$tag$query"
+    val month = filter.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+        ?: stringResource(R.string.ledger_filter_summary_month_all)
+    val category = filter.categoryFilter.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.ledger_filter_summary_category_all)
+    val tag = filter.tagFilter.takeIf { it.isNotBlank() }
+        ?.let { stringResource(R.string.ledger_filter_summary_tag, it) }.orEmpty()
+    val query = filter.query.takeIf { it.isNotBlank() }
+        ?.let { stringResource(R.string.ledger_filter_summary_query, it) }.orEmpty()
+    return stringResource(R.string.ledger_filter_summary_template, month, category, tag, query)
 }
 
 internal fun ledgerSyncClock(value: String): String {

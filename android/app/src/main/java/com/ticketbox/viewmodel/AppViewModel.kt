@@ -3,12 +3,14 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.BuildConfig
+import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ServerBindingRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +26,7 @@ data class AppUiState(
     val currency: CurrencyCode = CurrencyCode.Default,
     val currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
-    val authMessage: String? = null,
+    val authMessage: UiText? = null,
 )
 
 class AppViewModel(
@@ -96,7 +98,7 @@ class AppViewModel(
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(binding = false, authMessage = error.message ?: "绑定没成功，请检查账本地址和绑定码。") }
+                    _uiState.update { it.copy(binding = false, authMessage = error.toUiText(R.string.app_bind_failed)) }
                 }
         }
     }
@@ -122,9 +124,13 @@ class AppViewModel(
         _uiState.update { it.copy(unlocked = true, authMessage = null) }
     }
 
-    fun unlockFailed(message: String) {
+    fun unlockFailed(message: UiText) {
         _uiState.update { it.copy(authMessage = message) }
     }
+
+    /** Biometric/system callbacks (`BiometricAuthManager.onError`) hand us an
+     *  already-resolved string; wrap it verbatim so the message is unchanged. */
+    fun unlockFailed(message: String) = unlockFailed(UiText.raw(message))
 
     fun consumeAuthMessage() {
         _uiState.update { it.copy(authMessage = null) }
@@ -132,7 +138,9 @@ class AppViewModel(
 
     fun selectSkin(skin: AppSkin) {
         settingsStore.saveAppSkinKey(skin.storageKey)
-        _uiState.update { it.copy(skin = skin, authMessage = "已切换为${skin.displayName}") }
+        _uiState.update {
+            it.copy(skin = skin, authMessage = UiText.res(R.string.app_skin_switched, skin.displayName))
+        }
     }
 
     fun selectCurrency(currency: CurrencyCode) {
@@ -141,7 +149,7 @@ class AppViewModel(
             it.copy(
                 currency = currency,
                 currencyDisplay = CurrencyDisplay.Base,
-                authMessage = "已切换为${currency.displayName}默认记账币种",
+                authMessage = UiText.res(R.string.app_currency_switched, currency.displayName),
             )
         }
     }
@@ -166,4 +174,4 @@ class AppViewModel(
     }
 }
 
-internal const val BIND_RESTORE_FAILED_MESSAGE = "已绑定，但历史账本恢复失败，可稍后在账本页更新。"
+internal val BIND_RESTORE_FAILED_MESSAGE: UiText = UiText.res(R.string.app_bind_restore_failed)

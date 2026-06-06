@@ -26,11 +26,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSolidCard
@@ -54,22 +57,22 @@ fun SyncStatusScreen(
     val status = state.status
 
     SettingsPageFrame(
-        title = "离线同步",
-        subtitle = "联网后会自动把离线改动同步到服务器；有冲突或失败时在这里处理。",
+        title = stringResource(R.string.sync_status_page_title),
+        subtitle = stringResource(R.string.sync_status_page_subtitle),
         onBack = onBack,
     ) {
         SyncSummaryCard(status)
 
         state.message?.let { msg ->
             Text(
-                text = msg,
+                text = msg.asString(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
         if (status.conflicts.isNotEmpty()) {
-            SettingsSection(title = "需要你确认", icon = Icons.Filled.SyncProblem) {
+            SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
                 status.conflicts.forEach { row ->
                     ConflictCard(
                         row = row,
@@ -82,7 +85,7 @@ fun SyncStatusScreen(
         }
 
         if (status.failed.isNotEmpty()) {
-            SettingsSection(title = "同步失败", icon = Icons.Filled.ErrorOutline) {
+            SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
                 status.failed.forEach { row ->
                     FailedCard(
                         row = row,
@@ -108,20 +111,20 @@ private fun SyncSummaryCard(status: OutboxStatus) {
             tone = tokens.danger
             icon = Icons.Filled.SyncProblem
             val pending = status.conflicts.size + status.failed.size
-            title = "$pending 笔需要你处理"
-            body = "下面的改动没能自动同步，需要你决定怎么办。"
+            title = stringResource(R.string.sync_status_summary_needs_action_title, pending)
+            body = stringResource(R.string.sync_status_summary_needs_action_body)
         }
         status.queueDepth > 0 -> {
             tone = tokens.info
             icon = Icons.Filled.Sync
-            title = "${status.queueDepth} 笔待同步"
-            body = "联网后会自动上传，不用你操作。"
+            title = stringResource(R.string.sync_status_summary_queued_title, status.queueDepth)
+            body = stringResource(R.string.sync_status_summary_queued_body)
         }
         else -> {
             tone = tokens.success
             icon = Icons.Filled.CloudDone
-            title = "全部已同步"
-            body = "离线改动都已安全送达服务器。"
+            title = stringResource(R.string.sync_status_summary_synced_title)
+            body = stringResource(R.string.sync_status_summary_synced_body)
         }
     }
 
@@ -168,12 +171,12 @@ private fun ConflictCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = "离线时：${mutationLabel(row.type)}",
+                text = stringResource(R.string.sync_status_conflict_offline_prefix, mutationLabel(row.type)),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = friendlyLastError(row.lastError, fallback = "这条改动已在其它设备被改动，没能自动同步。"),
+                text = friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_conflict_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -183,7 +186,7 @@ private fun ConflictCard(
             ) {
                 if (canKeep) {
                     AppPrimaryButton(
-                        text = "用我的覆盖",
+                        text = stringResource(R.string.sync_status_conflict_button_keep_mine),
                         icon = Icons.Filled.CloudUpload,
                         modifier = Modifier.weight(1f),
                         enabled = !busy,
@@ -196,7 +199,7 @@ private fun ConflictCard(
                     enabled = !busy,
                     danger = true,
                 ) {
-                    Text("放弃我的改动")
+                    Text(stringResource(R.string.sync_status_conflict_button_drop_mine))
                 }
             }
         }
@@ -221,12 +224,12 @@ private fun FailedCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = "离线时：${mutationLabel(row.type)}",
+                text = stringResource(R.string.sync_status_failed_offline_prefix, mutationLabel(row.type)),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = friendlyLastError(row.lastError, fallback = "这条改动没能同步成功。"),
+                text = friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -236,7 +239,7 @@ private fun FailedCard(
             ) {
                 if (!expired) {
                     AppPrimaryButton(
-                        text = "重试",
+                        text = stringResource(R.string.sync_status_failed_button_retry),
                         icon = Icons.Filled.RestartAlt,
                         modifier = Modifier.weight(1f),
                         enabled = !busy,
@@ -249,7 +252,13 @@ private fun FailedCard(
                     enabled = !busy,
                     danger = true,
                 ) {
-                    Text(if (expired) "移除" else "放弃")
+                    Text(
+                        if (expired) {
+                            stringResource(R.string.sync_status_failed_button_remove)
+                        } else {
+                            stringResource(R.string.sync_status_failed_button_drop)
+                        },
+                    )
                 }
             }
         }
@@ -260,23 +269,24 @@ private fun FailedCard(
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
+@Composable
 private fun mutationLabel(type: PendingMutationType): String = when (type) {
-    PendingMutationType.PatchExpense -> "修改账单"
-    PendingMutationType.ConfirmExpense -> "确认入账"
-    PendingMutationType.RejectExpense -> "删除账单"
-    PendingMutationType.MarkNotDuplicate -> "保留账单（非重复）"
-    PendingMutationType.RetryOcr -> "重新识别"
-    PendingMutationType.RecognizeText -> "识别文字"
-    PendingMutationType.ReplaceItems -> "修改小票明细"
-    PendingMutationType.ReplaceSplits -> "修改家庭拆账"
-    PendingMutationType.AcknowledgeItemsMismatch -> "确认小票差异"
-    PendingMutationType.UpdateCategoryRule -> "修改分类规则"
-    PendingMutationType.DeleteCategoryRule -> "删除分类规则"
-    PendingMutationType.UpdateMerchantAlias -> "修改商家别名"
-    PendingMutationType.DeleteMerchantAlias -> "删除商家别名"
-    PendingMutationType.UpdateGoal -> "修改目标"
-    PendingMutationType.UpdateIncomePlan -> "修改收入计划"
-    PendingMutationType.Unknown -> "改动"
+    PendingMutationType.PatchExpense -> stringResource(R.string.sync_status_mutation_patch_expense)
+    PendingMutationType.ConfirmExpense -> stringResource(R.string.sync_status_mutation_confirm_expense)
+    PendingMutationType.RejectExpense -> stringResource(R.string.sync_status_mutation_reject_expense)
+    PendingMutationType.MarkNotDuplicate -> stringResource(R.string.sync_status_mutation_mark_not_duplicate)
+    PendingMutationType.RetryOcr -> stringResource(R.string.sync_status_mutation_retry_ocr)
+    PendingMutationType.RecognizeText -> stringResource(R.string.sync_status_mutation_recognize_text)
+    PendingMutationType.ReplaceItems -> stringResource(R.string.sync_status_mutation_replace_items)
+    PendingMutationType.ReplaceSplits -> stringResource(R.string.sync_status_mutation_replace_splits)
+    PendingMutationType.AcknowledgeItemsMismatch -> stringResource(R.string.sync_status_mutation_acknowledge_items_mismatch)
+    PendingMutationType.UpdateCategoryRule -> stringResource(R.string.sync_status_mutation_update_category_rule)
+    PendingMutationType.DeleteCategoryRule -> stringResource(R.string.sync_status_mutation_delete_category_rule)
+    PendingMutationType.UpdateMerchantAlias -> stringResource(R.string.sync_status_mutation_update_merchant_alias)
+    PendingMutationType.DeleteMerchantAlias -> stringResource(R.string.sync_status_mutation_delete_merchant_alias)
+    PendingMutationType.UpdateGoal -> stringResource(R.string.sync_status_mutation_update_goal)
+    PendingMutationType.UpdateIncomePlan -> stringResource(R.string.sync_status_mutation_update_income_plan)
+    PendingMutationType.Unknown -> stringResource(R.string.sync_status_mutation_unknown)
 }
 
 /**
@@ -291,16 +301,17 @@ private fun mutationLabel(type: PendingMutationType): String = when (type) {
  * 已知 marker → 中文文案;未知 lastError → 返回 fallback(card 自带的默认描述), 不把
  * 原 lastError 透传。
  */
+@Composable
 private fun friendlyLastError(raw: String?, fallback: String): String {
     val text = raw?.trim().orEmpty()
     if (text.isEmpty()) return fallback
     return when {
-        text.startsWith("max_attempts_exceeded") -> "已连续多次同步失败,请检查网络或稍后再试。"
-        text.startsWith("no_dispatcher_registered") -> "App 版本不支持此操作,请升级后再重试。"
+        text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
+        text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
         // ADR-0042 §4.10: row sat PENDING past the age-cap → reaped to FAILED
         // (never replayed) because its idempotency key could have expired
         // server-side. The user must redo the action against fresh state.
-        text.startsWith("outbox_row_expired") -> "这笔改动太久没能同步,已过期,请重新操作。"
+        text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
         // 抑制内部窗口期 / 用户自触发的 marker(它们对应的 row 在 PENDING 队列里,不该到
         // FailedCard / ConflictCard 上展示;万一漂移过来也只显示通用兜底)。
         text == "session_boundary_aborted" -> fallback

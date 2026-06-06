@@ -10,7 +10,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.components.AppPageRole
@@ -60,7 +63,7 @@ fun LedgerScreen(
             MonthPickerSheet(
                 months = state.months,
                 selectedMonth = state.monthFilter,
-                description = "选择后会刷新账本。历史月份多了以后可以上下滑动。",
+                description = stringResource(R.string.ledger_month_picker_description),
                 onSelectMonth = { month ->
                     onMonthChange(month)
                     showMonthPicker = false
@@ -118,7 +121,8 @@ fun LedgerScreen(
         }
     }
 
-    val groupedItems = remember(state.items) { groupLedgerExpenses(state.items) }
+    val resources = LocalContext.current.resources
+    val groupedItems = remember(state.items, resources) { groupLedgerExpenses(resources, state.items) }
 
     AppScrollableContent(
         role = AppPageRole.Ledger,
