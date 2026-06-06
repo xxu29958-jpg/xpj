@@ -183,10 +183,8 @@
 /* legacy .dashboard-card-tile / -label / -num / -hint shell 覆盖已删除 ——
    仪表盘显示已迁到 .dt-card (pages/dashboard.css)。下方 .dashboard-card-setting-*
    保留, 因为 dashboard_cards.html 配置页仍用。 */
-.desktop-shell-active .dashboard-card-setting-row {
-    background: var(--surface-card);
-    border: 1px solid var(--border-card);
-}
+/* .dashboard-card-setting-row 的 shell 兜底已删 —— 根样式 (_reports_goals.css)
+   现直接 var(--surface-card)，无需覆盖层盖白底 (P1-8 主题闭环)。 */
 .desktop-shell-active .dashboard-card-setting-title strong { color: var(--text-default); }
 .desktop-shell-active .dashboard-card-setting-title span { color: var(--text-meta); }
 .desktop-shell-active .dashboard-card-switch,

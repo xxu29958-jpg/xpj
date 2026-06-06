@@ -101,7 +101,7 @@ internal fun MissingAmountSheetContent(
         }
 
         Text(
-            text = "保存并确认会先 PATCH 金额，再调 /confirm。任何失败都不会绕过 amount_required。",
+            text = "保存并确认会先保存金额，再确认入账。没填金额不会被确认。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
         )

@@ -44,7 +44,7 @@ internal fun BulkConfirmSheetContent(
     ) {
         Text("批量确认这一批账单", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
-            text = "下一步会按顺序调用 /confirm 接口。每条独立处理，单条失败不会影响其他。",
+            text = "会逐条确认这批账单，单条失败不影响其他。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
