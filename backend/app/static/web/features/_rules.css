@@ -8,7 +8,7 @@
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .card-header h2 { margin: 0; }
 .btn-danger { background: var(--state-danger-bg); color: var(--state-danger-fg); border: 1px solid var(--state-danger-border); padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
-.btn-danger:hover { background: #fecaca; }
+.btn-danger:hover { background: var(--state-danger-bg); filter: brightness(0.96); }
 .transaction-table.compact th, .transaction-table.compact td { padding: 6px 8px; font-size: 13px; }
 .import-batch-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .import-batch-actions input[type="number"] {

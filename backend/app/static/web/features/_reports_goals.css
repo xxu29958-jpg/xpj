@@ -32,7 +32,7 @@
     border: 1px solid var(--border-card);
     border-radius: 8px;
     padding: 10px 12px;
-    background: #fff;
+    background: var(--surface-card);
 }
 .dashboard-card-setting-title {
     display: flex;
@@ -76,7 +76,7 @@
     border: 1px solid var(--border-input);
     border-radius: 6px;
     font-size: 13px;
-    background: #fff;
+    background: var(--surface-card);
 }
 .reports-panel h2 { margin-top: 0; }
 .reports-panel.is-chart-rendered .reports-chart-fallback { display: none; }
@@ -89,7 +89,7 @@
     color: var(--text-default);
     box-shadow: var(--shadow-raised);
 }
-.reports-export-dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
+.reports-export-dialog::backdrop { background: var(--drawer-overlay-bg); }
 .reports-export-dialog h3 {
     font-size: 16px;
     margin-bottom: 6px;

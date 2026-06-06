@@ -12,11 +12,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
@@ -37,6 +40,9 @@ internal fun QuickMerchantSheetContent(
 ) {
     var value by remember(expense.id) { mutableStateOf(expense.merchant.orEmpty()) }
     val cleaned = value.trim()
+    // P1-2: single-field sheet — auto-focus so the keyboard pops on open.
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
@@ -56,7 +62,7 @@ internal fun QuickMerchantSheetContent(
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
             label = { Text("商家名称") },
             placeholder = { Text("例如：星巴克 / 美团外卖") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             enabled = !saving,
             isError = value.isNotEmpty() && cleaned.isEmpty(),
             supportingText = if (value.isNotEmpty() && cleaned.isEmpty()) {
