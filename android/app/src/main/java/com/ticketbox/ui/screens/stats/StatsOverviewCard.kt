@@ -138,7 +138,7 @@ private fun MonthDeltaPill(
         }
         else -> {
             val percent = comparison.percentChange?.let { " ${kotlin.math.abs(it)}%" }.orEmpty()
-            "↓ ${formatDisplayAmount(kotlin.math.abs(delta), currencyDisplay)}$percent" to visuals.primary
+            "↓ ${formatDisplayAmount(kotlin.math.abs(delta), currencyDisplay)}$percent" to visuals.textDefault
         }
     }
     Box(
