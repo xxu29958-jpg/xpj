@@ -72,6 +72,12 @@ ERROR_MESSAGES = {
     "notification_source_invalid": "通知来源暂不支持。",
     "merchant_alias_not_found": "商家别名不存在。",
     "merchant_alias_conflict": "商家别名已指向其他商家。",
+    # ADR-0043 tag management (online-only rename/delete/merge/undo). A stale
+    # OCC token on rename/delete/merge/undo reuses the generic ``state_conflict``;
+    # these cover the tag-specific not-found / name-collision / undo-window cases.
+    "tag_not_found": "标签不存在。",
+    "tag_conflict": "已有同名标签，可改为合并。",
+    "tag_undo_not_found": "撤销记录不存在或已超过可撤销时间。",
     "import_batch_not_found": "导入批次不存在。",
     "state_conflict": "记录已被其它端修改，请刷新后再试。",
     # ADR-0042 request-idempotency (Idempotency-Key header on outbox-routed

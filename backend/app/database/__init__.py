@@ -28,7 +28,11 @@ from app.database._migrations import (
     migrate_sqlite_schema,
     record_schema_migration,
 )
-from app.database._seed import seed_identity_data, seed_runtime_data
+from app.database._seed import (
+    reconcile_expense_tag_mirror_once,
+    seed_identity_data,
+    seed_runtime_data,
+)
 from app.database._uploads import migrate_upload_paths_to_tenant_dirs
 from app.database._validate import validate_sqlite_data_integrity
 from app.database.data_migration import MigrationCheck, MigrationReport, migrate
@@ -48,6 +52,7 @@ __all__ = [
     "is_schema_migration_applied",
     "migrate_sqlite_schema",
     "migrate_upload_paths_to_tenant_dirs",
+    "reconcile_expense_tag_mirror_once",
     "record_schema_migration",
     "reset_sqlite_backup_state",
     "seed_identity_data",
@@ -76,6 +81,9 @@ def init_db() -> None:
     # paths remain readable through resolve_protected_image() after the route
     # has verified expense ownership. See docs/runbook/ROLLBACK.md.
     seed_runtime_data()
+    # ADR-0043 slice A: one-time expense_tags ↔ tags string mirror reconcile
+    # (after seed_runtime_data's backfill_expense_tags; marker-gated run-once).
+    reconcile_expense_tag_mirror_once()
 
 
 def _stamp_alembic_baseline_if_needed() -> None:

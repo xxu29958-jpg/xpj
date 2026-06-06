@@ -22,11 +22,14 @@ class SchemaMigration(Base):
 
     The legacy hand-written ``migrate_sqlite_schema`` in
     :mod:`app.database` is idempotent (uses ``ADD COLUMN`` /
-    ``CREATE INDEX IF NOT EXISTS``), so this table is **purely informational**
-    today — it does not gate execution. It exists so that future incremental
-    migration scripts can record a stable identifier (e.g. ``"v0.9-add-foo"``)
-    and be skipped on subsequent boots. See ``docs/roadmap/V2_ROADMAP.md`` and the
-    audit notes in ``docs/architecture/VERSION.md``.
+    ``CREATE INDEX IF NOT EXISTS``) and does **not** gate on this table. It
+    exists so that incremental migration steps can record a stable identifier
+    (e.g. ``"v0.9-add-foo"``) and be skipped on subsequent boots — and ADR-0043
+    now uses it exactly that way: the one-time ``expense_tags`` mirror reconcile
+    (``reconcile_expense_tag_mirror_once``) gates on a row here via a
+    cross-dialect read so it runs once on both SQLite and Postgres. See
+    ``docs/roadmap/V2_ROADMAP.md`` and the audit notes in
+    ``docs/architecture/VERSION.md``.
     """
 
     __tablename__ = "schema_migrations"
