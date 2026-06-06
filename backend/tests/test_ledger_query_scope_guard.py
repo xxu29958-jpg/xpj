@@ -75,6 +75,19 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
             "never blocks a recreate."
         ),
     ),
+    ScopeExemption(
+        path="services/cleanup_service.py",
+        function="purge_expired_soft_deletes",
+        model="Tag",
+        occurrences=1,
+        reason=(
+            "ADR-0043 契约 6: same system-wide purge sweep as MerchantAlias/"
+            "CategoryRule above — the soft-deleted tag delete is intentionally "
+            "all-tenant, gated only on `deleted_at < retention cutoff`, freeing "
+            "the reserved (tenant_id, key) once past the undo window. The undo "
+            "read path (tag_undo_service) is tenant-scoped."
+        ),
+    ),
 )
 
 

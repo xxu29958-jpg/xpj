@@ -53,6 +53,7 @@ def list_tags(db: Session, tenant_id: str) -> list[str]:
         select(Tag.name)
         .join(ExpenseTag, ExpenseTag.tag_id == Tag.id)
         .where(Tag.tenant_id == tenant_id)
+        .where(Tag.deleted_at.is_(None))  # ADR-0043: never surface soft-deleted tags
         .where(ExpenseTag.tenant_id == tenant_id)
         .distinct()
         .order_by(Tag.name.asc())
@@ -62,10 +63,21 @@ def list_tags(db: Session, tenant_id: str) -> list[str]:
 
 def _ensure_tag(db: Session, *, tenant_id: str, name: str) -> Tag:
     key = tag_key(name)
+    # The (tenant_id, key) unique constraint spans soft-deleted rows, so this
+    # returns at most one tag for the key — live OR soft-deleted.
     existing = db.scalar(
         ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1)
     )
     if existing is not None:
+        # ADR-0043 契约 4: implicit re-creation colliding with a soft-deleted key
+        # REVIVES that tag (so the unique key isn't violated and no duplicate is
+        # made) but keeps its delete snapshot — the original delete stays undoable
+        # (the snapshot purges on its own age, not on this revival, 契约 6).
+        if existing.deleted_at is not None:
+            existing.deleted_at = None
+            existing.updated_at = now_utc()
+            bump_row_version(existing)
+            db.flush()
         return existing
 
     now = now_utc()

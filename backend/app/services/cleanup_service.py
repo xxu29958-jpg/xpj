@@ -8,7 +8,14 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import CategoryRule, Expense, MerchantAlias
+from app.models import (
+    CategoryRule,
+    Expense,
+    MerchantAlias,
+    Tag,
+    TagMutationUndoGroup,
+    TagMutationUndoItem,
+)
 from app.services.file_service import (
     ALLOWED_EXTENSIONS,
     resolve_upload_path_for_tenant,
@@ -382,9 +389,10 @@ def purge_expired_soft_deletes(
     """ADR-0038 undo: global (all-tenant) purge of soft-deleted rows past the
     retention window, for the periodic purge scheduler. Returns rows purged.
 
-    Covers every resource that participates in soft-delete undo. Today that is
-    ``merchant_aliases`` and ``category_rules``; extend this as the undo pattern
-    reaches more tables. Rows are hidden from every read the moment they are
+    Covers every resource that participates in soft-delete undo:
+    ``merchant_aliases``, ``category_rules``, and the ADR-0043 tag-mutation undo
+    snapshots (``tag_mutation_undo_groups`` + ``_items``) plus the soft-deleted
+    ``tags`` they anchor. Rows are hidden from every read the moment they are
     soft-deleted, so the sweep cadence only bounds storage lag, never
     correctness or the undo window.
     """
@@ -399,5 +407,28 @@ def purge_expired_soft_deletes(
         .where(CategoryRule.deleted_at.is_not(None))
         .where(CategoryRule.deleted_at < cutoff)
     )
+    # ADR-0043 契约 6: snapshot retention anchors on the GROUP's own created_at.
+    # Items first (composite FK → groups), then groups, then the still-soft-
+    # deleted tags whose own deleted_at is past the window. The snapshot tables
+    # have no FK to ``tags`` (source/target stored as public_id), so group/tag
+    # purges are independent — a revived tag (live) is left alone, a tag still
+    # soft-deleted past window is freed (releasing its reserved unique key).
+    expired_group_ids = (
+        select(TagMutationUndoGroup.id).where(TagMutationUndoGroup.created_at < cutoff)
+    )
+    db.execute(
+        delete(TagMutationUndoItem).where(TagMutationUndoItem.group_id.in_(expired_group_ids))
+    )
+    group_result = db.execute(
+        delete(TagMutationUndoGroup).where(TagMutationUndoGroup.created_at < cutoff)
+    )
+    tag_result = db.execute(
+        delete(Tag).where(Tag.deleted_at.is_not(None)).where(Tag.deleted_at < cutoff)
+    )
     db.commit()
-    return int(alias_result.rowcount or 0) + int(rule_result.rowcount or 0)
+    return (
+        int(alias_result.rowcount or 0)
+        + int(rule_result.rowcount or 0)
+        + int(group_result.rowcount or 0)
+        + int(tag_result.rowcount or 0)
+    )

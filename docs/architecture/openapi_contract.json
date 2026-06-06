@@ -8545,6 +8545,188 @@
         "title": "StatusResponse",
         "type": "object"
       },
+      "TagDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "TagDeleteRequest",
+        "type": "object"
+      },
+      "TagDetailResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "name",
+          "row_version"
+        ],
+        "title": "TagDetailResponse",
+        "type": "object"
+      },
+      "TagListItem": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "usage_count": {
+            "title": "Usage Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "name",
+          "usage_count",
+          "row_version"
+        ],
+        "title": "TagListItem",
+        "type": "object"
+      },
+      "TagManagementListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TagListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TagManagementListResponse",
+        "type": "object"
+      },
+      "TagMergeRequest": {
+        "additionalProperties": false,
+        "description": "Merge source A (the ``{public_id}`` path tag) into target B. Both tokens\nare checked; the undo token is A's (A is the soft-deleted one, 契约 2/3).",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "target_public_id": {
+            "title": "Target Public Id",
+            "type": "string"
+          },
+          "target_row_version": {
+            "title": "Target Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "target_public_id",
+          "target_row_version"
+        ],
+        "title": "TagMergeRequest",
+        "type": "object"
+      },
+      "TagMutationResponse": {
+        "properties": {
+          "affected_expense_count": {
+            "title": "Affected Expense Count",
+            "type": "integer"
+          },
+          "mutation_public_id": {
+            "title": "Mutation Public Id",
+            "type": "string"
+          },
+          "op": {
+            "title": "Op",
+            "type": "string"
+          },
+          "source_tag_public_id": {
+            "title": "Source Tag Public Id",
+            "type": "string"
+          },
+          "source_tag_row_version": {
+            "title": "Source Tag Row Version",
+            "type": "integer"
+          },
+          "target_tag_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tag Public Id"
+          },
+          "target_tag_row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tag Row Version"
+          }
+        },
+        "required": [
+          "mutation_public_id",
+          "op",
+          "source_tag_public_id",
+          "source_tag_row_version",
+          "affected_expense_count"
+        ],
+        "title": "TagMutationResponse",
+        "type": "object"
+      },
+      "TagRenameRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "name"
+        ],
+        "title": "TagRenameRequest",
+        "type": "object"
+      },
       "TagStatsResponse": {
         "properties": {
           "amount_cents": {
@@ -8566,6 +8748,48 @@
           "count"
         ],
         "title": "TagStatsResponse",
+        "type": "object"
+      },
+      "TagUndoRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "TagUndoRequest",
+        "type": "object"
+      },
+      "TagUndoResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "integer"
+          },
+          "restored_tag_public_id": {
+            "title": "Restored Tag Public Id",
+            "type": "string"
+          },
+          "restored_tag_row_version": {
+            "title": "Restored Tag Row Version",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "restored_tag_public_id",
+          "restored_tag_row_version",
+          "applied",
+          "skipped"
+        ],
+        "title": "TagUndoResponse",
         "type": "object"
       },
       "TagsResponse": {
@@ -17074,6 +17298,327 @@
         "summary": "Private Status",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "operationId": "get_tags_api_tags_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagManagementListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tags",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/tags/mutations/{mutation_public_id}/undo": {
+      "post": {
+        "operationId": "undo_tag_route_api_tags_mutations__mutation_public_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mutation_public_id",
+            "required": true,
+            "schema": {
+              "title": "Mutation Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagUndoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagUndoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Tag Route",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/tags/{public_id}/delete": {
+      "post": {
+        "operationId": "delete_tag_route_api_tags__public_id__delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Tag Route",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/tags/{public_id}/merge": {
+      "post": {
+        "operationId": "merge_tag_route_api_tags__public_id__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagMergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Merge Tag Route",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/tags/{public_id}/rename": {
+      "post": {
+        "operationId": "rename_tag_route_api_tags__public_id__rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagRenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Tag Route",
+        "tags": [
+          "tags"
         ]
       }
     },

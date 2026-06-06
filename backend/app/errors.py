@@ -97,10 +97,20 @@ class AppError(Exception):
     """API-surface error: the FastAPI exception handler turns these into
     JSON ``{error, message}`` payloads with the matching HTTP status."""
 
-    def __init__(self, error: str, message: str | None = None, status_code: int = 400) -> None:
+    def __init__(
+        self,
+        error: str,
+        message: str | None = None,
+        status_code: int = 400,
+        *,
+        details: dict[str, object] | None = None,
+    ) -> None:
         self.error = error
         self.message = message or ERROR_MESSAGES.get(error, ERROR_MESSAGES["server_error"])
         self.status_code = status_code
+        # Optional extra body fields (e.g. ADR-0043 rename-conflict returns the
+        # existing tag's public_id + row_version so the client can offer a merge).
+        self.details = details
         super().__init__(self.message)
 
 
@@ -131,8 +141,9 @@ def error_response(
     status_code: int = 400,
     *,
     request_id: str | None = None,
+    details: dict[str, object] | None = None,
 ) -> JSONResponse:
-    content: dict[str, str] = {
+    content: dict[str, object] = {
         "error": error,
         "message": message or ERROR_MESSAGES.get(error, ERROR_MESSAGES["server_error"]),
     }
@@ -141,6 +152,11 @@ def error_response(
         # value is on the X-Request-Id response header set by the logging
         # middleware. See ENGINEERING_RULES §12.
         content["request_id"] = request_id
+    if details:
+        # Extra structured fields (e.g. ADR-0043 tag rename-conflict target).
+        # Reserved keys above win; details never overwrites error/message/request_id.
+        for key, value in details.items():
+            content.setdefault(key, value)
     return Utf8JSONResponse(status_code=status_code, content=content)
 
 
@@ -149,7 +165,13 @@ def _request_id(request: Request) -> str | None:
 
 
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
-    return error_response(exc.error, exc.message, exc.status_code, request_id=_request_id(request))
+    return error_response(
+        exc.error,
+        exc.message,
+        exc.status_code,
+        request_id=_request_id(request),
+        details=exc.details,
+    )
 
 
 async def validation_error_handler(request: Request, __: RequestValidationError) -> JSONResponse:
