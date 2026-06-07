@@ -71,6 +71,7 @@ fun TagManagementScreen(
     renaming?.let { tag ->
         RenameTagDialog(
             tag = tag,
+            busy = state.busy,
             onConfirm = { newName ->
                 viewModel.renameTag(tag, newName)
                 renaming = null
@@ -83,6 +84,7 @@ fun TagManagementScreen(
             source = source,
             targets = state.tags.filter { it.publicId != source.publicId },
             initialTarget = preselectedMergeTarget,
+            busy = state.busy,
             onConfirm = { target ->
                 viewModel.mergeTags(source, target)
                 merging = null
@@ -108,10 +110,13 @@ fun TagManagementScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    deleting = null
-                    viewModel.deleteTag(tag)
-                }) {
+                TextButton(
+                    enabled = !state.busy,
+                    onClick = {
+                        deleting = null
+                        viewModel.deleteTag(tag)
+                    },
+                ) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -257,6 +262,7 @@ private fun TagCard(
 @Composable
 private fun RenameTagDialog(
     tag: ManagedTag,
+    busy: Boolean,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -275,7 +281,7 @@ private fun RenameTagDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = name.trim().isNotBlank() && name.trim() != tag.name,
+                enabled = !busy && name.trim().isNotBlank() && name.trim() != tag.name,
                 onClick = { onConfirm(name) },
             ) { Text("保存") }
         },
@@ -292,6 +298,7 @@ private fun MergeTagDialog(
     onConfirm: (ManagedTag) -> Unit,
     onDismiss: () -> Unit,
     initialTarget: ManagedTag? = null,
+    busy: Boolean = false,
 ) {
     // Fresh per dialog open (the merging?.let block re-enters composition), so the
     // 契约-5 preselected target seeds here without a remember key.
@@ -340,7 +347,7 @@ private fun MergeTagDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = selected != null,
+                enabled = !busy && selected != null,
                 onClick = { selected?.let(onConfirm) },
             ) { Text("合并") }
         },

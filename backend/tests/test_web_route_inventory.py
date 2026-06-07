@@ -110,9 +110,10 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/expenses/{expense_id}/items/acknowledge-mismatch"): "writer-only",
     # ADR-0030 background tasks UI
     ("GET", "/web/tasks"): "local-only-rendering",
-    # Cancel is account-scoped, not ledger-write; service layer enforces
-    # account match in request_cancellation.
-    ("POST", "/web/tasks/{public_id}/cancel"): "local-only-rendering",
+    # Cancel sets cancellation_requested_at — a write. ADR-0043 review: gate on
+    # the session's ledger role (_require_selected_ledger_write) so a paired
+    # viewer is 403'd, not merely account-matched (ENGINEERING_RULES §14).
+    ("POST", "/web/tasks/{public_id}/cancel"): "writer-only",
     # ADR-0029 bill split UI
     ("POST", "/web/expenses/{expense_id}/split-invite"): "writer-only",
     ("GET", "/web/bill-splits/inbox"): "local-only-rendering",

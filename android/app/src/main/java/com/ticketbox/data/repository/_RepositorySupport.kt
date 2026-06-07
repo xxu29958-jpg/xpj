@@ -14,6 +14,11 @@ import android.util.Log
 class RepositoryException(
     message: String,
     val errorCode: String? = null,
+    // ADR-0043 契约 5: present only on a `tag_conflict` — the colliding tag's fresh
+    // server identity, so a rename can steer into a merge without reusing a stale
+    // local OCC token. Null for every other error.
+    val conflictTagPublicId: String? = null,
+    val conflictTagRowVersion: Long? = null,
 ) : RuntimeException(message)
 
 /** Maps backend error codes to user-facing Chinese strings.

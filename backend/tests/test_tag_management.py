@@ -10,8 +10,12 @@ viewer-403, ledger isolation, and 401 auth on every route.
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.database import SessionLocal
+from app.errors import AppError
+from app.services.tag_management_service import delete_tag
 from tests._infra.tag_helpers import (
     demote_owner_to_viewer,
     expense_row,
@@ -172,6 +176,57 @@ def test_merge_dedup_bumps_shared_expense_once(client: TestClient, *, identity) 
     assert tag_links(b_id) == ["餐饮"]  # deduped
     assert occ_claim_blocked(b_id, b_ver)  # bumped...
     assert not occ_claim_blocked(b_id, b_ver + 1)  # ...exactly once (+1, not +2)
+
+
+def test_merge_soft_deletes_source_even_when_source_has_higher_id(
+    client: TestClient, *, identity
+) -> None:
+    """ADR-0043 review (deadlock fix): the two tag-row claims are now issued in
+    ascending tag.id order, but the soft-delete must still land on the SOURCE and
+    the bump on the TARGET regardless of which id is lower (set_values stay mapped
+    to source/target, not to the claim sequence)."""
+    h = identity.app_headers
+    manual_expense(client, h, tags="目标", merchant="A")  # created first → lower tag.id
+    manual_expense(client, h, tags="来源", merchant="B")  # created second → higher tag.id
+    tags = tag_index(client, h)
+    r = client.post(
+        f"/api/tags/{tags['来源']['public_id']}/merge",  # source has the HIGHER id
+        headers=h,
+        json={
+            "expected_row_version": tags["来源"]["row_version"],
+            "target_public_id": tags["目标"]["public_id"],
+            "target_row_version": tags["目标"]["row_version"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    after = tag_index(client, h)
+    assert "来源" not in after  # source soft-deleted (survivor is the target)
+    assert "目标" in after
+    _, _, b_tags = expense_row("B")
+    assert b_tags == "目标"  # B's link moved to the target
+
+
+def test_delete_tag_require_orphan_rejects_a_relinked_tag(
+    client: TestClient, *, identity
+) -> None:
+    """ADR-0043 review (owner-cleanup TOCTOU): delete_tag(require_orphan=True)
+    soft-deletes atomically only while NOT EXISTS(expense_tags). A tag that gained
+    a link after the caller's orphan-check (re-tagging doesn't bump row_version,
+    so the OCC token can't catch it) is rejected, not clobbered. Service-level —
+    the route pre-check would skip first; this pins the atomic backstop."""
+    h = identity.app_headers
+    manual_expense(client, h, tags="工作", merchant="A")  # 工作 has a live link
+    tag = tag_index(client, h)["工作"]
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        delete_tag(
+            db,
+            tenant_id="owner",
+            public_id=tag["public_id"],
+            expected_row_version=tag["row_version"],
+            require_orphan=True,
+        )
+    assert exc.value.status_code == 409  # still-live + has a link → state_conflict
+    assert "工作" in tag_index(client, h)  # untouched
 
 
 def test_self_merge_rejected(client: TestClient, *, identity) -> None:

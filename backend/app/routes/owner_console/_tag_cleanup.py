@@ -66,12 +66,12 @@ def owner_tag_cleanup_delete(
             url=f"/owner/tag-cleanup?msg={quote('该标签已变化或不存在，请刷新后重试。')}",
             status_code=303,
         )
-    # TOCTOU guard: re-assert orphan-ness in the SAME request right before the
-    # delete. Tagging a live tag does NOT bump its row_version (only the
-    # soft-delete-revive path does), so the OCC token alone can't catch an
-    # expense re-tagged between page-load and this click — this re-check does.
-    # The window between this read and delete_tag's claim is a single
-    # synchronous handler with no I/O, so it's effectively closed.
+    # Friendly fast-path: if it's already non-orphan at render time, skip with a
+    # clear message. This is NOT the race guard — list_tags_with_usage is itself a
+    # query, so a re-tag can still land between here and the delete. Correctness
+    # comes from delete_tag(require_orphan=True): its UPDATE soft-deletes atomically
+    # only while NOT EXISTS(expense_tags) holds (re-tagging a live tag doesn't bump
+    # row_version, so the OCC token alone can't catch it).
     if not any(
         t.public_id == public_id and t.usage_count == 0
         for t in list_tags_with_usage(db, tenant_id)
@@ -86,6 +86,7 @@ def owner_tag_cleanup_delete(
             tenant_id=tenant_id,
             public_id=public_id,
             expected_row_version=parsed_row_version,
+            require_orphan=True,
         )
         msg = "已清理孤儿标签。"
     except AppError as exc:

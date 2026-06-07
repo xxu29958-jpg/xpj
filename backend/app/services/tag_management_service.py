@@ -14,50 +14,20 @@ undo); the cascade + snapshot + token-carrier undo are tag-specific.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseTag, Tag, TagMutationUndoGroup, TagMutationUndoItem
+from app.services._tag_results import TagMutationResult, TagUsageItem
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.resource_audit import record_resource_action
 from app.services.tag_service import clean_tag_name, format_tags, tag_key
 from app.services.time_service import now_utc
-
-
-@dataclass(frozen=True)
-class TagUsageItem:
-    public_id: str
-    name: str
-    usage_count: int
-    row_version: int
-
-
-@dataclass(frozen=True)
-class TagMutationResult:
-    """Result of a delete/merge. ``source_tag_row_version`` is the undo token —
-    the soft-deleted source tag's new ``row_version`` (契约 2 step ②)."""
-
-    mutation_public_id: str
-    op: str
-    source_tag_public_id: str
-    source_tag_row_version: int
-    target_tag_public_id: str | None
-    target_tag_row_version: int | None
-    affected_expense_count: int
-
-
-@dataclass(frozen=True)
-class TagUndoResult:
-    restored_tag_public_id: str
-    restored_tag_row_version: int
-    applied: int
-    skipped: int
 
 
 # --------------------------------------------------------------------------- #
@@ -227,34 +197,35 @@ def _claim_merge_pair(
     """Atomically soft-delete source A (keeps its tag_id; revivable via undo) and
     bump target B (stays live; its link set changed so a stale B PATCH must 409).
     Either token stale → 409, rolling the pair back. A is the soft-deleted one,
-    so the undo token is A's (契约 2/3)."""
+    so the undo token is A's (契约 2/3).
+
+    The two row claims are issued in ascending ``tag.id`` order (NOT source-then-
+    target): a concurrent *reverse* merge (B→A while this runs A→B) would grab the
+    rows in the opposite order and deadlock under PostgreSQL row locks (→ 500).
+    Fixed ordering serialises both on the lower-id row; the loser then fails its
+    OCC token check and gets a clean 409 instead of a deadlock."""
     now = now_utc()
-    if (
-        claim_row_with_token(
-            db,
-            Tag,
-            pk_id=source.id,
-            tenant_id=tenant_id,
-            expected_row_version=source_row_version,
-            set_values={"deleted_at": now, "updated_at": now},
-            synchronize_session=False,
-        )
-        != 1
-    ):
-        raise _disambiguate_tag_claim(db, tenant_id, source.public_id)
-    if (
-        claim_row_with_token(
-            db,
-            Tag,
-            pk_id=target.id,
-            tenant_id=tenant_id,
-            expected_row_version=target_row_version,
-            set_values={"updated_at": now},
-            synchronize_session=False,
-        )
-        != 1
-    ):
-        raise _disambiguate_tag_claim(db, tenant_id, target.public_id)
+    claims = sorted(
+        (
+            (source.id, source_row_version, {"deleted_at": now, "updated_at": now}, source.public_id),
+            (target.id, target_row_version, {"updated_at": now}, target.public_id),
+        ),
+        key=lambda claim: claim[0],
+    )
+    for pk_id, expected_row_version, set_values, claim_public_id in claims:
+        if (
+            claim_row_with_token(
+                db,
+                Tag,
+                pk_id=pk_id,
+                tenant_id=tenant_id,
+                expected_row_version=expected_row_version,
+                set_values=set_values,
+                synchronize_session=False,
+            )
+            != 1
+        ):
+            raise _disambiguate_tag_claim(db, tenant_id, claim_public_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -342,6 +313,45 @@ def rename_tag(
     return _require_live_tag(db, tenant_id, public_id)
 
 
+def _claim_tag_soft_delete(
+    db: Session,
+    *,
+    tenant_id: str,
+    tag: Tag,
+    expected_row_version: int,
+    require_orphan: bool,
+) -> int:
+    """Atomic soft-delete claim for :func:`delete_tag`. ``require_orphan`` adds a
+    ``NOT EXISTS(expense_tags)`` predicate so a tag re-tagged since the caller's
+    orphan-check (which doesn't bump row_version, so the OCC token alone can't see
+    it) is rejected rather than clobbered. Returns rowcount (0 → stale token, or —
+    for require_orphan — a link appeared). Residual READ-COMMITTED skew: a re-tag
+    that commits *after* this UPDATE leaves the tag soft-deleted beside a live link
+    — never dropped, and the next ``_ensure_tag`` revive + mirror reconcile self-heal
+    it (acceptable for loopback single-owner cleanup)."""
+    if not require_orphan:
+        return claim_row_with_token(
+            db,
+            Tag,
+            pk_id=tag.id,
+            tenant_id=tenant_id,
+            expected_row_version=expected_row_version,
+            set_values={"deleted_at": now_utc(), "updated_at": now_utc()},
+            synchronize_session=False,
+        )
+    now = now_utc()
+    return db.execute(
+        sa_update(Tag)
+        .where(Tag.id == tag.id)
+        .where(Tag.tenant_id == tenant_id)
+        .where(Tag.row_version == expected_row_version)
+        .where(Tag.deleted_at.is_(None))
+        .where(~exists().where(ExpenseTag.tag_id == tag.id, ExpenseTag.tenant_id == tenant_id))
+        .values(deleted_at=now, updated_at=now, row_version=Tag.row_version + 1)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+
 def delete_tag(
     db: Session,
     *,
@@ -349,20 +359,25 @@ def delete_tag(
     public_id: str,
     expected_row_version: int,
     actor_account_id: int | None = None,
+    require_orphan: bool = False,
 ) -> TagMutationResult:
     """Soft-delete the tag, untag every linked expense (rebuild string + bump),
     and write the undo snapshot — one transaction (契约 1). An orphan tag (no
-    links) still writes a group row (undo anchor) with zero items."""
-    tag = _require_live_tag(db, tenant_id, public_id)
+    links) still writes a group row (undo anchor) with zero items.
 
-    rowcount = claim_row_with_token(
+    ``require_orphan`` (owner-console cleanup): make the soft-delete atomic on the
+    tag having NO live links, so a concurrent re-tag landing between the caller's
+    orphan-check and this claim can't be silently clobbered. Re-tagging a live tag
+    does not bump its ``row_version``, so the OCC token alone can't catch it — the
+    ``NOT EXISTS(expense_tags)`` predicate in the same UPDATE does. rowcount=0 then
+    means stale token OR a link appeared (still-live tag → 409 via the helper)."""
+    tag = _require_live_tag(db, tenant_id, public_id)
+    rowcount = _claim_tag_soft_delete(
         db,
-        Tag,
-        pk_id=tag.id,
         tenant_id=tenant_id,
+        tag=tag,
         expected_row_version=expected_row_version,
-        set_values={"deleted_at": now_utc(), "updated_at": now_utc()},
-        synchronize_session=False,
+        require_orphan=require_orphan,
     )
     if rowcount != 1:
         raise _disambiguate_tag_claim(db, tenant_id, public_id)

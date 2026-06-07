@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.TagActions
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.TagMutationResult
 import com.ticketbox.domain.model.TagUndoResult
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -148,6 +149,47 @@ class TagManagementViewModelTest {
     }
 
     @Test
+    fun renameConflictUsesFreshServerTokenForMergePrefill() = runTest(dispatcher) {
+        // ADR-0043 review: when tag_conflict carries the colliding tag's fresh
+        // public_id + row_version (details, 契约 5), the merge prefill must use that
+        // FRESH token, not the stale local list entry — else the merge 409s at once.
+        val repo = FakeTagActions(listOf(tag("a", "出差", 1), tag("b", "差旅", 2, rv = 3L)))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        repo.failNext = RepositoryException(
+            "标签名已被占用，请改用合并。",
+            "tag_conflict",
+            conflictTagPublicId = "b",
+            conflictTagRowVersion = 9L, // server is newer than the locally-loaded 3
+        )
+        vm.renameTag(tag("a", "出差", 1), "差旅")
+        advanceUntilIdle()
+        val sug = vm.uiState.value.mergeSuggestion
+        assertTrue(sug != null)
+        assertEquals("b", sug.target.publicId)
+        assertEquals(9L, sug.target.rowVersion) // fresh server token, not the local 3
+    }
+
+    @Test
+    fun mutationWhileBusyIsIgnored() = runTest(dispatcher) {
+        // ADR-0043 review: rename/delete/merge early-return while a mutation is in
+        // flight, so a double-tap can't fire a second request whose failure would
+        // overwrite the winner's result.
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeTagActions(listOf(tag("a", "出差", 1))).apply { renameGate = gate }
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        vm.renameTag(tag("a", "出差", 1), "差旅")
+        advanceUntilIdle() // first rename now parked mid-flight with busy=true
+        assertTrue(vm.uiState.value.busy)
+        vm.renameTag(tag("a", "出差", 1), "餐饮") // must be ignored (busy)
+        advanceUntilIdle()
+        assertEquals(1, repo.renameCalls)
+        gate.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
     fun stateConflictGetsTagFriendlyMessage() = runTest(dispatcher) {
         val repo = FakeTagActions(listOf(tag("a", "出差", 1)))
         val vm = TagManagementViewModel(repo)
@@ -165,6 +207,7 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
     private var tags = initial.toMutableList()
     var canModify = true
     var failNext: Throwable? = null
+    var renameGate: CompletableDeferred<Unit>? = null
     var renameCalls = 0
     var deleteCalls = 0
     var mergeCalls = 0
@@ -182,6 +225,7 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
 
     override suspend fun renameTag(publicId: String, expectedRowVersion: Long, name: String): Result<Unit> {
         renameCalls++
+        renameGate?.await()
         consumeFailure()?.let { return Result.failure(it) }
         tags = tags.map {
             if (it.publicId == publicId) it.copy(name = name.trim(), rowVersion = it.rowVersion + 1) else it

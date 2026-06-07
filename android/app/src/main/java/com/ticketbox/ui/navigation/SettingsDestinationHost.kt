@@ -302,7 +302,9 @@ internal fun SettingsDestinationHost(
 
         SettingsDestination.TagManagement -> {
             val vm: TagManagementViewModel = viewModel(
-                key = "tag-management",
+                // Key by ledger so switching ledgers gets a fresh VM (fresh load),
+                // not the previous ledger's tags / undo handle / message.
+                key = "tag-management-${repositories.activeLedgerId ?: "none"}",
                 factory = tagManagementViewModelFactory(repositories.tagRepository),
             )
             TagManagementScreen(
