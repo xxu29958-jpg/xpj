@@ -132,9 +132,16 @@ async def lifespan(_: FastAPI):
     # ADR-0031 binary↔DB compatibility check (refuse to start a binary
     # older than the DB's schema_min_compatible).
     from app.database import SessionLocal as _SessionLocal
+    from app.middleware.csrf import assert_csrf_signing_key_available, set_persisted_csrf_key
+    from app.services.csrf_key_service import get_or_create_csrf_signing_key
 
     with _SessionLocal() as _db:
         assert_binary_compatible_with_db(_db)
+        # ADR-0045: provision + stash the per-install CSRF signing key so the HMAC
+        # key is a real per-install secret, never the public placeholder ADMIN_TOKEN
+        # default. Auto-generated in app_meta on first boot (no operator step, no brick).
+        set_persisted_csrf_key(get_or_create_csrf_signing_key(_db))
+    assert_csrf_signing_key_available()
     # ADR-0030 orphan recovery: tasks that were running or queued when
     # the previous process died are now phantoms — force-fail them.
     recover_orphaned_tasks()

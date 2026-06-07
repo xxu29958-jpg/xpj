@@ -159,18 +159,52 @@ def test_public_web_csrf_secret_missing_fails_closed(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # ADR-0045: "missing" now means BOTH no real operator secret (env blank /
+    # placeholder) AND no app_meta-persisted key. The persisted key normally covers
+    # the placeholder env, so clear it too to reach the genuine fail-closed path.
+    from app.middleware import csrf as csrf_mw
+
     monkeypatch.setenv("ADMIN_TOKEN", "")
     monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", "")
     monkeypatch.setenv("APP_TOKEN", "")
     reset_settings_cache()
+    saved_key = csrf_mw._persisted_csrf_key
+    csrf_mw.set_persisted_csrf_key(None)
     try:
         pub = _public_client()
         resp = pub.get("/web/auth/login")
     finally:
+        csrf_mw._persisted_csrf_key = saved_key
         reset_settings_cache()
 
     assert resp.status_code == 500
     assert resp.json()["error"] == "server_error"
+
+
+def test_public_web_csrf_persisted_key_covers_placeholder_env(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ADR-0045: with the env secret left at the PUBLIC placeholder default, the
+    # per-install app_meta key takes over so /web still renders a CSRF token (no 500).
+    from app.config import PLACEHOLDER_ADMIN_TOKEN
+    from app.middleware import csrf as csrf_mw
+
+    monkeypatch.setenv("ADMIN_TOKEN", PLACEHOLDER_ADMIN_TOKEN)
+    monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", "")
+    monkeypatch.setenv("APP_TOKEN", "")
+    reset_settings_cache()
+    saved_key = csrf_mw._persisted_csrf_key
+    csrf_mw.set_persisted_csrf_key("per-install-csrf-key")
+    try:
+        pub = _public_client()
+        resp = pub.get("/web/auth/login")
+    finally:
+        csrf_mw._persisted_csrf_key = saved_key
+        reset_settings_cache()
+
+    assert resp.status_code == 200
+    assert _csrf_token(resp.text)  # a real token rendered from the persisted key
 
 
 def test_public_web_login_post_requires_same_origin_even_with_csrf(client: TestClient) -> None:

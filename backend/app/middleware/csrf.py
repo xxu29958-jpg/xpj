@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi import Request
 from starlette.responses import Response
 
-from app.config import get_settings
+from app.config import PLACEHOLDER_SECRETS, get_settings
 from app.errors import AppError, error_response
 from app.network_boundary import is_loopback_request
 
@@ -116,14 +116,47 @@ def _peer_host(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
+# ADR-0045: the per-install CSRF signing key resolved at startup (from app_meta),
+# stashed here so the per-request middleware never opens a DB session. Set once by
+# the lifespan via :func:`set_persisted_csrf_key`; process-immutable like settings.
+_persisted_csrf_key: bytes | None = None
+
+
+def set_persisted_csrf_key(key: str | None) -> None:
+    """Stash the per-install CSRF signing key (ADR-0045). Called from lifespan
+    after :func:`app.services.csrf_key_service.get_or_create_csrf_signing_key`
+    provisions it in ``app_meta``; tests use it to drive the no-key path."""
+    global _persisted_csrf_key
+    _persisted_csrf_key = key.encode("utf-8") if key else None
+
+
 def _csrf_secret() -> bytes | None:
+    # An operator-supplied REAL secret wins (backward compat for anyone who set
+    # one); the shipped placeholder defaults are REJECTED — they are public in the
+    # repo, so using one as the HMAC key is the ADR-0045 bug. Otherwise fall back to
+    # the per-install key persisted in app_meta (stashed at startup).
     settings = get_settings()
-    raw = settings.admin_token or settings.http_bootstrap_secret or settings.app_token
-    raw = (raw or "").strip()
-    secret: bytes | None = None
-    if raw:
-        secret = raw.encode("utf-8")
-    return secret
+    for raw in (settings.admin_token, settings.http_bootstrap_secret, settings.app_token):
+        candidate = (raw or "").strip()
+        if candidate and candidate not in PLACEHOLDER_SECRETS:
+            return candidate.encode("utf-8")
+    return _persisted_csrf_key
+
+
+def assert_csrf_signing_key_available() -> None:
+    """Refuse to start (ADR-0045) when no usable CSRF signing key is derivable —
+    i.e. no real operator secret AND the app_meta key was not provisioned (a DB
+    failure). A healthy deployment always self-satisfies (the key is generated on
+    first boot), so this only fires on genuine misconfiguration / DB outage."""
+    if _csrf_secret() is None:
+        # AppError at startup, matching assert_binary_compatible_with_db (the sibling
+        # DB-provisioned-value boot gate). Lifespan propagation aborts boot.
+        raise AppError(
+            "csrf_secret_unavailable",
+            "CSRF signing key unavailable: no real ADMIN_TOKEN / HTTP_BOOTSTRAP_SECRET / "
+            "APP_TOKEN and the app_meta-persisted key could not be provisioned. Refusing to start.",
+            status_code=500,
+        )
 
 
 def _csrf_token_for_seed(seed: str) -> str:
