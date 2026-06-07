@@ -8,6 +8,7 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.ticketbox.R
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -22,7 +23,7 @@ class BiometricAuthManager(private val activity: FragmentActivity) {
         val executor = ContextCompat.getMainExecutor(activity)
         val cryptoObject = runCatching { BiometricPrompt.CryptoObject(unlockCipher()) }
             .getOrElse {
-                onError("本地解锁密钥不可用，请重新设置系统生物识别。")
+                onError(activity.getString(R.string.biometric_key_unavailable))
                 return
             }
         val prompt = BiometricPrompt(
@@ -32,12 +33,12 @@ class BiometricAuthManager(private val activity: FragmentActivity) {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     val cipher = result.cryptoObject?.cipher
                     if (cipher == null) {
-                        onError("验证状态异常，请重试。")
+                        onError(activity.getString(R.string.biometric_state_invalid))
                         return
                     }
                     runCatching { cipher.doFinal(UNLOCK_CHALLENGE) }
                         .onSuccess { onSuccess() }
-                        .onFailure { onError("验证状态已失效，请重试。") }
+                        .onFailure { onError(activity.getString(R.string.biometric_state_expired)) }
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -45,14 +46,14 @@ class BiometricAuthManager(private val activity: FragmentActivity) {
                 }
 
                 override fun onAuthenticationFailed() {
-                    onError("验证失败，请重试。")
+                    onError(activity.getString(R.string.biometric_failed))
                 }
             },
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("解锁小票夹")
-            .setSubtitle("验证后查看账单")
+            .setTitle(activity.getString(R.string.biometric_prompt_title))
+            .setSubtitle(activity.getString(R.string.biometric_prompt_subtitle))
             .setAllowedAuthenticators(AUTHENTICATORS)
             .build()
 

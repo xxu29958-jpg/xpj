@@ -375,8 +375,9 @@ class LedgerViewModel(
      * assembled here and carried as an already-resolved [UiText.Raw] —
      * byte-identical to the prior String. This message is held in state but is
      * not currently rendered on the ledger surface, so there is no presentation
-     * site to resolve it through. (Tail item: a Context-backed per-clause
-     * resource builder is left for a later coordinated pass.)
+     * site to resolve it through. (ADR-0044 allowlisted tail — resourcing it needs
+     * a Context-backed per-clause UiText builder that doesn't exist yet; if a render
+     * site is ever added here, resource these clauses before wiring it up.)
      */
     private fun batchResultMessage(result: BatchApplyResult): UiText {
         val parts = buildList {

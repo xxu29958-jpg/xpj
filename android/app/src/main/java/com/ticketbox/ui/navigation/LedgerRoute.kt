@@ -9,9 +9,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.ticketbox.R
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.viewmodel.LedgerViewModel
@@ -26,6 +28,12 @@ internal fun LedgerRoute(
     val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingExport by remember { mutableStateOf<CsvExport?>(null) }
+    // ADR-0044: stringResource is @Composable-only; hoist the post-save export copy
+    // here so the (non-composable) launcher-result callbacks pass already-resolved
+    // text into exportFinished (which carries it as UiText.Raw).
+    val exportCancelledMessage = stringResource(R.string.ledger_msg_export_cancelled)
+    val exportSucceededMessage = stringResource(R.string.ledger_msg_export_succeeded)
+    val exportFailedMessage = stringResource(R.string.ledger_msg_export_failed)
 
     LaunchedEffect(shellState.expenseEditCompletionRevision) {
         if (shellState.expenseEditCompletionRevision > 0) {
@@ -39,7 +47,7 @@ internal fun LedgerRoute(
         val exportFile = pendingExport
         pendingExport = null
         if (uri == null || exportFile == null) {
-            ledgerViewModel.exportFinished("已取消导出")
+            ledgerViewModel.exportFinished(exportCancelledMessage)
             return@rememberLauncherForActivityResult
         }
         runCatching {
@@ -47,8 +55,8 @@ internal fun LedgerRoute(
                 output.write(exportFile.bytes)
             } ?: error("Output stream is null")
         }
-            .onSuccess { ledgerViewModel.exportFinished("账本已导出") }
-            .onFailure { ledgerViewModel.exportFinished("没有导出成功，可以换个保存位置再试。") }
+            .onSuccess { ledgerViewModel.exportFinished(exportSucceededMessage) }
+            .onFailure { ledgerViewModel.exportFinished(exportFailedMessage) }
     }
 
     LaunchedEffect(state.exportFile) {

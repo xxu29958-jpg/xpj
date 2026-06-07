@@ -20,6 +20,21 @@
     <string name="common_saving">保存中</string>
     <string name="common_readonly_ledger">当前角色为只读，无法修改账本。</string>
 
+    <!-- 底部导航 tab 标签（AppBottomNav 的可见 Text + contentDescription） -->
+    <string name="nav_tab_ledger">账本</string>
+    <string name="nav_tab_reports">报表</string>
+    <string name="nav_tab_pending">待确认</string>
+    <string name="nav_tab_search">搜索</string>
+    <string name="nav_tab_settings">设置</string>
+
+    <!-- BiometricAuthManager：本地生物识别解锁的系统弹窗 + 错误文案（release REQUIRE_LOCAL_UNLOCK=true 时可见，经 onError→AppViewModel→LoginScreen） -->
+    <string name="biometric_prompt_title">解锁小票夹</string>
+    <string name="biometric_prompt_subtitle">验证后查看账单</string>
+    <string name="biometric_key_unavailable">本地解锁密钥不可用，请重新设置系统生物识别。</string>
+    <string name="biometric_state_invalid">验证状态异常，请重试。</string>
+    <string name="biometric_state_expired">验证状态已失效，请重试。</string>
+    <string name="biometric_failed">验证失败，请重试。</string>
+
     <!-- MerchantAlias：设置→商家别名 屏的状态/结果文案 -->
     <string name="merchant_alias_load_failed">商家别名暂时打不开。</string>
     <string name="merchant_alias_added">商家别名已添加</string>

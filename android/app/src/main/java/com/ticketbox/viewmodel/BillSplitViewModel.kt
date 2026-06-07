@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.BillSplitInbox
@@ -74,7 +75,7 @@ class BillSplitViewModel(
                     inbox = inboxResult.getOrNull() ?: it.inbox,
                     sent = sentResult.getOrNull() ?: it.sent,
                     message = (inboxResult.exceptionOrNull() ?: sentResult.exceptionOrNull())
-                        ?.message?.let(UiText::raw),
+                        ?.toUiText(R.string.error_generic),
                 )
             }
         }
@@ -86,7 +87,7 @@ class BillSplitViewModel(
             expenseRepository.acceptBillSplitInvitation(publicId, targetLedgerId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
-                    _uiState.update { it.copy(loading = false, message = err.message?.let(UiText::raw)) }
+                    _uiState.update { it.copy(loading = false, message = err.toUiText(R.string.error_generic)) }
                 }
         }
     }
@@ -97,7 +98,7 @@ class BillSplitViewModel(
             expenseRepository.rejectBillSplitInvitation(publicId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
-                    _uiState.update { it.copy(loading = false, message = err.message?.let(UiText::raw)) }
+                    _uiState.update { it.copy(loading = false, message = err.toUiText(R.string.error_generic)) }
                 }
         }
     }
@@ -108,7 +109,7 @@ class BillSplitViewModel(
             expenseRepository.cancelBillSplitInvitation(publicId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
-                    _uiState.update { it.copy(loading = false, message = err.message?.let(UiText::raw)) }
+                    _uiState.update { it.copy(loading = false, message = err.toUiText(R.string.error_generic)) }
                 }
         }
     }

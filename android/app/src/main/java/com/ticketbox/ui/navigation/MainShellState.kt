@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.BarChart
@@ -13,7 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
+import com.ticketbox.R
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.components.AppBottomNavItem
 
@@ -25,15 +28,15 @@ internal fun expenseRoute(expenseId: Long): String = "expense/$expenseId"
 
 internal enum class BottomTab(
     val key: String,
-    val label: String,
+    @StringRes val labelRes: Int,
     val icon: ImageVector,
 ) {
     // v0.10 IA 重排: 账本作主入口, Reports 独立 tab (从 Stats 二级拆出, 内容 V0.11 再拆分)
-    Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
-    Reports("reports", "报表", Icons.Default.Insights),
-    Pending("pending", "待确认", Icons.Default.CheckCircle),
-    Search("search", "搜索", Icons.Default.Search),
-    Settings("settings", "设置", Icons.Default.Settings),
+    Ledger("ledger", R.string.nav_tab_ledger, Icons.AutoMirrored.Filled.ReceiptLong),
+    Reports("reports", R.string.nav_tab_reports, Icons.Default.Insights),
+    Pending("pending", R.string.nav_tab_pending, Icons.Default.CheckCircle),
+    Search("search", R.string.nav_tab_search, Icons.Default.Search),
+    Settings("settings", R.string.nav_tab_settings, Icons.Default.Settings),
 }
 
 internal enum class StatsSecondaryPage {
@@ -97,9 +100,10 @@ internal val BottomTab.surfaceRole: SurfaceRole
         BottomTab.Settings -> SurfaceRole.Settings
     }
 
+@Composable
 internal fun BottomTab.toBottomNavItem(): AppBottomNavItem = AppBottomNavItem(
     key = key,
-    label = label,
+    label = stringResource(labelRes),
     icon = icon,
 )
 

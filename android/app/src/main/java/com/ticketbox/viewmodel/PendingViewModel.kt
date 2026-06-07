@@ -572,8 +572,8 @@ class PendingViewModel(
 }
 
 // ADR-0044 wave 2: read-only ledger copy, resource-backed like every other
-// message. Byte-identical to the former READ_ONLY_LEDGER_MESSAGE const (now
-// removed — every VM resolves this copy from common_readonly_ledger).
+// message — every VM resolves this copy from common_readonly_ledger (the old
+// hardcoded String const was removed in the wave-2 cleanup).
 internal fun readOnlyMessage(): UiText = UiText.res(R.string.common_readonly_ledger)
 
 internal fun reconcileActiveSheet(sheet: PendingSheet, items: List<Expense>): PendingSheet {
