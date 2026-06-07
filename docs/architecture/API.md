@@ -89,8 +89,10 @@ idempotency_key_in_progress
 idempotency_key_reused
 ```
 
-`tag_conflict`（重命名撞 key）在 `{error, message}` 之外附带 `details.conflict_tag_public_id` +
-`details.conflict_tag_row_version`，供客户端把重命名引导成对既有标签的合并（ADR-0043 契约 5）。
+`tag_conflict`（重命名撞 key）在 `{error, message}` 之外、于**错误信封顶层**附带 `conflict_tag_public_id` +
+`conflict_tag_row_version`（后端 `error_response` 把 `AppError.details` 经 `content.setdefault` 摊平到顶层，
+**不是**嵌套的 `details` 对象——客户端按顶层字段解析），供客户端把重命名引导成对既有标签的合并（ADR-0043 契约 5）。
+示例：`{"error":"tag_conflict","message":"已有同名标签，可改为合并。","conflict_tag_public_id":"<uuid>","conflict_tag_row_version":<int>}`。
 
 ## 认证
 

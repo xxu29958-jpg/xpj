@@ -71,8 +71,11 @@ def _ensure_tag(db: Session, *, tenant_id: str, name: str) -> Tag:
     if existing is not None:
         # ADR-0043 契约 4: implicit re-creation colliding with a soft-deleted key
         # REVIVES that tag (so the unique key isn't violated and no duplicate is
-        # made) but keeps its delete snapshot — the original delete stays undoable
-        # (the snapshot purges on its own age, not on this revival, 契约 6).
+        # made). The revive clears deleted_at AND bumps row_version, which CONSUMES
+        # the original delete's undo token: that delete is no longer token-undoable
+        # (undo step ② needs `deleted_at IS NOT NULL AND row_version == token` —
+        # both now fail → 409). The delete snapshot is kept only so it age-purges on
+        # its own created_at window (契约 6), NOT so the delete can still be undone.
         if existing.deleted_at is not None:
             existing.deleted_at = None
             existing.updated_at = now_utc()
