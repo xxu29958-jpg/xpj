@@ -69,11 +69,12 @@ class ExpenseDtoContractTest {
     }
 
     @Test
-    fun expenseParsesRowVersionTokenAsNonNullLong() {
-        // ADR-0041: ExpenseDto.rowVersion is a non-null Long sourced from the
-        // server's `row_version`; a representative parse pins the wire contract
-        // (a missing field would otherwise only surface as a runtime Moshi
-        // failure deep in a list/detail fetch).
+    fun legacyMinimalExpensePayloadStillParsesRowVersionToken() {
+        // Compatibility only: this intentionally sparse fixture documents that a
+        // minimal legacy-ish payload still decodes row_version. The full ExpenseDto
+        // field contract is enforced by OpenApiContractGateTest, which synthesizes
+        // payloads from docs/architecture/openapi_contract.json instead of relying
+        // on this hand-written fixture.
         val dto = requireNotNull(
             moshi.adapter(ExpenseDto::class.java).fromJson(
                 """
