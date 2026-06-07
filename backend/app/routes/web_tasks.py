@@ -19,6 +19,7 @@ from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
     templates,
@@ -109,6 +110,11 @@ def web_task_cancel(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    # ADR-0043 review (P1 family): cancelling sets cancellation_requested_at — a
+    # write. A paired *viewer* Web session must be 403'd here (ENGINEERING_RULES
+    # §14), not merely account-matched inside request_cancellation. The GET list
+    # stays local-only-rendering; only this mutate is writer-only.
+    _require_selected_ledger_write(options, selected_id)
     account_id = _resolve_account_id(db, request, selected_id)
     bgtasks.request_cancellation(db, public_id, account_id=account_id, tenant_id=selected_id)
     return _web_redirect("/web/tasks", selected_id, msg="已请求取消任务。")

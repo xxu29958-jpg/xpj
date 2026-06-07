@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 __all__ = [
     "AuthCheckResponse",
@@ -13,8 +13,13 @@ __all__ = [
 
 
 class ErrorResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     error: str
     message: str
+    request_id: str | None = None
+    conflict_tag_public_id: str | None = None
+    conflict_tag_row_version: int | None = None
 
 
 class HealthResponse(BaseModel):

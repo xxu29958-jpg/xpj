@@ -81,10 +81,18 @@ invalid_request
 route_not_found
 method_not_allowed
 state_conflict
+tag_not_found
+tag_conflict
+tag_undo_not_found
 idempotency_key_required
 idempotency_key_in_progress
 idempotency_key_reused
 ```
+
+`tag_conflict`（重命名撞 key）在 `{error, message}` 之外、于**错误信封顶层**附带 `conflict_tag_public_id` +
+`conflict_tag_row_version`（后端 `error_response` 把 `AppError.details` 经 `content.setdefault` 摊平到顶层，
+**不是**嵌套的 `details` 对象——客户端按顶层字段解析），供客户端把重命名引导成对既有标签的合并（ADR-0043 契约 5）。
+示例：`{"error":"tag_conflict","message":"已有同名标签，可改为合并。","conflict_tag_public_id":"<uuid>","conflict_tag_row_version":<int>}`。
 
 ## 认证
 
@@ -175,6 +183,12 @@ Authorization: Bearer <admin_token>
 | `/api/rules/apply-pending/preview` | POST | `backend/app/routes/rules.py` | 无 | query `limit/max_scan` | `RuleApplyPendingPreviewResponse` | Session Token | `backend/tests/test_alpha3_engine.py` | dry-run；默认最多扫描 500 条可自动填充账单 |
 | `/api/rules/apply-pending` | POST | `backend/app/routes/rules.py` | 无 | query `max_scan` | `RuleApplyPendingResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `backend/tests/test_viewer_write_guards.py` | 只改待确认账单的默认分类 |
 | `/api/rules/apply-confirmed` | POST | `backend/app/routes/rules.py` | `applyConfirmedRules(request)` | `RuleApplyConfirmedRequest`；query `limit/max_scan` | `RuleApplyConfirmedResponse` | Session Token；`confirm=true` 需 owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | dry-run 默认；确认必须带 `preview_token` |
+| `/api/tags` | GET | `backend/app/routes/tags.py` | `listManagedTags()` | 无 | `TagManagementListDto`（每项含 `usage_count` + `row_version`） | Session Token；viewer 可读 | `backend/tests/test_tag_management.py`, `TagDtoContractTest` | ADR-0043 标签管理列表（online-only，无 Idempotency-Key） |
+| `/api/tags/{public_id}/rename` | POST | `backend/app/routes/tags.py` | `renameTag(publicId,request)` | `TagRenameRequest`（`expected_row_version` + `name`） | `TagDetailDto` | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py` | ADR-0043 重命名；撞 key→409 `tag_conflict`，错误信封顶层回带 `conflict_tag_public_id`/`conflict_tag_row_version`（契约 5） |
+| `/api/tags/{public_id}/delete` | POST | `backend/app/routes/tags.py` | `deleteTag(publicId,request)` | `TagDeleteRequest`（`expected_row_version`） | `TagMutationDto`（`mutation_public_id` + source undo token） | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py`, `backend/tests/test_tag_undo.py` | ADR-0043 软删 + 同事务 undo 快照（契约 1） |
+| `/api/tags/{public_id}/merge` | POST | `backend/app/routes/tags.py` | `mergeTag(publicId,request)` | `TagMergeRequest`（源 `expected_row_version` + `target_public_id` + `target_row_version`，**双 OCC token**） | `TagMutationDto` | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py` | ADR-0043 合并；任一 token 陈旧→409 |
+| `/api/tags/mutations/{mutation_public_id}/undo` | POST | `backend/app/routes/tags.py` | `undoTagMutation(mutationPublicId,request)` | `TagUndoRequest`（`expected_row_version` = undo handle token） | `TagUndoDto`（`applied`/`skipped`） | Session Token，owner/member 写权限 | `backend/tests/test_tag_undo.py` | ADR-0043 5 分钟窗口内撤销 delete/merge（契约 2/4）；复活后该 delete 不再可撤（契约 4） |
+| 标签管理写面 | — | — | — | — | — | — | — | 5 路由均**不声明 Idempotency-Key**（online-only，非 outbox 重放面，契约 7）；幂等由 OCC `row_version` 保证 |
 | `/api/rules/applications` | GET | `backend/app/routes/rules.py` | `ruleApplications(limit)` | query `limit` | `RuleApplicationListResponse` | Session Token | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 最近规则应用批次 |
 | `/api/rules/applications/{public_id}/rollback` | POST | `backend/app/routes/rules.py` | `rollbackRuleApplication(publicId)` | path `public_id` | `RuleApplicationRollbackResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 回滚未被手动改过的批次变更 |
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |

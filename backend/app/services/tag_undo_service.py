@@ -19,10 +19,10 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseTag, Tag, TagMutationUndoGroup, TagMutationUndoItem
+from app.services._tag_results import TagUndoResult
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import is_within_undo_window
-from app.services.tag_management_service import TagUndoResult
 from app.services.time_service import now_utc
 
 

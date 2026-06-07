@@ -73,7 +73,7 @@ from app.routes import (
     web_tasks,
 )
 from app.routes import web_rules as web_rules_routes
-from app.schemas import HealthResponse, StatusResponse
+from app.schemas import ErrorResponse, HealthResponse, StatusResponse
 from app.services import v1_migration_service
 from app.services.app_meta_service import assert_binary_compatible_with_db
 from app.services.background_task_service import (
@@ -95,6 +95,7 @@ from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+_PROJECT_ERROR_RESPONSE_REF = {"$ref": "#/components/schemas/ErrorResponse"}
 
 
 def _assert_admin_api_gate_safe() -> None:
@@ -131,9 +132,16 @@ async def lifespan(_: FastAPI):
     # ADR-0031 binary↔DB compatibility check (refuse to start a binary
     # older than the DB's schema_min_compatible).
     from app.database import SessionLocal as _SessionLocal
+    from app.middleware.csrf import assert_csrf_signing_key_available, set_persisted_csrf_key
+    from app.services.csrf_key_service import get_or_create_csrf_signing_key
 
     with _SessionLocal() as _db:
         assert_binary_compatible_with_db(_db)
+        # ADR-0045: provision + stash the per-install CSRF signing key so the HMAC
+        # key is a real per-install secret, never the public placeholder ADMIN_TOKEN
+        # default. Auto-generated in app_meta on first boot (no operator step, no brick).
+        set_persisted_csrf_key(get_or_create_csrf_signing_key(_db))
+    assert_csrf_signing_key_available()
     # ADR-0030 orphan recovery: tasks that were running or queued when
     # the previous process died are now phantoms — force-fail them.
     recover_orphaned_tasks()
@@ -174,9 +182,28 @@ app = FastAPI(
 )
 
 
+def _project_error_response(existing: dict | None = None) -> dict:
+    return {
+        "description": (existing or {}).get("description") or "Structured project error response.",
+        "content": {
+            "application/json": {
+                "schema": dict(_PROJECT_ERROR_RESPONSE_REF),
+            },
+        },
+    }
+
+
+def _uses_project_error_envelope(path: str) -> bool:
+    return path.startswith("/api/") or path.startswith("/u/")
+
+
 def _custom_openapi() -> dict:
-    """OpenAPI document with the ADR-0042 ``Idempotency-Key`` header marked
-    ``required: true`` on the outbox-routed mutate routes.
+    """OpenAPI document with project-level protocol fixes applied.
+
+    The ADR-0042 ``Idempotency-Key`` header is marked ``required: true`` on
+    outbox-routed mutate routes, and API/UploadLink error responses expose the
+    real project ``ErrorResponse`` envelope instead of FastAPI's stock
+    ``HTTPValidationError`` shape.
 
     The handlers declare the header as ``Header(default=None, ...)`` ON PURPOSE:
     a missing key is rejected inside the route body (``claim_idempotent_request``
@@ -199,7 +226,11 @@ def _custom_openapi() -> dict:
         description=app.description,
         routes=app.routes,
     )
-    for path_item in schema.get("paths", {}).values():
+    components = schema.setdefault("components", {}).setdefault("schemas", {})
+    components["ErrorResponse"] = ErrorResponse.model_json_schema(
+        ref_template="#/components/schemas/{model}"
+    )
+    for path, path_item in schema.get("paths", {}).items():
         for operation in path_item.values():
             if not isinstance(operation, dict):
                 continue
@@ -209,6 +240,10 @@ def _custom_openapi() -> dict:
                     and parameter.get("name") == "Idempotency-Key"
                 ):
                     parameter["required"] = True
+            if _uses_project_error_envelope(path):
+                responses = operation.setdefault("responses", {})
+                responses["422"] = _project_error_response(responses.get("422"))
+                responses["default"] = _project_error_response(responses.get("default"))
     app.openapi_schema = schema
     return schema
 

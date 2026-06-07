@@ -65,6 +65,7 @@ class TagManagementViewModel(
     }
 
     fun renameTag(tag: ManagedTag, newName: String) {
+        if (_uiState.value.busy) return
         if (newName.trim() == tag.name) return
         if (!tagRepository.canModifyLedger()) {
             _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
@@ -83,21 +84,32 @@ class TagManagementViewModel(
      *  (e.g. the key is held by a soft-deleted tag, not in the list) fall back to
      *  the generic "请改用合并" message. Never auto-merges — the user confirms. */
     private fun handleRenameFailure(error: Throwable, source: ManagedTag, attemptedName: String) {
-        if ((error as? RepositoryException)?.errorCode == "tag_conflict") {
+        val re = error as? RepositoryException
+        if (re?.errorCode == "tag_conflict") {
             val wanted = attemptedName.trim()
-            val target = _uiState.value.tags.firstOrNull {
-                it.publicId != source.publicId && it.name.trim().equals(wanted, ignoreCase = true)
+            // Prefer the server's FRESH conflict token (ADR-0043 契约 5 details) over a
+            // stale local-list entry so the prefilled merge doesn't immediately 409;
+            // fall back to a local name match only if the backend sent no details.
+            val target = if (re.conflictTagPublicId != null && re.conflictTagRowVersion != null) {
+                _uiState.value.tags.firstOrNull { it.publicId == re.conflictTagPublicId }
+                    ?.copy(rowVersion = re.conflictTagRowVersion)
+            } else {
+                _uiState.value.tags.firstOrNull {
+                    it.publicId != source.publicId && it.name.trim().equals(wanted, ignoreCase = true)
+                }
             }
             if (target != null) {
                 _uiState.update {
                     it.copy(
                         busy = false,
-                        message = "「$wanted」已存在，合并到它？",
+                        message = "「${target.name}」已存在，合并到它？",
                         mergeSuggestion = MergeSuggestion(source, target),
                     )
                 }
                 return
             }
+            // Conflict is with a soft-deleted tag (key reserved, not in the live
+            // list) → fall through to the generic "请改用合并" message.
         }
         failWith(error)
     }
@@ -108,6 +120,7 @@ class TagManagementViewModel(
     }
 
     fun deleteTag(tag: ManagedTag) {
+        if (_uiState.value.busy) return
         if (!tagRepository.canModifyLedger()) {
             _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
             return
@@ -126,6 +139,7 @@ class TagManagementViewModel(
     }
 
     fun mergeTags(source: ManagedTag, target: ManagedTag) {
+        if (_uiState.value.busy) return
         if (source.publicId == target.publicId) return
         if (!tagRepository.canModifyLedger()) {
             _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
@@ -145,6 +159,11 @@ class TagManagementViewModel(
     }
 
     fun undo() {
+        // Busy gate: a stale undo banner left over from an earlier delete/merge must
+        // not fire while a new rename/delete/merge is in flight (the button is also
+        // disabled, this is the model-side backstop). Returns without consuming the
+        // handle so the banner survives the in-flight op.
+        if (_uiState.value.busy) return
         val handle = _uiState.value.undoable ?: return
         // Consume the affordance synchronously so a rapid second tap early-returns
         // above — the undo token is single-use; a double-fire would make the loser's

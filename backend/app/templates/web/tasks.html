@@ -58,7 +58,10 @@
         {% if row.error_message %}<div class="text-danger">{{ row.error_message }}</div>{% endif %}
       </td>
       <td>
-        {% if row.is_cancellable %}
+        {# can_write gates the action client-side; the POST route still enforces
+           the writer role server-side (web_task_cancel → _require_selected_ledger_write),
+           so a paired viewer sees "—" here and is 403'd if they forge the request. #}
+        {% if row.is_cancellable and can_write %}
         <form method="post" action="/web/tasks/{{ row.public_id }}/cancel" class="inline-form">
           <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
           <button type="submit" class="dt-btn">取消</button>

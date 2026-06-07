@@ -63,7 +63,7 @@ def run_budget_advisor(
         # result with a reason code instead of a raw 500 — the same outcome the
         # provider itself produces when it rejects the payload on the wire.
         try:
-            input_hash = compute_input_hash(to_outbound_dict(inputs))
+            input_hash = compute_input_hash(db, to_outbound_dict(inputs))
         except DataIntegrityError:
             logger.exception("budget advisor outbound payload rejected before live call")
             return AdvisorRunResult(

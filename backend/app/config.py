@@ -246,6 +246,15 @@ def reset_settings_cache() -> None:
     get_settings.cache_clear()
 
 
+# ADR-0045: the shipped placeholder token defaults. These are PUBLIC (committed
+# in the repo), so they must never be used as a real secret — the CSRF signing key
+# (``middleware/csrf.py``) rejects them and derives a real per-install secret instead.
+PLACEHOLDER_UPLOAD_TOKEN = "replace-with-random-upload-token"
+PLACEHOLDER_APP_TOKEN = "replace-with-random-app-token"
+PLACEHOLDER_ADMIN_TOKEN = "replace-with-random-admin-token"
+PLACEHOLDER_SECRETS = frozenset({PLACEHOLDER_UPLOAD_TOKEN, PLACEHOLDER_APP_TOKEN, PLACEHOLDER_ADMIN_TOKEN})
+
+
 @lru_cache
 def get_settings() -> Settings:
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
@@ -254,9 +263,9 @@ def get_settings() -> Settings:
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     return Settings(
-        upload_token=os.getenv("UPLOAD_TOKEN", "replace-with-random-upload-token"),
-        app_token=os.getenv("APP_TOKEN", "replace-with-random-app-token"),
-        admin_token=os.getenv("ADMIN_TOKEN", "replace-with-random-admin-token"),
+        upload_token=os.getenv("UPLOAD_TOKEN", PLACEHOLDER_UPLOAD_TOKEN),
+        app_token=os.getenv("APP_TOKEN", PLACEHOLDER_APP_TOKEN),
+        admin_token=os.getenv("ADMIN_TOKEN", PLACEHOLDER_ADMIN_TOKEN),
         database_url=_resolve_sqlite_url(os.getenv("DATABASE_URL", "sqlite:///data/ticketbox.db")),
         upload_dir=upload_dir.resolve(),
         max_upload_size_mb=int(os.getenv("MAX_UPLOAD_SIZE_MB", "10")),

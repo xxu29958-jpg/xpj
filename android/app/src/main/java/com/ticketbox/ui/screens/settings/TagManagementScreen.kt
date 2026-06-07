@@ -71,6 +71,7 @@ fun TagManagementScreen(
     renaming?.let { tag ->
         RenameTagDialog(
             tag = tag,
+            busy = state.busy,
             onConfirm = { newName ->
                 viewModel.renameTag(tag, newName)
                 renaming = null
@@ -79,10 +80,20 @@ fun TagManagementScreen(
         )
     }
     merging?.let { source ->
+        // 契约 5: when a rename steered us here, preselectedMergeTarget carries the
+        // server's FRESH conflict token. Splice it over its stale list twin so that
+        // tapping that same row in the dialog keeps the fresh row_version (the list
+        // copy is from the pre-conflict load) — otherwise re-selecting the preselected
+        // target would reintroduce the stale token and the merge would 409 at once.
+        val freshTarget = preselectedMergeTarget
+        val mergeTargets = state.tags
+            .filter { it.publicId != source.publicId }
+            .map { if (freshTarget != null && it.publicId == freshTarget.publicId) freshTarget else it }
         MergeTagDialog(
             source = source,
-            targets = state.tags.filter { it.publicId != source.publicId },
-            initialTarget = preselectedMergeTarget,
+            targets = mergeTargets,
+            initialTarget = freshTarget,
+            busy = state.busy,
             onConfirm = { target ->
                 viewModel.mergeTags(source, target)
                 merging = null
@@ -108,10 +119,13 @@ fun TagManagementScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    deleting = null
-                    viewModel.deleteTag(tag)
-                }) {
+                TextButton(
+                    enabled = !state.busy,
+                    onClick = {
+                        deleting = null
+                        viewModel.deleteTag(tag)
+                    },
+                ) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -148,7 +162,9 @@ fun TagManagementScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(AppSpacing.compactGap))
-                    TextButton(onClick = viewModel::undo) { Text("撤销") }
+                    // Disabled while a mutate is in flight: a stale undo banner from
+                    // an earlier op must not fire concurrently with it (VM also gates).
+                    TextButton(enabled = !state.busy, onClick = viewModel::undo) { Text("撤销") }
                 }
             }
         }
@@ -257,6 +273,7 @@ private fun TagCard(
 @Composable
 private fun RenameTagDialog(
     tag: ManagedTag,
+    busy: Boolean,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -275,7 +292,7 @@ private fun RenameTagDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = name.trim().isNotBlank() && name.trim() != tag.name,
+                enabled = !busy && name.trim().isNotBlank() && name.trim() != tag.name,
                 onClick = { onConfirm(name) },
             ) { Text("保存") }
         },
@@ -292,6 +309,7 @@ private fun MergeTagDialog(
     onConfirm: (ManagedTag) -> Unit,
     onDismiss: () -> Unit,
     initialTarget: ManagedTag? = null,
+    busy: Boolean = false,
 ) {
     // Fresh per dialog open (the merging?.let block re-enters composition), so the
     // 契约-5 preselected target seeds here without a remember key.
@@ -340,7 +358,7 @@ private fun MergeTagDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = selected != null,
+                enabled = !busy && selected != null,
                 onClick = { selected?.let(onConfirm) },
             ) { Text("合并") }
         },

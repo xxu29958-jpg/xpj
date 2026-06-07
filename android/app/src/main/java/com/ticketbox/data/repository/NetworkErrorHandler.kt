@@ -40,7 +40,14 @@ internal class NetworkErrorHandler(
             throw error
         } catch (error: HttpException) {
             val parsed = parseHttpError(error)
-            Result.failure(RepositoryException(parsed.message, parsed.errorCode))
+            Result.failure(
+                RepositoryException(
+                    parsed.message,
+                    parsed.errorCode,
+                    conflictTagPublicId = parsed.conflictTagPublicId,
+                    conflictTagRowVersion = parsed.conflictTagRowVersion,
+                )
+            )
         } catch (error: RepositoryException) {
             Result.failure(error)
         } catch (error: IOException) {
@@ -74,7 +81,14 @@ internal class NetworkErrorHandler(
         if (!body.isNullOrBlank()) {
             runCatching { errorAdapter.fromJson(body) }
                 .getOrNull()
-                ?.let { return ParsedError(backendErrorUserMessage(it.error, it.message), it.error.trim()) }
+                ?.let {
+                    return ParsedError(
+                        backendErrorUserMessage(it.error, it.message),
+                        it.error.trim(),
+                        conflictTagPublicId = it.conflictTagPublicId,
+                        conflictTagRowVersion = it.conflictTagRowVersion,
+                    )
+                }
         }
         statusMessages[statusCode]?.let { return ParsedError(it, errorCode = null) }
         val fallback = when (statusCode) {
@@ -84,8 +98,14 @@ internal class NetworkErrorHandler(
         return ParsedError(fallback, errorCode = null)
     }
 
-    /** Decoded backend error: localized user-facing [message] + machine-readable [errorCode]. */
-    data class ParsedError(val message: String, val errorCode: String?)
+    /** Decoded backend error: localized user-facing [message] + machine-readable
+     *  [errorCode], plus the optional ADR-0043 `tag_conflict` merge hint. */
+    data class ParsedError(
+        val message: String,
+        val errorCode: String?,
+        val conflictTagPublicId: String? = null,
+        val conflictTagRowVersion: Long? = null,
+    )
 
     private companion object {
         // LOG_TAG used to live here; codex round-9 moved Log.w

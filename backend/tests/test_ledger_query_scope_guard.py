@@ -25,6 +25,8 @@ LEDGER_SCOPED_MODELS = {
     "RuleApplicationBatch",
     "RuleApplicationChange",
     "Tag",
+    "TagMutationUndoGroup",
+    "TagMutationUndoItem",
 }
 SCOPE_COLUMNS = {"tenant_id", "ledger_id"}
 SCOPE_HELPERS = {"add_ledger_scope", "ledger_filter", "ledger_scoped_select"}
@@ -88,6 +90,44 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
             "read path (tag_undo_service) is tenant-scoped."
         ),
     ),
+    ScopeExemption(
+        path="services/cleanup_service.py",
+        function="purge_expired_soft_deletes",
+        model="TagMutationUndoGroup",
+        occurrences=2,
+        reason=(
+            "ADR-0043 契约 6: the periodic purge sweeps tag-mutation undo groups "
+            "system-wide (select expired ids + delete past the retention cutoff) "
+            "— intentionally all-tenant, same as the soft-deleted Tag/"
+            "MerchantAlias/CategoryRule sweeps above. The per-undo read path "
+            "(tag_undo_service) is tenant-scoped."
+        ),
+    ),
+    ScopeExemption(
+        path="services/cleanup_service.py",
+        function="purge_expired_soft_deletes",
+        model="TagMutationUndoItem",
+        occurrences=1,
+        reason=(
+            "ADR-0043 契约 6: undo items are deleted by expired group id in the "
+            "same system-wide purge sweep — all-tenant by design (cascade of the "
+            "group purge above), not a per-ledger query."
+        ),
+    ),
+    ScopeExemption(
+        path="services/learning_service/_category_suggestion.py",
+        function="compute_category_suggestion",
+        model="Expense",
+        occurrences=1,
+        reason=(
+            "False positive of the per-statement AST walk, NOT a global query: the "
+            "Expense select IS tenant-scoped, but via `Expense.tenant_id == "
+            "tenant_id` appended to a `conditions` list one statement earlier and "
+            "applied with `.where(and_(*conditions))`. The guard only inspects the "
+            "single `db.execute(select(...))` statement, so it can't see the "
+            "predicate built in the preceding assignment. Verified scoped."
+        ),
+    ),
 )
 
 
@@ -145,9 +185,13 @@ def _find_unscoped_query_sites() -> list[QuerySite]:
 
 
 def _iter_python_files() -> list[Path]:
+    # ADR-0043 review: rglob (not glob) so subpackages — owner_console/,
+    # learning_service/, identity_service/, … — are scanned too, not just the top
+    # level of routes/ and services/. A new unscoped query anywhere under them now
+    # fails this guard instead of slipping through unscanned.
     files: list[Path] = []
     for root in SCAN_ROOTS:
-        files.extend(path for path in root.glob("*.py") if path.name != "__init__.py")
+        files.extend(path for path in root.rglob("*.py") if path.name != "__init__.py")
     return sorted(files)
 
 
