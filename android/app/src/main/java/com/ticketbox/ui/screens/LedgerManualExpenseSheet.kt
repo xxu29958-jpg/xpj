@@ -35,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.normalizeExpenseCategory
@@ -64,7 +65,7 @@ fun ManualExpenseSheet(
     var amountText by rememberSaveable { mutableStateOf("") }
     var currency by rememberSaveable(initialCurrency) { mutableStateOf(initialCurrency) }
     var merchant by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf("餐饮") }
+    var category by rememberSaveable { mutableStateOf(DEFAULT_EXPENSE_CATEGORIES.first()) }
     var note by rememberSaveable { mutableStateOf("") }
     var expenseTime by rememberSaveable { mutableStateOf(nowUtcIso()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
