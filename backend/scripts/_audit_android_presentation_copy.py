@@ -52,20 +52,25 @@ def _skip_quoted(src: str, i: int, n: int, quote: str) -> int:
 
 def _skip_template_expr(src: str, i: int, n: int) -> int:
     """``i`` is just after ``${``; skip the balanced-brace expression (including
-    nested strings) and return the index just after its ``}``."""
+    nested strings and char literals) and return the index just after its ``}``."""
     depth = 1
+    # Flat `if … continue` siblings (mirrors extract_string_literals): a nested
+    # string OR char literal is skipped whole, so a brace/quote inside a `'{'` /
+    # `'"'` char literal cannot desync brace-depth tracking and swallow copy that
+    # follows the template. Keeps AST nesting shallow for the codebase gate.
     while i < n and depth > 0:
         cc = src[i]
         if cc == '"':
             i = _skip_quoted(src, i + 1, n, '"')
-        elif cc == "{":
+            continue
+        if cc == "'":
+            i = _skip_quoted(src, i + 1, n, "'")
+            continue
+        if cc == "{":
             depth += 1
-            i += 1
         elif cc == "}":
             depth -= 1
-            i += 1
-        else:
-            i += 1
+        i += 1
     return i
 
 
