@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -27,9 +28,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import PLACEHOLDER_SECRETS, get_settings
 from app.errors import AppError
 from app.models import BudgetAdvisorAuditLog, BudgetAdvisorQuotaLock
+from app.services import app_meta_service
 from app.services.budget_advisor_service._provider_names import (
     LIVE_PROVIDER_NAMES,
     canonical_provider_name,
@@ -38,6 +40,10 @@ from app.services.budget_advisor_service._provider_names import (
 from app.services.time_service import ensure_utc, now_utc, to_iso
 
 IN_PROGRESS_ERROR_CODE = "ai_advisor_in_progress"
+# ADR-0045 follow-up: a per-install key for the audit input-hash HMAC, key-separated
+# from the CSRF signing key (different app_meta row), so neither degrades to the
+# public placeholder ADMIN_TOKEN default.
+AUDIT_SIGNING_KEY_META = "budget_advisor_audit_key"
 
 
 def is_live_provider(name: str | None) -> bool:
@@ -61,15 +67,29 @@ class AdvisorStatus:
     last_duration_ms: int | None
 
 
-def compute_input_hash(payload: dict[str, Any]) -> str:
-    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+def _audit_signing_secret(db: Session) -> str:
+    # ADR-0045: prefer a real operator secret (rejecting the PUBLIC placeholder
+    # defaults), else a per-install key persisted in app_meta — never the public
+    # constant the old ``... or "xiaopiaojia-budget-advisor-audit-v1"`` chain fell to.
     cfg = get_settings()
-    secret = (
-        cfg.http_bootstrap_secret
-        or cfg.admin_token
-        or cfg.app_token
-        or "xiaopiaojia-budget-advisor-audit-v1"
-    )
+    for raw in (cfg.admin_token, cfg.http_bootstrap_secret, cfg.app_token):
+        candidate = (raw or "").strip()
+        if candidate and candidate not in PLACEHOLDER_SECRETS:
+            return candidate
+    existing = app_meta_service.get_value(db, AUDIT_SIGNING_KEY_META)
+    if existing:
+        return existing
+    key = secrets.token_urlsafe(32)
+    app_meta_service.set_value(db, AUDIT_SIGNING_KEY_META, key)
+    return key
+
+
+def compute_input_hash(db: Session, payload: dict[str, Any]) -> str:
+    """HMAC-SHA256 of the outbound payload, keyed by the per-install audit secret
+    (ADR-0045). The hash is a write-only tamper-evidence fingerprint — never
+    re-verified (the payload itself is never stored), so a key change is harmless."""
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    secret = _audit_signing_secret(db)
     return hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
 
 

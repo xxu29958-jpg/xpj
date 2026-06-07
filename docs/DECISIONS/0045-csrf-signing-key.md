@@ -55,8 +55,10 @@ Chosen：**A**。
 
 Good：CSRF 密钥 per-install 唯一、不再是公开常量；无运维步骤、不 brick（首启自provision）；向后兼容显式
 真 env secret。Bad/成本：`app_meta` 多一行 `csrf_signing_key`；csrf.py 多一个启动期 stash 的进程全局；
-一次性刷新成本（自愈）。**同根残留（本轮不动）**：budget-advisor audit HMAC（`_audit.py`）复用同一
-`admin_token→http_bootstrap_secret→app_token` 链，同样退化——可日后改派生自同一 per-install key 源。
+一次性刷新成本（自愈）。**同根 follow-up（已做）**：budget-advisor audit HMAC（`_audit.py compute_input_hash`）原复用同一
+`admin_token→…→占位符` 退化链——已改为独立的 per-install `budget_advisor_audit_key`（app_meta，与 CSRF key
+**分离**）+ 拒占位符。注：该 `input_hash` **从不被验证**（payload 不存、不外露任何响应）→ 公开 key 实际**近零
+真实价值**，本次纯为一致性 + 去掉「公开常量当 key」；key 轮换无害（无人重算比对）。
 回收：改动可回退（删 key 来源回到 env 链）；要引入专用 `CSRF_SIGNING_SECRET` env 另评。
 
 ## Confirmation
