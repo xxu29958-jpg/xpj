@@ -6,13 +6,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.annotation.StringRes
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppFilterChip
@@ -22,12 +25,12 @@ import com.ticketbox.ui.components.AppGlassCard
  * Needs Review filter — UI-only client-side filter over already-loaded pending items.
  * 不触碰 Retrofit/Room；只在已加载的列表上做筛选。
  */
-internal enum class NeedsReviewFilter(val label: String) {
-    All("全部"),
-    NeedsAmount("缺金额"),
-    NeedsMerchant("缺商家"),
-    Duplicate("疑似重复"),
-    ReadyToConfirm("可直接确认"),
+internal enum class NeedsReviewFilter(@StringRes val labelRes: Int) {
+    All(R.string.pending_filter_label_all),
+    NeedsAmount(R.string.pending_filter_label_needs_amount),
+    NeedsMerchant(R.string.pending_filter_label_needs_merchant),
+    Duplicate(R.string.pending_filter_label_duplicate),
+    ReadyToConfirm(R.string.pending_filter_label_ready_to_confirm),
 }
 
 internal fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFilter): List<Expense> {
@@ -61,19 +64,18 @@ internal fun NeedsReviewFilterBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val labelOf: (NeedsReviewFilter) -> String = { f ->
-            val count = when (f) {
+        val countOf: (NeedsReviewFilter) -> Int = { f ->
+            when (f) {
                 NeedsReviewFilter.All -> allCount
                 NeedsReviewFilter.NeedsAmount -> needsAmountCount
                 NeedsReviewFilter.NeedsMerchant -> needsMerchantCount
                 NeedsReviewFilter.Duplicate -> duplicateCount
                 NeedsReviewFilter.ReadyToConfirm -> readyToConfirmCount
             }
-            "${f.label} $count"
         }
         NeedsReviewFilter.values().forEach { f ->
             AppFilterChip(
-                label = labelOf(f),
+                label = "${stringResource(f.labelRes)} ${countOf(f)}",
                 selected = f == selected,
                 onClick = { onSelect(f) },
             )
@@ -89,12 +91,12 @@ internal fun NeedsReviewEmptyFilterCard(filter: NeedsReviewFilter) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "没有符合 [${filter.label}] 的待确认账单",
+                text = stringResource(R.string.pending_filter_empty_title, stringResource(filter.labelRes)),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
-                text = "切换其他筛选可以看到剩余账单。当前不会自动判断，也不会自动入账。",
+                text = stringResource(R.string.pending_filter_empty_body),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )

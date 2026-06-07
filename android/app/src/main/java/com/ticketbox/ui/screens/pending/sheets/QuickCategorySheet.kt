@@ -18,8 +18,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryButton
@@ -46,9 +48,13 @@ internal fun QuickCategorySheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("补一下分类", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
-            text = "选一个常用分类，或自定义。保存后不会自动确认入账。",
+            stringResource(R.string.quick_category_sheet_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(
+            text = stringResource(R.string.quick_category_sheet_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -75,14 +81,14 @@ internal fun QuickCategorySheetContent(
             onValueChange = { custom = it.take(20) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
-            label = { Text("或者输入新分类") },
+            label = { Text(stringResource(R.string.quick_category_custom_label)) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !saving,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppSecondaryButton(
-                text = "取消",
+                text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),
                 enabled = !saving,
                 onClick = onDismiss,
@@ -95,7 +101,13 @@ internal fun QuickCategorySheetContent(
                     if (choice.isNotEmpty()) onSave(choice)
                 },
             ) {
-                Text(if (saving) "保存中" else "保存分类")
+                Text(
+                    if (saving) {
+                        stringResource(R.string.common_saving)
+                    } else {
+                        stringResource(R.string.quick_category_save_button)
+                    },
+                )
             }
         }
     }

@@ -11,9 +11,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.RuleApplyPreviewItem
@@ -36,7 +38,7 @@ internal fun ConfirmedRuleApplyPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = "先预览已入账账单中可被规则更新的分类，再手动确认应用。",
+                text = stringResource(R.string.category_rule_apply_panel_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             preview?.let { result ->
@@ -47,18 +49,24 @@ internal fun ConfirmedRuleApplyPanel(
                     enabled = !busy,
                     onClick = onPreview,
                 ) {
-                    Text(if (busy) "处理中" else "预览")
+                    Text(
+                        if (busy) {
+                            stringResource(R.string.category_rule_apply_preview_busy)
+                        } else {
+                            stringResource(R.string.category_rule_apply_preview_button)
+                        },
+                    )
                 }
                 Button(
                     enabled = !busy && !readOnly && (preview?.changedCount ?: 0) > 0,
                     onClick = onConfirm,
                 ) {
-                    Text("确认应用")
+                    Text(stringResource(R.string.category_rule_apply_confirm_button))
                 }
             }
             if (readOnly) {
                 Text(
-                    text = "当前角色为只读，不能应用到已入账账单。",
+                    text = stringResource(R.string.category_rule_apply_panel_readonly),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -76,7 +84,7 @@ internal fun RuleApplicationHistory(
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         if (applications.isEmpty()) {
             Text(
-                text = "暂无应用记录。",
+                text = stringResource(R.string.category_rule_apply_history_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
@@ -95,12 +103,17 @@ internal fun RuleApplicationHistory(
 @Composable
 private fun ConfirmedRulePreviewSummary(result: RuleApplyConfirmedResult) {
     Text(
-        text = "扫描 ${result.confirmedScanned} 笔 · 可更新 ${result.changedCount} 笔 · 未命中 ${result.noMatchCount} 笔",
+        text = stringResource(
+            R.string.category_rule_apply_preview_summary,
+            result.confirmedScanned,
+            result.changedCount,
+            result.noMatchCount,
+        ),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     if (result.scanLimitReached) {
         Text(
-            text = "本次只扫描前 ${result.scanLimit} 笔。",
+            text = stringResource(R.string.category_rule_apply_preview_scan_limit, result.scanLimit),
             color = MaterialTheme.colorScheme.secondary,
         )
     }
@@ -117,7 +130,8 @@ private fun RuleApplyPreviewRow(item: RuleApplyPreviewItem) {
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
             Text(
-                text = item.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                text = item.merchant?.takeIf { it.isNotBlank() }
+                    ?: stringResource(R.string.category_rule_apply_preview_no_merchant),
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -148,22 +162,30 @@ private fun RuleApplicationCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = if (application.isRolledBack) "已回退" else "已应用",
+                    text = if (application.isRolledBack) {
+                        stringResource(R.string.category_rule_apply_history_status_rolled_back)
+                    } else {
+                        stringResource(R.string.category_rule_apply_history_status_applied)
+                    },
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    text = "${application.changedCount} 笔",
+                    text = stringResource(R.string.category_rule_apply_history_changed_count, application.changedCount),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = AppTextHierarchy.body.weight,
                 )
             }
             Text(
-                text = "扫描 ${application.pendingScanned} 笔 · ${displayTime(application.createdAt)}",
+                text = stringResource(
+                    R.string.category_rule_apply_history_scanned,
+                    application.pendingScanned,
+                    displayTime(application.createdAt),
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             application.rolledBackAt?.let {
                 Text(
-                    text = "回退时间：${displayTime(it)}",
+                    text = stringResource(R.string.category_rule_apply_history_rolled_back_at, displayTime(it)),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -172,7 +194,7 @@ private fun RuleApplicationCard(
                     enabled = !busy,
                     onClick = onRollback,
                 ) {
-                    Text("回退")
+                    Text(stringResource(R.string.category_rule_apply_history_rollback_button))
                 }
             }
         }

@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 
 @Composable
 fun DuplicateNotice(
@@ -13,7 +15,7 @@ fun DuplicateNotice(
 ) {
     AppContentCard(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = "可能重复上传",
+            text = stringResource(R.string.components_duplicate_notice_title),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.labelLarge,
         )
@@ -25,17 +27,18 @@ fun DuplicateNotice(
     }
 }
 
+@Composable
 private fun duplicateNoticeMessage(reason: String?): String {
     val normalized = reason.orEmpty().trim()
     return when {
         normalized.contains("图片 hash", ignoreCase = true) ||
             normalized.contains("image hash", ignoreCase = true) ->
-            "这张截图和之前上传过的一张完全一致。确认前先看一眼，确实要记账就点“不是重复，保留”。"
+            stringResource(R.string.components_duplicate_notice_image_hash)
         normalized.contains("金额") ||
             normalized.contains("商家") ||
             normalized.contains("时间") ->
-            "这笔账单和已有记录很接近。确认前先看一眼，避免重复入账。"
+            stringResource(R.string.components_duplicate_notice_field_match)
         normalized.isNotBlank() -> normalized
-        else -> "这笔账单可能已经上传过。确认前先看一眼，避免重复入账。"
+        else -> stringResource(R.string.components_duplicate_notice_generic)
     }
 }

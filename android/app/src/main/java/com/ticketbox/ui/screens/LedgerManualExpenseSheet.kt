@@ -31,7 +31,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
@@ -68,6 +70,7 @@ fun ManualExpenseSheet(
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showTimePicker by rememberSaveable { mutableStateOf(false) }
+    val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
 
     if (showDatePicker) {
         val datePickerState = androidx.compose.material3.rememberDatePickerState(
@@ -84,12 +87,12 @@ fun ManualExpenseSheet(
                         showDatePicker = false
                     },
                 ) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDatePicker = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         ) {
@@ -97,7 +100,7 @@ fun ManualExpenseSheet(
                 state = datePickerState,
                 title = {
                     Text(
-                        "选择日期",
+                        stringResource(R.string.ledger_manual_date_picker_title),
                         modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
                     )
                 },
@@ -113,7 +116,7 @@ fun ManualExpenseSheet(
         )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
-            title = { Text("选择时间") },
+            title = { Text(stringResource(R.string.ledger_manual_time_picker_title)) },
             text = { TimeInput(state = timePickerState) },
             confirmButton = {
                 TextButton(
@@ -126,12 +129,12 @@ fun ManualExpenseSheet(
                         showTimePicker = false
                     },
                 ) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showTimePicker = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
@@ -140,7 +143,7 @@ fun ManualExpenseSheet(
     fun draftOrMessage(): ExpenseDraft? {
         val originalMinor = parseMinorAmount(amountText, currency)
         if (originalMinor == null) {
-            message = "请填写正确金额。"
+            message = invalidAmountMessage
             return null
         }
         return ExpenseDraft(
@@ -165,9 +168,9 @@ fun ManualExpenseSheet(
             .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.contentGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        Text("手动记一笔", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.ledger_manual_sheet_title), style = MaterialTheme.typography.titleLarge)
         Text(
-            text = "适合现金、零散消费，保存后直接进入账本。",
+            text = stringResource(R.string.ledger_manual_sheet_subtitle),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -184,15 +187,15 @@ fun ManualExpenseSheet(
             value = merchant,
             onValueChange = { merchant = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("商家") },
-            placeholder = { Text("便利店") },
+            label = { Text(stringResource(R.string.ledger_manual_merchant_label)) },
+            placeholder = { Text(stringResource(R.string.ledger_manual_merchant_placeholder)) },
             singleLine = true,
         )
         OutlinedTextField(
             value = category,
             onValueChange = { category = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("分类") },
+            label = { Text(stringResource(R.string.ledger_manual_category_label)) },
             singleLine = true,
         )
         if (categories.isNotEmpty()) {
@@ -210,24 +213,24 @@ fun ManualExpenseSheet(
             value = note,
             onValueChange = { note = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("备注") },
+            label = { Text(stringResource(R.string.ledger_manual_note_label)) },
         )
         AppSolidCard {
             Column(
                 modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
             ) {
-                Text("消费时间", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.ledger_manual_time_section_title), style = MaterialTheme.typography.titleSmall)
                 Text(displayDateTime(expenseTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                     AppOutlinedButton(onClick = { showDatePicker = true }) {
-                        Text("选日期")
+                        Text(stringResource(R.string.ledger_manual_pick_date_button))
                     }
                     TextButton(onClick = { showTimePicker = true }) {
-                        Text("选时间")
+                        Text(stringResource(R.string.ledger_manual_pick_time_button))
                     }
                     TextButton(onClick = { expenseTime = nowUtcIso() }) {
-                        Text("现在")
+                        Text(stringResource(R.string.ledger_manual_now_button))
                     }
                 }
             }
@@ -240,7 +243,7 @@ fun ManualExpenseSheet(
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss,
             ) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
             Button(
                 modifier = Modifier.weight(1f),
@@ -250,7 +253,13 @@ fun ManualExpenseSheet(
                     onCreate(draft)
                 },
             ) {
-                Text(if (saving) "保存中" else "记入账本")
+                Text(
+                    if (saving) {
+                        stringResource(R.string.ledger_manual_saving_button)
+                    } else {
+                        stringResource(R.string.ledger_manual_save_button)
+                    },
+                )
             }
         }
     }
@@ -264,7 +273,7 @@ fun CategoryFilterRow(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
-            text = "分类",
+            text = stringResource(R.string.ledger_category_filter_label),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
@@ -272,7 +281,7 @@ fun CategoryFilterRow(
             item {
                 SelectableFilterChip(
                     selected = selectedCategory.isBlank(),
-                    label = "全部分类",
+                    label = stringResource(R.string.ledger_category_filter_all),
                     onClick = { onCategoryChange("") },
                 )
             }

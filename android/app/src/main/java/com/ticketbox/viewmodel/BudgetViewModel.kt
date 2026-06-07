@@ -2,10 +2,12 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,7 +36,7 @@ data class BudgetUiState(
     val month: String = YearMonth.now().toString(),
     val loading: Boolean = false,
     val saving: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     val canModify: Boolean = true,
     val budget: BudgetMonthly? = null,
     val form: BudgetFormState = BudgetFormState(),
@@ -102,7 +104,7 @@ class BudgetViewModel(
                         if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             loading = false,
-                            message = error.message ?: "预算暂时打不开，请稍后再试。",
+                            message = error.toUiText(R.string.budget_message_load_failed),
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -158,14 +160,16 @@ class BudgetViewModel(
 
     fun save() {
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(canModify = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(canModify = false, message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         val month = _uiState.value.month
         val generation = requestGeneration
         val update = parseBudgetUpdate(_uiState.value.form)
             .getOrElse { error ->
-                _uiState.update { it.copy(message = error.message ?: "预算内容不正确。") }
+                val message = (error as? BudgetInputError)?.uiText
+                    ?: error.toUiText(R.string.budget_message_content_invalid)
+                _uiState.update { it.copy(message = message) }
                 return
             }
         viewModelScope.launch {
@@ -178,7 +182,7 @@ class BudgetViewModel(
                             saving = false,
                             budget = budget,
                             form = budget.toFormState(),
-                            message = "预算已保存。",
+                            message = UiText.res(R.string.budget_message_saved),
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -188,7 +192,7 @@ class BudgetViewModel(
                         if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             saving = false,
-                            message = error.message ?: "预算没有保存成功。",
+                            message = error.toUiText(R.string.budget_message_save_failed),
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -231,20 +235,32 @@ private fun BudgetMonthly.toFormState(): BudgetFormState {
     )
 }
 
+private class BudgetInputError(val uiText: UiText) : IllegalArgumentException()
+
 private fun parseBudgetUpdate(form: BudgetFormState): Result<BudgetMonthlyUpdate> = runCatching {
-    val total = parseRequiredCents(form.totalAmount, "请输入月度总预算。")
-    require(total > 0L) { "月度总预算必须大于 0。" }
-    val rollover = parseOptionalCents(form.rolloverAmount, allowNegative = true, label = "结转")
-    val nonMonthly = parseOptionalCents(form.nonMonthlyAmount, allowNegative = false, label = "非月度预留")
+    val total = parseRequiredCents(form.totalAmount, UiText.res(R.string.budget_validation_total_required))
+    if (total <= 0L) throw BudgetInputError(UiText.res(R.string.budget_validation_total_positive))
+    val rollover = parseOptionalCents(
+        form.rolloverAmount,
+        allowNegative = true,
+        amountInvalid = UiText.res(R.string.budget_validation_rollover_amount_invalid),
+        negative = UiText.res(R.string.budget_validation_rollover_negative),
+    )
+    val nonMonthly = parseOptionalCents(
+        form.nonMonthlyAmount,
+        allowNegative = false,
+        amountInvalid = UiText.res(R.string.budget_validation_nonmonthly_amount_invalid),
+        negative = UiText.res(R.string.budget_validation_nonmonthly_negative),
+    )
     val rows = form.categoryRows.mapNotNull { row ->
         val category = row.category.trim()
         val amountText = row.amount.trim()
         if (category.isBlank() && amountText.isBlank()) return@mapNotNull null
-        require(category.isNotBlank()) { "请输入分类名称。" }
+        if (category.isBlank()) throw BudgetInputError(UiText.res(R.string.budget_validation_category_name_required))
         BudgetCategoryDraft(
             category = category,
-            amountCents = parseRequiredCents(amountText, "请输入分类预算金额。").also {
-                require(it >= 0L) { "分类预算不能为负数。" }
+            amountCents = parseRequiredCents(amountText, UiText.res(R.string.budget_validation_category_amount_required)).also {
+                if (it < 0L) throw BudgetInputError(UiText.res(R.string.budget_validation_category_amount_negative))
             },
         )
     }
@@ -267,17 +283,22 @@ private fun splitCategories(value: String): List<String> {
     return seen.toList()
 }
 
-private fun parseRequiredCents(value: String, blankMessage: String): Long {
+private fun parseRequiredCents(value: String, blankError: UiText): Long {
     val trimmed = value.trim()
-    require(trimmed.isNotBlank()) { blankMessage }
-    return parseCents(trimmed) ?: throw IllegalArgumentException("金额格式不正确。")
+    if (trimmed.isBlank()) throw BudgetInputError(blankError)
+    return parseCents(trimmed) ?: throw BudgetInputError(UiText.res(R.string.budget_validation_amount_invalid))
 }
 
-private fun parseOptionalCents(value: String, allowNegative: Boolean, label: String): Long {
+private fun parseOptionalCents(
+    value: String,
+    allowNegative: Boolean,
+    amountInvalid: UiText,
+    negative: UiText,
+): Long {
     val trimmed = value.trim()
     if (trimmed.isBlank()) return 0L
-    val amount = parseCents(trimmed) ?: throw IllegalArgumentException("$label 金额格式不正确。")
-    require(allowNegative || amount >= 0L) { "$label 不能为负数。" }
+    val amount = parseCents(trimmed) ?: throw BudgetInputError(amountInvalid)
+    if (!allowNegative && amount < 0L) throw BudgetInputError(negative)
     return amount
 }
 

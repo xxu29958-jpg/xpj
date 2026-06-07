@@ -65,10 +65,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -164,7 +166,15 @@ internal fun CategoryRuleCard(
                 Text(rule.category, color = MaterialTheme.colorScheme.primary)
             }
             Text(
-                text = "优先级 ${rule.priority} · ${if (rule.enabled) "已启用" else "已停用"}",
+                text = stringResource(
+                    R.string.category_rule_card_priority_status,
+                    rule.priority,
+                    if (rule.enabled) {
+                        stringResource(R.string.category_rule_card_status_enabled)
+                    } else {
+                        stringResource(R.string.category_rule_card_status_disabled)
+                    },
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             val conditionText = categoryRuleConditionText(rule, currencyDisplay)
@@ -178,13 +188,19 @@ internal fun CategoryRuleCard(
             if (!readOnly) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { onToggleRule(rule) }) {
-                        Text(if (rule.enabled) "停用" else "启用")
+                        Text(
+                            if (rule.enabled) {
+                                stringResource(R.string.category_rule_card_action_disable)
+                            } else {
+                                stringResource(R.string.category_rule_card_action_enable)
+                            },
+                        )
                     }
                     OutlinedButton(onClick = onEditRule) {
-                        Text("编辑")
+                        Text(stringResource(R.string.category_rule_card_action_edit))
                     }
                     OutlinedButton(onClick = onDeleteRule) {
-                        Text("删除")
+                        Text(stringResource(R.string.category_rule_card_action_delete))
                     }
                 }
             }
@@ -192,25 +208,35 @@ internal fun CategoryRuleCard(
     }
 }
 
+@Composable
 private fun categoryRuleConditionText(
     rule: CategoryRule,
     currencyDisplay: CurrencyDisplay,
 ): String? {
     if (!rule.hasConditions) return null
     val parts = buildList {
-        rule.amountMinCents?.let { add("金额 >= ${formatDisplayAmount(it, currencyDisplay)}") }
-        rule.amountMaxCents?.let { add("金额 <= ${formatDisplayAmount(it, currencyDisplay)}") }
-        rule.sourceContains?.takeIf { it.isNotBlank() }?.let { add("来源含 $it") }
-        rule.tagContains?.takeIf { it.isNotBlank() }?.let { add("标签 $it") }
+        rule.amountMinCents?.let {
+            add(stringResource(R.string.category_rule_condition_amount_min, formatDisplayAmount(it, currencyDisplay)))
+        }
+        rule.amountMaxCents?.let {
+            add(stringResource(R.string.category_rule_condition_amount_max, formatDisplayAmount(it, currencyDisplay)))
+        }
+        rule.sourceContains?.takeIf { it.isNotBlank() }?.let {
+            add(stringResource(R.string.category_rule_condition_source_contains, it))
+        }
+        rule.tagContains?.takeIf { it.isNotBlank() }?.let {
+            add(stringResource(R.string.category_rule_condition_tag, it))
+        }
     }
     return parts.joinToString(" · ")
 }
 
+@Composable
 internal fun categoryRuleSummary(rules: List<CategoryRule>): String {
     val enabled = rules.count { it.enabled }
     return if (rules.isEmpty()) {
-        "暂无规则"
+        stringResource(R.string.category_rules_summary_empty)
     } else {
-        "$enabled 条启用 · 共 ${rules.size} 条"
+        stringResource(R.string.category_rules_summary_count, enabled, rules.size)
     }
 }

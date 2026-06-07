@@ -27,10 +27,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
@@ -65,8 +69,8 @@ fun GlobalSearchScreen(
     ) {
         item {
             AppPageHeader(
-                title = "搜索",
-                subtitle = "从待确认和本机账本缓存里找一笔账。",
+                title = stringResource(R.string.global_search_header_title),
+                subtitle = stringResource(R.string.global_search_header_subtitle),
             )
         }
         item {
@@ -80,8 +84,18 @@ fun GlobalSearchScreen(
             item { SearchMessageCard(message = message) }
         }
         when {
-            state.query.isBlank() -> item { SearchEmptyCard(title = "输入关键词", subtitle = "商家、分类、备注、标签和原文都可以匹配。") }
-            state.results.isEmpty() -> item { SearchEmptyCard(title = "没有匹配项", subtitle = "换一个更短的商家名、分类名或备注关键词。") }
+            state.query.isBlank() -> item {
+                SearchEmptyCard(
+                    title = stringResource(R.string.global_search_empty_blank_title),
+                    subtitle = stringResource(R.string.global_search_empty_blank_subtitle),
+                )
+            }
+            state.results.isEmpty() -> item {
+                SearchEmptyCard(
+                    title = stringResource(R.string.global_search_empty_nomatch_title),
+                    subtitle = stringResource(R.string.global_search_empty_nomatch_subtitle),
+                )
+            }
             else -> {
                 items(
                     items = state.results,
@@ -122,19 +136,34 @@ private fun SearchControlCard(
             trailingIcon = {
                 if (state.query.isNotBlank()) {
                     IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "清空")
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.global_search_clear_action),
+                        )
                     }
                 }
             },
-            label = { Text("关键词") },
-            placeholder = { Text("咖啡、地铁、房租") },
+            label = { Text(stringResource(R.string.global_search_field_label)) },
+            placeholder = { Text(stringResource(R.string.global_search_field_placeholder)) },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         )
         AppSegmentedControl(
             options = listOf(
-                AppSegmentedItem(GlobalSearchScope.All, "全部 ${state.pendingMatchCount + state.confirmedMatchCount}"),
-                AppSegmentedItem(GlobalSearchScope.Pending, "待确认 ${state.pendingMatchCount}"),
-                AppSegmentedItem(GlobalSearchScope.Confirmed, "已确认 ${state.confirmedMatchCount}"),
+                AppSegmentedItem(
+                    GlobalSearchScope.All,
+                    stringResource(
+                        R.string.global_search_scope_all,
+                        state.pendingMatchCount + state.confirmedMatchCount,
+                    ),
+                ),
+                AppSegmentedItem(
+                    GlobalSearchScope.Pending,
+                    stringResource(R.string.global_search_scope_pending, state.pendingMatchCount),
+                ),
+                AppSegmentedItem(
+                    GlobalSearchScope.Confirmed,
+                    stringResource(R.string.global_search_scope_confirmed, state.confirmedMatchCount),
+                ),
             ),
             selectedValue = state.scope,
             onValueChange = onScopeChange,
@@ -143,13 +172,13 @@ private fun SearchControlCard(
 }
 
 @Composable
-private fun SearchMessageCard(message: String) {
+private fun SearchMessageCard(message: UiText) {
     val tone = LocalStateTokens.current.warn
     AppContentCard(
         contentPadding = PaddingValues(AppSpacing.cardPaddingSmall),
     ) {
         Text(
-            text = message,
+            text = message.asString(),
             color = tone.fg,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -220,7 +249,7 @@ private fun SearchResultCard(
             )
         }
         Text(
-            text = "命中：${result.matchedField}",
+            text = stringResource(R.string.global_search_result_matched, result.matchedField.asString()),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
@@ -237,8 +266,8 @@ private fun SearchKindBadge(kind: GlobalSearchResultKind) {
         GlobalSearchResultKind.Confirmed -> states.success
     }
     val label = when (kind) {
-        GlobalSearchResultKind.Pending -> "待确认"
-        GlobalSearchResultKind.Confirmed -> "已确认"
+        GlobalSearchResultKind.Pending -> stringResource(R.string.global_search_badge_pending)
+        GlobalSearchResultKind.Confirmed -> stringResource(R.string.global_search_badge_confirmed)
     }
     Box(
         modifier = Modifier

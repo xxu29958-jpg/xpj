@@ -12,6 +12,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
 
 /**
@@ -37,16 +38,16 @@ data class StatsUiState(
     val lastUploadAt: String? = null,
     val dashboardCards: List<DashboardCard> = emptyList(),
     val dashboardCardsLoading: Boolean = false,
-    val dashboardCardsMessage: String? = null,
+    val dashboardCardsMessage: UiText? = null,
     val reportsLoading: Boolean = false,
-    val reportsMessage: String? = null,
+    val reportsMessage: UiText? = null,
     val dataQuality: DataQualitySummary? = null,
     val months: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val month: String = YearMonth.now().toString(),
     val selectedTag: String = "",
     val loading: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 data class MonthlyStatsUiState(
@@ -65,7 +66,7 @@ data class MonthlyStatsUiState(
     val month: String = YearMonth.now().toString(),
     val selectedTag: String = "",
     val loading: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     val ledgerReady: Boolean = false,
     val activeLedgerId: String? = null,
 )
@@ -81,9 +82,9 @@ data class StatsReportsUiState(
     val reportGoals: List<Goal> = emptyList(),
     val dashboardCards: List<DashboardCard> = emptyList(),
     val dashboardCardsLoading: Boolean = false,
-    val dashboardCardsMessage: String? = null,
+    val dashboardCardsMessage: UiText? = null,
     val reportsLoading: Boolean = false,
-    val reportsMessage: String? = null,
+    val reportsMessage: UiText? = null,
     val month: String = "",
     val selectedTag: String = "",
 )

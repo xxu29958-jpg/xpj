@@ -2,12 +2,14 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.ConflictResolution
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FailedResolution
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,7 +58,7 @@ class OutboxStatusViewModel(
                 _uiState.update {
                     it.copy(
                         busyRowId = null,
-                        message = "这条改动暂时只能放弃，或联网后在对应页面重做。",
+                        message = UiText.res(R.string.sync_status_vm_keep_mine_unavailable),
                     )
                 }
                 return@launch
@@ -103,5 +105,5 @@ class OutboxStatusViewModel(
 data class OutboxStatusUiState(
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val busyRowId: Long? = null,
-    val message: String? = null,
+    val message: UiText? = null,
 )

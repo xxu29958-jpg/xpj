@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.MonthComparison
@@ -65,7 +67,7 @@ internal fun StatsOverviewCard(
         ) {
             Text(
                 modifier = Modifier.weight(1f),
-                text = "本月支出",
+                text = stringResource(R.string.stats_overview_month_spend_label),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
@@ -73,7 +75,7 @@ internal fun StatsOverviewCard(
             )
             if (statsSource == StatsSource.LocalFallback) {
                 Text(
-                    text = "本机估算",
+                    text = stringResource(R.string.stats_overview_local_estimate_badge),
                     modifier = Modifier
                         .clip(RoundedCornerShape(AppRadius.pill))
                         .background(MaterialTheme.colorScheme.secondaryContainer)
@@ -108,12 +110,12 @@ internal fun StatsOverviewCard(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
         ) {
             CompactMetric(
-                label = "账单",
-                value = "${stats.count} 笔",
+                label = stringResource(R.string.stats_overview_count_label),
+                value = stringResource(R.string.stats_overview_count_value, stats.count),
                 modifier = Modifier.weight(1f),
             )
             CompactMetric(
-                label = "最近 7 天",
+                label = stringResource(R.string.stats_overview_recent7_label),
                 value = formatDisplayAmount(recent7DaysAmountCents, currencyDisplay),
                 modifier = Modifier.weight(1f),
             )
@@ -131,7 +133,7 @@ private fun MonthDeltaPill(
     val visuals = LocalThemeVisuals.current
     val delta = comparison.deltaAmountCents
     val (label, tint) = when {
-        delta == 0L -> "持平" to MaterialTheme.colorScheme.onSurfaceVariant
+        delta == 0L -> stringResource(R.string.stats_overview_delta_flat) to MaterialTheme.colorScheme.onSurfaceVariant
         delta > 0L -> {
             val percent = comparison.percentChange?.let { " +${it}%" }.orEmpty()
             "↑ ${formatDisplayAmount(kotlin.math.abs(delta), currencyDisplay)}$percent" to visuals.warningTint

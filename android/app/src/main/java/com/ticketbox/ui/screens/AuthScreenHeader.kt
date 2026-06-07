@@ -6,8 +6,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ticketbox.R
 import com.ticketbox.ui.design.AppTypography
 
 /**
@@ -26,7 +28,7 @@ internal fun AuthScreenHeader(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = "小票夹",
+            text = stringResource(R.string.auth_header_app_label),
             style = MaterialTheme.typography.titleMedium.copy(
                 fontSize = AppTypography.appLabel.size,
                 lineHeight = 20.sp,

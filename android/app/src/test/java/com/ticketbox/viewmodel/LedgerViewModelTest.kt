@@ -1,11 +1,13 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -140,7 +142,7 @@ class LedgerViewModelTest {
         // selection clears on success; honest count message.
         assertTrue(!vm.uiState.value.selectionMode)
         assertEquals(emptySet(), vm.uiState.value.selectedIds)
-        assertEquals("已更新 2 笔", vm.uiState.value.message)
+        assertEquals(UiText.raw("已更新 2 笔"), vm.uiState.value.message)
     }
 
     @Test
@@ -181,7 +183,7 @@ class LedgerViewModelTest {
         vm.applyBatchCategory("购物")
         advanceUntilIdle()
 
-        assertEquals("已更新 1 笔，1 笔已加入同步，1 笔需重新同步", vm.uiState.value.message)
+        assertEquals(UiText.raw("已更新 1 笔，1 笔已加入同步，1 笔需重新同步"), vm.uiState.value.message)
     }
 
     @Test
@@ -200,7 +202,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, fake.batchCallCount)
-        assertEquals(READ_ONLY_LEDGER_MESSAGE, vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
     }
 
     @Test
@@ -217,7 +219,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, fake.batchCallCount)
-        assertEquals("请先选择要修改的账单。", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.ledger_msg_batch_no_selection), vm.uiState.value.message)
     }
 
     @Test

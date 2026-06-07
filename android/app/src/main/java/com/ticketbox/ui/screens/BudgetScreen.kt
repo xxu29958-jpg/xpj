@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.design.AppSpacing
@@ -66,7 +67,7 @@ fun BudgetScreen(
             )
         }
         state.message?.let { message ->
-            item { Text(message, color = MaterialTheme.colorScheme.secondary) }
+            item { Text(message.asString(), color = MaterialTheme.colorScheme.secondary) }
         }
         item {
             BudgetSummaryCard(

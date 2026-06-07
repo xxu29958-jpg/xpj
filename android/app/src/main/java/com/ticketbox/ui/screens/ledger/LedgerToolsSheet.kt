@@ -14,8 +14,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.screens.CategoryFilterRow
 import com.ticketbox.ui.screens.SelectableFilterChip
@@ -43,7 +45,7 @@ internal fun LedgerToolsSheet(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            Text("筛选与更新", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
+            Text(stringResource(R.string.ledger_tools_title), style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
             Text(
                 text = ledgerCombinedStatusLine(state),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -70,18 +72,26 @@ internal fun LedgerToolsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            placeholder = { Text("搜索备注") },
+            placeholder = { Text(stringResource(R.string.ledger_tools_search_placeholder)) },
             singleLine = true,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             LedgerInlineButton(
-                text = if (state.exporting) "导出中" else "导出表格",
+                text = if (state.exporting) {
+                    stringResource(R.string.ledger_tools_exporting)
+                } else {
+                    stringResource(R.string.ledger_tools_export)
+                },
                 modifier = Modifier.weight(1f),
                 enabled = canExport,
                 onClick = onExportCsv,
             )
             LedgerInlineButton(
-                text = if (state.syncing) "更新中" else "更新账本",
+                text = if (state.syncing) {
+                    stringResource(R.string.ledger_tools_syncing)
+                } else {
+                    stringResource(R.string.ledger_tools_update_ledger)
+                },
                 modifier = Modifier.weight(1f),
                 enabled = !state.syncing,
                 onClick = onSync,
@@ -90,7 +100,7 @@ internal fun LedgerToolsSheet(
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             if (hasUserFilters) {
                 QuietOutlinedButton(
-                    text = "清除筛选",
+                    text = stringResource(R.string.ledger_tools_clear_filters),
                     modifier = Modifier.weight(1f),
                     onClick = onClearFilters,
                 )
@@ -99,12 +109,12 @@ internal fun LedgerToolsSheet(
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss,
             ) {
-                Text("完成")
+                Text(stringResource(R.string.ledger_tools_done))
             }
         }
         if (state.items.isEmpty()) {
             Text(
-                text = "当前没有可导出的已确认账单。",
+                text = stringResource(R.string.ledger_tools_no_export),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -120,7 +130,7 @@ private fun TagFilterRow(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
-            text = "标签",
+            text = stringResource(R.string.ledger_tools_tag_label),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
@@ -128,7 +138,7 @@ private fun TagFilterRow(
             item {
                 SelectableFilterChip(
                     selected = selectedTag.isBlank(),
-                    label = "全部标签",
+                    label = stringResource(R.string.ledger_tools_tag_all),
                     onClick = { onTagChange("") },
                 )
             }

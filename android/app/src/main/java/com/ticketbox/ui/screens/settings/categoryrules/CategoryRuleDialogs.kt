@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.RuleApplicationBatch
 
@@ -16,16 +18,16 @@ internal fun DeleteCategoryRuleDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除这条规则？") },
-        text = { Text("删除后，后续识别不再参考“${rule.keyword}”。") },
+        title = { Text(stringResource(R.string.category_rule_delete_dialog_title)) },
+        text = { Text(stringResource(R.string.category_rule_delete_dialog_text, rule.keyword)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("删除", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.category_rule_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )
@@ -39,16 +41,16 @@ internal fun RollbackRuleApplicationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("回退这次应用？") },
-        text = { Text("会尽量恢复这次规则应用前的分类，已经手动改过的账单会跳过。") },
+        title = { Text(stringResource(R.string.category_rule_rollback_dialog_title)) },
+        text = { Text(stringResource(R.string.category_rule_rollback_dialog_text)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("回退", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.category_rule_rollback_dialog_confirm), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )

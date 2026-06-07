@@ -48,15 +48,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.resolve
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import kotlinx.coroutines.launch
@@ -77,6 +82,7 @@ fun IncomePlanScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
@@ -84,12 +90,12 @@ fun IncomePlanScreen(
 
     LaunchedEffect(state.flashMessage) {
         val msg = state.flashMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(msg)
+        snackbarHostState.showSnackbar(msg.resolve(context))
         viewModel.dismissFlash()
     }
     LaunchedEffect(state.error) {
         val err = state.error ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(err)
+        snackbarHostState.showSnackbar(err.resolve(context))
     }
 
     BackHandler(onBack = onBack)
@@ -97,10 +103,13 @@ fun IncomePlanScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("收入计划") },
+                title = { Text(stringResource(R.string.income_plan_topbar_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.income_plan_topbar_back),
+                        )
                     }
                 },
             )
@@ -114,7 +123,7 @@ fun IncomePlanScreen(
                         showAddSheet = true
                     },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("添加收入") },
+                    text = { Text(stringResource(R.string.income_plan_fab_add)) },
                 )
             }
         },
@@ -132,7 +141,7 @@ fun IncomePlanScreen(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Text(
-                "声明每月收入，用于算「本月可自由支配」。",
+                stringResource(R.string.income_plan_intro_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -142,28 +151,28 @@ fun IncomePlanScreen(
             if (state.activePlans.isEmpty() && !state.isLoading) {
                 EmptyStateCard()
             } else {
-                SectionEyebrow("在用")
+                SectionEyebrow(stringResource(R.string.income_plan_section_active))
                 state.activePlans.forEach { plan ->
                     IncomePlanCard(
                         plan = plan,
                         currency = currency,
                         canModify = state.canModify,
                         trailingIcon = Icons.Default.DeleteOutline,
-                        trailingDescription = "归档",
+                        trailingDescription = stringResource(R.string.income_plan_card_archive_action),
                         onTrailing = { viewModel.archive(plan.publicId, plan.rowVersion) },
                     )
                 }
             }
 
             if (state.archivedPlans.isNotEmpty()) {
-                SectionEyebrow("已归档")
+                SectionEyebrow(stringResource(R.string.income_plan_section_archived))
                 state.archivedPlans.forEach { plan ->
                     IncomePlanCard(
                         plan = plan,
                         currency = currency,
                         canModify = state.canModify,
                         trailingIcon = Icons.Default.Restore,
-                        trailingDescription = "恢复",
+                        trailingDescription = stringResource(R.string.income_plan_card_restore_action),
                         onTrailing = { viewModel.restore(plan.publicId, plan.rowVersion) },
                         dimmed = true,
                     )
@@ -219,7 +228,7 @@ private fun IncomeTotalCard(totalCents: Long, currency: CurrencyDisplay) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
             Text(
-                "月度收入总额",
+                stringResource(R.string.income_plan_total_label),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -231,7 +240,7 @@ private fun IncomeTotalCard(totalCents: Long, currency: CurrencyDisplay) {
             )
             Spacer(Modifier.size(AppSpacing.miniGap))
             Text(
-                "来自下方所有 “在用” 状态的收入计划。",
+                stringResource(R.string.income_plan_total_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -279,7 +288,7 @@ private fun IncomePlanCard(
                     )
                     Spacer(Modifier.width(AppSpacing.smallGap))
                     Text(
-                        "每月 ${plan.payDay} 号",
+                        stringResource(R.string.income_plan_card_payday, plan.payDay),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -312,13 +321,13 @@ private fun EmptyStateCard() {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "还没有收入计划",
+                stringResource(R.string.income_plan_empty_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.size(AppSpacing.smallGap))
             Text(
-                "点右下角 “添加收入”，写好后「本月可自由支配」才能算出来。",
+                stringResource(R.string.income_plan_empty_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -343,7 +352,7 @@ private fun AddIncomePlanSheet(
             .padding(AppSpacing.cardPadding),
     ) {
         Text(
-            "添加收入",
+            stringResource(R.string.income_plan_sheet_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -352,14 +361,14 @@ private fun AddIncomePlanSheet(
         OutlinedTextField(
             value = draft.label,
             onValueChange = onLabel,
-            label = { Text("名称") },
+            label = { Text(stringResource(R.string.income_plan_sheet_label_name)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.size(AppSpacing.compactGap))
 
         Text(
-            "类型",
+            stringResource(R.string.income_plan_sheet_label_type),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -379,7 +388,7 @@ private fun AddIncomePlanSheet(
         OutlinedTextField(
             value = draft.amountYuanInput,
             onValueChange = onAmount,
-            label = { Text("金额（元 / 月）") },
+            label = { Text(stringResource(R.string.income_plan_sheet_label_amount)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
@@ -389,7 +398,7 @@ private fun AddIncomePlanSheet(
         OutlinedTextField(
             value = draft.payDayInput,
             onValueChange = onPayDay,
-            label = { Text("发薪日 (1-31)") },
+            label = { Text(stringResource(R.string.income_plan_sheet_label_payday)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),
@@ -398,7 +407,7 @@ private fun AddIncomePlanSheet(
         if (draft.validationError != null) {
             Spacer(Modifier.size(AppSpacing.smallGap))
             Text(
-                draft.validationError,
+                draft.validationError.asString(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -411,13 +420,19 @@ private fun AddIncomePlanSheet(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
-            TextButton(onClick = onCancel) { Text("取消") }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
             Spacer(Modifier.width(AppSpacing.smallGap))
             Button(
                 onClick = onSubmit,
                 enabled = !state.isSubmitting,
             ) {
-                Text(if (state.isSubmitting) "提交中…" else "保存")
+                Text(
+                    if (state.isSubmitting) {
+                        stringResource(R.string.income_plan_sheet_submitting)
+                    } else {
+                        stringResource(R.string.income_plan_sheet_save)
+                    },
+                )
             }
         }
         Spacer(Modifier.size(AppSpacing.compactGap))

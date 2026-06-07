@@ -2,10 +2,12 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LedgerAuditEntry
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +28,7 @@ data class FamilyMembersUiState(
     val loading: Boolean = false,
     val auditLoading: Boolean = false,
     val busyMemberId: Long? = null,
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 sealed class FamilyMemberAction(open val member: FamilyMember) {
@@ -64,7 +66,7 @@ class FamilyMembersViewModel(
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        it.copy(message = err.message ?: "成员列表暂时打不开。")
+                        it.copy(message = err.toUiText(R.string.family_members_message_members_load_failed))
                     }
                 }
             val shouldLoadAudit = includeAudit &&
@@ -83,7 +85,7 @@ class FamilyMembersViewModel(
                                 // Don't overwrite the member-fetch error message; only
                                 // surface the audit error if the members fetch was OK.
                                 message = if (memberResult.isSuccess) {
-                                    err.message ?: "成员记录暂时打不开。"
+                                    err.toUiText(R.string.family_members_message_audit_load_failed)
                                 } else {
                                     it.message
                                 },
@@ -106,22 +108,30 @@ class FamilyMembersViewModel(
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(busyMemberId = action.member.memberId, message = null) }
-            val result = when (action) {
+            val result: Result<UiText> = when (action) {
                 is FamilyMemberAction.ChangeRole -> repository.updateFamilyMemberRole(
                     memberId = action.member.memberId,
                     role = action.targetRole,
                     ledgerId = activeLedgerId,
-                ).map { "已将${action.member.displayName}设为${ledgerRoleLabel(action.targetRole)}。" }
+                ).map {
+                    UiText.res(
+                        R.string.family_members_message_role_changed,
+                        action.member.displayName,
+                        ledgerRoleLabel(action.targetRole),
+                    )
+                }
 
                 is FamilyMemberAction.Disable -> repository.disableFamilyMember(
                     memberId = action.member.memberId,
                     ledgerId = activeLedgerId,
-                ).map { "已停用${action.member.displayName}。" }
+                ).map { UiText.res(R.string.family_members_message_disabled, action.member.displayName) }
 
                 is FamilyMemberAction.TransferOwner -> repository.transferOwner(
                     memberId = action.member.memberId,
                     ledgerId = activeLedgerId,
-                ).map { "已将拥有者转让给${action.member.displayName}。" }
+                ).map {
+                    UiText.res(R.string.family_members_message_owner_transferred, action.member.displayName)
+                }
             }
             result
                 .onSuccess { success ->
@@ -139,7 +149,7 @@ class FamilyMembersViewModel(
                     _uiState.update {
                         it.copy(
                             busyMemberId = null,
-                            message = err.message ?: "成员管理操作没有完成。",
+                            message = err.toUiText(R.string.family_members_message_action_failed),
                         )
                     }
                 }

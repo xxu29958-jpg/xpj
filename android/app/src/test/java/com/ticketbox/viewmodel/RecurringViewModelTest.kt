@@ -1,8 +1,10 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -52,7 +54,7 @@ class RecurringViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, fake.confirmCalls)
-        assertTrue(vm.uiState.value.message?.contains("已过期") == true)
+        assertEquals(UiText.res(R.string.recurring_message_candidate_expired), vm.uiState.value.message)
     }
 }
 

@@ -2,12 +2,14 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.expenseLedgerMonth
 import com.ticketbox.domain.model.filterConfirmedExpenses
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,7 +70,7 @@ data class LedgerUiState(
     // so a filter change can't slip a tagged row past the confirm gate.
     val selectedHaveTags: Boolean = false,
     val applyingBatch: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
 ) {
     val selectedCount: Int get() = selectedIds.size
 
@@ -211,13 +213,13 @@ class LedgerViewModel(
                         it.copy(
                             syncing = false,
                             lastSyncAt = repository.lastConfirmedSyncAt(),
-                            message = "更新完成",
+                            message = UiText.res(R.string.ledger_msg_sync_done),
                         )
                     }
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(syncing = false, message = error.message ?: "暂时更新不了，先看本机账本。")
+                        it.copy(syncing = false, message = error.toUiText(R.string.ledger_msg_sync_failed))
                     }
                 }
         }
@@ -228,7 +230,7 @@ class LedgerViewModel(
             val filters = _uiState.value
             if (filters.items.isEmpty()) {
                 _uiState.update {
-                    it.copy(message = "暂无可导出的已确认账单。请先确认几笔账单，或重新更新后再试。")
+                    it.copy(message = UiText.res(R.string.ledger_msg_export_empty))
                 }
                 return@launch
             }
@@ -240,23 +242,23 @@ class LedgerViewModel(
             )
                 .onSuccess { exportFile ->
                     _uiState.update {
-                        it.copy(exportFile = exportFile, exporting = false, message = "请选择保存位置")
+                        it.copy(exportFile = exportFile, exporting = false, message = UiText.res(R.string.ledger_msg_export_pick_location))
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(exporting = false, message = error.message ?: "没有导出成功，可以换个保存位置再试。") }
+                    _uiState.update { it.copy(exporting = false, message = error.toUiText(R.string.ledger_msg_export_failed)) }
                 }
         }
     }
 
     fun createManualExpense(draft: ExpenseDraft) {
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(readOnly = true, creatingManual = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(readOnly = true, creatingManual = false, message = readOnlyMessage()) }
             return
         }
         viewModelScope.launch {
             if (draft.amountCents == null && draft.originalAmountMinor == null) {
-                _uiState.update { it.copy(message = "请先填写金额。") }
+                _uiState.update { it.copy(message = UiText.res(R.string.error_amount_required)) }
                 return@launch
             }
             _uiState.update { it.copy(creatingManual = true, message = null) }
@@ -271,14 +273,14 @@ class LedgerViewModel(
                             monthFilter = expenseLedgerMonth(expense) ?: state.monthFilter,
                             categoryFilter = "",
                             tagFilter = "",
-                            message = "已记入账本",
+                            message = UiText.res(R.string.ledger_msg_manual_saved),
                         )
                         next.copy(items = filterItems(allConfirmed, next))
                     }
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(creatingManual = false, message = error.message ?: "没有保存成功，请稍后再试。")
+                        it.copy(creatingManual = false, message = error.toUiText(R.string.ledger_msg_manual_save_failed))
                     }
                 }
         }
@@ -324,7 +326,7 @@ class LedgerViewModel(
 
     private fun applyBatch(category: String?, tags: String?) {
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(readOnly = true, applyingBatch = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(readOnly = true, applyingBatch = false, message = readOnlyMessage()) }
             return
         }
         val selected = _uiState.value.selectedIds
@@ -332,7 +334,7 @@ class LedgerViewModel(
         // token) from the synced confirmed cache, not the filtered view.
         val targets = allConfirmed.filter { it.id in selected }
         if (targets.isEmpty()) {
-            _uiState.update { it.copy(message = "请先选择要修改的账单。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.ledger_msg_batch_no_selection)) }
             return
         }
         viewModelScope.launch {
@@ -355,7 +357,7 @@ class LedgerViewModel(
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(applyingBatch = false, message = error.message ?: "批量修改没有成功，请稍后再试。")
+                        it.copy(applyingBatch = false, message = error.toUiText(R.string.ledger_msg_batch_failed))
                     }
                 }
         }
@@ -364,14 +366,25 @@ class LedgerViewModel(
     /**
      * Honest partial-success copy: the fan-out is non-atomic, so synced /
      * queued / failed are reported separately rather than a single "done".
+     *
+     * ADR-0044 wave 2: this is a dynamic multi-segment sentence (0–3 count
+     * clauses joined by "，", with omission of zero clauses) that a single
+     * formatted string resource cannot express, and a [ViewModel] has no
+     * [android.content.Context] to resolve per-clause resources. Following the
+     * sibling-cluster precedent for dynamic count copy, the clauses are
+     * assembled here and carried as an already-resolved [UiText.Raw] —
+     * byte-identical to the prior String. This message is held in state but is
+     * not currently rendered on the ledger surface, so there is no presentation
+     * site to resolve it through. (Tail item: a Context-backed per-clause
+     * resource builder is left for a later coordinated pass.)
      */
-    private fun batchResultMessage(result: BatchApplyResult): String {
+    private fun batchResultMessage(result: BatchApplyResult): UiText {
         val parts = buildList {
             if (result.synced > 0) add("已更新 ${result.synced} 笔")
             if (result.queued > 0) add("${result.queued} 笔已加入同步")
             if (result.failed > 0) add("${result.failed} 笔需重新同步")
         }
-        return parts.joinToString("，").ifEmpty { "没有需要修改的账单。" }
+        return UiText.raw(parts.joinToString("，").ifEmpty { "没有需要修改的账单。" })
     }
 
     fun exportLaunchHandled() {
@@ -379,6 +392,9 @@ class LedgerViewModel(
     }
 
     fun exportFinished(message: String) {
-        _uiState.update { it.copy(message = message) }
+        // The caller (LedgerRoute) resolves the post-save copy and passes the
+        // already-resolved text here, so carry it through as a UiText.Raw
+        // (byte-identical output). ADR-0044 wave 2.
+        _uiState.update { it.copy(message = UiText.raw(message)) }
     }
 }

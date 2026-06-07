@@ -10,8 +10,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.R
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppOutlinedButton
@@ -97,15 +100,15 @@ private fun ExpenseEditLoadingRoute(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         AppPageHeader(
-            title = "打开账单",
-            subtitle = "正在读取最新账单内容。",
+            title = stringResource(R.string.expense_edit_loading_header_title),
+            subtitle = stringResource(R.string.expense_edit_loading_header_subtitle),
             eyebrow = "",
         )
 
         if (state.expenseLoading) {
             AppLoadingState(
-                title = "账单加载中",
-                body = "正在同步金额、分类和截图信息。",
+                title = stringResource(R.string.expense_edit_loading_state_title),
+                body = stringResource(R.string.expense_edit_loading_state_body),
             )
         } else {
             AppEmptyStateCard {
@@ -114,24 +117,24 @@ private fun ExpenseEditLoadingRoute(
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                 ) {
                     Text(
-                        text = "没有打开这张账单",
+                        text = stringResource(R.string.expense_edit_loading_empty_title),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        text = state.message ?: "账单可能已经被删除，或当前设备暂时连接不上账本。",
+                        text = state.message?.asString() ?: stringResource(R.string.expense_edit_loading_empty_fallback),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onRetry,
                     ) {
-                        Text("重新加载")
+                        Text(stringResource(R.string.expense_edit_loading_reload_button))
                     }
                     AppOutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onBack,
                     ) {
-                        Text("返回")
+                        Text(stringResource(R.string.expense_edit_loading_back_button))
                     }
                 }
             }

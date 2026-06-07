@@ -6,6 +6,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
@@ -21,11 +22,14 @@ import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
+import com.ticketbox.ui.resolve
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -139,7 +143,7 @@ private fun TicketboxContent(
                 message = appState.authMessage,
                 onUnlock = {
                     if (!biometricAuthManager.canAuthenticate()) {
-                        appViewModel.unlockFailed("请先在系统中设置指纹或面容。")
+                        appViewModel.unlockFailed(UiText.res(R.string.app_unlock_no_biometric))
                         return@LoginScreen
                     }
                     biometricAuthManager.authenticate(
@@ -193,12 +197,13 @@ private fun MainShell(
     currentSkin: AppSkin,
     currentCurrency: com.ticketbox.domain.model.CurrencyCode,
     backgroundSettings: BackgroundSettings,
-    startupMessage: String?,
+    startupMessage: UiText?,
     onStartupMessageShown: () -> Unit,
     onSkinChange: (AppSkin) -> Unit,
     onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
+    val context = LocalContext.current
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
@@ -235,7 +240,7 @@ private fun MainShell(
 
     LaunchedEffect(startupMessage) {
         val message = startupMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
+        snackbarHostState.showSnackbar(message.resolve(context))
         onStartupMessageShown()
     }
 

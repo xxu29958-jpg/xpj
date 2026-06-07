@@ -2,8 +2,10 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.GlobalSearchActions
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +29,7 @@ data class GlobalSearchResultUi(
     val kind: GlobalSearchResultKind,
     val expense: Expense,
     val title: String,
-    val matchedField: String,
+    val matchedField: UiText,
 )
 
 data class GlobalSearchUiState(
@@ -38,7 +40,7 @@ data class GlobalSearchUiState(
     val confirmedMatchCount: Int = 0,
     val loadingPending: Boolean = false,
     val pendingLoaded: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 class GlobalSearchViewModel(
@@ -116,7 +118,7 @@ class GlobalSearchViewModel(
                         it.copy(
                             loadingPending = false,
                             pendingLoaded = true,
-                            message = error.message ?: "待确认账单暂时加载不了，先看本机账本。",
+                            message = error.toUiText(R.string.global_search_pending_load_failed),
                         )
                     }
                     recompute()
@@ -171,12 +173,12 @@ class GlobalSearchViewModel(
             .filter { it.isNotBlank() }
         if (terms.isEmpty()) return null
         val fields = listOf(
-            SearchField("商家", merchant, 0),
-            SearchField("分类", category, 1),
-            SearchField("备注", note, 2),
-            SearchField("标签", tags, 2),
-            SearchField("来源", source, 3),
-            SearchField("原文", rawText, 4),
+            SearchField(UiText.res(R.string.global_search_field_merchant), merchant, 0),
+            SearchField(UiText.res(R.string.global_search_field_category), category, 1),
+            SearchField(UiText.res(R.string.global_search_field_note), note, 2),
+            SearchField(UiText.res(R.string.global_search_field_tags), tags, 2),
+            SearchField(UiText.res(R.string.global_search_field_source), source, 3),
+            SearchField(UiText.res(R.string.global_search_field_raw_text), rawText, 4),
         ).filter { !it.value.isNullOrBlank() }
 
         val matchesAllTerms = terms.all { termPart ->
@@ -192,12 +194,12 @@ class GlobalSearchViewModel(
     }
 
     private data class SearchField(
-        val label: String,
+        val label: UiText,
         val value: String?,
         val score: Int,
     )
 
-    private data class SearchMatch(val label: String)
+    private data class SearchMatch(val label: UiText)
 
     private companion object {
         const val MAX_QUERY_LENGTH = 80

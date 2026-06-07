@@ -1,8 +1,11 @@
 package com.ticketbox.viewmodel
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -57,8 +60,8 @@ fun PendingViewModel.saveQuickCategory(expenseId: Long, category: String) {
     patchExpense(
         expenseId = expenseId,
         draft = blankDraft().copy(category = category.trim()),
-        successMessage = "已更新分类",
-        failureMessageFallback = "没有保存分类，请稍后再试。",
+        successMessage = UiText.res(R.string.pending_review_category_updated),
+        failureMessageFallback = R.string.pending_review_category_save_failed,
     )
 }
 
@@ -66,21 +69,21 @@ fun PendingViewModel.saveQuickMerchant(expenseId: Long, merchant: String) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     val cleaned = merchant.trim()
     if (cleaned.isEmpty()) {
-        _uiState.update { it.copy(message = "请输入商家名称。") }
+        _uiState.update { it.copy(message = UiText.res(R.string.pending_review_merchant_blank)) }
         return
     }
     patchExpense(
         expenseId = expenseId,
         draft = blankDraft().copy(merchant = cleaned),
-        successMessage = "已更新商家",
-        failureMessageFallback = "没有保存商家，请稍后再试。",
+        successMessage = UiText.res(R.string.pending_review_merchant_updated),
+        failureMessageFallback = R.string.pending_review_merchant_save_failed,
     )
 }
 
 fun PendingViewModel.saveAmountDraft(expenseId: Long, originalAmountMinor: Long) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     if (originalAmountMinor <= 0L) {
-        _uiState.update { it.copy(message = "金额必须大于 0。") }
+        _uiState.update { it.copy(message = UiText.res(R.string.pending_review_amount_not_positive)) }
         return
     }
     val expense = _uiState.value.items.firstOrNull { it.id == expenseId }
@@ -90,15 +93,15 @@ fun PendingViewModel.saveAmountDraft(expenseId: Long, originalAmountMinor: Long)
             originalCurrencyCode = expense?.originalCurrencyCode,
             originalAmountMinor = originalAmountMinor,
         ),
-        successMessage = "已保存金额",
-        failureMessageFallback = "没有保存金额，请稍后再试。",
+        successMessage = UiText.res(R.string.pending_review_amount_saved),
+        failureMessageFallback = R.string.pending_review_amount_save_failed,
     )
 }
 
 fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: Long) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     if (originalAmountMinor <= 0L) {
-        _uiState.update { it.copy(message = "金额必须大于 0。") }
+        _uiState.update { it.copy(message = UiText.res(R.string.pending_review_amount_not_positive)) }
         return
     }
     if (expenseId in _uiState.value.actionInProgressIds) return
@@ -136,7 +139,7 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
                             PendingUiStateReducer.afterConfirmed(
                                 current = state,
                                 confirmed = confirmed,
-                                message = "已保存并确认入账",
+                                message = UiText.res(R.string.pending_review_amount_saved_confirmed),
                             ).copy(activeSheet = PendingSheet.None)
                         }
                     }
@@ -144,7 +147,7 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
                         _uiState.update {
                             it.copy(
                                 actionInProgressIds = it.actionInProgressIds - expenseId,
-                                message = error.message ?: "保存了金额但确认失败，请稍后再试。",
+                                message = error.toUiText(R.string.pending_review_amount_saved_confirm_failed),
                             )
                         }
                     }
@@ -153,7 +156,7 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
                 _uiState.update {
                     it.copy(
                         actionInProgressIds = it.actionInProgressIds - expenseId,
-                        message = error.message ?: "没有保存金额，请稍后再试。",
+                        message = error.toUiText(R.string.pending_review_amount_save_failed),
                     )
                 }
             }
@@ -168,7 +171,7 @@ fun PendingViewModel.confirmReadyExpenses() {
         it.amountCents != null && !it.merchant.isNullOrBlank() && it.duplicateStatus != "suspected"
     }
     if (ready.isEmpty()) {
-        _uiState.update { it.copy(message = "没有可直接确认的账单。") }
+        _uiState.update { it.copy(message = UiText.res(R.string.pending_review_bulk_none_ready)) }
         return
     }
     viewModelScope.launch {
@@ -214,7 +217,11 @@ fun PendingViewModel.confirmReadyExpenses() {
                     running = false,
                 ),
                 activeSheet = PendingSheet.None,
-                message = if (failed == 0) "已确认 $succeeded 条" else "确认完成：成功 $succeeded，失败 $failed",
+                message = if (failed == 0) {
+                    UiText.res(R.string.pending_review_bulk_all_succeeded, succeeded)
+                } else {
+                    UiText.res(R.string.pending_review_bulk_partial, succeeded, failed)
+                },
             )
         }
     }
@@ -234,8 +241,8 @@ private fun blankDraft(): ExpenseDraft = ExpenseDraft(
 private fun PendingViewModel.patchExpense(
     expenseId: Long,
     draft: ExpenseDraft,
-    successMessage: String,
-    failureMessageFallback: String,
+    successMessage: UiText,
+    @StringRes failureMessageFallback: Int,
 ) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     if (expenseId in _uiState.value.actionInProgressIds) return
@@ -262,7 +269,7 @@ private fun PendingViewModel.patchExpense(
                 _uiState.update {
                     it.copy(
                         actionInProgressIds = it.actionInProgressIds - expenseId,
-                        message = error.message ?: failureMessageFallback,
+                        message = error.toUiText(failureMessageFallback),
                     )
                 }
             }

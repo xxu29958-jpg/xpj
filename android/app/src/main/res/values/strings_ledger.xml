@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0044 wave 1，cluster ledger（账本屏）。命名/红线见 strings.xml 头部。只放中文，不建第二语言。 -->
+<resources>
+    <!-- LedgerScreen：月份选择 sheet -->
+    <string name="ledger_month_picker_description">选择后会刷新账本。历史月份多了以后可以上下滑动。</string>
+
+    <!-- ManualExpenseSheet：手动记一笔 -->
+    <string name="ledger_manual_date_picker_title">选择日期</string>
+    <string name="ledger_manual_time_picker_title">选择时间</string>
+    <string name="ledger_manual_amount_invalid">请填写正确金额。</string>
+    <string name="ledger_manual_sheet_title">手动记一笔</string>
+    <string name="ledger_manual_sheet_subtitle">适合现金、零散消费，保存后直接进入账本。</string>
+    <string name="ledger_manual_merchant_label">商家</string>
+    <string name="ledger_manual_merchant_placeholder">便利店</string>
+    <string name="ledger_manual_category_label">分类</string>
+    <string name="ledger_manual_note_label">备注</string>
+    <string name="ledger_manual_time_section_title">消费时间</string>
+    <string name="ledger_manual_pick_date_button">选日期</string>
+    <string name="ledger_manual_pick_time_button">选时间</string>
+    <string name="ledger_manual_now_button">现在</string>
+    <string name="ledger_manual_saving_button">保存中</string>
+    <string name="ledger_manual_save_button">记入账本</string>
+
+    <!-- CategoryFilterRow：分类筛选行 -->
+    <string name="ledger_category_filter_label">分类</string>
+    <string name="ledger_category_filter_all">全部分类</string>
+
+    <!-- LedgerSelectionBar：多选操作条 -->
+    <string name="ledger_selection_exit_description">退出多选</string>
+    <string name="ledger_selection_count">已选 %1$d 笔</string>
+    <string name="ledger_selection_select_all">全选</string>
+    <string name="ledger_selection_edit">编辑</string>
+
+    <!-- LedgerBulkEditSheet：批量编辑 sheet -->
+    <string name="ledger_bulk_title">批量编辑 %1$d 笔</string>
+    <string name="ledger_bulk_apply_category">应用分类到 %1$d 笔</string>
+    <string name="ledger_bulk_replace_tags_title">替换标签</string>
+    <string name="ledger_bulk_tags_label">标签</string>
+    <string name="ledger_bulk_tags_placeholder">真香、必要支出</string>
+    <string name="ledger_bulk_tags_replace_warning">将整串覆盖所选账单的现有标签。</string>
+    <string name="ledger_bulk_apply_tags">替换标签到 %1$d 笔</string>
+    <string name="ledger_bulk_tags_confirm_title">替换标签？</string>
+    <string name="ledger_bulk_tags_confirm_message">所选账单的现有标签将被整串覆盖。</string>
+    <string name="ledger_bulk_tags_confirm_replace">替换</string>
+
+    <!-- EmptyLedgerState：空态卡 -->
+    <string name="ledger_empty_title_tag">暂无 #%1$s 标签账单</string>
+    <string name="ledger_empty_title_month_category">%1$s 暂无 %2$s 分类账单</string>
+    <string name="ledger_empty_title_month">%1$s 暂无已确认账单</string>
+    <string name="ledger_empty_title_category">暂无 %1$s 分类账单</string>
+    <string name="ledger_empty_title_default">本地还没有已确认账单</string>
+    <string name="ledger_empty_body_filtered">可以切换月份、分类或标签，或先更新账本。</string>
+    <string name="ledger_empty_body_readonly">当前角色可查看已入账记录，不能手动记账。</string>
+    <string name="ledger_empty_body_default">在待确认页确认几笔账单后，账本会在这里显示。</string>
+    <string name="ledger_empty_reset_filters">重置筛选</string>
+    <string name="ledger_empty_update_ledger">更新账本</string>
+    <string name="ledger_empty_manual_add">手动记一笔</string>
+
+    <!-- LedgerInlineFilters：内联 chip 筛选 -->
+    <string name="ledger_inline_month_all">全部月份</string>
+    <string name="ledger_inline_month_picker_description">选择月份</string>
+    <string name="ledger_inline_category_all">全部分类</string>
+    <string name="ledger_inline_searched">已搜索</string>
+    <string name="ledger_inline_search_note">搜索备注</string>
+    <string name="ledger_inline_more">更多</string>
+    <string name="ledger_view_mode_card">卡片</string>
+    <string name="ledger_view_mode_list">列表</string>
+    <string name="ledger_view_mode_table">表格</string>
+
+    <!-- LedgerHeader：账本头 -->
+    <string name="ledger_header_month_all">全部月份</string>
+    <string name="ledger_header_status_syncing">更新中</string>
+    <string name="ledger_header_status_synced">已更新 %1$s</string>
+    <string name="ledger_header_status_offline">本机账本可用</string>
+    <string name="ledger_header_eyebrow">纸本账本</string>
+    <string name="ledger_header_title">账本</string>
+    <string name="ledger_header_total_suffix">%1$s 合计</string>
+    <string name="ledger_header_count_label">账单</string>
+    <string name="ledger_header_count_value">%1$d 笔</string>
+    <string name="ledger_header_subtitle">已确认支出 · 可离线查看</string>
+    <string name="ledger_header_add_button">记一笔</string>
+
+    <!-- LedgerItems：账本条目（卡片/列表/表格） -->
+    <string name="ledger_item_merchant_empty">未填写商家</string>
+    <string name="ledger_item_amount_pending">待填写</string>
+    <string name="ledger_item_category_mark_fallback">账</string>
+
+    <!-- LedgerViewModel：账本 ViewModel 状态/结果文案（ADR-0044 wave 2，纯②：经 UiText 外置） -->
+    <string name="ledger_msg_sync_done">更新完成</string>
+    <string name="ledger_msg_sync_failed">暂时更新不了，先看本机账本。</string>
+    <string name="ledger_msg_export_empty">暂无可导出的已确认账单。请先确认几笔账单，或重新更新后再试。</string>
+    <string name="ledger_msg_export_pick_location">请选择保存位置</string>
+    <string name="ledger_msg_export_failed">没有导出成功，可以换个保存位置再试。</string>
+    <string name="ledger_msg_manual_saved">已记入账本</string>
+    <string name="ledger_msg_manual_save_failed">没有保存成功，请稍后再试。</string>
+    <string name="ledger_msg_batch_no_selection">请先选择要修改的账单。</string>
+    <string name="ledger_msg_batch_failed">批量修改没有成功，请稍后再试。</string>
+
+    <!-- LedgerStatusText：状态行 / 筛选摘要（ledgerCombinedStatusLine + ledgerFilterSummary）。
+         前后空格、全角标点必须与原字面量逐字一致，含前导空格的串用双引号包裹以免被裁剪。 -->
+    <string name="ledger_status_syncing">更新中</string>
+    <string name="ledger_status_synced_at">更新完成 · %1$s</string>
+    <string name="ledger_status_offline">离线可用</string>
+    <string name="ledger_status_line">%1$s · %2$s</string>
+    <string name="ledger_filter_summary_month_all">全部月份</string>
+    <string name="ledger_filter_summary_category_all">全部分类</string>
+    <string name="ledger_filter_summary_tag">" · 标签“%1$s”"</string>
+    <string name="ledger_filter_summary_query">" · 搜索“%1$s”"</string>
+    <string name="ledger_filter_summary_template">当前查看：%1$s · %2$s%3$s%4$s</string>
+
+    <!-- LedgerGrouping：日期分组头（ledgerDayLabel）。月/日 格式 pattern 不外置，见代码注释。 -->
+    <string name="ledger_day_no_date">未设置日期</string>
+    <string name="ledger_day_today">今天</string>
+    <string name="ledger_day_yesterday">昨天</string>
+
+    <!-- LedgerToolsSheet：筛选与更新 sheet -->
+    <string name="ledger_tools_title">筛选与更新</string>
+    <string name="ledger_tools_search_placeholder">搜索备注</string>
+    <string name="ledger_tools_exporting">导出中</string>
+    <string name="ledger_tools_export">导出表格</string>
+    <string name="ledger_tools_syncing">更新中</string>
+    <string name="ledger_tools_update_ledger">更新账本</string>
+    <string name="ledger_tools_clear_filters">清除筛选</string>
+    <string name="ledger_tools_done">完成</string>
+    <string name="ledger_tools_no_export">当前没有可导出的已确认账单。</string>
+    <string name="ledger_tools_tag_label">标签</string>
+    <string name="ledger_tools_tag_all">全部标签</string>
+</resources>

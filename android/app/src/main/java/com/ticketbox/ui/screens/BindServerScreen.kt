@@ -23,7 +23,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.design.AppSpacing
@@ -31,7 +35,7 @@ import com.ticketbox.ui.design.AppSpacing
 @Composable
 fun BindServerScreen(
     loading: Boolean,
-    message: String?,
+    message: UiText?,
     defaultServerUrl: String,
     showServerUrlInput: Boolean,
     onBind: (String, String) -> Unit,
@@ -50,8 +54,8 @@ fun BindServerScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AuthScreenHeader(
-            title = "绑定私人账本",
-            subtitle = "完成绑定后，即可在小票夹查看账本。",
+            title = stringResource(R.string.bind_server_header_title),
+            subtitle = stringResource(R.string.bind_server_header_subtitle),
         )
         Spacer(Modifier.height(18.dp))
         AppSolidCard(modifier = Modifier.fillMaxWidth()) {
@@ -61,9 +65,9 @@ fun BindServerScreen(
             ) {
                 Text(
                     if (showServerUrlInput) {
-                        "服务拥有者会提供账本地址和绑定码。"
+                        stringResource(R.string.bind_server_hint_with_url)
                     } else {
-                        "服务拥有者已配置账本地址，请输入绑定码。"
+                        stringResource(R.string.bind_server_hint_no_url)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -73,8 +77,8 @@ fun BindServerScreen(
                         value = serverUrl,
                         onValueChange = { serverUrl = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("账本地址") },
-                        placeholder = { Text("向服务拥有者获取") },
+                        label = { Text(stringResource(R.string.bind_server_field_url_label)) },
+                        placeholder = { Text(stringResource(R.string.bind_server_field_url_placeholder)) },
                         singleLine = true,
                     )
                 }
@@ -82,8 +86,8 @@ fun BindServerScreen(
                     value = pairingCode,
                     onValueChange = { pairingCode = it.filter(Char::isDigit).take(8) },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("绑定码") },
-                    placeholder = { Text("8 位数字") },
+                    label = { Text(stringResource(R.string.bind_server_field_code_label)) },
+                    placeholder = { Text(stringResource(R.string.bind_server_field_code_placeholder)) },
                     singleLine = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -92,21 +96,27 @@ fun BindServerScreen(
                         modifier = Modifier.weight(1f),
                         onClick = { onBind(serverUrl, pairingCode) },
                     ) {
-                        Text(if (loading) "正在绑定" else "绑定账本")
+                        Text(
+                            if (loading) {
+                                stringResource(R.string.bind_server_button_binding)
+                            } else {
+                                stringResource(R.string.bind_server_button_bind)
+                            },
+                        )
                     }
                     AppOutlinedButton(
                         enabled = false,
                         modifier = Modifier.weight(1f),
                         onClick = {},
                     ) {
-                        Text("扫码绑定")
+                        Text(stringResource(R.string.bind_server_button_scan))
                     }
                 }
             }
         }
         message?.let {
             Spacer(Modifier.height(12.dp))
-            Text(it, color = MaterialTheme.colorScheme.secondary)
+            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

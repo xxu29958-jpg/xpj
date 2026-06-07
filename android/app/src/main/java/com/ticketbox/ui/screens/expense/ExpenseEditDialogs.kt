@@ -19,7 +19,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
@@ -47,12 +49,12 @@ internal fun ExpenseEditDatePicker(
                     onDismiss()
                 },
             ) {
-                Text("确定")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     ) {
@@ -60,7 +62,7 @@ internal fun ExpenseEditDatePicker(
             state = datePickerState,
             title = {
                 Text(
-                    "选择日期",
+                    stringResource(R.string.expense_edit_date_picker_title),
                     modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
                 )
             },
@@ -82,7 +84,7 @@ internal fun ExpenseEditTimePicker(
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择时间") },
+        title = { Text(stringResource(R.string.expense_edit_time_picker_title)) },
         text = { TimeInput(state = timePickerState) },
         confirmButton = {
             TextButton(
@@ -97,12 +99,12 @@ internal fun ExpenseEditTimePicker(
                     onDismiss()
                 },
             ) {
-                Text("确定")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )
@@ -115,8 +117,8 @@ internal fun ExpenseEditRejectDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除这笔账单？") },
-        text = { Text("删除后会标记为已拒绝，不会进入账本。") },
+        title = { Text(stringResource(R.string.expense_edit_reject_dialog_title)) },
+        text = { Text(stringResource(R.string.expense_edit_reject_dialog_body)) },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -124,12 +126,15 @@ internal fun ExpenseEditRejectDialog(
                     onConfirm()
                 },
             ) {
-                Text("确定删除", color = MaterialTheme.colorScheme.error)
+                Text(
+                    stringResource(R.string.expense_edit_reject_dialog_confirm_button),
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )
@@ -150,7 +155,7 @@ internal fun ExpenseEditRecognizeTextDialog(
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("粘贴文字识别") },
+        title = { Text(stringResource(R.string.expense_edit_recognize_dialog_title)) },
         text = {
             OutlinedTextField(
                 value = text,
@@ -158,9 +163,9 @@ internal fun ExpenseEditRecognizeTextDialog(
                 // the route will 422; ~20k chars is far past any real receipt.
                 onValueChange = { if (it.length <= MAX_RECOGNIZE_TEXT_LENGTH) text = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("粘贴小票文字") },
-                placeholder = { Text("例如：星巴克 拿铁 ¥35 2026-05-20 …") },
-                supportingText = { Text("识别结果只会填入空白项，不会覆盖你已填写的内容") },
+                label = { Text(stringResource(R.string.expense_edit_recognize_field_label)) },
+                placeholder = { Text(stringResource(R.string.expense_edit_recognize_field_placeholder)) },
+                supportingText = { Text(stringResource(R.string.expense_edit_recognize_supporting_text)) },
                 maxLines = 8,
             )
         },
@@ -169,12 +174,12 @@ internal fun ExpenseEditRecognizeTextDialog(
                 enabled = text.isNotBlank(),
                 onClick = { onRecognize(text) },
             ) {
-                Text("识别")
+                Text(stringResource(R.string.expense_edit_recognize_confirm_button))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )

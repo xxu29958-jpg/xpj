@@ -15,9 +15,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
@@ -43,18 +45,18 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "固定支出候选（未确认）",
+                    text = stringResource(R.string.stats_recurring_candidates_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
-                    text = "${candidates.size} 项",
+                    text = stringResource(R.string.stats_recurring_candidates_count, candidates.size),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
             Text(
-                text = "根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。",
+                text = stringResource(R.string.stats_recurring_candidates_subtitle),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -84,18 +86,18 @@ internal fun RecurringItemsSummaryCard(items: List<RecurringItem>) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "正式固定支出",
+                    text = stringResource(R.string.stats_recurring_items_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
-                    text = "${items.count { it.status == "active" }} 活跃",
+                    text = stringResource(R.string.stats_recurring_items_active_count, items.count { it.status == "active" }),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
             Text(
-                text = "这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。",
+                text = stringResource(R.string.stats_recurring_items_subtitle),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -114,6 +116,7 @@ private fun RecurringItemSummaryRow(
     item: RecurringItem,
     currencyDisplay: CurrencyDisplay,
 ) {
+    val merchantFallback = stringResource(R.string.stats_recurring_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -121,7 +124,7 @@ private fun RecurringItemSummaryRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = item.merchant.ifBlank { "未填写商家" },
+                text = item.merchant.ifBlank { merchantFallback },
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp),
@@ -160,6 +163,7 @@ private fun RecurringCandidateRow(
     currencyDisplay: CurrencyDisplay,
 ) {
     val visuals = LocalThemeVisuals.current
+    val merchantFallback = stringResource(R.string.stats_recurring_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -167,7 +171,7 @@ private fun RecurringCandidateRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = candidate.merchant.ifBlank { "未填写商家" },
+                text = candidate.merchant.ifBlank { merchantFallback },
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp),
@@ -189,7 +193,7 @@ private fun RecurringCandidateRow(
         ) {
             ConfidenceChip(candidate.confidence)
             Text(
-                text = "${candidate.occurrenceCount} 次 · ${candidate.reason}",
+                text = stringResource(R.string.stats_recurring_candidate_meta, candidate.occurrenceCount, candidate.reason),
                 modifier = Modifier.weight(1f),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
@@ -204,8 +208,8 @@ private fun RecurringCandidateRow(
 private fun RecurringStatusChip(status: String) {
     val visuals = LocalThemeVisuals.current
     val (label, bg) = when (status) {
-        "active" -> "活跃" to visuals.chipSelected
-        "paused" -> "暂停" to visuals.glassTint.copy(alpha = 0.85f)
+        "active" -> stringResource(R.string.recurring_status_active) to visuals.chipSelected
+        "paused" -> stringResource(R.string.recurring_status_paused) to visuals.glassTint.copy(alpha = 0.85f)
         else -> status to visuals.chipUnselected.copy(alpha = 0.85f)
     }
     Box(
@@ -227,9 +231,9 @@ private fun RecurringStatusChip(status: String) {
 private fun ConfidenceChip(confidence: String) {
     val visuals = LocalThemeVisuals.current
     val (label, bg) = when (confidence.lowercase()) {
-        "high" -> "高" to visuals.chipSelected
-        "medium" -> "中" to visuals.glassTint.copy(alpha = 0.85f)
-        else -> "低" to visuals.chipUnselected.copy(alpha = 0.85f)
+        "high" -> stringResource(R.string.recurring_confidence_high) to visuals.chipSelected
+        "medium" -> stringResource(R.string.recurring_confidence_medium) to visuals.glassTint.copy(alpha = 0.85f)
+        else -> stringResource(R.string.recurring_confidence_low) to visuals.chipUnselected.copy(alpha = 0.85f)
     }
     Box(
         modifier = Modifier
@@ -246,13 +250,15 @@ private fun ConfidenceChip(confidence: String) {
     }
 }
 
+@Composable
 private fun recurringItemMeta(item: RecurringItem): String {
-    val next = item.nextExpectedDate?.let { "下次 $it" } ?: "下次未估算"
-    val count = "${item.occurrenceCount} 次"
+    val next = item.nextExpectedDate?.let { stringResource(R.string.recurring_meta_next, it) }
+        ?: stringResource(R.string.recurring_meta_next_unknown)
+    val count = stringResource(R.string.recurring_meta_count, item.occurrenceCount)
     val anomaly = if (item.anomalyStatus == "higher_than_average") {
-        " · 本月偏高 ${item.amountDeltaPercent ?: 0}%"
+        stringResource(R.string.recurring_meta_anomaly_higher_percent, item.amountDeltaPercent ?: 0)
     } else {
         ""
     }
-    return "$next · $count$anomaly"
+    return stringResource(R.string.recurring_meta_combined, next, count, anomaly)
 }

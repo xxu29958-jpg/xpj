@@ -28,9 +28,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -57,13 +59,20 @@ fun DashboardCardsScreen(
     var loading by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    // ADR-0044: stringResource is @Composable-only, but the status messages below
+    // are assigned inside non-composable local functions. Hoist the resolved strings here.
+    val loadFailedMessage = stringResource(R.string.dashboard_cards_load_failed)
+    val savedMessage = stringResource(R.string.dashboard_cards_saved)
+    val saveFailedMessage = stringResource(R.string.dashboard_cards_save_failed)
+    val resetDoneMessage = stringResource(R.string.dashboard_cards_reset_done)
+    val resetFailedMessage = stringResource(R.string.dashboard_cards_reset_failed)
 
     suspend fun refresh() {
         loading = true
         message = null
         repository.dashboardCards(DashboardSurface.Android)
             .onSuccess { cards = it.items.normalizedDashboardPositions() }
-            .onFailure { message = it.message ?: "首页卡片暂时打不开。" }
+            .onFailure { message = it.message ?: loadFailedMessage }
         loading = false
     }
 
@@ -97,10 +106,10 @@ fun DashboardCardsScreen(
             )
                 .onSuccess {
                     cards = it.items.normalizedDashboardPositions()
-                    message = "首页卡片已保存。"
+                    message = savedMessage
                     onSaved()
                 }
-                .onFailure { message = it.message ?: "保存失败，请稍后再试。" }
+                .onFailure { message = it.message ?: saveFailedMessage }
             saving = false
         }
     }
@@ -113,10 +122,10 @@ fun DashboardCardsScreen(
             repository.updateDashboardCards(emptyList(), DashboardSurface.Android)
                 .onSuccess {
                     cards = it.items.normalizedDashboardPositions()
-                    message = "已恢复默认卡片。"
+                    message = resetDoneMessage
                     onSaved()
                 }
-                .onFailure { message = it.message ?: "恢复默认失败，请稍后再试。" }
+                .onFailure { message = it.message ?: resetFailedMessage }
             saving = false
         }
     }
@@ -126,15 +135,15 @@ fun DashboardCardsScreen(
     }
 
     SettingsPageFrame(
-        title = "首页卡片",
+        title = stringResource(R.string.dashboard_cards_page_title),
         subtitle = if (readOnly) {
-            "当前角色为只读，只能查看卡片顺序。"
+            stringResource(R.string.dashboard_cards_page_subtitle_readonly)
         } else {
-            "调整 Android 统计页卡片顺序和显隐。"
+            stringResource(R.string.dashboard_cards_page_subtitle_default)
         },
         onBack = onBack,
     ) {
-        SettingsSection(title = "卡片顺序", icon = Icons.Filled.DashboardCustomize) {
+        SettingsSection(title = stringResource(R.string.dashboard_cards_section_order), icon = Icons.Filled.DashboardCustomize) {
             when {
                 loading && cards.isEmpty() -> AppGlassCard(containerAlpha = 0.96f) {
                     Column(
@@ -151,12 +160,12 @@ fun DashboardCardsScreen(
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
                     ) {
                         Text(
-                            text = "暂时没有卡片配置",
+                            text = stringResource(R.string.dashboard_cards_empty_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = AppTextHierarchy.heading.weight,
                         )
                         Text(
-                            text = "刷新后仍为空时，可以恢复默认卡片。",
+                            text = stringResource(R.string.dashboard_cards_empty_body),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -197,7 +206,7 @@ fun DashboardCardsScreen(
                         }
                         if (readOnly) {
                             Text(
-                                text = "当前角色为只读，无法修改账本展示偏好。",
+                                text = stringResource(R.string.dashboard_cards_readonly_hint),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -211,18 +220,24 @@ fun DashboardCardsScreen(
                                     enabled = !saving,
                                     modifier = Modifier.weight(1f),
                                 ) {
-                                    Icon(Icons.Filled.RestartAlt, contentDescription = "恢复默认首页卡片")
+                                    Icon(Icons.Filled.RestartAlt, contentDescription = stringResource(R.string.dashboard_cards_reset_content_description))
                                     Spacer(Modifier.width(AppSpacing.smallGap))
-                                    Text("恢复默认")
+                                    Text(stringResource(R.string.dashboard_cards_reset_button))
                                 }
                                 Button(
                                     onClick = ::saveCards,
                                     enabled = !saving && cards.isNotEmpty(),
                                     modifier = Modifier.weight(1f),
                                 ) {
-                                    Icon(Icons.Filled.Save, contentDescription = "保存首页卡片设置")
+                                    Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.dashboard_cards_save_content_description))
                                     Spacer(Modifier.width(AppSpacing.smallGap))
-                                    Text(if (saving) "保存中…" else "保存")
+                                    Text(
+                                        if (saving) {
+                                            stringResource(R.string.dashboard_cards_save_busy)
+                                        } else {
+                                            stringResource(R.string.dashboard_cards_save_button)
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -277,13 +292,13 @@ private fun DashboardCardRow(
             enabled = enabled && canMoveUp,
             onClick = onMoveUp,
         ) {
-            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "上移${card.title}")
+            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.dashboard_cards_move_up_content_description, card.title))
         }
         IconButton(
             enabled = enabled && canMoveDown,
             onClick = onMoveDown,
         ) {
-            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "下移${card.title}")
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.dashboard_cards_move_down_content_description, card.title))
         }
         AppSwitch(
             checked = card.visible,

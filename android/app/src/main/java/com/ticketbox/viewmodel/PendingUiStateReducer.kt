@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.UiText
 
 internal object PendingUiStateReducer {
     fun afterRefresh(
@@ -30,7 +31,7 @@ internal object PendingUiStateReducer {
     fun afterConfirmed(
         current: PendingUiState,
         confirmed: Expense,
-        message: String?,
+        message: UiText?,
     ): PendingUiState = afterRemoved(
         current = current,
         expenseId = confirmed.id,
@@ -41,7 +42,7 @@ internal object PendingUiStateReducer {
     fun afterRejected(
         current: PendingUiState,
         rejected: Expense,
-        message: String?,
+        message: UiText?,
     ): PendingUiState = afterRemoved(
         current = current,
         expenseId = rejected.id,
@@ -53,7 +54,7 @@ internal object PendingUiStateReducer {
         current: PendingUiState,
         updated: Expense,
         closeSheet: Boolean,
-        message: String?,
+        message: UiText?,
         clearInProgress: Boolean = true,
     ): PendingUiState {
         val updatedItems = current.items.map { expense -> if (expense.id == updated.id) updated else expense }
@@ -73,7 +74,7 @@ internal object PendingUiStateReducer {
         current: PendingUiState,
         expenseId: Long,
         closeSheet: Boolean,
-        message: String?,
+        message: UiText?,
     ): PendingUiState {
         val remainingItems = current.items.filterNot { expense -> expense.id == expenseId }
         return current.copy(

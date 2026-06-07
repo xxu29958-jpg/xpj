@@ -2,11 +2,13 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.MerchantAliasSaveOutcome
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,7 +19,7 @@ import kotlinx.coroutines.launch
 data class MerchantAliasUiState(
     val merchantAliases: List<MerchantAlias> = emptyList(),
     val busy: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     // ADR-0038 undo: the just-(soft-)deleted alias, surfaced as a 5s 撤销
     // affordance. Null when there is nothing to undo.
     val undoableAlias: MerchantAlias? = null,
@@ -42,13 +44,13 @@ class MerchantAliasViewModel(
         viewModelScope.launch {
             merchantRepository.merchantAliases()
                 .onSuccess { aliases -> _uiState.update { it.copy(merchantAliases = aliases.sortedMerchantAliases()) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "商家别名暂时打不开。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_alias_load_failed)) } }
         }
     }
 
     fun createMerchantAlias(canonicalMerchant: String, alias: String) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -59,17 +61,17 @@ class MerchantAliasViewModel(
                         state.copy(
                             merchantAliases = (state.merchantAliases + created).sortedMerchantAliases(),
                             busy = false,
-                            message = "商家别名已添加",
+                            message = UiText.res(R.string.merchant_alias_added),
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有添加成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.merchant_alias_add_failed)) } }
         }
     }
 
     fun toggleMerchantAlias(alias: MerchantAlias) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -84,9 +86,17 @@ class MerchantAliasViewModel(
                 .onSuccess { outcome ->
                     val message = when (outcome) {
                         is MerchantAliasSaveOutcome.Synced ->
-                            if (outcome.alias.enabled) "商家别名已启用" else "商家别名已停用"
+                            if (outcome.alias.enabled) {
+                                UiText.res(R.string.merchant_alias_enabled)
+                            } else {
+                                UiText.res(R.string.merchant_alias_disabled)
+                            }
                         is MerchantAliasSaveOutcome.Queued ->
-                            if (outcome.alias.enabled) "已离线启用，联网后同步" else "已离线停用，联网后同步"
+                            if (outcome.alias.enabled) {
+                                UiText.res(R.string.merchant_alias_enabled_offline)
+                            } else {
+                                UiText.res(R.string.merchant_alias_disabled_offline)
+                            }
                     }
                     _uiState.update { state ->
                         state.copy(
@@ -97,13 +107,13 @@ class MerchantAliasViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有更新成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_alias_update_failed)) } }
         }
     }
 
     fun deleteMerchantAlias(alias: MerchantAlias) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -113,8 +123,8 @@ class MerchantAliasViewModel(
             merchantRepository.deleteMerchantAliasAllowingOffline(alias)
                 .onSuccess { outcome ->
                     val message = when (outcome) {
-                        DeleteOutcome.Synced -> "商家别名已删除"
-                        DeleteOutcome.Queued -> "已离线删除，联网后同步"
+                        DeleteOutcome.Synced -> UiText.res(R.string.merchant_alias_deleted)
+                        DeleteOutcome.Queued -> UiText.res(R.string.merchant_alias_deleted_offline)
                     }
                     // ADR-0038 undo: offer 撤销 only when the server already
                     // holds the soft-deleted row (Synced). A queued offline
@@ -128,7 +138,7 @@ class MerchantAliasViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_alias_delete_failed)) } }
         }
     }
 
@@ -140,7 +150,7 @@ class MerchantAliasViewModel(
                     _uiState.update { state ->
                         state.copy(
                             merchantAliases = (state.merchantAliases + restored).sortedMerchantAliases(),
-                            message = "已恢复商家别名",
+                            message = UiText.res(R.string.merchant_alias_restored),
                             undoableAlias = null,
                         )
                     }
@@ -148,7 +158,7 @@ class MerchantAliasViewModel(
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
-                            message = error.message ?: "没有恢复成功，请稍后再试。",
+                            message = error.toUiText(R.string.merchant_alias_restore_failed),
                             undoableAlias = null,
                         )
                     }

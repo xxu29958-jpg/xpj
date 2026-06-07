@@ -53,12 +53,15 @@ import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute as SettingsDestination
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.screens.settings.TagManagementScreen
+import com.ticketbox.viewmodel.AppearanceUiState
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
 import com.ticketbox.viewmodel.BillSplitViewModel
+import com.ticketbox.viewmodel.CategoryRulesUiState
 import com.ticketbox.viewmodel.FamilyMembersViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
+import com.ticketbox.viewmodel.MerchantAliasUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 import com.ticketbox.viewmodel.SettingsUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
@@ -70,6 +73,13 @@ import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 import com.ticketbox.viewmodel.tagManagementViewModelFactory
+
+internal data class SettingsRouteStates(
+    val settings: SettingsUiState,
+    val rules: CategoryRulesUiState,
+    val merchant: MerchantAliasUiState,
+    val appearance: AppearanceUiState,
+)
 
 internal data class SettingsRouteActions(
     val onTestConnection: () -> Unit,
@@ -118,7 +128,7 @@ internal data class SettingsRouteRepositories(
 
 @Composable
 internal fun SettingsDestinationHost(
-    state: SettingsUiState,
+    states: SettingsRouteStates,
     currentSkin: AppSkin,
     currentCurrency: CurrencyCode,
     showAdvancedTools: Boolean,
@@ -130,6 +140,11 @@ internal fun SettingsDestinationHost(
     val backgroundImageStore = remember(context) { BackgroundImageStore(context) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
+    // ADR-0044: stringResource is @Composable-only, but these messages are used inside
+    // non-composable launcher result / runCatching lambdas. Hoist the resolved strings here.
+    val backgroundCopyFailedMessage = stringResource(R.string.settings_background_copy_failed)
+    val backgroundCustomTitle = stringResource(R.string.settings_background_custom_title)
+    val backgroundCropFailedMessage = stringResource(R.string.settings_background_crop_failed)
 
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -139,7 +154,7 @@ internal fun SettingsDestinationHost(
             backgroundImageStore.copyPickedImageToPrivateStorage(uri)
         }
             .onSuccess { path -> route = SettingsDestination.BackgroundCrop(path) }
-            .onFailure { actions.onBackgroundImageError("背景没有保存成功，请换一张图片再试。") }
+            .onFailure { actions.onBackgroundImageError(backgroundCopyFailedMessage) }
     }
 
     fun launchImagePicker() {
@@ -149,7 +164,7 @@ internal fun SettingsDestinationHost(
     }
 
     fun previewThemeDefault() {
-        actions.onApplyBackgroundSettings(state.backgroundSettings.withoutBackground())
+        actions.onApplyBackgroundSettings(states.appearance.backgroundSettings.withoutBackground())
     }
 
     BackHandler(enabled = route != SettingsDestination.Root) {
@@ -164,7 +179,7 @@ internal fun SettingsDestinationHost(
 
     when (val currentRoute = route) {
         SettingsDestination.Root -> SettingsRootScreen(
-            state = state,
+            state = states.settings,
             showAdvancedTools = showAdvancedTools,
             onOpenServer = { route = SettingsDestination.Server },
             onOpenAppearance = { route = SettingsDestination.Appearance },
@@ -186,7 +201,7 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.Server -> ServerSettingsScreen(
-            state = state,
+            state = states.settings,
             showAdvancedTools = showAdvancedTools,
             onBack = { route = SettingsDestination.Root },
             onTestConnection = actions.onTestConnection,
@@ -196,7 +211,7 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.Appearance -> AppearanceScreen(
-            state = state,
+            state = states.appearance,
             currentSkin = currentSkin,
             currentCurrency = currentCurrency,
             onBack = { route = SettingsDestination.Root },
@@ -206,7 +221,7 @@ internal fun SettingsDestinationHost(
             onPickCustomImage = ::launchImagePicker,
             onPreviewThemeDefault = ::previewThemeDefault,
             onClearBackgroundImage = {
-                backgroundImageStore.deleteCustomBackground(state.backgroundSettings.customImagePath)
+                backgroundImageStore.deleteCustomBackground(states.appearance.backgroundSettings.customImagePath)
                 actions.onClearBackgroundImage()
             },
             onImmersionModeChange = actions.onImmersionModeChange,
@@ -215,13 +230,13 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.BackgroundGallery -> BackgroundGalleryScreen(
-            currentSettings = state.backgroundSettings,
+            currentSettings = states.appearance.backgroundSettings,
             onBack = { route = SettingsDestination.Appearance },
             onPickCustomImage = ::launchImagePicker,
             onPreviewThemeDefault = ::previewThemeDefault,
             onPreviewBuiltIn = { background ->
                 route = SettingsDestination.BackgroundPreview(
-                    settings = state.backgroundSettings.withBuiltInBackground(background.id),
+                    settings = states.appearance.backgroundSettings.withBuiltInBackground(background.id),
                     title = background.name,
                 )
             },
@@ -239,13 +254,13 @@ internal fun SettingsDestinationHost(
                 }
                     .onSuccess { croppedPath ->
                         route = SettingsDestination.BackgroundPreview(
-                            settings = state.backgroundSettings
+                            settings = states.appearance.backgroundSettings
                                 .withCustomImage(croppedPath)
                                 .copy(cropMode = cropMode),
-                            title = "自定义背景",
+                            title = backgroundCustomTitle,
                         )
                     }
-                    .onFailure { actions.onBackgroundImageError("背景裁剪没有完成，请换一张图片再试。") }
+                    .onFailure { actions.onBackgroundImageError(backgroundCropFailedMessage) }
             },
         )
 
@@ -262,40 +277,40 @@ internal fun SettingsDestinationHost(
 
         SettingsDestination.DashboardCards -> DashboardCardsScreen(
             repository = repositories.reportsRepository,
-            readOnly = !ledgerRoleCanModify(state.role),
+            readOnly = !ledgerRoleCanModify(states.settings.role),
             onBack = { route = SettingsDestination.Root },
             onSaved = actions.onDashboardCardsChanged,
         )
 
         SettingsDestination.CategoryRules -> CategoryRulesScreen(
-            rules = state.categoryRules,
-            busy = state.busy,
-            readOnly = !ledgerRoleCanModify(state.role),
+            rules = states.rules.categoryRules,
+            busy = states.rules.busy,
+            readOnly = !ledgerRoleCanModify(states.settings.role),
             onBack = { route = SettingsDestination.Root },
             onCreateRule = actions.onCreateRule,
             onUpdateRule = actions.onUpdateRule,
             onToggleRule = actions.onToggleRule,
             onDeleteRule = actions.onDeleteRule,
-            applications = state.ruleApplications,
-            confirmedPreview = state.confirmedRulesPreview,
+            applications = states.rules.ruleApplications,
+            confirmedPreview = states.rules.confirmedRulesPreview,
             onPreviewApplyConfirmedRules = actions.onPreviewApplyConfirmedRules,
             onConfirmApplyConfirmedRules = actions.onConfirmApplyConfirmedRules,
             onRollbackRuleApplication = actions.onRollbackRuleApplication,
-            undoableRule = state.categoryRuleUndoable,
+            undoableRule = states.rules.undoableRule,
             onUndoDelete = actions.onUndoRuleDelete,
             onDismissUndo = actions.onDismissRuleUndo,
         )
 
         SettingsDestination.MerchantAliases -> MerchantAliasesScreen(
-            aliases = state.merchantAliases,
-            busy = state.busy,
-            readOnly = !ledgerRoleCanModify(state.role),
-            message = state.message,
+            aliases = states.merchant.merchantAliases,
+            busy = states.merchant.busy,
+            readOnly = !ledgerRoleCanModify(states.settings.role),
+            message = states.merchant.message,
             onBack = { route = SettingsDestination.Root },
             onCreateAlias = actions.onCreateMerchantAlias,
             onToggleAlias = actions.onToggleMerchantAlias,
             onDeleteAlias = actions.onDeleteMerchantAlias,
-            undoableAlias = state.merchantAliasUndoable,
+            undoableAlias = states.merchant.undoableAlias,
             onUndoDelete = actions.onUndoMerchantAlias,
             onDismissUndo = actions.onDismissMerchantAliasUndo,
         )
@@ -309,21 +324,21 @@ internal fun SettingsDestinationHost(
             )
             TagManagementScreen(
                 viewModel = vm,
-                readOnly = !ledgerRoleCanModify(state.role),
+                readOnly = !ledgerRoleCanModify(states.settings.role),
                 onBack = { route = SettingsDestination.Root },
             )
         }
 
         SettingsDestination.DataExport -> DataExportScreen(
-            state = state,
+            state = states.settings,
             onBack = { route = SettingsDestination.Root },
             onSync = actions.onSync,
             onClearCache = actions.onClearCache,
         )
 
         SettingsDestination.NotificationPreferences -> NotificationPreferencesScreen(
-            preferences = state.notificationPreferences,
-            readOnly = !ledgerRoleCanModify(state.role),
+            preferences = states.settings.notificationPreferences,
+            readOnly = !ledgerRoleCanModify(states.settings.role),
             onBack = { route = SettingsDestination.Root },
             onSave = actions.onSaveNotificationPreferences,
         )
@@ -355,7 +370,7 @@ internal fun SettingsDestinationHost(
             FamilyMembersScreen(
                 viewModel = vm,
                 activeLedgerId = repositories.activeLedgerId,
-                currentRole = state.role,
+                currentRole = states.settings.role,
                 onBack = { route = SettingsDestination.Root },
                 onMembershipChanged = actions.onBindingChanged,
             )

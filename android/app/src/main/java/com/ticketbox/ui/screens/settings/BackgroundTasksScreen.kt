@@ -17,10 +17,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.backgroundTaskStatusLabel
 import com.ticketbox.domain.model.backgroundTaskTypeLabel
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
@@ -46,11 +49,11 @@ fun BackgroundTasksScreen(
     }
 
     SettingsPageFrame(
-        title = "后台任务",
-        subtitle = "CSV 导入 / v1.0 迁移等长任务。账本内每个账户只看到自己发起的任务。",
+        title = stringResource(R.string.background_tasks_page_title),
+        subtitle = stringResource(R.string.background_tasks_page_subtitle),
         onBack = onBack,
     ) {
-        SettingsSection(title = "最近任务", icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.background_tasks_section_recent_title), icon = Icons.Filled.Tune) {
             AppGlassCard(containerAlpha = 0.96f) {
                 Column(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -62,7 +65,7 @@ fun BackgroundTasksScreen(
                         }
                     } else if (state.tasks.isEmpty()) {
                         Text(
-                            text = "暂无后台任务。",
+                            text = stringResource(R.string.background_tasks_empty),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -77,13 +80,13 @@ fun BackgroundTasksScreen(
                         onClick = { viewModel.refresh() },
                         enabled = !state.loading && state.busyTaskId == null,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (state.loading) "刷新中…" else "刷新") }
+                    ) { Text(if (state.loading) stringResource(R.string.background_tasks_refreshing) else stringResource(R.string.background_tasks_refresh)) }
                 }
             }
         }
         state.message?.let {
             Text(
-                text = it,
+                text = it.asString(),
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -117,13 +120,13 @@ private fun TaskRow(
             )
         }
         Text(
-            text = "创建：${displayTime(task.createdAt)}",
+            text = stringResource(R.string.background_tasks_row_created, displayTime(task.createdAt)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         task.completedAt?.let {
             Text(
-                text = "结束：${displayTime(it)}",
+                text = stringResource(R.string.background_tasks_row_finished, displayTime(it)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -154,7 +157,7 @@ private fun TaskRow(
                 onClick = onCancel,
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (busy) "处理中…" else "请求取消") }
+            ) { Text(if (busy) stringResource(R.string.background_tasks_row_cancelling) else stringResource(R.string.background_tasks_row_request_cancel)) }
         }
     }
 }

@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -27,6 +28,7 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.ticketbox.R
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppRadius
@@ -56,8 +58,8 @@ private const val MAX_PREVIEW_PIXELS = 4_194_304
 fun AppAsyncImage(
     image: ProtectedImage?,
     modifier: Modifier = Modifier,
-    placeholder: String = "截图已保存",
-    contentDescription: String? = "账单截图",
+    placeholder: String = stringResource(R.string.components_async_image_placeholder),
+    contentDescription: String? = stringResource(R.string.components_async_image_content_description),
     shape: Shape = RoundedCornerShape(AppRadius.small),
     contentScale: ContentScale = ContentScale.Crop,
     compact: Boolean = false,

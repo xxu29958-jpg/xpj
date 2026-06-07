@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import android.content.res.Resources
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import java.time.Instant
 import java.time.LocalDate
@@ -14,7 +16,7 @@ data class LedgerExpenseGroup(
     val items: List<Expense>,
 )
 
-fun groupLedgerExpenses(items: List<Expense>): List<LedgerExpenseGroup> {
+fun groupLedgerExpenses(resources: Resources, items: List<Expense>): List<LedgerExpenseGroup> {
     return items
         .groupBy { expense ->
             val date = expenseLedgerDate(expense)
@@ -24,7 +26,7 @@ fun groupLedgerExpenses(items: List<Expense>): List<LedgerExpenseGroup> {
             val date = expenses.firstOrNull()?.let(::expenseLedgerDate)
             LedgerExpenseGroup(
                 key = key,
-                label = ledgerDayLabel(date),
+                label = ledgerDayLabel(resources, date),
                 items = expenses,
             )
         }
@@ -43,12 +45,14 @@ private fun String?.toLocalDateOrNull(): LocalDate? {
         .getOrNull()
 }
 
-fun ledgerDayLabel(date: LocalDate?): String {
-    if (date == null) return "未设置日期"
+fun ledgerDayLabel(resources: Resources, date: LocalDate?): String {
+    if (date == null) return resources.getString(R.string.ledger_day_no_date)
     val today = LocalDate.now()
     return when (date) {
-        today -> "今天"
-        today.minusDays(1) -> "昨天"
+        today -> resources.getString(R.string.ledger_day_today)
+        today.minusDays(1) -> resources.getString(R.string.ledger_day_yesterday)
+        // Date format pattern (not UI copy): 月/日 are DateTimeFormatter literal
+        // delimiters, left as-is to keep the formatted output byte-identical.
         else -> date.format(DateTimeFormatter.ofPattern("M月d日 E", Locale.CHINA))
     }
 }

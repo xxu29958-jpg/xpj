@@ -15,8 +15,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppPageHeader
@@ -78,11 +80,11 @@ internal fun PendingTop(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         AppPageHeader(
-            title = "待确认",
+            title = stringResource(R.string.pending_top_title),
             subtitle = if (pendingCount > 0) {
-                "$pendingCount 张截图待核对，确认后才进入账本"
+                stringResource(R.string.pending_top_subtitle_has_items, pendingCount)
             } else {
-                "还没有待核对截图，上传后会先放在这里"
+                stringResource(R.string.pending_top_subtitle_empty)
             },
         ) {
             trailingAction?.invoke()
@@ -106,7 +108,7 @@ internal fun PendingTop(
                     maxLines = 1,
                 )
                 Text(
-                    text = "张待核对",
+                    text = stringResource(R.string.pending_top_metric_caption),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = AppTextHierarchy.caption.weight,
@@ -126,7 +128,7 @@ internal fun PendingTop(
                         fontWeight = AppTextHierarchy.heading.weight,
                     )
                     Text(
-                        text = "疑似重复",
+                        text = stringResource(R.string.pending_top_duplicate_caption),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = AppTextHierarchy.caption.weight,
@@ -140,9 +142,9 @@ internal fun PendingTop(
             enabled = !uploading && !readOnly,
             icon = Icons.Filled.AddPhotoAlternate,
             text = when {
-                readOnly -> "只读角色不能上传"
-                uploading -> "正在上传截图"
-                else -> "上传截图"
+                readOnly -> stringResource(R.string.pending_top_cta_readonly)
+                uploading -> stringResource(R.string.pending_top_cta_uploading)
+                else -> stringResource(R.string.pending_top_cta_upload)
             },
             onClick = onUploadScreenshot,
         )
@@ -160,7 +162,7 @@ internal fun PendingDisplayModeButton(
     onClick: () -> Unit,
 ) {
     AppSecondaryButton(
-        text = if (loading) "刷新中" else pendingDisplayModeLabel(displayMode),
+        text = if (loading) stringResource(R.string.pending_display_mode_button_loading) else pendingDisplayModeLabel(displayMode),
         enabled = !loading,
         onClick = onClick,
     )
@@ -197,7 +199,11 @@ internal fun PendingUndoRejectBanner(
     val merchant = expense.merchant?.trim()?.takeIf { it.isNotEmpty() }
     val amount = expense.amountCents?.let { formatExpensePrimaryAmount(expense) }
     val descriptor = listOfNotNull(merchant, amount).joinToString(" · ")
-    val label = if (descriptor.isNotEmpty()) "已删除 · $descriptor" else "已删除"
+    val label = if (descriptor.isNotEmpty()) {
+        stringResource(R.string.pending_undo_banner_label_with_descriptor, descriptor)
+    } else {
+        stringResource(R.string.pending_undo_banner_label)
+    }
     AppContentCard {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -215,7 +221,7 @@ internal fun PendingUndoRejectBanner(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
-            AppSecondaryButton(text = "撤销", onClick = onUndo)
+            AppSecondaryButton(text = stringResource(R.string.pending_undo_banner_action), onClick = onUndo)
         }
     }
 }

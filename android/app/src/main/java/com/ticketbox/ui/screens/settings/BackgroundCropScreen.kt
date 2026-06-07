@@ -67,10 +67,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -117,8 +119,8 @@ fun BackgroundCropScreen(
     val density = LocalDensity.current
     val previewOffsetPx = with(density) { cropMode.previewOffsetDp.toPx() }
     SettingsPageFrame(
-        title = "调整背景",
-        subtitle = "避开顶部标题和底部导航区域，保证账单内容清晰可读。",
+        title = stringResource(R.string.background_crop_page_title),
+        subtitle = stringResource(R.string.background_crop_page_subtitle),
         onBack = onBack,
     ) {
         Box(
@@ -132,7 +134,7 @@ fun BackgroundCropScreen(
             if (bitmap != null) {
                 Image(
                     bitmap = bitmap,
-                    contentDescription = "背景裁剪预览",
+                    contentDescription = stringResource(R.string.background_crop_preview_content_description),
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
@@ -156,7 +158,7 @@ fun BackgroundCropScreen(
                     .padding(AppSpacing.cardPaddingTight),
             )
         }
-        SettingsSection(title = "构图位置", icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.background_crop_section_composition_title), icon = Icons.Filled.Tune) {
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                 BackgroundCropMode.entries.forEach { mode ->
                     AppFilterChip(
@@ -178,13 +180,13 @@ fun BackgroundCropScreen(
                 modifier = Modifier.weight(1f),
                 onClick = onBack,
             ) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
             Button(
                 modifier = Modifier.weight(1f),
                 onClick = { onComplete(cropMode) },
             ) {
-                Text("完成，去预览")
+                Text(stringResource(R.string.background_crop_complete_button))
             }
         }
     }
@@ -216,7 +218,7 @@ private fun CropSelectionBadge(
             .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
     ) {
         Text(
-            text = "当前保留：${cropMode.displayName}",
+            text = stringResource(R.string.background_crop_selection_badge, cropMode.displayName),
             color = MaterialTheme.colorScheme.onPrimary,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = AppTextHierarchy.heading.weight,

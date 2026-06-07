@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0044 wave 1, cluster expense_edit. 命名约定与复用见 res/values/strings.xml 头注。 -->
+<resources>
+
+    <!-- ExpenseEditScreen：确认/编辑账单主屏 -->
+    <string name="expense_edit_header_title">确认账单</string>
+    <string name="expense_edit_header_subtitle">识别只是草稿，补全后再正式入账</string>
+    <string name="expense_edit_status_pending">待确认</string>
+    <string name="expense_edit_status_confirmed">已入账</string>
+    <string name="expense_edit_large_image_loading">原图加载中</string>
+    <string name="expense_edit_large_image_failed">原图暂时加载失败，截图已保存</string>
+    <string name="expense_edit_keep_duplicate_button">不是重复，保留</string>
+    <string name="expense_edit_raw_text_empty">第一版为空</string>
+    <string name="expense_edit_score_out_of_range">%1$s 只能填写 1 到 5。</string>
+    <string name="expense_edit_score_value_label">值不值评分</string>
+    <string name="expense_edit_score_regret_label">后悔指数</string>
+    <string name="expense_edit_amount_invalid">金额格式不正确</string>
+    <string name="expense_edit_amount_required">请先填写金额。</string>
+
+    <!-- ExpenseEditLoadingRoute：账单加载/打不开占位 -->
+    <string name="expense_edit_loading_header_title">打开账单</string>
+    <string name="expense_edit_loading_header_subtitle">正在读取最新账单内容。</string>
+    <string name="expense_edit_loading_state_title">账单加载中</string>
+    <string name="expense_edit_loading_state_body">正在同步金额、分类和截图信息。</string>
+    <string name="expense_edit_loading_empty_title">没有打开这张账单</string>
+    <string name="expense_edit_loading_empty_fallback">账单可能已经被删除，或当前设备暂时连接不上账本。</string>
+    <string name="expense_edit_loading_reload_button">重新加载</string>
+    <string name="expense_edit_loading_back_button">返回</string>
+
+    <!-- ExpenseEditPrimaryActions / ExpenseEditConfirmActions：底部操作按钮 -->
+    <string name="expense_edit_primary_back_button">返回</string>
+    <string name="expense_edit_primary_saving_button">保存中</string>
+    <string name="expense_edit_primary_save_button">保存</string>
+    <string name="expense_edit_confirm_button">确认入账</string>
+    <string name="expense_edit_reject_button">删除</string>
+
+    <!-- ExpenseEditCoreFields：金额/币种/商家/分类/备注/来源 -->
+    <string name="expense_edit_amount_field_label">金额，单位元</string>
+    <string name="expense_edit_currency_card_title">金额与币种</string>
+    <string name="expense_edit_original_amount_field_label">原始金额，%1$s</string>
+    <string name="expense_edit_fx_hint">按消费日期使用后端汇率；同步前会标记为待汇率。</string>
+    <string name="expense_edit_merchant_field_label">商家</string>
+    <string name="expense_edit_category_field_label">分类</string>
+    <string name="expense_edit_note_field_label">备注</string>
+    <string name="expense_edit_source_label">来源：%1$s</string>
+    <string name="expense_edit_confidence_label">识别置信度：%1$d%%</string>
+
+    <!-- ItemsEditorSheet：小票明细编辑 sheet -->
+    <string name="expense_edit_items_sheet_title">编辑小票明细</string>
+    <string name="expense_edit_items_sheet_subtitle">逐项录入商品 / 折扣 / 税 / 服务费；折扣按正数填写，合计会自动相减。</string>
+    <string name="expense_edit_items_add_row_button">添加项目</string>
+    <string name="expense_edit_items_saving_button">保存中…</string>
+    <string name="expense_edit_items_save_button">保存</string>
+    <string name="expense_edit_items_row_name_label">名称</string>
+    <string name="expense_edit_items_row_amount_label">金额</string>
+    <string name="expense_edit_items_row_remove_desc">删除该项</string>
+    <string name="expense_edit_items_footer_total_label">合计</string>
+    <string name="expense_edit_items_footer_face_label">票面</string>
+    <string name="expense_edit_items_footer_diff_label">差额</string>
+
+    <!-- ExpenseEditDialogs：日期/时间/删除/粘贴识别对话框 -->
+    <string name="expense_edit_date_picker_title">选择日期</string>
+    <string name="expense_edit_time_picker_title">选择时间</string>
+    <string name="expense_edit_reject_dialog_title">删除这笔账单？</string>
+    <string name="expense_edit_reject_dialog_body">删除后会标记为已拒绝，不会进入账本。</string>
+    <string name="expense_edit_reject_dialog_confirm_button">确定删除</string>
+    <string name="expense_edit_recognize_dialog_title">粘贴文字识别</string>
+    <string name="expense_edit_recognize_field_label">粘贴小票文字</string>
+    <string name="expense_edit_recognize_field_placeholder">例如：星巴克 拿铁 ¥35 2026-05-20 …</string>
+    <string name="expense_edit_recognize_supporting_text">识别结果只会填入空白项，不会覆盖你已填写的内容</string>
+    <string name="expense_edit_recognize_confirm_button">识别</string>
+
+    <!-- ExpenseEditMoreSection：更多记录折叠区 -->
+    <string name="expense_edit_more_title">更多记录</string>
+    <string name="expense_edit_more_subtitle">标签、值不值、后悔指数和识别原文</string>
+    <string name="expense_edit_more_collapse_button">收起</string>
+    <string name="expense_edit_more_expand_button">展开</string>
+    <string name="expense_edit_more_tags_label">标签</string>
+    <string name="expense_edit_more_tags_placeholder">真香、必要支出</string>
+    <string name="expense_edit_more_value_score_label">值不值评分，1-5</string>
+    <string name="expense_edit_more_regret_score_label">后悔指数，1-5</string>
+    <string name="expense_edit_more_raw_text_collapse_button">收起识别原文</string>
+    <string name="expense_edit_more_raw_text_expand_button">查看识别原文</string>
+    <string name="expense_edit_more_recognize_running_button">识别中</string>
+    <string name="expense_edit_more_recognize_retry_button">重新识别</string>
+    <string name="expense_edit_more_recognize_paste_button">粘贴文字识别</string>
+    <string name="expense_edit_more_raw_text_value">识别原文：%1$s</string>
+
+    <!-- SplitsEditorSheet：家庭拆账编辑 sheet -->
+    <string name="expense_edit_splits_sheet_title">编辑家庭拆账</string>
+    <string name="expense_edit_splits_sheet_subtitle">勾选参与分摊的家庭成员并填写各自金额；拆账只记录分摊，不改动原始账单金额。</string>
+    <string name="expense_edit_splits_members_loading">正在加载家庭成员…</string>
+    <string name="expense_edit_splits_members_failed">家庭成员暂时加载失败，请关闭后重试。</string>
+    <string name="expense_edit_splits_even_button">均分</string>
+    <string name="expense_edit_splits_saving_button">保存中…</string>
+    <string name="expense_edit_splits_save_button">保存</string>
+    <string name="expense_edit_splits_member_disabled">成员已停用</string>
+    <string name="expense_edit_splits_row_amount_label">金额</string>
+    <string name="expense_edit_splits_footer_total_label">合计</string>
+    <string name="expense_edit_splits_footer_face_label">票面</string>
+    <string name="expense_edit_splits_footer_diff_label">差额</string>
+    <string name="expense_edit_splits_footer_even_hint">点击均分可平账</string>
+
+    <!-- EditDraftPreviewCard / OcrProgressCard / ExpenseDateField -->
+    <string name="expense_edit_preview_image_loading">截图加载中</string>
+    <string name="expense_edit_preview_image_saved">截图已保存</string>
+    <string name="expense_edit_preview_draft_label">识别草稿</string>
+    <string name="expense_edit_preview_merchant_empty">待填写商家</string>
+    <string name="expense_edit_preview_confidence_pill">可信度 %1$d%%</string>
+    <string name="expense_edit_preview_image_button_loading">加载中</string>
+    <string name="expense_edit_preview_image_button_collapse">收起截图</string>
+    <string name="expense_edit_preview_image_button_open">看原图</string>
+    <string name="expense_edit_preview_recognize_running_button">识别中</string>
+    <string name="expense_edit_preview_recognize_retry_button">重新识别</string>
+    <string name="expense_edit_ocr_progress_title">正在重新识别截图</string>
+    <string name="expense_edit_ocr_progress_body">识别结果只会更新草稿，仍需要你核对后确认入账。</string>
+    <string name="expense_edit_date_section_title">消费时间</string>
+    <string name="expense_edit_date_pick_date_button">选日期</string>
+    <string name="expense_edit_date_pick_time_button">选时间</string>
+    <string name="expense_edit_date_use_now_button">设为现在</string>
+    <string name="expense_edit_date_clear_button">清除</string>
+
+    <!-- ExpenseEditV1DetailsSection：小票明细 / 家庭拆账 只读面板 -->
+    <string name="expense_edit_v1_items_title">小票明细</string>
+    <string name="expense_edit_v1_items_subtitle">商品级记录不改变账单金额、统计或导出</string>
+    <string name="expense_edit_v1_items_add_button">添加明细</string>
+    <string name="expense_edit_v1_items_edit_button">编辑明细</string>
+    <string name="expense_edit_v1_items_loading_title">明细加载中</string>
+    <string name="expense_edit_v1_items_loading_body">商品级记录加载完成后会显示在这里。</string>
+    <string name="expense_edit_v1_items_empty">暂无商品明细</string>
+    <string name="expense_edit_v1_items_mismatch_title">明细合计与账单金额相差 %1$s</string>
+    <string name="expense_edit_v1_items_mismatch_body">检查商品行，或如果原小票本身就是这个金额，可以确认差异。</string>
+    <string name="expense_edit_v1_items_mismatch_ack_button">原小票如此</string>
+    <string name="expense_edit_v1_items_mismatch_acknowledged">已确认原小票合计与明细存在 %1$s 差异</string>
+    <string name="expense_edit_v1_splits_title">家庭拆账</string>
+    <string name="expense_edit_v1_splits_subtitle">拆账只记录家庭分摊，不改动原始账单金额</string>
+    <string name="expense_edit_v1_splits_add_button">添加拆账</string>
+    <string name="expense_edit_v1_splits_edit_button">编辑拆账</string>
+    <string name="expense_edit_v1_splits_loading_title">拆账加载中</string>
+    <string name="expense_edit_v1_splits_loading_body">家庭成员分摊加载完成后会显示在这里。</string>
+    <string name="expense_edit_v1_splits_empty">暂无家庭拆账</string>
+    <string name="expense_edit_v1_reconcile_match_pill">合计一致</string>
+    <string name="expense_edit_v1_reconcile_diff_pill">差额 %1$s</string>
+    <string name="expense_edit_v1_reconcile_amounts">账单 %1$s · 明细 %2$s</string>
+
+    <!-- ADR-0044 wave 2：明细分组标题 / 行副标题（原 V1Details 非 @Composable helper） -->
+    <string name="expense_edit_item_group_product">商品</string>
+    <string name="expense_edit_item_group_discount">优惠 / 折扣</string>
+    <string name="expense_edit_item_group_tax">税</string>
+    <string name="expense_edit_item_group_service_fee">服务费</string>
+    <string name="expense_edit_item_subtitle_unit_price">单价 %1$s</string>
+    <string name="expense_edit_item_subtitle_ocr_draft">OCR草稿</string>
+    <string name="expense_edit_item_subtitle_empty">未补充明细信息</string>
+    <string name="expense_edit_split_subtitle_member_disabled">成员已停用</string>
+
+    <!-- ADR-0044 wave 2：明细编辑 sheet 的种类分段控件（原 ItemsEditorSheet ITEM_KINDS） -->
+    <string name="expense_edit_items_kind_product">商品</string>
+    <string name="expense_edit_items_kind_discount">折扣</string>
+    <string name="expense_edit_items_kind_tax">税</string>
+    <string name="expense_edit_items_kind_service_fee">服务费</string>
+
+    <!-- ADR-0044 wave 2：ExpenseEditViewModel 的 UiState 状态/结果文案（经 UiText 解析）-->
+    <!-- 加载/未就绪 -->
+    <string name="expense_edit_load_failed">账单暂时加载失败，请稍后再试。</string>
+    <string name="expense_edit_page_not_loaded">页面尚未加载完成，请稍后再试。</string>
+    <string name="expense_edit_image_open_failed">截图暂时打不开，请稍后再试。</string>
+    <string name="expense_edit_recognize_text_required">请先粘贴小票文字。</string>
+    <!-- 保存 -->
+    <string name="expense_edit_save_success">已保存</string>
+    <string name="expense_edit_save_offline_queued">已离线保存，联网后同步</string>
+    <string name="expense_edit_save_failed">没有保存成功，请稍后再试。</string>
+    <!-- 确认入账 / 删除 -->
+    <string name="expense_edit_confirm_failed">没有确认成功，请稍后再试。</string>
+    <string name="expense_edit_reject_offline_queued">已离线删除，联网后同步</string>
+    <string name="expense_edit_reject_failed">没有删除成功，请稍后再试。</string>
+    <!-- 重新识别 / 粘贴识别 -->
+    <string name="expense_edit_ocr_retried">识别已重试</string>
+    <string name="expense_edit_ocr_retry_offline_queued">已离线，联网后重试识别</string>
+    <string name="expense_edit_recognize_done">已识别（识别结果已填入空白项）</string>
+    <string name="expense_edit_recognize_offline_queued">已离线，联网后识别</string>
+    <string name="expense_edit_recognize_failed">没有识别成功，请稍后再试。</string>
+    <!-- 不是重复 -->
+    <string name="expense_edit_keep_duplicate_success">已保留这条账单</string>
+    <string name="expense_edit_keep_duplicate_offline_queued">已离线保留，联网后同步</string>
+    <string name="expense_edit_keep_duplicate_failed">暂时没处理成功，请稍后再试。</string>
+    <!-- 小票明细（itemsMessage）-->
+    <string name="expense_edit_items_load_failed">小票明细暂时加载失败。</string>
+    <string name="expense_edit_items_not_loaded_tap">账单还在加载，请稍后再点。</string>
+    <string name="expense_edit_items_not_loaded_retry">账单还在加载，请稍后再试。</string>
+    <string name="expense_edit_items_ack_synced">已确认原小票如此。</string>
+    <string name="expense_edit_items_ack_offline_queued">已离线确认，联网后同步</string>
+    <string name="expense_edit_items_ack_failed">确认差异失败，请稍后重试。</string>
+    <string name="expense_edit_items_saved">小票明细已更新。</string>
+    <string name="expense_edit_items_saved_offline_queued">已离线保存，联网后同步。</string>
+    <string name="expense_edit_items_save_failed">明细保存失败，请稍后再试。</string>
+    <!-- 家庭拆账（splitsMessage）-->
+    <string name="expense_edit_splits_load_failed">家庭拆账暂时加载失败。</string>
+    <string name="expense_edit_splits_not_loaded_tap">家庭拆账还在加载，请稍后再点。</string>
+    <string name="expense_edit_splits_members_load_failed">家庭成员暂时加载失败。</string>
+    <string name="expense_edit_splits_not_loaded_save">家庭拆账还在加载，请稍候再保存。</string>
+    <string name="expense_edit_splits_saved">家庭拆账已更新。</string>
+    <string name="expense_edit_splits_saved_offline_queued">已离线保存，联网后同步。</string>
+    <string name="expense_edit_splits_save_failed">拆账保存失败，请稍后再试。</string>
+
+</resources>

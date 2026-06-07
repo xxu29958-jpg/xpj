@@ -2,8 +2,10 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.LedgerSummary
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +24,7 @@ import kotlinx.coroutines.launch
 data class LedgerSwitcherUiState(
     val ledgers: List<LedgerSummary> = emptyList(),
     val loading: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 class LedgerSwitcherViewModel(
@@ -43,7 +45,10 @@ class LedgerSwitcherViewModel(
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        it.copy(loading = false, message = err.message ?: "获取账本失败。")
+                        it.copy(
+                            loading = false,
+                            message = err.toUiText(R.string.ledger_switcher_message_load_failed),
+                        )
                     }
                 }
         }
@@ -57,14 +62,20 @@ class LedgerSwitcherViewModel(
             repository.switchLedger(ledgerId)
                 .onSuccess { summary ->
                     _uiState.update {
-                        it.copy(loading = false, message = "已切换到“${summary.name}”")
+                        it.copy(
+                            loading = false,
+                            message = UiText.res(R.string.ledger_switcher_message_switched, summary.name),
+                        )
                     }
                     onSwitched()
                     refresh()
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        it.copy(loading = false, message = err.message ?: "切换账本失败。")
+                        it.copy(
+                            loading = false,
+                            message = err.toUiText(R.string.ledger_switcher_message_switch_failed),
+                        )
                     }
                 }
         }
@@ -76,14 +87,20 @@ class LedgerSwitcherViewModel(
             repository.createLedger(name)
                 .onSuccess { summary ->
                     _uiState.update {
-                        it.copy(loading = false, message = "已新建账本“${summary.name}”")
+                        it.copy(
+                            loading = false,
+                            message = UiText.res(R.string.ledger_switcher_message_created, summary.name),
+                        )
                     }
                     onCreated()
                     refresh()
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        it.copy(loading = false, message = err.message ?: "新建账本失败。")
+                        it.copy(
+                            loading = false,
+                            message = err.toUiText(R.string.ledger_switcher_message_create_failed),
+                        )
                     }
                 }
         }
@@ -94,7 +111,7 @@ class LedgerSwitcherViewModel(
     }
 
     /** Surface a non-network validation message (e.g. empty input). */
-    fun showInputError(message: String) {
+    fun showInputError(message: UiText) {
         _uiState.update { it.copy(message = message) }
     }
 }

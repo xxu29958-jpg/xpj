@@ -66,10 +66,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -112,8 +114,8 @@ fun BackgroundGalleryScreen(
     var selectedCategory by remember { mutableStateOf<BuiltInBackgroundCategory?>(null) }
     val backgrounds = selectedCategory?.let(BackgroundCatalog::byCategory) ?: BackgroundCatalog.entries
     SettingsPageFrame(
-        title = "背景图库",
-        subtitle = "点击后先预览，确认应用后才会保存。",
+        title = stringResource(R.string.background_gallery_page_title),
+        subtitle = stringResource(R.string.background_gallery_page_subtitle),
         onBack = onBack,
     ) {
         Row(
@@ -123,7 +125,7 @@ fun BackgroundGalleryScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AppFilterChip(
-                label = "推荐",
+                label = stringResource(R.string.background_gallery_filter_recommended),
                 selected = selectedCategory == null,
                 onClick = { selectedCategory = null },
             )
@@ -153,16 +155,16 @@ fun BackgroundGalleryScreen(
                 }
             }
         }
-        SettingsSection(title = "自定义", icon = Icons.Filled.PhotoLibrary) {
+        SettingsSection(title = stringResource(R.string.background_gallery_section_custom_title), icon = Icons.Filled.PhotoLibrary) {
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 BackgroundActionButton(
-                    text = "从相册选择",
+                    text = stringResource(R.string.background_gallery_pick_image),
                     modifier = Modifier.weight(1f),
                     leadingIcon = Icons.Filled.PhotoLibrary,
                     onClick = onPickCustomImage,
                 )
                 BackgroundActionButton(
-                    text = "主题默认",
+                    text = stringResource(R.string.background_gallery_theme_default),
                     modifier = Modifier.weight(1f),
                     leadingIcon = Icons.Filled.RestartAlt,
                     onClick = onPreviewThemeDefault,

@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +49,7 @@ import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppMotion
@@ -86,9 +88,13 @@ internal fun ReportsInsightCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text("动态图表", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                     Text(
-                        text = "${overview.month} · 服务端聚合 · ${overview.count} 笔",
+                        stringResource(R.string.stats_reports_chart_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = AppTextHierarchy.heading.weight,
+                    )
+                    Text(
+                        text = stringResource(R.string.stats_reports_chart_subtitle, overview.month, overview.count),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
@@ -105,13 +111,13 @@ internal fun ReportsInsightCard(
             val nonZeroDays = chartPoints.count { it.amountCents > 0L }
             when {
                 nonZeroDays == 0 -> Text(
-                    text = "这个月份还没有可画出的确认支出。",
+                    text = stringResource(R.string.stats_reports_chart_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 // 稀疏态：1–2 天有支出时柱状信息量太低，降级成文案而非画误导图（区分 空态/稀疏态/正常态）。
                 nonZeroDays <= 2 -> Text(
-                    text = "本月只有 $nonZeroDays 天有确认支出，数据还太少；多记几笔后这里会显示每日支出柱状趋势。",
+                    text = stringResource(R.string.stats_reports_chart_sparse, nonZeroDays),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -119,7 +125,7 @@ internal fun ReportsInsightCard(
             }
             if (overview.merchantRanking.isNotEmpty()) {
                 RankingBlock(
-                    title = "商家排行",
+                    title = stringResource(R.string.stats_reports_merchant_ranking_title),
                     rows = overview.merchantRanking.take(5),
                 )
             }
@@ -142,10 +148,14 @@ internal fun GoalsSummaryCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("月度目标", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
+            Text(
+                stringResource(R.string.stats_reports_goals_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
             if (visibleGoals.isEmpty()) {
                 Text(
-                    text = "本月还没有目标。",
+                    text = stringResource(R.string.stats_reports_goals_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -210,11 +220,12 @@ private fun RankingBlock(
     rows: List<ReportMerchantRanking>,
 ) {
     val maxAmount = rows.maxOfOrNull { it.amountCents } ?: 0L
+    val merchantFallback = stringResource(R.string.stats_reports_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.body.weight)
         rows.forEach { row ->
             AmountBarRow(
-                label = row.merchant.ifBlank { "未填写商家" },
+                label = row.merchant.ifBlank { merchantFallback },
                 amountCents = row.amountCents,
                 count = row.count,
                 maxAmountCents = maxAmount,
@@ -226,12 +237,16 @@ private fun RankingBlock(
 @Composable
 private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text("分类环比", style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.body.weight)
+        Text(
+            stringResource(R.string.stats_reports_category_comparison_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.body.weight,
+        )
         rows.forEach { row ->
             val deltaText = when {
-                row.deltaAmountCents > 0L -> "多 ${formatAmount(row.deltaAmountCents)}"
-                row.deltaAmountCents < 0L -> "少 ${formatAmount(abs(row.deltaAmountCents))}"
-                else -> "持平"
+                row.deltaAmountCents > 0L -> stringResource(R.string.stats_reports_category_delta_more, formatAmount(row.deltaAmountCents))
+                row.deltaAmountCents < 0L -> stringResource(R.string.stats_reports_category_delta_less, formatAmount(abs(row.deltaAmountCents)))
+                else -> stringResource(R.string.stats_reports_category_delta_flat)
             }
             AmountBarRow(
                 label = row.category,
@@ -250,7 +265,7 @@ private fun AmountBarRow(
     amountCents: Long,
     count: Int,
     maxAmountCents: Long,
-    trailingText: String = "${count} 笔",
+    trailingText: String = stringResource(R.string.stats_reports_bar_count, count),
 ) {
     val chartTokens = LocalChartTokens.current
     val progress = if (maxAmountCents > 0L) {
@@ -347,7 +362,12 @@ private fun GoalProgressRow(goal: Goal) {
                 )
             }
             Text(
-                text = "${goal.category ?: "总支出"} · 已花 ${formatAmount(goal.spentAmountCents)} · 剩 ${formatAmount(goal.remainingAmountCents)}",
+                text = stringResource(
+                    R.string.stats_reports_goal_progress,
+                    goal.category ?: stringResource(R.string.stats_reports_goal_total),
+                    formatAmount(goal.spentAmountCents),
+                    formatAmount(goal.remainingAmountCents),
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
@@ -395,7 +415,7 @@ private fun GoalProgressRing(
             )
         }
         Text(
-            text = "${progressPercent.coerceAtLeast(0)}%",
+            text = stringResource(R.string.stats_reports_goal_percent, progressPercent.coerceAtLeast(0)),
             color = color,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = AppTextHierarchy.heading.weight,

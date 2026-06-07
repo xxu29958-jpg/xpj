@@ -10,6 +10,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.ui.components.AppGlassCard
@@ -27,19 +29,28 @@ internal fun LifestyleCard(lifestyle: LifestyleStats) {
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-            Text("生活统计", style = MaterialTheme.typography.titleMedium)
+            val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
+            Text(stringResource(R.string.stats_lifestyle_title), style = MaterialTheme.typography.titleMedium)
             if (lifestyle.aiSubscriptionAmountCents > 0L) {
-                LifestyleRow("AI 订阅", formatDisplayAmount(lifestyle.aiSubscriptionAmountCents, currencyDisplay))
+                LifestyleRow(
+                    stringResource(R.string.stats_lifestyle_ai_subscription),
+                    formatDisplayAmount(lifestyle.aiSubscriptionAmountCents, currencyDisplay),
+                )
             }
             if (lifestyle.digitalAmountCents > 0L) {
-                LifestyleRow("数码消费", formatDisplayAmount(lifestyle.digitalAmountCents, currencyDisplay))
+                LifestyleRow(
+                    stringResource(R.string.stats_lifestyle_digital),
+                    formatDisplayAmount(lifestyle.digitalAmountCents, currencyDisplay),
+                )
             }
             lifestyle.maxExpense?.let { maxExpense ->
                 LifestyleRow(
-                    label = "最大一笔",
-                    value = "${formatDisplayAmount(maxExpense.amountCents, currencyDisplay)} · ${
-                        maxExpense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家"
-                    }",
+                    label = stringResource(R.string.stats_lifestyle_max_expense),
+                    value = stringResource(
+                        R.string.stats_lifestyle_max_expense_value,
+                        formatDisplayAmount(maxExpense.amountCents, currencyDisplay),
+                        maxExpense.merchant?.takeIf { it.isNotBlank() } ?: merchantFallback,
+                    ),
                 )
             }
             if (
@@ -48,7 +59,7 @@ internal fun LifestyleCard(lifestyle: LifestyleStats) {
                 lifestyle.maxExpense == null
             ) {
                 Text(
-                    text = "暂无特别统计项。",
+                    text = stringResource(R.string.stats_lifestyle_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -78,7 +89,7 @@ internal fun FrequentMerchantsCard(merchants: List<FrequentMerchant>) {
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-            Text("高频商家", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.stats_frequent_merchants_title), style = MaterialTheme.typography.titleMedium)
             merchants.take(5).forEachIndexed { index, merchant ->
                 if (index > 0) {
                     HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
@@ -92,7 +103,7 @@ internal fun FrequentMerchantsCard(merchants: List<FrequentMerchant>) {
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
-                        text = "${merchant.count} 笔",
+                        text = stringResource(R.string.stats_frequent_merchants_count, merchant.count),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

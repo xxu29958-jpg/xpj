@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0044 wave 1, cluster settings_rules_merchant_tag. See strings.xml for naming convention (screen_位置_用途, snake_case, 不缩写). 只放中文，不建第二语言。 -->
+<resources>
+
+    <!-- CategoryRulesScreen：设置→分类规则 屏 -->
+    <string name="category_rules_page_title">分类规则</string>
+    <string name="category_rules_undo_deleted">已删除「%1$s」</string>
+    <string name="category_rules_undo_button">撤销</string>
+    <string name="category_rules_section_create">新增规则</string>
+    <string name="category_rules_section_edit">编辑规则</string>
+    <string name="category_rules_section_list">规则列表</string>
+    <string name="category_rules_section_confirmed_apply">已入账应用</string>
+    <string name="category_rules_section_history">最近应用记录</string>
+
+    <!-- CategoryRuleCard（SettingsCategoryComponents.kt）：单条规则卡片 -->
+    <string name="category_rule_card_priority_status">优先级 %1$d · %2$s</string>
+    <string name="category_rule_card_status_enabled">已启用</string>
+    <string name="category_rule_card_status_disabled">已停用</string>
+    <string name="category_rule_card_action_disable">停用</string>
+    <string name="category_rule_card_action_enable">启用</string>
+    <string name="category_rule_card_action_edit">编辑</string>
+    <string name="category_rule_card_action_delete">删除</string>
+
+    <!-- CategoryRuleEditorCard（categoryrules/）：新增/编辑表单 -->
+    <string name="category_rule_editor_keyword_label">商家关键词</string>
+    <string name="category_rule_editor_category_label">推荐分类</string>
+    <string name="category_rule_editor_category_placeholder">AI订阅</string>
+    <string name="category_rule_editor_priority_label">优先级</string>
+    <string name="category_rule_editor_submit_busy">处理中</string>
+    <string name="category_rule_editor_submit_create">添加规则</string>
+    <string name="category_rule_editor_submit_update">保存规则</string>
+    <string name="category_rule_editor_cancel">取消编辑</string>
+
+    <!-- CategoryRuleList（categoryrules/）：列表空态 -->
+    <string name="category_rule_list_empty">暂无分类规则。</string>
+
+    <!-- ConfirmedRuleApplyPanel / RuleApplicationHistory（categoryrules/）：已入账应用与记录 -->
+    <string name="category_rule_apply_panel_hint">先预览已入账账单中可被规则更新的分类，再手动确认应用。</string>
+    <string name="category_rule_apply_preview_busy">处理中</string>
+    <string name="category_rule_apply_preview_button">预览</string>
+    <string name="category_rule_apply_confirm_button">确认应用</string>
+    <string name="category_rule_apply_panel_readonly">当前角色为只读，不能应用到已入账账单。</string>
+    <string name="category_rule_apply_history_empty">暂无应用记录。</string>
+    <string name="category_rule_apply_preview_summary">扫描 %1$d 笔 · 可更新 %2$d 笔 · 未命中 %3$d 笔</string>
+    <string name="category_rule_apply_preview_scan_limit">本次只扫描前 %1$d 笔。</string>
+    <string name="category_rule_apply_preview_no_merchant">未填写商家</string>
+    <string name="category_rule_apply_history_status_rolled_back">已回退</string>
+    <string name="category_rule_apply_history_status_applied">已应用</string>
+    <string name="category_rule_apply_history_changed_count">%1$d 笔</string>
+    <string name="category_rule_apply_history_scanned">扫描 %1$d 笔 · %2$s</string>
+    <string name="category_rule_apply_history_rolled_back_at">回退时间：%1$s</string>
+    <string name="category_rule_apply_history_rollback_button">回退</string>
+
+    <!-- CategoryRuleDialogs（categoryrules/）：删除/回退对话框 -->
+    <string name="category_rule_delete_dialog_title">删除这条规则？</string>
+    <string name="category_rule_delete_dialog_text">删除后，后续识别不再参考“%1$s”。</string>
+    <string name="category_rule_delete_dialog_confirm">删除</string>
+    <string name="category_rule_rollback_dialog_title">回退这次应用？</string>
+    <string name="category_rule_rollback_dialog_text">会尽量恢复这次规则应用前的分类，已经手动改过的账单会跳过。</string>
+    <string name="category_rule_rollback_dialog_confirm">回退</string>
+
+    <!-- MerchantAliasesScreen：设置→商家别名 屏（UI 标签；状态结果文案在 strings.xml 的 merchant_alias_*） -->
+    <string name="merchant_aliases_page_title">商家别名</string>
+    <string name="merchant_aliases_undo_deleted">已删除「%1$s」</string>
+    <string name="merchant_aliases_undo_button">撤销</string>
+    <string name="merchant_aliases_section_create">新增别名</string>
+    <string name="merchant_aliases_canonical_label">标准商家名</string>
+    <string name="merchant_aliases_canonical_placeholder">星巴克</string>
+    <string name="merchant_aliases_alias_label">别名</string>
+    <string name="merchant_aliases_create_validation">请填写标准商家名和别名。</string>
+    <string name="merchant_aliases_create_busy">处理中</string>
+    <string name="merchant_aliases_create_button">添加别名</string>
+    <string name="merchant_aliases_section_list">别名列表</string>
+    <string name="merchant_aliases_list_empty">暂无商家别名。</string>
+    <string name="merchant_aliases_delete_dialog_title">删除这个别名？</string>
+    <string name="merchant_aliases_delete_dialog_text">删除后，“%1$s”不再自动归到“%2$s”。</string>
+    <string name="merchant_aliases_delete_dialog_confirm">删除</string>
+    <string name="merchant_aliases_card_canonical">归到 %1$s</string>
+    <string name="merchant_aliases_card_status_enabled">已启用</string>
+    <string name="merchant_aliases_card_status_disabled">已停用</string>
+    <string name="merchant_aliases_card_action_disable">停用</string>
+    <string name="merchant_aliases_card_action_enable">启用</string>
+    <string name="merchant_aliases_card_action_delete">删除</string>
+
+    <!-- DashboardCardsScreen：设置→首页卡片 屏 -->
+    <string name="dashboard_cards_page_title">首页卡片</string>
+    <string name="dashboard_cards_page_subtitle_readonly">当前角色为只读，只能查看卡片顺序。</string>
+    <string name="dashboard_cards_page_subtitle_default">调整 Android 统计页卡片顺序和显隐。</string>
+    <string name="dashboard_cards_section_order">卡片顺序</string>
+    <string name="dashboard_cards_empty_title">暂时没有卡片配置</string>
+    <string name="dashboard_cards_empty_body">刷新后仍为空时，可以恢复默认卡片。</string>
+    <string name="dashboard_cards_readonly_hint">当前角色为只读，无法修改账本展示偏好。</string>
+    <string name="dashboard_cards_reset_content_description">恢复默认首页卡片</string>
+    <string name="dashboard_cards_reset_button">恢复默认</string>
+    <string name="dashboard_cards_save_content_description">保存首页卡片设置</string>
+    <string name="dashboard_cards_save_busy">保存中…</string>
+    <string name="dashboard_cards_save_button">保存</string>
+    <string name="dashboard_cards_move_up_content_description">上移%1$s</string>
+    <string name="dashboard_cards_move_down_content_description">下移%1$s</string>
+    <string name="dashboard_cards_load_failed">首页卡片暂时打不开。</string>
+    <string name="dashboard_cards_saved">首页卡片已保存。</string>
+    <string name="dashboard_cards_save_failed">保存失败，请稍后再试。</string>
+    <string name="dashboard_cards_reset_done">已恢复默认卡片。</string>
+    <string name="dashboard_cards_reset_failed">恢复默认失败，请稍后再试。</string>
+
+    <!-- TagManagementScreen：设置→标签管理 屏（ADR-0043 slice C） -->
+    <string name="tag_management_page_title">标签管理</string>
+    <string name="tag_management_undo_processed">已处理「%1$s」</string>
+    <string name="tag_management_undo_button">撤销</string>
+    <string name="tag_management_readonly_hint">当前角色为只读，无法修改标签。</string>
+    <string name="tag_management_section_all">全部标签</string>
+    <string name="tag_management_list_empty">还没有标签。记账时给账单添加标签后，这里就能统一整理它们。</string>
+    <string name="tag_management_delete_dialog_title">删除标签？</string>
+    <string name="tag_management_delete_dialog_text_used">“%1$s”会从 %2$d 笔账单上移除。5 秒内可撤销。</string>
+    <string name="tag_management_delete_dialog_text_unused">“%1$s”没有任何账单使用，可以安全删除。</string>
+    <string name="tag_management_delete_dialog_confirm">删除</string>
+    <string name="tag_management_card_usage_count">%1$d 笔</string>
+    <string name="tag_management_card_orphan">孤儿</string>
+    <string name="tag_management_card_action_rename">重命名</string>
+    <string name="tag_management_card_action_merge">合并</string>
+    <string name="tag_management_card_action_delete">删除</string>
+    <string name="tag_management_rename_dialog_title">重命名标签</string>
+    <string name="tag_management_rename_dialog_label">标签名</string>
+    <string name="tag_management_rename_dialog_confirm">保存</string>
+    <string name="tag_management_merge_dialog_title">合并标签</string>
+    <string name="tag_management_merge_dialog_text">把「%1$s」下的账单改用哪个标签？合并后「%1$s」会被删除，5 秒内可撤销。</string>
+    <string name="tag_management_merge_dialog_target_with_count">%1$s（%2$d 笔）</string>
+    <string name="tag_management_merge_dialog_confirm">合并</string>
+
+    <!-- ADR-0044 wave 2: CategoryRulesViewModel 用户可见状态/结果文案 -->
+    <string name="category_rules_load_failed">分类规则暂时打不开。</string>
+    <string name="category_rules_applications_load_failed">规则应用记录暂时打不开。</string>
+    <string name="category_rules_added">分类规则已添加</string>
+    <string name="category_rules_add_failed">没有添加成功，请稍后再试。</string>
+    <string name="category_rules_updated">分类规则已更新</string>
+    <string name="category_rules_saved_offline">已离线保存，联网后同步</string>
+    <string name="category_rules_save_failed">没有保存成功，请稍后再试。</string>
+    <string name="category_rules_enabled">分类规则已启用</string>
+    <string name="category_rules_disabled">分类规则已停用</string>
+    <string name="category_rules_enabled_offline">已离线启用，联网后同步</string>
+    <string name="category_rules_disabled_offline">已离线停用，联网后同步</string>
+    <string name="category_rules_update_failed">没有更新成功，请稍后再试。</string>
+    <string name="category_rules_deleted">分类规则已删除</string>
+    <string name="category_rules_deleted_offline">已离线删除，联网后同步</string>
+    <string name="category_rules_delete_failed">没有删除成功，请稍后再试。</string>
+    <string name="category_rules_restored">已恢复分类规则</string>
+    <string name="category_rules_restore_failed">没有恢复成功，请稍后再试。</string>
+    <string name="category_rules_apply_preview_none">已确认账单暂无可更新分类。</string>
+    <string name="category_rules_apply_preview_found">找到 %1$d 笔可更新账单。</string>
+    <string name="category_rules_apply_preview_failed">没有完成预览，请稍后再试。</string>
+    <string name="category_rules_apply_need_preview">请先预览影响范围。</string>
+    <string name="category_rules_apply_none_changed">没有账单需要更新。</string>
+    <string name="category_rules_apply_changed">已更新 %1$d 笔账单分类。</string>
+    <string name="category_rules_apply_failed">没有应用成功，请稍后再试。</string>
+    <string name="category_rules_rollback_done">已回退 %1$d 笔分类，跳过 %2$d 笔。</string>
+    <string name="category_rules_rollback_failed">没有回退成功，请稍后再试。</string>
+
+    <!-- ADR-0044 wave 2: CategoryRulesScreen / SettingsCategoryComponents vertical-local helper 文案 -->
+    <string name="category_rules_summary_empty">暂无规则</string>
+    <string name="category_rules_summary_count">%1$d 条启用 · 共 %2$d 条</string>
+    <string name="category_rule_condition_amount_min">金额 &gt;= %1$s</string>
+    <string name="category_rule_condition_amount_max">金额 &lt;= %1$s</string>
+    <string name="category_rule_condition_source_contains">来源含 %1$s</string>
+    <string name="category_rule_condition_tag">标签 %1$s</string>
+    <string name="category_rule_form_validation_fields">请填写关键词和分类。</string>
+    <string name="category_rule_form_validation_priority">优先级必须是数字。</string>
+
+    <!-- ADR-0044 wave 2: MerchantAliasesScreen vertical-local helper 文案（状态结果文案复用 strings.xml 的 merchant_alias_*） -->
+    <string name="merchant_aliases_summary_empty">暂无别名</string>
+    <string name="merchant_aliases_summary_count">%1$d 条启用 · 共 %2$d 条</string>
+
+    <!-- ADR-0044 wave 2: TagManagementViewModel 用户可见状态/结果文案 + tagSummary helper -->
+    <string name="tag_management_load_failed">标签暂时打不开。</string>
+    <string name="tag_management_renamed">标签已重命名为「%1$s」</string>
+    <string name="tag_management_rename_conflict_merge_prompt">「%1$s」已存在，合并到它？</string>
+    <string name="tag_management_deleted">已删除标签「%1$s」</string>
+    <string name="tag_management_merged">已把「%1$s」合并到「%2$s」</string>
+    <string name="tag_management_undo_partial">已撤销（恢复 %1$d 笔，%2$d 笔已改动跳过）</string>
+    <string name="tag_management_undo_done">已撤销「%1$s」</string>
+    <string name="tag_management_error_state_conflict">标签已在其它端被修改，请刷新后重试。</string>
+    <string name="tag_management_action_failed">操作没有成功，请稍后再试。</string>
+    <string name="tag_management_summary_empty">暂无标签</string>
+    <string name="tag_management_summary_with_orphans">共 %1$d 个 · %2$d 个孤儿</string>
+    <string name="tag_management_summary_count">共 %1$d 个标签</string>
+
+</resources>

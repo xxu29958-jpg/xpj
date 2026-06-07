@@ -2,9 +2,11 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,7 +17,7 @@ import kotlinx.coroutines.launch
 
 data class RecurringUiState(
     val loading: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     val items: List<RecurringItem> = emptyList(),
     val candidates: List<RecurringCandidate> = emptyList(),
     val canModify: Boolean = true,
@@ -59,7 +61,7 @@ class RecurringViewModel(
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }
                 ?.exceptionOrNull()
-                ?.message
+                ?.toUiText(R.string.recurring_message_action_failed)
             _uiState.update { state ->
                 state.copy(
                     loading = false,
@@ -74,7 +76,7 @@ class RecurringViewModel(
 
     fun confirmCandidate(candidate: RecurringCandidate) {
         if (candidate !in _uiState.value.candidates) {
-            _uiState.update { it.copy(message = "固定支出候选已过期，请刷新后再试。") }
+            _uiState.update { it.copy(message = UiText.res(R.string.recurring_message_candidate_expired)) }
             return
         }
         mutate {
@@ -102,7 +104,7 @@ class RecurringViewModel(
 
     private fun mutate(action: suspend () -> Result<RecurringItem>) {
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(message = "当前角色为只读，无法修改账本。", canModify = false) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger), canModify = false) }
             return
         }
         viewModelScope.launch {
@@ -112,14 +114,14 @@ class RecurringViewModel(
             if (requestGeneration != generation) return@launch
             result.fold(
                 onSuccess = {
-                    _uiState.update { state -> state.copy(message = "固定支出已更新。") }
+                    _uiState.update { state -> state.copy(message = UiText.res(R.string.recurring_message_updated)) }
                     refresh()
                 },
                 onFailure = { error ->
                     _uiState.update {
                         it.copy(
                             loading = false,
-                            message = error.message ?: "操作失败。",
+                            message = error.toUiText(R.string.recurring_message_action_failed),
                             canModify = repository.canModifyLedger(),
                         )
                     }

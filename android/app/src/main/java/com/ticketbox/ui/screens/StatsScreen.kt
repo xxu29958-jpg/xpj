@@ -20,8 +20,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.domain.model.DASHBOARD_CARD_GOALS
 import com.ticketbox.domain.model.DASHBOARD_CARD_MONTHLY_SPEND
@@ -56,6 +58,7 @@ import com.ticketbox.ui.screens.stats.ReportsInsightCard
 import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.TagStatsCard
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
@@ -78,7 +81,7 @@ fun StatsScreen(
             MonthPickerSheet(
                 months = state.months,
                 selectedMonth = state.month,
-                description = "选择后刷新统计。本页按消费时间统计，没有消费时间时按确认时间。",
+                description = stringResource(R.string.stats_month_picker_description),
                 onSelectMonth = { month ->
                     onMonthChange(month)
                     showMonthPicker = false
@@ -110,13 +113,13 @@ fun StatsScreen(
             )
         }
         state.message?.let {
-            item { Text(it, color = MaterialTheme.colorScheme.secondary) }
+            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
         }
         state.reportsMessage?.let {
-            item { Text(it, color = MaterialTheme.colorScheme.secondary) }
+            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
         }
         state.dashboardCardsMessage?.let {
-            item { Text(it, color = MaterialTheme.colorScheme.secondary) }
+            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
         }
         val stats = state.stats
         if (stats == null) {
@@ -176,8 +179,8 @@ fun StatsScreen(
                         if (visibleCategories.isEmpty()) {
                             item {
                                 EmptyStatsCard(
-                                    title = "${displayMonthLabel(stats.month)} 暂无分类支出",
-                                    body = "确认几笔账单后，这里会显示分类占比。",
+                                    title = stringResource(R.string.stats_category_empty_title, displayMonthLabel(stats.month)),
+                                    body = stringResource(R.string.stats_category_empty_body),
                                 )
                             }
                         } else {
@@ -249,8 +252,8 @@ fun StatsScreen(
         if (!renderedCard) {
             item {
                 EmptyStatsCard(
-                    title = "首页卡片已全部隐藏",
-                    body = "可以在设置 > 首页卡片中恢复默认卡片。",
+                    title = stringResource(R.string.stats_all_cards_hidden_title),
+                    body = stringResource(R.string.stats_all_cards_hidden_body),
                 )
             }
         }
@@ -270,13 +273,13 @@ private fun StatsTopPanel(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
         AppPageHeader(
-            title = "统计",
+            title = stringResource(R.string.stats_header_title),
             action = {
                 TextButton(onClick = onOpenBudget) {
-                    Text(text = "预算 →", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(text = stringResource(R.string.stats_header_open_budget), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 }
                 TextButton(onClick = onOpenRecurring) {
-                    Text(text = "固定支出 →", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(text = stringResource(R.string.stats_header_open_recurring), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 }
             },
         )
@@ -314,6 +317,7 @@ private fun StatsTabRow(
     )
 }
 
+@Composable
 private fun statsTabLabel(
     tab: StatsTab,
     dashboardCards: List<DashboardCard>,
@@ -322,11 +326,11 @@ private fun statsTabLabel(
         .filter { it.title.isNotBlank() }
         .associate { it.key to it.title }
     return when (tab) {
-        StatsTab.Overview -> titleByKey[DASHBOARD_CARD_MONTHLY_SPEND] ?: "概览"
-        StatsTab.Trend -> titleByKey[DASHBOARD_CARD_REPORTS] ?: "趋势"
-        StatsTab.Category -> "分类"
-        StatsTab.Budget -> titleByKey[DASHBOARD_CARD_BUDGET] ?: "预算"
-        StatsTab.Goals -> titleByKey[DASHBOARD_CARD_GOALS] ?: "目标"
+        StatsTab.Overview -> titleByKey[DASHBOARD_CARD_MONTHLY_SPEND] ?: stringResource(R.string.stats_tab_overview)
+        StatsTab.Trend -> titleByKey[DASHBOARD_CARD_REPORTS] ?: stringResource(R.string.stats_tab_trend)
+        StatsTab.Category -> stringResource(R.string.stats_tab_category)
+        StatsTab.Budget -> titleByKey[DASHBOARD_CARD_BUDGET] ?: stringResource(R.string.stats_tab_budget)
+        StatsTab.Goals -> titleByKey[DASHBOARD_CARD_GOALS] ?: stringResource(R.string.stats_tab_goals)
     }
 }
 
@@ -366,15 +370,16 @@ private fun StatsFilterRow(
             AppFilterChip(
                 selected = true,
                 onClick = onOpenMonthPicker,
-                label = state.month.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份",
-                trailingIcon = { FilterTrailingIcon(Icons.Filled.ExpandMore, "选择月份") },
+                label = state.month.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+                    ?: stringResource(R.string.stats_filter_all_months),
+                trailingIcon = { FilterTrailingIcon(Icons.Filled.ExpandMore, stringResource(R.string.stats_filter_pick_month_description)) },
             )
         }
         item {
             AppFilterChip(
                 selected = state.selectedTag.isBlank(),
                 onClick = { onTagChange("") },
-                label = "全部标签",
+                label = stringResource(R.string.stats_filter_all_tags),
             )
         }
         items(tags, key = { it }) { tag ->
@@ -384,7 +389,7 @@ private fun StatsFilterRow(
                 onClick = { onTagChange(if (selected) "" else tag) },
                 label = "#$tag",
                 trailingIcon = if (selected) {
-                    { FilterTrailingIcon(Icons.Filled.Close, "清除标签筛选") }
+                    { FilterTrailingIcon(Icons.Filled.Close, stringResource(R.string.stats_filter_clear_tag_description)) }
                 } else {
                     null
                 },

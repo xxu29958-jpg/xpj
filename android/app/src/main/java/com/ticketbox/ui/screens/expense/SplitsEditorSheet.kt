@@ -25,8 +25,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.viewmodel.EditableSplit
@@ -62,10 +64,10 @@ fun SplitsEditorSheet(
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding(),
         ) {
-            Text("编辑家庭拆账", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.expense_edit_splits_sheet_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text(
-                "勾选参与分摊的家庭成员并填写各自金额；拆账只记录分摊，不改动原始账单金额。",
+                stringResource(R.string.expense_edit_splits_sheet_subtitle),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -76,7 +78,11 @@ fun SplitsEditorSheet(
                 // drafts is built, Save is disabled (below) so an empty splits=[]
                 // can't wipe the existing splits; show why the editor is inert.
                 Text(
-                    text = if (loading) "正在加载家庭成员…" else "家庭成员暂时加载失败，请关闭后重试。",
+                    text = if (loading) {
+                        stringResource(R.string.expense_edit_splits_members_loading)
+                    } else {
+                        stringResource(R.string.expense_edit_splits_members_failed)
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 24.dp),
@@ -103,7 +109,7 @@ fun SplitsEditorSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                OutlinedButton(onClick = onEvenSplit, enabled = !saving && drafts.isNotEmpty()) { Text("均分") }
+                OutlinedButton(onClick = onEvenSplit, enabled = !saving && drafts.isNotEmpty()) { Text(stringResource(R.string.expense_edit_splits_even_button)) }
             }
             Spacer(Modifier.height(8.dp))
             SplitsReconciliationFooter(drafts = drafts, parentAmountCents = parentAmountCents)
@@ -117,7 +123,7 @@ fun SplitsEditorSheet(
                     onClick = onDismiss,
                     enabled = !saving,
                     modifier = Modifier.weight(1f),
-                ) { Text("取消") }
+                ) { Text(stringResource(R.string.common_cancel)) }
                 Button(
                     // ADR-0042 P1: never enable Save with an empty draft list — the
                     // roster hasn't loaded, and saving would send splits=[] which the
@@ -125,7 +131,15 @@ fun SplitsEditorSheet(
                     onClick = onSave,
                     enabled = !saving && drafts.isNotEmpty(),
                     modifier = Modifier.weight(1f),
-                ) { Text(if (saving) "保存中…" else "保存") }
+                ) {
+                    Text(
+                        if (saving) {
+                            stringResource(R.string.expense_edit_splits_saving_button)
+                        } else {
+                            stringResource(R.string.expense_edit_splits_save_button)
+                        }
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -165,7 +179,7 @@ private fun SplitEditorRow(
             )
             if (draft.disabled) {
                 Text(
-                    text = "成员已停用",
+                    text = stringResource(R.string.expense_edit_splits_member_disabled),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -177,7 +191,7 @@ private fun SplitEditorRow(
             modifier = Modifier.width(120.dp),
             singleLine = true,
             enabled = editable && draft.included,
-            label = { Text("金额") },
+            label = { Text(stringResource(R.string.expense_edit_splits_row_amount_label)) },
             prefix = { Text("¥") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
@@ -196,7 +210,7 @@ private fun SplitsReconciliationFooter(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("合计", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.expense_edit_splits_footer_total_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(formatDisplayAmount(total), style = MaterialTheme.typography.bodyMedium)
         }
         if (parentAmountCents != null) {
@@ -205,7 +219,7 @@ private fun SplitsReconciliationFooter(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("票面", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.expense_edit_splits_footer_face_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(formatDisplayAmount(parentAmountCents), style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -217,9 +231,9 @@ private fun SplitsReconciliationFooter(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
-                    Text("差额", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.expense_edit_splits_footer_diff_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                     Text(
-                        "点击均分可平账",
+                        stringResource(R.string.expense_edit_splits_footer_even_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

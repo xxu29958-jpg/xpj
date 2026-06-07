@@ -7,7 +7,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
 
 @Composable
@@ -26,7 +28,7 @@ internal fun ExpenseEditPrimaryActions(
             enabled = !saving,
             onClick = onBack,
         ) {
-            Text("返回")
+            Text(stringResource(R.string.expense_edit_primary_back_button))
         }
         if (allowSave) {
             Button(
@@ -34,7 +36,13 @@ internal fun ExpenseEditPrimaryActions(
                 enabled = !saving,
                 onClick = onSave,
             ) {
-                Text(if (saving) "保存中" else "保存")
+                Text(
+                    if (saving) {
+                        stringResource(R.string.expense_edit_primary_saving_button)
+                    } else {
+                        stringResource(R.string.expense_edit_primary_save_button)
+                    }
+                )
             }
         }
     }
@@ -59,7 +67,7 @@ internal fun ExpenseEditConfirmActions(
                 enabled = !saving,
                 onClick = onConfirm,
             ) {
-                Text("确认入账")
+                Text(stringResource(R.string.expense_edit_confirm_button))
             }
         }
         if (allowReject) {
@@ -69,7 +77,7 @@ internal fun ExpenseEditConfirmActions(
                 danger = true,
                 onClick = onRequestReject,
             ) {
-                Text("删除")
+                Text(stringResource(R.string.expense_edit_reject_button))
             }
         }
     }

@@ -27,8 +27,10 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.design.AppSpacing
 
 enum class PageDensity {
@@ -233,7 +235,7 @@ fun AppPageHeader(
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
-    eyebrow: String = "小票夹",
+    eyebrow: String = stringResource(R.string.components_page_header_eyebrow),
     action: (@Composable RowScope.() -> Unit)? = null,
 ) {
     ScreenHeader(

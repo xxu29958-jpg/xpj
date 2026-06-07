@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.CategoryRuleSaveOutcome
 import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
@@ -9,6 +10,7 @@ import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +23,7 @@ data class CategoryRulesUiState(
     val ruleApplications: List<RuleApplicationBatch> = emptyList(),
     val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
     val busy: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
     // ADR-0038 undo: the just-(soft-)deleted rule, surfaced as a 5s 撤销
     // affordance. Null when there is nothing to undo.
     val undoableRule: CategoryRule? = null,
@@ -47,7 +49,7 @@ class CategoryRulesViewModel(
         viewModelScope.launch {
             ruleRepository.categoryRules()
                 .onSuccess { rules -> _uiState.update { it.copy(categoryRules = rules) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "分类规则暂时打不开。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.category_rules_load_failed)) } }
         }
     }
 
@@ -55,13 +57,13 @@ class CategoryRulesViewModel(
         viewModelScope.launch {
             ruleRepository.ruleApplications()
                 .onSuccess { applications -> _uiState.update { it.copy(ruleApplications = applications) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "规则应用记录暂时打不开。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.category_rules_applications_load_failed)) } }
         }
     }
 
     fun createCategoryRule(keyword: String, category: String, priority: Int) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -76,17 +78,17 @@ class CategoryRulesViewModel(
                                     .thenBy { item -> item.keyword },
                             ),
                             busy = false,
-                            message = "分类规则已添加",
+                            message = UiText.res(R.string.category_rules_added),
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有添加成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.category_rules_add_failed)) } }
         }
     }
 
     fun updateCategoryRule(rule: CategoryRule, keyword: String, category: String, priority: Int) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -103,8 +105,8 @@ class CategoryRulesViewModel(
             )
                 .onSuccess { outcome ->
                     val message = when (outcome) {
-                        is CategoryRuleSaveOutcome.Synced -> "分类规则已更新"
-                        is CategoryRuleSaveOutcome.Queued -> "已离线保存，联网后同步"
+                        is CategoryRuleSaveOutcome.Synced -> UiText.res(R.string.category_rules_updated)
+                        is CategoryRuleSaveOutcome.Queued -> UiText.res(R.string.category_rules_saved_offline)
                     }
                     _uiState.update { state ->
                         state.copy(
@@ -114,13 +116,13 @@ class CategoryRulesViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.category_rules_save_failed)) } }
         }
     }
 
     fun toggleCategoryRule(rule: CategoryRule) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -133,9 +135,17 @@ class CategoryRulesViewModel(
                 .onSuccess { outcome ->
                     val message = when (outcome) {
                         is CategoryRuleSaveOutcome.Synced ->
-                            if (outcome.rule.enabled) "分类规则已启用" else "分类规则已停用"
+                            if (outcome.rule.enabled) {
+                                UiText.res(R.string.category_rules_enabled)
+                            } else {
+                                UiText.res(R.string.category_rules_disabled)
+                            }
                         is CategoryRuleSaveOutcome.Queued ->
-                            if (outcome.rule.enabled) "已离线启用，联网后同步" else "已离线停用，联网后同步"
+                            if (outcome.rule.enabled) {
+                                UiText.res(R.string.category_rules_enabled_offline)
+                            } else {
+                                UiText.res(R.string.category_rules_disabled_offline)
+                            }
                     }
                     _uiState.update { state ->
                         state.copy(
@@ -144,13 +154,13 @@ class CategoryRulesViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有更新成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.category_rules_update_failed)) } }
         }
     }
 
     fun deleteCategoryRule(rule: CategoryRule) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -160,8 +170,8 @@ class CategoryRulesViewModel(
             ruleRepository.deleteCategoryRuleAllowingOffline(rule)
                 .onSuccess { outcome ->
                     val message = when (outcome) {
-                        DeleteOutcome.Synced -> "分类规则已删除"
-                        DeleteOutcome.Queued -> "已离线删除，联网后同步"
+                        DeleteOutcome.Synced -> UiText.res(R.string.category_rules_deleted)
+                        DeleteOutcome.Queued -> UiText.res(R.string.category_rules_deleted_offline)
                     }
                     // ADR-0038 undo: offer 撤销 only after a synced delete (a
                     // queued offline delete has nothing to restore via the API yet).
@@ -174,7 +184,7 @@ class CategoryRulesViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.category_rules_delete_failed)) } }
         }
     }
 
@@ -190,7 +200,7 @@ class CategoryRulesViewModel(
                                     .thenByDescending { item -> item.priority }
                                     .thenBy { item -> item.keyword },
                             ),
-                            message = "已恢复分类规则",
+                            message = UiText.res(R.string.category_rules_restored),
                             undoableRule = null,
                         )
                     }
@@ -198,7 +208,7 @@ class CategoryRulesViewModel(
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
-                            message = error.message ?: "没有恢复成功，请稍后再试。",
+                            message = error.toUiText(R.string.category_rules_restore_failed),
                             undoableRule = null,
                         )
                     }
@@ -221,26 +231,26 @@ class CategoryRulesViewModel(
                             confirmedRulesPreview = preview,
                             busy = false,
                             message = if (preview.changedCount == 0) {
-                                "已确认账单暂无可更新分类。"
+                                UiText.res(R.string.category_rules_apply_preview_none)
                             } else {
-                                "找到 ${preview.changedCount} 笔可更新账单。"
+                                UiText.res(R.string.category_rules_apply_preview_found, preview.changedCount)
                             },
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有完成预览，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.category_rules_apply_preview_failed)) } }
         }
     }
 
     fun confirmApplyConfirmedRules() {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
             val previewToken = _uiState.value.confirmedRulesPreview?.previewToken
             if (previewToken.isNullOrBlank()) {
-                _uiState.update { it.copy(busy = false, message = "请先预览影响范围。") }
+                _uiState.update { it.copy(busy = false, message = UiText.res(R.string.category_rules_apply_need_preview)) }
                 return@launch
             }
             _uiState.update { it.copy(busy = true, message = null) }
@@ -254,17 +264,21 @@ class CategoryRulesViewModel(
                         it.copy(
                             confirmedRulesPreview = result,
                             busy = false,
-                            message = if (result.changedCount == 0) "没有账单需要更新。" else "已更新 ${result.changedCount} 笔账单分类。",
+                            message = if (result.changedCount == 0) {
+                                UiText.res(R.string.category_rules_apply_none_changed)
+                            } else {
+                                UiText.res(R.string.category_rules_apply_changed, result.changedCount)
+                            },
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有应用成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.category_rules_apply_failed)) } }
         }
     }
 
     fun rollbackRuleApplication(application: RuleApplicationBatch) {
         if (!canModifyCurrentLedger()) {
-            _uiState.update { it.copy(busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            _uiState.update { it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger)) }
             return
         }
         viewModelScope.launch {
@@ -278,11 +292,11 @@ class CategoryRulesViewModel(
                     _uiState.update {
                         it.copy(
                             busy = false,
-                            message = "已回退 ${rollback.changed} 笔分类，跳过 ${rollback.skipped} 笔。",
+                            message = UiText.res(R.string.category_rules_rollback_done, rollback.changed, rollback.skipped),
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有回退成功，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.category_rules_rollback_failed)) } }
         }
     }
 }

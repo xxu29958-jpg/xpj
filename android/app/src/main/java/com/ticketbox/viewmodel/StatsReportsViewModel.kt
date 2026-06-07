@@ -2,10 +2,12 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportsOverviewQuery
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,7 +80,7 @@ class StatsReportsViewModel(
                     _uiState.update {
                         it.copy(
                             dashboardCardsLoading = false,
-                            dashboardCardsMessage = error.message ?: "首页卡片设置暂时打不开，已显示默认顺序。",
+                            dashboardCardsMessage = error.toUiText(R.string.stats_message_dashboard_cards_failed),
                         )
                     }
                 }
@@ -102,8 +104,9 @@ class StatsReportsViewModel(
                     reportGoals = goalsResult.getOrDefault(emptyList()),
                     reportsLoading = false,
                     reportsMessage = when {
-                        overviewResult.isFailure && goalsResult.isFailure -> "动态图表暂时打不开，稍后再试。"
-                        overviewResult.isFailure -> "趋势图暂时打不开，稍后再试。"
+                        overviewResult.isFailure && goalsResult.isFailure ->
+                            UiText.res(R.string.stats_message_reports_failed)
+                        overviewResult.isFailure -> UiText.res(R.string.stats_message_trend_failed)
                         else -> null
                     },
                 )

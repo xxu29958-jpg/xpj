@@ -14,13 +14,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 fun LoginScreen(
-    message: String?,
+    message: UiText?,
     onUnlock: () -> Unit,
 ) {
     Column(
@@ -32,8 +36,8 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AuthScreenHeader(
-            title = "验证后查看账单",
-            subtitle = "本机验证通过后，才会读取账本会话凭证。",
+            title = stringResource(R.string.login_header_title),
+            subtitle = stringResource(R.string.login_header_subtitle),
         )
         Spacer(Modifier.height(18.dp))
         AppSolidCard(modifier = Modifier.fillMaxWidth()) {
@@ -45,13 +49,13 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onUnlock,
                 ) {
-                    Text("解锁账本")
+                    Text(stringResource(R.string.login_unlock_button))
                 }
             }
         }
         message?.let {
             Text(
-                text = it,
+                text = it.asString(),
                 modifier = Modifier.padding(top = 12.dp),
                 color = MaterialTheme.colorScheme.secondary,
             )

@@ -10,8 +10,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import com.ticketbox.R
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTypography
 @Composable
@@ -19,7 +21,7 @@ fun ScreenHeader(
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
-    eyebrow: String = "小票夹",
+    eyebrow: String = stringResource(R.string.components_page_header_eyebrow),
     action: (@Composable RowScope.() -> Unit)? = null,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {

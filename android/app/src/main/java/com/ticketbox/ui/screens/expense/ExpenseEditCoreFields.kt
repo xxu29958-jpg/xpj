@@ -12,8 +12,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppFilterChip
@@ -29,7 +31,7 @@ internal fun ExpenseEditAmountField(
         value = amountText,
         onValueChange = onAmountChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("金额，单位元") },
+        label = { Text(stringResource(R.string.expense_edit_amount_field_label)) },
         placeholder = { Text("36.80") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
@@ -50,7 +52,7 @@ internal fun ExpenseCurrencyFields(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("金额与币种", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(CurrencyCode.entries, key = { it.storageKey }) { code ->
                     AppFilterChip(
@@ -65,7 +67,7 @@ internal fun ExpenseCurrencyFields(
                 value = originalAmountText,
                 onValueChange = onOriginalAmountChange,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("原始金额，${currency.storageKey}") },
+                label = { Text(stringResource(R.string.expense_edit_original_amount_field_label, currency.storageKey)) },
                 placeholder = { Text(if (currency.noFractionDigits) "1280" else "36.80") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
@@ -73,7 +75,7 @@ internal fun ExpenseCurrencyFields(
             )
             if (currency != FxContract.HomeCurrency) {
                 Text(
-                    text = "按消费日期使用后端汇率；同步前会标记为待汇率。",
+                    text = stringResource(R.string.expense_edit_fx_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -92,7 +94,7 @@ internal fun ExpenseEditMerchantField(
         value = merchant,
         onValueChange = onMerchantChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("商家") },
+        label = { Text(stringResource(R.string.expense_edit_merchant_field_label)) },
         singleLine = true,
         enabled = enabled,
     )
@@ -109,7 +111,7 @@ internal fun ExpenseEditCategoryField(
         value = category,
         onValueChange = onCategoryChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("分类") },
+        label = { Text(stringResource(R.string.expense_edit_category_field_label)) },
         singleLine = true,
         enabled = enabled,
     )
@@ -137,7 +139,7 @@ internal fun ExpenseEditNoteField(
         value = note,
         onValueChange = onNoteChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("备注") },
+        label = { Text(stringResource(R.string.expense_edit_note_field_label)) },
         enabled = enabled,
     )
 }
@@ -147,8 +149,14 @@ internal fun ExpenseEditSourceInfo(
     source: String,
     confidence: Double?,
 ) {
-    Text("来源：$source", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        stringResource(R.string.expense_edit_source_label, source),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     confidence?.let {
-        Text("识别置信度：${(it * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            stringResource(R.string.expense_edit_confidence_label, (it * 100).toInt()),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

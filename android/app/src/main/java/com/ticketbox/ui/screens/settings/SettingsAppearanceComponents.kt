@@ -65,10 +65,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -149,7 +151,7 @@ internal fun ThemeMoodPreview(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
-                    text = "背景只参与氛围",
+                    text = stringResource(R.string.appearance_mood_preview_caption),
                     color = scheme.onPrimary.copy(alpha = 0.78f),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = AppTextHierarchy.body.weight,
@@ -230,9 +232,9 @@ internal fun SkinOptionCard(
                         maxLines = 1,
                     )
                     if (selected) {
-                        SkinPill(text = "当前", scheme = scheme, visuals = visuals, emphasized = true)
+                        SkinPill(text = stringResource(R.string.appearance_skin_pill_current), scheme = scheme, visuals = visuals, emphasized = true)
                     } else if (skin == AppSkin.Paper) {
-                        SkinPill(text = "推荐", scheme = scheme, visuals = visuals, emphasized = false)
+                        SkinPill(text = stringResource(R.string.appearance_skin_pill_recommended), scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
                 Text(

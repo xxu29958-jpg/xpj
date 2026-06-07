@@ -1,7 +1,9 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +46,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         advanceUntilIdle()
 
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
-        assertEquals(READ_ONLY_LEDGER_MESSAGE, vm.uiState.value.message)
+        assertEquals(readOnlyMessage(), vm.uiState.value.message)
         assertEquals(0, fake.updateCalls)
         assertEquals(0, fake.confirmCalls)
         assertEquals(0, fake.rejectCalls)
@@ -120,14 +122,14 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
             activeSheet = PendingSheet.MissingAmount(target),
         )
 
-        val next = PendingUiStateReducer.afterConfirmed(state, target, message = "已确认入账")
+        val next = PendingUiStateReducer.afterConfirmed(state, target, message = UiText.res(R.string.pending_msg_confirmed))
 
         assertEquals(listOf(other), next.items)
         assertFalse(next.thumbnails.containsKey(target.id))
         assertTrue(next.thumbnails.containsKey(other.id))
         assertEquals(setOf(other.id), next.actionInProgressIds)
         assertEquals(PendingSheet.None, next.activeSheet)
-        assertEquals("已确认入账", next.message)
+        assertEquals(UiText.res(R.string.pending_msg_confirmed), next.message)
     }
 
     @Test
@@ -140,13 +142,13 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
             activeSheet = PendingSheet.Duplicate(target),
         )
 
-        val next = PendingUiStateReducer.afterRejected(state, target, message = "已删除")
+        val next = PendingUiStateReducer.afterRejected(state, target, message = UiText.res(R.string.pending_msg_rejected))
 
         assertTrue(next.items.isEmpty())
         assertTrue(next.thumbnails.isEmpty())
         assertTrue(next.actionInProgressIds.isEmpty())
         assertEquals(PendingSheet.None, next.activeSheet)
-        assertEquals("已删除", next.message)
+        assertEquals(UiText.res(R.string.pending_msg_rejected), next.message)
     }
 
     @Test
@@ -163,13 +165,13 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
             current = state,
             updated = updated,
             closeSheet = false,
-            message = "已更新商家",
+            message = UiText.res(R.string.pending_review_merchant_updated),
         )
 
         assertEquals(listOf(updated), next.items)
         assertTrue(next.actionInProgressIds.isEmpty())
         assertEquals(PendingSheet.QuickMerchant(updated), next.activeSheet)
-        assertEquals("已更新商家", next.message)
+        assertEquals(UiText.res(R.string.pending_review_merchant_updated), next.message)
     }
 
     @Test
@@ -264,6 +266,6 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         advanceUntilIdle()
 
         assertEquals(0, fake.uploadCalls)
-        assertEquals("账本已切换，请重新选择截图上传。", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_msg_upload_ledger_switched), vm.uiState.value.message)
     }
 }

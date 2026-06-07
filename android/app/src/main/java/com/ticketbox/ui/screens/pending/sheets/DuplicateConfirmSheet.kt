@@ -11,7 +11,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppSecondaryButton
@@ -44,9 +46,13 @@ internal fun DuplicateConfirmSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("处理疑似重复", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
-            text = "请你来决定。我们不会自动删除，也不会自动确认入账。",
+            stringResource(R.string.pending_duplicate_sheet_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(
+            text = stringResource(R.string.pending_duplicate_sheet_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -57,7 +63,7 @@ internal fun DuplicateConfirmSheetContent(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.pending_duplicate_sheet_merchant_missing),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = AppTextHierarchy.body.weight,
                 )
@@ -68,7 +74,7 @@ internal fun DuplicateConfirmSheetContent(
                 )
                 expense.duplicateReason?.takeIf { it.isNotBlank() }?.let {
                     Text(
-                        text = "可能原因：$it",
+                        text = stringResource(R.string.pending_duplicate_sheet_reason, it),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -81,16 +87,18 @@ internal fun DuplicateConfirmSheetContent(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !inProgress,
                 onClick = onKeepBoth,
-            ) { Text(if (inProgress) "处理中…" else "保留两笔（不是重复）") }
+            ) {
+                Text(if (inProgress) stringResource(R.string.pending_duplicate_sheet_processing) else stringResource(R.string.pending_duplicate_sheet_keep_both))
+            }
             AppSecondaryButton(
-                text = if (inProgress) "处理中…" else "忽略当前（删除这条）",
+                text = if (inProgress) stringResource(R.string.pending_duplicate_sheet_processing) else stringResource(R.string.pending_duplicate_sheet_ignore_current),
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !inProgress,
                 onClick = onIgnoreCurrent,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 AppSecondaryButton(
-                    text = "取消",
+                    text = stringResource(R.string.common_cancel),
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !inProgress,
                     onClick = onDismiss,

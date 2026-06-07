@@ -20,9 +20,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
@@ -86,7 +88,7 @@ internal fun LedgerExpenseCard(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ledger_item_merchant_empty),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = AppTypography.cardTitle.weight,
@@ -114,7 +116,7 @@ internal fun LedgerExpenseCard(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
-                    text = expense.amountCents?.let(::formatAmount) ?: "待填写",
+                    text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTypography.amountMedium.weight,
@@ -167,7 +169,7 @@ internal fun LedgerExpenseListRow(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ledger_item_merchant_empty),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = AppTypography.cardTitle.weight,
@@ -186,7 +188,7 @@ internal fun LedgerExpenseListRow(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
-                    text = expense.amountCents?.let(::formatAmount) ?: "待填写",
+                    text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = AppTypography.amountMedium.weight,
@@ -235,7 +237,7 @@ internal fun LedgerExpenseTableRow(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ledger_item_merchant_empty),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = AppTypography.chip.weight,
@@ -264,7 +266,7 @@ internal fun LedgerExpenseTableRow(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = expense.amountCents?.let(::formatAmount) ?: "待填写",
+                text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
                 modifier = Modifier.weight(LedgerItemLayout.TableAmountWeight),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.labelLarge,
@@ -287,8 +289,9 @@ private fun LedgerCategoryMark(category: String) {
             .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CategoryMarkAlpha)),
         contentAlignment = Alignment.Center,
     ) {
+        val markFallback = stringResource(R.string.ledger_item_category_mark_fallback)
         Text(
-            text = category.take(1).ifBlank { "账" },
+            text = category.take(1).ifBlank { markFallback },
             color = visuals.primary,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = AppTypography.cardTitle.weight,

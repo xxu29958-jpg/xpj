@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0044 wave 1, cluster settings_appearance（外观/背景/币种/后台任务设置屏）。
+     命名/红线见 strings.xml 头部：screen_位置_用途 snake_case、不缩写、每处一个 key 不按值去重、只放中文。 -->
+<resources>
+    <!-- AppearanceScreen：外观与主题屏 -->
+    <string name="appearance_page_title">外观与主题</string>
+    <string name="appearance_page_subtitle">纸本作为默认推荐，背景参与氛围但不抢账单内容。</string>
+    <string name="appearance_section_skin_title">主题皮肤</string>
+    <string name="appearance_section_background_title">背景</string>
+    <string name="appearance_background_current_label">当前背景</string>
+    <string name="appearance_background_open_gallery">背景图库</string>
+    <string name="appearance_background_pick_image">从相册选择</string>
+    <string name="appearance_background_follow_theme">跟随主题包</string>
+    <string name="appearance_background_clear_image">移除自定义图</string>
+    <string name="appearance_background_local_hint">自定义图只存在本机。想重新使用松雾、港湾等主题氛围时，点“跟随主题包”即可切回。</string>
+    <string name="appearance_section_immersion_title">沉浸强度</string>
+    <string name="appearance_parallax_title">视差动效</string>
+    <string name="appearance_parallax_subtitle">背景轻微参与层次变化</string>
+    <string name="appearance_reduce_motion_title">减少动效</string>
+    <string name="appearance_reduce_motion_subtitle">关闭背景动效，保持录入稳定</string>
+
+    <!-- SettingsAppearanceComponents：皮肤卡 / 沉浸预览组件 -->
+    <string name="appearance_mood_preview_caption">背景只参与氛围</string>
+    <string name="appearance_skin_pill_current">当前</string>
+    <string name="appearance_skin_pill_recommended">推荐</string>
+
+    <!-- SettingsBackgroundComponents：内置背景卡 / 裁剪安全区 -->
+    <string name="appearance_builtin_pill_current">当前</string>
+    <string name="appearance_builtin_pill_recommended">推荐</string>
+    <string name="appearance_crop_safezone_top">顶部标题区</string>
+    <string name="appearance_crop_safezone_reading">主要阅读区</string>
+    <string name="appearance_crop_safezone_bottom">底部导航区</string>
+
+    <!-- BackgroundGalleryScreen：背景图库屏 -->
+    <string name="background_gallery_page_title">背景图库</string>
+    <string name="background_gallery_page_subtitle">点击后先预览，确认应用后才会保存。</string>
+    <string name="background_gallery_filter_recommended">推荐</string>
+    <string name="background_gallery_section_custom_title">自定义</string>
+    <string name="background_gallery_pick_image">从相册选择</string>
+    <string name="background_gallery_theme_default">主题默认</string>
+
+    <!-- BackgroundCropScreen：调整背景屏 -->
+    <string name="background_crop_page_title">调整背景</string>
+    <string name="background_crop_page_subtitle">避开顶部标题和底部导航区域，保证账单内容清晰可读。</string>
+    <string name="background_crop_preview_content_description">背景裁剪预览</string>
+    <string name="background_crop_section_composition_title">构图位置</string>
+    <string name="background_crop_complete_button">完成，去预览</string>
+    <string name="background_crop_selection_badge">当前保留：%1$s</string>
+
+    <!-- BackgroundPreviewScreen：背景预览屏 -->
+    <string name="background_preview_page_title">背景预览</string>
+    <string name="background_preview_page_subtitle">%1$s · 只有点击应用才会保存</string>
+    <string name="background_preview_role_pending">待确认</string>
+    <string name="background_preview_pending_meituan_merchant">美团外卖</string>
+    <string name="background_preview_pending_meituan_note">餐饮 · 请核对</string>
+    <string name="background_preview_pending_ccb_merchant">建行提醒</string>
+    <string name="background_preview_pending_ccb_amount">等待你确认金额</string>
+    <string name="background_preview_pending_ccb_note">识别建议</string>
+    <string name="background_preview_role_ledger">账本</string>
+    <string name="background_preview_ledger_openai_merchant">OpenAI</string>
+    <string name="background_preview_ledger_openai_note">AI订阅 · 2026年5月</string>
+    <string name="background_preview_ledger_meituan_merchant">美团外卖</string>
+    <string name="background_preview_ledger_meituan_note">餐饮 · 午饭</string>
+    <string name="background_preview_role_stats">统计</string>
+    <string name="background_preview_stats_total">本月支出 %1$s</string>
+    <string name="background_preview_stats_breakdown">餐饮 42%% · AI订阅 %1$s</string>
+    <string name="background_preview_role_edit">编辑确认</string>
+    <string name="background_preview_edit_amount_label">金额</string>
+    <string name="background_preview_edit_amount_note">商家 美团外卖 · 分类 餐饮</string>
+    <string name="background_preview_edit_confirm_button">确认入账</string>
+    <string name="background_preview_cancel_button">取消预览</string>
+    <string name="background_preview_apply_button">应用背景</string>
+
+    <!-- BackgroundTasksScreen：后台任务屏 -->
+    <string name="background_tasks_page_title">后台任务</string>
+    <string name="background_tasks_page_subtitle">CSV 导入 / v1.0 迁移等长任务。账本内每个账户只看到自己发起的任务。</string>
+    <string name="background_tasks_section_recent_title">最近任务</string>
+    <string name="background_tasks_empty">暂无后台任务。</string>
+    <string name="background_tasks_refreshing">刷新中…</string>
+    <string name="background_tasks_refresh">刷新</string>
+    <string name="background_tasks_row_created">创建：%1$s</string>
+    <string name="background_tasks_row_finished">结束：%1$s</string>
+    <string name="background_tasks_row_cancelling">处理中…</string>
+    <string name="background_tasks_row_request_cancel">请求取消</string>
+
+    <!-- CurrencySection：外观屏内的默认记账币种区 -->
+    <string name="currency_section_title">默认记账币种</string>
+    <string name="currency_section_intro">这里影响新账单录入时的默认币种，不改变历史账单金额，也不在本机重算汇总。</string>
+    <string name="currency_section_rate_home">账本汇总、统计和预算按 %1$s 基准金额显示。</string>
+    <string name="currency_section_rate_foreign">%1$s 会作为新记账时的默认原始币种；汇总金额仍以后端 %2$s 结果为准。</string>
+    <string name="currency_section_option_selected_content_description">已选中</string>
+
+    <!-- SettingsDestinationHost：背景图片处理失败 / 自定义背景标题（在非 composable lambda 内，用 context.getString） -->
+    <string name="settings_background_copy_failed">背景没有保存成功，请换一张图片再试。</string>
+    <string name="settings_background_crop_failed">背景裁剪没有完成，请换一张图片再试。</string>
+    <string name="settings_background_custom_title">自定义背景</string>
+
+    <!-- AppearanceViewModel：外观屏操作结果文案（Snackbar/Text，ADR-0044 wave 2 经 UiText 外置） -->
+    <string name="appearance_message_background_updated">背景已更新</string>
+    <string name="appearance_message_background_applied">背景已应用</string>
+    <string name="appearance_message_background_theme_restored">已恢复跟随主题背景</string>
+    <string name="appearance_message_background_save_failed">背景没有保存成功。</string>
+    <string name="appearance_message_crop_mode_changed">构图已切换为%1$s</string>
+    <string name="appearance_message_immersion_mode_changed">已切换为%1$s模式</string>
+    <string name="appearance_message_parallax_on">视差动效已开启</string>
+    <string name="appearance_message_parallax_off">视差动效已关闭</string>
+    <string name="appearance_message_reduce_motion_on">已减少背景动效</string>
+    <string name="appearance_message_reduce_motion_off">已恢复轻微动效</string>
+
+    <!-- BackgroundTasksViewModel：后台任务屏操作结果文案（ADR-0044 wave 2 经 UiText 外置） -->
+    <string name="background_tasks_message_load_failed">任务列表暂时打不开。</string>
+    <string name="background_tasks_message_cancel_requested">已请求取消任务。</string>
+    <string name="background_tasks_message_cancel_failed">取消任务失败。</string>
+</resources>

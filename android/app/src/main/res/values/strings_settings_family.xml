@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0044 wave 1, cluster settings_family. See strings.xml for naming convention (screen_位置_用途, snake_case, 不缩写). 只放中文，不建第二语言。 -->
+<resources>
+
+    <!-- FamilyMembersScreen：设置→家庭成员 屏 -->
+    <string name="family_members_page_title">家庭成员</string>
+    <string name="family_members_page_subtitle_manage">管理当前账本成员、角色和拥有者。</string>
+    <string name="family_members_page_subtitle_view">查看当前账本成员和权限状态。只有拥有者能管理成员。</string>
+    <string name="family_members_section_members">当前账本成员</string>
+    <string name="family_members_members_empty">还没有可显示的成员。</string>
+    <string name="family_members_refresh_loading">刷新中…</string>
+    <string name="family_members_refresh_members_and_audit">刷新成员和记录</string>
+    <string name="family_members_refresh_members">刷新成员</string>
+    <string name="family_members_section_audit">成员记录</string>
+    <string name="family_members_audit_empty">还没有成员变更记录。</string>
+    <string name="family_members_audit_refreshing">正在刷新成员记录…</string>
+    <string name="family_members_audit_actor">操作者：%1$s</string>
+    <string name="family_members_audit_actor_unknown">系统</string>
+    <string name="family_members_audit_target">目标：%1$s</string>
+    <string name="family_members_audit_target_unknown">未记录</string>
+    <string name="family_members_row_self_badge">我</string>
+    <string name="family_members_row_joined_unknown">加入时间：未记录</string>
+    <string name="family_members_row_joined">加入时间：%1$s</string>
+    <string name="family_members_row_disabled_at">已停用：%1$s</string>
+    <string name="family_members_row_status_disabled">已停用</string>
+    <string name="family_members_row_status_active">活跃</string>
+    <string name="family_members_action_make_viewer">改为只读</string>
+    <string name="family_members_action_make_member">改为成员</string>
+    <string name="family_members_action_transfer_owner">转让拥有者</string>
+    <string name="family_members_action_disable">停用</string>
+    <string name="family_members_dialog_change_role_title">调整成员角色？</string>
+    <string name="family_members_dialog_change_role_text">将%1$s调整为%2$s。已有会话下次请求会立即按新角色生效。</string>
+    <string name="family_members_dialog_change_role_confirm">确认调整</string>
+    <string name="family_members_dialog_disable_title">停用成员？</string>
+    <string name="family_members_dialog_disable_text">停用后%1$s将不能继续访问当前账本，当前账本下的活跃会话会被吊销。</string>
+    <string name="family_members_dialog_disable_confirm">确认停用</string>
+    <string name="family_members_dialog_transfer_owner_title">转让拥有者？</string>
+    <string name="family_members_dialog_transfer_owner_text">转让后%1$s会成为唯一拥有者，你会降为成员。此操作会立即影响成员管理权限。</string>
+    <string name="family_members_dialog_transfer_owner_confirm">确认转让</string>
+    <!-- FamilyMembersViewModel：状态/反馈消息（ADR-0044 wave 2） -->
+    <string name="family_members_message_members_load_failed">成员列表暂时打不开。</string>
+    <string name="family_members_message_audit_load_failed">成员记录暂时打不开。</string>
+    <string name="family_members_message_role_changed">已将%1$s设为%2$s。</string>
+    <string name="family_members_message_disabled">已停用%1$s。</string>
+    <string name="family_members_message_owner_transferred">已将拥有者转让给%1$s。</string>
+    <string name="family_members_message_action_failed">成员管理操作没有完成。</string>
+    <!-- FamilyMembersScreen：审计行角色变更（ADR-0044 wave 2 尾巴，非 @Composable helper 改 @Composable） -->
+    <string name="family_members_audit_role_change">角色：%1$s → %2$s</string>
+    <string name="family_members_audit_role_set">角色：%1$s</string>
+
+    <!-- JoinFamilyLedgerScreen：设置→加入家庭账本 屏 -->
+    <string name="join_family_ledger_page_title">加入家庭账本</string>
+    <string name="join_family_ledger_page_subtitle">先确认邀请目标，再替换本机绑定。</string>
+    <string name="join_family_ledger_section_invite">邀请信息</string>
+    <string name="join_family_ledger_current_binding">当前绑定：%1$s / %2$s / %3$s</string>
+    <string name="join_family_ledger_field_invite_token">邀请明文</string>
+    <string name="join_family_ledger_field_account_name">你的显示名</string>
+    <string name="join_family_ledger_field_device_name">设备名</string>
+    <string name="join_family_ledger_preview_loading">预览中…</string>
+    <string name="join_family_ledger_preview_button">预览邀请</string>
+    <string name="join_family_ledger_accept_loading">处理中…</string>
+    <string name="join_family_ledger_accept_button">接受邀请</string>
+    <string name="join_family_ledger_preview_required">预览后才可以接受邀请；接受成功会替换本机当前绑定。</string>
+    <string name="join_family_ledger_preview_join_target">将加入：%1$s</string>
+    <string name="join_family_ledger_preview_ledger_unnamed">未命名账本</string>
+    <string name="join_family_ledger_preview_role">邀请角色：%1$s</string>
+    <string name="join_family_ledger_preview_expires_at">有效期至：%1$s</string>
+    <!-- JoinFamilyLedgerViewModel：当前绑定回退名与反馈消息（ADR-0044 wave 2） -->
+    <string name="join_family_ledger_binding_unbound">未绑定</string>
+    <string name="join_family_ledger_message_preview_failed">预览邀请失败。</string>
+    <string name="join_family_ledger_message_accept_failed">接受邀请失败。</string>
+    <string name="join_family_ledger_message_accepted">已加入“%1$s”，当前角色：%2$s</string>
+
+    <!-- LedgerSwitcherScreen：设置→账本 屏 -->
+    <string name="ledger_switcher_page_title">账本</string>
+    <string name="ledger_switcher_page_subtitle">切换个人账本和共享账本。</string>
+    <string name="ledger_switcher_section_joined">已加入的账本</string>
+    <string name="ledger_switcher_ledgers_empty">还没有可显示的账本。请稍后下拉刷新。</string>
+    <string name="ledger_switcher_row_current_badge">当前</string>
+    <string name="ledger_switcher_row_switch_button">切换</string>
+    <string name="ledger_switcher_refresh_loading">刷新中…</string>
+    <string name="ledger_switcher_refresh_button">刷新列表</string>
+    <string name="ledger_switcher_section_create">新建账本</string>
+    <string name="ledger_switcher_create_hint">账本名称最多 %1$d 个字。新建后不会自动切换，可以在上方点击“切换”。</string>
+    <string name="ledger_switcher_field_ledger_name">账本名称</string>
+    <string name="ledger_switcher_create_button">新建账本</string>
+    <!-- LedgerSwitcherViewModel：状态/反馈消息（ADR-0044 wave 2） -->
+    <string name="ledger_switcher_message_load_failed">获取账本失败。</string>
+    <string name="ledger_switcher_message_switched">已切换到“%1$s”</string>
+    <string name="ledger_switcher_message_switch_failed">切换账本失败。</string>
+    <string name="ledger_switcher_message_created">已新建账本“%1$s”</string>
+    <string name="ledger_switcher_message_create_failed">新建账本失败。</string>
+    <string name="ledger_switcher_message_name_required">请填写账本名称。</string>
+
+    <!-- NotificationPreferencesScreen：设置→通知与提醒 屏 -->
+    <string name="notification_preferences_page_title">通知与提醒</string>
+    <string name="notification_preferences_page_subtitle">通知只生成待确认草稿或提醒，不会自动入账。</string>
+    <string name="notification_preferences_section_auto_draft">通知自动草稿</string>
+    <string name="notification_preferences_capture_title">本机解析支付通知</string>
+    <string name="notification_preferences_capture_subtitle_readonly">当前角色为只读，不能生成自动草稿。</string>
+    <string name="notification_preferences_capture_subtitle_authorized">系统授权已开启；只上传来源、金额、商家、分类和时间。</string>
+    <string name="notification_preferences_capture_subtitle_default">需要先在系统设置里显式授权；关闭后不会读取通知。</string>
+    <string name="notification_preferences_grant_view">查看系统授权</string>
+    <string name="notification_preferences_grant_open">打开系统授权</string>
+    <string name="notification_preferences_capture_note_readonly">当前角色为只读，通知监听服务不会生成草稿。</string>
+    <string name="notification_preferences_capture_note_enabled">自动草稿仍需在待确认页手动确认，绝不会自动入账。</string>
+    <string name="notification_preferences_capture_note_disabled">当前已关闭自动草稿，通知监听服务不会上传任何内容。</string>
+    <string name="notification_preferences_section_reminders">提醒开关</string>
+    <string name="notification_preferences_reminder_pending_title">待确认提醒</string>
+    <string name="notification_preferences_reminder_pending_subtitle">有新的待确认草稿时提醒你回来核对。</string>
+    <string name="notification_preferences_reminder_large_amount_title">大额提醒</string>
+    <string name="notification_preferences_reminder_large_amount_subtitle">结构化通知金额偏高时提醒，仍需手动确认。</string>
+    <string name="notification_preferences_reminder_recurring_title">固定支出提醒</string>
+    <string name="notification_preferences_reminder_recurring_subtitle">固定支出临近或金额异常时提醒。</string>
+    <string name="notification_preferences_section_privacy">隐私边界</string>
+    <string name="notification_preferences_privacy_title">通知原文不会上传到小票夹服务。</string>
+    <string name="notification_preferences_privacy_body">支付通知只在本机解析，上传字段限定为来源、金额、商家、分类和时间。系统授权和 App 开关任一关闭，都会停止自动草稿。</string>
+</resources>

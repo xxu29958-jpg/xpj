@@ -12,7 +12,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
@@ -51,7 +53,7 @@ internal fun CategoryRuleEditorCard(
                 value = form.keyword,
                 onValueChange = { onFormChange(form.copy(keyword = it, localMessage = null)) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("商家关键词") },
+                label = { Text(stringResource(R.string.category_rule_editor_keyword_label)) },
                 placeholder = { Text("OpenAI") },
                 singleLine = true,
             )
@@ -59,15 +61,15 @@ internal fun CategoryRuleEditorCard(
                 value = form.category,
                 onValueChange = { onFormChange(form.copy(category = it, localMessage = null)) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("推荐分类") },
-                placeholder = { Text("AI订阅") },
+                label = { Text(stringResource(R.string.category_rule_editor_category_label)) },
+                placeholder = { Text(stringResource(R.string.category_rule_editor_category_placeholder)) },
                 singleLine = true,
             )
             OutlinedTextField(
                 value = form.priorityText,
                 onValueChange = { onFormChange(form.copy(priorityText = it, localMessage = null)) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("优先级") },
+                label = { Text(stringResource(R.string.category_rule_editor_priority_label)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
             )
@@ -76,14 +78,22 @@ internal fun CategoryRuleEditorCard(
                 enabled = !busy,
                 onClick = onSubmit,
             ) {
-                Text(if (busy) "处理中" else if (form.editingRule == null) "添加规则" else "保存规则")
+                Text(
+                    if (busy) {
+                        stringResource(R.string.category_rule_editor_submit_busy)
+                    } else if (form.editingRule == null) {
+                        stringResource(R.string.category_rule_editor_submit_create)
+                    } else {
+                        stringResource(R.string.category_rule_editor_submit_update)
+                    },
+                )
             }
             if (form.editingRule != null) {
                 OutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onCancel,
                 ) {
-                    Text("取消编辑")
+                    Text(stringResource(R.string.category_rule_editor_cancel))
                 }
             }
             form.localMessage?.let {

@@ -22,7 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 
 @Composable
 fun MonthPickerSheet(
@@ -37,7 +39,7 @@ fun MonthPickerSheet(
             .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("选择月份", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.components_month_picker_title), style = MaterialTheme.typography.titleLarge)
         Text(
             text = description,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -50,7 +52,7 @@ fun MonthPickerSheet(
         ) {
             item {
                 MonthOptionRow(
-                    label = "全部月份",
+                    label = stringResource(R.string.components_month_picker_all_months),
                     selected = selectedMonth.isBlank(),
                     onClick = { onSelectMonth("") },
                 )
@@ -58,7 +60,7 @@ fun MonthPickerSheet(
             if (months.isEmpty()) {
                 item {
                     Text(
-                        text = "更新后会显示可选月份。",
+                        text = stringResource(R.string.components_month_picker_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp),
                     )

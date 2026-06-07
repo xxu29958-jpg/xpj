@@ -30,7 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.design.AppMotion
@@ -95,13 +97,13 @@ internal fun PendingClearCelebration(visible: Boolean) {
                     CheckBubble()
                 }
                 Text(
-                    text = "全部处理完了",
+                    text = stringResource(R.string.pending_celebration_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.hero.weight,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "待确认队列清空。新截图来了会出现在这里。",
+                    text = stringResource(R.string.pending_celebration_body),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -121,7 +123,7 @@ private fun CheckBubble() {
     ) {
         Icon(
             imageVector = Icons.Filled.Check,
-            contentDescription = "全部完成",
+            contentDescription = stringResource(R.string.pending_celebration_check_desc),
             tint = MaterialTheme.colorScheme.onPrimary,
             modifier = Modifier.size(32.dp),
         )

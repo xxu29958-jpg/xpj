@@ -6,6 +6,7 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +33,7 @@ data class BillSplitUiState(
     val sent: List<BillSplitSent> = emptyList(),
     val candidateTargetLedgerIds: List<String> = emptyList(),
     val loading: Boolean = false,
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 class BillSplitViewModel(
@@ -73,7 +74,7 @@ class BillSplitViewModel(
                     inbox = inboxResult.getOrNull() ?: it.inbox,
                     sent = sentResult.getOrNull() ?: it.sent,
                     message = (inboxResult.exceptionOrNull() ?: sentResult.exceptionOrNull())
-                        ?.message,
+                        ?.message?.let(UiText::raw),
                 )
             }
         }
@@ -85,7 +86,7 @@ class BillSplitViewModel(
             expenseRepository.acceptBillSplitInvitation(publicId, targetLedgerId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
-                    _uiState.update { it.copy(loading = false, message = err.message) }
+                    _uiState.update { it.copy(loading = false, message = err.message?.let(UiText::raw)) }
                 }
         }
     }
@@ -96,7 +97,7 @@ class BillSplitViewModel(
             expenseRepository.rejectBillSplitInvitation(publicId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
-                    _uiState.update { it.copy(loading = false, message = err.message) }
+                    _uiState.update { it.copy(loading = false, message = err.message?.let(UiText::raw)) }
                 }
         }
     }
@@ -107,7 +108,7 @@ class BillSplitViewModel(
             expenseRepository.cancelBillSplitInvitation(publicId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
-                    _uiState.update { it.copy(loading = false, message = err.message) }
+                    _uiState.update { it.copy(loading = false, message = err.message?.let(UiText::raw)) }
                 }
         }
     }

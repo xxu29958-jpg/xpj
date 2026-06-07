@@ -12,7 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.design.AppSpacing
@@ -34,16 +36,16 @@ internal fun BudgetHeader(
             TextButton(onClick = it) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回统计",
+                    contentDescription = stringResource(R.string.budget_back_to_stats),
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(4.dp))
-                Text("返回统计")
+                Text(stringResource(R.string.budget_back_to_stats))
             }
         }
         AppPageHeader(
-            title = "预算",
-            subtitle = "$month 月度可花额度",
+            title = stringResource(R.string.budget_header_title),
+            subtitle = stringResource(R.string.budget_header_subtitle, month),
         ) {
             SafeBadge()
         }

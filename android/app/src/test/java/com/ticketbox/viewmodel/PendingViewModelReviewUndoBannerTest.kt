@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -47,7 +49,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val undoable = assertNotNull(state.undoableExpense, "Synced reject seeds the 撤销 banner")
         assertEquals(100L, undoable.id)
         assertEquals("rejected", undoable.status, "banner row carries server post-transition status")
-        assertEquals("已删除", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_rejected), state.message)
     }
 
     @Test
@@ -91,7 +93,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         assertEquals(200L, preserved.id, "banner row identity must remain A, not flip to B")
         assertEquals("星巴克", preserved.merchant, "banner carries A's merchant for UI disambiguation")
         assertEquals(4800L, preserved.amountCents, "banner carries A's amount for UI disambiguation")
-        assertEquals("已离线删除，联网后同步", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_rejected_offline), state.message)
     }
 
     @Test
@@ -119,7 +121,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val state = vm.uiState.value
         assertEquals(listOf(301L, 300L), state.items.map { it.id }, "restored row goes to TOP not tail")
         assertNull(state.undoableExpense, "banner cleared after successful undo")
-        assertEquals("已撤销，账单已恢复待确认。", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_undo_restored), state.message)
         assertFalse(state.actionInProgressIds.contains(301L))
     }
 
@@ -145,7 +147,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         runCurrent()
 
         val state = vm.uiState.value
-        assertEquals("无法撤销：账单已超过 5 分钟保留窗口，或已被清理。", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_undo_window_closed), state.message)
         assertNull(state.undoableExpense, "404 means window dead; don't restore banner")
     }
 
@@ -172,7 +174,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val state = vm.uiState.value
         val restored = assertNotNull(state.undoableExpense, "transient failure restores banner for retry")
         assertEquals(500L, restored.id)
-        assertEquals("网络断了。", state.message)
+        assertEquals(UiText.raw("网络断了。"), state.message)
         assertFalse(state.actionInProgressIds.contains(500L), "retry must not stay action-in-progress")
     }
 
@@ -214,7 +216,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         assertFalse(state.actionInProgressIds.contains(600L), "PRESERVED: in-progress cleared")
         // — intentionally changed —
         assertNull(state.undoableExpense, "CHANGED: no 撤销 banner (wasn't a delete from user intent)")
-        assertEquals("已忽略重复", state.message, "CHANGED: wording matches 忽略 intent, not 删除")
+        assertEquals(UiText.res(R.string.pending_msg_ignored_duplicate), state.message, "CHANGED: wording matches 忽略 intent, not 删除")
     }
 
     @Test
@@ -241,7 +243,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         assertTrue(state.items.isEmpty(), "PRESERVED: optimistic removal even in Queued branch")
         assertEquals(PendingSheet.None, state.activeSheet)
         assertNull(state.undoableExpense, "Queued ignoreDuplicate also doesn't seed banner")
-        assertEquals("已离线忽略，联网后同步", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_ignored_duplicate_offline), state.message)
     }
 
     @Test
@@ -266,7 +268,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
 
         val state = vm.uiState.value
         assertNull(state.undoableExpense, "confirm clears prior banner")
-        assertEquals("已确认入账", state.message)
+        assertEquals(UiText.res(R.string.pending_msg_confirmed), state.message)
     }
 
     @Test
@@ -316,6 +318,6 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
 
         val state = vm.uiState.value
         assertNull(state.undoableExpense, "demoted user's banner must clear")
-        assertEquals(READ_ONLY_LEDGER_MESSAGE, state.message)
+        assertEquals(readOnlyMessage(), state.message)
     }
 }

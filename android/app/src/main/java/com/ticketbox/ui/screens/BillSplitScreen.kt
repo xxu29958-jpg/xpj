@@ -25,9 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitInbox
+import com.ticketbox.ui.asString
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.ui.components.formatAmount
@@ -50,9 +53,9 @@ fun BillSplitScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("拆账") },
+                title = { Text(stringResource(R.string.bill_split_topbar_title)) },
                 navigationIcon = {
-                    OutlinedButton(onClick = onBack) { Text("返回") }
+                    OutlinedButton(onClick = onBack) { Text(stringResource(R.string.bill_split_topbar_back)) }
                 },
             )
         },
@@ -62,17 +65,17 @@ fun BillSplitScreen(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("收件箱 (${state.inbox.size})") },
+                    text = { Text(stringResource(R.string.bill_split_tab_inbox, state.inbox.size)) },
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("已发出 (${state.sent.size})") },
+                    text = { Text(stringResource(R.string.bill_split_tab_sent, state.sent.size)) },
                 )
             }
             state.message?.let {
                 Text(
-                    it,
+                    it.asString(),
                     modifier = Modifier.padding(12.dp),
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -99,7 +102,7 @@ private fun InboxList(
     candidateTargetLedgerIds: List<String>,
 ) {
     if (inbox.isEmpty()) {
-        EmptyState(text = "暂无拆账邀请。")
+        EmptyState(text = stringResource(R.string.bill_split_inbox_empty))
         return
     }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -139,10 +142,12 @@ private fun InboxRow(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 candidateTargetLedgerIds.firstOrNull()?.let { firstLedger ->
                     OutlinedButton(onClick = { onAccept(row.publicId, firstLedger) }) {
-                        Text("接受到 $firstLedger")
+                        Text(stringResource(R.string.bill_split_inbox_accept, firstLedger))
                     }
                 }
-                OutlinedButton(onClick = { onReject(row.publicId) }) { Text("拒绝") }
+                OutlinedButton(onClick = { onReject(row.publicId) }) {
+                    Text(stringResource(R.string.bill_split_inbox_reject))
+                }
             }
         }
     }
@@ -154,7 +159,7 @@ private fun SentList(
     onCancel: (String) -> Unit,
 ) {
     if (sent.isEmpty()) {
-        EmptyState(text = "暂无已发出的拆账邀请。")
+        EmptyState(text = stringResource(R.string.bill_split_sent_empty))
         return
     }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -184,7 +189,9 @@ private fun SentRow(
             style = MaterialTheme.typography.bodySmall,
         )
         if (row.status == BillSplitStatusValues.INVITED) {
-            OutlinedButton(onClick = { onCancel(row.publicId) }) { Text("撤回") }
+            OutlinedButton(onClick = { onCancel(row.publicId) }) {
+                Text(stringResource(R.string.bill_split_sent_cancel))
+            }
         }
     }
 }

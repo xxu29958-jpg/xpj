@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
@@ -43,7 +45,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val state = vm.uiState.value
         assertEquals("交通", state.items.single().category)
         assertEquals(PendingSheet.None, state.activeSheet)
-        assertEquals("已更新分类", state.message)
+        assertEquals(UiText.res(R.string.pending_review_category_updated), state.message)
         assertTrue(state.actionInProgressIds.isEmpty())
         assertEquals(1, fake.updateCalls)
     }
@@ -61,7 +63,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
 
         val state = vm.uiState.value
         assertEquals("未分类", state.items.single().category)
-        assertEquals("网络忙", state.message)
+        assertEquals(UiText.raw("网络忙"), state.message)
         assertTrue(state.actionInProgressIds.isEmpty())
     }
 
@@ -76,7 +78,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         advanceUntilIdle()
 
         assertEquals(0, fake.updateCalls)
-        assertEquals("请输入商家名称。", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_review_merchant_blank), vm.uiState.value.message)
     }
 
     @Test
@@ -94,7 +96,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         advanceUntilIdle()
 
         assertEquals("星巴克", vm.uiState.value.items.single().merchant)
-        assertEquals("已更新商家", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_review_merchant_updated), vm.uiState.value.message)
     }
 
     @Test
@@ -107,7 +109,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         vm.saveAmountDraft(target.id, 0L)
         advanceUntilIdle()
         assertEquals(0, fake.updateCalls)
-        assertEquals("金额必须大于 0。", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_review_amount_not_positive), vm.uiState.value.message)
 
         vm.saveAmountDraft(target.id, -100L)
         advanceUntilIdle()
@@ -132,7 +134,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
 
         assertEquals(1234L, vm.uiState.value.items.single().amountCents)
         assertEquals(0, fake.confirmCalls)
-        assertEquals("已保存金额", vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.pending_review_amount_saved), vm.uiState.value.message)
     }
 
     @Test
@@ -177,7 +179,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
 
         val state = vm.uiState.value
         assertTrue(state.items.isEmpty(), "已确认条目应该从 pending 列表中移除")
-        assertEquals("已保存并确认入账", state.message)
+        assertEquals(UiText.res(R.string.pending_review_amount_saved_confirmed), state.message)
         assertEquals(1, fake.updateCalls)
         assertEquals(1, fake.confirmCalls)
     }
@@ -195,6 +197,6 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
 
         assertEquals(1, vm.uiState.value.items.size)
         assertEquals(0, fake.confirmCalls)
-        assertEquals("amount_required", vm.uiState.value.message)
+        assertEquals(UiText.raw("amount_required"), vm.uiState.value.message)
     }
 }

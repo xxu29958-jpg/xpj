@@ -2,8 +2,10 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.BackgroundTask
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,7 +25,7 @@ data class BackgroundTasksUiState(
     val tasks: List<BackgroundTask> = emptyList(),
     val loading: Boolean = false,
     val busyTaskId: String? = null,
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 class BackgroundTasksViewModel(
@@ -42,7 +44,7 @@ class BackgroundTasksViewModel(
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        it.copy(loading = false, message = err.message ?: "任务列表暂时打不开。")
+                        it.copy(loading = false, message = err.toUiText(R.string.background_tasks_message_load_failed))
                     }
                 }
         }
@@ -53,12 +55,12 @@ class BackgroundTasksViewModel(
             _uiState.update { it.copy(busyTaskId = publicId, message = null) }
             repository.cancelBackgroundTask(publicId)
                 .onSuccess {
-                    _uiState.update { it.copy(busyTaskId = null, message = "已请求取消任务。") }
+                    _uiState.update { it.copy(busyTaskId = null, message = UiText.res(R.string.background_tasks_message_cancel_requested)) }
                     refresh()
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        it.copy(busyTaskId = null, message = err.message ?: "取消任务失败。")
+                        it.copy(busyTaskId = null, message = err.toUiText(R.string.background_tasks_message_cancel_failed))
                     }
                 }
         }

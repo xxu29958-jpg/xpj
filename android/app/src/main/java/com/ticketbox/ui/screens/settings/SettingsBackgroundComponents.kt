@@ -64,10 +64,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -172,9 +174,9 @@ internal fun BuiltInBackgroundCard(
                         maxLines = 1,
                     )
                     if (selected) {
-                        SkinPill(text = "当前", scheme = scheme, visuals = visuals, emphasized = true)
+                        SkinPill(text = stringResource(R.string.appearance_builtin_pill_current), scheme = scheme, visuals = visuals, emphasized = true)
                     } else if (skin == AppSkin.Paper) {
-                        SkinPill(text = "推荐", scheme = scheme, visuals = visuals, emphasized = false)
+                        SkinPill(text = stringResource(R.string.appearance_builtin_pill_recommended), scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
                 Text(
@@ -347,7 +349,7 @@ internal fun BackgroundSwitchLine(
 @Composable
 internal fun CropSafeZones() {
     Column(modifier = Modifier.fillMaxSize()) {
-        SafeZoneBand("顶部标题区", 0.15f)
+        SafeZoneBand(stringResource(R.string.appearance_crop_safezone_top), 0.15f)
         Box(
             modifier = Modifier
                 .weight(0.70f)
@@ -356,12 +358,12 @@ internal fun CropSafeZones() {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "主要阅读区",
+                text = stringResource(R.string.appearance_crop_safezone_reading),
                 color = Color.White.copy(alpha = 0.82f),
                 style = MaterialTheme.typography.labelMedium,
             )
         }
-        SafeZoneBand("底部导航区", 0.15f)
+        SafeZoneBand(stringResource(R.string.appearance_crop_safezone_bottom), 0.15f)
     }
 }
 
