@@ -67,6 +67,18 @@ class OpenApiContractGateTest {
         Pairing(TagUndoDto::class, "TagUndoResponse"),
     )
 
+    // Backend `required` fields a DTO intentionally does NOT model (Android doesn't
+    // consume them). Keyed by backend schema name. Anything a schema requires but the
+    // DTO omits AND is not listed here is drift → CI red. Populated from a real gate run.
+    private val ignoredRequiredFields: Map<String, Set<String>> = mapOf(
+        // Bill-split DTOs model only `amount_cents` (the home-currency cents the UI shows);
+        // the backend's currency-code fields are intentionally not consumed — bill-split
+        // does not surface original-currency detail (ADR-0029, pre-existing). The reverse
+        // check surfaced this real omission; revisit if bill-split grows multi-currency UI.
+        "BillSplitSentResponse" to setOf("home_currency_code", "original_currency_code"),
+        "BillSplitInboxResponse" to setOf("home_currency_code", "original_currency_code"),
+    )
+
     @Test
     fun everyDtoFieldIsBackedByItsOpenApiSchema() {
         val drift = pairs.mapNotNull { p ->
@@ -82,6 +94,28 @@ class OpenApiContractGateTest {
             drift.isEmpty(),
             "Android DTO ↔ OpenAPI contract drift — regenerate the DTO or the snapshot:\n" +
                 drift.joinToString("\n"),
+        )
+    }
+
+    @Test
+    fun everyRequiredSchemaFieldIsModeledByItsDto() {
+        // Reverse of the parity check above. Moshi silently DROPS extra JSON keys, so a DTO
+        // that loses a field the backend still sends (e.g. fx_rate, or a tag conflict token)
+        // would stay green under the forward check alone. Here: every backend-`required`
+        // field must be a DTO @Json name, or be explicitly allowlisted as not-consumed.
+        val gaps = pairs.mapNotNull { p ->
+            val missing = schemaRequired(p.schema) - dtoJsonNames(p.dto) - ignoredRequiredFields[p.schema].orEmpty()
+            if (missing.isEmpty()) {
+                null
+            } else {
+                "${p.dto.simpleName} → ${p.schema}: required backend fields not modeled by the DTO " +
+                    "(add them, or allowlist in ignoredRequiredFields): ${missing.sorted()}"
+            }
+        }
+        assertTrue(
+            gaps.isEmpty(),
+            "Android DTO misses required OpenAPI fields (silently ignored by Moshi):\n" +
+                gaps.joinToString("\n"),
         )
     }
 
@@ -120,6 +154,13 @@ class OpenApiContractGateTest {
         val schema = SCHEMAS[name] as? Map<String, Any?>
             ?: error("schema '$name' missing from the OpenAPI snapshot — fix the mapping in `pairs`")
         return (schema["properties"] as? Map<String, Any?>)?.keys.orEmpty()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun schemaRequired(name: String): Set<String> {
+        val schema = SCHEMAS[name] as? Map<String, Any?>
+            ?: error("schema '$name' missing from the OpenAPI snapshot — fix the mapping in `pairs`")
+        return (schema["required"] as? List<String>)?.toSet().orEmpty()
     }
 
     // ── generative synthesis: a minimal typed instance from a schema's declared types ──

@@ -168,6 +168,10 @@ if (-not $SkipAndroid) {
     $androidPlan = Get-AndroidVerifyPlan
     Write-Host "Android 验证变体：$($androidPlan.Label)"
     Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", $androidPlan.Test) -WorkingDirectory $AndroidRoot
+    # CI parity: the Android lane also strict-equality-checks the @Test count against
+    # android/audit/test_count_baseline.txt; run it locally so a baseline drift is caught
+    # before push, not only in CI (ADR-0038 PR-Δ ratchet).
+    Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", ":app:assertAndroidTestCountEqualsBaseline") -WorkingDirectory $AndroidRoot
     Invoke-Checked -FilePath $gradle -Arguments (@("--no-daemon") + $androidPlan.Assemble) -WorkingDirectory $AndroidRoot
     if (-not $SkipLint) {
         Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", $androidPlan.Lint) -WorkingDirectory $AndroidRoot

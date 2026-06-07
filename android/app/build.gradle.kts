@@ -444,10 +444,17 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
         // Treat empty same as null for both ref selection and PR-context
         // detection. Matches backend gate's ``bool(os.environ.get(...))``
         // which naturally treats empty as falsy via Python truthiness.
-        val baseRefRaw = System.getenv("GITHUB_BASE_REF")?.takeIf { it.isNotEmpty() }
+        val explicitRef = System.getenv("GITHUB_BASE_REF")?.takeIf { it.isNotEmpty() }
             ?: System.getenv("XPJ_AUDIT_BASE_REF")?.takeIf { it.isNotEmpty() }
-            ?: "main"
-        val baseRef = if (baseRefRaw.contains("/")) baseRefRaw else "origin/$baseRefRaw"
+        val baseRef = when {
+            explicitRef != null -> if (explicitRef.contains("/")) explicitRef else "origin/$explicitRef"
+            // CI push event (GITHUB_SHA set, no PR base): the offline checkout fetches
+            // heads into origin/*, so the live main is origin/main.
+            !System.getenv("GITHUB_SHA").isNullOrEmpty() -> "origin/main"
+            // Local dev: the `origin` remote is the dead GitHub mirror (stale), so read
+            // the LIVE local main instead — avoids false ratchet failures.
+            else -> "refs/heads/main"
+        }
         val isPrCiContext = !System.getenv("GITHUB_BASE_REF").isNullOrEmpty()
 
         // Distinguish three states (parallels backend gate's tuple return):
