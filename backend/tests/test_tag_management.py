@@ -206,6 +206,52 @@ def test_merge_soft_deletes_source_even_when_source_has_higher_id(
     assert b_tags == "目标"  # B's link moved to the target
 
 
+def test_merge_pair_claim_on_vanished_tag_surfaces_state_conflict(
+    client: TestClient, *, identity
+) -> None:
+    """ADR-0043 review (P3): in a reverse-merge race a tag can be soft-deleted
+    between ``merge_tags``' upfront live check and the row claim. ``_claim_merge_pair``
+    must then surface ``state_conflict`` (409 stale token — the ADR's merge OCC
+    promise, 契约 2 'merge 任一旧 token → 409'), NOT the ``tag_not_found`` (404) that
+    delete/rename's disambiguation leaks for a gone-not-stale tag. Drives the helper
+    directly so the soft-delete lands *past* the upfront ``_require_live_tag`` guard."""
+    from sqlalchemy import select, update
+
+    from app.models import Tag
+    from app.services.tag_management_service import _claim_merge_pair
+    from app.services.time_service import now_utc
+
+    h = identity.app_headers
+    manual_expense(client, h, tags="来源", merchant="A")
+    manual_expense(client, h, tags="目标", merchant="B")
+    tags = tag_index(client, h)
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        source = db.scalar(
+            select(Tag).where(Tag.tenant_id == "owner", Tag.public_id == tags["来源"]["public_id"])
+        )
+        target = db.scalar(
+            select(Tag).where(Tag.tenant_id == "owner", Tag.public_id == tags["目标"]["public_id"])
+        )
+        # Simulate the concurrent loss: source vanished (soft-deleted + bumped)
+        # while still held live in-session, before its OCC claim runs.
+        db.execute(
+            update(Tag)
+            .where(Tag.id == source.id)
+            .values(deleted_at=now_utc(), row_version=source.row_version + 1)
+        )
+        db.flush()
+        _claim_merge_pair(
+            db,
+            tenant_id="owner",
+            source=source,
+            target=target,
+            source_row_version=tags["来源"]["row_version"],  # stale (pre-bump)
+            target_row_version=tags["目标"]["row_version"],
+        )
+    assert exc.value.error == "state_conflict"
+    assert exc.value.status_code == 409
+
+
 def test_delete_tag_require_orphan_rejects_a_relinked_tag(
     client: TestClient, *, identity
 ) -> None:

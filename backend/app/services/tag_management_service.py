@@ -196,23 +196,25 @@ def _claim_merge_pair(
 ) -> None:
     """Atomically soft-delete source A (keeps its tag_id; revivable via undo) and
     bump target B (stays live; its link set changed so a stale B PATCH must 409).
-    Either token stale → 409, rolling the pair back. A is the soft-deleted one,
-    so the undo token is A's (契约 2/3).
+    A is the soft-deleted one, so the undo token is A's (契约 2/3).
 
-    The two row claims are issued in ascending ``tag.id`` order (NOT source-then-
-    target): a concurrent *reverse* merge (B→A while this runs A→B) would grab the
-    rows in the opposite order and deadlock under PostgreSQL row locks (→ 500).
-    Fixed ordering serialises both on the lower-id row; the loser then fails its
-    OCC token check and gets a clean 409 instead of a deadlock."""
+    Claims issue in ascending ``tag.id`` order (NOT source-then-target): a concurrent
+    *reverse* merge (B→A while this runs A→B) would grab the rows in the opposite
+    order and deadlock under PostgreSQL row locks (→ 500); fixed ordering serialises
+    both on the lower-id row. A failed claim is ALWAYS ``state_conflict`` (409), never
+    disambiguated to 404 — ``merge_tags`` verified both tags live upfront, so a failure
+    here is a concurrent modification (stale token), never a never-existed tag.
+    (Disambiguating would leak ``tag_not_found`` when a reverse merge soft-deleted a
+    tag mid-flight; 契约 2 promises 'merge 任一旧 token → 409'.)"""
     now = now_utc()
     claims = sorted(
         (
-            (source.id, source_row_version, {"deleted_at": now, "updated_at": now}, source.public_id),
-            (target.id, target_row_version, {"updated_at": now}, target.public_id),
+            (source.id, source_row_version, {"deleted_at": now, "updated_at": now}),
+            (target.id, target_row_version, {"updated_at": now}),
         ),
         key=lambda claim: claim[0],
     )
-    for pk_id, expected_row_version, set_values, claim_public_id in claims:
+    for pk_id, expected_row_version, set_values in claims:
         if (
             claim_row_with_token(
                 db,
@@ -225,7 +227,8 @@ def _claim_merge_pair(
             )
             != 1
         ):
-            raise _disambiguate_tag_claim(db, tenant_id, claim_public_id)
+            db.rollback()
+            raise AppError("state_conflict", status_code=409)
 
 
 # --------------------------------------------------------------------------- #
@@ -325,10 +328,17 @@ def _claim_tag_soft_delete(
     ``NOT EXISTS(expense_tags)`` predicate so a tag re-tagged since the caller's
     orphan-check (which doesn't bump row_version, so the OCC token alone can't see
     it) is rejected rather than clobbered. Returns rowcount (0 → stale token, or —
-    for require_orphan — a link appeared). Residual READ-COMMITTED skew: a re-tag
-    that commits *after* this UPDATE leaves the tag soft-deleted beside a live link
-    — never dropped, and the next ``_ensure_tag`` revive + mirror reconcile self-heal
-    it (acceptable for loopback single-owner cleanup)."""
+    for require_orphan — a link appeared).
+
+    Residual READ-COMMITTED skew (documented + accepted, NOT auto-healed): a re-tag
+    whose link INSERT commits *after* this UPDATE's snapshot is invisible to the
+    ``NOT EXISTS``, so the tag ends up soft-deleted beside a still-live link — never
+    dropped, just invisible in management (reads filter ``deleted_at``) while still
+    functional on its expense. ``reconcile_expense_tag_mirror`` sees NO drift (string
+    key == link key), so the cure is the next same-key ``_ensure_tag`` (revive, 契约 4)
+    or undoing the delete in its window. Fully closing it needs SERIALIZABLE / a tag
+    lock on the re-tag hot path — disproportionate for this loopback single-owner
+    cleanup surface (one human can't click cleanup and tag-save the same instant)."""
     if not require_orphan:
         return claim_row_with_token(
             db,

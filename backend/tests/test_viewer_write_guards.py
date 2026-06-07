@@ -282,6 +282,14 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             {"ledger_id": ledger_id, "expected_row_version": 999999},
         ),
         (
+            # ADR-0043 review: cancelling a background task sets
+            # cancellation_requested_at — a write. The writer-role gate fires
+            # before the task lookup, so a dummy public_id still 403s a viewer.
+            "task cancel",
+            "/web/tasks/missing/cancel",
+            {"ledger_id": ledger_id},
+        ),
+        (
             "csv import confirm",
             "/web/import/confirm",
             {"ledger_id": ledger_id, "payload": import_payload},
