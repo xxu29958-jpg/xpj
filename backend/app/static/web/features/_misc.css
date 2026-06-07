@@ -1,4 +1,4 @@
-/* Misc primitives：thumb/receipt-img, .actions, .alert, .empty-state,
+/* Misc primitives：thumb/receipt-img, .actions, .alert,
  * .badge, .filter-row, .form-row, .edit-grid, .pagination, .meta */
 
 .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-card); display: block; }
@@ -15,9 +15,7 @@ form.inline { margin: 0; }
 .alert-danger { background: var(--state-danger-bg); color: var(--state-danger-fg); }
 .alert-success { background: var(--state-success-bg); color: var(--state-success-fg); }
 
-.empty-state { text-align: center; padding: 36px 20px; }
-.empty-state-title { font-size: 15px; color: var(--text-default); font-weight: 600; margin-bottom: 6px; }
-.empty-state-hint { font-size: 13px; color: var(--text-muted); }
+/* .empty-state / -title / -hint 已 v0.11 收口到 components/empty-state.css (单一真相源)。 */
 .empty-table-cell { text-align: center; color: var(--text-muted); padding: 18px !important; }
 .error-text { color: var(--state-danger-fg); }
 

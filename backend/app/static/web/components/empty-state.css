@@ -9,30 +9,34 @@
  * 视觉与 Android EmptyStatsCard 对齐：留白比纯文本提示更明显，
  * CTA 用主色，引导用户跳到对应配置页。
  */
+/* v0.11 收口: 单一空态规则真相源 (此前 features/_misc.css 有一份重名 .empty-state
+ * + 连字符 .empty-state-title/-hint, 靠 cascade 顺序覆盖本组件、导致 BEM __title/__body
+ * 实际只在 dashboard 生效)。统一为连字符命名 + 多数页 de-facto 值, 删除 _misc 那份。 */
 .empty-state {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    text-align: center;
     padding: 16px 0 10px;
 }
-.empty-state__title {
-    font-size: 13.5px;
+.empty-state-title {
+    font-size: 15px;
     font-weight: 600;
     color: var(--text-default);
+    margin-bottom: 6px;
 }
-.empty-state__body {
-    font-size: 12.5px;
-    color: var(--text-meta);
-    line-height: 1.55;
+.empty-state-hint {
+    font-size: 13px;
+    color: var(--text-muted);
 }
-.empty-state__cta {
-    align-self: flex-start;
+.empty-state-cta {
+    align-self: center;
     margin-top: 6px;
     font-size: 12.5px;
     color: var(--brand-primary);
     text-decoration: none;
     font-weight: 600;
 }
-.empty-state__cta:hover {
+.empty-state-cta:hover {
     text-decoration: underline;
 }

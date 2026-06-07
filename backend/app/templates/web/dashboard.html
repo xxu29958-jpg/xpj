@@ -181,9 +181,9 @@
         </div>
         {% else %}
         <div class="empty-state">
-          <div class="empty-state__title">本月还没有预算</div>
-          <div class="empty-state__body">设个月度上限，超支会在卡片里给提示。</div>
-          <a class="empty-state__cta" href="/web/budgets?ledger_id={{ selected_ledger_id }}">去设置月度预算 →</a>
+          <div class="empty-state-title">本月还没有预算</div>
+          <div class="empty-state-hint">设个月度上限，超支会在卡片里给提示。</div>
+          <a class="empty-state-cta" href="/web/budgets?ledger_id={{ selected_ledger_id }}">去设置月度预算 →</a>
         </div>
         {% endif %}
       </div>
@@ -199,9 +199,9 @@
         </div>
         {% if cards.goals_count == 0 %}
         <div class="empty-state">
-          <div class="empty-state__title">暂无目标</div>
-          <div class="empty-state__body">为某个分类设个月度上限，超过后会在这里提醒。</div>
-          <a class="empty-state__cta" href="/web/goals?ledger_id={{ selected_ledger_id }}">新建目标 →</a>
+          <div class="empty-state-title">暂无目标</div>
+          <div class="empty-state-hint">为某个分类设个月度上限，超过后会在这里提醒。</div>
+          <a class="empty-state-cta" href="/web/goals?ledger_id={{ selected_ledger_id }}">新建目标 →</a>
         </div>
         {% else %}
         <div class="goals-summary">

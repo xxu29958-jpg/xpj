@@ -81,9 +81,9 @@
     const node = el("div", "empty-state");
     append(
       node,
-      el("div", "empty-state__title", title),
-      el("div", "empty-state__body", body),
-      link("empty-state__cta", href, cta)
+      el("div", "empty-state-title", title),
+      el("div", "empty-state-hint", body),
+      link("empty-state-cta", href, cta)
     );
     return node;
   }
