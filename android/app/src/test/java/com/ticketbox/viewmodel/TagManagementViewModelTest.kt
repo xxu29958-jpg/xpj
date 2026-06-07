@@ -102,6 +102,33 @@ class TagManagementViewModelTest {
     }
 
     @Test
+    fun undoWhileMutationInFlightIsIgnored() = runTest(dispatcher) {
+        // ADR-0043 review (P3): a stale undo banner left from an earlier delete/merge
+        // must not fire while a NEW mutation is in flight (the screen also disables
+        // the button). undo() busy-gates and keeps the handle for after the op.
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeTagActions(listOf(tag("a", "出差", 3, rv = 2L)))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        vm.deleteTag(tag("a", "出差", 3, rv = 2L))
+        advanceUntilIdle() // delete done → undo banner armed, busy=false
+        assertTrue(vm.uiState.value.undoable != null)
+
+        repo.renameGate = gate
+        vm.renameTag(tag("a", "出差", 3, rv = 2L), "差旅") // parks mid-flight, busy=true
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.busy)
+
+        vm.undo() // must be ignored while busy
+        advanceUntilIdle()
+        assertEquals(0, repo.undoCalls)
+        assertTrue(vm.uiState.value.undoable != null) // handle survived (not consumed)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
     fun mergeSetsUndoHandleFromSourceAndDropsSource() = runTest(dispatcher) {
         val repo = FakeTagActions(listOf(tag("a", "出差", 1, rv = 4L), tag("b", "差旅", 2, rv = 6L)))
         val vm = TagManagementViewModel(repo)

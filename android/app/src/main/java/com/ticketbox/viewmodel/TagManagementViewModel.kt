@@ -159,6 +159,11 @@ class TagManagementViewModel(
     }
 
     fun undo() {
+        // Busy gate: a stale undo banner left over from an earlier delete/merge must
+        // not fire while a new rename/delete/merge is in flight (the button is also
+        // disabled, this is the model-side backstop). Returns without consuming the
+        // handle so the banner survives the in-flight op.
+        if (_uiState.value.busy) return
         val handle = _uiState.value.undoable ?: return
         // Consume the affordance synchronously so a rapid second tap early-returns
         // above — the undo token is single-use; a double-fire would make the loser's
