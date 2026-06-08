@@ -49,7 +49,7 @@ body {
 /* .page 容器已由 _shell.css 的 .content 接管(shell 内自动管理宽度) */
 
 h1 { font-size: var(--type-headline-size); margin-bottom: var(--space-5); color: var(--text-default); }
-h1 .page-title-sub { font-size: 13px; color: var(--text-muted); font-weight: normal; margin-left: var(--space-3); }
+/* h1 .page-title-sub 收口到 _shell.css 的 .page-title-sub(此处旧定义被 _misc.css 覆盖、已是死规则)。 */
 h2 { font-size: var(--type-subtitle-size); margin: var(--space-5) 0 var(--space-4); color: var(--text-muted); border-bottom: 1px solid var(--border-card); padding-bottom: var(--space-2); }
 
 /* .card 基础定义已退役 —— 所有 /web 模板已迁到 .dt-card (components/cards.css)。 */

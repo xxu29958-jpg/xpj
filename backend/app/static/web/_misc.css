@@ -64,21 +64,8 @@
  * follow the paper / mono / midnight token system without template rewrites.
  * -------------------------------------------------------------------------- */
 
-.desktop-shell-active h1 {
-    font-family: var(--font-serif);
-    font-weight: 400;
-    font-size: 28px;
-    letter-spacing: -0.01em;
-    color: var(--text-default);
-    margin: 0 0 14px;
-}
-.desktop-shell-active h1 .page-title-sub {
-    font-family: var(--font-zh);
-    font-size: 13px;
-    color: var(--text-meta);
-    font-weight: normal;
-    margin-left: 10px;
-}
+/* h1 页头标题已收口到 _shell.css 的 .page-title / .page-title--compact / .page-title-sub
+   (内容页 36px / 工具页 28px)。此处不再定义 h1。 */
 .desktop-shell-active h2 {
     font-family: var(--font-serif);
     font-weight: 400;

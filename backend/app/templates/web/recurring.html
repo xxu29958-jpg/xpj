@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}固定支出 — 小票夹{% endblock %}
 {% block content %}
-<h1>固定支出 <span class="page-title-sub">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</span></h1>
+<h1 class="page-title page-title--compact">固定支出 <span class="page-title-sub">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</span></h1>
 {% if flash_message %}
 <div class="dt-alert success">{{ flash_message }}</div>
 {% endif %}
