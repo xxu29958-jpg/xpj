@@ -4,9 +4,8 @@ Symbol layout in this module is dictated by where it gets used:
 
 - ``_clean_*`` helpers normalize untrusted text from create/update payloads.
 - ``_notification_*`` helpers compute the dedup key for notification drafts.
-- ``_try_generate_thumbnail``, ``_replace_ocr_draft_items_from_text``,
-  ``_begin_immediate_write_if_sqlite`` are infrastructure leaks shared between
-  create / OCR / enrichment flows.
+- ``_try_generate_thumbnail`` and ``_replace_ocr_draft_items_from_text`` are
+  infrastructure leaks shared between create / OCR / enrichment flows.
 - ``_expense_has_pending_fx`` / ``_ensure_expense_can_confirm`` keep the
   FX-gating rules in one place so create / update / OCR confirm see the
   same definition. Optimistic-concurrency / ``updated_at`` predicates
@@ -22,7 +21,6 @@ from __future__ import annotations
 import hashlib
 import logging
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -44,7 +42,6 @@ __all__ = [
     "NOTIFICATION_DRAFT_WINDOW_MINUTES",
     "logger",
     "background_failure_counts",
-    "_begin_immediate_write_if_sqlite",
     "_clean_category",
     "_clean_notification_source",
     "_clean_optional_text",
@@ -191,12 +188,6 @@ def _ensure_expense_can_confirm(expense: Expense) -> None:
         raise AppError("exchange_rate_pending", status_code=409)
     if expense.amount_cents is None:
         raise AppError("amount_required", status_code=400)
-
-
-def _begin_immediate_write_if_sqlite(db: Session) -> None:
-    bind = db.get_bind()
-    if bind.dialect.name == "sqlite":
-        db.execute(text("BEGIN IMMEDIATE"))
 
 
 def _replace_ocr_draft_items_from_text(

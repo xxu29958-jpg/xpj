@@ -154,11 +154,6 @@ def owner_migration_cut_over(
     from app.services import background_task_service, v1_migration_service
 
     owner_account_id = owner_console.get_owner_account_id(db)
-    # The owner lookup is read-only, but SQLAlchemy opens a transaction for
-    # it. The singleton enqueue path needs to own BEGIN IMMEDIATE from a
-    # clean session so the race guard is actually DB-backed.
-    if db.in_transaction():
-        db.rollback()
     task, created = background_task_service.enqueue_or_get_active(
         db,
         task_type=v1_migration_service.V1_MIGRATION_TASK_TYPE,

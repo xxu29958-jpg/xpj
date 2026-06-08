@@ -187,15 +187,15 @@ def _raise_daily_budget_exhausted(message: str) -> None:
 def _begin_daily_usage_write(db: Session) -> None:
     """Start the quota write critical section.
 
-    SQLite ignores SELECT .. FOR UPDATE, so shared-DB deployments need a writer
-    transaction before reading and modifying the usage row. Other dialects keep
-    using the row-level lock requested by _daily_usage(..., for_update=True).
+    Commit any prior (read) transaction so the FOR UPDATE row lock requested by
+    ``_daily_usage(..., for_update=True)`` is acquired in a fresh writer
+    transaction, held until this critical section commits. PG-only (债 #1): the
+    SQLite-only writer-lock statement previously taken here is gone; PG
+    serializes via the row lock alone.
     """
 
     if db.in_transaction():
         db.commit()
-    if db.get_bind().dialect.name == "sqlite":
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def _ensure_daily_usage_row(

@@ -197,9 +197,6 @@ def web_split_invite(
     if amount_cents is None or amount_cents <= 0:
         raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
 
-    # The lookups above are read-only. End that read transaction so the service
-    # can take its own SQLite writer guard before checking active split totals.
-    db.rollback()
     bsplit.create_invitation(
         db,
         sender_account_id=sender_account_id,

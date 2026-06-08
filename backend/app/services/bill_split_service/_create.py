@@ -54,16 +54,19 @@ def create_invitation(
     if receiver_account_id == sender_account_id:
         raise AppError("split_receiver_invalid", status_code=422)
 
-    _begin_split_create_transaction(db)
-
     # 1. Sender's role on sender_ledger must be writer.
     sender_member = _load_writer_member(db, sender_ledger_id, sender_account_id)
 
-    # 2. Expense must belong to sender's ledger.
+    # 2. Expense must belong to sender's ledger. Row-lock the parent so the
+    # active_split_total read + cap check + insert below serialize against
+    # concurrent invites on the same parent (PG-only 债 #1: replaces the
+    # SQLite-only BEGIN IMMEDIATE writer guard; FOR UPDATE is dialect-portable —
+    # PG locks the row, SQLite ignores it).
     expense = db.scalar(
         select(Expense)
         .where(Expense.id == expense_id)
         .where(Expense.tenant_id == sender_ledger_id)
+        .with_for_update()
     )
     if expense is None:
         raise AppError("expense_not_found", status_code=404)
@@ -164,25 +167,6 @@ def create_invitation(
     db.commit()
     db.refresh(invitation)
     return invitation
-
-
-def _begin_split_create_transaction(db: Session) -> None:
-    """Serialize split-create checks that depend on parent active total.
-
-    The business invariant is "active invitations for one parent expense must
-    not exceed the parent amount". SQLite cannot express that as a CHECK across
-    rows, so cloud / multi-worker deployments need the create path to take a
-    writer transaction before reading active totals and inserting the invite.
-    """
-
-    if db.in_transaction():
-        raise AppError(
-            "state_conflict",
-            "Cannot create a bill split invitation inside an active transaction.",
-            status_code=409,
-        )
-    if db.get_bind().dialect.name == "sqlite":
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def _exchange_rate_datetime(value: date | datetime | None) -> datetime | None:

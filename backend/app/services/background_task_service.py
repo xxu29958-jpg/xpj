@@ -210,24 +210,14 @@ def enqueue_or_get_active(
             f"Background task type {task_type!r} is not registered.",
             status_code=400,
         )
-    if db.in_transaction():
-        raise AppError(
-            "state_conflict",
-            "Cannot acquire singleton background-task guard inside an active transaction.",
-            status_code=409,
-        )
-
     payload_copy = dict(payload or {})
     try:
-        # SQLite serializes writers behind BEGIN IMMEDIATE. That makes the
-        # read-then-insert guard DB-backed without adding a new queue/broker
-        # dependency or widening this one-shot cut-over slice into schema work.
-        # ADR-0041: that grammar is SQLite-only (PostgreSQL rejects it), so
-        # guard it to SQLite like the bill_split / throttle / advisor singleton
-        # sites; on PostgreSQL the read-then-insert runs in the ordinary
-        # autobegun transaction.
-        if db.get_bind().dialect.name == "sqlite":
-            db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        # PG-only (债 #1): the SQLite-only BEGIN IMMEDIATE writer guard that
+        # serialized this read-then-insert is gone. The singleton has no
+        # lockable anchor row, so its proper PG close is a pg_advisory_xact_lock
+        # deferred to the SQLite-removal slice (step 3); until then the
+        # read-then-insert keeps the pre-existing accepted tail race that prod
+        # (single-process) has run since the PG cut-over.
         existing = _active_task(
             db,
             task_type=task_type,

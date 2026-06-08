@@ -150,19 +150,6 @@ def _ensure_quota_lock_row(db: Session, *, tenant_id: str, current: datetime) ->
         db.rollback()
 
 
-def _begin_quota_reservation(db: Session) -> None:
-    """Start the durable quota reservation critical section.
-
-    SQLite ignores row-level SELECT .. FOR UPDATE, so the shared-DB deployment
-    path needs the writer transaction before checking the recent audit window.
-    """
-
-    if db.in_transaction():
-        db.commit()
-    if db.get_bind().dialect.name == "sqlite":
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
-
-
 def reserve_live_call_budget(
     db: Session,
     *,
@@ -190,9 +177,13 @@ def reserve_live_call_budget(
         db.commit()
     _ensure_quota_lock_row(db, tenant_id=tenant_id, current=current)
 
-    _begin_quota_reservation(db)
     committed = False
     try:
+        # FOR UPDATE on the per-tenant quota-lock row serializes concurrent
+        # reservations for this tenant (PG-only 债 #1: replaces the SQLite-only
+        # BEGIN IMMEDIATE writer guard). _ensure_quota_lock_row committed above,
+        # so this autobegins a fresh transaction that holds the row lock until
+        # the reservation commit below.
         lock = db.get(BudgetAdvisorQuotaLock, tenant_id, with_for_update=True)
         if lock is None:
             lock = BudgetAdvisorQuotaLock(tenant_id=tenant_id, touched_at=current)

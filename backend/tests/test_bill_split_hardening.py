@@ -7,9 +7,10 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
+from sqlalchemy.exc import OperationalError
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.errors import AppError
 from app.models import BillSplitInvitation, Expense, Ledger, LedgerMember
 from app.services import bill_split_service as bsplit
@@ -44,27 +45,49 @@ def test_active_split_invitation_total_cannot_exceed_parent_expense(
     assert second.json()["error"] == "split_total_exceeds_parent"
 
 
-def test_create_invitation_requires_own_transaction_for_total_guard() -> None:
+@pytest.mark.skipif(
+    engine.dialect.name != "postgresql",
+    reason="row-lock contention is only observable on the PostgreSQL lane; "
+    "FOR UPDATE is a no-op on SQLite",
+)
+def test_create_invitation_row_locks_parent_expense(*, identity) -> None:
+    """PG-only 债#1: ``create_invitation`` FOR-UPDATEs the parent expense so the
+    active_split_total read + cap check + insert serialize against concurrent
+    invites on the same parent (replacing the removed SQLite-only BEGIN IMMEDIATE
+    writer guard). The ``.with_for_update()`` token itself is pinned by the
+    cloud-hardening audit gate; this test pins the runtime effect — the create
+    path serializes against a parent row lock on PG.
+
+    Session A holds the parent's row lock without committing; a second
+    ``create_invitation`` then cannot complete: its parent ``FOR UPDATE`` (and,
+    failing that, its child INSERT's FK ``FOR KEY SHARE`` on the same parent)
+    both conflict with A's lock. A short ``lock_timeout`` turns that contention
+    into a deterministic ``OperationalError`` instead of a hang.
+    """
     expense_id = _make_expense_for_owner(amount_cents=5000)
-    receiver_account_id = _seed_receiver(
-        name="B-guard",
-        ledger_id="receiver_guard",
-    )
-    sender_account_id = _owner_account_id()
+    receiver_account_id = _seed_receiver(name="B-lock", ledger_id="receiver_lock")
 
-    with SessionLocal() as db, pytest.raises(AppError) as exc_info:
-        db.scalar(select(Expense.id).limit(1))
-        bsplit.create_invitation(
-            db,
-            sender_account_id=sender_account_id,
-            sender_ledger_id="owner",
-            expense_id=expense_id,
-            receiver_account_id=receiver_account_id,
-            amount_cents=2500,
+    holder = SessionLocal()
+    try:
+        # Session A acquires and holds FOR UPDATE on the parent expense row.
+        holder.scalar(
+            select(Expense).where(Expense.id == expense_id).with_for_update()
         )
-
-    assert exc_info.value.error == "state_conflict"
-    assert exc_info.value.status_code == 409
+        # Session B: a short lock_timeout turns the contended FOR UPDATE inside
+        # create_invitation into a deterministic fast failure instead of a hang.
+        with SessionLocal() as blocked, pytest.raises(OperationalError):
+            blocked.execute(text("SET LOCAL lock_timeout = '500ms'"))
+            bsplit.create_invitation(
+                blocked,
+                sender_account_id=_owner_account_id(),
+                sender_ledger_id="owner",
+                expense_id=expense_id,
+                receiver_account_id=receiver_account_id,
+                amount_cents=1000,
+            )
+    finally:
+        holder.rollback()
+        holder.close()
 
 
 def test_reaccept_with_different_target_ledger_is_conflict() -> None:

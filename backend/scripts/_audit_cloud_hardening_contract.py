@@ -32,7 +32,7 @@ def _advisor_quota_missing() -> list[str]:
         advisor_audit,
         (
             "def reserve_live_call_budget",
-            "BEGIN IMMEDIATE",
+            "with_for_update",
             "IN_PROGRESS_ERROR_CODE",
             "complete_live_call_audit_row",
         ),
@@ -55,7 +55,7 @@ def _upload_link_missing() -> list[str]:
             "def reserve_upload_bytes",
             "def finalize_upload_bytes",
             "def release_upload_bytes",
-            "BEGIN IMMEDIATE",
+            "with_for_update",
         ),
     )
     upload_migration = _read_repo("backend/migrations/versions/20260528_0001_upload_link_expiry.py")
@@ -155,8 +155,7 @@ def _bill_split_missing() -> list[str]:
         "bill split cloud consistency",
         bill_split_create,
         (
-            "def _begin_split_create_transaction",
-            "BEGIN IMMEDIATE",
+            "with_for_update",
             "split_total_exceeds_parent",
             "split_invitation_already_pending",
             "split_amount_exceeds_parent",
