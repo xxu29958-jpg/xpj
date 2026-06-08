@@ -53,4 +53,3 @@
 .transaction-table .row-title { font-weight: 600; color: var(--text-default); }
 .transaction-table .row-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .transaction-row.is-duplicate { background: var(--state-warn-bg); }
-td.amount { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: right; font-weight: 600; color: var(--text-default); }

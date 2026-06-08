@@ -129,13 +129,6 @@
 .desktop-shell-active .transaction-row.is-duplicate {
     background: var(--brand-primary-bg);
 }
-.desktop-shell-active td.amount {
-    font-family: var(--font-num);
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    font-weight: 500;
-    color: var(--text-default);
-}
 
 /* legacy .form-row / .form-stack / .filter-bar / .filter-tab / .filter-row shell 覆盖已删除
    —— 模板已全迁到 .dt-form-row / .dt-form-grid / .seg / .seg-item (components/forms-row.css + toolbar.css).
