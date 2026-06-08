@@ -23,11 +23,21 @@
     padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border-card);
 }
+/* amount 列 canonical —— /web 全部金额 th/td 唯一来源(收口自旧 _misc.css/_summary.css
+   重复定义)。font-weight:500 对 thead th 与 base .dt-table thead th 同值(无变化),
+   对 tbody td.amount 提供原 _misc 的字重。 */
 .dt-table thead th.amount,
 .dt-table tbody td.amount {
     text-align: right;
     font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
+    font-weight: 500;
+}
+/* tbody 金额颜色单列(不并入上面 th+td 选择器,否则会盖掉 thead th 的 --text-meta)。
+   (0,2,2) 高于 .dt-table .text-over(0,2,0,见下),保持收口前 _misc 规则对超支红的压制
+   —— 主线现状超支金额仍是墨色。超支是否应显红是独立 UX 决策(本零变化重构不翻转)。 */
+.dt-table tbody td.amount {
+    color: var(--text-default);
 }
 .dt-table tbody td {
     padding: var(--space-3-5) var(--space-4);
