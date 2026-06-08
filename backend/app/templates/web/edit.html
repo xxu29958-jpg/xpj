@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}编辑账单 — 小票夹{% endblock %}
 {% block content %}
-<h1>编辑账单 #{{ expense.id }}</h1>
+<h1 class="page-title page-title--compact">编辑账单 #{{ expense.id }}</h1>
 
 {% if error %}
 <div class="dt-alert danger">⚠️ {{ error }}</div>

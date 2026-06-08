@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}分类规则 — 小票夹{% endblock %}
 {% block content %}
-<h1>分类规则</h1>
+<h1 class="page-title page-title--compact">分类规则</h1>
 <p class="meta">规则按关键词匹配商家，仅改写「其他/未分类」的<b>待确认</b>账单。不会自动确认，不会回写已确认记录。</p>
 {% if not can_write %}
 <div class="readonly-callout">只读角色可以查看和预览规则，但不能新增、启停、删除或一键应用。</div>

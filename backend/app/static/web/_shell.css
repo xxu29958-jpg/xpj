@@ -362,6 +362,9 @@
     background: var(--border-card);
     max-width: 80px;
 }
+/* 页头标题 canonical 词汇(收口自旧 _misc.css `.desktop-shell-active h1` + _shell 自身)。
+   .page-title = 内容/hero 页(dashboard/reports 等),36px serif;
+   .page-title--compact = 工具/管理页(rules/stats/edit/import 等),28px(沿用旧 h1 形态)。 */
 .page-title {
     font-family: var(--font-serif);
     font-weight: 400;
@@ -369,6 +372,18 @@
     letter-spacing: -0.01em;
     margin: 0 0 6px;
     color: var(--text-default);
+}
+.page-title--compact {
+    font-size: 28px;
+    margin-bottom: 14px;
+}
+/* 标题内联副标题(收口自 _misc.css:75 + features/_layout.css:52 两处重复定义,取 de-facto 值)。 */
+.page-title-sub {
+    font-family: var(--font-zh);
+    font-size: 13px;
+    color: var(--text-meta);
+    font-weight: normal;
+    margin-left: 10px;
 }
 .page-sub {
     font-size: 13.5px;

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}分类账本 — 小票夹{% endblock %}
 {% block content %}
-<h1>分类账本</h1>
+<h1 class="page-title page-title--compact">分类账本</h1>
 <p class="meta">
   按分类汇总当月（{{ target_month }}）已确认账单，并展示各分类下未处理的待确认条数。
   共 {{ rule_count }} 条<a href="/web/rules{{ q }}">分类规则</a>。
