@@ -22,7 +22,6 @@ from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
-    _begin_immediate_write_if_sqlite,
     _clean_category,
     _clean_notification_source,
     _clean_optional_text,
@@ -145,7 +144,14 @@ def enrich_pending_expense(
     generated_thumbnail_path: str | None = None
     with SessionLocal() as db:
         try:
-            _begin_immediate_write_if_sqlite(db)
+            # PG-only (债 #1): the SQLite-only BEGIN IMMEDIATE whole-DB lock the
+            # prior code took here is gone. We deliberately do NOT replace it with
+            # a parent-row FOR UPDATE — that lock would be held across the slow
+            # thumbnail I/O below (a lock-during-I/O anti-pattern), and prod (PG)
+            # already ran this background enrichment with no lock at all (the old
+            # shim was SQLite-only). Serializing concurrent same-expense
+            # enrichment without holding a row lock over the I/O is deferred (low
+            # value: single background worker, rare).
             expense = db.scalar(
                 ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
             )
