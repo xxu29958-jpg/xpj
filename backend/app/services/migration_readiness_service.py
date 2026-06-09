@@ -17,12 +17,46 @@ from app.config import get_settings
 from app.database import engine
 from app.errors import AppError
 from app.services import backup_service
-from app.services.sqlite_backup_validation_service import REQUIRED_TICKETBOX_TABLES
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
 V1_TARGET_VERSION = "1.0"
 
-REQUIRED_V09_TABLES = REQUIRED_TICKETBOX_TABLES
+# v0.9 baseline tables the v1.0 preflight expects to find. (Formerly shared with
+# the SQLite backup validator; that dialect-specific module was retired with the
+# PostgreSQL-only cut-over, so the list now lives with its only remaining reader.)
+REQUIRED_V09_TABLES = {
+    "accounts",
+    "ledgers",
+    "ledger_members",
+    "devices",
+    "auth_tokens",
+    "upload_links",
+    "pairing_codes",
+    "invitations",
+    "ledger_audit_logs",
+    "expenses",
+    "expense_items",
+    "expense_splits",
+    "category_rules",
+    "duplicate_ignores",
+    "recurring_items",
+    "budgets",
+    "budget_categories",
+    "goals",
+    "dashboard_card_preferences",
+    "merchant_aliases",
+    "tags",
+    "expense_tags",
+    "csv_import_batches",
+    "csv_import_rows",
+    "rule_application_batches",
+    "rule_application_changes",
+    "exchange_rates",
+    "fx_rates",
+    "schema_migrations",
+    "bootstrap_secret_consumptions",
+    "user_ui_preferences",
+}
 
 REQUIRED_V09_INDEXES = {
     "expenses": {

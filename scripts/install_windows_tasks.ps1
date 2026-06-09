@@ -222,7 +222,7 @@ if (-not $SkipBackup) {
         -Execute "powershell.exe" `
         -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$MaintenanceScript`" -Backup -BackupRetentionDays $BackupRetentionDays" `
         -At (Resolve-BackupTime) `
-        -Description "Daily SQLite backup for 小票夹, keep $BackupRetentionDays days"
+        -Description "Daily database backup for 小票夹, keep $BackupRetentionDays days"
 }
 else {
     Write-Host "SKIP 备份任务：已指定 -SkipBackup。"

@@ -7,8 +7,8 @@ v0.9.x — there is no separate schema rewrite. See the ADR's "Errata
 "snapshot + restore" once that reality became clear.
 
 PR-2 makes the cut-over rollback-safe by forcing a fresh
-``kind=pre-v1.0`` SQLite Online Backup *before* the
-``schema_version=1.0`` write commits. The handler does four things:
+``kind=pre-v1.0`` backup *before* the ``schema_version=1.0`` write
+commits. The handler does four things:
 
 1. Refuse if the current binary is older than v1.0 (would self-lock).
 2. Re-run readiness; refuse if any check is red.
@@ -16,11 +16,10 @@ PR-2 makes the cut-over rollback-safe by forcing a fresh
 4. Write ``schema_version="1.0"`` / ``schema_min_compatible="1.0"`` /
    ``migration_completed_at=<now>`` to ``app_meta``.
 
-Step 3 is the rollback contract: ``scripts/rollback_to_v0.ps1`` finds
-the latest ``pre-v1.0`` backup, checks age < 30 days, and feeds it to
-``restore_ticketbox_db.ps1``. If step 4 commits but the operator
-later wants to revert, the snapshot at step 3 is the truth they
-restore.
+Step 3 is the rollback contract: the ``pre-v1.0`` snapshot is the
+rollback material. If step 4 commits but the operator later wants to
+revert, that snapshot is the truth they restore (``pg_restore`` per
+the Postgres runbook).
 """
 
 from __future__ import annotations

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -29,56 +27,20 @@ def test_owner_backups_remote_returns_403(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
-def test_owner_backups_skip_invalid_partial_files(local_client: TestClient, tmp_path) -> None:
+def test_owner_backups_skip_invalid_dump_files(local_client: TestClient) -> None:
     del local_client
     from app.services import backup_service
 
-    partial = backup_service._backup_dir() / "ticketbox-29991231-235959.db"  # noqa: SLF001
-    partial.write_bytes(b"not a sqlite database")
+    # A file with the right name but garbage bytes is not a readable pg_dump
+    # archive — list_backups must filter it out and is_backup_valid must reject
+    # it (holds whether or not pg_restore is installed on the runner).
+    bogus = backup_service._backup_dir() / "ticketbox-29991231-235959.dump"  # noqa: SLF001
+    bogus.write_bytes(b"not a pg_dump archive")
     try:
-        assert backup_service.is_backup_valid(partial.name) is False
-        assert partial.name not in {entry.file_name for entry in backup_service.list_backups()}
+        assert backup_service.is_backup_valid(bogus.name) is False
+        assert bogus.name not in {entry.file_name for entry in backup_service.list_backups()}
     finally:
-        partial.unlink(missing_ok=True)
-
-
-def test_owner_backups_skip_foreign_key_damaged_files(local_client: TestClient) -> None:
-    del local_client
-    from app.services import backup_service
-
-    damaged = backup_service._backup_dir() / "ticketbox-29991231-235958.db"  # noqa: SLF001
-    conn = sqlite3.connect(damaged)
-    try:
-        conn.execute("PRAGMA foreign_keys=OFF")
-        conn.execute("CREATE TABLE parent (id INTEGER PRIMARY KEY)")
-        conn.execute("CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id))")
-        conn.execute("INSERT INTO child (id, parent_id) VALUES (1, 999)")
-        conn.commit()
-    finally:
-        conn.close()
-    try:
-        assert backup_service.is_backup_valid(damaged.name) is False
-        assert damaged.name not in {entry.file_name for entry in backup_service.list_backups()}
-    finally:
-        damaged.unlink(missing_ok=True)
-
-
-def test_owner_backups_skip_sqlite_files_without_ticketbox_schema(local_client: TestClient) -> None:
-    del local_client
-    from app.services import backup_service
-
-    wrong_schema = backup_service._backup_dir() / "ticketbox-29991231-235957.db"  # noqa: SLF001
-    conn = sqlite3.connect(wrong_schema)
-    try:
-        conn.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
-        conn.commit()
-    finally:
-        conn.close()
-    try:
-        assert backup_service.is_backup_valid(wrong_schema.name) is False
-        assert wrong_schema.name not in {entry.file_name for entry in backup_service.list_backups()}
-    finally:
-        wrong_schema.unlink(missing_ok=True)
+        bogus.unlink(missing_ok=True)
 
 
 def test_owner_backups_no_uploads_path_leak(local_client: TestClient) -> None:

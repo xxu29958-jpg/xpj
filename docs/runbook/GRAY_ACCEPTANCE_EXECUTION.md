@@ -534,25 +534,19 @@ Get-ScheduledTask -TaskName TicketboxBackup
 ```powershell
 # 查看已有备份(路径跟随 DATA_ROOT:源码运行 backend\backups\,冻结 EXE ticketbox-data\backups\)
 $BackupDir = if ($env:TICKETBOX_DATA_DIR) { Join-Path $env:TICKETBOX_DATA_DIR "backups" } else { "E:\projects\xiaopiaojia\backend\backups" }
-Get-ChildItem (Join-Path $BackupDir "*.db") -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+Get-ChildItem (Join-Path $BackupDir "*.dump") -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3
 ```
 
-恢复测试（在测试环境或非生产数据库上执行）：
-
-```powershell
-cd E:\projects\xiaopiaojia
-# -BackupPath 用 DATA_ROOT 下实际位置(同上)。
-powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 `
-  -BackupPath "E:\projects\xiaopiaojia\backend\backups\ticketbox-YYYYmmdd-HHMMSS.db"
-```
+恢复测试（在测试环境或非生产数据库上执行）：PostgreSQL 备份（`.dump`）用 `pg_restore` 恢复到一个
+**scratch 库**核对（不要直接覆盖生产库），恢复演练步骤见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
 
 > **注意**：v0.3 只会在发现 pre-v0.3 数据库结构时创建 `backups\ticketbox-pre-v0.3-YYYYMMDD-HHMMSS.db`。身份表迁移完成后，后续重启不会重复生成新的 pre-v0.3 备份。回滚到 v0.2 时使用首次迁移前的备份。
 
 **预期结果**：
 
 - `TicketboxBackup` 计划任务状态为 Ready 或 Running。
-- `<DATA_ROOT>\backups\` 目录下有 `.db` 备份文件(源码运行 `backend\backups\`,冻结 EXE `ticketbox-data\backups\`)。
-- 恢复脚本执行成功，数据库文件被替换，后端重启后数据正常。
+- `<DATA_ROOT>\backups\` 目录下有 `.dump` 备份文件(源码运行 `backend\backups\`,冻结 EXE `ticketbox-data\backups\`)。
+- `pg_restore` 能把 `.dump` 归档恢复到 scratch 库，数据计数与源库一致。
 
 **失败处理**：
 

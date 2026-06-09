@@ -18,7 +18,6 @@ E:\projects\xiaopiaojia\
     diagnose_ticketbox.ps1
     ensure_ticketbox_runtime.ps1
     maintenance_ticketbox.ps1
-    restore_ticketbox_db.ps1
     install_windows_tasks.ps1
     real_device_preflight.ps1
     start_backend.ps1

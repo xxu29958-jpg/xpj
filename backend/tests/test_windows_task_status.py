@@ -141,37 +141,29 @@ def test_owner_index_marks_nonzero_task_result_red(
 
 def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    backup_lib = (
-        project_root / "backend" / "scripts" / "lib" / "sqlite_backup.ps1"
+    backup_text = (
+        project_root / "backend" / "scripts" / "backup_database.ps1"
     ).read_text(encoding="utf-8-sig")
-    for script in (
-        project_root / "scripts" / "maintenance_ticketbox.ps1",
-        project_root / "scripts" / "restore_ticketbox_db.ps1",
-        project_root / "backend" / "scripts" / "backup_database.ps1",
-    ):
-        text = script.read_text(encoding="utf-8-sig")
-        assert "Resolve-DbPath" in text
-        assert "DATABASE_URL" in text
+    maintenance_text = (
+        project_root / "scripts" / "maintenance_ticketbox.ps1"
+    ).read_text(encoding="utf-8-sig")
+
+    # backup_database.ps1 is the dialect single-source: read DATABASE_URL, require
+    # PostgreSQL, dump via pg_dump and validate via pg_restore --list.
+    assert "DATABASE_URL" in backup_text
+    assert "app.services.postgres_backup_validation_service" in backup_text
+
+    # The scheduled maintenance task delegates its backup to backup_database.ps1
+    # rather than resolving the database itself.
+    assert "backup_database.ps1" in maintenance_text
+
+    # PostgreSQL-only (ADR-0041): neither script keeps the retired SQLite backup/
+    # validation path or a hardcoded SQLite file path.
+    for text in (backup_text, maintenance_text):
         assert '$DbPath = Join-Path $BackendRoot "data\\ticketbox.db"' not in text
-        # The SQLite backup + verify functions (incl. the validation-service
-        # call) are shared via the dot-sourced lib; the validator string lives in
-        # the lib, so fold it in when the script sources it.
-        effective = text + (backup_lib if "sqlite_backup.ps1" in text else "")
-        assert "app.services.sqlite_backup_validation_service" in effective
-        # ...and the script must actually INVOKE the validating path (Backup-
-        # SqliteDatabase / Test-SqliteBackup), not merely source the lib — so a
-        # script that sources it only for, say, Resolve-Python can't pass silently.
-        assert "Test-SqliteBackup" in text or "Backup-SqliteDatabase" in text
-
-
-def test_legacy_restore_script_delegates_to_canonical_restore_entrypoint() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    text = (project_root / "backend" / "scripts" / "restore_database.ps1").read_text(
-        encoding="utf-8-sig"
-    )
-    assert "scripts\\restore_ticketbox_db.ps1" in text
-    assert "-BackupPath" in text
-    assert "sqlite3.connect" not in text
+        assert "Resolve-DbPath" not in text
+        assert "sqlite_backup_validation_service" not in text
+        assert "Backup-SqliteDatabase" not in text
 
 
 def test_cloudflare_endpoint_script_does_not_accept_token_params() -> None:

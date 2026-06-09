@@ -74,50 +74,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_ta
 
 ## PostgreSQL（ADR-0041 cut-over 后）
 
-cut-over 到本机 PostgreSQL 后（执行手册 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)），**同一个** `TicketboxBackup` 任务无需改动：`maintenance_ticketbox.ps1 -Backup` 按 `DATABASE_URL` 的 dialect 自动切换——
-
-- **PostgreSQL**：`pg_dump -Fc` → `<DATA_ROOT>\backups\ticketbox-*.dump`（自定义格式归档），并用 `pg_restore --list` 校验归档可读；保留天数清理按 `.dump` 后缀。备份逻辑委托给 [backend/scripts/backup_database.ps1](../../backend/scripts/backup_database.ps1)（dialect 单一真相源）。
-- **SQLite**：仍是 SQLite Online Backup 快照 `.db`。
+cut-over 到本机 PostgreSQL 后（执行手册 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)），**同一个** `TicketboxBackup` 任务无需改动：`maintenance_ticketbox.ps1 -Backup` 产出 `pg_dump -Fc` 归档 → `<DATA_ROOT>\backups\ticketbox-*.dump`（自定义格式），并用 `pg_restore --list` 校验归档可读；保留天数清理按 `.dump` 后缀。备份逻辑委托给 [backend/scripts/backup_database.ps1](../../backend/scripts/backup_database.ps1)（单一真相源）。
 
 凭证与二进制：
 
 - `pg_dump` 需在 `PATH`，否则设 `PG_DUMP_PATH`（计划任务所属服务账户的环境）。
 - 口令走 `DATABASE_URL` 内联，或 `PGPASSWORD` / `%APPDATA%\postgresql\pgpass.conf`（任务以哪个账户跑就配哪个账户的 `pgpass`）。
 
-PostgreSQL 恢复**不**走下方的 `restore_ticketbox_db.ps1`（它只认 SQLite `.db`）；用 `pg_restore`，见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
+PostgreSQL 恢复用 `pg_restore`（见下方「从备份恢复」与 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)）。
 
 ## 从备份恢复
 
-恢复前请先停止后端，避免运行中的 SQLite 文件被覆盖：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop_backend.ps1
-```
-
-恢复指定备份：
-
-```powershell
-# 源码运行(DATA_ROOT = backend):
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath "backend\backups\ticketbox-20260508-033000.db"
-# 冻结 EXE 部署(TICKETBOX_DATA_DIR=ticketbox-data\):
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath "ticketbox-data\backups\ticketbox-20260508-033000.db"
-```
-
-恢复脚本会：
-
-1. 校验备份文件必须是 `.db`。
-2. 执行 SQLite `PRAGMA integrity_check`。
-3. 如果当前数据库存在，先用 SQLite Online Backup API 创建 `ticketbox-before-restore-*.db`。
-4. 再覆盖 `backend/data/ticketbox.db`。
-5. 覆盖后再次校验数据库。
-
-如果确认要在后端运行时强制恢复，可以传入 `-ForceWhileRunning`，但日常不建议这样做。
+PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。恢复前先停后端
+（`scripts\stop_backend.ps1`），再用 `pg_restore` 把归档恢复到目标库——完整步骤（建库、`--no-owner`、
+凭证、起库后校验）见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。`uploads/` 目录不随库恢复改动。
 
 边界：
 
 - 不提交 `backend/backups/` 或 `ticketbox-data/backups/`(`.gitignore` 已覆盖)。
 - 不把真实 Token 写进备份文档、日志或 Git。
-- 备份只在本机用 SQLite Online Backup API 生成一致快照，不上传云端。
-- 默认只保留最近 30 天的备份（SQLite `ticketbox-*.db` / PostgreSQL `ticketbox-*.dump`，按当前 dialect）。
-- 恢复脚本只恢复 SQLite 数据库，不删除 uploads 图片。
+- 备份只在本机生成 `pg_dump` 归档，不上传云端。
+- 默认只保留最近 30 天的备份（`ticketbox-*.dump`）。
+- 恢复不删除 uploads 图片。
 - 清理图片不影响 confirmed 账本数据。
