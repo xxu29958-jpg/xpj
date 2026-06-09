@@ -68,7 +68,7 @@ iPhone 截图
   -> https://api.我的域名.com/u/<upload_key>
   -> Cloudflare Tunnel
   -> Windows 主机 FastAPI 服务，监听 127.0.0.1:8000
-  -> SQLite 数据库 + uploads 私有图片目录
+  -> PostgreSQL 数据库 + uploads 私有图片目录
   -> Android App 拉取 pending 账单
   -> 用户编辑/确认/删除
   -> confirmed 账单同步到 Android Room
@@ -79,7 +79,7 @@ iPhone 截图
 - iPhone 只负责上传图片。
 - 后端只负责保存、校验、建账单、提供 API。
 - Android App 是当前唯一人工确认入口。
-- SQLite 数据库只能被本机后端访问。
+- PostgreSQL 数据库只能被本机后端访问。
 - uploads 目录不能被静态公开。
 - Cloudflare Tunnel 只映射 API，不映射 Windows 文件夹。
 
@@ -87,7 +87,7 @@ iPhone 截图
 
 - Python 3.11+
 - FastAPI
-- SQLite
+- PostgreSQL
 - SQLAlchemy
 - Pydantic
 - Uvicorn
@@ -130,7 +130,7 @@ backend/
 
 - `main.py`：创建 FastAPI app、注册路由、注册统一异常处理。
 - `config.py`：读取 `.env` 或环境变量。
-- `database.py`：SQLite engine、session、建表入口。
+- `database.py`：PostgreSQL engine、session、建表入口。
 - `models.py`：数据库 ORM 模型（含 Account、Ledger、Device、AuthToken、UploadLink、PairingCode）。
 - `schemas.py`：Pydantic 请求和响应模型。
 - `auth.py`：`Authorization: Bearer` 校验、旧版 token 检测。
@@ -145,7 +145,7 @@ backend/
 `.env` 示例：
 
 ```env
-DATABASE_URL=sqlite:///data/ticketbox.db
+DATABASE_URL=postgresql+psycopg://ticketbox:replace-with-strong-password@localhost:5432/ticketbox
 UPLOAD_DIR=uploads
 MAX_UPLOAD_SIZE_MB=10
 DELETE_IMAGE_AFTER_CONFIRM=false
@@ -183,7 +183,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_backend.ps
 
 ## 5. v0.3 身份与权限
 
-v0.3 废弃了旧版三个静态 Token（`UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN`），改为基于 SQLite 的可撤销凭证系统：
+v0.3 废弃了旧版三个静态 Token（`UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN`），改为基于数据库的可撤销凭证系统：
 
 ```text
 PairingCode    Android 绑定入口，8 位数字，一次性，有 TTL（默认 15 分钟）
@@ -966,7 +966,7 @@ api.我的域名.com -> http://127.0.0.1:8000
 - 不开放路由器端口。
 - 不直接暴露 Windows 文件夹。
 - 不把 uploads 设置成公开目录。
-- 不把 SQLite 数据库目录暴露到公网。
+- 不把 PostgreSQL 数据库暴露到公网。
 - FastAPI 只监听 `127.0.0.1`。
 
 ## 18. 安全注意事项
@@ -979,7 +979,7 @@ api.我的域名.com -> http://127.0.0.1:8000
 - 上传文件必须使用随机文件名。
 - 不使用原始文件名保存。
 - uploads 文件夹不能公开。
-- SQLite 数据库只本地访问。
+- PostgreSQL 数据库只本地访问。
 - 不提供远程关机、命令执行、文件管理等危险接口。
 - API 不返回本机真实路径。
 - 图片路径只保存相对路径。

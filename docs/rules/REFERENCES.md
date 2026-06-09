@@ -12,7 +12,7 @@
 - FastAPI testing / `TestClient`：https://fastapi.tiangolo.com/tutorial/testing/
 - FastAPI testing dependency overrides：https://fastapi.tiangolo.com/advanced/testing-dependencies/
 - SQLAlchemy ORM 2.0：https://docs.sqlalchemy.org/en/20/orm/
-- SQLAlchemy SQLite dialect：https://docs.sqlalchemy.org/en/20/dialects/sqlite.html
+- SQLAlchemy PostgreSQL dialect：https://docs.sqlalchemy.org/en/20/dialects/postgresql.html
 - pytest 文档：https://docs.pytest.org/en/stable/
 - pytest PyPI 元数据：https://pypi.org/project/pytest/
 - httpx PyPI 元数据：https://pypi.org/project/httpx/

@@ -6,7 +6,7 @@ Windows 本机 FastAPI 服务。默认只监听 `127.0.0.1:8000`，由 Cloudflar
 
 - Python 3.11+
 - FastAPI
-- SQLite
+- PostgreSQL
 - SQLAlchemy
 - Pydantic
 - Uvicorn
@@ -54,12 +54,12 @@ copy .env.example .env
 notepad .env
 ```
 
-v0.3 不再在 `.env` 中配置 `UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN` 或正式运行时 `TENANTS_JSON`。身份凭证通过 Bootstrap Owner 生成，只显示一次，并且只保存 hash 到 SQLite。
+v0.3 不再在 `.env` 中配置 `UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN` 或正式运行时 `TENANTS_JSON`。身份凭证通过 Bootstrap Owner 生成，只显示一次，并且只保存 hash 到数据库。
 
 示例：
 
 ```env
-DATABASE_URL=sqlite:///data/ticketbox.db
+DATABASE_URL=postgresql+psycopg://ticketbox:replace-with-strong-password@localhost:5432/ticketbox
 UPLOAD_DIR=uploads
 MAX_UPLOAD_SIZE_MB=10
 DELETE_IMAGE_AFTER_CONFIRM=false

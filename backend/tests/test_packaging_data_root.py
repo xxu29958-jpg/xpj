@@ -2,7 +2,7 @@
 
 When the backend runs as a PyInstaller one-file EXE, ``BACKEND_ROOT`` is the
 throwaway ``_MEIPASS`` extraction dir. Files the backend *writes* — the Owner
-Console settings ``.env`` and SQLite backups — must instead live under
+Console settings ``.env`` and PostgreSQL backups — must instead live under
 ``DATA_ROOT``, which the launcher points at a persistent ``ticketbox-data/``
 folder via ``TICKETBOX_DATA_DIR``. These tests lock that wiring so a future
 refactor can't silently send those writes back into the throwaway _MEIPASS

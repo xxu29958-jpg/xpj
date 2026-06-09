@@ -87,9 +87,9 @@ CI 不需要真实 Token。
 
 ```text
 backend/.env
-backend/data/*.db
+backend/data/*
 backend/uploads/*
-backend/backups/*.db
+backend/backups/*
 android/app/build/*
 ```
 

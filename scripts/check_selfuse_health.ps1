@@ -34,7 +34,7 @@
       H05 public /api/health via Cloudflare 200
       H06 public /owner blocked
       H07 public /docs blocked
-      H08 sqlite db file exists and non-empty
+      H08 PostgreSQL reachable (TCP connect to DATABASE_URL host:port)
       H09 uploads dir exists and writable
       H10 recent backup exists (<= 7d) — warn-only when missing
       H11 recent log errors counted (warn-only when > 50)
@@ -138,9 +138,11 @@ $h7Status = if ($h7ok) { 'ok' } elseif ($h7 -eq -1) { 'warn' } else { 'fail' }
 Add-Item -Id 'H07' -Name '公网 /docs 被阻断' `
     -Status $h7Status -Detail "GET $BaseUrl/docs -> $h7 (期望 401/403/404)"
 
-# H08 sqlite db
-function Resolve-DbPath {
+# H08 PostgreSQL reachable — TCP connect to DATABASE_URL host:port (default
+# localhost:5432). No credentials needed; just confirms the server is listening.
+function Resolve-PgEndpoint {
     param([string]$BackendRoot)
+    $pgHost = 'localhost'; $pgPort = 5432
     $envFile = Join-Path $BackendRoot '.env'
     if (Test-Path -LiteralPath $envFile) {
         try {
@@ -149,36 +151,33 @@ function Resolve-DbPath {
                 Select-Object -First 1
             if ($line) {
                 $val = ($line -replace '^\s*DATABASE_URL\s*=', '').Trim().Trim('"').Trim("'")
-                if ($val -match '^sqlite:///(.+)$') {
-                    $candidate = $Matches[1]
-                    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
-                        $candidate = Join-Path $BackendRoot $candidate
-                    }
-                    return $candidate
+                if ($val -match '@([^/:@]+)(?::(\d+))?/') {
+                    $pgHost = $Matches[1]
+                    if ($Matches[2]) { $pgPort = [int]$Matches[2] }
                 }
-                # Non-sqlite (e.g. postgres). Skip the file check.
-                return $null
             }
         } catch { }
     }
-    return Join-Path $BackendRoot 'data\ticketbox.db'
+    return @{ DbHost = $pgHost; DbPort = $pgPort }
 }
 
-$dbPath = Resolve-DbPath -BackendRoot $BackendRoot
-if ($null -eq $dbPath) {
-    Add-Item -Id 'H08' -Name 'SQLite 数据库文件' `
-        -Status 'warn' -Detail 'DATABASE_URL 非 sqlite，跳过文件检查'
-} else {
-    $dbOk = (Test-Path -LiteralPath $dbPath) -and ((Get-Item $dbPath).Length -gt 0)
-    $dbDetail = if (Test-Path -LiteralPath $dbPath) {
-        "{0} size={1:N0}B" -f $dbPath, (Get-Item $dbPath).Length
-    } else {
-        "{0} 文件不存在" -f $dbPath
+$pg = Resolve-PgEndpoint -BackendRoot $BackendRoot
+$pgOk = $false
+try {
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $async = $client.BeginConnect($pg.DbHost, $pg.DbPort, $null, $null)
+        if ($async.AsyncWaitHandle.WaitOne(2000)) {
+            $client.EndConnect($async)
+            $pgOk = $client.Connected
+        }
+    } finally {
+        $client.Close()
     }
-    $dbStatus = if ($dbOk) { 'ok' } else { 'fail' }
-    Add-Item -Id 'H08' -Name 'SQLite 数据库文件' `
-        -Status $dbStatus -Detail $dbDetail
-}
+} catch { $pgOk = $false }
+$h8Status = if ($pgOk) { 'ok' } else { 'fail' }
+$h8Detail = "{0}:{1} -> {2}" -f $pg.DbHost, $pg.DbPort, $(if ($pgOk) { 'reachable' } else { 'unreachable' })
+Add-Item -Id 'H08' -Name 'PostgreSQL 可达' -Status $h8Status -Detail $h8Detail
 
 # H09 uploads dir — read UPLOAD_DIR from .env, fall back to default
 function Resolve-UploadDir {

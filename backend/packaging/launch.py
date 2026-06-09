@@ -2,11 +2,13 @@
 
 PyInstaller bundles the read-only program (the ``app`` package, static assets,
 Jinja templates, ``alembic.ini`` and ``migrations/``). Everything the running
-backend *writes* — the SQLite database, uploaded images, ``.env`` overrides,
-logs — lives in a separate, writable ``ticketbox-data/`` folder next to the
-EXE. We point the app's config there via env vars BEFORE importing ``app.*``,
-because :mod:`app.config` resolves paths relative to its own location, which in
-a frozen build is the throwaway extraction dir (``sys._MEIPASS``).
+backend *writes* — uploaded images, ``.env`` overrides, logs, and PostgreSQL
+backups — lives in a separate, writable ``ticketbox-data/`` folder next to the
+EXE. The database itself runs in a local PostgreSQL service (see
+docs/runbook/POSTGRES_MIGRATION.md), not in this folder. We point the app's
+config there via env vars BEFORE importing ``app.*``, because :mod:`app.config`
+resolves paths relative to its own location, which in a frozen build is the
+throwaway extraction dir (``sys._MEIPASS``).
 
 Run (frozen):   double-click ticketbox-backend.exe
 Run (dev):      python packaging/launch.py            (cwd = backend/)
@@ -35,16 +37,17 @@ def configure_environment() -> Path:
 
     Order matters: a user-supplied ``ticketbox-data/.env`` wins (override=True),
     and the data-dir defaults only fill what the user did not set
-    (``setdefault``). So an advanced user can repoint DATABASE_URL elsewhere
-    while a friend who just double-clicks gets a self-contained folder.
+    (``setdefault``). ``DATABASE_URL`` is NOT defaulted here — the backend is
+    PostgreSQL-only, so it falls through to ``app.config``'s local-PostgreSQL
+    default unless the user's ``.env`` sets it.
     """
     data_dir = _app_root() / "ticketbox-data"
     (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
 
     # Anchor app.config.DATA_ROOT here so writable files the backend *creates*
-    # (Owner Console settings .env, SQLite backups) persist in this folder rather
-    # than the frozen build's throwaway _MEIPASS extraction dir. Set before the
-    # .env load and before main() imports app.* so app.config reads it.
+    # (Owner Console settings .env, PostgreSQL backups) persist in this folder
+    # rather than the frozen build's throwaway _MEIPASS extraction dir. Set
+    # before the .env load and before main() imports app.* so app.config reads it.
     os.environ["TICKETBOX_DATA_DIR"] = str(data_dir)
 
     env_file = data_dir / ".env"
@@ -53,7 +56,9 @@ def configure_environment() -> Path:
 
         load_dotenv(env_file, encoding="utf-8-sig", override=True)
 
-    os.environ.setdefault("DATABASE_URL", f"sqlite:///{(data_dir / 'ticketbox.db').as_posix()}")
+    # DATABASE_URL is intentionally not defaulted: the backend is PostgreSQL-only.
+    # A user .env may set it; otherwise app.config supplies the local-PostgreSQL
+    # default (the EXE assumes a local PostgreSQL service is installed).
     os.environ.setdefault("UPLOAD_DIR", str(data_dir / "uploads"))
     return data_dir
 

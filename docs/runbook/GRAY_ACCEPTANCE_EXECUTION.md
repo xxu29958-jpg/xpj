@@ -517,7 +517,7 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 ## 12. 备份与恢复
 
-**验收项**：Windows 计划任务能自动备份 SQLite 数据库，恢复脚本可用。
+**验收项**：Windows 计划任务能自动备份 PostgreSQL 数据库，`pg_restore` 恢复可用。
 
 **执行人**：服务拥有者
 
@@ -539,8 +539,6 @@ Get-ChildItem (Join-Path $BackupDir "*.dump") -ErrorAction SilentlyContinue | So
 
 恢复测试（在测试环境或非生产数据库上执行）：PostgreSQL 备份（`.dump`）用 `pg_restore` 恢复到一个
 **scratch 库**核对（不要直接覆盖生产库），恢复演练步骤见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
-
-> **注意**：v0.3 只会在发现 pre-v0.3 数据库结构时创建 `backups\ticketbox-pre-v0.3-YYYYMMDD-HHMMSS.db`。身份表迁移完成后，后续重启不会重复生成新的 pre-v0.3 备份。回滚到 v0.2 时使用首次迁移前的备份。
 
 **预期结果**：
 

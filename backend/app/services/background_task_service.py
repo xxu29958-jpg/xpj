@@ -199,9 +199,8 @@ def enqueue_or_get_active(
     """Insert a task unless an active one already exists.
 
     Returns ``(task, created)``. This is intentionally narrow: it is for
-    singleton flows such as the v1 cut-over where a second click must point
-    at the existing ``queued``/``running`` row rather than creating another
-    backup and app_meta write sequence.
+    singleton flows where a second click must point at the existing
+    ``queued``/``running`` row rather than starting a duplicate run.
     """
     registry = _current_handler_registry()
     if not registry.contains(task_type):

@@ -14,6 +14,6 @@ PyJWT[crypto]==2.13.0
 # startup migrator was retired in the PG-only slimming — debt #4.)
 alembic==1.16.4
 # ADR-0041: PostgreSQL engine migration. psycopg 3 (binary wheels - no system
-# libpq needed) is the SQLAlchemy driver for postgresql+psycopg:// URLs. SQLite
-# stays the default; psycopg only loads when DATABASE_URL points at Postgres.
+# libpq needed) is the SQLAlchemy driver for postgresql+psycopg:// URLs.
+# PostgreSQL is the only database (debt #4); SQLite was retired in the PG-only slimming.
 psycopg[binary]==3.3.4

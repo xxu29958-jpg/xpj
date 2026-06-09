@@ -15,7 +15,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 def _resolve_data_root(backend_root: Path) -> Path:
     """Writable-data root for files the running backend *creates* — settings
-    ``.env`` (Owner Console) and SQLite backups.
+    ``.env`` (Owner Console) and PostgreSQL backups.
 
     Defaults to ``backend_root`` so a normal source/dev run (and the whole test
     suite) is unchanged. The frozen-EXE launcher (``packaging/launch.py``) sets
