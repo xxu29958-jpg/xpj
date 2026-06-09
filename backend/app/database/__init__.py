@@ -13,7 +13,6 @@ other public symbols are direct re-exports.
 
 from __future__ import annotations
 
-from app.database._backup import backup_sqlite_database_once, reset_sqlite_backup_state
 from app.database._core import (
     BACKEND_ROOT,
     Base,
@@ -22,19 +21,14 @@ from app.database._core import (
     get_db,
     settings,
 )
-from app.database._migrations import (
-    BASELINE_MIGRATION_NAME,
-    is_schema_migration_applied,
-    migrate_sqlite_schema,
-    record_schema_migration,
-)
 from app.database._seed import (
+    BASELINE_MIGRATION_NAME,
     reconcile_expense_tag_mirror_once,
+    record_schema_migration,
     seed_identity_data,
     seed_runtime_data,
 )
 from app.database._uploads import migrate_upload_paths_to_tenant_dirs
-from app.database._validate import validate_sqlite_data_integrity
 from app.database.data_migration import MigrationCheck, MigrationReport, migrate
 from app.version import BACKEND_VERSION
 
@@ -49,34 +43,27 @@ __all__ = [
     "get_db",
     "init_db",
     "migrate",
-    "is_schema_migration_applied",
-    "migrate_sqlite_schema",
     "migrate_upload_paths_to_tenant_dirs",
     "reconcile_expense_tag_mirror_once",
     "record_schema_migration",
-    "reset_sqlite_backup_state",
     "seed_identity_data",
     "seed_runtime_data",
     "settings",
-    "validate_sqlite_data_integrity",
 ]
 
 
 def init_db() -> None:
     from app import models  # noqa: F401
 
-    backup_sqlite_database_once()
     Base.metadata.create_all(bind=engine)
-    migrate_sqlite_schema()
     record_schema_migration(
         BASELINE_MIGRATION_NAME,
         backend_version=BACKEND_VERSION,
-        note="legacy hand-written migrate_sqlite_schema baseline",
+        note="schema baseline marker",
     )
     _stamp_alembic_baseline_if_needed()
     _seed_fresh_schema_metadata_if_needed()
     seed_identity_data()
-    validate_sqlite_data_integrity()
     # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
     # paths remain readable through resolve_protected_image() after the route
     # has verified expense ownership. See docs/runbook/ROLLBACK.md.

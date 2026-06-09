@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 from api_contract_helpers import (
@@ -142,6 +143,72 @@ def test_legacy_upload_paths_migrate_into_current_tenant_dir(
         ).status_code
         == 200
     )
+
+
+def test_legacy_upload_migration_leaves_database_only_reference_untouched(identity) -> None:
+    """A legacy ``image_path`` with no on-disk file (a database-only reference)
+    is left as-is by ``migrate_upload_paths_to_tenant_dirs`` — the helper only
+    rewrites rows whose file physically exists. Ported (ORM form) from the
+    retired SQLite-migrator test: ``migrate_upload_paths_to_tenant_dirs`` is
+    cross-dialect owner tooling that still needs this coverage.
+    """
+    missing_path = f"{TEST_UPLOAD_RELATIVE}/2026/05/missing.png"
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            image_path=missing_path,
+            image_hash="legacy-missing-hash",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        expense_id = expense.id
+
+    migrate_upload_paths_to_tenant_dirs()
+
+    with SessionLocal() as db:
+        unchanged = db.get(Expense, expense_id)
+        assert unchanged is not None
+        assert unchanged.image_path == missing_path
+
+
+def test_legacy_upload_migration_rename_failure_keeps_original_file_and_path(
+    identity, monkeypatch,
+) -> None:
+    """If moving a legacy file raises, the original file and its database path
+    are both preserved (no half-migrated state). Ported (ORM form) from the
+    retired SQLite-migrator test.
+    """
+    legacy_dir = TEST_UPLOAD_DIR / "2026" / "05"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    legacy_file = legacy_dir / "rename-fails.png"
+    legacy_file.write_bytes(PNG_BYTES)
+    legacy_path = legacy_file.relative_to(BACKEND_ROOT).as_posix()
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            image_path=legacy_path,
+            image_hash="legacy-rename-hash",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        expense_id = expense.id
+
+    def fail_rename(self: Path, target: Path) -> Path:
+        raise OSError("simulated move failure")
+
+    monkeypatch.setattr(Path, "rename", fail_rename)
+
+    migrate_upload_paths_to_tenant_dirs()
+
+    assert legacy_file.is_file()
+    with SessionLocal() as db:
+        preserved = db.get(Expense, expense_id)
+        assert preserved is not None
+        assert preserved.image_path == legacy_path
 
 
 def test_expense_mutation_routes_are_tenant_scoped(client: TestClient, *, identity) -> None:

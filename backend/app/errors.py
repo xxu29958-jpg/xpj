@@ -118,10 +118,9 @@ class DataIntegrityError(RuntimeError):
     """Legacy data on disk does not match the invariants the runtime requires.
 
     Raised exclusively during ``init_db`` / migration / validation. Inherits
-    from ``RuntimeError`` so existing ``except RuntimeError`` blocks (notably
-    the ``test_database_migration_*.py`` suite's ``pytest.raises(RuntimeError, match=...)``)
-    keep working. New call sites can ``except DataIntegrityError`` to
-    distinguish migration-time data corruption from other RuntimeErrors.
+    from ``RuntimeError`` so existing ``except RuntimeError`` blocks keep
+    working. New call sites can ``except DataIntegrityError`` to distinguish
+    migration-time data corruption from other RuntimeErrors.
     """
 
 

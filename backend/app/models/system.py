@@ -18,15 +18,12 @@ from app.services.time_service import now_utc
 
 
 class SchemaMigration(Base):
-    """Tracks which named migration steps have been applied to the SQLite DB.
+    """Tracks which named migration steps have been applied.
 
-    The legacy hand-written ``migrate_sqlite_schema`` in
-    :mod:`app.database` is idempotent (uses ``ADD COLUMN`` /
-    ``CREATE INDEX IF NOT EXISTS``) and does **not** gate on this table. It
-    exists so that incremental migration steps can record a stable identifier
-    (e.g. ``"v0.9-add-foo"``) and be skipped on subsequent boots — and ADR-0043
-    now uses it exactly that way: the one-time ``expense_tags`` mirror reconcile
-    (``reconcile_expense_tag_mirror_once``) gates on a row here via a
+    ``record_schema_migration`` (in :mod:`app.database._seed`) writes a stable
+    identifier here so a one-time step can be skipped on subsequent boots.
+    ADR-0043 uses it exactly that way: the one-time ``expense_tags`` mirror
+    reconcile (``reconcile_expense_tag_mirror_once``) gates on a row here via a
     cross-dialect read so it runs once on both SQLite and Postgres. See
     ``docs/roadmap/V2_ROADMAP.md`` and the audit notes in
     ``docs/architecture/VERSION.md``.
