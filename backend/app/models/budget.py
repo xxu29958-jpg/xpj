@@ -128,7 +128,6 @@ Index(
     Goal.goal_type,
     Goal.period,
     unique=True,
-    sqlite_where=(Goal.status == "active") & Goal.category.is_(None),
     postgresql_where=(Goal.status == "active") & Goal.category.is_(None),
 )
 Index(
@@ -139,7 +138,6 @@ Index(
     Goal.period,
     Goal.category,
     unique=True,
-    sqlite_where=(Goal.status == "active") & Goal.category.is_not(None),
     postgresql_where=(Goal.status == "active") & Goal.category.is_not(None),
 )
 

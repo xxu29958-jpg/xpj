@@ -23,7 +23,6 @@ from tests._infra import env  # noqa: F401
 from tests._infra.client import make_test_client
 from tests._infra.db import (
     cleanup_runtime,
-    is_isolation_lane,
     reset_db_state,
     transactional_isolation,
 )
@@ -32,13 +31,12 @@ from tests._infra.identity import TestIdentity, seed_identity
 
 @pytest.fixture(scope="session", autouse=True)
 def _isolation_schema():
-    """Build schema + base seed ONCE for the PostgreSQL isolation lane.
+    """Build schema + base seed ONCE for the session (PostgreSQL isolation lane).
 
-    No-op on SQLite lanes (the per-test ``reset_db_state`` in ``identity`` owns
-    the schema there).
+    Per-test ``_db_isolation`` then wraps each test in a rolled-back transaction
+    (or a full reset for ``@pytest.mark.real_db`` tests).
     """
-    if is_isolation_lane():
-        reset_db_state()
+    reset_db_state()
     yield
 
 
@@ -48,17 +46,12 @@ def _db_isolation(request: pytest.FixtureRequest):
     ``identity`` fixture are isolated too — otherwise their ``SessionLocal()``
     stays bound to the engine and their commits leak into the shared DB.
 
-    * SQLite lanes — no-op here; ``identity`` keeps owning ``reset_db_state``
-      exactly as before (behaviour unchanged for the default lane).
-    * PostgreSQL lane — wrap the test in a rolled-back outer transaction (schema
-      already built once). ``@pytest.mark.real_db`` opts out for tests needing
-      real cross-connection commits (concurrency, ``engine.begin()`` migrations);
-      they get a full reset + a teardown reset so their committed rows don't leak
-      into the next transaction-isolated test's baseline.
+    Wrap each test in a rolled-back outer transaction (schema already built once
+    by ``_isolation_schema``). ``@pytest.mark.real_db`` opts out for tests needing
+    real cross-connection commits (concurrency, ``engine.begin()`` migrations);
+    they get a full reset + a teardown reset so their committed rows don't leak
+    into the next transaction-isolated test's baseline.
     """
-    if not is_isolation_lane():
-        yield
-        return
     if "real_db" in request.keywords:
         reset_db_state()
         try:
@@ -72,9 +65,7 @@ def _db_isolation(request: pytest.FixtureRequest):
 
 @pytest.fixture()
 def identity(_db_isolation) -> TestIdentity:
-    # SQLite lanes reset here (PG lanes already handled it in _db_isolation).
-    if not is_isolation_lane():
-        reset_db_state()
+    # _db_isolation already set up the per-test transaction (or real_db reset).
     return seed_identity()
 
 
@@ -115,7 +106,7 @@ def pytest_configure(config: pytest.Config) -> None:
         "real_db: opt out of the PostgreSQL lane's per-test transaction-rollback "
         "isolation and run against a real committed DB (full reset_db_state). For "
         "tests that need real cross-connection commits — concurrency, true "
-        "background-thread work. No effect on the SQLite lanes.",
+        "background-thread work.",
     )
 
 
@@ -123,7 +114,6 @@ def pytest_configure(config: pytest.Config) -> None:
 # isolation, marked ``real_db`` centrally (one auditable place) instead of
 # scattering ``@pytest.mark.real_db`` across the suite. Matched as substrings of
 # ``item.nodeid`` (a trailing ``::`` pins a whole module; otherwise a test prefix).
-# No effect on the SQLite lanes — ``_db_isolation`` only consults this on PG.
 _PG_REAL_DB_NODES = (
     # Schema/engine manipulation: drop_all / init_db / engine.begin / create_engine
     # / reset_db_state auto-commit DDL OUTSIDE the per-test transaction while the
