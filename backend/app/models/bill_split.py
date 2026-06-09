@@ -154,6 +154,5 @@ Index(
     BillSplitInvitation.sender_expense_id,
     BillSplitInvitation.receiver_account_id,
     unique=True,
-    sqlite_where=BillSplitInvitation.status == "invited",
     postgresql_where=BillSplitInvitation.status == "invited",
 )

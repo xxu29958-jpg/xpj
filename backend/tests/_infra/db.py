@@ -18,7 +18,7 @@ import shutil
 from collections.abc import Iterator
 
 from app.database import Base, engine, init_db
-from tests._infra.env import TEST_DB_PATH, TEST_UPLOAD_DIR
+from tests._infra.env import TEST_UPLOAD_DIR
 
 
 def reset_db_state() -> None:
@@ -29,27 +29,9 @@ def reset_db_state() -> None:
 
 
 def cleanup_runtime() -> None:
-    """Dispose engine and delete test DB + WAL/journal files. Session-end hook."""
+    """Dispose the engine and clear the test upload dir. Session-end hook."""
     engine.dispose()
     shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
-    for suffix in ("", "-journal", "-wal", "-shm"):
-        path = TEST_DB_PATH.with_name(f"{TEST_DB_PATH.name}{suffix}")
-        with contextlib.suppress(FileNotFoundError):
-            path.unlink()
-
-
-def is_isolation_lane() -> bool:
-    """True on PostgreSQL — the only supported lane now (debt #4).
-
-    Returns False only for a ``sqlite://`` URL: a vestigial guard kept so the
-    fixtures fall back to a full rebuild rather than misapplying the SAVEPOINT
-    rollback model. The SQLite engine machinery is gone, so a sqlite override is
-    no longer actually supported; no lane sets one. (The vestigial sqlite branches
-    here + in conftest are slated for removal with the test-lane collapse.)
-    """
-    from app.database import settings
-
-    return not settings.database_url.startswith("sqlite")
 
 
 @contextlib.contextmanager
@@ -78,8 +60,8 @@ def transactional_isolation() -> Iterator[None]:
 
     # The DB rollback below undoes row writes, but saved upload files live on
     # disk outside any transaction. Clear the upload dir so one test's saved
-    # images don't leak into the next (the per-test reset_db_state did this on
-    # the SQLite lane; the isolation lane must do it explicitly).
+    # images don't leak into the next (the rolled-back transaction can't reclaim
+    # files written during the test).
     shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
     connection = engine.connect()
     # Acquisition is inside the try so a raise from begin()/configure() can't

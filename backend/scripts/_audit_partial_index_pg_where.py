@@ -8,10 +8,12 @@ the tuple. This is the one forward-looking guard kept from the retired
 ``_audit_dialect_convergence`` lane (its SQLite-grammar / ``BEGIN IMMEDIATE``
 checks became moot once SQLite was dropped).
 
-The retired dual-dialect ``sqlite_where=`` kwargs are still present in the
-models and slated for a later cosmetic sweep; until they go, a new index copying
-that pattern without ``postgresql_where`` is the live hazard. Declaring a partial
-index with ``postgresql_where`` alone (the correct PG-only form) is fine.
+The retired dual-dialect ``sqlite_where=`` kwargs have now been removed from the
+models: every partial index declares ``postgresql_where`` alone, the correct
+PG-only form. This check stays as a forward-looking guard — a new index that
+re-introduces ``sqlite_where`` without ``postgresql_where`` (copied from old git
+history or SQLAlchemy docs) would silently degrade to a whole-table UNIQUE, and
+this catches it.
 
 Run from ``backend/``::
 

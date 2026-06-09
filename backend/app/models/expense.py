@@ -211,13 +211,12 @@ Index("ix_expenses_status_merchant_confirmed_at", Expense.status, Expense.mercha
 # DB-level backstop to the atomic claim in accept_invitation against a
 # concurrent double-accept doubling the receiver's money. Partial because the
 # many NULL rows (normal expenses) must not collide; NULLs are already distinct
-# in a UNIQUE index on both SQLite and Postgres, the WHERE just keeps the index
+# in a UNIQUE index on Postgres, the WHERE just keeps the index
 # to bill-split rows and the intent explicit.
 Index(
     "uq_expenses_split_origin_invitation",
     Expense.split_origin_invitation_id,
     unique=True,
-    sqlite_where=Expense.split_origin_invitation_id.isnot(None),
     postgresql_where=Expense.split_origin_invitation_id.isnot(None),
 )
 
