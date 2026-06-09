@@ -29,20 +29,16 @@ from app.database._seed import (
     seed_runtime_data,
 )
 from app.database._uploads import migrate_upload_paths_to_tenant_dirs
-from app.database.data_migration import MigrationCheck, MigrationReport, migrate
 from app.version import BACKEND_VERSION
 
 __all__ = [
     "BACKEND_ROOT",
     "BASELINE_MIGRATION_NAME",
     "Base",
-    "MigrationCheck",
-    "MigrationReport",
     "SessionLocal",
     "engine",
     "get_db",
     "init_db",
-    "migrate",
     "migrate_upload_paths_to_tenant_dirs",
     "reconcile_expense_tag_mirror_once",
     "record_schema_migration",

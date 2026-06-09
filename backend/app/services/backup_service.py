@@ -44,7 +44,7 @@ class BackupEntry:
     file_name: str
     size_bytes: int
     created_at: datetime
-    kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3" / "pre-v1.0"
+    kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3"
 
 
 def _backup_dir() -> Path:
@@ -65,8 +65,6 @@ def backup_directory_label() -> str:
 def _classify(name: str) -> str:
     if name.startswith("ticketbox-before-restore-"):
         return "pre-restore"
-    if name.startswith("ticketbox-pre-v1.0-"):
-        return "pre-v1.0"
     if name.startswith("ticketbox-pre-v0.3"):
         return "pre-v0.3"
     if name.startswith("ticketbox-manual-"):
@@ -121,11 +119,6 @@ def create_manual_backup() -> BackupEntry:
     Raises :class:`AppError` on a missing ``pg_dump`` binary or a failed dump.
     """
     return _create_backup(prefix="ticketbox-manual", kind="manual")
-
-
-def create_pre_v1_backup() -> BackupEntry:
-    """Create a named pre-v1.0 backup for migration rehearsals."""
-    return _create_backup(prefix="ticketbox-pre-v1.0", kind="pre-v1.0")
 
 
 def _create_backup(*, prefix: str, kind: str) -> BackupEntry:

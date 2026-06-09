@@ -83,3 +83,13 @@ Bad / 成本：
 - `expense_service/_update.py` residual-ABA docstring 落地后更新指向本 ADR。
 - 实现按 phase 切多 PR：① dialect-proofing（留 SQLite 跑、双 dialect CI）→ ② 本机 Postgres + 迁移脚本 + 对账/演练 → ③ cut-over。gated on PR-C #208 merged。
 - ENGINEERING_RULES §0 / §6 / §7 / §9 / §11 / §14。
+
+## Errata (2026-06, PG-only 瘦身)
+
+cut-over 已于 2026-06-04 完成,SQLite 随后在 PG-only 瘦身(step 1–5)中彻底退役。slice 5
+删除一次性迁移设施:`app.database.data_migration`(SQLite→PG 灌数据 + 对账 CLI)、
+`migration_roundtrip_check.py`(CI round-trip 检查),以及 [[0031]] 的 v1.0 cut-over 机器
+(详见 0031 errata)。本 ADR 的「迁移脚本对账 / 序列重置 / 时间戳迁移 / 恢复演练」Confirmation
+项属一次性、已耗尽设施,留作历史记录;`row_version` CAS、Postgres-only 引擎、Alembic 单一
+schema 源等成果继续生效。`POSTGRES_MIGRATION.md` 保留作 PG 装库 / `pg_restore` 恢复的
+canonical 文档(§1–§5 已历史化,见该文顶部 banner)。

@@ -4,6 +4,8 @@ ADR-0041 把存储引擎从 SQLite 换到 home-server 本机 PostgreSQL。本文
 
 > 决策背景见 [ADR-0041](../DECISIONS/0041-postgresql-engine-migration.md)。`row_version` 跨端 break 不在本阶段(phase ③,和引擎 cut-over 之后单独发);本阶段不碰契约。
 
+> ⚠️ **本 cut-over 已于 2026-06-04 完成,SQLite 已彻底退役。** 一次性迁移工具(`app.database.data_migration` + 对账脚本 `migration_roundtrip_check.py`)已在 PG-only 瘦身(ADR-0041 errata)中删除,**§1–§5 仅留作历史记录、不再可执行**。仍然适用的是 §0 装库、§6 备份 / `pg_restore` 恢复——其它 runbook(ROLLBACK / WINDOWS_BACKUP_TASK / GRAY_ACCEPTANCE)指向本文的也是这两节。**§7 的「回滚回 SQLite」叙事同样已失效**(SQLite 引擎已删,app 无法再在 SQLite 上运行),与 ROLLBACK.md 的同类叙事一并待「deployment/docs PG-only」slice 重写。
+
 ## 0. 前置:装 PostgreSQL(home-server,一次性)
 
 - 装 **PostgreSQL 16**(与 CI `postgres:16` 对齐),默认端口 `5432`,装成 **Windows 服务并设开机自启**(EDB 安装器默认即是;`Get-Service postgresql*` 应为 `Running` + `StartType=Automatic`)。

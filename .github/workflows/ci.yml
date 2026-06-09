@@ -187,19 +187,6 @@ jobs:
           python -c "import psycopg; c = psycopg.connect('postgresql://postgres:postgres@localhost:5432/postgres'); c.autocommit = True; c.execute('DROP DATABASE IF EXISTS xpj_restore'); c.execute('CREATE DATABASE xpj_restore'); c.close()"
           python scripts/postgres_backup_drill.py
 
-      - name: PostgreSQL data-migration round-trip (ADR-0041 phase-2)
-        # Seeds a throwaway SQLite source and migrates it into a FRESH PG
-        # database (its own, so it never collides with the smoke / pytest data),
-        # asserting reconciliation passes and the two landmines hold: the
-        # sequence is advanced past the copied ids (setval) and timestamps land
-        # as the same UTC instant (timestamptz). Proves the cut-over machinery
-        # works without needing the home-server PostgreSQL.
-        env:
-          PGTARGET: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_migrate
-        run: |
-          python -c "import psycopg; c = psycopg.connect('postgresql://postgres:postgres@localhost:5432/postgres'); c.autocommit = True; c.execute('DROP DATABASE IF EXISTS xpj_migrate'); c.execute('CREATE DATABASE xpj_migrate'); c.close()"
-          python scripts/migration_roundtrip_check.py --target "$PGTARGET"
-
       - name: PostgreSQL pytest suite (ADR-0041)
         # The pytest suite against real PostgreSQL — the comprehensive dialect
         # catch the happy-path smoke can't reach (it exercises every

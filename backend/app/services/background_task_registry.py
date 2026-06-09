@@ -38,16 +38,11 @@ class TaskHandlerRegistry:
 def runtime_handler_registry() -> TaskHandlerRegistry:
     """Build the production handler catalog.
 
-    This returns a fresh registry every time instead of keeping a mutable
-    module-level handler map. Runtime task types are therefore explicit code
-    dependencies; tests that need stubs use background_task_service's isolated
-    ContextVar registry.
+    Returns a fresh registry every time instead of keeping a mutable
+    module-level handler map, so runtime task types are explicit code
+    dependencies. The catalog is currently empty: its only entry — the v1.0
+    cut-over handler — was retired with the PostgreSQL-only migration. Tests
+    that need stubs use background_task_service's isolated ContextVar registry.
     """
 
-    from app.services import v1_migration_service
-
-    return TaskHandlerRegistry(
-        {
-            v1_migration_service.V1_MIGRATION_TASK_TYPE: v1_migration_service._handler,
-        }
-    )
+    return TaskHandlerRegistry()

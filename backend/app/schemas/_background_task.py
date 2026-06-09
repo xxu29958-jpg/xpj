@@ -1,8 +1,8 @@
 """ADR-0030 background_tasks DTOs.
 
 Single response shape covers all task_types. ``result_summary`` is a free-
-form JSON object whose shape depends on task_type (csv_import returns
-``rows_imported`` / ``errors``; v1_migration returns ``shadow_db_path``).
+form JSON object whose shape depends on task_type (e.g. csv_import returns
+``rows_imported`` / ``errors``).
 """
 
 from __future__ import annotations

@@ -52,7 +52,6 @@ ALLOWLIST: dict[str, str] = {
     "/api/bill-splits/{public_id}/reject": "covered by test_bill_split.py",
     "/owner/settings/about": "static-render — covered via /owner _index test",
     "/owner/devices/{public_id}/delete": "covered by owner_console_members test",
-    "/owner/migration-readiness/cut-over": "covered by migration_readiness test",
     "/owner/upload-links/{public_id}/rotate": "covered by admin_devices_and_upload_links",
 }
 

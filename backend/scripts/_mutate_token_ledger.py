@@ -303,8 +303,6 @@ ALLOWLIST: dict[str, Exempt] = {
         "governance_action", "owner_console", _OWNER_TRANSFER, "high"
     ),
     "POST /owner/ledgers/{ledger_id}/unarchive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE),
-    "POST /owner/migration-readiness/cut-over": Exempt("enqueue_task", "owner_console", ("background_tasks",), "high"),
-    "POST /owner/migration-readiness/pre-v1-backup": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/pairing": Exempt("create_row", "owner_console", ("pairing_codes",)),
     "POST /owner/settings/public-base-url": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/upload-links": Exempt("create_row", "owner_console", _UPLOAD_LINKS),

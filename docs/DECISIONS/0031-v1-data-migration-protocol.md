@@ -96,6 +96,18 @@ ADR 中 "atomic rename / delta apply / crash recovery" 三项 Confirmation
 test 不再适用；仍保留 "30-day rollback window test" 和 "startup
 compatibility check"。
 
+## Errata (2026-06, PG-only 瘦身 — 退役 cut-over 机器)
+
+SQLite 在 PG-only 瘦身([[0041]])中已彻底退役、v0.9→v1.0 cut-over 早已完成,本
+ADR 描述的 cut-over 机器是一次性、已耗尽的设施。退役删除:`migration_readiness_service`
+/ `v1_migration_service`(`task_type=v1_migration` 后台 handler)/ owner
+`/owner/migration-readiness` 路由 + 模板 / `preflight_v1_migration.py` /
+`backup_service.create_pre_v1_backup` / `app_meta_service.mark_v1_cut_over_completed`
+(及 `migration_completed_at` 键)。**保留**的是 `app_meta` 的 `schema_version` /
+`schema_min_compatible` 两字段 + 启动期 binary↔DB 兼容门
+`assert_binary_compatible_with_db`(老 binary 看到更高 `schema_min_compatible` 仍拒
+绝启动)。本 ADR 留作历史决策记录。
+
 ## More Information
 
 - [InfoQ — Shadow Table Strategy for Data Migrations][infoq-shadow]：业界 zero-downtime migration 标准模式，本 ADR 在 file-level SQLite 上的等价实现
