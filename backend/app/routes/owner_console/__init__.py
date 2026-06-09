@@ -28,8 +28,6 @@ Navigation:
     GET  /owner/settings(/*)        — runtime settings (5 endpoints)
     GET  /owner/backups             — list manual backups
     POST /owner/backups             — create new manual backup
-    GET  /owner/migration-readiness — v1.0 migration check
-    POST /owner/migration-readiness/pre-v1-backup — create pre-v1.0 backup
 """
 
 from __future__ import annotations

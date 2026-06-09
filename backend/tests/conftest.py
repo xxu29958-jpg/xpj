@@ -130,8 +130,7 @@ _PG_REAL_DB_NODES = (
     # re-seed lands in the rolled-back savepoint — so the committed baseline would
     # be destroyed for every later test. Must run against a real committed DB.
     "tests/test_ocr_facts_backfill_step3.py::",  # _backfill_legacy_raw_text via engine.begin
-    "tests/test_v1_cutover.py::",  # reset_db_state
-    "tests/test_data_migration.py::",  # create_engine SQLite->PG round-trip
+    "tests/test_app_meta_service.py::",  # reset_db_state (fresh-DB schema-version seeding)
     "tests/test_alembic_tag_migration.py::",  # alembic up/down round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",

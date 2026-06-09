@@ -93,25 +93,6 @@ powershell -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Stric
 - 一旦真实账本在 PostgreSQL 上长期运行(超过回滚窗口),回滚需另写 ADR(ADR-0041 回收条件),不能靠本节直接翻。
 - PostgreSQL 备份(`.dump`)用 `pg_restore` 恢复,见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
 
-## v1.0 迁移预检
-
-进入 v1.0 破坏式迁移前必跑：
-
-```powershell
-cd E:\projects\xiaopiaojia\backend
-.\.venv\Scripts\python.exe scripts\preflight_v1_migration.py --create-backup
-```
-
-`--create-backup` 创建专用回滚备份：
-
-```text
-<DATA_ROOT>\backups\ticketbox-pre-v1.0-YYYYMMDD-HHMMSS.dump
-```
-
-(源码运行 `backend\backups\`,冻结 EXE `ticketbox-data\backups\`,通过 `TICKETBOX_DATA_DIR` 自动定位。)
-
-返回 JSON 中 `ready=true` 才表示当前库具备 v0.9 基线表、关键索引，且最新备份是 `pre-v1.0` 类型。`ready=false` 时不得继续做 v1.0 迁移；先按 `checks` 错误修复当前库或恢复到可升级基线。
-
 ## Android APK 回退
 
 灰度用户安装路径：

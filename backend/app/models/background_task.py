@@ -82,8 +82,7 @@ class BackgroundTask(Base):
 
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # JSON-encoded; per-task shape (csv_import returns rows_imported / errors,
-    # v1_migration returns shadow_db_path etc).
+    # JSON-encoded; per-task shape (e.g. csv_import returns rows_imported / errors).
     result_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

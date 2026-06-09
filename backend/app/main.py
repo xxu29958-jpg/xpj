@@ -74,7 +74,6 @@ from app.routes import (
 )
 from app.routes import web_rules as web_rules_routes
 from app.schemas import ErrorResponse, HealthResponse, StatusResponse
-from app.services import v1_migration_service
 from app.services.app_meta_service import assert_binary_compatible_with_db
 from app.services.background_task_service import (
     recover_orphaned_tasks,
@@ -145,9 +144,6 @@ async def lifespan(_: FastAPI):
     # ADR-0030 orphan recovery: tasks that were running or queued when
     # the previous process died are now phantoms — force-fail them.
     recover_orphaned_tasks()
-    # ADR-0031 register the v1.0 cut-over handler so /owner/migration
-    # can enqueue it.
-    v1_migration_service.register()
     fx_scheduler = start_fx_rate_scheduler()
     # v1.2 ops: optional daily learning-table cleanup. Disabled by
     # default; opt in via LEARNING_CLEANUP_AUTO_ENABLED=true.

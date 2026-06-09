@@ -6,7 +6,6 @@ binary-vs-DB compatibility check called from lifespan startup.
 Default values when a key is missing at runtime:
 - ``schema_version`` defaults to ``"0.9"`` (legacy pre-cut-over baseline).
 - ``schema_min_compatible`` defaults to ``"0.9"`` (same).
-- ``migration_completed_at`` defaults to NULL.
 
 Startup stamps brand-new empty databases with the current backend version.
 The "default to 0.9" path is reserved for old databases that already contain
@@ -23,7 +22,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import AppMeta, Ledger
 from app.models.app_meta import (
-    MIGRATION_COMPLETED_AT_KEY,
     SCHEMA_MIN_COMPATIBLE_KEY,
     SCHEMA_VERSION_KEY,
 )
@@ -31,7 +29,6 @@ from app.services.time_service import now_utc
 from app.version import BACKEND_VERSION
 
 V09_DEFAULT_VERSION = "0.9"
-V1_TARGET_VERSION = "1.0"
 
 
 def get_value(db: Session, key: str) -> str | None:
@@ -68,10 +65,6 @@ def schema_version(db: Session) -> str:
 
 def schema_min_compatible(db: Session) -> str:
     return get_value(db, SCHEMA_MIN_COMPATIBLE_KEY) or V09_DEFAULT_VERSION
-
-
-def migration_completed_at(db: Session) -> str | None:
-    return get_value(db, MIGRATION_COMPLETED_AT_KEY)
 
 
 def seed_fresh_schema_metadata(db: Session) -> None:
@@ -120,23 +113,3 @@ def assert_binary_compatible_with_db(db: Session) -> None:
             ),
             status_code=500,
         )
-
-
-def mark_v1_cut_over_completed(db: Session) -> None:
-    """Atomic cut-over write: set version, min_compatible, completed_at
-    in a single transaction. Called by the v1_migration background task
-    handler."""
-    completed_at = now_utc()
-    updates = (
-        (SCHEMA_VERSION_KEY, V1_TARGET_VERSION),
-        (SCHEMA_MIN_COMPATIBLE_KEY, V1_TARGET_VERSION),
-        (MIGRATION_COMPLETED_AT_KEY, completed_at.isoformat()),
-    )
-    try:
-        with db.begin_nested():
-            for key, value in updates:
-                _set_value_in_transaction(db, key, value, updated_at=completed_at)
-        db.commit()
-    except Exception:  # noqa: BLE001 - rollback must catch any failed metadata write.
-        db.rollback()
-        raise

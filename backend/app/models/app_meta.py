@@ -1,4 +1,4 @@
-"""ADR-0031 ``app_meta`` key-value table — schema version + cut-over state.
+"""ADR-0031 ``app_meta`` key-value table — schema version + binary-compat state.
 
 Single-key API by design (``get(key) / set(key, value)``). Keys:
 
@@ -8,7 +8,6 @@ Single-key API by design (``get(key) / set(key, value)``). Keys:
   version that this DB can still be opened by. After a v1.0 cut-over
   it gets set to ``"1.0"``; old v0.9 binaries seeing this value at
   startup must refuse to mount.
-- ``migration_completed_at`` (ISO-8601 UTC) — set when cut-over finishes.
 - ``identity_schema_version`` — mirror of [[ADR-0028]] frozen v0.3
   ``IDENTITY_SCHEMA_VERSION`` constant. Lives here so future cut-overs
   can sanity-check identity stability without depending on a Python
@@ -41,7 +40,6 @@ class AppMeta(Base):
 # Public key constants. Tests / handlers use these instead of literals.
 SCHEMA_VERSION_KEY = "schema_version"
 SCHEMA_MIN_COMPATIBLE_KEY = "schema_min_compatible"
-MIGRATION_COMPLETED_AT_KEY = "migration_completed_at"
 IDENTITY_SCHEMA_VERSION_KEY = "identity_schema_version"
 # v1.2 ops: when the maintenance route last ran the learning-table
 # retention cleanup. Owner Console shows it; cleanup-scheduling logic
