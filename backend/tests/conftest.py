@@ -181,13 +181,6 @@ _PG_REAL_DB_NODES = (
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    from app.database import settings as _settings
-
-    # SQLite lanes use per-test reset_db_state, not transaction-rollback
-    # isolation, so there is nothing to opt out of (real_db is a no-op there).
-    if _settings.database_url.startswith("sqlite"):
-        return
-
     real_db = pytest.mark.real_db
     for item in items:
         # PostgreSQL isolation opt-outs (see _PG_REAL_DB_NODES). The nodeid uses

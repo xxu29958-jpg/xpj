@@ -86,19 +86,15 @@ jobs:
         working-directory: backend
         run: .\.ci-venv\Scripts\ruff.exe check app scripts tests
 
-      # The full pytest suite runs on PostgreSQL in the backend-postgres job
-      # below (PG-only — debt #4): the in-memory SQLite default lane is retired,
-      # so a bare `pytest` here would hit the new PG default with no cluster in
-      # this job. backend-full keeps the static checks only; the SQLite
-      # file-backed lane was retired with the SQLite startup migrator.
+      # The full pytest suite AND the end-to-end smoke run on PostgreSQL in the
+      # backend-postgres job below (PG-only — debt #4): the SQLite engine is
+      # retired, so neither a bare `pytest` nor the threaded smoke server can run
+      # here without a cluster, which this job has none of. backend-full keeps
+      # the static checks only.
 
       - name: API contract
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe scripts\check_api_contract.py
-
-      - name: Smoke test
-        working-directory: backend
-        run: .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
 
       - name: Release audit
         working-directory: backend
@@ -114,10 +110,10 @@ jobs:
 
   backend-postgres:
     name: Backend (PostgreSQL)
-    # ADR-0041 dialect-proofing on the live (gitea) CI. backend-full above runs
-    # the suite on SQLite (dev dialect); this lane exercises the production
-    # PostgreSQL engine so dialect drift fails a PR instead of surfacing in prod.
-    # The original lane was .github/workflows/ci.yml on a Linux runner with a
+    # PG-only (debt #4): PostgreSQL is the only engine, so this lane runs the
+    # full pytest suite + the end-to-end smoke on it; backend-full above runs
+    # static checks only (no DB server). The original lane was
+    # .github/workflows/ci.yml on a Linux runner with a
     # postgres service container — dead since the GitHub→Gitea move. The gitea
     # runner is Windows + no Docker, so we spin an ephemeral PostgreSQL via the
     # locally-installed initdb (PG 17 on the home-server runner) on port 5433, so
@@ -201,15 +197,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "PG reachability guard failed" }
 
             # End-to-end smoke: bootstrap -> upload -> OCC-token confirm against real
-            # PG. Proves create_all + Alembic replay (incl. 20260606_0001) is
-            # dialect-safe and the SQLite-only startup machinery no-ops cleanly.
+            # PG. Proves create_all + Alembic replay (incl. 20260606_0001) works on
+            # the PostgreSQL engine.
             Write-Host "--- PostgreSQL end-to-end smoke ---"
             .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL smoke failed" }
 
-            # Full suite on real PG — the comprehensive dialect catch the SQLite lane
-            # can't see. conftest skips SQLite-only machinery + test_database_migration_*
-            # on a non-sqlite engine. Own xpj_test DB so the smoke's rows never collide.
+            # Full suite on real PG — the only engine now (debt #4). Own xpj_test
+            # DB (separate from xpj_smoke) so the smoke's rows never collide.
             Write-Host "--- PostgreSQL pytest suite ---"
             $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_test"
             .\.ci-venv\Scripts\python.exe -m pytest -q -ra --tb=short -p no:cacheprovider

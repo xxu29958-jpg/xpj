@@ -46,18 +46,6 @@ def _bool_env(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _resolve_sqlite_url(raw: str) -> str:
-    prefix = "sqlite:///"
-    if not raw.startswith(prefix):
-        return raw
-
-    db_path = Path(raw[len(prefix) :])
-    if not db_path.is_absolute():
-        db_path = DATA_ROOT / db_path
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    return prefix + db_path.resolve().as_posix()
-
-
 @dataclass(frozen=True)
 class Settings:
     upload_token: str
@@ -266,7 +254,10 @@ def get_settings() -> Settings:
         upload_token=os.getenv("UPLOAD_TOKEN", PLACEHOLDER_UPLOAD_TOKEN),
         app_token=os.getenv("APP_TOKEN", PLACEHOLDER_APP_TOKEN),
         admin_token=os.getenv("ADMIN_TOKEN", PLACEHOLDER_ADMIN_TOKEN),
-        database_url=_resolve_sqlite_url(os.getenv("DATABASE_URL", "sqlite:///data/ticketbox.db")),
+        # PG-only (debt #4): no SQLite fallback. Real deployments set
+        # DATABASE_URL in .env (see docs/runbook/POSTGRES_MIGRATION.md); this
+        # localhost default only serves a bare local run with no .env.
+        database_url=os.getenv("DATABASE_URL", "postgresql+psycopg://postgres@localhost:5432/ticketbox"),
         upload_dir=upload_dir.resolve(),
         max_upload_size_mb=int(os.getenv("MAX_UPLOAD_SIZE_MB", "10")),
         delete_image_after_confirm=_bool_env("DELETE_IMAGE_AFTER_CONFIRM", False),

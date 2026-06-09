@@ -109,16 +109,8 @@ def assert_error(result: ApiResult, status: int, code: str) -> None:
 
 
 def clean_smoke_runtime() -> None:
-    db_path = BACKEND_ROOT / "data" / "smoke_test.db"
-    for _ in range(20):
-        if not db_path.exists():
-            break
-        try:
-            db_path.unlink()
-            break
-        except PermissionError:
-            time.sleep(0.1)
-
+    # PG-only (debt #4): the smoke runs against PostgreSQL (``xpj_smoke``); no
+    # local SQLite file is created, so only the upload dir needs clearing.
     upload_dir = (BACKEND_ROOT / "uploads" / "smoke_test").resolve()
     upload_root = (BACKEND_ROOT / "uploads").resolve()
     for _ in range(20):
@@ -139,11 +131,14 @@ def start_server(port: int) -> subprocess.Popen:
             "UPLOAD_TOKEN": UPLOAD_TOKEN,
             "APP_TOKEN": APP_TOKEN,
             "ADMIN_TOKEN": ADMIN_TOKEN,
-            # Default lane is file-backed SQLite. The ADR-0041 Postgres CI lane
-            # sets SMOKE_DATABASE_URL=postgresql+psycopg://... to exercise the
-            # full bootstrap → upload → OCC-token → confirm flow against a real
-            # PostgreSQL, catching dialect drift the SQLite suite can't see.
-            "DATABASE_URL": os.environ.get("SMOKE_DATABASE_URL", "sqlite:///data/smoke_test.db"),
+            # PG-only (debt #4): the smoke runs the full bootstrap → upload →
+            # OCC-token → confirm flow against PostgreSQL. CI's backend-postgres
+            # lane sets SMOKE_DATABASE_URL to its ephemeral cluster; a local run
+            # falls back to the throwaway test PG on :5438 (start_test_pg.ps1
+            # brings it up and creates xpj_smoke).
+            "DATABASE_URL": os.environ.get(
+                "SMOKE_DATABASE_URL", "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
+            ),
             "UPLOAD_DIR": "uploads/smoke_test",
             "MAX_UPLOAD_SIZE_MB": "10",
             "DELETE_IMAGE_AFTER_CONFIRM": "false",

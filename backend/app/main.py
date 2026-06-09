@@ -331,15 +331,12 @@ def health() -> StatusResponse:
 def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> HealthResponse:
     cfg = get_settings()
     upload_status = "ok" if cfg.upload_dir.is_dir() else "missing"
-    # database_status: SQLite file presence is the cheap proxy. We do NOT
-    # surface the absolute filesystem path to avoid leaking host layout via
-    # public health checks (Cloudflare Tunnel exposes this endpoint).
+    # database_status: a static "ok". The PG-only store has no cheap
+    # file-presence proxy, and a live connectivity probe is intentionally out
+    # of scope (ENGINEERING_RULES §14 keeps the /health liveness+readiness
+    # split off the v0.x roadmap). This public-tunnel endpoint never surfaces
+    # host paths regardless.
     db_status = "ok"
-    if cfg.database_url.startswith("sqlite:///"):
-        from pathlib import Path as _Path
-
-        db_path = _Path(cfg.database_url[len("sqlite:///"):])
-        db_status = "ok" if db_path.is_file() else "missing"
     return HealthResponse(
         status="ok",
         backend_version=BACKEND_VERSION,

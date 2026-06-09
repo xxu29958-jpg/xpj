@@ -44,7 +44,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -132,36 +132,6 @@ def fingerprint_request(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _ensure_sqlite_writer_transaction(db: Session) -> None:
-    """Own a real SQLite writer transaction before the SAVEPOINT-based claim.
-
-    pysqlite runs a SAVEPOINT in autocommit mode unless a real writer
-    transaction is already open, so a ``begin_nested()`` RELEASE would commit
-    the in_progress placeholder and a caller rollback couldn't undo it —
-    breaking the §4.9 "aborted op leaves no blocking row" contract on the SQLite
-    lane/fallback (Postgres SAVEPOINTs are unaffected). Same writer-transaction
-    guard the other write-critical SQLite paths use (background_task_service /
-    bill_split_service._create / budget_advisor_service._audit). Safe because
-    the idempotency claim is the FIRST write of the request (ADR §4.4: the key
-    claim precedes the OCC claim and the mutation), so committing a prior
-    read-only auth transaction loses no uncommitted work.
-    """
-    if db.get_bind().dialect.name == "sqlite":
-        if db.in_transaction():
-            # The claim must be the request's FIRST write (ADR §4.4), so this
-            # commit can only be closing a prior READ-only transaction (e.g. the
-            # auth-context SELECT). If a caller violated that and has pending
-            # writes, fail loudly — silently committing them here, before the
-            # OCC / idempotency outcome is known, would be a correctness bug.
-            assert not (db.new or db.dirty or db.deleted), (
-                "claim_idempotency_key must run before any write in the request "
-                "(ADR-0042 §4.4); the session has uncommitted changes"
-            )
-            db.commit()
-        # Explicit writer transaction so the begin_nested() SAVEPOINT nests in it.
-        db.execute(text("BEGIN IMMEDIATE"))
-
-
 def claim_idempotency_key(
     db: Session,
     *,
@@ -176,12 +146,11 @@ def claim_idempotency_key(
 ) -> IdempotencyOutcome:
     """Atomically claim ``idempotency_key`` for ``tenant_id`` (ADR-0042 §4.4)."""
     now = now_utc()
-    # See helper: on SQLite, own a real writer transaction so the SAVEPOINT
-    # below nests inside it and a caller rollback can actually undo the claim.
-    _ensure_sqlite_writer_transaction(db)
     # Atomic claim: try to INSERT the in_progress placeholder inside a SAVEPOINT
     # so a unique-conflict rolls back only this insert (not the caller's outer
-    # transaction). Dialect-portable claim path — no ON CONFLICT DSL.
+    # transaction). PostgreSQL auto-opens the enclosing transaction, so the
+    # ``begin_nested()`` SAVEPOINT nests cleanly and a caller rollback undoes the
+    # claim (ADR-0042 §4.9). Portable claim path — no ON CONFLICT DSL.
     try:
         with db.begin_nested():
             row = ApiIdempotencyKey(
