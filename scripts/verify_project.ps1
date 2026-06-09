@@ -133,6 +133,16 @@ if (-not $SkipBackend) {
     if (-not $SkipLint) {
         Invoke-Checked -FilePath $tools.Ruff -Arguments @("check", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
     }
+    # PG-only test lane (debt #4): the default pytest lane targets the throwaway
+    # PostgreSQL on :5438. Bring it up (idempotent); left running for fast repeat
+    # runs — tear down with backend\scripts\stop_test_pg.ps1 when done.
+    Invoke-Checked -FilePath "powershell.exe" -Arguments @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        (Join-Path $BackendRoot "scripts\start_test_pg.ps1")
+    ) -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot

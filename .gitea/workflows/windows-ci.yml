@@ -86,9 +86,11 @@ jobs:
         working-directory: backend
         run: .\.ci-venv\Scripts\ruff.exe check app scripts tests
 
-      - name: Test backend
-        working-directory: backend
-        run: .\.ci-venv\Scripts\python.exe -m pytest --cov=app --cov-report=term-missing
+      # The full pytest suite runs on PostgreSQL in the backend-postgres job
+      # below (PG-only — debt #4): the in-memory SQLite default lane is retired,
+      # so a bare `pytest` here would hit the new PG default with no cluster in
+      # this job. backend-full keeps the static checks + the SQLite file-backed
+      # lane (transitional, removed when those tests go in a follow-up slice).
 
       - name: API contract
         working-directory: backend
