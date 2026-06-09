@@ -23,65 +23,9 @@ $DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $Backen
 $BackupDir = Join-Path $DataRoot "backups"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 
-# 共享 SQLite 备份/校验函数(Resolve-Python / Get-BackendVersion / Test-SqliteBackup /
-# Backup-SqliteDatabase),与 backend\scripts\backup_database.ps1 共用同一份实现。dot-source
-# 后这些函数沿用本脚本作用域的 $BackendRoot(此处已就绪)。
-. (Join-Path $BackendRoot "scripts\lib\sqlite_backup.ps1")
-
-function Get-BackendEnvValue {
-    param([Parameter(Mandatory = $true)][string]$Name)
-
-    $value = [Environment]::GetEnvironmentVariable($Name)
-    if (-not [string]::IsNullOrWhiteSpace($value)) {
-        return $value.Trim().Trim('"').Trim("'")
-    }
-
-    $envFile = Join-Path $BackendRoot ".env"
-    if (-not (Test-Path -LiteralPath $envFile)) {
-        return $null
-    }
-
-    $escapedName = [Regex]::Escape($Name)
-    $line = Get-Content -LiteralPath $envFile -Encoding UTF8 |
-        Where-Object { $_ -match "^\s*$escapedName\s*=" } |
-        Select-Object -First 1
-    if (-not $line) {
-        return $null
-    }
-    return ($line -replace "^\s*$escapedName\s*=", "").Trim().Trim('"').Trim("'")
-}
-
-function Resolve-DbPath {
-    param([Parameter(Mandatory = $true)][string]$BackendRoot)
-
-    $databaseUrl = Get-BackendEnvValue -Name "DATABASE_URL"
-    if ([string]::IsNullOrWhiteSpace($databaseUrl)) {
-        $databaseUrl = "sqlite:///data/ticketbox.db"
-    }
-    if ($databaseUrl -notmatch '^sqlite:///(.+)$') {
-        throw "DATABASE_URL 不是 sqlite，维护脚本只能处理 SQLite 文件：$databaseUrl"
-    }
-
-    $candidate = $Matches[1]
-    if ($candidate -eq ":memory:") {
-        throw "DATABASE_URL 指向内存数据库，无法执行文件维护。"
-    }
-    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
-        $candidate = Join-Path $BackendRoot $candidate
-    }
-    return [System.IO.Path]::GetFullPath($candidate)
-}
-
-# Dialect detection. On PostgreSQL there is no SQLite file path, so resolving it
-# eagerly (it throws on a non-sqlite URL) would kill every op at load — including
-# the scheduled backup. Resolve lazily: $DbPath stays $null on PostgreSQL.
-$DatabaseUrl = Get-BackendEnvValue -Name "DATABASE_URL"
-if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
-    $DatabaseUrl = "sqlite:///data/ticketbox.db"
-}
-$IsPostgres = $DatabaseUrl -match '^postgresql'
-$BackupSuffix = if ($IsPostgres) { ".dump" } else { ".db" }
-$DbPath = if ($IsPostgres) { $null } else { Resolve-DbPath -BackendRoot $BackendRoot }
+# PostgreSQL-only backend (ADR-0041): backups are pg_dump custom-format archives,
+# produced by the dialect single-source backend\scripts\backup_database.ps1.
+$BackupSuffix = ".dump"
 
 function Format-Bytes {
     param([long]$Bytes)
@@ -126,29 +70,11 @@ function Assert-PathInside {
 }
 
 function Backup-Database {
-    if ($IsPostgres) {
-        # PostgreSQL backup (pg_dump -Fc + validation) is dialect-dispatched in
-        # backend\scripts\backup_database.ps1. Delegate to that single source so
-        # the pg logic lives in one place; -Keep 0 leaves retention to
-        # Prune-OldBackups below. (The two scripts still duplicate the SQLite
-        # path — deduping them is tracked as backlog.)
-        $backupScript = Join-Path $BackendRoot "scripts\backup_database.ps1"
-        & $backupScript -Keep 0
-        return
-    }
-
-    if (-not (Test-Path -LiteralPath $DbPath)) {
-        Write-Host "数据库不存在，跳过备份：$DbPath"
-        return
-    }
-
-    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
-    $target = Join-Path $BackupDir "ticketbox-$stamp.db"
-    $target = Assert-PathInside -Path $target -Root $BackupDir
-    Backup-SqliteDatabase -SourcePath $DbPath -TargetPath $target
-    $size = (Get-Item -LiteralPath $target).Length
-    Write-Host "数据库备份完成：$target ($(Format-Bytes $size))"
+    # PostgreSQL backup (pg_dump -Fc + pg_restore --list validation) lives in the
+    # dialect single-source backend\scripts\backup_database.ps1. Delegate to it;
+    # -Keep 0 leaves retention to Prune-OldBackups below.
+    $backupScript = Join-Path $BackendRoot "scripts\backup_database.ps1"
+    & $backupScript -Keep 0
 }
 
 function Prune-OldBackups {
@@ -180,18 +106,7 @@ function Prune-OldBackups {
 }
 
 function Vacuum-Database {
-    if ($IsPostgres) {
-        Write-Host "PostgreSQL 由 autovacuum 维护，跳过手动 VACUUM。"
-        return
-    }
-    if (-not (Test-Path -LiteralPath $DbPath)) {
-        Write-Host "数据库不存在，跳过 VACUUM：$DbPath"
-        return
-    }
-
-    $python = Resolve-Python
-    & $python -c "import sqlite3, sys; conn = sqlite3.connect(sys.argv[1]); conn.execute('VACUUM'); conn.close()" $DbPath
-    Write-Host "SQLite VACUUM 完成。"
+    Write-Host "PostgreSQL 由 autovacuum 维护，跳过手动 VACUUM。"
 }
 
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {

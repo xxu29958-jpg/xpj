@@ -11,10 +11,19 @@ $BackendRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
 $BackupDir = Join-Path $DataRoot "backups"
 
-# 共享 SQLite 备份/校验函数(Resolve-Python / Get-BackendVersion / Test-SqliteBackup /
-# Backup-SqliteDatabase),与 scripts\maintenance_ticketbox.ps1 共用同一份实现。dot-source
-# 后这些函数沿用本脚本作用域的 $BackendRoot(此处已就绪)。
-. (Join-Path $PSScriptRoot "lib\sqlite_backup.ps1")
+# 解析 Python 解释器(优先 venv),供 pg_dump 归档校验步骤
+# (app.services.postgres_backup_validation_service)使用。
+function Resolve-Python {
+    $venvPython = Join-Path $BackendRoot ".venv\Scripts\python.exe"
+    if (Test-Path -LiteralPath $venvPython) {
+        return $venvPython
+    }
+    $command = Get-Command python -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    throw "未找到 Python，无法运行 PostgreSQL 备份校验。"
+}
 
 function Get-BackendEnvValue {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -39,31 +48,10 @@ function Get-BackendEnvValue {
     return ($line -replace "^\s*$escapedName\s*=", "").Trim().Trim('"').Trim("'")
 }
 
-function Resolve-DbPath {
-    param([Parameter(Mandatory = $true)][string]$BackendRoot)
-
-    $databaseUrl = Get-BackendEnvValue -Name "DATABASE_URL"
-    if ([string]::IsNullOrWhiteSpace($databaseUrl)) {
-        $databaseUrl = "sqlite:///data/ticketbox.db"
-    }
-    if ($databaseUrl -notmatch '^sqlite:///(.+)$') {
-        throw "DATABASE_URL 不是 sqlite，备份脚本只能处理 SQLite 文件：$databaseUrl"
-    }
-
-    $candidate = $Matches[1]
-    if ($candidate -eq ":memory:") {
-        throw "DATABASE_URL 指向内存数据库，无法执行文件备份。"
-    }
-    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
-        $candidate = Join-Path $BackendRoot $candidate
-    }
-    return [System.IO.Path]::GetFullPath($candidate)
-}
-
 function Get-DatabaseUrl {
     $url = Get-BackendEnvValue -Name "DATABASE_URL"
     if ([string]::IsNullOrWhiteSpace($url)) {
-        return "sqlite:///data/ticketbox.db"
+        return ""
     }
     return $url
 }
@@ -165,23 +153,14 @@ New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 $databaseUrl = Get-DatabaseUrl
+if ($databaseUrl -notmatch '^postgresql') {
+    throw "备份脚本只支持 PostgreSQL（DATABASE_URL=$databaseUrl）。"
+}
 
-if ($databaseUrl -match '^postgresql') {
-    $target = Join-Path $BackupDir "ticketbox-$timestamp.dump"
-    $target = Assert-PathInside -Path $target -Root $BackupDir
-    Backup-PostgresDatabase -DatabaseUrl $databaseUrl -TargetPath $target
-    $rotateFilter = "ticketbox-*.dump"
-}
-else {
-    $DatabasePath = Resolve-DbPath -BackendRoot $BackendRoot
-    if (-not (Test-Path -LiteralPath $DatabasePath)) {
-        throw "Database not found: $DatabasePath"
-    }
-    $target = Join-Path $BackupDir "ticketbox-$timestamp.db"
-    $target = Assert-PathInside -Path $target -Root $BackupDir
-    Backup-SqliteDatabase -SourcePath $DatabasePath -TargetPath $target
-    $rotateFilter = "ticketbox-*.db"
-}
+$target = Join-Path $BackupDir "ticketbox-$timestamp.dump"
+$target = Assert-PathInside -Path $target -Root $BackupDir
+Backup-PostgresDatabase -DatabaseUrl $databaseUrl -TargetPath $target
+$rotateFilter = "ticketbox-*.dump"
 Write-Host "已备份到 $target"
 
 $resolvedBackupRoot = (Resolve-Path -LiteralPath $BackupDir).Path

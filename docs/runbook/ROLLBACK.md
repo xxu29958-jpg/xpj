@@ -60,18 +60,13 @@ cd E:\projects\xiaopiaojia
 powershell -ExecutionPolicy Bypass -File backend\scripts\backup_database.ps1
 ```
 
-输出到 `<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.db`（SQLite 在线备份，不需要停后端）。`DATA_ROOT` 跟随部署形态:源码运行是 `backend\backups\`,冻结 EXE 部署(`TICKETBOX_DATA_DIR=ticketbox-data\`)是 `ticketbox-data\backups\`。Windows 计划备份配置见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
+输出到 `<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump`（`pg_dump -Fc` 自定义格式归档）。`DATA_ROOT` 跟随部署形态:源码运行是 `backend\backups\`,冻结 EXE 部署(`TICKETBOX_DATA_DIR=ticketbox-data\`)是 `ticketbox-data\backups\`。Windows 计划备份配置见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
 
 ### 恢复到某个备份
 
-```powershell
-# restore 脚本位于根目录 scripts\restore_ticketbox_db.ps1（跟备份脚本路径不同）
-# -BackupPath 用 DATA_ROOT 下的实际位置:源码运行 backend\backups\,冻结 EXE ticketbox-data\backups\。
-cd E:\projects\xiaopiaojia
-powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath backend\backups\ticketbox-YYYYMMDD-HHMMSS.db
-```
-
-脚本会拒绝在后端运行时覆盖数据库，并通过临时文件校验后再原子替换。`uploads/` 目录不动——图片文件路径以数据库 `expenses.image_path` 为权威，回滚库时图片自然对齐。
+PostgreSQL 备份（`.dump` 自定义格式归档）用 `pg_restore` 恢复到目标库——停后端 → `pg_restore` → 重启，
+完整步骤见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。`uploads/` 目录不动——图片文件路径以数据库
+`expenses.image_path` 为权威，回滚库时图片自然对齐。
 
 ### 版本特定的数据库回滚注意
 
@@ -96,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Stric
 
 - 回滚回 SQLite 会**丢失 cut-over 之后写进 PostgreSQL 的新数据**——SQLite 源停在 cut-over 时刻。窗口内若已产生真实新账,要么接受丢失,要么先 `pg_dump` 出 PostgreSQL 现状人工核对再决定。
 - 一旦真实账本在 PostgreSQL 上长期运行(超过回滚窗口),回滚需另写 ADR(ADR-0041 回收条件),不能靠本节直接翻。
-- PostgreSQL 备份(`.dump`)不能用 [scripts/restore_ticketbox_db.ps1](../../scripts/restore_ticketbox_db.ps1)(它只认 SQLite `.db`);PostgreSQL 恢复走 `pg_restore`,见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
+- PostgreSQL 备份(`.dump`)用 `pg_restore` 恢复,见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
 
 ## v1.0 迁移预检
 
@@ -110,10 +105,10 @@ cd E:\projects\xiaopiaojia\backend
 `--create-backup` 创建专用回滚备份：
 
 ```text
-<DATA_ROOT>\backups\ticketbox-pre-v1.0-YYYYMMDD-HHMMSS.db
+<DATA_ROOT>\backups\ticketbox-pre-v1.0-YYYYMMDD-HHMMSS.dump
 ```
 
-(源码运行 `backend\backups\`,冻结 EXE `ticketbox-data\backups\`;`scripts\rollback_to_v0.ps1` 通过 `TICKETBOX_DATA_DIR` 自动找到正确位置。)
+(源码运行 `backend\backups\`,冻结 EXE `ticketbox-data\backups\`,通过 `TICKETBOX_DATA_DIR` 自动定位。)
 
 返回 JSON 中 `ready=true` 才表示当前库具备 v0.9 基线表、关键索引，且最新备份是 `pre-v1.0` 类型。`ready=false` 时不得继续做 v1.0 迁移；先按 `checks` 错误修复当前库或恢复到可升级基线。
 

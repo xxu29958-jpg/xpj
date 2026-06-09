@@ -79,9 +79,9 @@ powershell -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Stric
 
 客户端用 `GET /api/auth/check` 确认 token 仍有效(不要用 `/api/health` 判断,见 AGENTS.md)。Owner Console `http://127.0.0.1:8000/owner`、`/web` 各开一遍。**保留 SQLite 源 ≥ 30 天**作回滚窗口。
 
-## 6. cut-over 后的备份(已 dialect-aware)
+## 6. cut-over 后的备份
 
-- 计划任务 `TicketboxBackup`(`scripts\maintenance_ticketbox.ps1 -Backup`)**自动按 `DATABASE_URL` dialect 切换**:PostgreSQL 走 `pg_dump -Fc` → `<DATA_ROOT>\backups\ticketbox-*.dump`,SQLite 仍是在线快照 `.db`。保留天数清理按当前 dialect 后缀。配置见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
+- 计划任务 `TicketboxBackup`(`scripts\maintenance_ticketbox.ps1 -Backup`)走 `pg_dump -Fc` → `<DATA_ROOT>\backups\ticketbox-*.dump`。保留天数清理按 `.dump` 后缀。配置见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
 - 凭证:`pg_dump` 用 `DATABASE_URL` 内联口令,或设 `PGPASSWORD` / `%APPDATA%\postgresql\pgpass.conf`。
 - **手动验一次备份可恢复**(home-server cut-over 后立刻做):
 

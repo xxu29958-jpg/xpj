@@ -159,7 +159,7 @@ Get-ScheduledTask -TaskName TicketboxBackend
 
 ## 数据库备份
 
-手动备份 SQLite 数据库：
+手动备份数据库：
 
 ```powershell
 cd E:\projects\xiaopiaojia\backend
@@ -178,16 +178,8 @@ powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1
 powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1 -Keep 60
 ```
 
-从备份恢复数据库：
-
-```powershell
-cd E:\projects\xiaopiaojia
-# -BackupPath 用 DATA_ROOT 下实际位置(源码运行 backend\backups\,冻结 EXE ticketbox-data\backups\)。
-powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 `
-  -BackupPath backend\backups\ticketbox-20260504-120000.db
-```
-
-恢复脚本会检查服务运行状态、校验备份文件，并用临时文件原子替换正式数据库。
+从备份恢复数据库（PostgreSQL）：停后端后用 `pg_restore` 把 `.dump` 归档恢复到目标库，详见
+[POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)。
 
 ## PowerShell 测试
 

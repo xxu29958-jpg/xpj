@@ -49,7 +49,7 @@ ticketbox-data/
 2. 把 `ticketbox-data/backups/` 里要恢复的那个 `ticketbox-*.db` 覆盖到 `ticketbox-data/ticketbox.db`；
 3. 重新双击 EXE。
 
-源码/家庭服务器部署的备份脚本（`backend/scripts/backup_database.ps1`、`scripts/restore_ticketbox_db.ps1`、`scripts/maintenance_ticketbox.ps1`）已改为**跟随数据根**:设了 `TICKETBOX_DATA_DIR` 用它、否则用 `backend/`,所以它们与 app 写备份的位置始终一致。诊断类脚本（`diagnose_ticketbox.ps1` 等）仍按源码 `backend/` 布局,是家庭服务器自用工具,不用于冻结 EXE。
+源码/家庭服务器部署的备份脚本（`backend/scripts/backup_database.ps1`、`scripts/maintenance_ticketbox.ps1`）已改为**跟随数据根**:设了 `TICKETBOX_DATA_DIR` 用它、否则用 `backend/`,所以它们与 app 写备份的位置始终一致。诊断类脚本（`diagnose_ticketbox.ps1` 等）仍按源码 `backend/` 布局,是家庭服务器自用工具,不用于冻结 EXE。
 
 ## 冻结要点（给维护者）
 

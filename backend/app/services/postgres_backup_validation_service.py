@@ -1,9 +1,8 @@
 """Shared PostgreSQL backup validation (ADR-0041 phase-2).
 
-The PostgreSQL counterpart to :mod:`app.services.sqlite_backup_validation_service`.
 After the SQLite→PostgreSQL cut-over the Owner Console and the scheduled task
-produce ``pg_dump -Fc`` custom-format archives instead of SQLite snapshots; this
-module is the single contract for "is this file a restorable Ticketbox dump".
+produce ``pg_dump -Fc`` custom-format archives; this module is the single
+contract for "is this file a restorable Ticketbox dump".
 
 File-level validation is deliberately shallow: ``pg_restore --list`` parses and
 lists the archive's table of contents **without a running server**, so a
