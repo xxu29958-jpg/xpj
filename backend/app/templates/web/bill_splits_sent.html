@@ -17,7 +17,8 @@
 {% if not bill_split_rows %}
 <div class="dt-card">
   <div class="empty-state">
-    <p>当前账本没有已发起的拆账邀请。从某笔账单详情页点"发起拆账"开始。</p>
+    <div class="empty-state-title">当前账本没有已发起的拆账邀请</div>
+    <div class="empty-state-hint">从某笔账单详情页点"发起拆账"开始。</div>
   </div>
 </div>
 {% else %}
@@ -26,7 +27,7 @@
     <tr>
       <th>状态</th>
       <th>发给</th>
-      <th>金额</th>
+      <th class="amount">金额</th>
       <th>商家</th>
       <th>消费时间</th>
       <th>到期</th>
@@ -50,7 +51,7 @@
         {% endif %}
       </td>
       <td>{{ row.receiver_display_name }}</td>
-      <td>{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+      <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
       <td>{{ row.merchant or '—' }}</td>
       <td>{{ row.expense_time or '—' }}</td>
       <td>{{ row.expires_at or '—' }}</td>

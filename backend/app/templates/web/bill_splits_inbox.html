@@ -16,7 +16,8 @@
 {% if not bill_split_rows %}
 <div class="dt-card">
   <div class="empty-state">
-    <p>暂无拆账邀请。</p>
+    <div class="empty-state-title">暂无拆账邀请</div>
+    <div class="empty-state-hint">家人或其他账号给你发起拆账后，会出现在这里。</div>
   </div>
 </div>
 {% else %}
@@ -25,7 +26,7 @@
     <tr>
       <th>状态</th>
       <th>来自</th>
-      <th>金额</th>
+      <th class="amount">金额</th>
       <th>商家</th>
       <th>消费时间</th>
       <th>到期</th>
@@ -51,7 +52,7 @@
         {% endif %}
       </td>
       <td>{{ row.sender_display_name }}</td>
-      <td>{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+      <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
       <td>{{ row.merchant or '—' }}</td>
       <td>{{ row.expense_time or '—' }}</td>
       <td>{{ row.expires_at or '—' }}</td>
