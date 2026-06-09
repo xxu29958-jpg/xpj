@@ -26,17 +26,18 @@ TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
 TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 
 
-# Three lanes (ADR-0041):
-# - XPJ_TEST_DATABASE_URL set  -> that engine verbatim (the Postgres CI lane
-#   points it at postgresql+psycopg://… to flush dialect drift the SQLite suite
-#   can't see; SQLite-machinery tests are skipped — see conftest).
-# - XPJ_TEST_FILE_BACKED=1      -> file-backed SQLite (migration-readiness /
-#   pre-v1 backup tests that skip on in-memory).
-# - default                     -> in-memory SQLite + StaticPool (~16ms/create_all).
+# Lanes (PG-only — debt #4, building on ADR-0041). PostgreSQL is the only real
+# lane now: prod / dev / test share the engine so dialect drift can't hide.
+# - XPJ_TEST_DATABASE_URL set  -> that engine verbatim (CI's ephemeral PG, or any
+#   explicit override).
+# - default                    -> local throwaway PostgreSQL on :5438, brought up
+#   by backend/scripts/start_test_pg.ps1.
+# - XPJ_TEST_FILE_BACKED=1      -> file-backed SQLite; a transitional remnant for
+#   the SQLite-only backup / pre-v1 migration tests, removed as those tests go.
 _database_url = os.environ.get("XPJ_TEST_DATABASE_URL") or (
     f"sqlite:///{TEST_DB_PATH.as_posix()}"
     if os.environ.get("XPJ_TEST_FILE_BACKED") == "1"
-    else "sqlite://"
+    else "postgresql+psycopg://postgres@localhost:5438/xpj_test"
 )
 
 os.environ.update(
