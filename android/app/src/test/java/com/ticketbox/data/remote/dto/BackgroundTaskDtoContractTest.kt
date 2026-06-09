@@ -17,11 +17,11 @@ class BackgroundTaskDtoContractTest {
                 """
                 {
                   "public_id": "task-abc",
-                  "task_type": "v1_migration",
+                  "task_type": "csv_import",
                   "status": "running",
                   "progress_current": 2,
                   "progress_total": 3,
-                  "progress_message": "pre-v1.0 snapshot: ticketbox-pre-v1.0-20260601-120000.db",
+                  "progress_message": "importing rows 2/3",
                   "error_code": null,
                   "error_message": null,
                   "result_summary": null,
@@ -36,12 +36,12 @@ class BackgroundTaskDtoContractTest {
         )
 
         assertEquals("task-abc", dto.publicId)
-        assertEquals("v1_migration", dto.taskType)
+        assertEquals("csv_import", dto.taskType)
         assertEquals("running", dto.status)
         assertEquals(2, dto.progressCurrent)
         assertEquals(3, dto.progressTotal)
         assertEquals(
-            "pre-v1.0 snapshot: ticketbox-pre-v1.0-20260601-120000.db",
+            "importing rows 2/3",
             dto.progressMessage,
         )
     }

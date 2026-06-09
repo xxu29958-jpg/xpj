@@ -1,10 +1,6 @@
 # 小票夹 Windows 自动备份任务
 
-小票夹的主数据源是 Windows 后端 SQLite 数据库：
-
-```text
-backend/data/ticketbox.db
-```
+小票夹的主数据源是 Windows 后端的 PostgreSQL 数据库（本机 `ticketbox` 库）。
 
 `scripts\install_windows_tasks.ps1` 默认会创建每日备份任务：
 
@@ -72,9 +68,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_ta
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_tasks.ps1 -SkipBackup
 ```
 
-## PostgreSQL（ADR-0041 cut-over 后）
+## PostgreSQL 备份格式
 
-cut-over 到本机 PostgreSQL 后（执行手册 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)），**同一个** `TicketboxBackup` 任务无需改动：`maintenance_ticketbox.ps1 -Backup` 产出 `pg_dump -Fc` 归档 → `<DATA_ROOT>\backups\ticketbox-*.dump`（自定义格式），并用 `pg_restore --list` 校验归档可读；保留天数清理按 `.dump` 后缀。备份逻辑委托给 [backend/scripts/backup_database.ps1](../../backend/scripts/backup_database.ps1)（单一真相源）。
+`TicketboxBackup` 任务运行 `maintenance_ticketbox.ps1 -Backup`，产出 `pg_dump -Fc` 归档 → `<DATA_ROOT>\backups\ticketbox-*.dump`（自定义格式），并用 `pg_restore --list` 校验归档可读；保留天数清理按 `.dump` 后缀。备份逻辑委托给 [backend/scripts/backup_database.ps1](../../backend/scripts/backup_database.ps1)（单一真相源）。
 
 凭证与二进制：
 

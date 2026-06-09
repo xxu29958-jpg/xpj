@@ -21,8 +21,15 @@ BACKEND = os.path.dirname(HERE)
 hiddenimports = (
     collect_submodules("uvicorn")
     + collect_submodules("app")
+    # PG-only (debt #4): bundle the PostgreSQL dialect + psycopg 3 binary driver.
+    # SQLAlchemy's PyInstaller hook only auto-detects psycopg2, and SQLAlchemy
+    # dialects load dynamically by URL scheme, so they must be named explicitly.
+    # NOTE: the frozen-EXE build is not exercised in CI — after changing this,
+    # smoke-test scripts\build_backend_exe.ps1 output against a local PostgreSQL.
+    + collect_submodules("psycopg")
     + [
-        "sqlalchemy.dialects.sqlite",
+        "psycopg_binary",
+        "sqlalchemy.dialects.postgresql",
         "anyio._backends._asyncio",
         "multipart",
     ]

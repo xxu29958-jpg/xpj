@@ -5,8 +5,7 @@ import com.squareup.moshi.Json
 /**
  * ADR-0030 background_tasks DTOs. Single response shape covers every
  * task_type; ``resultSummary`` is a free-form JSON object whose shape
- * depends on the type (csv_import returns ``rows_imported`` / ``errors``;
- * v1_migration returns ``schema_version`` / ``rollback_snapshot``).
+ * depends on the type (csv_import returns ``rows_imported`` / ``errors``).
  *
  * Mirror of ``backend/app/schemas/_background_task.py``.
  */

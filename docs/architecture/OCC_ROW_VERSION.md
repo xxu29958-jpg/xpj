@@ -58,7 +58,7 @@ backend Expense.row_version (mutate 时 +1)
 - 加新「带 token 的写」路径：响应要能喂 cascade（要么响应带 `row_version`，要么 dispatcher
   best-effort 重读父）；离线 enqueue 的 payload strip 用 `0L`（非空）/ `null`（可空），dispatcher
   重放前用 `row.expectedRowVersion` 覆盖。
-- 加列 / 改 Room schema：Alembic + legacy `migrate_sqlite_schema`（后端）、Room migration +
+- 加列 / 改 Room schema：Alembic（后端）、Room migration +
   `exportSchema` 的 `NN.json`（Android）三处对齐；Android 迁移由两层守护：
   `AppDatabaseMigrationSqlTest`（JVM/sqlite-jdbc，跑真迁移 SQL，快、本地可验）+
   `AppDatabaseMigrationTest`（instrumented MigrationTestHelper，按导出的 `NN.json` 校验，

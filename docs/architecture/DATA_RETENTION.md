@@ -4,8 +4,8 @@
 
 小票夹的数据分三层：
 
-1. Windows 后端 SQLite
-   - 文件：`backend/data/ticketbox.db`
+1. Windows 后端 PostgreSQL
+   - 库：本机 PostgreSQL 的 `ticketbox` 数据库
    - 职责：账单主库、账本隔离、分类规则、重复检测记录、统计来源
    - 这是长期可信数据源。
 
@@ -118,7 +118,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbo
 
 灰度前至少保留：
 
-- 最近 7 天每日一份 SQLite 备份。
+- 最近 7 天每日一份 PostgreSQL 备份（pg_dump）。
 - 每次大改前手动备份。
 - 不要把真实 Token 和备份数据库提交到 Git。
 

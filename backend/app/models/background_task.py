@@ -1,14 +1,13 @@
 """ADR-0030 long-task execution model.
 
-`background_tasks` is the in-process progress table used by csv-import,
-v1-migration, and future long-running user-triggered work. It is a
-cross-cutting infrastructure table (not tied to a single business domain),
-which is why it lives in its own module rather than next to expense /
-identity / budget.
+`background_tasks` is the in-process progress table used by csv-import
+and future long-running user-triggered work. It is a cross-cutting
+infrastructure table (not tied to a single business domain), which is why
+it lives in its own module rather than next to expense / identity / budget.
 
-``tenant_id`` is nullable so system-wide tasks (e.g. v1.0 cut-over
-migration) can record progress without binding to a single ledger. User-
-scoped tasks (csv import) MUST set ``tenant_id`` so the user can only see
+``tenant_id`` is nullable so a future system-wide task could record
+progress without binding to a single ledger; the only current producer
+(csv import) is user-scoped and MUST set ``tenant_id`` so a user only sees
 their own ledger's task list.
 """
 

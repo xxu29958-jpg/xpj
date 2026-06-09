@@ -52,6 +52,5 @@ fun backgroundTaskStatusLabel(status: String): String = when (status) {
 
 fun backgroundTaskTypeLabel(taskType: String): String = when (taskType) {
     "csv_import" -> "CSV 导入"
-    "v1_migration" -> "v1.0 数据迁移"
     else -> taskType
 }

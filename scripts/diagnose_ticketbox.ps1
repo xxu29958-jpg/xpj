@@ -15,7 +15,6 @@ $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $BackendVersionFile = Join-Path $BackendRoot "app\version.py"
 $EnvPath = Join-Path $BackendRoot ".env"
-$DbPath = Join-Path $BackendRoot "data\ticketbox.db"
 $BackupDir = Join-Path $BackendRoot "backups"
 $LogDir = Join-Path $BackendRoot "logs"
 $BaseUrl = $ServerUrl.TrimEnd("/")
@@ -129,15 +128,7 @@ else {
     Add-Row -Target $Details -Name "开机自启" -Status "WARN" -Detail "未找到小票夹计划任务"
 }
 
-if (Test-Path -LiteralPath $DbPath) {
-    $dbFile = Get-Item -LiteralPath $DbPath
-    Add-Row -Target $Summary -Name "数据库大小" -Status "OK" -Detail (Format-Bytes $dbFile.Length)
-}
-else {
-    Add-Row -Target $Summary -Name "数据库大小" -Status "WARN" -Detail "还没有创建 ticketbox.db"
-}
-
-$backupFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.db" -File -ErrorAction SilentlyContinue |
+$backupFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.dump" -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending)
 if ($backupFiles.Count -gt 0) {
     $latestBackup = $backupFiles[0]
@@ -147,7 +138,7 @@ if ($backupFiles.Count -gt 0) {
     Add-Row -Target $Details -Name "备份数量" -Status "OK" -Detail "$($backupFiles.Count) 个"
 }
 else {
-    Add-Row -Target $Summary -Name "最近备份" -Status "WARN" -Detail "暂无 SQLite 备份"
+    Add-Row -Target $Summary -Name "最近备份" -Status "WARN" -Detail "暂无备份"
 }
 
 $expectedBackendVersion = Get-ExpectedBackendVersion

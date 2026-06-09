@@ -66,7 +66,7 @@ docs\runbook\CLOUDFLARE_TUNNEL.md
 
 - 不开放路由器端口。
 - 不把 `uploads/` 设成公开目录。
-- 不把 SQLite 数据库目录暴露到公网。
+- 不把 PostgreSQL 数据库暴露到公网。
 - 不把 FastAPI 改成 `--host 0.0.0.0`。
 
 Tunnel 配好后，用公网域名检查：

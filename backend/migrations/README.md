@@ -1,10 +1,10 @@
 # Schema migrations
 
-v1.1 (Batch 3) adopts **Alembic** for forward-only schema changes.
-Pre-v1.1 column additions live in `app/database/_migrations/` and stay
-there — they're idempotent ALTER + index creation and remain the boot
-path for existing DBs. New tables and columns starting in v1.1 ship
-as Alembic revisions instead.
+The backend uses **Alembic** for all forward-only schema changes; new
+tables and columns ship as Alembic revisions, and Alembic is the single
+source of truth. (Older releases also ran a hand-written
+`app/database/_migrations/` startup migrator for pre-v1.1 column additions;
+it was retired in the PG-only migration.)
 
 ## Quick reference
 

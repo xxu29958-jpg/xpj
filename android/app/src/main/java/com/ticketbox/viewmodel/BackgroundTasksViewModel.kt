@@ -16,10 +16,9 @@ import kotlinx.coroutines.launch
  * ADR-0030 background_tasks UI.
  *
  * Manual refresh + tap-to-cancel. Polling is intentionally not built in;
- * v1.0 task types (csv_import / v1_migration) are operator-initiated and
- * rare, so a passive list with a pull-to-refresh button is enough. Adding
- * a 3-second poll would burn battery for a feature triggered maybe once
- * a month per account.
+ * task types like csv_import are operator-initiated and rare, so a passive
+ * list with a pull-to-refresh button is enough. Adding a 3-second poll
+ * would burn battery for a feature triggered maybe once a month per account.
  */
 data class BackgroundTasksUiState(
     val tasks: List<BackgroundTask> = emptyList(),
