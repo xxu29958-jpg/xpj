@@ -1,4 +1,4 @@
-"""Engine, session, Base, and shared low-level SQLite helpers.
+"""Engine, session, and Base for the PostgreSQL store.
 
 Everything in this module is loaded by every other ``app.database`` submodule.
 Keep it small and side-effect-light: no validation, no migration, no seeding.
@@ -8,9 +8,8 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.config import BACKEND_ROOT, get_settings
 
@@ -21,13 +20,10 @@ __all__ = [
     "engine",
     "get_db",
     "settings",
-    "_sqlite_column_names",
 ]
 
 
 settings = get_settings()
-_is_sqlite = settings.database_url.startswith("sqlite")
-_is_memory_sqlite = _is_sqlite and (":memory:" in settings.database_url or settings.database_url == "sqlite://")
 # PostgreSQL (ADR-0041): pin every session to UTC at connection startup via the
 # libpq ``options`` string. The app stores all timestamps as UTC and binds
 # naive-UTC values into queries against ``timestamptz`` columns (date-range
@@ -37,41 +33,19 @@ _is_memory_sqlite = _is_sqlite and (":memory:" in settings.database_url or setti
 # comparison by 8h. (ADR-0041 also moved the OCC CAS off ``updated_at`` onto the
 # integer ``row_version``, so OCC no longer depends on this — but the time-range
 # queries still do.) Setting it through ``options`` (not a transactional
-# ``SET TIME ZONE``) means it can't be rolled back with a later transaction. No
-# effect on SQLite.
-connect_args = {"check_same_thread": False} if _is_sqlite else {"options": "-c timezone=utc"}
-engine_kwargs: dict = {"connect_args": connect_args, "future": True}
-# In-memory SQLite needs StaticPool: every new connection otherwise opens a
-# fresh empty DB, so schema / data created via one session vanishes when the
-# next session connects. StaticPool pins a single underlying sqlite handle
-# so all sessions in the process see the same in-memory DB.
+# ``SET TIME ZONE``) means it can't be rolled back with a later transaction.
 #
-# Note: under StaticPool, any ``inspect(engine)`` call shares the underlying
-# sqlite handle but is wrapped in its own logical SQLAlchemy connection,
-# whose release path issues a rollback that wipes any concurrent
-# transaction's writes. Migrations / seed code must therefore use
-# ``inspect(connection)`` (the same connection that holds the begin block)
-# instead of ``inspect(engine)`` — see _seed.py.
-if _is_memory_sqlite:
-    engine_kwargs["poolclass"] = StaticPool
-
-engine = create_engine(settings.database_url, **engine_kwargs)
+# Guarded on the ``postgresql`` dialect only so the libpq-specific ``options``
+# arg is not handed to the never-connected ``sqlite://`` engine the OpenAPI
+# contract dump (``scripts/check_api_contract.py``) spins up purely to
+# introspect the schema without a database server.
+connect_args = {"options": "-c timezone=utc"} if settings.database_url.startswith("postgresql") else {}
+engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
     pass
-
-
-@event.listens_for(engine, "connect")
-def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
-    if not settings.database_url.startswith("sqlite"):
-        return
-    cursor = dbapi_connection.cursor()
-    try:
-        cursor.execute("PRAGMA foreign_keys=ON")
-    finally:
-        cursor.close()
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -80,10 +54,3 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-
-
-def _sqlite_column_names(connection, table_name: str) -> set[str]:
-    return {
-        str(row["name"])
-        for row in connection.execute(text(f"PRAGMA table_info({table_name})")).mappings()
-    }

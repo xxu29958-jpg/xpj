@@ -82,13 +82,9 @@ class ConsoleIndexVM:
 
 def get_index_vm(db: Session) -> ConsoleIndexVM:
     cfg = get_settings()
+    # PG-only: static "ok" (no SQLite file-presence proxy; a live readiness
+    # probe is out of scope — see ``main.private_status``).
     db_status = "ok"
-    if cfg.database_url.startswith("sqlite:///"):
-        from pathlib import Path
-
-        db_path = Path(cfg.database_url[len("sqlite:///") :])
-        db_status = "ok" if db_path.is_file() else "missing"
-
     upload_status = "ok" if cfg.upload_dir.is_dir() else "missing"
 
     account = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))

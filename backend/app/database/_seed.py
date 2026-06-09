@@ -130,11 +130,10 @@ def seed_identity_data() -> None:
 
     with SessionLocal() as db:
         ensure_identity_seed(db)
-        # Use the session's own connection for inspection. ``inspect(engine)``
-        # opens an independent connection wrapper; under StaticPool (in-memory
-        # tests) its release path rolls back the session's pending writes from
-        # ``ensure_identity_seed`` because the underlying SQLite handle is
-        # shared.
+        # Inspect via the session's own connection, not ``inspect(engine)``:
+        # the latter opens an independent connection (a separate transaction)
+        # that can't see schema/rows still uncommitted in this session's
+        # transaction — which the PG per-test rollback-isolation lane relies on.
         existing = set(inspect(db.connection()).get_table_names())
         ids: set[str] = set()
         for model in _tenant_scoped_models():

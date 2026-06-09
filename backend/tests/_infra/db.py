@@ -3,15 +3,12 @@
 These are plain functions, not fixtures — the conftest layer composes them
 into fixtures so the lifecycle is visible at one place.
 
-Two reset strategies (see :func:`is_isolation_lane`):
-
-* **SQLite lanes** — per-test ``reset_db_state`` (drop + create + seed). In-memory
-  ``create_all`` is ~16ms, cheap enough, and the per-test rebuild keeps the
-  SQLite-only machinery tests honest.
-* **PostgreSQL lane** — schema + base seed built ONCE per session, then each test
-  runs inside an outer transaction that is rolled back (``transactional_isolation``).
-  Per-test rebuild on PostgreSQL is ~590ms (``create_all`` + 18-rev Alembic
-  replay); the rollback model drops that to ~1ms, approaching the SQLite floor.
+PG-only (debt #4): schema + base seed are built ONCE per session, then each test
+runs inside an outer transaction that is rolled back (``transactional_isolation``).
+Per-test rebuild on PostgreSQL is ~590ms (``create_all`` + 18-rev Alembic replay);
+the rollback model drops that to ~1ms. ``reset_db_state`` (full rebuild) still owns
+the session build and the ``@pytest.mark.real_db`` tests that need real
+cross-connection commits.
 """
 
 from __future__ import annotations
@@ -42,13 +39,13 @@ def cleanup_runtime() -> None:
 
 
 def is_isolation_lane() -> bool:
-    """True on the PostgreSQL lane, where per-test transaction-rollback applies.
+    """True on PostgreSQL — the only supported lane now (debt #4).
 
-    SQLite lanes return False and keep per-test ``reset_db_state``: in-memory
-    ``create_all`` is cheap, and the rollback model conflicts with idempotency's
-    SQLite-only ``BEGIN IMMEDIATE`` writer shim (a raw ``BEGIN`` issued inside the
-    test's already-open outer transaction). PostgreSQL has no such shim — there
-    the shim is a dialect no-op — so the SAVEPOINT-nesting model is clean.
+    Returns False only for a ``sqlite://`` URL: a vestigial guard kept so the
+    fixtures fall back to a full rebuild rather than misapplying the SAVEPOINT
+    rollback model. The SQLite engine machinery is gone, so a sqlite override is
+    no longer actually supported; no lane sets one. (The vestigial sqlite branches
+    here + in conftest are slated for removal with the test-lane collapse.)
     """
     from app.database import settings
 

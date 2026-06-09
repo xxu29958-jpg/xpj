@@ -330,18 +330,11 @@ def cleanup_expired_audit_logs(
 
     threshold = now or now_utc()
     # ``called_at + retention_days days`` as a SQL expression for the pre-filter
-    # ORDER BY / WHERE (the Python loop below is the authoritative check).
-    # ``datetime()`` / ``printf()`` are SQLite-only, so branch on dialect
-    # (ADR-0041): PostgreSQL builds the same offset with ``make_interval``.
-    if db.get_bind().dialect.name == "postgresql":
-        expires_at = BudgetAdvisorAuditLog.called_at + func.make_interval(
-            0, 0, 0, BudgetAdvisorAuditLog.retention_days
-        )
-    else:
-        expires_at = func.datetime(
-            BudgetAdvisorAuditLog.called_at,
-            func.printf("+%d days", BudgetAdvisorAuditLog.retention_days),
-        )
+    # ORDER BY / WHERE (the Python loop below is the authoritative check). PG-only
+    # (debt #4): PostgreSQL builds the offset with ``make_interval``.
+    expires_at = BudgetAdvisorAuditLog.called_at + func.make_interval(
+        0, 0, 0, BudgetAdvisorAuditLog.retention_days
+    )
     rows = list(
         db.scalars(
             select(BudgetAdvisorAuditLog)

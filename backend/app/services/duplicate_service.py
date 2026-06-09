@@ -4,7 +4,6 @@ from datetime import timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -143,23 +142,10 @@ def _is_duplicate_ignored(db: Session, tenant_id: str, expense_id: int, duplicat
     )
 
 
-def _dialect_insert(db: Session):
-    """``ON CONFLICT DO NOTHING`` needs the engine's own insert construct.
-
-    The SQLite and PostgreSQL dialect inserts expose the same
-    ``on_conflict_do_nothing(index_elements=...)`` API but each only compiles
-    against its own dialect — using the SQLite one on PostgreSQL raises at
-    execute time (ADR-0041).
-    """
-    if db.get_bind().dialect.name == "postgresql":
-        return postgresql_insert
-    return sqlite_insert
-
-
 def _remember_duplicate_ignore(db: Session, tenant_id: str, expense_id: int, duplicate_of_id: int, kind: str) -> None:
     left_id, right_id = _normalize_pair(expense_id, duplicate_of_id)
     db.execute(
-        _dialect_insert(db)(DuplicateIgnore)
+        postgresql_insert(DuplicateIgnore)
         .values(
             tenant_id=tenant_id,
             expense_id=left_id,
