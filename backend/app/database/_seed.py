@@ -8,21 +8,67 @@ arrives.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import inspect, select, text
 
 from app.database._core import SessionLocal, engine
-from app.database._migrations import record_schema_migration
-from app.database._validate import _validate_legacy_tenant_ids
+from app.database._tenant_id_check import _validate_legacy_tenant_ids
 from app.version import BACKEND_VERSION
 
 __all__ = [
+    "BASELINE_MIGRATION_NAME",
     "reconcile_expense_tag_mirror_once",
+    "record_schema_migration",
     "seed_identity_data",
     "seed_runtime_data",
 ]
 
 # ADR-0043 slice A: marker for the one-time expense_tags mirror reconcile.
 _TAG_MIRROR_RECONCILE_MARKER = "tag-mirror-reconcile-v1"
+
+# Baseline marker recorded once per startup into the schema_migrations ledger
+# (backup/restore validators match its backend_version). Relocated here when
+# the SQLite startup migrator that formerly owned it was retired (PG-only).
+BASELINE_MIGRATION_NAME = f"baseline-v{BACKEND_VERSION}"
+
+
+def record_schema_migration(
+    name: str,
+    *,
+    backend_version: str | None = None,
+    note: str | None = None,
+) -> None:
+    """Record that the named migration step has been applied.
+
+    Idempotent: re-recording the same name is a no-op. ``backend_version``
+    is what backup/restore validators match against — leaving it None means
+    the row will not satisfy ``--expected-backend-version`` checks.
+    """
+
+    # Portable "insert if absent": check-then-insert instead of SQLite-only
+    # ``INSERT OR IGNORE`` (PostgreSQL would reject that syntax). Runs once
+    # per startup in a single process, so the TOCTOU gap is not a real race.
+    with engine.begin() as connection:
+        existing = connection.execute(
+            text("SELECT 1 FROM schema_migrations WHERE name = :name LIMIT 1"),
+            {"name": name},
+        ).first()
+        if existing is not None:
+            return
+        connection.execute(
+            text(
+                "INSERT INTO schema_migrations "
+                "(name, applied_at, backend_version, note) "
+                "VALUES (:name, :applied_at, :backend_version, :note)"
+            ),
+            {
+                "name": name,
+                "applied_at": datetime.now(UTC),
+                "backend_version": backend_version,
+                "note": note,
+            },
+        )
 
 
 def _tenant_scoped_models() -> tuple[type, ...]:
@@ -122,9 +168,8 @@ def seed_runtime_data() -> None:
 def _tag_mirror_reconcile_done() -> bool:
     """Cross-dialect 'already reconciled' check.
 
-    ``is_schema_migration_applied`` short-circuits to False on Postgres
-    (it is SQLite-only), which would re-run the reconcile on every startup.
-    This reads the same ``schema_migrations`` ledger on either engine.
+    Reads the ``schema_migrations`` ledger directly so it behaves identically on
+    either engine — the reconcile must run exactly once, not on every startup.
     """
     with engine.connect() as connection:
         if "schema_migrations" not in set(inspect(connection).get_table_names()):

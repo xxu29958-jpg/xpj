@@ -221,7 +221,10 @@ def _regression_test_missing() -> list[str]:
             "test_perceptual_hash_matches_tiny_visual_change",
             "test_refresh_rotates_token_and_graces_previous",
             "test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires",
-            "test_legacy_active_auth_tokens_deduplicate_before_unique_index",
+            # test_legacy_active_auth_tokens_deduplicate_before_unique_index was
+            # retired with the SQLite startup migrator (PG-only, debt #4): it
+            # exercised legacy-duplicate dedup during migration, which fresh PG
+            # never has — the uq_auth_tokens_active_principal constraint stands alone.
             "test_fresh_schema_version_is_seeded_to_backend_version",
             "test_factory_rejects_public_api_key_with_unsafe_shape",
             "test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails",

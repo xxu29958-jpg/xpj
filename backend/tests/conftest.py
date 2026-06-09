@@ -112,17 +112,6 @@ def external_upload_dir(monkeypatch: pytest.MonkeyPatch, tmp_path):
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        "file_backed_only: test only meaningful against a file-backed SQLite; "
-        "skipped under the default in-memory lane. Run via XPJ_TEST_FILE_BACKED=1.",
-    )
-    config.addinivalue_line(
-        "markers",
-        "sqlite_only: test exercises SQLite-only machinery (the migrate_sqlite_schema "
-        "replay, PRAGMA, file backup/validation) that no-ops on PostgreSQL; skipped on "
-        "the ADR-0041 Postgres lane (XPJ_TEST_DATABASE_URL=postgresql+psycopg://…).",
-    )
-    config.addinivalue_line(
-        "markers",
         "real_db: opt out of the PostgreSQL lane's per-test transaction-rollback "
         "isolation and run against a real committed DB (full reset_db_state). For "
         "tests that need real cross-connection commits — concurrency, true "
@@ -142,8 +131,8 @@ _PG_REAL_DB_NODES = (
     # be destroyed for every later test. Must run against a real committed DB.
     "tests/test_ocr_facts_backfill_step3.py::",  # _backfill_legacy_raw_text via engine.begin
     "tests/test_v1_cutover.py::",  # reset_db_state
-    "tests/test_v1_cutover_snapshot.py::",  # reset_db_state
     "tests/test_data_migration.py::",  # create_engine SQLite->PG round-trip
+    "tests/test_alembic_tag_migration.py::",  # alembic up/down round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
@@ -172,6 +161,8 @@ _PG_REAL_DB_NODES = (
     # Legacy upload-path migration runs DDL/UPDATE via engine.begin (its own
     # connection), outside the test transaction.
     "tests/test_tenant_isolation.py::test_legacy_upload_paths_migrate_into_current_tenant_dir",
+    "tests/test_tenant_isolation.py::test_legacy_upload_migration_leaves_database_only_reference_untouched",
+    "tests/test_tenant_isolation.py::test_legacy_upload_migration_rename_failure_keeps_original_file_and_path",
     # A read-only outer ``with SessionLocal()`` wraps a helper that commits a
     # role change; on the shared connection the outer session's close-rollback
     # discards the nested commit, so the demotion is lost (got 201, want 403).
@@ -192,33 +183,13 @@ def pytest_collection_modifyitems(
 ) -> None:
     from app.database import settings as _settings
 
-    url = _settings.database_url
-    is_sqlite = url.startswith("sqlite")
-    is_in_memory = ":memory:" in url or url == "sqlite://"
-    # File-backed SQLite (verify_project / CI file-backed lane) runs the full
-    # suite, including file_backed_only + the SQLite migrator tests.
-    if is_sqlite and not is_in_memory:
+    # SQLite lanes use per-test reset_db_state, not transaction-rollback
+    # isolation, so there is nothing to opt out of (real_db is a no-op there).
+    if _settings.database_url.startswith("sqlite"):
         return
 
-    on_postgres = not is_sqlite
-    skip_file_backed = pytest.mark.skip(
-        reason="file_backed_only: requires file-backed SQLite (set XPJ_TEST_FILE_BACKED=1)."
-    )
-    skip_sqlite_only = pytest.mark.skip(
-        reason="sqlite_only: SQLite-only machinery, not run on the PostgreSQL lane."
-    )
     real_db = pytest.mark.real_db
     for item in items:
-        if "file_backed_only" in item.keywords:
-            item.add_marker(skip_file_backed)
-        # The Postgres lane skips SQLite-only machinery: the migrate_sqlite_schema
-        # replay tests (which exercise a path that no-ops on PostgreSQL) and
-        # anything explicitly marked ``sqlite_only``.
-        if on_postgres and (
-            "sqlite_only" in item.keywords
-            or "test_database_migration" in item.module.__name__
-        ):
-            item.add_marker(skip_sqlite_only)
         # PostgreSQL isolation opt-outs (see _PG_REAL_DB_NODES). The nodeid uses
         # forward slashes on every OS.
         nodeid = item.nodeid.replace("\\", "/")

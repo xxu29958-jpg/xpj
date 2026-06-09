@@ -10,8 +10,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.owner_console import _require_local
 
-_requires_file_sqlite = pytest.mark.file_backed_only
-
 
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
@@ -29,17 +27,6 @@ def test_owner_backups_page_opens(local_client: TestClient) -> None:
 def test_owner_backups_remote_returns_403(client: TestClient) -> None:
     resp = client.get("/owner/backups")
     assert resp.status_code == 403
-
-
-@_requires_file_sqlite
-def test_owner_backups_create_makes_file(local_client: TestClient, tmp_path) -> None:
-    from app.services import backup_service
-
-    initial = len(backup_service.list_backups())
-    resp = local_client.post("/owner/backups")
-    assert resp.status_code == 200
-    assert "备份已创建" in resp.text
-    assert len(backup_service.list_backups()) == initial + 1
 
 
 def test_owner_backups_skip_invalid_partial_files(local_client: TestClient, tmp_path) -> None:

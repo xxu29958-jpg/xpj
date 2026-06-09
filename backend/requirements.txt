@@ -9,10 +9,9 @@ pillow-heif==1.3.0
 tzdata==2026.2
 jinja2==3.1.6
 PyJWT[crypto]==2.13.0
-# v1.1 Batch 3: Alembic adopted for forward-only schema changes. The
-# legacy idempotent migrator in app/database/_migrations stays in
-# place to backfill existing DBs; new tables/columns ship as Alembic
-# revisions instead.
+# v1.1 Batch 3: Alembic adopted for forward-only schema changes; new
+# tables/columns ship as Alembic revisions. (The legacy idempotent SQLite
+# startup migrator was retired in the PG-only slimming — debt #4.)
 alembic==1.16.4
 # ADR-0041: PostgreSQL engine migration. psycopg 3 (binary wheels - no system
 # libpq needed) is the SQLAlchemy driver for postgresql+psycopg:// URLs. SQLite

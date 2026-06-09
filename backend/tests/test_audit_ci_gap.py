@@ -43,7 +43,6 @@ jobs:
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
         "pytest coverage lane",
-        "file-backed pytest lane",
     ]
 
 
@@ -110,7 +109,6 @@ jobs:
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
         "pytest coverage lane",
-        "file-backed pytest lane",
     ]
 
 
@@ -141,5 +139,4 @@ jobs:
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
         "pytest coverage lane",
-        "file-backed pytest lane",
     ]

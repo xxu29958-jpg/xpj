@@ -86,16 +86,6 @@ jobs:
       - name: API contract
         run: python scripts\check_api_contract.py
 
-      - name: Test (file-backed SQLite lane)
-        # Same lane that verify_project.ps1 runs locally (XPJ_TEST_FILE_BACKED=1
-        # flips conftest's in-memory DB out so file_backed_only-marked tests
-        # actually exercise the SQLite-on-disk paths — backup validation,
-        # migration replay, etc). Without this, local verify is strictly
-        # stronger than CI for the migration/backup contract.
-        env:
-          XPJ_TEST_FILE_BACKED: "1"
-        run: python -m pytest -q -m file_backed_only
-
       - name: Smoke test
         run: python scripts\smoke_test.py
 

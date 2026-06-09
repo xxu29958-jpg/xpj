@@ -38,23 +38,16 @@ def main() -> int:
             "uq_expense_tags_tenant_expense_tag",
             "fk_expense_tags_expense_tenant",
             "fk_expense_tags_tag_tenant",
-        ),
-    )
-    if model_missing:
-        ok = False
-        _fail("structured tag models/constraints missing: " + ", ".join(model_missing))
-
-    migration_missing = _contains_all(
-        "app/database/_migrations/_budgets_tags.py",
-        (
+            # Indexes are defined on the ORM model (create_all materialises them);
+            # the legacy SQLite migrator that used to also declare them is retired.
             "ix_tags_tenant_key",
             "ix_expense_tags_tenant_expense",
             "ix_expense_tags_tenant_tag",
         ),
     )
-    if migration_missing:
+    if model_missing:
         ok = False
-        _fail("tag relation migration/indexes missing: " + ", ".join(migration_missing))
+        _fail("structured tag models/constraints/indexes missing: " + ", ".join(model_missing))
 
     sync_paths = (
         "app/services/expense_service/_create.py",

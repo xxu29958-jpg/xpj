@@ -51,7 +51,7 @@ engine_kwargs: dict = {"connect_args": connect_args, "future": True}
 # whose release path issues a rollback that wipes any concurrent
 # transaction's writes. Migrations / seed code must therefore use
 # ``inspect(connection)`` (the same connection that holds the begin block)
-# instead of ``inspect(engine)`` — see _migrations.py and _seed.py.
+# instead of ``inspect(engine)`` — see _seed.py.
 if _is_memory_sqlite:
     engine_kwargs["poolclass"] = StaticPool
 

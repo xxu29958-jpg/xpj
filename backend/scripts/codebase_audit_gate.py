@@ -110,15 +110,15 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "files_over_500": 14,
     # PR-A expanded undo_reject_expense docstring (ABA + child resource
     # contract) tipped one function over the 80-line threshold; bank +1.
-    "long_functions": 42,
+    "long_functions": 38,  # −4 PG-only slice 2 (retired SQLite migrator/validator)
     "deep_nesting_functions": 6,
     "route_layer_imports": 0,
     "service_public_no_private": 4,
-    "global_usage": 7,  # +1 ADR-0045: csrf.py per-install CSRF key startup-stash singleton
+    "global_usage": 5,  # +1 ADR-0045 csrf startup-stash singleton; −2 PG-only slice 2 (retired _backup.py _sqlite_backup_done guard)
     "cached_singletons": 3,
     "nested_dict_args": 17,
     "mixed_return_functions": 0,
-    "broad_exception": 23,
+    "broad_exception": 22,  # −1 PG-only slice 2 (retired SQLite migrator/validator)
     "generic_raises": 7,
     "todo_markers": 9,
     "hardcoded_urls": 12,  # +2 ADR-0027 Frankfurter default URL (config default, mirrors ECB inline pattern)
@@ -127,7 +127,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the
     # /web/pending route; bank the reduction so unreferenced_modules can't
     # silently re-creep.
-    "unreferenced_modules": 222,  # +2 ADR-0043 tag_management_service + tag_undo_service (covered via /api/tags route tests, not direct import); +2 slice C web_tags + owner_console._tag_cleanup (HTTP-tested, not direct import)
+    "unreferenced_modules": 207,  # +2 ADR-0043 tag_management_service + tag_undo_service (covered via /api/tags route tests, not direct import); +2 slice C web_tags + owner_console._tag_cleanup (HTTP-tested, not direct import); −15 PG-only slice 2 (retired _migrations/ + _validate/ submodules)
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -211,7 +211,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # accept atomic-claim; +8 ADR-0041 Slice A row_version groundwork; +3
     # ADR-0041 self-describing items/splits responses (parent row_version in
     # items-replace, acknowledge-mismatch, splits-replace responses); +12 ADR-0042 Slice A idempotency helper tests; +5 Slice B PATCH idempotency tests; +12 Slice D-1 state-machine idempotency tests; +15 Slice D-2 rules/aliases/items idempotency tests (header-required×5, committed-but-unseen rule+items+alias, delete HIT rule+alias, in-progress×2, reuse×2); +5 Slice E-1 splits-replace idempotency tests (header-required, committed-but-unseen, stale-409, in-progress, reuse); +5 Slice E-2 recognize-text idempotency tests (same shape); +1 ADR-0042 tags-guard hardening (explicit {"tags":null} no longer clobbers); +10 Slice F goals/income-plan PATCH idempotency tests (header-required×2, committed-but-unseen goal+plan, stale-409×2, in-progress×2, reuse×2). +1 owner-console live DB dialect readiness test (ADR-0041 cut-over visibility). +11 ADR-0027 Frankfurter transport + weekend fallback + owner FX panel tests (parse×4, dispatcher, weekend-resolve, pre-history pending, run_once×2, owner 403 + manual refresh); +1 mutate exempt /owner/fx/refresh (upsert_bucket); +2 FX review follow-up (ecb dispatcher branch + run_fx_sync_once unexpected-error). +4 ADR-0043 slice A (legacy tags management-columns + snapshot-tables migration ×1; expense_tags mirror reconcile relink / orphan-removal / noop-idempotent ×3). +4 ADR-0043 slice A review follow-up (alembic ALTER-branch round-trip migration ×1; reconcile occ-effective-bump / unrelated-not-bumped / multi-batch ×3). +20 ADR-0043 slice B (tag management: 13 test_tag_management list/rename/delete/merge/viewer/isolation/auth/read-filter/self-merge/dedup + 7 test_tag_undo undo-restore/stale-409/partial-CAS/merge-undo/window-404/unknown-404/purge). +14 ADR-0043 slice C tag-mgmt UI (+7 test_web_app_tags, +3 test_owner_tag_cleanup, +4 route-inventory writer-only parametrize for the 4 /web/tags POST routes). +1 slice C follow-up (owner orphan-cleanup TOCTOU re-check skips a re-used tag). +3 ADR-0043 codex-review P1 (test_web_session_write_gate: web-session viewer write-gate × viewer-denied/member-allowed/not-listed-denied). +3 ADR-0043 review-2 (test_tag_management merge-id-order + orphan-guard service tests ×2; web_tasks cancel joins writer-only route-inventory parametrize ×1). +1 ADR-0043 review-3 (test_tag_management: _claim_merge_pair on a concurrently soft-deleted tag surfaces state_conflict 409, not tag_not_found 404). +1 ADR-0043 review follow-up (OpenAPI API/UploadLink error responses use project ErrorResponse, not HTTPValidationError). +4 ADR-0045 CSRF signing key (csrf_key_service get-or-create idempotent + non-placeholder; _csrf_secret prefers real env, rejects placeholder → per-install app_meta key; persisted key covers placeholder env on /web vs genuine-no-key fail-closed 500). +3 ADR-0045 follow-up (budget-advisor audit input-hash HMAC: per-install audit key rejects placeholder + is csrf-separated; compute_input_hash uses it; prefers a real env secret).
-    "backend_pytest_count": 1686,
+    "backend_pytest_count": 1626,  # −60 PG-only slice 2: retired SQLite startup migrator + 14 test_database_migration_*.py + sqlite_only/file_backed_only tests (63 removed); +2 upload-path tests ported to test_tenant_isolation + 1 alembic tag-migration round-trip ported to test_alembic_tag_migration (ORM/PG)
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination
@@ -221,14 +221,13 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 }
 
 
-# Subset of STRICT_EQUALITY_BASELINE keys whose baseline value can ONLY
-# grow vs base. Decreasing baseline = letting actual silently drop =
-# losing test coverage / token routes that someone earlier paid for.
-# The audit's "actual == current baseline" check passes if both drop in
-# lockstep; this ratchet catches that collusion.
+# Subset of STRICT_EQUALITY_BASELINE keys whose baseline value can ONLY grow
+# vs base — decreasing = letting actual silently drop (lost token routes someone
+# paid for). ``backend_pytest_count`` was REMOVED here for the PG-only slimming
+# campaign (slices 2-5 delete already-PG-skipped SQLite tests); strict equality
+# still forces its every change to be declared in this file's diff.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
     "mutate_token_carriers",
-    "backend_pytest_count",
 })
 
 # Subset of STRICT_EQUALITY_BASELINE keys whose baseline value can ONLY

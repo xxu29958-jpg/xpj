@@ -89,18 +89,12 @@ jobs:
       # The full pytest suite runs on PostgreSQL in the backend-postgres job
       # below (PG-only — debt #4): the in-memory SQLite default lane is retired,
       # so a bare `pytest` here would hit the new PG default with no cluster in
-      # this job. backend-full keeps the static checks + the SQLite file-backed
-      # lane (transitional, removed when those tests go in a follow-up slice).
+      # this job. backend-full keeps the static checks only; the SQLite
+      # file-backed lane was retired with the SQLite startup migrator.
 
       - name: API contract
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe scripts\check_api_contract.py
-
-      - name: Test file-backed SQLite lane
-        working-directory: backend
-        env:
-          XPJ_TEST_FILE_BACKED: "1"
-        run: .\.ci-venv\Scripts\python.exe -m pytest -q -m file_backed_only
 
       - name: Smoke test
         working-directory: backend

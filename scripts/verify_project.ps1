@@ -146,20 +146,6 @@ if (-not $SkipBackend) {
     Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
-    $prevFileBacked = [Environment]::GetEnvironmentVariable("XPJ_TEST_FILE_BACKED")
-    try {
-        $env:XPJ_TEST_FILE_BACKED = "1"
-        Invoke-Checked -FilePath $tools.Python -Arguments @(
-            "-m", "pytest", "-q", "-m", "file_backed_only"
-        ) -WorkingDirectory $BackendRoot
-    }
-    finally {
-        if ($null -eq $prevFileBacked) {
-            Remove-Item Env:\XPJ_TEST_FILE_BACKED -ErrorAction SilentlyContinue
-        } else {
-            $env:XPJ_TEST_FILE_BACKED = $prevFileBacked
-        }
-    }
     if (-not $SkipSmoke) {
         Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
     }

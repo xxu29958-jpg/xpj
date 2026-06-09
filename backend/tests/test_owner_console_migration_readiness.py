@@ -18,8 +18,6 @@ from app.routes.owner_console import _require_local
 from app.services import background_task_service, backup_service, v1_migration_service
 from app.services.migration_readiness_service import build_v1_migration_readiness_report
 
-_requires_file_sqlite = pytest.mark.file_backed_only
-
 
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
@@ -159,45 +157,6 @@ def test_owner_migration_cut_over_records_owner_initiator(
         )
         assert task is not None
         assert task.initiated_by_account_id is not None
-
-
-@_requires_file_sqlite
-def test_owner_migration_readiness_create_pre_v1_backup(local_client: TestClient) -> None:
-    before = {entry.file_name for entry in backup_service.list_backups()}
-
-    resp = local_client.post("/owner/migration-readiness/pre-v1-backup")
-
-    after_entries = backup_service.list_backups()
-    created = [
-        entry.file_name
-        for entry in after_entries
-        if entry.file_name not in before and entry.kind == "pre-v1.0"
-    ]
-    try:
-        assert resp.status_code == 200
-        assert len(created) == 1
-        assert created[0] in resp.text
-        assert "已创建 pre-v1.0 回滚备份" in resp.text
-    finally:
-        for file_name in created:
-            _delete_backup(file_name)
-
-
-@_requires_file_sqlite
-def test_owner_migration_readiness_does_not_trust_invalid_pre_v1_backup(
-    local_client: TestClient,
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    del local_client
-    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
-    (tmp_path / "ticketbox-pre-v1.0-29991231-235959.db").write_bytes(b"not sqlite")
-
-    report = build_v1_migration_readiness_report(create_backup=False)
-    backup_check = next(check for check in report.checks if check.code == "backup_available")
-
-    assert report.latest_backup is None
-    assert backup_check.status == "error"
 
 
 def test_owner_migration_readiness_does_not_leak_sensitive_values(

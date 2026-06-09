@@ -45,12 +45,6 @@ REQUIRED_CI_INVOCATIONS = [
         "pytest coverage lane",
         re.compile(r"\b(?:python(?:\.exe)?\s+-m\s+)?pytest\b[^\n]*\s--cov=app\b"),
     ),
-    RequiredCommand(
-        "file-backed pytest lane",
-        re.compile(
-            r"\b(?:python(?:\.exe)?\s+-m\s+)?pytest\b[^\n]*\s-m\s+file_backed_only\b"
-        ),
-    ),
 ]
 
 
