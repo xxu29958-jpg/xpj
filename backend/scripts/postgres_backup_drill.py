@@ -7,7 +7,7 @@ archive, restores it into a fresh database with ``pg_restore``, and asserts the
 key tables came back with identical row counts and a recorded backend version.
 
 Runs on the backend-postgres CI lane right after the smoke test (which populates
-the source DB). Not needed locally / on SQLite.
+the source DB). Not needed locally.
 
     DRILL_SOURCE_URL=postgresql+psycopg://...:.../xpj_smoke \
     DRILL_RESTORE_URL=postgresql+psycopg://...:.../xpj_restore \
@@ -17,7 +17,6 @@ the source DB). Not needed locally / on SQLite.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -44,8 +43,9 @@ def _counts(url: str) -> dict[str, int]:
 
 def _pg_restore(dump_path: Path, restore_url: str) -> None:
     from app.services.backup_service import _libpq_url
+    from app.services.postgres_backup_validation_service import find_pg_binary
 
-    binary = os.getenv("PG_RESTORE_PATH") or shutil.which("pg_restore")
+    binary = find_pg_binary("pg_restore", "PG_RESTORE_PATH")
     if not binary:
         raise SystemExit("FAIL drill: pg_restore not found")
     result = subprocess.run(

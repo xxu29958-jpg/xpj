@@ -189,7 +189,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "createdb xpj_smoke failed" }
             & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_test
             if ($LASTEXITCODE -ne 0) { throw "createdb xpj_test failed" }
-            Write-Host "ephemeral PostgreSQL up on 127.0.0.1:5433 (xpj_smoke + xpj_test)"
+            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_restore
+            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_restore failed" }
+            Write-Host "ephemeral PostgreSQL up on 127.0.0.1:5433 (xpj_smoke + xpj_test + xpj_restore)"
 
             # Reachability guard: fail loud if the URL ever silently falls back to SQLite.
             $env:SMOKE_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_smoke"
@@ -202,6 +204,20 @@ jobs:
             Write-Host "--- PostgreSQL end-to-end smoke ---"
             .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL smoke failed" }
+
+            # Backup/restore recovery drill (ENGINEERING_RULES section 6: a backup
+            # without a restore drill is no backup). Dumps the smoke-populated DB
+            # through the real backend backup code (pg_dump -Fc via find_pg_binary),
+            # validates the archive, restores into the fresh xpj_restore DB and
+            # asserts identical row counts. Lived on the GitHub-era PG lane, lost
+            # in the Gitea move, revived here. Runs before the pytest suite
+            # mutates anything; pg_restore resolves via the same Program Files
+            # glob as pg_dump (not on the runner's PATH).
+            Write-Host "--- PostgreSQL backup/restore drill ---"
+            $env:DRILL_SOURCE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_smoke"
+            $env:DRILL_RESTORE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_restore"
+            .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
             # Full suite on real PG — the only engine now (debt #4). Own xpj_test
             # DB (separate from xpj_smoke) so the smoke's rows never collide.
@@ -346,8 +362,57 @@ jobs:
       - name: Gradle / JVM versions
         run: .\gradlew.bat --no-daemon --version
 
+      - name: Force regenerate latest Room schema
+        # Room's KSP processor is incremental and SKIPS rewriting an existing
+        # schemaLocation file when its cache says the entity hash is unchanged
+        # — including when the committed file itself is wrong. Deleting the
+        # latest version's file turns a silent skip into a loud diff. The
+        # delete alone is NOT enough: app/schemas is a legacy KSP arg, not a
+        # declared task output, so a FROM-CACHE kspGrayDebugKotlin hit (shared
+        # build cache, org.gradle.caching=true) never re-runs the processor
+        # and the deleted file stays gone — hence the explicit --rerun-tasks
+        # KSP invocation here. The later compile step then sees KSP UP-TO-DATE
+        # (net cost ≈ zero). (GitHub-era step, revived + cache-proofed.)
+        run: |
+          $schemaDir = "app\schemas\com.ticketbox.data.local.AppDatabase"
+          $latest = Get-ChildItem $schemaDir -Filter "*.json" |
+            Where-Object { $_.BaseName -match '^\d+$' } |
+            Sort-Object { [int]$_.BaseName } |
+            Select-Object -Last 1
+          if ($latest) {
+            Write-Host "Deleting $($latest.Name) to force KSP regeneration"
+            Remove-Item -LiteralPath $latest.FullName -Force
+          }
+          .\gradlew.bat --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
+
       - name: Compile and unit tests
         run: .\gradlew.bat --no-daemon :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
+
+      - name: Verify Room schema snapshots are committed
+        # KSP just re-emitted the latest schema JSON during compile; if it
+        # differs from the committed file the entity change shipped without
+        # its schema diff — fail loudly with the patch. Runs from the repo
+        # root: with working-directory android, the android/app/schemas
+        # pathspec silently matches nothing and the gate "passes" (the
+        # GitHub-era lane shipped exactly that bug once).
+        working-directory: ${{ github.workspace }}
+        run: |
+          $status = git status --porcelain android/app/schemas
+          if ($status) {
+            Write-Host "##[error]Room KSP regenerated schema files that aren't committed."
+            Write-Host "git status:"
+            Write-Host ($status -join "`n")
+            Write-Host "Diff against HEAD:"
+            git diff -- android/app/schemas
+            $untracked = @($status | Where-Object { $_ -match '^\?\? ' } | ForEach-Object { ($_ -replace '^\?\? ', '').Trim() })
+            foreach ($f in $untracked) {
+              Write-Host "--- $f"
+              Get-Content -LiteralPath $f -Encoding UTF8
+              Write-Host "--- end $f"
+            }
+            throw "Room schema drift — commit the regenerated JSON in the same PR as the entity change"
+          }
+          Write-Host "Room schema snapshots match the committed files"
 
       - name: Assert test count equals baseline
         run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline
@@ -360,3 +425,37 @@ jobs:
 
       - name: Assemble internal debug APK
         run: .\gradlew.bat --no-daemon :app:assembleInternalDebug
+
+      - name: Assemble release APKs (R8)
+        # Release builds run minify + shrinkResources. Keeps R8 keep rules
+        # warm in CI instead of discovering Retrofit/Moshi issues only when
+        # someone manually assembles a release. Unsigned: the release
+        # signingConfig is findByName-optional and absent in CI on purpose.
+        # (GitHub-era step, revived.)
+        run: .\gradlew.bat --no-daemon :app:assembleGrayRelease :app:assembleInternalRelease
+
+      - name: Verify debug APK signing certificate
+        # Both debug APKs must carry the repository-level stable debug
+        # certificate (android/config/debug/ticketbox-debug.keystore) so a
+        # CI-built APK can adb install -r over any existing debug install.
+        # Expected fingerprint pinned from android/config/debug/README.md —
+        # if the keystore is ever rotated, update both together.
+        run: |
+          $apksigner = Get-ChildItem "$env:ANDROID_HOME\build-tools\*\apksigner.bat" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Name } -Descending | Select-Object -First 1
+          if (-not $apksigner) { throw "apksigner.bat not found under $env:ANDROID_HOME\build-tools" }
+          $expected = "911522417cc5016edadcffadde7b904d928dc42d66a797844445acb5bcae106f"
+          $apks = @(
+            "app\build\outputs\apk\gray\debug\app-gray-debug.apk",
+            "app\build\outputs\apk\internal\debug\app-internal-debug.apk"
+          )
+          foreach ($apk in $apks) {
+            $line = & $apksigner.FullName verify --print-certs $apk |
+              Select-String -Pattern "certificate SHA-256 digest" | Select-Object -First 1
+            if (-not $line) { throw "no SHA-256 digest line from apksigner for $apk" }
+            $actual = ($line.Line -split ":\s*", 2)[1].Trim().Replace(":", "").ToLowerInvariant()
+            if ($actual -ne $expected) {
+              throw "Unexpected debug signing certificate for $apk - expected $expected got $actual"
+            }
+            Write-Host "OK signing certificate $apk"
+          }

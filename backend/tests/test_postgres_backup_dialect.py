@@ -9,8 +9,6 @@ is installed on the runner).
 
 from __future__ import annotations
 
-import shutil
-
 import pytest
 
 import app.services.postgres_backup_validation_service as pgval
@@ -69,7 +67,13 @@ def test_postgres_backup_validation_rejects_non_archive(tmp_path) -> None:
     assert pgval.is_postgres_backup_valid(bogus) is False
 
 
-@pytest.mark.skipif(shutil.which("pg_restore") is None, reason="pg_restore not installed")
+@pytest.mark.skipif(
+    # Same discovery chain the validator itself uses (env -> PATH -> Program
+    # Files glob): a PATH-only check skipped this on hosts where the glob
+    # finds pg_restore and the validator would actually run.
+    pgval.find_pg_binary("pg_restore", "PG_RESTORE_PATH") is None,
+    reason="pg_restore not found anywhere",
+)
 def test_postgres_backup_validation_reports_pg_restore_failure(tmp_path) -> None:
     bogus = tmp_path / "ticketbox-bogus.dump"
     bogus.write_text("not an archive")
