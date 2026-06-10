@@ -139,10 +139,14 @@ class LedgerViewModelTest {
         assertEquals(setOf(1L, 2L), fake.lastBatchExpenses.map { it.id }.toSet())
         assertEquals("购物", fake.lastBatchCategory)
         assertEquals(null, fake.lastBatchTags)
-        // selection clears on success; honest count message.
+        // selection clears on success; honest count message (per-clause
+        // resourced via Compound now that the ledger surface renders it).
         assertTrue(!vm.uiState.value.selectionMode)
         assertEquals(emptySet(), vm.uiState.value.selectedIds)
-        assertEquals(UiText.raw("已更新 2 笔"), vm.uiState.value.message)
+        assertEquals(
+            UiText.compound(listOf(UiText.res(R.string.ledger_msg_batch_part_synced, 2)), "，"),
+            vm.uiState.value.message,
+        )
     }
 
     @Test
@@ -183,7 +187,65 @@ class LedgerViewModelTest {
         vm.applyBatchCategory("购物")
         advanceUntilIdle()
 
-        assertEquals(UiText.raw("已更新 1 笔，1 笔已加入同步，1 笔需重新同步"), vm.uiState.value.message)
+        // Per-clause resourced parts joined by Compound (ADR-0044): the
+        // ledger surface now renders state.message, so the clauses must be
+        // UiText.Res, not a pre-resolved Raw string.
+        assertEquals(
+            UiText.compound(
+                listOf(
+                    UiText.res(R.string.ledger_msg_batch_part_synced, 1),
+                    UiText.res(R.string.ledger_msg_batch_part_queued, 1),
+                    UiText.res(R.string.ledger_msg_batch_part_failed, 1),
+                ),
+                "，",
+            ),
+            vm.uiState.value.message,
+        )
+    }
+
+    @Test
+    fun manualCreateSuccessFlipsDoneForTheSheetToClose() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        vm.createManualExpense(manualDraft())
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.manualCreateDone)
+        assertEquals(null, state.manualCreateError)
+        assertEquals(UiText.res(R.string.ledger_msg_manual_saved), state.message)
+
+        vm.manualCreateSettled()
+        assertTrue(!vm.uiState.value.manualCreateDone)
+    }
+
+    @Test
+    fun manualCreateFailureKeepsSheetOpenWithInlineError() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            // No exception message → toUiText falls through to the
+            // screen-specific fallback resource asserted below.
+            manualCreateFailure = RuntimeException(),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        vm.createManualExpense(manualDraft())
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        // done must NOT flip (the sheet stays open, preserving the typed
+        // form); the failure surfaces through the sheet-inline channel.
+        assertTrue(!state.manualCreateDone)
+        assertEquals(UiText.res(R.string.ledger_msg_manual_save_failed), state.manualCreateError)
+        assertTrue(!state.creatingManual)
+
+        vm.manualCreateSettled()
+        assertEquals(null, vm.uiState.value.manualCreateError)
     }
 
     @Test
@@ -274,6 +336,7 @@ private class FakeLedgerActions(
     expenses: List<Expense>,
     private val canModify: Boolean = true,
     private val batchResult: BatchApplyResult? = null,
+    private val manualCreateFailure: Throwable? = null,
 ) : LedgerActions {
     private var confirmed = expenses
 
@@ -312,6 +375,7 @@ private class FakeLedgerActions(
     ): Result<CsvExport> = Result.success(CsvExport("ledger.csv", ByteArray(0)))
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> {
+        manualCreateFailure?.let { return Result.failure(it) }
         val created = expense(
             id = (confirmed.maxOfOrNull { it.id } ?: 0L) + 1L,
             amountCents = draft.amountCents ?: 0L,
@@ -334,6 +398,17 @@ private class FakeLedgerActions(
         return Result.success(batchResult ?: BatchApplyResult(synced = expenses.size))
     }
 }
+
+private fun manualDraft(): ExpenseDraft = ExpenseDraft(
+    amountCents = 990L,
+    merchant = "手动店",
+    category = "餐饮",
+    note = null,
+    expenseTime = "2026-05-17T09:00:00Z",
+    tags = null,
+    valueScore = null,
+    regretScore = null,
+)
 
 private fun expense(
     id: Long,

@@ -18,6 +18,7 @@ fun UiText.asString(): String = when (this) {
         stringResource(id, *args.toTypedArray())
     }
     is UiText.Raw -> text
+    is UiText.Compound -> parts.map { it.asString() }.joinToString(separator)
 }
 
 /** Non-composable resolution, for callers that already hold a [Context]
@@ -29,4 +30,5 @@ fun UiText.resolve(context: Context): String = when (this) {
         context.getString(id, *args.toTypedArray())
     }
     is UiText.Raw -> text
+    is UiText.Compound -> parts.joinToString(separator) { it.resolve(context) }
 }

@@ -84,5 +84,6 @@ internal fun LedgerRoute(
         onSelectAllVisible = ledgerViewModel::selectAllVisible,
         onApplyBatchCategory = ledgerViewModel::applyBatchCategory,
         onApplyBatchTags = ledgerViewModel::applyBatchTags,
+        onManualCreateSettled = ledgerViewModel::manualCreateSettled,
     )
 }

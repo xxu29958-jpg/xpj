@@ -97,6 +97,11 @@
     <string name="ledger_msg_manual_save_failed">没有保存成功，请稍后再试。</string>
     <string name="ledger_msg_batch_no_selection">请先选择要修改的账单。</string>
     <string name="ledger_msg_batch_failed">批量修改没有成功，请稍后再试。</string>
+    <!-- 批量结果的动态多段句（0–3 段按 count>0 取舍，经 UiText.Compound 以「，」相接） -->
+    <string name="ledger_msg_batch_part_synced">已更新 %1$d 笔</string>
+    <string name="ledger_msg_batch_part_queued">%1$d 笔已加入同步</string>
+    <string name="ledger_msg_batch_part_failed">%1$d 笔需重新同步</string>
+    <string name="ledger_msg_batch_none">没有需要修改的账单。</string>
 
     <!-- LedgerStatusText：状态行 / 筛选摘要（ledgerCombinedStatusLine + ledgerFilterSummary）。
          前后空格、全角标点必须与原字面量逐字一致，含前导空格的串用双引号包裹以免被裁剪。 -->

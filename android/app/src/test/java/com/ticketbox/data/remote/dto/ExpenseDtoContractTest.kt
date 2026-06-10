@@ -5,6 +5,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ExpenseDtoContractTest {
     private val moshi = Moshi.Builder()
@@ -110,5 +111,54 @@ class ExpenseDtoContractTest {
 
         assertEquals(9L, dto.id)
         assertEquals(7L, dto.rowVersion)
+    }
+
+    @Test
+    fun updateRequestKeepsBlankMerchantAndTagsKeysAsExplicitClear() {
+        // Clearing merchant/tags relies on submitting "" (NOT null): the
+        // backend PATCH is exclude_unset and _clean_optional_text("") /
+        // normalize_tags("") implement the clear. This pins the real Moshi
+        // wire shape — the edit-screen unit tests run against a fake repo and
+        // never serialize.
+        val json = moshi.adapter(ExpenseUpdateRequest::class.java).toJson(
+            ExpenseUpdateRequest(
+                expectedRowVersion = 7L,
+                merchant = "",
+                category = "餐饮",
+                note = "",
+                expenseTime = null,
+                tags = "",
+                valueScore = null,
+                regretScore = null,
+            ),
+        )
+
+        assertTrue(json.contains("\"merchant\":\"\""))
+        assertTrue(json.contains("\"tags\":\"\""))
+        assertTrue(json.contains("\"expected_row_version\":7"))
+    }
+
+    @Test
+    fun updateRequestOmitsNullMerchantAndTagsKeys() {
+        // The dual of the explicit-clear contract: a null field must vanish
+        // from the JSON entirely (Moshi omits null keys), which the backend's
+        // exclude_unset reads as "unchanged". If a Moshi config change ever
+        // started emitting literal nulls, tags:null would trip ADR-0042's
+        // null-does-not-clear guard and merchant:null would clear fields the
+        // user never touched.
+        val json = moshi.adapter(ExpenseUpdateRequest::class.java).toJson(
+            ExpenseUpdateRequest(
+                expectedRowVersion = 7L,
+                merchant = null,
+                category = null,
+                note = null,
+                expenseTime = null,
+                tags = null,
+                valueScore = null,
+                regretScore = null,
+            ),
+        )
+
+        assertEquals("""{"expected_row_version":7}""", json)
     }
 }

@@ -71,6 +71,12 @@ data class LedgerUiState(
     val selectedHaveTags: Boolean = false,
     val applyingBatch: Boolean = false,
     val message: UiText? = null,
+    // Manual-create sheet outcome channel: the sheet stays open on failure
+    // (so the typed form survives), shows [manualCreateError] inline, and only
+    // closes once [manualCreateDone] flips — the screen acks both via
+    // manualCreateSettled() (mirrors ExpenseEditUiState.done).
+    val manualCreateDone: Boolean = false,
+    val manualCreateError: UiText? = null,
 ) {
     val selectedCount: Int get() = selectedIds.size
 
@@ -261,7 +267,7 @@ class LedgerViewModel(
                 _uiState.update { it.copy(message = UiText.res(R.string.error_amount_required)) }
                 return@launch
             }
-            _uiState.update { it.copy(creatingManual = true, message = null) }
+            _uiState.update { it.copy(creatingManual = true, message = null, manualCreateError = null) }
             repository.createManualExpense(draft)
                 .onSuccess { expense ->
                     loadCategories()
@@ -270,6 +276,7 @@ class LedgerViewModel(
                     _uiState.update { state ->
                         val next = state.copy(
                             creatingManual = false,
+                            manualCreateDone = true,
                             monthFilter = expenseLedgerMonth(expense) ?: state.monthFilter,
                             categoryFilter = "",
                             tagFilter = "",
@@ -279,11 +286,20 @@ class LedgerViewModel(
                     }
                 }
                 .onFailure { error ->
+                    // Surfaced INSIDE the still-open sheet (not page-level
+                    // message): the sheet covers the page, and closing it on
+                    // failure would destroy the typed form.
                     _uiState.update {
-                        it.copy(creatingManual = false, message = error.toUiText(R.string.ledger_msg_manual_save_failed))
+                        it.copy(creatingManual = false, manualCreateError = error.toUiText(R.string.ledger_msg_manual_save_failed))
                     }
                 }
         }
+    }
+
+    /** Screen ack after the manual-create sheet closed (success) or was
+     *  dismissed (gives up a failed attempt) — clears the outcome channel. */
+    fun manualCreateSettled() {
+        _uiState.update { it.copy(manualCreateDone = false, manualCreateError = null) }
     }
 
     // ADR-0042 Slice C — multi-select + batch edit -------------------------
@@ -367,25 +383,20 @@ class LedgerViewModel(
      * Honest partial-success copy: the fan-out is non-atomic, so synced /
      * queued / failed are reported separately rather than a single "done".
      *
-     * ADR-0044 wave 2: this is a dynamic multi-segment sentence (0–3 count
-     * clauses joined by "，", with omission of zero clauses) that a single
-     * formatted string resource cannot express, and a [ViewModel] has no
-     * [android.content.Context] to resolve per-clause resources. Following the
-     * sibling-cluster precedent for dynamic count copy, the clauses are
-     * assembled here and carried as an already-resolved [UiText.Raw] —
-     * byte-identical to the prior String. This message is held in state but is
-     * not currently rendered on the ledger surface, so there is no presentation
-     * site to resolve it through. (ADR-0044 allowlisted tail — resourcing it needs
-     * a Context-backed per-clause UiText builder that doesn't exist yet; if a render
-     * site is ever added here, resource these clauses before wiring it up.)
+     * ADR-0044: a dynamic multi-segment sentence (0–3 count clauses, zero
+     * clauses omitted) that a single format resource cannot express — each
+     * clause is its own resourced [UiText.Res] and [UiText.Compound] joins
+     * them at the presentation layer, where [LedgerScreen] now renders
+     * `state.message`.
      */
     private fun batchResultMessage(result: BatchApplyResult): UiText {
         val parts = buildList {
-            if (result.synced > 0) add("已更新 ${result.synced} 笔")
-            if (result.queued > 0) add("${result.queued} 笔已加入同步")
-            if (result.failed > 0) add("${result.failed} 笔需重新同步")
+            if (result.synced > 0) add(UiText.res(R.string.ledger_msg_batch_part_synced, result.synced))
+            if (result.queued > 0) add(UiText.res(R.string.ledger_msg_batch_part_queued, result.queued))
+            if (result.failed > 0) add(UiText.res(R.string.ledger_msg_batch_part_failed, result.failed))
         }
-        return UiText.raw(parts.joinToString("，").ifEmpty { "没有需要修改的账单。" })
+        if (parts.isEmpty()) return UiText.res(R.string.ledger_msg_batch_none)
+        return UiText.compound(parts, "，")
     }
 
     fun exportLaunchHandled() {
