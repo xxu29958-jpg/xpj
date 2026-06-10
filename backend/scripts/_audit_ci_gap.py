@@ -27,12 +27,6 @@ class WorkflowCommand:
 
 # Gradle tasks that CI must invoke. Update when adding a new test / lint /
 # build lane that should not silently regress.
-# ``:app:connectedGrayDebugAndroidTest`` is intentionally absent: the live
-# Gitea CI has no emulator lane (the GitHub-era android-connected-test.yml
-# died with the move), so requiring it would only recreate the vacuous green
-# this lane had while it still scanned the dead ``.github/`` workflows.
-# Re-add it together with the actual CI lane once the instrumented gap is
-# resolved.
 REQUIRED_GRADLE_TASKS = [
     ":app:testGrayDebugUnitTest",
     ":app:assertAndroidTestCountEqualsBaseline",
@@ -46,6 +40,9 @@ REQUIRED_GRADLE_TASKS = [
     # KSP run the deleted schema JSON never regenerates and the verify step
     # passes on an empty diff). Pinning the bare task would not protect it.
     ":app:kspGrayDebugKotlin --rerun-tasks",
+    # Runs on the path-filtered emulator lane (android-connected.yml) —
+    # the host AVD revival of the GitHub-era instrumented gate.
+    ":app:connectedGrayDebugAndroidTest",
 ]
 
 # Backend invocations expected in CI. These match actual run-command bodies,

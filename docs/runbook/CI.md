@@ -57,7 +57,11 @@ gradlew :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + sh
 
 Android SDK 用仓库本地 `.toolchains\android-sdk`（workflow 写 `local.properties` 指过去）。job 有 `timeout-minutes: 40` 上限（单 runner 串行，一次 wedge 不能阻塞全部 CI）。
 
-**当前没有 instrumented（模拟器）lane**：GitHub 时代的 `android-connected-test.yml` 已死亡删除，`connectedGrayDebugAndroidTest` 现无任何 CI 执行（恢复方式待拍板）。`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`，钉住 8 个 gradle task（上述清单含 ksp regen + 两个 release assemble）与 7 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / ruff / compileall），防止 lane 静默丢失。
+### android-connected（模拟器，path-filtered）
+
+第二个 workflow 文件 `.gitea/workflows/android-connected.yml`：只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。这是 GitHub 时代 `android-connected-test.yml` 的 Gitea 复活版。
+
+`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`（两个文件都扫），钉住 9 个 gradle task（上述清单 + ksp regen + 两个 release assemble + connected）与 7 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / ruff / compileall），防止 lane 静默丢失。
 
 ## 安全边界
 

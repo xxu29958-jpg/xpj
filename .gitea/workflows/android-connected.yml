@@ -1,0 +1,187 @@
+name: Android Connected (emulator)
+
+# Path-filtered instrumented (emulator) gate for the androidTest suite
+# (ExpenseEditScreenContractTest Compose contract + AppDatabaseMigrationTest
+# Room migrations). Runs only when Android sources change so backend / docs
+# pushes don't pay the emulator boot cost on the single serial runner.
+#
+# The GitHub-era android-connected-test.yml died with the GitHub->Gitea move
+# (deleted in PR #31); this is its Gitea revival. The emulator is the
+# runner host's user-level Android Studio SDK AVD (ticketbox_api36_host) —
+# the repo-local .toolchains SDK has no emulator package on purpose.
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "perf/**"
+      - "refactor/**"
+    paths:
+      - "android/app/src/**"
+      - "android/gradle/**"
+      - "android/app/build.gradle.kts"
+      - "android/settings.gradle.kts"
+      - ".gitea/workflows/android-connected.yml"
+  workflow_dispatch:
+
+jobs:
+  connected:
+    name: Connected (emulator)
+    runs-on: windows-latest
+    # Emulator lanes wedge; never let one block the single serial runner
+    # for act_runner's ~3h default.
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: android
+        shell: powershell
+
+    env:
+      TICKETBOX_SERVER_URL: https://api.zen70.cn
+      ANDROID_HOME: E:\projects\xiaopiaojia\.toolchains\android-sdk
+      ANDROID_SDK_ROOT: E:\projects\xiaopiaojia\.toolchains\android-sdk
+
+    steps:
+      - name: Checkout (offline — local Gitea, no github.com)
+        working-directory: ${{ github.workspace }}
+        env:
+          REPO_TOKEN: ${{ github.token }}
+        run: |
+          $ws = $env:GITHUB_WORKSPACE
+          New-Item -ItemType Directory -Force -Path $ws | Out-Null
+          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          git init -q $ws
+          if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+          $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $origin = "$server/$env:GITHUB_REPOSITORY.git"
+          if (@(git -C $ws remote) -contains "origin") {
+            git -C $ws remote set-url origin $origin
+          } else {
+            git -C $ws remote add origin $origin
+          }
+          if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
+          $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
+          git -C $ws checkout -q -f $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws log --oneline -1
+
+      - name: Point Gradle at local Android SDK
+        run: |
+          if (-not (Test-Path $env:ANDROID_HOME)) {
+            throw "Android SDK not found: $env:ANDROID_HOME"
+          }
+          "sdk.dir=E\:/projects/xiaopiaojia/.toolchains/android-sdk" | Set-Content -Encoding ASCII -Path local.properties
+          "ticketbox.serverUrl=$env:TICKETBOX_SERVER_URL" | Add-Content -Encoding ASCII -Path local.properties
+
+      - name: Emulator lane — boot + connected tests + teardown
+        # Start + wait-for-boot + test + kill run in ONE step with the kill in
+        # a finally on purpose (same WaitDelay lesson as the backend-postgres
+        # PG lane): the emulator is a long-lived child; if it is still alive
+        # at step exit the runner's post-step I/O drain can hang. Teardown is
+        # two-stage — graceful `adb emu kill` first, then taskkill /T on the
+        # launcher PID (verified locally: emu kill detaches the device but the
+        # emulator.exe launcher lingers a few seconds; a wedged one would
+        # linger forever).
+        run: |
+          # The runner wrapper sets $ErrorActionPreference='Stop', under which
+          # ANY explicit stderr redirect (2>$null and 2>&1 alike) wraps native
+          # stderr lines into terminating ErrorRecords. adb emits expected
+          # noise on stderr ("device offline" while the emulator registers,
+          # "not found" probes) — run #103 died on the very first boot poll
+          # that way. This step's failure paths are all explicit (throw /
+          # $LASTEXITCODE checks), so drop to Continue and keep the noise
+          # harmless.
+          $ErrorActionPreference = "Continue"
+          $mainSdk = Join-Path $env:LOCALAPPDATA "Android\Sdk"
+          $emu = Join-Path $mainSdk "emulator\emulator.exe"
+          $adb = Join-Path $mainSdk "platform-tools\adb.exe"
+          if (-not (Test-Path $emu)) { throw "emulator.exe not found at $emu (runner host needs the user-level Android Studio SDK)" }
+          $avd = "ticketbox_api36_host"
+
+          # Clear a leftover instance of OUR avd from a previously wedged run
+          # (match by avd name; never touch other devices the host may have).
+          # Output captured whole, NOT piped into -First: severing a native
+          # pipe corrupts the .bat exit code (the apksigner lesson).
+          $before = @(& $adb devices | Select-String "^emulator-\d+" | ForEach-Object { ($_.Line -split "\s+")[0] })
+          foreach ($serial in $before) {
+            $nameOut = @(& $adb -s $serial emu avd name 2>$null)
+            if ($nameOut.Count -ge 1 -and "$($nameOut[0])".Trim() -eq $avd) {
+              Write-Host "Killing leftover $serial ($avd) from a previous run"
+              & $adb -s $serial emu kill 2>$null
+              Start-Sleep -Seconds 5
+            }
+          }
+          $before = @(& $adb devices | Select-String "^emulator-\d+" | ForEach-Object { ($_.Line -split "\s+")[0] })
+
+          # The emulator must resolve system images from the HOST SDK: with
+          # ANDROID_HOME/ANDROID_SDK_ROOT pointing at the repo .toolchains SDK
+          # (no emulator / system-images on purpose) it exits within seconds
+          # — "system-images\...\x86_64 is not a valid directory" (the first
+          # red run died exactly that way). Point the env at the host SDK for
+          # the launch, then restore the repo SDK for gradle: the child
+          # process keeps its own env copy.
+          $repoSdk = $env:ANDROID_HOME
+          $env:ANDROID_HOME = $mainSdk
+          $env:ANDROID_SDK_ROOT = $mainSdk
+          $emuLog = Join-Path $env:TEMP "xpj_emulator_ci.log"
+          $emuErr = Join-Path $env:TEMP "xpj_emulator_ci.err"
+          $proc = Start-Process -FilePath $emu -ArgumentList "-avd", $avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save" -PassThru -WindowStyle Hidden -RedirectStandardOutput $emuLog -RedirectStandardError $emuErr -ErrorAction Stop
+          $env:ANDROID_HOME = $repoSdk
+          $env:ANDROID_SDK_ROOT = $repoSdk
+          $failed = $false
+          $serial = $null
+          try {
+            # Discover OUR serial: the one that appears after launch. Pinning
+            # ANDROID_SERIAL keeps connectedAndroidTest off any other device
+            # attached to the host.
+            $deadline = (Get-Date).AddMinutes(2)
+            while ((Get-Date) -lt $deadline -and -not $serial) {
+              if ($proc.HasExited) { break }
+              $now = @(& $adb devices | Select-String "^emulator-\d+" | ForEach-Object { ($_.Line -split "\s+")[0] })
+              $new = @($now | Where-Object { $before -notcontains $_ })
+              if ($new.Count -ge 1) { $serial = $new[0] }
+              else { Start-Sleep -Seconds 3 }
+            }
+            if (-not $serial) {
+              Write-Host "emulator process HasExited=$($proc.HasExited)"
+              foreach ($f in @($emuLog, $emuErr)) {
+                if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 25 }
+              }
+              throw "emulator did not appear in adb devices within 2 minutes"
+            }
+            Write-Host "Emulator up as $serial, waiting for boot"
+
+            $deadline = (Get-Date).AddMinutes(5)
+            $booted = $false
+            while ((Get-Date) -lt $deadline) {
+              $out = & $adb -s $serial shell getprop sys.boot_completed 2>$null
+              if ("$out".Trim() -eq "1") { $booted = $true; break }
+              Start-Sleep -Seconds 5
+            }
+            if (-not $booted) { throw "emulator did not finish booting within 5 minutes" }
+            Write-Host "Boot completed, running connected tests"
+
+            $env:ANDROID_SERIAL = $serial
+            .\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
+            if ($LASTEXITCODE -ne 0) {
+              Get-ChildItem "app\build\outputs\androidTest-results" -Recurse -Filter "*.xml" -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 40 }
+              throw "connectedGrayDebugAndroidTest failed"
+            }
+          }
+          catch {
+            $failed = $true
+            Write-Host "##[error]Connected lane failed: $_"
+          }
+          finally {
+            if ($serial) { & $adb -s $serial emu kill 2>$null; Start-Sleep -Seconds 5 }
+            if ($proc -and -not $proc.HasExited) { & taskkill /F /T /PID $proc.Id 2>$null | Out-Null }
+            $global:LASTEXITCODE = 0
+            Write-Host "emulator torn down"
+          }
+          if ($failed) { exit 1 } else { exit 0 }
