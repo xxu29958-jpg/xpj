@@ -50,6 +50,7 @@ jobs:
         "release audit aggregator",
         "pytest full-suite lane",
         "end-to-end smoke",
+        "backup/restore drill",
         "API contract check",
         "backend ruff lint",
         "backend compileall",
@@ -82,10 +83,12 @@ jobs:
     steps:
       - run: |
           .\\.ci-venv\\Scripts\\python.exe scripts\\smoke_test.py
+          .\\.ci-venv\\Scripts\\python.exe scripts\\postgres_backup_drill.py
           .\\.ci-venv\\Scripts\\python.exe -m pytest -q -ra --tb=short -p no:cacheprovider
   android:
     steps:
-      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:lintGrayDebug
+      - run: ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
+      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease :app:lintGrayDebug
 """,
         encoding="utf-8",
     )
@@ -112,6 +115,7 @@ jobs:
           python scripts\\release_audit.py
           python -m pytest -q -p no:cacheprovider
           python scripts\\smoke_test.py
+          python scripts\\postgres_backup_drill.py
           python scripts\\check_api_contract.py
           ruff check app scripts tests
           python -m compileall app scripts tests
@@ -126,6 +130,7 @@ jobs:
         "release audit aggregator",
         "pytest full-suite lane",
         "end-to-end smoke",
+        "backup/restore drill",
         "API contract check",
         "backend ruff lint",
         "backend compileall",
@@ -147,6 +152,7 @@ jobs:
           python scripts\\release_audit.py
           python -m pytest -q -p no:cacheprovider
           python scripts\\smoke_test.py
+          python scripts\\postgres_backup_drill.py
           python scripts\\check_api_contract.py
           ruff check app scripts tests
           python -m compileall app scripts tests
@@ -163,6 +169,7 @@ jobs:
         "release audit aggregator",
         "pytest full-suite lane",
         "end-to-end smoke",
+        "backup/restore drill",
         "API contract check",
         "backend ruff lint",
         "backend compileall",

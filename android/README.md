@@ -56,7 +56,7 @@ android\app\build\outputs\apk\internal\debug\app-internal-debug.apk
 android\config\debug\ticketbox-debug.keystore
 ```
 
-这不是 release 密钥，只用于 debug 构建和 CI artifact，目的是让不同机器、不同 GitHub Actions runner 产出的 debug APK 使用同一张证书。否则真机上已有 `com.ticketbox` 时，新包会因为签名不同而无法 `adb install -r` 覆盖升级，表现为 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
+这不是 release 密钥，只用于 debug 构建，目的是让不同机器、不同 CI runner 产出的 debug APK 使用同一张证书。否则真机上已有 `com.ticketbox` 时，新包会因为签名不同而无法 `adb install -r` 覆盖升级，表现为 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
 
 证书 SHA-256：
 
@@ -64,7 +64,7 @@ android\config\debug\ticketbox-debug.keystore
 91:15:22:41:7C:C5:01:6E:DA:DC:FF:AD:DE:7B:90:4D:92:8D:C4:2D:66:A7:97:84:44:45:AC:B5:BC:AE:10:6F
 ```
 
-默认不要覆盖 debug 签名。仓库稳定 debug 证书是保证 `adb install -r`、本机打包和 CI artifact 能互相覆盖升级的唯一来源。
+默认不要覆盖 debug 签名。仓库稳定 debug 证书是保证 `adb install -r`、不同机器构建的 debug 包能互相覆盖升级的唯一来源。
 
 如果确实需要调试自定义 debug 证书，必须显式打开 opt-in；否则构建会失败，避免隐藏的本机配置制造 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
 

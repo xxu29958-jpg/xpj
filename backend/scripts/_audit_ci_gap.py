@@ -39,6 +39,13 @@ REQUIRED_GRADLE_TASKS = [
     ":app:lintGrayDebug",
     ":app:assembleGrayDebug",
     ":app:assembleInternalDebug",
+    ":app:assembleGrayRelease",
+    ":app:assembleInternalRelease",
+    # Flag included on purpose: --rerun-tasks is the FROM-CACHE proofing
+    # that makes the Room schema drift gate non-vacuous (without the forced
+    # KSP run the deleted schema JSON never regenerates and the verify step
+    # passes on an empty diff). Pinning the bare task would not protect it.
+    ":app:kspGrayDebugKotlin --rerun-tasks",
 ]
 
 # Backend invocations expected in CI. These match actual run-command bodies,
@@ -58,6 +65,13 @@ REQUIRED_CI_INVOCATIONS = [
     RequiredCommand(
         "end-to-end smoke",
         re.compile(r"\bpython(?:\.exe)?\s+scripts[\\/]+smoke_test\.py\b"),
+    ),
+    RequiredCommand(
+        # ENGINEERING_RULES section 6: a backup without a restore drill is no
+        # backup. The drill lived on the GitHub-era PG lane and silently died
+        # in the Gitea move — pinned so it cannot vanish again.
+        "backup/restore drill",
+        re.compile(r"\bpython(?:\.exe)?\s+scripts[\\/]+postgres_backup_drill\.py\b"),
     ),
     RequiredCommand(
         "API contract check",
