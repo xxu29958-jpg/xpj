@@ -25,8 +25,8 @@ import kotlin.test.assertTrue
  * dependency in unit tests, so the suite stays fast and JVM-only.
  * The fake mirrors the DAO's SQL semantics field by field; the
  * "real" DAO behaviour belongs to the instrumented Room tests
- * (``:app:connectedGrayDebugAndroidTest``), which currently have
- * no CI lane and run only manually on a local emulator.
+ * (``:app:connectedGrayDebugAndroidTest``), which run on the
+ * path-filtered emulator lane (android-connected.yml).
  */
 class OutboxRepositoryTest {
 

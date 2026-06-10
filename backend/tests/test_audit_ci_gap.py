@@ -92,6 +92,16 @@ jobs:
 """,
         encoding="utf-8",
     )
+    (workflows / "android-connected.yml").write_text(
+        """
+name: Android Connected
+jobs:
+  connected:
+    steps:
+      - run: .\\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
+""",
+        encoding="utf-8",
+    )
 
     commands = mod._iter_workflow_run_commands(workflows)
 
