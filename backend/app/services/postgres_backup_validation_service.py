@@ -25,9 +25,35 @@ class PostgresBackupValidationError(RuntimeError):
     """Raised when a file is not a restorable Ticketbox pg_dump archive."""
 
 
+# Windows installs keep the client tools in C:\Program Files\PostgreSQL\<ver>\bin
+# without putting them on PATH; backup_database.ps1 already globs this root for
+# pg_dump, and the scheduled backup's validation step needs the same fallback.
+# Module-level so tests can repoint it.
+_PG_INSTALL_ROOT = Path(r"C:\Program Files\PostgreSQL")
+
+
+def find_pg_binary(name: str, env_var: str) -> str | None:
+    """Resolve a PostgreSQL client binary: env override → PATH → newest install.
+
+    Single discovery chain shared by the scheduled task, Owner Console and CLI
+    (mirrors ``backend/scripts/backup_database.ps1``); ``None`` when the binary
+    cannot be found anywhere.
+    """
+    override = os.getenv(env_var)
+    if override:
+        return override
+    located = shutil.which(name)
+    if located:
+        return located
+    candidates = sorted(_PG_INSTALL_ROOT.glob(f"*/bin/{name}.exe"), reverse=True)
+    if candidates:
+        return str(candidates[0])
+    return None
+
+
 def _pg_restore_binary() -> str:
-    """Locate ``pg_restore`` (``PG_RESTORE_PATH`` override, else PATH)."""
-    binary = os.getenv("PG_RESTORE_PATH") or shutil.which("pg_restore")
+    """Locate ``pg_restore`` (``PG_RESTORE_PATH`` override → PATH → install glob)."""
+    binary = find_pg_binary("pg_restore", "PG_RESTORE_PATH")
     if not binary:
         raise PostgresBackupValidationError(
             "pg_restore not found; install the PostgreSQL client tools or set PG_RESTORE_PATH"

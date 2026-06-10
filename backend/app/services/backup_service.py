@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
 import re
-import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,7 +24,7 @@ from uuid import uuid4
 
 from app.config import DATA_ROOT, get_settings
 from app.errors import AppError
-from app.services.postgres_backup_validation_service import is_postgres_backup_valid
+from app.services.postgres_backup_validation_service import find_pg_binary, is_postgres_backup_valid
 from app.services.time_service import now_utc
 
 # Backups live under the writable data dir (DATA_ROOT/backups). In a frozen EXE
@@ -163,7 +161,7 @@ def _libpq_url(database_url: str) -> str:
 
 
 def _pg_dump_binary() -> str:
-    binary = os.getenv("PG_DUMP_PATH") or shutil.which("pg_dump")
+    binary = find_pg_binary("pg_dump", "PG_DUMP_PATH")
     if not binary:
         raise AppError(
             "server_error", "未找到 pg_dump，无法备份 PostgreSQL 数据库。", status_code=500

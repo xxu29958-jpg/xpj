@@ -27,11 +27,31 @@ def test_libpq_url_strips_driver_tag() -> None:
 
 
 def test_pg_dump_binary_missing_raises_app_error(monkeypatch) -> None:
-    monkeypatch.delenv("PG_DUMP_PATH", raising=False)
-    monkeypatch.setattr(backup_service.shutil, "which", lambda _: None)
+    # Discovery is the shared find_pg_binary chain (env → PATH → install glob);
+    # all three exhausted -> AppError, regardless of what this machine has installed.
+    monkeypatch.setattr(backup_service, "find_pg_binary", lambda *_args: None)
     with pytest.raises(AppError) as excinfo:
         backup_service._pg_dump_binary()  # noqa: SLF001
     assert excinfo.value.status_code == 500
+
+
+def test_find_pg_binary_windows_install_glob_fallback(tmp_path, monkeypatch) -> None:
+    # env override and PATH both absent -> fall back to the newest
+    # C:\Program Files\PostgreSQL\<ver>\bin install (mirrors backup_database.ps1).
+    # This was the nightly-backup gap: the .ps1 globs for pg_dump, but validation
+    # runs in Python where pg_restore previously had no such fallback.
+    monkeypatch.delenv("PG_RESTORE_PATH", raising=False)
+    monkeypatch.setattr(pgval.shutil, "which", lambda _name: None)
+    fake_root = tmp_path / "PostgreSQL"
+    newest = fake_root / "17" / "bin" / "pg_restore.exe"
+    older = fake_root / "16" / "bin" / "pg_restore.exe"
+    for binary in (newest, older):
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"")
+    monkeypatch.setattr(pgval, "_PG_INSTALL_ROOT", fake_root)
+    assert pgval.find_pg_binary("pg_restore", "PG_RESTORE_PATH") == str(newest)
+    monkeypatch.setattr(pgval, "_PG_INSTALL_ROOT", tmp_path / "empty")
+    assert pgval.find_pg_binary("pg_restore", "PG_RESTORE_PATH") is None
 
 
 def test_postgres_backup_validation_rejects_missing_file(tmp_path) -> None:
