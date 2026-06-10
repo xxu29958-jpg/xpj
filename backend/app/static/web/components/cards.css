@@ -96,17 +96,8 @@ a.card-sub:hover { color: var(--text-muted); }
 /* dashboard goals 卡片内 "共 N 条" 文本 */
 .goals-summary { font-size: 13px; color: var(--text-muted); }
 
-.kpi-amount {
-    font-family: var(--font-serif);
-    font-weight: 400;
-    font-size: 38px;
-    letter-spacing: -0.02em;
-    color: var(--text-default);
-    font-variant-numeric: tabular-nums;
-    line-height: 1.1;
-}
-.kpi-amount .yuan { font-size: 18px; color: var(--text-meta); margin-right: 4px; font-family: var(--font-num); }
-.kpi-amount .decimals { font-size: 22px; color: var(--text-meta); font-family: var(--font-num); }
+/* .kpi-amount 已并入 KPI 词汇体系 (v0.11 收敛) —— 卡内 hero 金额现为
+   pages/reports.css 的 .kpi-cell--bare + .kpi-cell--hero, 调用点同步迁移。 */
 
 .delta-pill-row {
     display: flex;

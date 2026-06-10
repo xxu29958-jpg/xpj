@@ -98,8 +98,8 @@
         </div>
         {% set _total_yuan = cards.total_amount_yuan or '0.00' %}
         {% set _parts = _total_yuan.split('.') %}
-        <div class="kpi-amount">
-          <span class="yuan">{{ home_currency_symbol }}</span>{{ _parts[0] }}<span class="decimals">.{{ _parts[1] if _parts|length > 1 else '00' }}</span>
+        <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+          <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ _parts[0] }}<span class="decimals">.{{ _parts[1] if _parts|length > 1 else '00' }}</span></div>
         </div>
         {% if cards.delta_direction and cards.delta_direction != 'none' %}
         <div class="delta-pill-row delta-pill-row--gap">

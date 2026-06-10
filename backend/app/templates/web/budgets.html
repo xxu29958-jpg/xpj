@@ -25,15 +25,15 @@
 <div class="dash-grid">
   <div class="dt-card">
     <div class="dt-eyebrow">月度总预算</div>
-    <div class="kpi-amount">
-      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.total_yuan }}
+    <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+      <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.total_yuan }}</div>
     </div>
     <div class="card-sub">{{ '已配置' if budget.configured else '未配置' }}</div>
   </div>
   <div class="dt-card">
     <div class="dt-eyebrow">剩余可花</div>
-    <div class="kpi-amount">
-      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.remaining_yuan }}
+    <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+      <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.remaining_yuan }}</div>
     </div>
     <div class="card-sub">
       {% if budget.is_over_budget %}
@@ -46,29 +46,29 @@
   </div>
   <div class="dt-card">
     <div class="dt-eyebrow">已花</div>
-    <div class="kpi-amount">
-      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.spent_yuan }}
+    <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+      <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.spent_yuan }}</div>
     </div>
     <div class="card-sub">{{ budget.spent_percent }}% · 占总预算</div>
   </div>
   <div class="dt-card">
     <div class="dt-eyebrow">固定支出</div>
-    <div class="kpi-amount">
-      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.fixed_yuan }}
+    <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+      <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.fixed_yuan }}</div>
     </div>
     <div class="card-sub">来自正式固定支出</div>
   </div>
   <div class="dt-card">
     <div class="dt-eyebrow">Flex 可花</div>
-    <div class="kpi-amount">
-      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.flex_yuan }}
+    <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+      <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.flex_yuan }}</div>
     </div>
     <div class="card-sub">总额 + 结转 − 固定 − 预留</div>
   </div>
   <div class="dt-card">
     <div class="dt-eyebrow">排除金额</div>
-    <div class="kpi-amount">
-      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.excluded_yuan }}
+    <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+      <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.excluded_yuan }}</div>
     </div>
     <div class="card-sub">报销 / 医疗等</div>
   </div>
