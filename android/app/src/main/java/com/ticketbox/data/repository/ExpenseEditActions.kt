@@ -1,0 +1,74 @@
+package com.ticketbox.data.repository
+
+import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseItemDraft
+import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.ExpenseSplitDraft
+import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.ProtectedImage
+
+/**
+ * 架构债 #5：ExpenseEditViewModel 依赖反转用接口。
+ *
+ * 抽出编辑屏（主编辑面 + items 编辑器 + splits 编辑器）所用到的
+ * Repository 方法，便于在单元测试里以 Fake 实现替换
+ * [ExpenseRepository]（final 门面，无法直接 fake）——与
+ * [PendingReviewActions] / TagActions 同一模式。
+ *
+ * 注意：仅声明编辑屏必需的方法；其它 Repository 能力仍直接挂在
+ * [ExpenseRepository] 上，本接口不负责。与 [PendingReviewActions]
+ * 重叠的签名（canModifyLedger / fetchThumbnail / updateExpense /
+ * saveExpenseAllowingOffline / confirm·reject·markNotDuplicate
+ * AllowingOffline / categories）由 [ExpenseRepository] 的同一个
+ * override 同时满足两个接口。
+ */
+interface ExpenseEditActions {
+    fun canModifyLedger(): Boolean = true
+    suspend fun fetchExpense(id: Long): Result<Expense>
+    suspend fun categories(): Result<List<String>>
+    suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
+    suspend fun fetchImage(id: Long): Result<ProtectedImage>
+
+    /** Direct PATCH only — see [PendingReviewActions.updateExpense] for the
+     *  chained-flow rationale. The edit screen only calls this on the
+     *  no-baseline fallback path (no OCC token to protect). */
+    suspend fun updateExpense(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense?,
+    ): Result<Expense>
+
+    suspend fun saveExpenseAllowingOffline(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense,
+    ): Result<SaveOutcome>
+
+    suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+    suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+    suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+    suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome>
+    suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+
+    suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems>
+    suspend fun acknowledgeItemsMismatchAllowingOffline(
+        expense: Expense,
+        currentItems: ExpenseItems,
+    ): Result<ItemsAckOutcome>
+
+    suspend fun replaceExpenseItemsAllowingOffline(
+        expense: Expense,
+        items: List<ExpenseItemDraft>,
+        currentItems: ExpenseItems,
+    ): Result<ReplaceItemsOutcome>
+
+    suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits>
+    suspend fun fetchSplitMembers(): Result<List<FamilyMember>>
+    suspend fun replaceExpenseSplitsAllowingOffline(
+        expense: Expense,
+        splits: List<ExpenseSplitDraft>,
+        currentSplits: ExpenseSplits,
+    ): Result<ReplaceSplitsOutcome>
+}

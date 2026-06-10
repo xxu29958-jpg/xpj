@@ -25,7 +25,20 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
+import com.ticketbox.viewmodel.acknowledgeItemsMismatch
+import com.ticketbox.viewmodel.addItemRow
+import com.ticketbox.viewmodel.closeItemsEditor
+import com.ticketbox.viewmodel.closeSplitsEditor
+import com.ticketbox.viewmodel.evenSplitAmounts
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
+import com.ticketbox.viewmodel.openItemsEditor
+import com.ticketbox.viewmodel.openSplitsEditor
+import com.ticketbox.viewmodel.removeItemRow
+import com.ticketbox.viewmodel.saveItems
+import com.ticketbox.viewmodel.saveSplits
+import com.ticketbox.viewmodel.updateItemDraft
+import com.ticketbox.viewmodel.updateSplitAmount
+import com.ticketbox.viewmodel.updateSplitIncluded
 
 @Composable
 internal fun ExpenseEditRoute(
