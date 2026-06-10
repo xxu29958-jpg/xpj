@@ -87,6 +87,7 @@ jobs:
           .\\.ci-venv\\Scripts\\python.exe -m pytest -q -ra --tb=short -p no:cacheprovider
   android:
     steps:
+      - run: ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
       - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease :app:lintGrayDebug
 """,
         encoding="utf-8",

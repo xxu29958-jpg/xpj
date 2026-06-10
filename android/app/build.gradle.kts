@@ -437,7 +437,7 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
         //   → XPJ_AUDIT_BASE_REF env (manual override)
         //   → "main" fallback (local dev).
         // Prefixed with origin/ if not already namespaced.
-        // GitHub Actions sets GITHUB_BASE_REF to the empty string on push
+        // The CI runner sets GITHUB_BASE_REF to the empty string on push
         // events (not unset — non-null but empty). System.getenv() returns
         // "" not null in that case, so a naïve null-coalesce treats push
         // CI as PR CI and builds baseRef="origin/" → unreachable → FAIL.

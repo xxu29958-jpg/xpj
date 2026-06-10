@@ -277,12 +277,10 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 **预期结果**：
 
-- PR artifact 门禁脚本退出码为 0。
-- gray/internal APK 的 package、versionName、versionCode、SHA256 已记录。
-- 发包清单写明绑定码发放对象和不得发出的凭证。
 - `assembleGrayDebug` BUILD SUCCESSFUL。
 - `adb install` 返回 Success。
 - 真机桌面出现"小票夹"图标。
+- 发包交接遵守 [RELEASE_PACKAGING.md](RELEASE_PACKAGING.md) §9 红线（绑定码发放对象、不得发出的凭证）。
 
 **失败处理**：
 

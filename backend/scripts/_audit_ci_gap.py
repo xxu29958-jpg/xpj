@@ -41,6 +41,11 @@ REQUIRED_GRADLE_TASKS = [
     ":app:assembleInternalDebug",
     ":app:assembleGrayRelease",
     ":app:assembleInternalRelease",
+    # Flag included on purpose: --rerun-tasks is the FROM-CACHE proofing
+    # that makes the Room schema drift gate non-vacuous (without the forced
+    # KSP run the deleted schema JSON never regenerates and the verify step
+    # passes on an empty diff). Pinning the bare task would not protect it.
+    ":app:kspGrayDebugKotlin --rerun-tasks",
 ]
 
 # Backend invocations expected in CI. These match actual run-command bodies,

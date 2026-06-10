@@ -24,8 +24,9 @@ import kotlin.test.assertTrue
  * pure-Kotlin in-memory fake of [PendingMutationDao] — no Room
  * dependency in unit tests, so the suite stays fast and JVM-only.
  * The fake mirrors the DAO's SQL semantics field by field; the
- * "real" DAO behaviour gets tested by the instrumented Room test
- * lane CI already runs (``:app:connectedGrayDebugAndroidTest``).
+ * "real" DAO behaviour belongs to the instrumented Room tests
+ * (``:app:connectedGrayDebugAndroidTest``), which currently have
+ * no CI lane and run only manually on a local emulator.
  */
 class OutboxRepositoryTest {
 

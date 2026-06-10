@@ -314,6 +314,9 @@ jobs:
   android-unit:
     name: Android unit/build
     runs-on: windows-latest
+    # The single serial runner serves every job: without a ceiling, one
+    # wedged R8/KSP build would block all CI for act_runner's ~3h default.
+    timeout-minutes: 40
 
     defaults:
       run:
@@ -389,10 +392,10 @@ jobs:
         run: .\gradlew.bat --no-daemon :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
 
       - name: Verify Room schema snapshots are committed
-        # KSP just re-emitted the latest schema JSON during compile; if it
-        # differs from the committed file the entity change shipped without
-        # its schema diff — fail loudly with the patch. Runs from the repo
-        # root: with working-directory android, the android/app/schemas
+        # The regen step above just force-re-emitted the latest schema JSON;
+        # if it differs from the committed file the entity change shipped
+        # without its schema diff — fail loudly with the patch. Runs from the
+        # repo root: with working-directory android, the android/app/schemas
         # pathspec silently matches nothing and the gate "passes" (the
         # GitHub-era lane shipped exactly that bug once).
         working-directory: ${{ github.workspace }}
