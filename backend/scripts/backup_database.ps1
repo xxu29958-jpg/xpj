@@ -149,6 +149,66 @@ function Backup-PostgresDatabase {
     }
 }
 
+function Get-OffsiteBackupDir {
+    # 异地备份目标解析：XPJ_OFFSITE_BACKUP_DIR 显式优先（值为 off 表示禁用）；
+    # 未设置时检测到 OneDrive 即默认 %OneDrive%\TicketboxBackups；都没有则跳过。
+    $explicit = $env:XPJ_OFFSITE_BACKUP_DIR
+    if (-not [string]::IsNullOrWhiteSpace($explicit)) {
+        if ($explicit.Trim().ToLowerInvariant() -eq "off") {
+            return $null
+        }
+        return $explicit.Trim()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:OneDrive)) {
+        return (Join-Path $env:OneDrive "TicketboxBackups")
+    }
+    return $null
+}
+
+function Invoke-Robocopy {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+    & robocopy @Arguments | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        throw "robocopy 失败(exit=$LASTEXITCODE)：$($Arguments -join ' ')"
+    }
+}
+
+function Sync-BackupsOffsite {
+    # 异地同步（ENGINEERING_RULES §6：数据库和文件存储都必须备份；单机部署盘损是主要数据风险）。
+    param([Parameter(Mandatory = $true)][string]$Destination)
+
+    $dbDest = Join-Path $Destination "db"
+    New-Item -ItemType Directory -Force -Path $dbDest | Out-Null
+
+    # 数据库归档只增量复制（不镜像删除——本地目录被清空/勒索时不殃及异地副本）；
+    # 异地按 90 天保留（本地 30 天），超期才删，保证有界。
+    $dumps = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.dump" -File -ErrorAction SilentlyContinue)
+    if ($dumps.Count -gt 0) {
+        Invoke-Robocopy -Arguments @($BackupDir, $dbDest, "ticketbox-*.dump", "/NJH", "/NJS", "/NDL", "/NP")
+    }
+    $offsiteCutoff = (Get-Date).AddDays(-90)
+    Get-ChildItem -LiteralPath $dbDest -Filter "ticketbox-*.dump" -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -lt $offsiteCutoff } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+
+    # 票据图片镜像 uploads/；空源守卫——本地 uploads 意外为空时跳过，防 /MIR 把异地副本一并清空。
+    $uploadsSource = Join-Path $DataRoot "uploads"
+    if (Test-Path -LiteralPath $uploadsSource) {
+        $uploadCount = @(Get-ChildItem -LiteralPath $uploadsSource -Recurse -File -ErrorAction SilentlyContinue).Count
+        if ($uploadCount -gt 0) {
+            $uploadsDest = Join-Path $Destination "uploads"
+            New-Item -ItemType Directory -Force -Path $uploadsDest | Out-Null
+            Invoke-Robocopy -Arguments @($uploadsSource, $uploadsDest, "/MIR", "/NJH", "/NJS", "/NDL", "/NP")
+        }
+        else {
+            Write-Host "本地 uploads 为空，跳过异地镜像（空源守卫）。"
+        }
+    }
+
+    Write-Host "异地备份同步完成：$Destination（db 归档 $($dumps.Count) 个，异地保留 90 天）。"
+}
+
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
@@ -172,4 +232,12 @@ if ($Keep -gt 0 -and $backups.Count -gt $Keep) {
         $resolvedCandidate = Assert-PathInside -Path $_.FullName -Root $resolvedBackupRoot
         Remove-Item -LiteralPath $resolvedCandidate -Force
     }
+}
+
+$offsiteDir = Get-OffsiteBackupDir
+if ($offsiteDir) {
+    Sync-BackupsOffsite -Destination $offsiteDir
+}
+else {
+    Write-Host "未配置异地备份目录（XPJ_OFFSITE_BACKUP_DIR / OneDrive 均缺席），跳过异地同步。"
 }
