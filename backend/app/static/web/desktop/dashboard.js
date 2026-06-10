@@ -215,8 +215,10 @@
       link("card-sub", dashboardUrl("/web/reports", ledgerId, { month: cards.month || "" }), "报表 →")
     ));
     const parts = moneyParts(cards.total_amount_yuan);
-    const amount = el("div", "kpi-amount");
-    append(amount, el("span", "yuan", homeCurrencySymbol()), text(parts[0]), el("span", "decimals", "." + text(parts[1])));
+    const amount = el("div", "kpi-cell kpi-cell--bare kpi-cell--hero");
+    const amountVal = el("div", "val");
+    append(amountVal, el("span", "yuan", homeCurrencySymbol()), text(parts[0]), el("span", "decimals", "." + text(parts[1])));
+    append(amount, amountVal);
     const foot = el("div", "trend-foot");
     if (cards.budget_configured) {
       append(foot, append(el("div"), "预算", el("span", "num", money(cards.budget_total_yuan))));

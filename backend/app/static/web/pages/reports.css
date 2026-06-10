@@ -1,6 +1,9 @@
-/* /web 桌面账本 · 报表页样式 (v0.10.1 从 desktop.css 拆出)
+/* /web 桌面账本 · 报表 + KPI 词汇 (v0.10.1 从 desktop.css 拆出)
  *
- * Reports KPI / Merchant ranking 等 reports.html 专属
+ * chart/legend 为 reports.html 专属; .kpi-strip / .kpi-cell (含 --bare/--hero
+ * 变体) 是跨页 KPI 词汇 (reports/stats/data_quality/rules/import_batch/
+ * recurring 的指标网格 + budgets/dashboard/budget_advise/income_plans 的
+ * 卡内 hero 金额), 经 base.html 全量加载。
  */
 
 /* ───── Reports ───── */
@@ -72,6 +75,25 @@
     border-color: var(--state-danger-border);
 }
 .kpi-cell.is-danger .val     { color: var(--state-danger-fg); }
+
+/* v0.11 KPI 词汇收敛: 原 components/cards.css 的 .kpi-amount 并入本体系。
+   两档: 默认 .kpi-strip > .kpi-cell = 多指标网格 (label / val 24px / foot,
+   自带卡皮); .kpi-cell--bare + .kpi-cell--hero = 卡内单 hero 金额 (38px,
+   宿主 dt-card 已有皮故去皮)。属性逐字节搬运自 .kpi-amount, 渲染不变。 */
+.kpi-cell--bare {
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+.kpi-cell--hero .val {
+    font-weight: 400;
+    font-size: 38px;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+.kpi-cell--hero .val .yuan { font-size: 18px; margin-right: 4px; }
+.kpi-cell--hero .val .decimals { font-size: 22px; color: var(--text-meta); font-family: var(--font-num); }
 
 /* ───── Merchant ranking ───── */
 .merch-rank { display: flex; flex-direction: column; gap: 0; }
