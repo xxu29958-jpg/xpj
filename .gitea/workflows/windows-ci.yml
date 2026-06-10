@@ -453,8 +453,19 @@ jobs:
             "app\build\outputs\apk\internal\debug\app-internal-debug.apk"
           )
           foreach ($apk in $apks) {
-            $line = & $apksigner.FullName verify --print-certs $apk |
-              Select-String -Pattern "certificate SHA-256 digest" | Select-Object -First 1
+            # Capture the FULL output before filtering. Piping the .bat
+            # straight into Select-Object -First 1 severs the native pipe as
+            # soon as the digest line arrives; java then dies writing the
+            # remaining cert lines and the .bat exits 1, which the runner
+            # epilogue propagates as a step failure AFTER both OKs printed
+            # (the first red run failed exactly that way). Capturing also
+            # lets us check apksigner's real exit code.
+            $out = & $apksigner.FullName verify --print-certs $apk 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              $out | ForEach-Object { Write-Host $_ }
+              throw "apksigner verify failed for $apk (exit $LASTEXITCODE)"
+            }
+            $line = $out | Select-String -Pattern "certificate SHA-256 digest" | Select-Object -First 1
             if (-not $line) { throw "no SHA-256 digest line from apksigner for $apk" }
             $actual = ($line.Line -split ":\s*", 2)[1].Trim().Replace(":", "").ToLowerInvariant()
             if ($actual -ne $expected) {
@@ -462,3 +473,4 @@ jobs:
             }
             Write-Host "OK signing certificate $apk"
           }
+          exit 0
