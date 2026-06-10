@@ -3,8 +3,8 @@
 Auto-discovers every ``_audit_*.py`` in this directory and runs them
 in sequence, printing a consolidated PASS / FAIL summary. There is
 no opt-in step: drop a new audit script next to this one and it is
-already gated by CI (this script is wired into the Backend job in
-``.github/workflows/ci.yml``) and by ``verify_project.ps1``.
+already gated by CI (this script is wired into the backend-full job in
+``.gitea/workflows/windows-ci.yml``) and by ``verify_project.ps1``.
 
 "PASS" here means **no new regressions outside each lane's
 allowlist** — it does NOT mean "no architectural debt". Known v0.9

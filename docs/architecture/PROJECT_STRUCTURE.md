@@ -25,9 +25,9 @@ E:\projects\xiaopiaojia\
     uninstall_windows_tasks.ps1
     accept_gray_release.ps1
     verify_project.ps1
-  .github\
+  .gitea\
     workflows\
-      ci.yml
+      windows-ci.yml
 ```
 
 ## backend

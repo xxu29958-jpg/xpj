@@ -1,7 +1,8 @@
 """Read-only audit: CI invokes every gradle task / pytest lane we expect.
 
-This lane scans actual GitHub Actions ``run:`` command bodies instead of
-global workflow text. Comments and prose cannot satisfy the gate.
+This lane scans actual Gitea Actions ``run:`` command bodies (the live CI,
+``.gitea/workflows/``) instead of global workflow text. Comments and prose
+cannot satisfy the gate.
 """
 
 from __future__ import annotations
@@ -26,12 +27,18 @@ class WorkflowCommand:
 
 # Gradle tasks that CI must invoke. Update when adding a new test / lint /
 # build lane that should not silently regress.
+# ``:app:connectedGrayDebugAndroidTest`` is intentionally absent: the live
+# Gitea CI has no emulator lane (the GitHub-era android-connected-test.yml
+# died with the move), so requiring it would only recreate the vacuous green
+# this lane had while it still scanned the dead ``.github/`` workflows.
+# Re-add it together with the actual CI lane once the instrumented gap is
+# resolved.
 REQUIRED_GRADLE_TASKS = [
     ":app:testGrayDebugUnitTest",
+    ":app:assertAndroidTestCountEqualsBaseline",
+    ":app:lintGrayDebug",
     ":app:assembleGrayDebug",
     ":app:assembleInternalDebug",
-    ":app:lintGrayDebug",
-    ":app:connectedGrayDebugAndroidTest",
 ]
 
 # Backend invocations expected in CI. These match actual run-command bodies,
@@ -42,16 +49,37 @@ REQUIRED_CI_INVOCATIONS = [
         re.compile(r"\bpython(?:\.exe)?\s+scripts[\\/]+release_audit\.py\b"),
     ),
     RequiredCommand(
-        "pytest coverage lane",
-        re.compile(r"\b(?:python(?:\.exe)?\s+-m\s+)?pytest\b[^\n]*\s--cov=app\b"),
+        # Anchored on the backend suite's signature flag: the desktop job also
+        # runs ``python -m pytest``, so a bare pytest matcher would stay green
+        # with the backend suite gone.
+        "pytest full-suite lane",
+        re.compile(r"\bpython(?:\.exe)?\s+-m\s+pytest\b[^\n]*-p no:cacheprovider"),
+    ),
+    RequiredCommand(
+        "end-to-end smoke",
+        re.compile(r"\bpython(?:\.exe)?\s+scripts[\\/]+smoke_test\.py\b"),
+    ),
+    RequiredCommand(
+        "API contract check",
+        re.compile(r"\bpython(?:\.exe)?\s+scripts[\\/]+check_api_contract\.py\b"),
+    ),
+    RequiredCommand(
+        # ``app scripts tests`` anchors the backend target set — the desktop
+        # job lints ``backend_manager tests`` and must not satisfy this.
+        "backend ruff lint",
+        re.compile(r"\bruff(?:\.exe)?\s+check\s+app\s+scripts\s+tests\b"),
+    ),
+    RequiredCommand(
+        "backend compileall",
+        re.compile(r"\bpython(?:\.exe)?\s+-m\s+compileall\s+app\s+scripts\s+tests\b"),
     ),
 ]
 
 
 def _locate_workflow_dir() -> pathlib.Path | None:
     candidates = [
-        pathlib.Path("../.github/workflows"),
-        pathlib.Path(".github/workflows"),
+        pathlib.Path("../.gitea/workflows"),
+        pathlib.Path(".gitea/workflows"),
     ]
     for candidate in candidates:
         if candidate.is_dir():
@@ -108,6 +136,18 @@ def _read_yaml_command_block(
     return "\n".join(block), index
 
 
+def _strip_comment_lines(text: str) -> str:
+    """Drop ``#``-commented lines inside a run body.
+
+    A required command that someone disabled by commenting it out inside a
+    multi-line ``run: |`` block must not satisfy the gate.
+    """
+    kept = [
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    ]
+    return "\n".join(kept)
+
+
 def _iter_workflow_run_commands(workflow_dir: pathlib.Path) -> list[WorkflowCommand]:
     commands: list[WorkflowCommand] = []
     for path in sorted(workflow_dir.glob("*.yml")):
@@ -140,10 +180,10 @@ def _iter_workflow_run_commands(workflow_dir: pathlib.Path) -> list[WorkflowComm
                     start_index=index + 1,
                     parent_indent=indent,
                 )
-                commands.append(WorkflowCommand(path, text))
+                commands.append(WorkflowCommand(path, _strip_comment_lines(text)))
                 continue
 
-            commands.append(WorkflowCommand(path, value))
+            commands.append(WorkflowCommand(path, _strip_comment_lines(value)))
             index += 1
     return commands
 
@@ -164,7 +204,7 @@ def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
 def main() -> int:
     workflow_dir = _locate_workflow_dir()
     if workflow_dir is None:
-        print("CI gap audit: FAIL - .github/workflows/ directory not found")
+        print("CI gap audit: FAIL - .gitea/workflows/ directory not found")
         return 1
 
     commands = _iter_workflow_run_commands(workflow_dir)
@@ -177,13 +217,13 @@ def main() -> int:
     if missing:
         print("=== CI gap audit: FAIL ===")
         for entry in missing:
-            print(f"  missing across .github/workflows/*.yml: {entry}")
+            print(f"  missing across .gitea/workflows/*.yml: {entry}")
         return 1
 
     print(
         f"=== CI gap audit: OK ({len(REQUIRED_GRADLE_TASKS)} gradle tasks + "
         f"{len(REQUIRED_CI_INVOCATIONS)} backend invocations verified across all "
-        f".github/workflows/*.yml) ==="
+        f".gitea/workflows/*.yml) ==="
     )
     return 0
 

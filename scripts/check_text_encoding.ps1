@@ -24,7 +24,7 @@ $TextExtensions = @(
 )
 $IgnoredDirectories = @(
     ".claude", ".git", ".gradle", ".gradle-user", ".idea", ".pytest_cache", ".ruff_cache", ".toolchains",
-    ".venv", "build", "__pycache__"
+    ".venv", ".venv-build", ".ci-venv", "build", "__pycache__"
 )
 
 function Test-IgnoredPath {
