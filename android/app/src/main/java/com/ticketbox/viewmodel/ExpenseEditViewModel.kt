@@ -5,25 +5,17 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.ExpenseEditActions
 import com.ticketbox.data.repository.ExpenseStateOutcome
-import com.ticketbox.data.repository.ItemsAckOutcome
-import com.ticketbox.data.repository.ReplaceItemsOutcome
-import com.ticketbox.data.repository.ReplaceSplitsOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
-import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
-import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.screens.expense.evenSplitActiveCents
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -87,15 +79,25 @@ data class ExpenseEditUiState(
     val done: Boolean = false,
 )
 
+/**
+ * 主编辑面：加载（expense / categories / 图片 / items / splits）+ 保存 /
+ * 确认 / 拒绝 / OCR 重试 / 粘贴识别 / 非重复标记。items 编辑器域在
+ * [ExpenseEditViewModelItemsEditor.kt]、splits 编辑器域在
+ * [ExpenseEditViewModelSplitsEditor.kt]（架构债 #5 拆分，同包扩展函数，
+ * PendingViewModelReviewActions 先例模式）。
+ */
 class ExpenseEditViewModel(
     private val expenseId: Long,
-    private val repository: ExpenseRepository,
+    // 架构债 #5: narrow action interface (PendingReviewActions pattern) so unit
+    // tests can fake the repository facade; `internal` so the items / splits
+    // editor extension files (same package) reach it.
+    internal val repository: ExpenseEditActions,
 ) : ViewModel() {
     private companion object {
         const val IMAGE_LOG_TAG = "TicketboxImage"
     }
 
-    private val _uiState = MutableStateFlow(
+    internal val _uiState = MutableStateFlow(
         ExpenseEditUiState(readOnly = !repository.canModifyLedger()),
     )
     val uiState: StateFlow<ExpenseEditUiState> = _uiState.asStateFlow()
@@ -185,199 +187,6 @@ class ExpenseEditViewModel(
         }
     }
 
-    fun acknowledgeItemsMismatch() {
-        // ADR-0038 PR-2e/2g.9: pass the whole expense (token) + current
-        // items so the offline path can build the optimistic projection.
-        // Bail with the same items-message UX if either hasn't loaded.
-        val expense = _uiState.value.expense
-        val currentItems = _uiState.value.expenseItems
-        if (expense == null || currentItems == null) {
-            _uiState.update {
-                it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_tap))
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(itemsLoading = true, itemsMessage = null) }
-            repository.acknowledgeItemsMismatchAllowingOffline(expense, currentItems)
-                .onSuccess { outcome ->
-                    when (outcome) {
-                        is ItemsAckOutcome.Synced -> {
-                            // ADR-0038 PR-2e: ack bumps the parent expense's
-                            // ``updated_at`` server-side. Refresh ``_uiState.expense``
-                            // so subsequent same-page mutations (PATCH / confirm /
-                            // reject / OCR retry) pick up the new token instead of
-                            // racing themselves with a now-stale one.
-                            //
-                            // Refresh inline INSTEAD of calling ``loadExpense()``:
-                            // ``loadExpense`` flips ``message`` to ``null`` at the
-                            // start of its coroutine, which would erase the success
-                            // banner we set below. We only need the new
-                            // ``updatedAt`` here, so a surgical update keeps the
-                            // success message visible.
-                            val refreshedExpense = repository.fetchExpense(expense.id).getOrNull()
-                            _uiState.update {
-                                it.copy(
-                                    expense = refreshedExpense ?: it.expense,
-                                    expenseItems = outcome.items,
-                                    itemsLoading = false,
-                                    message = UiText.res(R.string.expense_edit_items_ack_synced),
-                                )
-                            }
-                        }
-                        is ItemsAckOutcome.Queued -> {
-                            // Offline: no fetchExpense (network down) — keep the
-                            // current token and show the optimistic acknowledged
-                            // items. The worker replays the ack on reconnect.
-                            _uiState.update {
-                                it.copy(
-                                    expenseItems = outcome.items,
-                                    itemsLoading = false,
-                                    message = UiText.res(R.string.expense_edit_items_ack_offline_queued),
-                                )
-                            }
-                        }
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            itemsLoading = false,
-                            itemsMessage = error.toUiText(R.string.expense_edit_items_ack_failed),
-                        )
-                    }
-                }
-        }
-    }
-
-    // region — PR-D items editor
-
-    /** Open the editor seeded from the currently-loaded items (amount magnitude
-     *  as text; the kind chip carries the sign). No-op until items have loaded. */
-    fun openItemsEditor() {
-        val items = _uiState.value.expenseItems ?: return
-        val drafts = items.items.map { item ->
-            EditableItem(
-                name = item.name,
-                amountText = centsToYuanText(item.amountCents),
-                kind = item.kind,
-            )
-        }
-        _uiState.update { it.copy(itemEditorOpen = true, itemDrafts = drafts, itemsMessage = null) }
-    }
-
-    fun updateItemDraft(index: Int, name: String? = null, amountText: String? = null, kind: String? = null) {
-        _uiState.update { state ->
-            val drafts = state.itemDrafts.toMutableList()
-            val current = drafts.getOrNull(index) ?: return@update state
-            drafts[index] = current.copy(
-                name = name ?: current.name,
-                amountText = amountText ?: current.amountText,
-                kind = kind ?: current.kind,
-            )
-            state.copy(itemDrafts = drafts)
-        }
-    }
-
-    fun addItemRow() {
-        _uiState.update { it.copy(itemDrafts = it.itemDrafts + EditableItem()) }
-    }
-
-    fun removeItemRow(index: Int) {
-        _uiState.update { state ->
-            val drafts = state.itemDrafts.toMutableList()
-            if (index in drafts.indices) drafts.removeAt(index)
-            state.copy(itemDrafts = drafts)
-        }
-    }
-
-    fun closeItemsEditor() {
-        _uiState.update { it.copy(itemEditorOpen = false, itemDrafts = emptyList()) }
-    }
-
-    /** Persist the edited items. Mirrors [acknowledgeItemsMismatch]'s outcome
-     *  handling: Synced refreshes the parent token + shows the saved items;
-     *  Queued keeps the optimistic projection and tells the user it'll sync. */
-    fun saveItems() {
-        val expense = _uiState.value.expense
-        val currentItems = _uiState.value.expenseItems
-        if (expense == null || currentItems == null) {
-            _uiState.update { it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_retry)) }
-            return
-        }
-        val drafts = _uiState.value.itemDrafts
-            .filter { it.name.isNotBlank() || it.amountText.isNotBlank() }
-            .map { it.toDomainDraft() }
-        viewModelScope.launch {
-            _uiState.update { it.copy(itemsSaving = true, itemsMessage = null) }
-            repository.replaceExpenseItemsAllowingOffline(expense, drafts, currentItems)
-                .onSuccess { outcome ->
-                    when (outcome) {
-                        is ReplaceItemsOutcome.Synced -> {
-                            // Replace bumps the parent's updated_at server-side;
-                            // refresh the token so later same-page mutations don't
-                            // race a stale one. Inline refresh (not loadExpense)
-                            // keeps the success banner visible.
-                            val refreshed = repository.fetchExpense(expense.id).getOrNull()
-                            _uiState.update {
-                                it.copy(
-                                    expense = refreshed ?: it.expense,
-                                    expenseItems = outcome.items,
-                                    itemEditorOpen = false,
-                                    itemDrafts = emptyList(),
-                                    itemsSaving = false,
-                                    message = UiText.res(R.string.expense_edit_items_saved),
-                                )
-                            }
-                        }
-                        is ReplaceItemsOutcome.Queued -> {
-                            _uiState.update {
-                                it.copy(
-                                    expenseItems = outcome.items,
-                                    itemEditorOpen = false,
-                                    itemDrafts = emptyList(),
-                                    itemsSaving = false,
-                                    message = UiText.res(R.string.expense_edit_items_saved_offline_queued),
-                                )
-                            }
-                        }
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            itemsSaving = false,
-                            itemsMessage = error.toUiText(R.string.expense_edit_items_save_failed),
-                        )
-                    }
-                }
-        }
-    }
-
-    private fun centsToYuanText(cents: Long?): String {
-        if (cents == null) return ""
-        return BigDecimal(abs(cents)).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-    }
-
-    private fun EditableItem.toDomainDraft(): ExpenseItemDraft {
-        val magnitude = parseAmountCents(amountText) ?: 0L
-        // ADR-0035: discount lines carry negative amount_cents; the editor takes
-        // the magnitude and the kind chip decides the sign.
-        val signed = if (kind == ExpenseItemKind.DISCOUNT) -abs(magnitude) else magnitude
-        return ExpenseItemDraft(
-            name = name.trim().ifBlank { "未命名" },
-            quantityText = null,
-            unitPriceCents = null,
-            amountCents = signed,
-            category = null,
-            rawText = null,
-            confidence = null,
-            kind = kind,
-        )
-    }
-
-    // endregion
-
     private fun loadExpenseSplits() {
         viewModelScope.launch {
             _uiState.update { it.copy(splitsLoading = true, splitsMessage = null) }
@@ -395,228 +204,6 @@ class ExpenseEditViewModel(
                 }
         }
     }
-
-    // region — Slice E-1 splits editor
-
-    /** Open the splits editor and load the ledger member roster. The drafts are
-     *  built once members arrive (member checklist seeded from the current
-     *  splits — see [loadSplitMembers]). No-op until splits have loaded. */
-    fun openSplitsEditor() {
-        if (_uiState.value.expenseSplits == null) {
-            _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_tap)) }
-            return
-        }
-        _uiState.update { it.copy(splitEditorOpen = true, splitsMessage = null) }
-        loadSplitMembers()
-    }
-
-    /** Fetch the ledger member roster and merge it with the current splits into
-     *  the editable checklist: members already on a split are pre-checked and
-     *  carry their amount; disabled members already on a split stay visible
-     *  read-only (historical attribution); other disabled members are dropped. */
-    fun loadSplitMembers() {
-        val currentSplits = _uiState.value.expenseSplits ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(splitMembersLoading = true, splitsMessage = null) }
-            repository.fetchSplitMembers()
-                .onSuccess { members ->
-                    _uiState.update {
-                        it.copy(
-                            splitDrafts = buildSplitDrafts(members, currentSplits),
-                            splitMembersLoading = false,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            splitMembersLoading = false,
-                            splitsMessage = error.toUiText(R.string.expense_edit_splits_members_load_failed),
-                        )
-                    }
-                }
-        }
-    }
-
-    fun updateSplitIncluded(memberId: Long, included: Boolean) {
-        _uiState.update { state ->
-            val drafts = state.splitDrafts.map { draft ->
-                if (draft.memberId == memberId && !draft.disabled) {
-                    draft.copy(included = included)
-                } else {
-                    draft
-                }
-            }
-            state.copy(splitDrafts = drafts)
-        }
-    }
-
-    fun updateSplitAmount(memberId: Long, amountText: String) {
-        _uiState.update { state ->
-            val drafts = state.splitDrafts.map { draft ->
-                if (draft.memberId == memberId && !draft.disabled) {
-                    draft.copy(amountText = amountText)
-                } else {
-                    draft
-                }
-            }
-            state.copy(splitDrafts = drafts)
-        }
-    }
-
-    /** Largest-remainder fill of the parent amount across the currently-checked
-     *  members (by display order). One-shot — the user can still edit any amount
-     *  afterwards. No-op if no editable members are checked. */
-    fun evenSplitAmounts() {
-        _uiState.update { state ->
-            val parent = state.expenseSplits?.parentAmountCents ?: return@update state
-            val checked = state.splitDrafts.filter { it.included && !it.disabled }
-            if (checked.isEmpty()) return@update state
-            // Disabled members already on the split hold fixed amounts the user
-            // can't edit — subtract them so 均分 distributes only the REMAINING
-            // amount across the active members and 合计 actually reaches the parent
-            // total (otherwise 差额 can never reach zero when a disabled share exists).
-            val fixedDisabledTotal = state.splitDrafts
-                .filter { it.disabled }
-                .sumOf { parseAmountCents(it.amountText) ?: 0L }
-            val shares = evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
-            val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
-            val drafts = state.splitDrafts.map { draft ->
-                val share = shareByMember[draft.memberId]
-                if (share != null) draft.copy(amountText = centsToYuanText(share)) else draft
-            }
-            state.copy(splitDrafts = drafts)
-        }
-    }
-
-    fun closeSplitsEditor() {
-        _uiState.update { it.copy(splitEditorOpen = false, splitDrafts = emptyList()) }
-    }
-
-    /** Persist the edited splits. Mirrors [saveItems]: Synced refreshes the
-     *  parent token + shows the saved splits; Queued keeps the optimistic
-     *  projection and tells the user it'll sync. Disabled members already on a
-     *  split are preserved (kept in the request with their existing amount). */
-    fun saveSplits() {
-        val expense = _uiState.value.expense
-        val currentSplits = _uiState.value.expenseSplits
-        if (expense == null || currentSplits == null) {
-            _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_items_not_loaded_retry)) }
-            return
-        }
-        // ADR-0042 P1 data-loss guard: the sheet opens BEFORE the member roster
-        // loads (loadSplitMembers is async), so splitDrafts can still be empty —
-        // the load is in flight, or it failed. Saving then would send splits=[]
-        // and the backend replace deletes every existing split first. Refuse to
-        // save an editor that never finished loading (an empty splitDrafts means
-        // not-loaded; an intentional "remove everyone" still has the unchecked
-        // rows in splitDrafts, so this only blocks the never-loaded case).
-        if (_uiState.value.splitMembersLoading || _uiState.value.splitDrafts.isEmpty()) {
-            _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_save)) }
-            return
-        }
-        val drafts = _uiState.value.splitDrafts
-            .filter { (it.included || it.disabled) && it.amountText.isNotBlank() }
-            .map { it.toDomainDraft() }
-        viewModelScope.launch {
-            _uiState.update { it.copy(splitsSaving = true, splitsMessage = null) }
-            repository.replaceExpenseSplitsAllowingOffline(expense, drafts, currentSplits)
-                .onSuccess { outcome ->
-                    when (outcome) {
-                        is ReplaceSplitsOutcome.Synced -> {
-                            // Replace bumps the parent's row_version server-side;
-                            // refresh the token so later same-page mutations don't
-                            // race a stale one. Inline refresh (not loadExpense)
-                            // keeps the success banner visible.
-                            val refreshed = repository.fetchExpense(expense.id).getOrNull()
-                            _uiState.update {
-                                it.copy(
-                                    expense = refreshed ?: it.expense,
-                                    expenseSplits = outcome.splits,
-                                    splitEditorOpen = false,
-                                    splitDrafts = emptyList(),
-                                    splitsSaving = false,
-                                    message = UiText.res(R.string.expense_edit_splits_saved),
-                                )
-                            }
-                        }
-                        is ReplaceSplitsOutcome.Queued -> {
-                            _uiState.update {
-                                it.copy(
-                                    expenseSplits = outcome.splits,
-                                    splitEditorOpen = false,
-                                    splitDrafts = emptyList(),
-                                    splitsSaving = false,
-                                    message = UiText.res(R.string.expense_edit_splits_saved_offline_queued),
-                                )
-                            }
-                        }
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            splitsSaving = false,
-                            splitsMessage = error.toUiText(R.string.expense_edit_splits_save_failed),
-                        )
-                    }
-                }
-        }
-    }
-
-    private fun buildSplitDrafts(
-        members: List<FamilyMember>,
-        currentSplits: ExpenseSplits,
-    ): List<EditableSplit> {
-        val splitByMember = currentSplits.splits.associateBy { it.memberId }
-        // Members on a split that the roster no longer lists (disabled + dropped
-        // from /members) still need a read-only row so we don't silently lose
-        // their historical attribution on save.
-        val rosterMemberIds = members.map { it.memberId }.toSet()
-        val orphanedSplits = currentSplits.splits.filter { it.memberId !in rosterMemberIds }
-
-        val rosterDrafts = members.mapNotNull { member ->
-            val existing = splitByMember[member.memberId]
-            when {
-                // Active member: a row regardless of whether they're on a split.
-                !member.isDisabled -> EditableSplit(
-                    memberId = member.memberId,
-                    displayName = member.displayName,
-                    included = existing != null,
-                    amountText = existing?.let { centsToYuanText(it.amountCents) }.orEmpty(),
-                    disabled = false,
-                )
-                // Disabled member already on a split: keep, read-only.
-                existing != null -> EditableSplit(
-                    memberId = member.memberId,
-                    displayName = member.displayName,
-                    included = true,
-                    amountText = centsToYuanText(existing.amountCents),
-                    disabled = true,
-                )
-                // Disabled member NOT on a split: drop (can't add a disabled member).
-                else -> null
-            }
-        }
-        val orphanDrafts = orphanedSplits.map { split ->
-            EditableSplit(
-                memberId = split.memberId,
-                displayName = split.accountName.ifBlank { "未命名成员" },
-                included = true,
-                amountText = centsToYuanText(split.amountCents),
-                disabled = true,
-            )
-        }
-        return rosterDrafts + orphanDrafts
-    }
-
-    private fun EditableSplit.toDomainDraft(): ExpenseSplitDraft = ExpenseSplitDraft(
-        memberId = memberId,
-        amountCents = parseAmountCents(amountText) ?: 0L,
-        note = null,
-    )
-
-    // endregion
 
     fun loadFullImage() {
         viewModelScope.launch {
@@ -859,5 +446,11 @@ class ExpenseEditViewModel(
         }
         _uiState.update { it.copy(readOnly = true, saving = false, ocrRunning = false, message = UiText.res(R.string.common_readonly_ledger)) }
         return true
+    }
+
+    /** Yuan-text rendering shared by the items / splits editor extension files. */
+    internal fun centsToYuanText(cents: Long?): String {
+        if (cents == null) return ""
+        return BigDecimal(abs(cents)).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
     }
 }

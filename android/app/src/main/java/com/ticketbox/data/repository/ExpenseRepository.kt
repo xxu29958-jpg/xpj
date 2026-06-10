@@ -72,7 +72,7 @@ class ExpenseRepository(
     replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
     // ADR-0042 Slice E-2: body-carrying adapter for the offline-aware "粘贴文字识别".
     recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
-) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
+) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions, ExpenseEditActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
         settingsStore = settingsStore,
@@ -116,7 +116,7 @@ class ExpenseRepository(
     override suspend fun fetchPending(): Result<List<Expense>> =
         pendingRepository.fetchPending()
 
-    suspend fun fetchExpense(id: Long): Result<Expense> =
+    override suspend fun fetchExpense(id: Long): Result<Expense> =
         detailRepository.fetchExpense(id)
 
     override suspend fun uploadScreenshot(
@@ -147,7 +147,7 @@ class ExpenseRepository(
         baseline: Expense,
     ): Result<SaveOutcome> = pendingRepository.saveExpenseAllowingOffline(id, draft, baseline)
 
-    suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> =
+    override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> =
         detailRepository.fetchExpenseItems(id)
 
     suspend fun replaceExpenseItems(
@@ -163,13 +163,13 @@ class ExpenseRepository(
     ): Result<ExpenseItems> =
         detailRepository.acknowledgeExpenseItemsMismatch(id, expectedRowVersion)
 
-    suspend fun acknowledgeItemsMismatchAllowingOffline(
+    override suspend fun acknowledgeItemsMismatchAllowingOffline(
         expense: Expense,
         currentItems: ExpenseItems,
     ): Result<ItemsAckOutcome> =
         detailRepository.acknowledgeItemsMismatchAllowingOffline(expense, currentItems)
 
-    suspend fun replaceExpenseItemsAllowingOffline(
+    override suspend fun replaceExpenseItemsAllowingOffline(
         expense: Expense,
         items: List<ExpenseItemDraft>,
         currentItems: ExpenseItems,
@@ -209,7 +209,7 @@ class ExpenseRepository(
     suspend fun cancelBackgroundTask(publicId: String): Result<BackgroundTask> =
         backgroundTaskRepository.cancelBackgroundTask(publicId)
 
-    suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> =
+    override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> =
         detailRepository.fetchExpenseSplits(id)
 
     suspend fun replaceExpenseSplits(
@@ -219,14 +219,14 @@ class ExpenseRepository(
     ): Result<ExpenseSplits> =
         detailRepository.replaceExpenseSplits(id, splits, expectedRowVersion)
 
-    suspend fun replaceExpenseSplitsAllowingOffline(
+    override suspend fun replaceExpenseSplitsAllowingOffline(
         expense: Expense,
         splits: List<ExpenseSplitDraft>,
         currentSplits: ExpenseSplits,
     ): Result<ReplaceSplitsOutcome> =
         detailRepository.replaceExpenseSplitsAllowingOffline(expense, splits, currentSplits)
 
-    suspend fun fetchSplitMembers(): Result<List<FamilyMember>> =
+    override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> =
         detailRepository.fetchSplitMembers()
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> =
@@ -264,10 +264,10 @@ class ExpenseRepository(
     suspend fun retryOcr(id: Long, expectedRowVersion: Long): Result<Expense> =
         detailRepository.retryOcr(id, expectedRowVersion)
 
-    suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
+    override suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         detailRepository.retryOcrAllowingOffline(expense)
 
-    suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome> =
+    override suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome> =
         detailRepository.recognizeTextAllowingOffline(expense, rawText)
 
     override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> =
@@ -279,7 +279,7 @@ class ExpenseRepository(
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> =
         pendingRepository.fetchThumbnail(id)
 
-    suspend fun fetchImage(id: Long): Result<ProtectedImage> =
+    override suspend fun fetchImage(id: Long): Result<ProtectedImage> =
         detailRepository.fetchImage(id)
 
     override suspend fun syncConfirmed(
