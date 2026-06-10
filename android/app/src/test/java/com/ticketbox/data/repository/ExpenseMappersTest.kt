@@ -73,14 +73,14 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toRequest()
+        ).toManualCreateRequest()
 
         assertEquals("JPY", request.originalCurrency)
         assertEquals("1200", request.originalAmount)
         assertEquals("2026-05-04T04:00:00Z", request.spentAt)
-        // ADR-0038 PR-2a: create 路径不带 baseline，expectedRowVersion 必须为 null
-        // 让 Moshi 序列化时省略键名，避免 /api/expenses/manual 的 extra="forbid" 拒收。
-        assertEquals(null, request.expectedRowVersion)
+        // 专用 create DTO（ExpenseManualCreateRequestDto）没有 expectedRowVersion
+        // 字段——「manual create 不带 OCC token」从运行时 null-省略约定升级为
+        // 编译期结构保证（此前复用 ExpenseUpdateRequest 靠 Moshi 省略 null 键）。
     }
 
     @Test
@@ -210,7 +210,7 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toRequest()
+        ).toManualCreateRequest()
 
         assertEquals(null, request.originalCurrency)
         assertEquals(null, request.originalAmount)

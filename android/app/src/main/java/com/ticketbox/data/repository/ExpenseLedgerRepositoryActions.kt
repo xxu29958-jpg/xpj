@@ -77,7 +77,7 @@ internal class ExpenseLedgerRepositoryActions(
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = core.errorHandler.safeCall {
         require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
         val bound = core.ledgerRequestGuard.bind()
-        val created = core.cacheIfConfirmed(bound.call { it.createManualExpense(draft.toRequest()) }, bound.ledgerId)
+        val created = core.cacheIfConfirmed(bound.call { it.createManualExpense(draft.toManualCreateRequest()) }, bound.ledgerId)
         created.toDomain()
     }
 

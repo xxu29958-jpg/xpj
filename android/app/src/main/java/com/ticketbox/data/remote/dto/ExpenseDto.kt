@@ -141,6 +141,34 @@ data class ExpenseUpdateRequest(
 )
 
 /**
+ * Body for ``POST /api/expenses/manual`` (backend ``ExpenseManualCreateRequest``).
+ *
+ * Dedicated create DTO — this endpoint previously reused [ExpenseUpdateRequest]
+ * and only stayed safe because the create path always left ``expectedRowVersion``
+ * null and Moshi omitted the key; the backend create model is ``extra="forbid"``
+ * and does NOT declare ``expected_row_version``, so any non-null value would 422.
+ * A separate type makes that contract structural instead of accidental.
+ */
+data class ExpenseManualCreateRequestDto(
+    @param:Json(name = "original_currency")
+    val originalCurrency: String? = null,
+    @param:Json(name = "original_amount")
+    val originalAmount: String? = null,
+    @param:Json(name = "spent_at")
+    val spentAt: String? = null,
+    val merchant: String?,
+    val category: String?,
+    val note: String?,
+    @param:Json(name = "expense_time")
+    val expenseTime: String?,
+    val tags: String?,
+    @param:Json(name = "value_score")
+    val valueScore: Int?,
+    @param:Json(name = "regret_score")
+    val regretScore: Int?,
+)
+
+/**
  * ADR-0038 PR-2b: optimistic-concurrency token shared by the
  * confirm / reject / mark-not-duplicate state-machine POSTs and OCR retry.
  *

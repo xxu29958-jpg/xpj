@@ -201,7 +201,7 @@ internal class StubApi(
     override suspend fun undoTagMutation(mutationPublicId: String, request: com.ticketbox.data.remote.dto.TagUndoRequest): com.ticketbox.data.remote.dto.TagUndoDto = ledgerUnsupported()
     override suspend fun months(timezone: String?): MonthsDto = ledgerUnsupported()
     override suspend fun exportCsv(month: String?, category: String?, tag: String?, timezone: String?): Response<ResponseBody> = ledgerUnsupported()
-    override suspend fun createManualExpense(request: ExpenseUpdateRequest): ExpenseDto = ledgerUnsupported()
+    override suspend fun createManualExpense(request: com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto): ExpenseDto = ledgerUnsupported()
     override suspend fun createNotificationDraft(
         request: com.ticketbox.data.remote.dto.NotificationDraftRequestDto,
     ): ExpenseDto = ledgerUnsupported()
