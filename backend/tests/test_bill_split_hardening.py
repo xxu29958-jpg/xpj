@@ -1,4 +1,4 @@
-"""Additional bill split contract hardening tests."""
+﻿"""Additional bill split contract hardening tests."""
 
 from __future__ import annotations
 
@@ -141,7 +141,14 @@ def test_reaccept_with_different_target_ledger_is_conflict() -> None:
     assert exc_info.value.status_code == 409
 
 
-def test_bill_split_copies_exchange_rate_date_to_received_expense() -> None:
+def test_foreign_currency_split_lands_received_expense_in_home_currency() -> None:
+    """The receiver owes the agreed share in the HOME currency. A USD parent
+    must NOT leak its full-amount ``original_amount_minor`` / rate onto the
+    received expense: a partial-amount row carrying the parent's full $ total
+    breaks the ``amount_cents == original × rate`` invariant and is then
+    frozen forever by ``IMMUTABLE_ON_SPLIT_RECEIVED``. The invitation keeps
+    the parent snapshot for display; the received expense lands as a plain
+    home-currency row (original == home, rate == 1)."""
     rate_date = date(2026, 5, 1)
     with SessionLocal() as db:
         expense = Expense(
@@ -178,6 +185,10 @@ def test_bill_split_copies_exchange_rate_date_to_received_expense() -> None:
             receiver_account_id=receiver_account_id,
             amount_cents=3500,
         )
+        # Invitation snapshot keeps the parent's original-currency context.
+        assert inv.original_currency_code == "USD"
+        assert inv.original_amount_minor == 1000
+        assert inv.exchange_rate_to_cny == Decimal("7")
         assert inv.exchange_rate_date is not None
         assert inv.exchange_rate_date.date() == rate_date
         _inv, received = bsplit.accept_invitation(
@@ -195,7 +206,14 @@ def test_bill_split_copies_exchange_rate_date_to_received_expense() -> None:
             .where(Expense.tenant_id == "receiver_fx_snapshot")
         )
         assert received is not None
-        assert received.exchange_rate_date == rate_date
+        assert received.amount_cents == 3500
+        assert received.home_currency_code == "CNY"
+        assert received.original_currency_code == "CNY"
+        assert received.original_amount_minor == 3500
+        assert received.exchange_rate_to_cny == Decimal("1")
+        assert received.exchange_rate_source == "base"
+        assert received.fx_status == "ready"
+        assert received.exchange_rate_date is not None
 
 
 def test_two_sessions_accept_race_creates_single_received_expense(*, identity) -> None:

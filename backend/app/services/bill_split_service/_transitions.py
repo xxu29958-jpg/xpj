@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import BillSplitInvitation, Expense
 from app.services.bill_split_service._common import (
     SPLIT_RECEIVED_SOURCE,
@@ -16,6 +17,7 @@ from app.services.bill_split_service._common import (
     _load_writer_member,
 )
 from app.services.bill_split_service._query import get_invitation
+from app.services.exchange_rate_service import default_rate_date
 from app.services.time_service import ensure_utc, now_utc
 
 
@@ -53,10 +55,19 @@ def accept_invitation(
 
     # Expiry check (do not silently auto-expire here — if exactly at TTL,
     # let the caller see a clear "expired" error then run the sweeper).
-    # SQLite returns naive datetimes; coerce both sides to UTC-aware.
     if ensure_utc(inv.expires_at) <= now_utc():
-        _mark_expired(db, inv)
-        raise AppError("invitation_expired", status_code=410)
+        if _mark_expired(db, inv):
+            raise AppError("invitation_expired", status_code=410)
+        # The expiry flip matched 0 rows: a peer settled the invitation
+        # between our status read and the flip. Re-read and resolve like
+        # a lost accept; a peer-driven expiry still surfaces as 410.
+        fresh = get_invitation(db, public_id)
+        if fresh.status == "expired":
+            raise AppError("invitation_expired", status_code=410)
+        settled = _resolve_settled_accept(db, fresh, target_ledger_id)
+        if settled is not None:
+            return settled
+        raise AppError("server_error", status_code=500)
 
     # Target ledger constraints.
     if target_ledger_id == inv.sender_ledger_id:
@@ -67,17 +78,26 @@ def accept_invitation(
         )
     target_member = _load_writer_member(db, target_ledger_id, accepting_account_id)
 
-    # Build the receiver-side expense from the snapshot.
+    # Build the receiver-side expense from the snapshot. The receiver owes
+    # ``amount_cents`` in the HOME currency — the agreed share, not the
+    # parent's original-currency total — so the expense lands in plain
+    # home-currency form (original == home, rate == 1), the same shape
+    # ``apply_exchange_rate_fields`` writes for home-currency amounts.
+    # Copying the parent's full ``original_amount_minor`` / rate here would
+    # break the ``amount_cents == original × rate`` invariant on a row whose
+    # money fields are then frozen by ``IMMUTABLE_ON_SPLIT_RECEIVED``; the
+    # invitation keeps the parent's original-currency snapshot for display.
     now = now_utc()
     received = Expense(
         tenant_id=target_ledger_id,
         amount_cents=inv.amount_cents,
         home_currency_code=inv.home_currency_code,
-        original_currency_code=inv.original_currency_code,
-        original_amount_minor=inv.original_amount_minor,
-        exchange_rate_to_cny=inv.exchange_rate_to_cny,
-        exchange_rate_date=_exchange_rate_date(inv.exchange_rate_date),
-        exchange_rate_source=inv.exchange_rate_source,
+        original_currency_code=inv.home_currency_code,
+        original_amount_minor=inv.amount_cents,
+        exchange_rate_to_cny=Decimal("1"),
+        exchange_rate_date=default_rate_date(inv.expense_time_snapshot),
+        exchange_rate_source=FX_SOURCE_BASE,
+        fx_status=FX_STATUS_READY,
         merchant=inv.merchant_snapshot,
         category=inv.category_suggestion or "其他",
         note=None,
@@ -186,12 +206,6 @@ def _resolve_lost_accept(
     raise AppError("server_error", status_code=500) from cause
 
 
-def _exchange_rate_date(value: datetime | None) -> date | None:
-    if value is None:
-        return None
-    return value.date()
-
-
 def reject_invitation(
     db: Session, *, public_id: str, rejecting_account_id: int
 ) -> BillSplitInvitation:
@@ -200,8 +214,21 @@ def reject_invitation(
         raise AppError("invitation_not_yours", status_code=403)
     if inv.status != "invited":
         raise AppError("invitation_not_acceptable", status_code=409)
-    inv.status = "rejected"
-    inv.rejected_at = now_utc()
+    # Atomic flip (mirrors the accept claim): only reject while still
+    # 'invited', so a peer accept that won between our status read and this
+    # write can never be clobbered to 'rejected'.
+    rowcount = db.execute(
+        update(BillSplitInvitation)
+        .where(BillSplitInvitation.id == inv.id)
+        .where(BillSplitInvitation.status == "invited")
+        .values(status="rejected", rejected_at=now_utc())
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if rowcount != 1:
+        # A peer settled the invitation first — same outcome as having read
+        # the settled row up front.
+        db.rollback()
+        raise AppError("invitation_not_acceptable", status_code=409)
     _audit(db, inv.sender_ledger_id, "bill_split_rejected",
            actor_account_id=None,
            target_account_id=rejecting_account_id,
@@ -222,8 +249,19 @@ def cancel_invitation(
         # Already terminal — accepted invitations CANNOT be cancelled
         # because the receiver already has a real expense.
         raise AppError("invitation_not_cancellable", status_code=409)
-    inv.status = "cancelled"
-    inv.cancelled_at = now_utc()
+    # Atomic flip (mirrors the accept claim): a sender cancel racing a
+    # receiver accept must lose once the accept claim lands — the receiver
+    # already holds a confirmed expense at that point.
+    rowcount = db.execute(
+        update(BillSplitInvitation)
+        .where(BillSplitInvitation.id == inv.id)
+        .where(BillSplitInvitation.status == "invited")
+        .values(status="cancelled", cancelled_at=now_utc())
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if rowcount != 1:
+        db.rollback()
+        raise AppError("invitation_not_cancellable", status_code=409)
     _audit(db, inv.sender_ledger_id, "bill_split_cancelled",
            actor_account_id=sender_account_id,
            target_account_id=inv.receiver_account_id,
@@ -236,37 +274,50 @@ def cancel_invitation(
 def expire_invitations(db: Session) -> int:
     """Sweeper: anything ``invited`` with ``expires_at < now`` → expired.
 
-    Returns count of newly-expired rows. Intended to be called from a
-    scheduled background task ([[ADR-0030]] handler) or on demand."""
+    A single guarded ``UPDATE … WHERE status='invited' … RETURNING`` so a
+    row concurrently accepted/rejected/cancelled after any earlier read can
+    never be clobbered to 'expired'. Returns count of newly-expired rows.
+    Intended to be called from a scheduled background task ([[ADR-0030]]
+    handler) or on demand."""
     now = now_utc()
-    # SQLAlchemy comparison with TZ-aware datetime on SQLite works for
-    # the WHERE clause (server-side string compare is timezone-blind);
-    # the values it compares against are stored as naive strings. As long
-    # as both we and the DB serialize to ISO-with-Z this is fine.
-    pending = list(
-        db.scalars(
-            select(BillSplitInvitation)
-            .where(BillSplitInvitation.status == "invited")
-            .where(BillSplitInvitation.expires_at <= now)
+    expired = db.execute(
+        update(BillSplitInvitation)
+        .where(BillSplitInvitation.status == "invited")
+        .where(BillSplitInvitation.expires_at <= now)
+        .values(status="expired", expired_at=now)
+        .returning(
+            BillSplitInvitation.sender_ledger_id,
+            BillSplitInvitation.receiver_account_id,
+            BillSplitInvitation.public_id,
         )
-    )
-    for inv in pending:
-        inv.status = "expired"
-        inv.expired_at = now
-        _audit(db, inv.sender_ledger_id, "bill_split_expired",
+        .execution_options(synchronize_session=False)
+    ).all()
+    for row in expired:
+        _audit(db, row.sender_ledger_id, "bill_split_expired",
                actor_account_id=None,
-               target_account_id=inv.receiver_account_id,
-               invitation_public_id=inv.public_id)
-    if pending:
+               target_account_id=row.receiver_account_id,
+               invitation_public_id=row.public_id)
+    if expired:
         db.commit()
-    return len(pending)
+    return len(expired)
 
 
-def _mark_expired(db: Session, inv: BillSplitInvitation) -> None:
-    inv.status = "expired"
-    inv.expired_at = now_utc()
+def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
+    """Best-effort expiry flip; ``False`` when a peer settled the row first
+    (the guarded UPDATE matched 0 rows — nothing was written)."""
+    rowcount = db.execute(
+        update(BillSplitInvitation)
+        .where(BillSplitInvitation.id == inv.id)
+        .where(BillSplitInvitation.status == "invited")
+        .values(status="expired", expired_at=now_utc())
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if rowcount != 1:
+        db.rollback()
+        return False
     _audit(db, inv.sender_ledger_id, "bill_split_expired",
            actor_account_id=None,
            target_account_id=inv.receiver_account_id,
            invitation_public_id=inv.public_id)
     db.commit()
+    return True
