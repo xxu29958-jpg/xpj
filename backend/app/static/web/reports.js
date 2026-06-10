@@ -339,7 +339,7 @@
     if (!button || !dialog || !image) return;
     button.addEventListener('click', function () {
       if (!trendChart) {
-        window.alert('暂无趋势图可导出。');
+        window.alert('还没有趋势图可导出。');
         return;
       }
       var dataUrl = trendChart.getDataURL({

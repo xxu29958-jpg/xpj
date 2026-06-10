@@ -11,7 +11,7 @@
     {% if cards.budget_configured %}
       预算 {{ home_currency_symbol }}{{ cards.budget_total_yuan }}{% if cards.budget_is_over %}（已超 {{ home_currency_symbol }}{{ cards.budget_overspent_yuan }}）{% else %}，剩 {{ home_currency_symbol }}{{ cards.budget_remaining_yuan }}{% endif %}。
     {% else %}
-      尚未设置预算。
+      还没有设置预算。
     {% endif %}
   </div>
 </div>
@@ -78,7 +78,7 @@
             <div class="card-hint-sm">本月已确认</div>
             <div class="card-hint-tiny">
               目标 {{ cards.goals_count }} 条{% if cards.goals_risk_count %} · 风险 {{ cards.goals_risk_count }}{% endif %}<br>
-              {% if cards.backup_available %}最近备份 {{ cards.backup_age_days }} 天前{% else %}尚未生成备份{% endif %}
+              {% if cards.backup_available %}最近备份 {{ cards.backup_age_days }} 天前{% else %}还没有生成备份{% endif %}
             </div>
           </div>
         </div>
@@ -199,7 +199,7 @@
         </div>
         {% if cards.goals_count == 0 %}
         <div class="empty-state">
-          <div class="empty-state-title">暂无目标</div>
+          <div class="empty-state-title">还没有目标</div>
           <div class="empty-state-hint">为某个分类设个月度上限，超过后会在这里提醒。</div>
           <a class="empty-state-cta" href="/web/goals?ledger_id={{ selected_ledger_id }}">新建目标 →</a>
         </div>
@@ -252,7 +252,7 @@
         <div class="trend-num">{{ cards.backup_age_days }}</div>
         <div class="card-hint-sm">天前生成最近备份</div>
         {% else %}
-        <div class="source-empty">尚未生成备份。</div>
+        <div class="source-empty">还没有生成备份。</div>
         {% endif %}
       </div>
     </div>

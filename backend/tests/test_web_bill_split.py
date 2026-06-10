@@ -68,7 +68,7 @@ def test_web_inbox_renders_empty_state(web_client: TestClient) -> None:
     response = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
     assert response.status_code == 200, response.text[:300]
     assert "拆账收件箱" in response.text
-    assert "暂无拆账邀请" in response.text
+    assert "还没有拆账邀请" in response.text
 
 
 def test_web_sent_renders_empty_state(web_client: TestClient) -> None:
