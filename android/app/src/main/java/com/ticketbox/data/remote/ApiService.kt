@@ -13,6 +13,7 @@ import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
@@ -127,7 +128,7 @@ interface ApiService {
     ): Response<ResponseBody>
 
     @POST("api/expenses/manual")
-    suspend fun createManualExpense(@Body request: ExpenseUpdateRequest): ExpenseDto
+    suspend fun createManualExpense(@Body request: ExpenseManualCreateRequestDto): ExpenseDto
 
     @POST("api/expenses/notification-drafts")
     suspend fun createNotificationDraft(@Body request: NotificationDraftRequestDto): ExpenseDto

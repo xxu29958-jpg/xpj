@@ -4,6 +4,7 @@ import com.ticketbox.data.local.ExpenseEntity
 import com.ticketbox.data.remote.dto.CategoryStatsDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.FrequentMerchantDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
@@ -198,7 +199,32 @@ fun ExpenseEntity.toDomain(): Expense {
     )
 }
 
-fun ExpenseDraft.toRequest(baseline: Expense? = null): ExpenseUpdateRequest {
+/** Body builder for ``POST /api/expenses/manual``. Create semantics only —
+ *  always submits the FX trio (currency / amount / spent_at) plus
+ *  ``expense_time``; there is no baseline to diff against and the dedicated
+ *  DTO has no OCC-token field by construction. */
+fun ExpenseDraft.toManualCreateRequest(): ExpenseManualCreateRequestDto {
+    val submittedOriginalMinor = originalAmountMinor ?: amountCents
+    val submittedCurrency = originalCurrencyCode
+        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+    return ExpenseManualCreateRequestDto(
+        originalCurrency = submittedCurrency?.storageKey,
+        originalAmount = minorToMajorText(
+            submittedOriginalMinor,
+            submittedCurrency ?: FxContract.HomeCurrency,
+        ),
+        spentAt = expenseTime,
+        merchant = merchant,
+        category = normalizeExpenseCategory(category),
+        note = note,
+        expenseTime = expenseTime,
+        tags = tags,
+        valueScore = valueScore,
+        regretScore = regretScore,
+    )
+}
+
+fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
     val submittedCurrency = originalCurrencyCode
         ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
@@ -212,8 +238,9 @@ fun ExpenseDraft.toRequest(baseline: Expense? = null): ExpenseUpdateRequest {
     val timeChanged = baseline != null && expenseTime != baseline.expenseTime
 
     return ExpenseUpdateRequest(
-        // ADR-0041: PATCH 必须携带 baseline.rowVersion 作为乐观锁 token；
-        // /api/expenses/manual 创建路径 baseline 为 null，Moshi 序列化时省略此键。
+        // ADR-0041: PATCH 必须携带 baseline.rowVersion 作为乐观锁 token。
+        // manual create 已拆到 toManualCreateRequest()（专用 DTO 无 token 字段）；
+        // baseline 参数不再有默认值，PATCH 调用点必须显式传。
         expectedRowVersion = baseline?.rowVersion,
         originalCurrency = if (isCreate || currencyChanged) submittedCurrency?.storageKey else null,
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,

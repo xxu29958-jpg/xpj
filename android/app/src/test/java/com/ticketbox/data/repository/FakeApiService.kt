@@ -159,7 +159,7 @@ internal class FakeApiService(
 
     override suspend fun exportCsv(month: String?, category: String?, tag: String?, timezone: String?): Response<ResponseBody> = unsupported()
 
-    override suspend fun createManualExpense(request: ExpenseUpdateRequest): ExpenseDto = unsupported()
+    override suspend fun createManualExpense(request: com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto): ExpenseDto = unsupported()
 
     override suspend fun createNotificationDraft(request: NotificationDraftRequestDto): ExpenseDto {
         lastNotificationDraftRequest = request

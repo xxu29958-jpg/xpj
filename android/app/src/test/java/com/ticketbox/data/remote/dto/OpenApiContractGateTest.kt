@@ -39,6 +39,11 @@ class OpenApiContractGateTest {
     private val pairs = listOf(
         Pairing(ErrorDto::class, "ErrorResponse"),
         Pairing(ExpenseDto::class, "ExpenseResponse"),
+        // Dedicated manual-create DTO (no OCC-token field) + the PATCH body it
+        // was split from — the forward check is the forbid-protection: a DTO
+        // field the backend model doesn't declare would 422 at runtime.
+        Pairing(ExpenseManualCreateRequestDto::class, "ExpenseManualCreateRequest"),
+        Pairing(ExpenseUpdateRequest::class, "ExpenseUpdateRequest"),
         Pairing(IncomePlanDto::class, "IncomePlanResponse"),
         Pairing(IncomePlanListResponseDto::class, "IncomePlanListResponse"),
         Pairing(IncomePlanCreateRequestDto::class, "IncomePlanCreateRequest"),
