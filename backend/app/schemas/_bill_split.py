@@ -46,6 +46,8 @@ class BillSplitInviteRequest(BaseModel):
     that at accept time.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     receiver_account_id: int
     amount_cents: int
 
@@ -55,6 +57,8 @@ class BillSplitAcceptRequest(BaseModel):
 
     Receiver picks the target ledger. Backend checks write permission.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     target_ledger_id: str = Field(min_length=1, max_length=64)
 

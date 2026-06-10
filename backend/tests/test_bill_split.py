@@ -89,13 +89,20 @@ def test_invite_request_rejects_receiver_ledger_id(client: TestClient, *, identi
             "receiver_ledger_id": "receiver_b",  # 不应出现在 schema 中
         },
     )
-    # Pydantic strict-mode default is allow extra; default behavior is to
-    # ignore unknown fields. We assert the result is success but
-    # receiver_ledger_id was NOT persisted by checking the row.
-    assert response.status_code == 200, response.json()
-    # The successful response is a sent DTO; check it doesn't carry
-    # receiver_ledger_id (sent DTO never carries it).
-    body = response.json()
+    # extra="forbid" (debt #2): the unknown field is rejected loudly with
+    # 422 instead of silently dropped — a stronger enforcement of the same
+    # ADR-0029 Q0 contract than the pre-forbid ignore-and-200 behavior.
+    assert response.status_code == 422, response.json()
+
+    # Without the rogue field the invite succeeds, and the sent DTO still
+    # never carries receiver_ledger_id.
+    ok = client.post(
+        f"/api/expenses/{expense_id}/split-invite",
+        headers=identity.app_headers,
+        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+    )
+    assert ok.status_code == 200, ok.json()
+    body = ok.json()
     assert "receiver_ledger_id" not in body
     assert body["receiver_account_id"] == receiver_account_id
 

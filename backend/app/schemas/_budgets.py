@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.services.time_service import to_iso
 
@@ -19,11 +19,15 @@ __all__ = [
 
 # v0.8 — Ledger monthly budget dashboard
 class BudgetCategoryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     category: str = Field(min_length=1, max_length=64)
     amount_cents: int = Field(ge=0)
 
 
 class BudgetMonthlyUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     total_amount_cents: int = Field(ge=0)
     non_monthly_amount_cents: int = Field(default=0, ge=0)
     rollover_amount_cents: int = 0

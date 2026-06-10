@@ -17,6 +17,8 @@ __all__ = [
 
 
 class GoalCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=80)
     month: str = Field(min_length=7, max_length=7)
     category: str | None = Field(default=None, max_length=64)

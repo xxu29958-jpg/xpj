@@ -79,6 +79,8 @@ class CsvImportRowsResponse(BaseModel):
 
 
 class CsvImportApplyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     batch_size: int = Field(default=500, ge=1, le=1000)
 
 

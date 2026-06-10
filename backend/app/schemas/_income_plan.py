@@ -19,6 +19,8 @@ __all__ = [
 
 
 class IncomePlanCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     label: str = Field(min_length=1, max_length=64)
     source_type: str = Field(default="salary", min_length=1, max_length=32)
     amount_cents: int = Field(ge=0)

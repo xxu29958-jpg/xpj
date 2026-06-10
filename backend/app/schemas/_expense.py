@@ -302,6 +302,8 @@ class ExpenseResponse(BaseModel):
 
 
 class ExpenseItemRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=255)
     kind: ExpenseItemKind = "product"
     quantity_text: str | None = Field(default=None, max_length=64)
@@ -369,6 +371,8 @@ class ExpenseItemsResponse(BaseModel):
 
 
 class ExpenseSplitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     member_id: int = Field(ge=1)
     amount_cents: int = Field(ge=0)
     note: str | None = Field(default=None, max_length=200)

@@ -37,6 +37,8 @@ __all__ = [
 
 
 class CategoryRuleCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     keyword: str
     category: str
     enabled: bool = True
@@ -48,6 +50,8 @@ class CategoryRuleCreateRequest(BaseModel):
 
 
 class CategoryRuleUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     expected_row_version: int
     keyword: str | None = None
     category: str | None = None
@@ -67,6 +71,8 @@ class CategoryRuleDeleteRequest(BaseModel):
     parsed). No query-string fallback — open-dev contract; clients must
     send body.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
 
@@ -93,6 +99,8 @@ class CategoryRuleResponse(BaseModel):
 
 
 class MerchantAliasCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     canonical_merchant: str = Field(min_length=1, max_length=255)
     alias: str = Field(min_length=1, max_length=255)
     enabled: bool = True
@@ -155,6 +163,8 @@ class MerchantAliasListResponse(BaseModel):
 
 # v0.4-alpha3 — Rules Engine
 class RulePreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     keyword: str
     target_category: str | None = None
     match_field: str = "merchant"  # "merchant" | "raw_text" | "any"
@@ -183,11 +193,15 @@ class RuleApplyPendingResponse(BaseModel):
 
 
 class RuleApplyPendingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     confirm: bool = False
     preview_token: str | None = None
 
 
 class RuleApplyConfirmedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     confirm: bool = False
     preview_token: str | None = None
 
