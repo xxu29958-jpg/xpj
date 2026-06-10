@@ -56,7 +56,7 @@ android\app\build\outputs\apk\internal\debug\app-internal-debug.apk
 android\config\debug\ticketbox-debug.keystore
 ```
 
-这不是 release 密钥，只用于 debug 构建和 CI artifact，目的是让不同机器、不同 GitHub Actions runner 产出的 debug APK 使用同一张证书。否则真机上已有 `com.ticketbox` 时，新包会因为签名不同而无法 `adb install -r` 覆盖升级，表现为 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
+这不是 release 密钥，只用于 debug 构建，目的是让不同机器、不同 CI runner 产出的 debug APK 使用同一张证书。否则真机上已有 `com.ticketbox` 时，新包会因为签名不同而无法 `adb install -r` 覆盖升级，表现为 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
 
 证书 SHA-256：
 

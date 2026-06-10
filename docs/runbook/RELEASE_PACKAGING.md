@@ -146,55 +146,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.
 
 如果三者不一致，脚本会直接失败，不能把该包发给灰度用户。
 
-## 9. RC artifact 门禁
+## 9. RC 发包源与交接红线
 
-从 PR artifact 发真机验收包时，不能只看 CI 通过或文件名。必须先运行：
+自托管 Gitea CI 不上传 APK artifact（GitHub 时代的 `scripts\verify_rc_artifacts.ps1` 门禁靠 `gh run download` 拉取 GitHub Actions artifact，已随 GitHub→Gitea 迁移整体退役并删除）。当前版本真机验收包的**唯一来源是本机构建**：CI 四 job 全绿后，在同一 commit 上按 §4 构建、按 §8（`accept_gray_release.ps1`）校验 APK / SHA256 / manifest 一致，通过即为当前发布候选；未过 §8 校验的包不得发给任何用户。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.ps1 `
-  -RunId 25592323349 `
-  -ExpectedCommit 67c05ee0ef4164fad2db1babfa27086cf5e00f73
-```
-
-脚本会自动下载 GitHub Actions artifact，并校验：
-
-- CI run 已完成且结论为 success。
-- CI run 的 commit 等于指定 commit。
-- gray artifact 名称为 `ticketbox-gray-debug-apk`。
-- internal artifact 名称为 `ticketbox-internal-debug-apk`。
-- gray 包名为 `com.ticketbox`。
-- internal 包名为 `com.ticketbox.internal`。
-- gray/internal 包名必须不同。
-- gray 版本名必须等于当前发布版本，例如 `0.9.0a1`。
-- internal 版本名必须等于当前发布版本加 `-internal`，例如 `0.9.0a1-internal`。
-- gray/internal 版本名必须不同。
-- gray/internal `versionCode` 必须等于当前发布版本号约定，例如 `90000`。
-- gray/internal APK 的 SHA256 必须分别记录，且不能相同。
-
-脚本通过后会生成：
-
-```text
-artifacts/rc-gate/<run-id>/v0.9.0a1-artifact-manifest.json
-artifacts/rc-gate/<run-id>/v0.9.0a1-handoff-checklist.md
-```
-
-manifest 记录：
-
-- release candidate 名称。
-- CI run id。
-- CI commit。
-- artifact 名称。
-- APK 包名。
-- versionName。
-- versionCode。
-- APK SHA256。
-- APK 大小。
-
-handoff checklist 必须写清楚：
+发包交接红线（不随门禁工具变化）：
 
 - Android gray 用户只收到服务地址和一次性 Pairing Code。
 - iPhone 快捷指令用户只收到对应 UploadLink URL。
 - 服务拥有者才持有 internal APK、admin token 和维护凭据。
 - 不得发出 `backend\.env`、admin token、session token、UploadLink、含凭证的日志/截图/CI 输出、keystore 或签名密码。
-
-没有通过 `scripts\verify_rc_artifacts.ps1`，不得把任何包称为当前发布候选版本。

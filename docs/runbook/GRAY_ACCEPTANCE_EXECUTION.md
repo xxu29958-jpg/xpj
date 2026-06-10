@@ -255,25 +255,16 @@ URL: https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
 
 **执行命令/动作**：
 
-如果使用 PR artifact 作为当前版本真机验收包，先执行 artifact 门禁：
-
-```powershell
-cd E:\projects\xiaopiaojia
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.ps1 `
-  -RunId <run_id> `
-  -ExpectedCommit <commit_sha>
-```
-
-脚本通过后，使用 `artifacts\rc-gate\<run-id>\<release-candidate>-handoff-checklist.md` 作为发包清单。
-未生成 manifest 和 handoff checklist 的 artifact，不得称为当前版本验收包。
+验收包从本机构建（自托管 CI 不上传 APK artifact；发包源与交接红线见 [RELEASE_PACKAGING.md](RELEASE_PACKAGING.md) §9）：
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
-$env:JAVA_HOME="$env:LOCALAPPDATA\Programs\Kimi\runtime"
 $env:ANDROID_HOME=(Resolve-Path "..\.toolchains\android-sdk").Path
-$env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
+$env:PATH="$env:ANDROID_HOME\platform-tools;$env:PATH"
 .\gradlew.bat --no-daemon :app:assembleGrayDebug
 ```
+
+（JAVA_HOME 用机器默认的 Temurin JDK，与 CI 一致，不需要覆盖。）
 
 安装到真机：
 

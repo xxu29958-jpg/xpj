@@ -7,7 +7,7 @@
 > - **v1.1 现金流预算 + 自托管 AI Provider (ADR-0036)**：BudgetAdvisor 抽象（Empty / OpenAI-compat 统一 local LLM + 云端 API）、alias maps + outbound payload guard 脱敏边界、冷启动基线 50/30/20 + BLS 2024、个人 P50/P75 + discretionary 公式、`monthly_income_plan` model + CRUD + `/api/budget/advise`、三端 income plan UI。
 > - **v1.2 Learning Feedback Dual Tables (ADR-0037)**：`algorithm_decisions` / `ledger_learning_events` / `ocr_facts` 三张 append-only 表 + tenant 隔离 + retention + cleanup + algorithm registry + version 回滚；learning facts 与 advisor governance 打通。
 > - **OCR facts 单源迁移 5/5 步骤**：`expense.raw_text` → `ocr_facts.raw_text`，read 路径走 `read_ocr_text` 单源 helper；fact-backed OCR enforce（empty provider retry 抛 503 `ocr_not_configured`）。
-> - **工程化**：service / migration / 大模块 / 测试按职责拆 sub-package；CodeQL Android workflow；公网 + maintenance gates 加固。
+> - **工程化**：service / migration / 大模块 / 测试按职责拆 sub-package；公网 + maintenance gates 加固。（v1.2 期间加的 CodeQL Android workflow 已随 GitHub→Gitea 迁移退役。）
 >
 > `identity_schema=v0.3` 不变。
 

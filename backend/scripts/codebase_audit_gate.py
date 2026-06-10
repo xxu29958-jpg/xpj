@@ -30,7 +30,7 @@ Two semantics, two baselines, two evaluators:
   main's baseline.
 
   Base baseline source priority:
-  - ``GITHUB_BASE_REF`` env var (set by GitHub Actions on PR events)
+  - ``GITHUB_BASE_REF`` env var (set by the CI runner on PR events)
     via ``git show <base_ref>:<path>`` — the immutable PR base SHA,
     not a moving target.
   - ``origin/main`` fallback for local dev / non-PR runs.
@@ -263,7 +263,7 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
         is a FAIL; locally it's INFO-skip.
 
     Base ref priority:
-      1. ``GITHUB_BASE_REF`` (GitHub Actions sets this on PR events to
+      1. ``GITHUB_BASE_REF`` (the CI runner sets this on PR events to
          the target branch name; fetched as ``origin/<branch>``).
       2. ``XPJ_AUDIT_BASE_REF`` (manual override for ad-hoc CI).
       3. else: local ``refs/heads/main`` (``origin`` here is the dead GitHub mirror,
@@ -304,7 +304,7 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
 
 
 def _is_pr_ci_context() -> bool:
-    """True when running in PR CI (GitHub Actions PR event). Distinguishes
+    """True when running in PR CI (``GITHUB_BASE_REF`` set). Distinguishes
     "base required, must FAIL if unreadable" from "local dev, skip OK"."""
     return bool(os.environ.get("GITHUB_BASE_REF"))
 

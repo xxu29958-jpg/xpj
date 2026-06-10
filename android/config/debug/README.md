@@ -4,7 +4,7 @@
 `grayDebug` and `internalDebug`.
 
 It is not a release key and must not be used for `release` builds. Its purpose is
-to keep local debug builds and GitHub Actions debug APK artifacts on the same
+to keep debug builds from different machines and CI runners on the same
 signing certificate so `adb install -r` can replace an existing debug install.
 
 Certificate SHA-256:
