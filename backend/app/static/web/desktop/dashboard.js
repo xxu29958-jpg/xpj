@@ -196,7 +196,7 @@
     const meta = styled(el("div"), "font-size:11.5px;color:var(--text-meta);margin-top:8px;line-height:1.6");
     append(meta, "目标 " + text(cards.goals_count) + " 条");
     if (cards.goals_risk_count) append(meta, " · 风险 " + text(cards.goals_risk_count));
-    append(meta, document.createElement("br"), cards.backup_available ? "最近备份 " + text(cards.backup_age_days) + " 天前" : "尚未生成备份");
+    append(meta, document.createElement("br"), cards.backup_available ? "最近备份 " + text(cards.backup_age_days) + " 天前" : "还没有生成备份");
     append(
       right,
       el("div", "trend-num", cards.confirmed_count),
@@ -288,7 +288,7 @@
     ));
     if (Number(cards.goals_count || 0) === 0) {
       append(shell.card, emptyState(
-        "暂无目标",
+        "还没有目标",
         "为某个分类设个月度上限，超过后会在这里提醒。",
         dashboardUrl("/web/goals", ledgerId),
         "新建目标 →"
@@ -342,7 +342,7 @@
           styled(el("div", "", "天前生成最近备份"), "font-size:12px;color:var(--text-meta);margin-top:6px")
         );
       } else {
-        append(shell.card, styled(el("div", "", "尚未生成备份。"), "font-size:12.5px;color:var(--text-meta);padding:14px 0"));
+        append(shell.card, styled(el("div", "", "还没有生成备份。"), "font-size:12.5px;color:var(--text-meta);padding:14px 0"));
       }
       return shell.outer;
     }
