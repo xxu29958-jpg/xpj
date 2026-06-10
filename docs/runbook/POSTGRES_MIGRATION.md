@@ -6,7 +6,7 @@
 
 ## 0. 装 PostgreSQL（home-server，一次性）
 
-- 装 **PostgreSQL 16**（与 CI `postgres:16` 对齐），默认端口 `5432`，装成 **Windows 服务并设开机自启**（EDB 安装器默认即是；`Get-Service postgresql*` 应为 `Running` + `StartType=Automatic`）。
+- 装 **PostgreSQL 17**（home-server 现役 `postgresql-x64-17`；CI 复用 runner 本机同一安装、经 `initdb` 起临时实例，见 `.gitea/workflows/windows-ci.yml`），默认端口 `5432`，装成 **Windows 服务并设开机自启**（EDB 安装器默认即是；`Get-Service postgresql*` 应为 `Running` + `StartType=Automatic`）。
 - 建库与角色（用 `psql`，以超级用户身份）：
 
   ```sql

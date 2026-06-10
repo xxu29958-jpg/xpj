@@ -1,120 +1,70 @@
 # CI 说明
 
-仓库使用 GitHub Actions：
+仓库使用自托管 Gitea Actions（home-server 本机 runner）：
 
 ```text
-.github/workflows/ci.yml
+.gitea/workflows/windows-ci.yml
 ```
 
 触发条件：
 
-- push 到 `main`
-- pull request 到 `main`
+- push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`
+- 手动 `workflow_dispatch`
+- **没有 pull_request 触发**：建 PR 本身不跑 CI，推分支才跑；分支命名必须落在上面的 glob 里，否则一条 lane 都不会触发。
 
-## 后端 Job
+runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队，勿无谓 re-push。Gitea 与 runner 在 home-server 上人工启动；如果 push 后 run 一直排队不动，先确认它们活着。
 
-运行环境：
+历史：GitHub 时代的 `.github/workflows/`（`ci.yml`、`android-connected-test.yml`、`codeql.yml`）随 GitHub→Gitea 迁移死亡，已删除；内容可考 git 历史。随迁移一并消失的还有 pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）和 instrumented 模拟器 lane（见 android-unit 一节）。
 
-```text
-windows-latest
-Python 3.11
-```
+## 四个 Job
 
-执行：
+### backend-full（静态检查）
 
 ```powershell
+scripts\check_text_encoding.ps1 + check_dependency_versions.ps1 + 全部 .ps1 的 BOM/语法检查
 python -m compileall app scripts tests
 ruff check app scripts tests
-python -m pytest --cov=app --cov-report=term-missing
-python scripts\smoke_test.py
+python scripts\check_api_contract.py
+python scripts\release_audit.py        # 自动发现全部 _audit_*.py lane
+pip-audit --strict（OSV 库）
 ```
 
-后端 CI 会输出 `app` 包覆盖率报告，并真实拉起 FastAPI smoke 服务，验证上传、鉴权、账单修改、确认、统计、CSV、图片保护、重复检测和维护接口。
+PG-only 之后该 job 没有数据库，不跑 pytest / smoke——全量测试都在 backend-postgres。
 
-同时会检查 `backend/scripts` 和 `android/scripts` 下的 PowerShell 脚本：
+### backend-postgres（全量测试）
 
-```text
-UTF-8 with BOM
-Windows PowerShell 语法
-```
+用 runner 本机的 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离），在**单个 step 的 try/finally 内**完成：起库 → `smoke_test.py` 端到端 → 全量 pytest（`xpj_test` 库，与 smoke 的 `xpj_smoke` 分库）→ 按 postmaster PID 定向拆库。teardown 写在 finally 是硬要求，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
 
-本地完整验证入口 `scripts\verify_project.ps1` 会先运行：
+### desktop-manager
+
+`desktop/`：compileall + ruff + pytest。
+
+### android-unit
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+gradlew :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
+gradlew :app:assertAndroidTestCountEqualsBaseline   # ADR-0038 测试计数门
+gradlew :app:lintGrayDebug
+gradlew :app:assembleGrayDebug
+gradlew :app:assembleInternalDebug
 ```
 
-该检查会验证仓库文本文件可按 UTF-8 严格解码，并拦截常见 mojibake 片段，避免 Windows 默认编码把中文文案写坏。
+Android SDK 用仓库本地 `.toolchains\android-sdk`（workflow 写 `local.properties` 指过去）。
 
-## Android Job
-
-运行环境：
-
-```text
-ubuntu-latest
-Temurin JDK 21
-Android SDK platform 36
-```
-
-执行：
-
-```bash
-./gradlew --no-daemon :app:testGrayDebugUnitTest
-./gradlew --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
-./gradlew --no-daemon :app:lintGrayDebug
-```
-
-成功后上传 artifact：
-
-```text
-ticketbox-gray-debug-apk
-ticketbox-internal-debug-apk
-```
-
-保留 7 天。
-
-CI 构建的 debug APK 必须使用仓库级稳定 debug 证书，避免每次 GitHub Actions runner 生成不同默认 debug key，导致真机无法覆盖升级安装。Android job 会在上传 artifact 前用 `apksigner verify --print-certs` 校验证书 SHA-256：
-
-```text
-91:15:22:41:7C:C5:01:6E:DA:DC:FF:AD:DE:7B:90:4D:92:8D:C4:2D:66:A7:97:84:44:45:AC:B5:BC:AE:10:6F
-```
+**当前没有 instrumented（模拟器）lane**：GitHub 时代的 `android-connected-test.yml` 已死亡删除，`connectedGrayDebugAndroidTest` 现无任何 CI 执行（恢复方式待拍板）。`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`，钉住上述 gradle task 与 backend 调用（release_audit / pytest / smoke / API contract），防止 lane 静默丢失。
 
 ## 安全边界
 
-CI 不需要真实 Token。
-
-不会上传：
-
-```text
-backend/.env
-backend/data/*
-backend/uploads/*
-backend/backups/*
-android/app/build/*
-```
-
-这些文件由 `.gitignore` 排除。
+CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`、`backend/backups/`、`android/app/build/` 由 `.gitignore` 排除，不进仓库。临时 PG 实例 trust 认证但只 listen localhost，每 run 用完即弃。
 
 ## 常见失败点
 
-后端：
+- run 一直排队：Gitea / runner 没起，先把它们启动。
+- pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
+- `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android 测试而没同步 bump `android/audit/test_count_baseline.txt`。
+- `WaitDelay expired before I/O complete`：临时 PG 没拆干净，teardown 必须按 postmaster PID 杀进程树（绝不按二进制路径杀——生产 PG 同机共享二进制），详见 workflow 内注释。
+- `.ps1` 检查失败：确认仍是 UTF-8 with BOM、无 PS 5.1 语法错误。
 
-- Python 依赖安装失败：检查 `backend/requirements*.txt`。
-- `smoke_test.py` 失败：优先看具体 `OK ...` 停在哪一步。
-- Windows PowerShell 脚本失败：确认 `.ps1` 仍是 UTF-8 with BOM。
+## CI 是合并底线
 
-Android：
-
-- SDK 缺失：检查 workflow 的 `sdkmanager` 步骤。
-- Gradle 构建失败：先看 `:app:compileGrayDebugKotlin`、`:app:kspGrayDebugKotlin` 或对应 internal 任务。
-- Lint 失败：看 `android/app/build/reports/lint-results-grayDebug.html`。
-# CI 与灰度版发布底线
-
-灰度版实现期间，CI 仍然是合并和发布底线。任何账本隔离、Android 上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
-
-灰度版新增要求：
-
-- 后端测试必须覆盖账本隔离。
-- Android 测试必须覆盖上传入口的非 UI 逻辑和 gray/internal 差异。
-- PowerShell 脚本仍必须通过 UTF-8 with BOM 检查。
-- GitHub 发布后必须等待 Actions 绿灯。
+任何后端、Android、release 脚本变更都不能绕过四 job 绿灯；merge 前必须等当前 push 的 run 全绿。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。

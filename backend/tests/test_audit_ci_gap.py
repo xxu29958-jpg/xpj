@@ -23,7 +23,7 @@ def _load() -> object:
 
 def test_ci_gap_scans_run_commands_not_comments(tmp_path: Path) -> None:
     mod = _load()
-    workflows = tmp_path / ".github" / "workflows"
+    workflows = tmp_path / ".gitea" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "ci.yml").write_text(
         """
@@ -32,23 +32,33 @@ jobs:
   backend:
     steps:
       - name: Comment only
-        # python scripts\\release_audit.py
-        run: python -m pytest tests
+        # python scripts\\smoke_test.py
+        # python scripts\\check_api_contract.py
+        run: |
+          # python scripts\\release_audit.py
+          python -m pytest tests
 """,
         encoding="utf-8",
     )
 
     commands = mod._iter_workflow_run_commands(workflows)
 
+    # YAML step comments AND #-commented lines inside the run body are both
+    # invisible to the gate; the live pytest line lacks the backend suite's
+    # ``-p no:cacheprovider`` anchor, so every requirement is missing.
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest coverage lane",
+        "pytest full-suite lane",
+        "end-to-end smoke",
+        "API contract check",
+        "backend ruff lint",
+        "backend compileall",
     ]
 
 
 def test_ci_gap_accepts_required_commands_across_workflows(tmp_path: Path) -> None:
     mod = _load()
-    workflows = tmp_path / ".github" / "workflows"
+    workflows = tmp_path / ".gitea" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "ci.yml").write_text(
         """
@@ -57,22 +67,25 @@ jobs:
   backend:
     steps:
       - run: |
-          python scripts\\release_audit.py
-          python -m pytest --cov=app --cov-report=term-missing
-          python -m pytest -q -m file_backed_only
-  android:
-    steps:
-      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assembleGrayDebug :app:assembleInternalDebug :app:lintGrayDebug
+          .\\.ci-venv\\Scripts\\python.exe -m compileall app scripts tests
+          .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests
+          .\\.ci-venv\\Scripts\\python.exe scripts\\release_audit.py
+          .\\.ci-venv\\Scripts\\python.exe scripts\\check_api_contract.py
 """,
         encoding="utf-8",
     )
-    (workflows / "android-connected-test.yml").write_text(
+    (workflows / "backend-postgres.yml").write_text(
         """
-name: Android Connected Test
+name: Backend PostgreSQL
 jobs:
-  connected:
+  backend-postgres:
     steps:
-      - run: ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+      - run: |
+          .\\.ci-venv\\Scripts\\python.exe scripts\\smoke_test.py
+          .\\.ci-venv\\Scripts\\python.exe -m pytest -q -ra --tb=short -p no:cacheprovider
+  android:
+    steps:
+      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:lintGrayDebug
 """,
         encoding="utf-8",
     )
@@ -85,7 +98,7 @@ jobs:
 
 def test_ci_gap_ignores_if_false_steps(tmp_path: Path) -> None:
     mod = _load()
-    workflows = tmp_path / ".github" / "workflows"
+    workflows = tmp_path / ".gitea" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "ci.yml").write_text(
         """
@@ -97,8 +110,11 @@ jobs:
         if: false
         run: |
           python scripts\\release_audit.py
-          python -m pytest --cov=app
-          python -m pytest -m file_backed_only
+          python -m pytest -q -p no:cacheprovider
+          python scripts\\smoke_test.py
+          python scripts\\check_api_contract.py
+          ruff check app scripts tests
+          python -m compileall app scripts tests
       - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest
 """,
         encoding="utf-8",
@@ -108,13 +124,17 @@ jobs:
 
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest coverage lane",
+        "pytest full-suite lane",
+        "end-to-end smoke",
+        "API contract check",
+        "backend ruff lint",
+        "backend compileall",
     ]
 
 
 def test_ci_gap_ignores_if_false_jobs(tmp_path: Path) -> None:
     mod = _load()
-    workflows = tmp_path / ".github" / "workflows"
+    workflows = tmp_path / ".gitea" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "ci.yml").write_text(
         """
@@ -125,8 +145,11 @@ jobs:
     steps:
       - run: |
           python scripts\\release_audit.py
-          python -m pytest --cov=app
-          python -m pytest -m file_backed_only
+          python -m pytest -q -p no:cacheprovider
+          python scripts\\smoke_test.py
+          python scripts\\check_api_contract.py
+          ruff check app scripts tests
+          python -m compileall app scripts tests
   android:
     steps:
       - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest
@@ -138,5 +161,9 @@ jobs:
 
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest coverage lane",
+        "pytest full-suite lane",
+        "end-to-end smoke",
+        "API contract check",
+        "backend ruff lint",
+        "backend compileall",
     ]
