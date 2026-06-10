@@ -96,10 +96,12 @@ jobs:
 
           # Clear a leftover instance of OUR avd from a previously wedged run
           # (match by avd name; never touch other devices the host may have).
+          # Output captured whole, NOT piped into -First: severing a native
+          # pipe corrupts the .bat exit code (the apksigner lesson).
           $before = @(& $adb devices | Select-String "^emulator-\d+" | ForEach-Object { ($_.Line -split "\s+")[0] })
           foreach ($serial in $before) {
-            $name = (& $adb -s $serial emu avd name 2>$null | Select-Object -First 1)
-            if ("$name".Trim() -eq $avd) {
+            $nameOut = @(& $adb -s $serial emu avd name 2>$null)
+            if ($nameOut.Count -ge 1 -and "$($nameOut[0])".Trim() -eq $avd) {
               Write-Host "Killing leftover $serial ($avd) from a previous run"
               & $adb -s $serial emu kill 2>$null
               Start-Sleep -Seconds 5
@@ -107,7 +109,21 @@ jobs:
           }
           $before = @(& $adb devices | Select-String "^emulator-\d+" | ForEach-Object { ($_.Line -split "\s+")[0] })
 
-          $proc = Start-Process -FilePath $emu -ArgumentList "-avd", $avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save" -PassThru -WindowStyle Hidden
+          # The emulator must resolve system images from the HOST SDK: with
+          # ANDROID_HOME/ANDROID_SDK_ROOT pointing at the repo .toolchains SDK
+          # (no emulator / system-images on purpose) it exits within seconds
+          # — "system-images\...\x86_64 is not a valid directory" (the first
+          # red run died exactly that way). Point the env at the host SDK for
+          # the launch, then restore the repo SDK for gradle: the child
+          # process keeps its own env copy.
+          $repoSdk = $env:ANDROID_HOME
+          $env:ANDROID_HOME = $mainSdk
+          $env:ANDROID_SDK_ROOT = $mainSdk
+          $emuLog = Join-Path $env:TEMP "xpj_emulator_ci.log"
+          $emuErr = Join-Path $env:TEMP "xpj_emulator_ci.err"
+          $proc = Start-Process -FilePath $emu -ArgumentList "-avd", $avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save" -PassThru -WindowStyle Hidden -RedirectStandardOutput $emuLog -RedirectStandardError $emuErr
+          $env:ANDROID_HOME = $repoSdk
+          $env:ANDROID_SDK_ROOT = $repoSdk
           $failed = $false
           $serial = $null
           try {
@@ -116,12 +132,19 @@ jobs:
             # attached to the host.
             $deadline = (Get-Date).AddMinutes(2)
             while ((Get-Date) -lt $deadline -and -not $serial) {
+              if ($proc.HasExited) { break }
               $now = @(& $adb devices | Select-String "^emulator-\d+" | ForEach-Object { ($_.Line -split "\s+")[0] })
               $new = @($now | Where-Object { $before -notcontains $_ })
               if ($new.Count -ge 1) { $serial = $new[0] }
               else { Start-Sleep -Seconds 3 }
             }
-            if (-not $serial) { throw "emulator did not appear in adb devices within 2 minutes" }
+            if (-not $serial) {
+              Write-Host "emulator process HasExited=$($proc.HasExited)"
+              foreach ($f in @($emuLog, $emuErr)) {
+                if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 25 }
+              }
+              throw "emulator did not appear in adb devices within 2 minutes"
+            }
             Write-Host "Emulator up as $serial, waiting for boot"
 
             $deadline = (Get-Date).AddMinutes(5)
