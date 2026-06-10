@@ -88,6 +88,15 @@ jobs:
         # emulator.exe launcher lingers a few seconds; a wedged one would
         # linger forever).
         run: |
+          # The runner wrapper sets $ErrorActionPreference='Stop', under which
+          # ANY explicit stderr redirect (2>$null and 2>&1 alike) wraps native
+          # stderr lines into terminating ErrorRecords. adb emits expected
+          # noise on stderr ("device offline" while the emulator registers,
+          # "not found" probes) — run #103 died on the very first boot poll
+          # that way. This step's failure paths are all explicit (throw /
+          # $LASTEXITCODE checks), so drop to Continue and keep the noise
+          # harmless.
+          $ErrorActionPreference = "Continue"
           $mainSdk = Join-Path $env:LOCALAPPDATA "Android\Sdk"
           $emu = Join-Path $mainSdk "emulator\emulator.exe"
           $adb = Join-Path $mainSdk "platform-tools\adb.exe"
@@ -121,7 +130,7 @@ jobs:
           $env:ANDROID_SDK_ROOT = $mainSdk
           $emuLog = Join-Path $env:TEMP "xpj_emulator_ci.log"
           $emuErr = Join-Path $env:TEMP "xpj_emulator_ci.err"
-          $proc = Start-Process -FilePath $emu -ArgumentList "-avd", $avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save" -PassThru -WindowStyle Hidden -RedirectStandardOutput $emuLog -RedirectStandardError $emuErr
+          $proc = Start-Process -FilePath $emu -ArgumentList "-avd", $avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save" -PassThru -WindowStyle Hidden -RedirectStandardOutput $emuLog -RedirectStandardError $emuErr -ErrorAction Stop
           $env:ANDROID_HOME = $repoSdk
           $env:ANDROID_SDK_ROOT = $repoSdk
           $failed = $false
