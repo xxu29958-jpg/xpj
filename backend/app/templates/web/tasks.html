@@ -5,7 +5,7 @@
 <div class="page-header">
   <h1 class="page-title">后台任务</h1>
   <div class="page-sub">
-    跑数分钟的批量操作（CSV 导入、v1.0 迁移、拆账邀请到期清理等）在这里。任务跨重启会被力清，单进程模型重启后所有未完成任务被标 failed。
+    耗时较长的批量操作在这里跟踪进度。任务不跨重启保留：后端重启后，所有未完成任务会被标记为失败。
   </div>
 </div>
 
@@ -20,7 +20,8 @@
 {% if not task_rows %}
 <div class="dt-card">
   <div class="empty-state">
-    <p>暂无后台任务。</p>
+    <div class="empty-state-title">暂无后台任务</div>
+    <div class="empty-state-hint">耗时较长的批量操作开始后会显示在这里。</div>
   </div>
 </div>
 {% else %}
