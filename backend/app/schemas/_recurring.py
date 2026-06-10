@@ -50,6 +50,8 @@ class RecurringCandidatesResponse(BaseModel):
 
 # v0.6 — Formal recurring items
 class RecurringCandidateConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     merchant: str = Field(min_length=1, max_length=255)
     amount_cents: int = Field(ge=1)
     occurrence_count: int = Field(default=0, ge=0)

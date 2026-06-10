@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "BudgetAdviceDto",
@@ -32,6 +32,8 @@ class BudgetAdviseRequest(BaseModel):
     """Caller picks the month (YYYY-MM); other inputs are read from the
     user's existing data (income plan, recurring items, confirmed
     expenses, personal baseline) by the builder service."""
+
+    model_config = ConfigDict(extra="forbid")
 
     month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     timezone: str | None = None

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "DashboardCardResponse",
@@ -25,10 +25,14 @@ class DashboardCardsResponse(BaseModel):
 
 
 class DashboardCardUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     key: str = Field(min_length=1, max_length=64)
     visible: bool = True
     position: int = Field(ge=0)
 
 
 class DashboardCardsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     cards: list[DashboardCardUpdateRequest] = Field(default_factory=list)

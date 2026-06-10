@@ -8,7 +8,7 @@ flow.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "AdminDeviceRenameRequest",
@@ -45,6 +45,8 @@ __all__ = [
 
 
 class PairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     pairing_code: str = Field(min_length=1, max_length=32)
     device_name: str = Field(min_length=1, max_length=120)
     platform: str = Field(min_length=1, max_length=32)
@@ -86,6 +88,8 @@ class LedgerListResponse(BaseModel):
 
 
 class LedgerCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=60)
 
 
@@ -100,6 +104,8 @@ class LedgerSwitchResponse(BaseModel):
 
 # v0.4-beta1 — family ledger invitations & members
 class InvitationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     role: str = Field(min_length=1, max_length=32)
     note: str | None = Field(default=None, max_length=80)
     ttl_days: int = Field(default=7, ge=1, le=30)
@@ -127,6 +133,8 @@ class InvitationListResponse(BaseModel):
 
 
 class InvitationAcceptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     invite_token: str = Field(min_length=1, max_length=128)
     account_name: str = Field(min_length=1, max_length=120)
     device_name: str = Field(min_length=1, max_length=120)
@@ -134,6 +142,8 @@ class InvitationAcceptRequest(BaseModel):
 
 
 class InvitationPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     invite_token: str = Field(min_length=1, max_length=128)
 
 
@@ -170,6 +180,8 @@ class LedgerMemberListResponse(BaseModel):
 
 
 class LedgerMemberRoleUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     role: str = Field(min_length=1, max_length=32)
 
 
@@ -201,6 +213,8 @@ class OwnerTransferResponse(BaseModel):
 
 
 class BootstrapOwnerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     account_name: str | None = None
     ledger_name: str | None = None
     device_name: str | None = None
@@ -220,6 +234,8 @@ class BootstrapOwnerResponse(BaseModel):
 
 
 class PairingCodeCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     device_name_hint: str | None = None
     ttl_minutes: int = Field(default=15, ge=1, le=60)
 
@@ -243,6 +259,8 @@ class AdminDeviceResponse(BaseModel):
 
 
 class AdminDeviceRenameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     device_name: str = Field(min_length=1, max_length=120)
 
 
@@ -264,6 +282,8 @@ class AdminUploadLinkResponse(BaseModel):
 
 
 class AdminUploadLinkCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ledger_id: str | None = None
     default_timezone: str | None = None
 

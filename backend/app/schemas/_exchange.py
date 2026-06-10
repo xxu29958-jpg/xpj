@@ -18,6 +18,8 @@ __all__ = [
 
 
 class ExchangeRateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     currency_code: str = Field(min_length=3, max_length=3)
     rate_date: date
     rate_to_cny: Decimal = Field(gt=0)

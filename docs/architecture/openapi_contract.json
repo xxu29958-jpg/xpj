@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AdminDeviceRenameRequest": {
+        "additionalProperties": false,
         "properties": {
           "device_name": {
             "maxLength": 120,
@@ -89,6 +90,7 @@
         "type": "object"
       },
       "AdminUploadLinkCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "default_timezone": {
             "anyOf": [
@@ -463,6 +465,7 @@
         "type": "object"
       },
       "BillSplitAcceptRequest": {
+        "additionalProperties": false,
         "description": "Body for ``POST /api/bill-splits/{public_id}/accept``.\n\nReceiver picks the target ledger. Backend checks write permission.",
         "properties": {
           "target_ledger_id": {
@@ -688,6 +691,7 @@
         "type": "object"
       },
       "BillSplitInviteRequest": {
+        "additionalProperties": false,
         "description": "Body for ``POST /api/expenses/{id}/split-invite``.\n\nNOTE the absence of ``receiver_ledger_id`` — see ADR-0029 Q0. Sender\nmust NOT specify which ledger receiver accepts to; receiver picks\nthat at accept time.",
         "properties": {
           "amount_cents": {
@@ -2288,6 +2292,7 @@
         "type": "object"
       },
       "BootstrapOwnerRequest": {
+        "additionalProperties": false,
         "properties": {
           "account_name": {
             "anyOf": [
@@ -2424,6 +2429,7 @@
         "type": "object"
       },
       "BudgetAdviseRequest": {
+        "additionalProperties": false,
         "description": "Caller picks the month (YYYY-MM); other inputs are read from the\nuser's existing data (income plan, recurring items, confirmed\nexpenses, personal baseline) by the builder service.",
         "properties": {
           "month": {
@@ -2599,6 +2605,7 @@
         "type": "object"
       },
       "BudgetCategoryRequest": {
+        "additionalProperties": false,
         "properties": {
           "amount_cents": {
             "minimum": 0.0,
@@ -2779,6 +2786,7 @@
         "type": "object"
       },
       "BudgetMonthlyUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "category_budgets": {
             "items": {
@@ -2864,6 +2872,7 @@
         "type": "object"
       },
       "CategoryRuleCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "amount_max_cents": {
             "anyOf": [
@@ -2938,6 +2947,7 @@
         "type": "object"
       },
       "CategoryRuleDeleteRequest": {
+        "additionalProperties": false,
         "description": "DELETE body for ADR-0038 optimistic concurrency on category_rule.\n\nDELETE carries a request body so the client's ``expected_row_version``\ncan travel via the same channel as PATCH (Pydantic-typed, FastAPI-\nparsed). No query-string fallback — open-dev contract; clients must\nsend body.",
         "properties": {
           "expected_row_version": {
@@ -3058,6 +3068,7 @@
         "type": "object"
       },
       "CategoryRuleUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "amount_max_cents": {
             "anyOf": [
@@ -3265,6 +3276,7 @@
         "type": "object"
       },
       "CsvImportApplyRequest": {
+        "additionalProperties": false,
         "properties": {
           "batch_size": {
             "default": 500,
@@ -3656,6 +3668,7 @@
         "type": "object"
       },
       "DashboardCardUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "key": {
             "maxLength": 64,
@@ -3703,6 +3716,7 @@
         "type": "object"
       },
       "DashboardCardsUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "cards": {
             "items": {
@@ -3886,6 +3900,7 @@
         "type": "object"
       },
       "ExchangeRateRequest": {
+        "additionalProperties": false,
         "properties": {
           "currency_code": {
             "maxLength": 3,
@@ -4044,6 +4059,7 @@
         "type": "object"
       },
       "ExpenseItemRequest": {
+        "additionalProperties": false,
         "properties": {
           "amount_cents": {
             "anyOf": [
@@ -5029,6 +5045,7 @@
         "type": "object"
       },
       "ExpenseSplitRequest": {
+        "additionalProperties": false,
         "properties": {
           "amount_cents": {
             "minimum": 0.0,
@@ -5398,6 +5415,7 @@
         "type": "object"
       },
       "GoalCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "category": {
             "anyOf": [
@@ -5727,6 +5745,7 @@
         "type": "object"
       },
       "IncomePlanCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "amount_cents": {
             "minimum": 0.0,
@@ -5947,6 +5966,7 @@
         "type": "object"
       },
       "InvitationAcceptRequest": {
+        "additionalProperties": false,
         "properties": {
           "account_name": {
             "maxLength": 120,
@@ -6043,6 +6063,7 @@
         "type": "object"
       },
       "InvitationCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "note": {
             "anyOf": [
@@ -6110,6 +6131,7 @@
         "type": "object"
       },
       "InvitationPreviewRequest": {
+        "additionalProperties": false,
         "properties": {
           "invite_token": {
             "maxLength": 128,
@@ -6530,6 +6552,7 @@
         "type": "object"
       },
       "LedgerCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "maxLength": 60,
@@ -6632,6 +6655,7 @@
         "type": "object"
       },
       "LedgerMemberRoleUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "role": {
             "maxLength": 32,
@@ -6930,6 +6954,7 @@
         "type": "object"
       },
       "MerchantAliasCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "alias": {
             "maxLength": 255,
@@ -7343,6 +7368,7 @@
         "type": "object"
       },
       "PairRequest": {
+        "additionalProperties": false,
         "properties": {
           "device_name": {
             "maxLength": 120,
@@ -7432,6 +7458,7 @@
         "type": "object"
       },
       "PairingCodeCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "device_name_hint": {
             "anyOf": [
@@ -7558,6 +7585,7 @@
         "type": "object"
       },
       "RecurringCandidateConfirmRequest": {
+        "additionalProperties": false,
         "properties": {
           "amount_cents": {
             "minimum": 1.0,
@@ -8228,6 +8256,7 @@
         "type": "object"
       },
       "RuleApplyConfirmedRequest": {
+        "additionalProperties": false,
         "properties": {
           "confirm": {
             "default": false,
@@ -8433,6 +8462,7 @@
         "type": "object"
       },
       "RuleApplyPendingRequest": {
+        "additionalProperties": false,
         "properties": {
           "confirm": {
             "default": false,
@@ -8542,6 +8572,7 @@
         "type": "object"
       },
       "RulePreviewRequest": {
+        "additionalProperties": false,
         "properties": {
           "keyword": {
             "title": "Keyword",
@@ -9064,6 +9095,7 @@
         "type": "object"
       },
       "UserUiPreferencesUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "theme": {
             "anyOf": [

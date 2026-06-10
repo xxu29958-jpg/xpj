@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 __all__ = [
     "DataQualitySummaryResponse",
@@ -126,4 +126,6 @@ class UserUiPreferencesResponse(BaseModel):
 
 
 class UserUiPreferencesUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     theme: str | None = None
