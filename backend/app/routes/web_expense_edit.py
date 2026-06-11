@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_expense_helpers import parse_original_amount, web_edit_context
+from app.routes._web_expense_helpers import (
+    _edit_page_or_flash_redirect,
+    parse_original_amount,
+    web_edit_context,
+)
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -27,34 +31,6 @@ from app.services.expense_service import (
 )
 
 router = APIRouter(prefix="/web", tags=["web"])
-
-
-def _edit_page_or_flash_redirect(
-    db: Session,
-    request: Request,
-    options,
-    selected_id: str,
-    expense_id: int,
-    error_msg: str,
-    fallback_path: str,
-) -> Response:
-    """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
-    itself is gone.
-
-    Audit P2 #6: the POST error paths (save/confirm/reject) re-read the same
-    expense via ``web_edit_context`` to re-render the form. If the row vanished
-    between the action and the re-read (deleted on another surface, swept,
-    cross-ledger), that second read raises again and the response degrades to
-    the global bare-JSON handler — the GET route guards exactly this case, the
-    POST paths did not. The fallback list mirrors each action's success
-    redirect so the user lands somewhere sensible with a readable flash.
-    """
-    try:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-    except AppError as exc:
-        return _web_redirect(fallback_path, selected_id, msg=exc.message, flash_type="error")
-    ctx["error"] = error_msg
-    return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
 
 
 @router.get("/expenses/{expense_id}/edit", response_class=HTMLResponse)

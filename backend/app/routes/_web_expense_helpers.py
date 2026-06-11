@@ -8,10 +8,11 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.routes.web_common import _amount_yuan, _base_ctx, _expense_view
+from app.routes.web_common import _amount_yuan, _base_ctx, _expense_view, _web_redirect, templates
 from app.schemas import (
     ExpenseItemReplaceRequest,
     ExpenseItemRequest,
@@ -51,6 +52,37 @@ def parse_original_amount(raw: str) -> tuple[Decimal | None, str | None]:
     if d < 0:
         return None, "金额不能为负数。"
     return d, None
+
+
+def _edit_page_or_flash_redirect(
+    db: Session,
+    request: Request,
+    options,
+    selected_id: str,
+    expense_id: int,
+    error_msg: str,
+    fallback_path: str,
+    error_key: str = "error",
+) -> Response:
+    """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
+    itself is gone.
+
+    Audit P2 #6 + codex follow-up: every POST error path on the edit page
+    (main save/confirm/reject AND the items/splits sub-forms) re-reads the
+    same expense via :func:`web_edit_context` to re-render the form. If the
+    row vanished between the action and the re-read (deleted on another
+    surface, swept, cross-ledger), that second read raises again and the
+    response degrades to the global bare-JSON handler — the GET route guards
+    exactly this case. ``error_key`` selects which template slot carries the
+    message ("error" for the main form, "items_error" / "splits_error" for
+    the sub-forms); ``fallback_path`` mirrors the GET guard's list.
+    """
+    try:
+        ctx = web_edit_context(db, request, options, selected_id, expense_id)
+    except AppError as exc:
+        return _web_redirect(fallback_path, selected_id, msg=exc.message, flash_type="error")
+    ctx[error_key] = error_msg
+    return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
 
 
 def web_edit_context(

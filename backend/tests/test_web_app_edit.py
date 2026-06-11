@@ -236,3 +236,54 @@ def test_web_reject_missing_expense_redirects_with_flash(web_client: TestClient)
     assert resp.status_code == 303, resp.text
     assert resp.headers["location"].startswith("/web/pending")
     assert "msg=" in resp.headers["location"]
+
+
+def test_web_items_save_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
+    """codex follow-up on audit P2 #6: the items sub-form's error path re-reads
+    the same expense — for a vanished row it used to escape as bare JSON."""
+    resp = web_client.post(
+        "/web/expenses/999999/items/save",
+        data={"ledger_id": "owner", "expected_row_version": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/confirmed")
+    assert "msg=" in resp.headers["location"]
+    assert not resp.text.lstrip().startswith("{")
+
+
+def test_web_items_acknowledge_missing_expense_redirects_with_flash(
+    web_client: TestClient,
+) -> None:
+    resp = web_client.post(
+        "/web/expenses/999999/items/acknowledge-mismatch",
+        data={"ledger_id": "owner", "expected_row_version": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/confirmed")
+    assert "msg=" in resp.headers["location"]
+
+
+def test_web_items_acknowledge_stale_token_on_missing_expense_redirects(
+    web_client: TestClient,
+) -> None:
+    """The parsed-None branch (stale form on a deleted row) shares the guard."""
+    resp = web_client.post(
+        "/web/expenses/999999/items/acknowledge-mismatch",
+        data={"ledger_id": "owner", "expected_row_version": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/confirmed")
+
+
+def test_web_splits_save_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
+    resp = web_client.post(
+        "/web/expenses/999999/splits/save",
+        data={"ledger_id": "owner", "expected_row_version": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/confirmed")
+    assert "msg=" in resp.headers["location"]
