@@ -444,6 +444,12 @@ jobs:
         # Expected fingerprint pinned from android/config/debug/README.md —
         # if the keystore is ever rotated, update both together.
         run: |
+          # Under the runner's $ErrorActionPreference = 'Stop', the 2>&1
+          # below would turn the FIRST stderr line apksigner/java ever emits
+          # (e.g. a JAVA_OPTIONS notice) into a terminating error before
+          # $LASTEXITCODE is consulted. This step's failure handling is
+          # entirely explicit (throw + exit-code checks), so relax EAP here.
+          $ErrorActionPreference = 'Continue'
           $apksigner = Get-ChildItem "$env:ANDROID_HOME\build-tools\*\apksigner.bat" -ErrorAction SilentlyContinue |
             Sort-Object { [version]$_.Directory.Name } -Descending | Select-Object -First 1
           if (-not $apksigner) { throw "apksigner.bat not found under $env:ANDROID_HOME\build-tools" }

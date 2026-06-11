@@ -54,6 +54,9 @@ jobs:
         "API contract check",
         "backend ruff lint",
         "backend compileall",
+        "desktop compileall",
+        "desktop ruff lint",
+        "desktop pytest",
     ]
 
 
@@ -72,6 +75,11 @@ jobs:
           .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests
           .\\.ci-venv\\Scripts\\python.exe scripts\\release_audit.py
           .\\.ci-venv\\Scripts\\python.exe scripts\\check_api_contract.py
+  desktop:
+    steps:
+      - run: .\\.ci-venv\\Scripts\\python.exe -m compileall backend_manager tests
+      - run: .\\.ci-venv\\Scripts\\ruff.exe check backend_manager tests
+      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q
 """,
         encoding="utf-8",
     )
@@ -144,7 +152,62 @@ jobs:
         "API contract check",
         "backend ruff lint",
         "backend compileall",
+        "desktop compileall",
+        "desktop ruff lint",
+        "desktop pytest",
     ]
+
+
+def test_ci_gap_blank_line_does_not_unmute_disabled_step(tmp_path: Path) -> None:
+    """A blank line between ``if: false`` and ``run:`` has indent 0; it must
+    not pop the disabled-step stack and let the muted run satisfy pins."""
+    mod = _load()
+    workflows = tmp_path / ".gitea" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  backend:
+    steps:
+      - name: disabled audit
+        if: false
+
+        run: |
+          python scripts\\release_audit.py
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert "release audit aggregator" in mod._missing_ci_invocations(commands)
+
+
+def test_ci_gap_gradle_prose_mention_does_not_satisfy(tmp_path: Path) -> None:
+    """A task name inside echo/prose (no gradlew invocation on the line)
+    must not satisfy the gradle pins."""
+    mod = _load()
+    workflows = tmp_path / ".gitea" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: |
+          echo "we used to run :app:testGrayDebugUnitTest here"
+          Write-Host ":app:lintGrayDebug moved elsewhere"
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    missing = mod._missing_gradle_tasks(commands)
+    assert ":app:testGrayDebugUnitTest" in missing
+    assert ":app:lintGrayDebug" in missing
 
 
 def test_ci_gap_ignores_if_false_jobs(tmp_path: Path) -> None:
@@ -183,4 +246,7 @@ jobs:
         "API contract check",
         "backend ruff lint",
         "backend compileall",
+        "desktop compileall",
+        "desktop ruff lint",
+        "desktop pytest",
     ]
