@@ -405,11 +405,14 @@
     /* ── Motion duration ───────────────────────────────────────────────────
      * 镜像 Android AppMotion。fast 用于微反馈,normal 是 80% 状态切换,
      * slow 用于弹窗/页面级,background 给环境动画(不抢焦点)。
+     * shimmer 是 skeleton 扫光周期(↔ Android SkeletonTokens.shimmerDurationMillis,
+     * 三端加载态节奏一致)。
      */
     --motion-fast:       120ms;
     --motion-normal:     220ms;
     --motion-slow:       320ms;
     --motion-background: 420ms;
+    --motion-shimmer:   1200ms;
 
     /* ── Easing ────────────────────────────────────────────────────────────
      * 镜像 Android AppMotion easing。standard 覆盖 90% 用例,emphasized 用于进入,

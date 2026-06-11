@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalSkeletonTokens
 import com.valentinilk.shimmer.shimmer
 
 /**
@@ -35,14 +36,15 @@ import com.valentinilk.shimmer.shimmer
  * 设计取舍：
  * - 不在内部 wrap [shimmer]——shimmer 应该一次包整个骨架区域，
  *   而不是每个 SkeletonBlock 各跑一次动画（会出现不同步抖动）。
- * - 颜色用 onSurface.copy(alpha=0.08)，在 paper/mono/midnight 三套主题下
- *   都能提供"显然这是占位"的视觉量。
+ * - 底色默认取 [LocalSkeletonTokens] 的 base（midnight 暖金 alpha、paper/mono 墨灰，
+ *   与 /web `--skeleton-base-bg` 同源）；扫光带色由主题提供的 LocalShimmerTheme
+ *   负责（tokens.shine，见 ui/theme/Theme.kt）。
  */
 @Composable
 fun SkeletonBlock(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(AppRadius.extraSmall),
-    color: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+    color: Color = LocalSkeletonTokens.current.base,
 ) {
     Box(
         modifier = modifier

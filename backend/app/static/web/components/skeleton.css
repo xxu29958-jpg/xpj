@@ -1,14 +1,14 @@
 /* /web 桌面账本 · 骨架占位 (v0.10.1 从 desktop.css 拆出)
  *
  * .skeleton + (.skeleton-line / .skeleton-block) —— 加载态骨架
- * 配色从 shared/tokens.css 的 --skeleton-base-bg / --skeleton-shine 取值
- * 走标准 1200ms shimmer 动画
+ * 配色从 shared/tokens.css 的 --skeleton-base-bg / --skeleton-shine-bg 取值
+ * （逐主题定义，midnight 是暖金 alpha），节奏走 --motion-shimmer（三端一致）
  */
 
 /* ───── Skeleton 占位骨架 ─────
  * 用法：<div class="skeleton skeleton-line"></div>、<div class="skeleton skeleton-block"></div>
  * 含义：异步加载（图片、图表、未来 HTMX 分片）的占位条/块，
- * 浅色态用 surface-sunken / border-card 渐变；prefers-reduced-motion 自动停止动画。
+ * base 是静止底色、shine 是扫光带；prefers-reduced-motion 自动停止动画。
  */
 @keyframes skeleton-shimmer {
     0%   { background-position: -160px 0; }
@@ -17,14 +17,14 @@
 .skeleton {
     background: linear-gradient(
         90deg,
-        var(--surface-sunken) 0%,
-        var(--border-card) 50%,
-        var(--surface-sunken) 100%
+        var(--skeleton-base-bg) 0%,
+        var(--skeleton-shine-bg) 50%,
+        var(--skeleton-base-bg) 100%
     );
     background-size: 320px 100%;
     background-repeat: no-repeat;
     border-radius: var(--radius-sm);
-    animation: skeleton-shimmer 1200ms ease-in-out infinite;
+    animation: skeleton-shimmer var(--motion-shimmer) var(--ease-linear) infinite;
     color: transparent;
     user-select: none;
 }
