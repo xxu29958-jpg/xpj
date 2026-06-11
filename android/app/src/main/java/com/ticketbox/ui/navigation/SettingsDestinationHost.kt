@@ -286,6 +286,7 @@ internal fun SettingsDestinationHost(
             rules = states.rules.categoryRules,
             busy = states.rules.busy,
             readOnly = !ledgerRoleCanModify(states.settings.role),
+            message = states.rules.message,
             onBack = { route = SettingsDestination.Root },
             onCreateRule = actions.onCreateRule,
             onUpdateRule = actions.onUpdateRule,

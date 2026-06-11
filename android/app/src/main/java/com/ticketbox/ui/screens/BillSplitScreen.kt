@@ -33,12 +33,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
+import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageHeader
@@ -47,6 +51,7 @@ import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.BillSplitTargetLedger
 import com.ticketbox.viewmodel.BillSplitViewModel
@@ -224,6 +229,10 @@ private fun InboxRow(
     onReject: (String) -> Unit,
     candidates: List<BillSplitTargetLedger>,
 ) {
+    // Between expires_at and the server sweep the row is still status=invited;
+    // derive 已过期 locally (like /web's inbox is_expired) so the buttons hide
+    // instead of inviting a tap that can only 410.
+    val locallyExpired = row.isInviteLocallyExpired()
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -233,12 +242,8 @@ private fun InboxRow(
             Text(row.senderDisplayName, fontWeight = FontWeight.SemiBold)
             Text(formatAmount(row.amountCents))
         }
-        Text(
-            text = "${row.merchantSnapshot ?: "—"} · ${row.categorySuggestion ?: "—"} · ${billSplitStatusLabel(row.status)}",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (row.status == BillSplitStatusValues.INVITED) {
+        InboxMetaLine(row = row, locallyExpired = locallyExpired)
+        if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Audit P3 #3: show the ledger NAME (the button used to print
                 // the internal ledger_id), and let a multi-ledger member PICK
@@ -262,6 +267,29 @@ private fun InboxRow(
             }
         }
     }
+}
+
+/** Meta line `商家 · 分类 · 状态`. A locally-expired invited row shows the
+ *  已过期 label in the warn state tone (mirrors /web's warn pill); every other
+ *  row keeps the plain server-status rendering. */
+@Composable
+private fun InboxMetaLine(row: BillSplitInbox, locallyExpired: Boolean) {
+    val statusLabel = billSplitStatusLabel(
+        if (locallyExpired) BillSplitStatusValues.EXPIRED else row.status,
+    )
+    val warnColor = LocalStateTokens.current.warn.fg
+    Text(
+        text = buildAnnotatedString {
+            append("${row.merchantSnapshot ?: "—"} · ${row.categorySuggestion ?: "—"} · ")
+            if (locallyExpired) {
+                withStyle(SpanStyle(color = warnColor)) { append(statusLabel) }
+            } else {
+                append(statusLabel)
+            }
+        },
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable
@@ -326,4 +354,3 @@ private fun billSplitStatusLabel(status: String): String = stringResource(
         else -> R.string.bill_split_status_expired
     },
 )
-
