@@ -179,7 +179,7 @@
       <button type="submit" class="dt-btn">预览已确认影响</button>
     </form>
   </div>
-  <p class="meta">历史账单默认只 dry-run。确认应用只处理「其他/未分类」的已确认账单，并记录可回滚批次。</p>
+  <p class="meta">历史账单默认先预览、再应用。确认应用只处理「其他/未分类」的已确认账单，并记录可回滚批次。</p>
   {% if confirmed_bulk_preview %}
   <div class="kpi-strip kpi-strip--compact">
     <div class="kpi-cell primary">
@@ -242,7 +242,7 @@
   {% endif %}
   {% else %}
   <div class="empty-state">
-    <div class="empty-state-title">历史账单必须先 dry-run</div>
+    <div class="empty-state-title">历史账单必须先预览再应用</div>
     <div class="empty-state-hint">预览会展示影响数量和样本，确认后才会改写。</div>
   </div>
   {% endif %}
