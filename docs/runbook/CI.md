@@ -1,9 +1,10 @@
 # CI 说明
 
-仓库使用自托管 Gitea Actions（home-server 本机 runner）：
+仓库使用自托管 Gitea Actions（home-server 本机 runner），两个 workflow 文件：
 
 ```text
-.gitea/workflows/windows-ci.yml
+.gitea/workflows/windows-ci.yml          # 四个 job，所有 push 都跑
+.gitea/workflows/android-connected.yml   # 模拟器 lane，只在 Android 源变更时跑（path-filtered）
 ```
 
 触发条件：
@@ -14,9 +15,9 @@
 
 runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队，勿无谓 re-push。Gitea 与 runner 在 home-server 上人工启动；如果 push 后 run 一直排队不动，先确认它们活着。
 
-历史：GitHub 时代的 `.github/workflows/`（`ci.yml`、`android-connected-test.yml`、`codeql.yml`）随 GitHub→Gitea 迁移死亡，已删除；内容可考 git 历史。随迁移一并消失的还有 pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）和 instrumented 模拟器 lane（见 android-unit 一节）。
+历史：GitHub 时代的 `.github/workflows/`（`ci.yml`、`android-connected-test.yml`、`codeql.yml`）随 GitHub→Gitea 迁移死亡，已删除；内容可考 git 历史。随迁移一并消失的 instrumented 模拟器 lane 已于 2026-06-11 在宿主 AVD 上复活（见 android-connected 一节）；pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）仍未恢复。
 
-## 四个 Job
+## Job 清单（windows-ci 四个 + android-connected 一个）
 
 ### backend-full（静态检查）
 
@@ -61,7 +62,7 @@ Android SDK 用仓库本地 `.toolchains\android-sdk`（workflow 写 `local.prop
 
 第二个 workflow 文件 `.gitea/workflows/android-connected.yml`：只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。这是 GitHub 时代 `android-connected-test.yml` 的 Gitea 复活版。
 
-`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`（两个文件都扫），钉住 9 个 gradle task（上述清单 + ksp regen + 两个 release assemble + connected）与 7 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / ruff / compileall），防止 lane 静默丢失。
+`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`（两个文件都扫），钉住 9 个 gradle task（上述清单 + ksp regen + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），防止 lane 静默丢失。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单**，否则该 lane 立刻红。
 
 ## 安全边界
 
@@ -77,4 +78,4 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 ## CI 是合并底线
 
-任何后端、Android、release 脚本变更都不能绕过四 job 绿灯；merge 前必须等当前 push 的 run 全绿。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
+任何后端、Android、release 脚本变更都不能绕过当前 push 触发的全部 job 绿灯（windows-ci 四 job；Android 源变更还会触发 android-connected，按改动面数 run 再判全绿）；merge 前必须等当前 push 的 run 全绿。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。

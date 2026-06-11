@@ -88,6 +88,24 @@ PostgreSQL 恢复用 `pg_restore`（见下方「从备份恢复」与 [POSTGRES_
 - `uploads\`：robocopy `/MIR` 镜像票据图片；本地 uploads 为空时跳过（空源守卫，防把异地副本一并清空）。
 - 同步目标是用户自己的 OneDrive / 指定目录；归档本身未加密——需要更强保密时把 `XPJ_OFFSITE_BACKUP_DIR` 指向加密盘 / NAS。
 
+## 备份链健康自查
+
+计划任务失败是**静默**的（出过实例：PG cut-over 后 `pg_restore` 发现链断裂，`TicketboxBackup`
+连续 6 天每晚 result=1，没有任何主动告警，期间 0 个新 `.dump` 存活）。每隔几天、以及任何
+大改（cut-over / 换机 / 改备份脚本）之后，跑一遍三查：
+
+```powershell
+# 1. 任务上次结果应为 0
+Get-ScheduledTaskInfo TicketboxBackup | Select-Object LastRunTime, LastTaskResult
+# 2. 备份目录应有近日归档
+Get-ChildItem "<DATA_ROOT>\backups\ticketbox-*.dump" | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+# 3. 异地副本应在更新（配置了 offsite 时）
+Get-ChildItem "$env:OneDrive\TicketboxBackups\db" | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+```
+
+任一查不过：先看任务历史 / 手跑 `maintenance_ticketbox.ps1 -Backup` 拿真实报错，再对照
+「PostgreSQL 备份格式」一节的发现链与凭证两条排查。
+
 ## 从备份恢复
 
 PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。恢复前先停后端

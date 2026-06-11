@@ -1,6 +1,6 @@
 # 工程规范
 
-> 规则版本 v1.5.0（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见 2026-06-04 注；v1.4.0→v1.5.0：§14 经 [[0044]] 反转 UI 字符串资源化条——做 string-resourcing（非翻译），见下行 2026-06-06 注，MINOR/收紧已列项落法）；后端 + 客户端协作项目契约。
+> 规则版本 v1.5.1（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见 2026-06-04 注；v1.4.0→v1.5.0：§14 经 [[0044]] 反转 UI 字符串资源化条——做 string-resourcing（非翻译），见下行 2026-06-06 注，MINOR/收紧已列项落法；v1.5.0→v1.5.1：2026-06-11，PATCH/措辞——§13 运维 Runbook 列举补 CI，runbook 实质更新在 `docs/runbook/`：CI.md 对齐两-workflow 现实 + ci-gap 9+10 钉数、POSTGRES_MIGRATION.md 增表属主排查节、WINDOWS_BACKUP_TASK.md 增备份链健康自查节）；后端 + 客户端协作项目契约。
 > §14 在 2026-05-22 增"字段命名"+"当前阶段不引入"两小节：解释 `expense_time`/`tenant_id` 项目命名与模板 §3/§4 的关系，并显式标注当前 v0.x 不引入 `/api/v1` 前缀、`client_request_id` 幂等键、`/health/liveness+readiness` 拆分、UI 字符串资源化（与 §13 "不做完整 i18n" 一致）。
 > §14 在 2026-06-04 更新「不引入 `client_request_id` 幂等键」条（MINOR / 增加规则）：[[0042]] 已为 **outbox-routed mutate 面**引入服务端请求幂等键（`Idempotency-Key` header + `api_idempotency_keys` 表），解除该范围的限制；其余写操作仍不带 client-side dedup key。
 > §14 在 2026-06-06 反转「UI 字符串资源化」条（MINOR / 收紧已列项落法）：[[0044]] 决定做 **string-resourcing**——Android 用户可见中文字面量外置到 `res/values/strings.xml` + `stringResource`，按 screen/module 分 PR。**仍是 resourcing 非翻译**：`strings.xml` 只放中文、不建第二语言，故 §13「完整 i18n / 完整 a11y」仍是「当前阶段不做」（真要翻译另开 ADR=MAJOR）。
@@ -340,7 +340,7 @@ UI 字符串必须走资源文件，预留 i18n 通道。
 * **验收清单** —— 本项目分散在 release runbook（`docs/runbook/RELEASE_PACKAGING.md`、
   `docs/runbook/GRAY_ACCEPTANCE_EXECUTION.md`、`docs/runbook/ROLLBACK.md` 末尾验收段）。
 * **运维 Runbook** —— 部署 / 备份 / 恢复 / 故障处理。本项目落在 `docs/runbook/`
-  目录（Cloudflare Tunnel / Windows 服务 / 备份任务 / 实机联调 / 回滚等分文件）。
+  目录（CI / Cloudflare Tunnel / Windows 服务 / 备份任务 / 实机联调 / 回滚等分文件）。
 
 旧版本曾写 `docs/PROJECT_BOUNDARY.md` / `docs/API.md` / `docs/ACCEPTANCE.md` /
 `docs/RUNBOOK.md` 这种平铺文件名——v0.9 已按读者意图重新分组到子目录，没有

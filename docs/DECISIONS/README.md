@@ -47,10 +47,13 @@
 | [0040](0040-outbox-subresource-target-and-child-undo.md) | outbox 子资源 target_id + 子资源 undo 契约 | 子资源锚父 Expense `row_version`（无自有 token）；undo 只翻父行不重放子资源 | accepted；[[0038]]/[[0041]]/[[0042]] |
 | [0041](0041-postgresql-engine-migration.md) | 存储层完整性债清偿 | 开发期一次性清存储层债：本机自托管 Postgres + row_version 替 `updated_at`-as-CAS；SQLite+row_version 保留为 fallback | accepted；[[0038]] 升级 |
 | [0042](0042-offline-availability-and-request-idempotency.md) | 离线可用性边界 + 请求幂等键 | 堵 committed-but-unseen 假 409：outbox-routed mutate 面加请求幂等键（独立表 + intent-time UUID + key 先于 OCC）；离线边界判据升为契约；批改走客户端 fan-out | accepted；[[0038]]/[[0041]]；解除 §14 deferral |
+| [0043](0043-tag-management.md) | 标签管理 rename / delete / merge | online-only mutate surface；Tag 进 row_version CAS；delete / merge 带 undo 表 | accepted；[[0038]] 同步模型外的在线面 |
+| [0044](0044-android-string-resourcing.md) | Android UI 字符串外置 strings.xml | resourcing 非翻译：只放中文、不建第二语言；按 screen/module 分 PR | accepted；反转 §14 deferral，§13 i18n 仍不做 |
+| [0045](0045-csrf-signing-key.md) | CSRF 签名密钥 per-install 化 | 公开占位常量 → app_meta 持久化随机密钥派生（budget-advisor audit HMAC 同源） | accepted |
 
 ## 编写新 ADR
 
-下一编号 `0043`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0046`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

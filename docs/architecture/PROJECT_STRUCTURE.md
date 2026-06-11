@@ -4,30 +4,27 @@
 
 ```text
 E:\projects\xiaopiaojia\
-  backend\
-  android\
+  backend\           # FastAPI 服务端（含 /web 浏览器端与 /owner 管理台）
+  android\           # Android App（Compose）
+  desktop\           # 桌面后端管理器（进程监督 + 状态可视，见 desktop/README.md）
   docs\
-  .editorconfig
-  .gitignore
-  README.md
-  scripts\
-    check_cloudflare_endpoint.ps1
-    check_service_status.ps1
-    check_text_encoding.ps1
-    build_release_apk.ps1
-    diagnose_ticketbox.ps1
-    ensure_ticketbox_runtime.ps1
-    maintenance_ticketbox.ps1
-    install_windows_tasks.ps1
-    real_device_preflight.ps1
-    start_backend.ps1
-    stop_backend.ps1
-    uninstall_windows_tasks.ps1
-    accept_gray_release.ps1
-    verify_project.ps1
+  infra\             # 基础设施配置（Cloudflare Tunnel ingress 等）
+  scripts\           # 项目级运维 / 构建 / 检查脚本（全部 .ps1；用法见 docs/runbook/ 各文）
+    check_text_encoding.ps1      # 编码红线（CI / verify 都跑）
+    maintenance_ticketbox.ps1    # 备份等计划任务入口
+    start_backend.ps1 …          # 启停 / 诊断 / 安装任务 / 验收等同级脚本
+    verify_project.ps1           # 本地全套验证入口
   .gitea\
     workflows\
-      windows-ci.yml
+      windows-ci.yml             # 四 job 主 CI
+      android-connected.yml      # path-filtered 模拟器 lane
+  .editorconfig
+  .gitattributes
+  .gitignore
+  AGENTS.md          # agent 工作规则入口（CLAUDE.md 经 import 读同一套）
+  CLAUDE.md
+  LICENSE            # 木兰宽松许可证 v2
+  README.md
 ```
 
 ## backend
@@ -198,6 +195,21 @@ android\
         ui\background\ImmersiveBackgroundTest.kt
 ```
 
+## desktop
+
+Windows 桌面后端管理器（仿 SyncTrayzor 模式：只做进程壳，不重造后端管理功能）。
+CI 的 desktop-manager job 对它跑 compileall / ruff / pytest。详见 [desktop/README.md](../../desktop/README.md)。
+
+```text
+desktop\
+  backend_manager\
+    supervisor.py        # 后端进程监督（独占、崩溃重启、树 kill）
+    control_server.py
+    ui.html
+  tests\
+  pyproject.toml
+```
+
 ## docs
 
 文档按读者意图分到子目录。完整导览见 [docs/README.md](../README.md)。
@@ -207,6 +219,7 @@ docs\
   README.md                  # 文档导览（入口）
   rules\                     # 开发规范（必读）
     ENGINEERING_RULES.md
+    CODE_QUALITY_STANDARDS.md
     DEPENDENCIES.md
     REFERENCES.md
     ERROR_MESSAGE_MAPPING.md
@@ -215,9 +228,11 @@ docs\
     PROJECT_STRUCTURE.md
     ACCOUNT_SYSTEM.md
     API.md
+    openapi_contract.json    # OpenAPI snapshot（check_api_contract.py 对账）
     SECURITY.md
     VERSION.md
     DATA_RETENTION.md
+    OCC_ROW_VERSION.md
     ANDROID_STATE_FLOW.md
     ANDROID_UPLOAD.md
     ANDROID_APPEARANCE_BACKGROUND.md
@@ -239,14 +254,17 @@ docs\
     MONARCH_INSPIRED_UI.md
     TRI_SURFACE_INFORMATION_ARCHITECTURE.md
     V2_ROADMAP.md
-  current\                   # 当前版本（v0.9）资产
+  current\                   # 当前版本资产
     CHANGELOG.md
+    AUDIT_BASELINE_v1.2.0.md
     V0_9_DESIGN_FUNCTION_TABLE.md
     V0_9_DESIGN_TOKEN_REFERENCE.md
-  DECISIONS\                 # ADR（编号 0001-0027，0018 撤回）
+  DECISIONS\                 # ADR（编号 0001-0045，0018 撤回）
   design_reference\          # 设计稿真值（图片与说明）
 ```
 
 ## 当前初始化范围
 
 后端已经包含稳定闭环和灰度版增量 API：账本隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、v0.9 Reports、Goals、Dashboard 卡片配置、生活化统计和窄维护清理接口，并有 pytest API 契约测试、v0.9 集成测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、自定义背景与沉浸模式、受保护图片预览、重复保留、OCR retry、生活化统计、报表图表、Goals 摘要、Dashboard 卡片管理、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。
+
+v0.9 之后的主线增量（至 2026-06，决策记录在 [docs/DECISIONS/](../DECISIONS/)）：数据库切换为 PostgreSQL-only（ADR-0041，SQLite 退役）；新增 `/web` 浏览器端（Cloudflare Access + session cookie，ADR-0028）与桌面后端管理器（`desktop/`）；多币种汇率与家庭拆账（ADR-0029）、收入计划、请求幂等键（ADR-0042）、标签管理（ADR-0043）、Android string-resourcing（ADR-0044）、per-install CSRF 签名密钥（ADR-0045）；CI 迁至自托管 Gitea（两 workflow、五 job，含备份恢复演练与 instrumented 模拟器 lane，见 [docs/runbook/CI.md](../runbook/CI.md)）。
