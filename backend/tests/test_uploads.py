@@ -121,6 +121,7 @@ def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> 
     )
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
+    assert response.json()["message"] == "上传链接已失效，请重新生成上传链接后更新 iPhone 快捷指令。"
     assert _stored_upload_files() == []
 
 
@@ -142,6 +143,7 @@ def test_expired_upload_link_is_rejected_and_revoked_before_saving_file(
 
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
+    assert response.json()["message"] == "上传链接已失效，请重新生成上传链接后更新 iPhone 快捷指令。"
     assert _stored_upload_files() == []
     with SessionLocal() as db:
         link = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))

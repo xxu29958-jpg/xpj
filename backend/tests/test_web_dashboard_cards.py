@@ -114,6 +114,8 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     empty_dashboard = web_client.get("/web?ledger_id=owner")
     assert empty_dashboard.status_code == 200
     assert "当前仪表盘没有可见卡片" in empty_dashboard.text
+    # 空态必须给出「仪表盘卡片」入口(孤儿页接回:服务端 fallback 分支)。
+    assert 'href="/web/dashboard/cards?ledger_id=owner"' in empty_dashboard.text
     empty_data = web_client.get("/web/dashboard/data?ledger_id=owner")
     assert empty_data.status_code == 200, empty_data.text
     assert empty_data.json()["visible_layout"] == []
@@ -147,3 +149,21 @@ def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient
     )
     assert denied.status_code == 403
     assert denied.json()["error"] == "permission_denied"
+
+
+def test_web_dashboard_static_js_wires_category_donut(client: TestClient) -> None:
+    """分类环图接线静态钉:dashboard.js 必须渲染 #chart-category 容器并在
+    fetch 渲染后补调 initCategoryDonut(仪表盘晚于 desktop.js boot());
+    category-donut.js 必须读 category_share 的现成键(name/amount_yuan,
+    元而非分——cents 直出会把展示放大 100 倍)。撤任一接线行本测试红。"""
+    dashboard_js = client.get("/static/web/desktop/dashboard.js")
+    assert dashboard_js.status_code == 200
+    assert "chart-category" in dashboard_js.text
+    assert "initCategoryDonut" in dashboard_js.text
+    assert "data-categories" in dashboard_js.text
+
+    donut_js = client.get("/static/web/desktop/category-donut.js")
+    assert donut_js.status_code == 200
+    assert "d.name" in donut_js.text
+    assert "d.amount_yuan" in donut_js.text
+    assert "d.amount_cents" not in donut_js.text

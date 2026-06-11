@@ -55,6 +55,28 @@
   </div>
 </div>
 
+{# 月度趋势(六个月)— trend-chart.js initTrendChart 经 desktop.js boot() 自动挂载。
+   f134d050 删容器时保留了渲染器;数据与上方 KPI 同源(six_month_trend)。#}
+<div class="dash-grid" style="margin-top:18px">
+  <div class="col-12">
+    <div class="dt-card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">月度趋势</div>
+          <div class="card-sub" style="margin-top:4px">柱：实际支出 · 虚线：预算 · 曲线：趋势</div>
+        </div>
+        <div class="legend">
+          <span><span class="legend-dot" style="background:var(--text-default)"></span>实际</span>
+          <span><span class="legend-dot" style="background:var(--text-faint)"></span>预算</span>
+          <span><span class="legend-dot" style="background:var(--brand-primary)"></span>趋势</span>
+        </div>
+      </div>
+      <div id="chart-trend" class="chart-canvas tall"
+           data-series='{{ six_month_trend | tojson }}'></div>
+    </div>
+  </div>
+</div>
+
 {% if monthly_report %}
 <div class="dash-grid" style="margin-top:18px">
   <div class="col-5">

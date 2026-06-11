@@ -118,6 +118,15 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     assert 'id="reports-trend-chart"' in response.text
     assert 'id="reports-merchant-chart"' in response.text
     assert 'id="reports-category-chart"' in response.text
+    # 月度趋势卡(trend-chart.js)— f134d050 删容器后接回,数据与 KPI 同源。
+    assert 'id="chart-trend"' in response.text
+    trend_blob = re.search(
+        r'id="chart-trend"[^>]*\n?\s*data-series=\'(.*?)\'', response.text, re.DOTALL
+    )
+    assert trend_blob is not None
+    six_month = json.loads(trend_blob.group(1))
+    assert len(six_month) == 6
+    assert {"month", "amount_yuan", "budget_yuan"} <= six_month[0].keys()
     assert 'id="reports-export-png"' in response.text
     assert "/static/web/reports.js" in response.text
     assert "商家排行" in response.text

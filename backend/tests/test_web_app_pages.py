@@ -77,3 +77,15 @@ def test_web_search_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/search?ledger_id=owner")
     assert resp.status_code == 200
     assert 'name="q"' in resp.text
+
+
+def test_web_nav_links_orphan_pages_reachable(web_client: TestClient) -> None:
+    """孤儿页接回:四个有路由有模板但曾零入站链接的页面,从仪表盘一次 GET
+    应能看到全部入口(侧栏治理组 ×2 + topbar 任务 + 页头卡片设置),且
+    ledger_id 透传。撤掉任一模板链接本测试必红。"""
+    resp = web_client.get("/web?ledger_id=owner")
+    assert resp.status_code == 200
+    assert 'href="/web/income-plans?ledger_id=owner"' in resp.text
+    assert 'href="/web/budget-advise?ledger_id=owner"' in resp.text
+    assert 'href="/web/tasks?ledger_id=owner"' in resp.text
+    assert 'href="/web/dashboard/cards?ledger_id=owner"' in resp.text

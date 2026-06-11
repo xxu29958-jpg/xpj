@@ -154,6 +154,21 @@ def test_owner_upload_links_list_masked(local_client: TestClient) -> None:
     assert raw_keys == [], f"raw upload key visible in list: {raw_keys[:1]}"
 
 
+def test_owner_upload_links_tutorial_pins_duplicate_branch(local_client: TestClient) -> None:
+    """The Shortcut tutorial card must teach the duplicate_status branch.
+
+    POST /u responds with ``duplicate_status`` computed before the response
+    returns; the tutorial wires it into a 获取词典值 + 如果 branch so the
+    iPhone notification distinguishes suspected duplicates. Copy must stay
+    in lockstep with docs/runbook/IOS_SHORTCUT.md.
+    """
+    resp = local_client.get("/owner/upload-links")
+    assert resp.status_code == 200
+    assert "获取词典值" in resp.text
+    assert "duplicate_status" in resp.text
+    assert "疑似重复" in resp.text
+
+
 def test_owner_upload_link_limits_can_be_updated(local_client: TestClient) -> None:
     import re
 

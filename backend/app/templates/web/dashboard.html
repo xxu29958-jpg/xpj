@@ -13,6 +13,7 @@
     {% else %}
       还没有设置预算。
     {% endif %}
+    <a href="/web/dashboard/cards{{ q }}">卡片设置</a>
   </div>
 </div>
 
@@ -47,7 +48,7 @@
   <div data-dashboard-fallback>
 {% if visible_cards | length == 0 %}
 <div class="dt-card dt-card--empty">
-  <div class="empty-body">当前仪表盘没有可见卡片。可以在「仪表盘卡片」里重新启用。</div>
+  <div class="empty-body">当前仪表盘没有可见卡片。可以在<a href="/web/dashboard/cards{{ q }}">「仪表盘卡片」</a>里重新启用。</div>
 </div>
 {% else %}
 <div class="dash-grid">

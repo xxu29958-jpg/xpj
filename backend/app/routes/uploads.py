@@ -19,6 +19,7 @@ from app.schemas import UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
 from app.services.file_service import SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
 from app.services.identity_service import (
+    UPLOAD_LINK_INVALID_MESSAGE,
     authenticate_upload_link,
     find_active_upload_link,
     is_legacy_upload_token,
@@ -264,7 +265,7 @@ async def app_upload_screenshot(
 def _load_upload_link(db: Session, upload_key: str) -> UploadLink:
     link = find_active_upload_link(db, upload_key=upload_key)
     if link is None:
-        raise AppError("invalid_token", status_code=401)
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
     return link
 
 

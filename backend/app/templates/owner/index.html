@@ -3,6 +3,13 @@
 {% block content %}
 <h1>仪表盘</h1>
 
+{% if backup_health and backup_health.stale %}
+<div class="alert alert-danger">
+  ⚠️ {% if backup_health.latest %}最近一次有效备份是 {{ backup_health.age_hours }} 小时前{% else %}备份目录里没有有效备份{% endif %}，请检查 TicketboxBackup 计划任务。
+  <a href="/owner/backups">查看备份</a>
+</div>
+{% endif %}
+
 <div class="stat-grid">
   <div class="stat">
     <div class="num">{{ pending_count }}</div>
@@ -41,6 +48,14 @@
     </span>
     <span class="kv-key">Owner Console</span>
     <span class="kv-val"><span class="badge badge-ok">{{ owner_console_status }}</span></span>
+    <span class="kv-key">最近备份</span>
+    <span class="kv-val">
+      {% if backup_health is none or backup_health is not defined %}—
+      {% elif backup_health.age_hours is not none %}
+        {% if backup_health.stale %}<span class="badge badge-err">{{ backup_health.age_hours }} 小时前</span>
+        {% else %}<span class="badge badge-ok">{{ backup_health.age_hours }} 小时前</span>{% endif %}
+      {% else %}<span class="badge badge-err">无有效备份</span>{% endif %}
+    </span>
     <span class="kv-key">当前账号</span>
     <span class="kv-val">{{ account_name }}</span>
     <span class="kv-key">当前账本</span>

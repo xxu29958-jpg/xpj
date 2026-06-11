@@ -287,3 +287,26 @@ def test_web_splits_save_missing_expense_redirects_with_flash(web_client: TestCl
     assert resp.status_code == 303, resp.text
     assert resp.headers["location"].startswith("/web/confirmed")
     assert "msg=" in resp.headers["location"]
+
+
+def test_web_edit_drawer_default_submit_is_save_not_reject(
+    web_client: TestClient, *, identity
+) -> None:
+    """隐式提交守卫:抽屉表单 tree-order 首个 submit 必须是无 formaction 的
+    shim(Enter=保存),且所有 /reject formaction 按钮带 data-confirm。没有
+    shim 时首个可见 submit 是「删除草稿」——在输入框按 Enter 直接软删。"""
+    import re
+
+    expense_id = _create_pending(web_client, identity=identity)
+    drawer = web_client.get(
+        f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
+    )
+    assert drawer.status_code == 200
+
+    buttons = re.findall(r'<button\b[^>]*type="submit"[^>]*>', drawer.text)
+    assert buttons, drawer.text
+    assert "formaction" not in buttons[0]
+    reject_buttons = [b for b in buttons if "/reject" in b]
+    assert reject_buttons
+    for btn in reject_buttons:
+        assert "data-confirm" in btn

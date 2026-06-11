@@ -101,6 +101,30 @@ def latest_backup() -> BackupEntry | None:
     return items[0] if items else None
 
 
+@dataclass(frozen=True)
+class BackupHealth:
+    """Dashboard view of the newest valid backup's freshness."""
+
+    latest: BackupEntry | None
+    age_hours: int | None  # None when no valid backup exists at all
+    stale: bool
+
+
+def backup_health(*, stale_after_hours: int = 48) -> BackupHealth:
+    """Health of the backup chain for the Owner Console dashboard.
+
+    ``stale`` means no valid backup newer than ``stale_after_hours`` (the
+    nightly TicketboxBackup task has likely been failing — a 6-day silent
+    chain break in 2026-06 motivated surfacing this). The threshold lives
+    here, not in the route/template (§1: business judgement is service-side).
+    """
+    entry = latest_backup()
+    if entry is None:
+        return BackupHealth(latest=None, age_hours=None, stale=True)
+    age_hours = int((now_utc().astimezone() - entry.created_at).total_seconds() // 3600)
+    return BackupHealth(latest=entry, age_hours=age_hours, stale=age_hours >= stale_after_hours)
+
+
 def is_backup_valid(file_name: str) -> bool:
     """Return True only for an existing, well-formed pg_dump backup file."""
     if Path(file_name).name != file_name:
