@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知小图标：单色（纯白描边）小票轮廓，系统按 alpha 蒙版着色。
+     轮廓几何与 ic_launcher.xml 的小票形状一致，仅去掉彩色填充。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M10,5h28c2.2,0 4,1.8 4,4v34l-6,-4 -6,4 -6,-4 -6,4 -6,-4 -6,4V9c0,-2.2 1.8,-4 4,-4z" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M16,16h16M16,24h12M16,32h8" />
+</vector>

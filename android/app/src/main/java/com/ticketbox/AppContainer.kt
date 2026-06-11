@@ -48,6 +48,7 @@ import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
+import com.ticketbox.notification.TicketboxNotifier
 import com.ticketbox.security.SecureTokenStore
 import kotlinx.coroutines.flow.map
 
@@ -58,6 +59,10 @@ class AppContainer(context: Context) {
     private val database = AppDatabase.getDatabase(appContext)
     private val apiClient = ApiClient(appContext)
     private val apiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore)
+
+    // 通知闭环 PR-1：草稿创建成功后的系统通知出口（NLS 与 App 同进程，进程内直发）。
+    // 开关状态在发出时从 settingsStore 现读，channel 在 publish 前惰性创建。
+    val notifier = TicketboxNotifier(appContext, settingsStore)
     // ADR-0038 PR-2g.2 + 2g.3: outbox plumbing.
     //
     // A dedicated Moshi instance for the outbox dispatcher layer.
