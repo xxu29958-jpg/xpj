@@ -85,6 +85,8 @@ ERROR_MESSAGES = {
     "tag_conflict": "已有同名标签，可改为合并。",
     "tag_undo_not_found": "撤销记录不存在或已超过可撤销时间。",
     "import_batch_not_found": "导入批次不存在。",
+    "not_found": "没有找到对应的记录。",
+    "task_not_found": "后台任务不存在或已结束。",
     "state_conflict": "记录已被其它端修改，请刷新后再试。",
     # ADR-0042 request-idempotency (Idempotency-Key header on outbox-routed
     # mutate面). These are protocol-level errors the client/outbox consumes —

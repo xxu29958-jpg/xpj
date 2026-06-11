@@ -63,7 +63,7 @@
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <select name="target_ledger_id" required>
               {% for c in row.accept_choices %}
-                <option value="{{ c.ledger_id }}">{{ c.ledger_id }}</option>
+                <option value="{{ c.ledger_id }}">{{ c.name }}</option>
               {% endfor %}
             </select>
             <button type="submit" class="dt-btn">接受到该账本</button>

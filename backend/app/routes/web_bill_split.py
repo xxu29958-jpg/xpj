@@ -39,11 +39,22 @@ from app.routes.web_common import (
 from app.services import bill_split_service as bsplit
 from app.services.ledger_service import (
     find_owner_account_id_for_ledger,
+    list_ledgers_for_account,
     list_writer_ledger_ids_for_account,
 )
+from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+
+def _fmt_local(value) -> str:
+    """Render a snapshot datetime in the accounting timezone (Asia/Shanghai),
+    matching the rest of /web. Without this the template prints the raw
+    ``2026-06-12 03:00:00+00:00`` form, 8h off for Beijing readers."""
+    if value is None:
+        return ""
+    return ensure_utc(value).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
 
 
 # -------------------------------------------------------------------------
@@ -88,12 +99,17 @@ def web_bill_split_inbox(
 
     invitations = bsplit.list_inbox(db, receiver_account_id=account_id, status="invited")
 
-    # Single query pulls every writer ledger the receiver belongs to; per
-    # invited row we just in-memory exclude the sender's ledger (same-ledger
-    # accept is blocked at the service layer too). No N+1 over invitations.
+    # Two bounded queries (no N+1 over invitations): the writer-ledger id list
+    # for the accept-target filter, and a {id: name} map so the dropdown shows
+    # the ledger NAME, not the internal ledger_id (ENGINEERING_RULES §3: UI
+    # never surfaces ids).
     writer_ledger_ids = list_writer_ledger_ids_for_account(
         db, account_id=account_id
     )
+    ledger_names = {
+        summary.ledger_id: summary.name
+        for summary in list_ledgers_for_account(db, account_id=account_id)
+    }
     rows = []
     for inv in invitations:
         choices: list[dict] = []
@@ -101,7 +117,10 @@ def web_bill_split_inbox(
             for ledger_id_choice in writer_ledger_ids:
                 if ledger_id_choice == inv.sender_ledger_id:
                     continue
-                choices.append({"ledger_id": ledger_id_choice})
+                choices.append({
+                    "ledger_id": ledger_id_choice,
+                    "name": ledger_names.get(ledger_id_choice, ledger_id_choice),
+                })
         rows.append({
             "public_id": inv.public_id,
             "status": inv.status,
@@ -109,8 +128,8 @@ def web_bill_split_inbox(
             "sender_display_name": inv.sender_display_name,
             "merchant": inv.merchant_snapshot or "",
             "category": inv.category_suggestion or "",
-            "expense_time": inv.expense_time_snapshot,
-            "expires_at": inv.expires_at,
+            "expense_time": _fmt_local(inv.expense_time_snapshot),
+            "expires_at": _fmt_local(inv.expires_at),
             "is_expired": ensure_utc(inv.expires_at) <= now_utc() if inv.status == "invited" else False,
             "accept_choices": choices,
         })
@@ -150,8 +169,8 @@ def web_bill_split_sent(
             "amount_yuan": _cents_to_yuan(inv.amount_cents),
             "receiver_display_name": inv.receiver_display_name_snapshot or "",
             "merchant": inv.merchant_snapshot or "",
-            "expense_time": inv.expense_time_snapshot,
-            "expires_at": inv.expires_at,
+            "expense_time": _fmt_local(inv.expense_time_snapshot),
+            "expires_at": _fmt_local(inv.expires_at),
         }
         for inv in invitations
     ]

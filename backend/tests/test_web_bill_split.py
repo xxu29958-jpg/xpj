@@ -10,7 +10,8 @@ from app.main import app
 from app.models import Account, Expense, Ledger, LedgerMember
 from app.routes.web_common import _require_local as _web_require_local
 from app.services import bill_split_service as bsplit
-from app.services.time_service import now_utc
+from app.services.spending_contract_service import accounting_zone
+from app.services.time_service import ensure_utc, now_utc
 
 
 @pytest.fixture()
@@ -207,4 +208,87 @@ def test_web_split_invite_duplicate_pending_flashes_message(
     followed = web_client.get(second.headers["location"])
     assert followed.status_code == 200
     assert "待处理拆账邀请" in followed.text
+
+
+# --- audit P3 #4: ledger NAME in the accept dropdown + local-time display ---
+
+
+def _seed_expense_in(ledger_id: str, amount_cents: int = 3000) -> int:
+    with SessionLocal() as db:
+        e = Expense(
+            tenant_id=ledger_id,
+            amount_cents=amount_cents,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=amount_cents,
+            merchant="Sushi",
+            category="餐饮",
+            source="iPhone截图",
+            status="confirmed",
+            expense_time=now_utc(),
+            confirmed_at=now_utc(),
+        )
+        db.add(e)
+        db.commit()
+        return e.id
+
+
+def test_web_inbox_dropdown_shows_ledger_name_and_local_time(
+    web_client: TestClient,
+) -> None:
+    """ENGINEERING_RULES section 3: UI never surfaces internal ids. The accept
+    dropdown must show the ledger NAME (option value keeps the id), and the
+    snapshot times must render in the accounting timezone, not as the raw
+    ``...+00:00`` UTC repr."""
+    sender_id, sender_ledger = _seed_receiver(
+        ledger_id="sender_namew", display="B-namew"
+    )
+    expense_id = _seed_expense_in(sender_ledger)
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=sender_id,
+            sender_ledger_id=sender_ledger,
+            expense_id=expense_id,
+            receiver_account_id=_owner_account_id(),
+            amount_cents=1200,
+        )
+        snapshot_expires = inv.expires_at
+        owner_ledger_name = db.query(Ledger).filter(Ledger.ledger_id == "owner").one().name
+
+    response = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
+    assert response.status_code == 200
+    html = response.text
+    # Dropdown: value carries the id, the visible text is the NAME.
+    assert f'<option value="owner">{owner_ledger_name}</option>' in html
+    assert '<option value="owner">owner</option>' not in html
+    # Times: accounting-tz wall clock, not the raw aware-datetime repr.
+    expected_expiry = (
+        ensure_utc(snapshot_expires).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
+    )
+    assert expected_expiry in html
+    assert "+00:00" not in html
+
+
+def test_web_sent_renders_local_time_not_utc_repr(web_client: TestClient) -> None:
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_tz", display="B-tz")
+    expense_id = _make_owner_expense()
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=1500,
+        )
+        snapshot_time = inv.expense_time_snapshot
+
+    response = web_client.get("/web/bill-splits/sent?ledger_id=owner")
+    assert response.status_code == 200
+    expected = (
+        ensure_utc(snapshot_time).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
+    )
+    assert expected in response.text
+    assert "+00:00" not in response.text
 
