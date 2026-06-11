@@ -157,8 +157,9 @@ internal class ExpenseEditViewModelTest {
     @Test
     fun confirmSurfacesConfirmStepFailure() = edit { fake ->
         val vm = viewModel(fake)
+        val saved = fake.baseExpense.copy(rowVersion = 5L)
         fake.saveOfflineResponder = { _, _, _ ->
-            Result.success(SaveOutcome.Synced(fake.baseExpense))
+            Result.success(SaveOutcome.Synced(saved))
         }
         fake.confirmOfflineResponder = { Result.failure(RuntimeException("conflict")) }
 
@@ -168,6 +169,10 @@ internal class ExpenseEditViewModelTest {
         assertNotNull(vm.uiState.value.message)
         assertFalse(vm.uiState.value.saving)
         assertFalse(vm.consumeDone())
+        // The save step COMMITTED (server bumped the OCC token). The failed
+        // confirm must write the post-save expense back into state — leaving
+        // the stale pre-save baseline would 409 every later mutate on this page.
+        assertEquals(saved, vm.uiState.value.expense)
     }
 
     @Test

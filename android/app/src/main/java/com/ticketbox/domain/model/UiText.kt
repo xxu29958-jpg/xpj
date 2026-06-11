@@ -19,8 +19,14 @@ sealed interface UiText {
 
     data class Raw(val text: String) : UiText
 
+    /** A joined multi-part message (e.g. 0–3 dynamic count clauses) whose
+     *  part count a single format resource cannot express; each part stays
+     *  an individually-resourced [UiText], joined at resolve time. */
+    data class Compound(val parts: List<UiText>, val separator: String) : UiText
+
     companion object {
         fun res(@StringRes id: Int, vararg args: Any): UiText = Res(id, args.toList())
         fun raw(text: String): UiText = Raw(text)
+        fun compound(parts: List<UiText>, separator: String): UiText = Compound(parts, separator)
     }
 }

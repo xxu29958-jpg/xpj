@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -125,10 +126,15 @@ fun ExpenseEditScreen(
     }
 
     val currentExpense = state.expense ?: expense
-    var currency by remember(currentExpense.id, currentExpense.updatedAt) {
+    // rememberSaveable (not remember): without Manifest configChanges, a
+    // rotation / dark-mode switch / process death recreates the activity and a
+    // plain remember silently resets every unsaved field back to server values
+    // — saving then writes stale data. Same fields in ManualExpenseSheet are
+    // already saveable; CurrencyCode is an enum (Bundle-safe, proven there).
+    var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.originalCurrencyCode)
     }
-    var originalAmountText by remember(currentExpense.id, currentExpense.updatedAt) {
+    var originalAmountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(
             formatMinorAmountInput(
                 currentExpense.originalAmountMinor ?: currentExpense.amountCents,
@@ -136,22 +142,22 @@ fun ExpenseEditScreen(
             )
         )
     }
-    var merchant by remember(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
-    var category by remember(currentExpense.id, currentExpense.updatedAt) {
+    var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
+    var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(normalizeExpenseCategory(currentExpense.category))
     }
-    var note by remember(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.note.orEmpty()) }
-    var expenseTime by remember(currentExpense.id, currentExpense.updatedAt) {
+    var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.note.orEmpty()) }
+    var expenseTime by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.expenseTime.orEmpty())
     }
-    var tags by remember(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.tags.orEmpty()) }
-    var valueScoreText by remember(currentExpense.id, currentExpense.updatedAt) {
+    var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.tags.orEmpty()) }
+    var valueScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.valueScore?.toString().orEmpty())
     }
-    var regretScoreText by remember(currentExpense.id, currentExpense.updatedAt) {
+    var regretScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.regretScore?.toString().orEmpty())
     }
-    var message by remember { mutableStateOf<String?>(null) }
+    var message by rememberSaveable { mutableStateOf<String?>(null) }
     var rawTextExpanded by remember(currentExpense.id) { mutableStateOf(false) }
     var moreExpanded by remember(currentExpense.id) { mutableStateOf(false) }
     var showDatePicker by remember(currentExpense.id) { mutableStateOf(false) }
@@ -219,11 +225,16 @@ fun ExpenseEditScreen(
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
-            merchant = merchant.ifBlank { null },
+            // Blank merchant/tags submit as "" (NOT null): Moshi omits null
+            // keys and the backend PATCH is exclude_unset, so null silently
+            // means "unchanged" — clearing a field then never took effect.
+            // The backend's _clean_optional_text("") / normalize_tags("")
+            // already treat "" as an explicit clear.
+            merchant = merchant,
             category = normalizeExpenseCategory(category),
             note = note,
             expenseTime = expenseTime.ifBlank { null },
-            tags = tags.ifBlank { null },
+            tags = tags,
             valueScore = valueScore,
             regretScore = regretScore,
         )

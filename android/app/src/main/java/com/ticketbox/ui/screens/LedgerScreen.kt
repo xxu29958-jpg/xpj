@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
@@ -28,6 +30,7 @@ import com.ticketbox.ui.screens.ledger.LedgerExpenseTableRow
 import com.ticketbox.ui.screens.ledger.LedgerFilterPanel
 import com.ticketbox.ui.screens.ledger.LedgerSelectionBar
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
+import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
 
@@ -51,12 +54,22 @@ fun LedgerScreen(
     onSelectAllVisible: () -> Unit = {},
     onApplyBatchCategory: (String) -> Unit = {},
     onApplyBatchTags: (String) -> Unit = {},
+    onManualCreateSettled: () -> Unit = {},
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
     var showLedgerTools by rememberSaveable { mutableStateOf(false) }
     var showBulkEdit by rememberSaveable { mutableStateOf(false) }
     val canExport = state.items.isNotEmpty() && !state.exporting
+
+    // Close the manual sheet only on CONFIRMED success; failure keeps it open
+    // (with the typed form intact) showing manualCreateError inline.
+    LaunchedEffect(state.manualCreateDone) {
+        if (state.manualCreateDone) {
+            showManualSheet = false
+            onManualCreateSettled()
+        }
+    }
 
     if (showMonthPicker) {
         ModalBottomSheet(onDismissRequest = { showMonthPicker = false }) {
@@ -73,15 +86,17 @@ fun LedgerScreen(
     }
 
     if (showManualSheet && !state.readOnly) {
-        ModalBottomSheet(onDismissRequest = { showManualSheet = false }) {
+        val dismissManualSheet = {
+            showManualSheet = false
+            onManualCreateSettled()
+        }
+        ModalBottomSheet(onDismissRequest = dismissManualSheet) {
             ManualExpenseSheet(
                 categories = state.categories,
                 saving = state.creatingManual,
-                onCreate = { draft ->
-                    showManualSheet = false
-                    onManualCreate(draft)
-                },
-                onDismiss = { showManualSheet = false },
+                errorMessage = state.manualCreateError?.asString(),
+                onCreate = onManualCreate,
+                onDismiss = dismissManualSheet,
             )
         }
     }
@@ -149,6 +164,9 @@ fun LedgerScreen(
                     onViewModeChange = onViewModeChange,
                 )
             }
+        }
+        state.message?.let { message ->
+            item { PendingMessageCard(message = message.asString()) }
         }
         if (state.items.isEmpty()) {
             item {

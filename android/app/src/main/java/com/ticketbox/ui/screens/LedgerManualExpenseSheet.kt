@@ -59,6 +59,7 @@ fun ManualExpenseSheet(
     categories: List<String>,
     saving: Boolean,
     initialCurrency: CurrencyCode = FxContract.HomeCurrency,
+    errorMessage: String? = null,
     onCreate: (ExpenseDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -236,7 +237,9 @@ fun ManualExpenseSheet(
                 }
             }
         }
-        message?.let {
+        // Local validation message and the repository failure (the sheet stays
+        // open on a failed create so the typed form survives) share the slot.
+        (message ?: errorMessage)?.let {
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
@@ -251,6 +254,10 @@ fun ManualExpenseSheet(
                 enabled = !saving,
                 onClick = {
                     val draft = draftOrMessage() ?: return@Button
+                    // The sheet now outlives the submit (closes only on
+                    // success) — drop a stale local validation message so it
+                    // can't shadow the repository outcome.
+                    message = null
                     onCreate(draft)
                 },
             ) {

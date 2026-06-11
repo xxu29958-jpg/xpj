@@ -212,10 +212,6 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/screens/stats/StatsMetricGrid.kt :: AI 订阅": "internal domain-category match (spaced legacy variant)",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelItemsEditor.kt :: 未命名": "static fallback-default item name value",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelSplitsEditor.kt :: 未命名成员": "static fallback-default split member name value",
-    "android/app/src/main/java/com/ticketbox/viewmodel/LedgerViewModel.kt :: 已更新 ${} 笔": "no data surface: batchResultMessage is not rendered",
-    "android/app/src/main/java/com/ticketbox/viewmodel/LedgerViewModel.kt :: ${} 笔已加入同步": "no data surface: batchResultMessage is not rendered",
-    "android/app/src/main/java/com/ticketbox/viewmodel/LedgerViewModel.kt :: ${} 笔需重新同步": "no data surface: batchResultMessage is not rendered",
-    "android/app/src/main/java/com/ticketbox/viewmodel/LedgerViewModel.kt :: 没有需要修改的账单。": "no data surface: batchResultMessage is not rendered",
 }
 
 

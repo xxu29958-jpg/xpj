@@ -302,7 +302,10 @@ class ExpenseEditViewModel(
                             }
                         }
                         .onFailure { error ->
-                            _uiState.update { state -> state.copy(saving = false, message = error.toUiText(R.string.expense_edit_confirm_failed)) }
+                            // The save step COMMITTED (bumped row_version); keep the
+                            // post-save expense as the page baseline or every later
+                            // mutate replays the stale pre-save token and 409s.
+                            _uiState.update { state -> state.copy(expense = saveOutcome.expense, saving = false, message = error.toUiText(R.string.expense_edit_confirm_failed)) }
                         }
                 }
                 .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.toUiText(R.string.expense_edit_save_failed)) } }
