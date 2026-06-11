@@ -38,8 +38,20 @@
         <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家" {% if not can_write %}disabled{% endif %}>
       </div>
       <div class="dt-form-row">
+        <label>消费时间</label>
+        <input type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if not can_write %}disabled{% endif %}>
+        <div class="meta">留空表示不修改时间。</div>
+      </div>
+      <div class="dt-form-row">
         <label>分类</label>
-        <input type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" {% if not can_write %}disabled{% endif %}>
+        <input type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" list="category-options" {% if not can_write %}disabled{% endif %}>
+        <datalist id="category-options">
+          {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
+        </datalist>
+      </div>
+      <div class="dt-form-row">
+        <label>标签</label>
+        <input type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if not can_write %}disabled{% endif %}>
       </div>
       <div class="dt-form-row">
         <label>备注</label>

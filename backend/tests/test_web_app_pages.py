@@ -14,6 +14,27 @@ def test_web_pending_local_returns_200(web_client: TestClient) -> None:
     assert "待确认" in resp.text
 
 
+def test_web_pending_empty_all_offers_upload_entry_links(web_client: TestClient) -> None:
+    """空账本待确认页(filter=all)的空态不止「解释发生了什么」,还给「下一步去哪」:
+    iPhone 快捷指令配置 + CSV 导入两个直达链接(ledger_id 透传)。filter≠all 的空态
+    是过滤无结果,不挂这些入口。撤掉空态链接本测试必红。
+
+    判别用 /owner/upload-links —— 它只在本空态分支出现;/web/import 不能当判别,
+    顶栏「导入 / 导出」按钮在任何状态下都有该链接。"""
+    resp = web_client.get("/web/pending?ledger_id=owner")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'href="/owner/upload-links"' in body
+    assert "从 CSV 导入" in body  # 空态内的 CSV 导入直达(措辞区别于顶栏「导入 / 导出」)
+
+    # 过滤态空(疑似重复)只说没有匹配,不重复挂首日入口。
+    filtered = web_client.get("/web/pending?ledger_id=owner&filter=duplicate")
+    assert filtered.status_code == 200
+    assert "没有匹配当前筛选的账单" in filtered.text
+    assert 'href="/owner/upload-links"' not in filtered.text
+    assert "从 CSV 导入" not in filtered.text
+
+
 def test_web_confirmed_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/confirmed")
     assert resp.status_code == 200

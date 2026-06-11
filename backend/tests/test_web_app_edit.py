@@ -84,6 +84,123 @@ def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient,
     assert payload["merchant"] == "Foreign Cafe Updated"
 
 
+def test_web_edit_save_sets_expense_time_in_accounting_tz(
+    web_client: TestClient, *, identity
+) -> None:
+    """批1: the datetime-local input is a Beijing wall-clock the route must
+    assume-local → store UTC. 20:00 Asia/Shanghai = 12:00Z. The edit page then
+    prefills the same 20:00 wall-clock (round-trip, no 8h drift)."""
+    expense_id = _create_pending(web_client, identity=identity)
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
+        data={"amount_yuan": "12.34", "merchant": "夜宵店", "category": "餐饮",
+              "note": "", "ledger_id": "owner", "expense_time": "2026-05-04T20:00"},
+    )
+    assert resp.status_code in {303, 307}, resp.text
+
+    payload = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()
+    # 20:00 +08:00 stored as 12:00Z (storage stays UTC).
+    assert payload["expense_time"] == "2026-05-04T12:00:00Z", payload["expense_time"]
+
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert detail.status_code == 200
+    # Prefilled back into the datetime-local input as the Beijing wall-clock.
+    assert 'name="expense_time"' in detail.text
+    assert 'value="2026-05-04T20:00"' in detail.text
+
+
+def test_web_edit_save_bad_expense_time_shows_error(
+    web_client: TestClient, *, identity
+) -> None:
+    """An unparseable time flashes the edit error and leaves the row untouched."""
+    expense_id = _create_pending(web_client, identity=identity)
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
+        data={"amount_yuan": "9.00", "merchant": "店", "category": "餐饮",
+              "note": "", "ledger_id": "owner", "expense_time": "not-a-time"},
+    )
+    assert resp.status_code == 200
+    assert "请填写正确的时间" in resp.text
+    # Nothing committed: a fresh pending still has no expense_time and no amount.
+    payload = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()
+    assert payload["expense_time"] is None
+    assert payload["amount_cents"] is None
+
+
+def test_web_edit_save_sets_and_clears_tags(web_client: TestClient, *, identity) -> None:
+    """批1: tags save normalises the comma list; a blank tags field clears them
+    (mirrors PATCH /api/expenses — "" clears, omitted leaves untouched)."""
+    expense_id = _create_pending(web_client, identity=identity)
+    saved = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
+        data={"amount_yuan": "5.00", "merchant": "店", "category": "餐饮",
+              "note": "", "ledger_id": "owner", "tags": "报销, 出差"},
+    )
+    assert saved.status_code in {303, 307}, saved.text
+    payload = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()
+    assert payload["tags"] == "报销, 出差", payload["tags"]
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert 'name="tags"' in detail.text
+    assert "报销, 出差" in detail.text
+
+    # Blank tags field clears them.
+    cleared = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
+        data={"amount_yuan": "5.00", "merchant": "店", "category": "餐饮",
+              "note": "", "ledger_id": "owner", "tags": ""},
+    )
+    assert cleared.status_code in {303, 307}, cleared.text
+    after = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()
+    assert after["tags"] is None, after["tags"]
+
+
+def test_web_edit_renders_category_datalist_with_used_category(
+    web_client: TestClient, *, identity
+) -> None:
+    """批1: the 分类 input carries a <datalist> seeded with the ledger's used
+    categories ∪ defaults, so spelling drift is curbed at the input."""
+    expense_id = _create_pending(web_client, identity=identity)
+    saved = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
+        data={"amount_yuan": "5.00", "merchant": "店", "category": "测试专属分类",
+              "note": "", "ledger_id": "owner"},
+    )
+    assert saved.status_code in {303, 307}, saved.text
+
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert detail.status_code == 200
+    assert 'list="category-options"' in detail.text
+    assert '<datalist id="category-options">' in detail.text
+    assert '<option value="测试专属分类">' in detail.text  # the ledger's own
+    assert '<option value="餐饮">' in detail.text  # a default
+
+    drawer = web_client.get(
+        f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
+    )
+    assert drawer.status_code == 200
+    assert 'list="category-options-drawer"' in drawer.text
+    assert 'name="expense_time"' in drawer.text
+    assert 'name="tags"' in drawer.text
+
+
 def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")

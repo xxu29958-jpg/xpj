@@ -5,6 +5,7 @@ route files don't have to import from each other.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import Request
@@ -19,12 +20,15 @@ from app.schemas import (
     ExpenseSplitReplaceRequest,
     ExpenseSplitRequest,
 )
+from app.services.category_service import list_ledger_category_options
 from app.services.expense_service import get_expense
 from app.services.expense_split_service import (
     list_active_split_members,
     list_expense_splits,
 )
 from app.services.receipt_item_service import list_expense_items
+from app.services.spending_contract_service import accounting_timezone_key
+from app.services.time_service import ensure_utc_assuming_local
 
 
 def parse_amount_yuan(raw: str) -> tuple[int | None, str | None]:
@@ -52,6 +56,27 @@ def parse_original_amount(raw: str) -> tuple[Decimal | None, str | None]:
     if d < 0:
         return None, "金额不能为负数。"
     return d, None
+
+
+def parse_expense_time_local(raw: str | None) -> tuple[datetime | None, str | None]:
+    """Parse the edit form's ``<input type="datetime-local">`` value into a UTC
+    ``datetime``. Blank means "leave the time unchanged" → ``(None, None)``.
+
+    A datetime-local input yields a *naive* wall-clock string (``2026-05-04T20:00``)
+    the user reads as accounting-tz (Asia/Shanghai); we assume-local → UTC so
+    storage stays UTC and round-trips with ``_expense_time_local_input``. A value
+    that already carries an offset / trailing ``Z`` is honoured as-is (defensive).
+    On an unparseable value → ``(None, error)`` so ``web_save`` flashes it via the
+    existing edit error path.
+    """
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        return None, None
+    try:
+        parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except ValueError:
+        return None, "请填写正确的时间。"
+    return ensure_utc_assuming_local(parsed, accounting_timezone_key()), None
 
 
 def _edit_page_or_flash_redirect(
@@ -102,6 +127,7 @@ def web_edit_context(
     ctx["receipt_items"] = _web_item_rows(db, expense_id, selected_id)
     ctx["split_rows"] = _web_split_rows(db, expense_id, selected_id)
     ctx["split_members"] = _web_split_members(db, selected_id)
+    ctx["category_options"] = list_ledger_category_options(db, tenant_id=selected_id)
     return ctx
 
 

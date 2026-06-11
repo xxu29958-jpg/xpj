@@ -167,3 +167,45 @@ def test_web_dashboard_static_js_wires_category_donut(client: TestClient) -> Non
     assert "d.name" in donut_js.text
     assert "d.amount_yuan" in donut_js.text
     assert "d.amount_cents" not in donut_js.text
+
+
+_TINY_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+    b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def test_web_dashboard_first_day_shows_entry_links_until_first_expense(
+    web_client: TestClient, identity
+) -> None:
+    """首日引导:全新账本(lifetime exists()=False)的仪表盘 page-header 换成三个
+    进票口直达,而不是满屏 0;有了第一笔账单后回到稳态标题、首日链接消失。
+
+    page-header 在 JS 渲染区外服务端无条件渲染,所以这条路由级断言对脚本开/关
+    两路径都成立。撤掉首日分支或任一入口链接本测试必红。"""
+    first_day = web_client.get("/web?ledger_id=owner")
+    assert first_day.status_code == 200
+    body = first_day.text
+    assert "欢迎使用，先记第一笔。" in body
+    assert "今日账面" not in body
+    # 三个进票口:绑定码 / iPhone 上传链接 / CSV 导入(ledger_id 透传)。
+    assert 'href="/owner/pairing"' in body
+    assert 'href="/owner/upload-links"' in body
+    assert 'href="/web/import?ledger_id=owner"' in body
+
+    # 上传一张截图(经 UploadLink 落 owner 账本的 pending)→ 不再是首日。
+    upload = web_client.post(
+        f"/u/{identity.upload_key}",
+        headers={"Content-Type": "image/png"},
+        content=_TINY_PNG,
+    )
+    assert upload.status_code == 200, upload.text
+
+    after = web_client.get("/web?ledger_id=owner")
+    assert after.status_code == 200
+    after_body = after.text
+    assert "今日账面，井然有序。" in after_body
+    assert "欢迎使用，先记第一笔。" not in after_body
+    # 稳态下首日入口链接不再出现在 page-header(/owner/pairing 仅首日分支用)。
+    assert 'href="/owner/pairing"' not in after_body
