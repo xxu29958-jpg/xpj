@@ -71,11 +71,7 @@ def retry_expense_ocr(
         raise AppError("expense_not_found", status_code=404)
     provider_name = _active_provider_name()
     if provider_name == "empty":
-        raise AppError(
-            "ocr_not_configured",
-            "未配置 OCR，请在后端启用 OCR_PROVIDER 后再重试。",
-            status_code=503,
-        )
+        raise AppError("ocr_not_configured", status_code=503)
 
     result = extract_ocr_result(expense)
     now = now_utc()

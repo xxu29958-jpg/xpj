@@ -104,7 +104,6 @@ ALLOWLIST: dict[str, str] = {
     "amount_invalid": "covered by strings.xml verbatim parity (C6); doc backfill ratchet-candidate",
     "currency_not_supported": "covered by strings.xml verbatim parity (C6); doc backfill ratchet-candidate",
     "exchange_rate_required": "covered by strings.xml verbatim parity (C6); doc backfill ratchet-candidate",
-    "exchange_rate_pending": "covered by strings.xml verbatim parity (C6); doc backfill ratchet-candidate",
     "exchange_rate_invalid": "covered by strings.xml verbatim parity (C6); doc backfill ratchet-candidate",
     "exchange_rate_base_currency": "covered by strings.xml verbatim parity (C6); doc backfill ratchet-candidate",
     "permission_denied": "covered by strings.xml verbatim parity (C6); doc backfill ratchet-candidate",

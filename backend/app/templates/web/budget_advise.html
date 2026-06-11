@@ -58,7 +58,7 @@
   {% elif not run_advise %}
   <div class="text-meta">点击上方"调用 AI 建议"按钮获取建议。AI 只看到匿名化的分类聚合，不会看到真实商户名 / 真实姓名 / 图片。</div>
   {% elif advice is none %}
-  <div class="text-meta">本次 AI 调用没有返回建议（可能 provider 暂时不可用，或数据不足）。本地预算计算仍按上方数据正常工作。</div>
+  <div class="text-meta">本次 AI 调用没有返回建议（可能 AI 服务暂时不可用，或数据不足）。本地预算计算仍按上方数据正常工作。</div>
   {% else %}
   <div class="dt-h4">{{ advice.summary }}</div>
   {% if advice.confidence is not none %}
