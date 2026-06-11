@@ -26,6 +26,8 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
@@ -42,6 +44,9 @@ fun CategoryRulesScreen(
     rules: List<CategoryRule>,
     busy: Boolean,
     readOnly: Boolean,
+    // No default on purpose: the compiler forces every caller to wire the
+    // VM message through (this channel was silently dead before).
+    message: UiText?,
     onBack: () -> Unit,
     onCreateRule: (String, String, Int) -> Unit,
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
@@ -185,6 +190,9 @@ fun CategoryRulesScreen(
                 busy = busy,
                 onRollback = { application -> rollbackApplication = application },
             )
+        }
+        message?.asString()?.takeIf { it.isNotBlank() }?.let {
+            Text(it, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

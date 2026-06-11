@@ -16,12 +16,17 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncProblem
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +45,7 @@ import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
+import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
 /**
@@ -54,49 +60,174 @@ fun SyncStatusScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
-    val status = state.status
+    val actions = remember(viewModel) {
+        SyncStatusActions(
+            onKeepMine = viewModel::keepMine,
+            onDropMine = viewModel::dropMine,
+            onRetry = viewModel::retry,
+            onDropFailed = viewModel::dropFailed,
+        )
+    }
+    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack)
+}
+
+/** The row-resolving callbacks of the sync-status surface, grouped so the
+ *  testable [SyncStatusScreenContent] stays within the parameter budget
+ *  (precedent: SettingsRouteActions). */
+internal data class SyncStatusActions(
+    val onKeepMine: (OutboxRow) -> Unit,
+    val onDropMine: (OutboxRow) -> Unit,
+    val onRetry: (OutboxRow) -> Unit,
+    val onDropFailed: (OutboxRow) -> Unit,
+)
+
+@Composable
+internal fun SyncStatusScreenContent(
+    state: OutboxStatusUiState,
+    actions: SyncStatusActions,
+    onBack: () -> Unit,
+) {
+    // Drop/remove discards an offline edit irreversibly — both card buttons
+    // route through an explicit confirm dialog before the VM callback fires.
+    var confirmingDropMine by remember { mutableStateOf<OutboxRow?>(null) }
+    var confirmingDropFailed by remember { mutableStateOf<OutboxRow?>(null) }
+
+    confirmingDropMine?.let { row ->
+        DropConfirmDialog(
+            row = row,
+            failed = false,
+            busy = state.busyRowId != null,
+            onConfirm = {
+                confirmingDropMine = null
+                actions.onDropMine(row)
+            },
+            onDismiss = { confirmingDropMine = null },
+        )
+    }
+    confirmingDropFailed?.let { row ->
+        DropConfirmDialog(
+            row = row,
+            failed = true,
+            busy = state.busyRowId != null,
+            onConfirm = {
+                confirmingDropFailed = null
+                actions.onDropFailed(row)
+            },
+            onDismiss = { confirmingDropFailed = null },
+        )
+    }
 
     SettingsPageFrame(
         title = stringResource(R.string.sync_status_page_title),
         subtitle = stringResource(R.string.sync_status_page_subtitle),
         onBack = onBack,
     ) {
-        SyncSummaryCard(status)
+        SyncStatusPageBody(
+            state = state,
+            onKeepMine = actions.onKeepMine,
+            onDropMine = { confirmingDropMine = it },
+            onRetry = actions.onRetry,
+            onDropFailed = { confirmingDropFailed = it },
+        )
+    }
+}
 
-        state.message?.let { msg ->
-            Text(
-                text = msg.asString(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+@Composable
+private fun SyncStatusPageBody(
+    state: OutboxStatusUiState,
+    onKeepMine: (OutboxRow) -> Unit,
+    onDropMine: (OutboxRow) -> Unit,
+    onRetry: (OutboxRow) -> Unit,
+    onDropFailed: (OutboxRow) -> Unit,
+) {
+    val status = state.status
+    SyncSummaryCard(status)
 
-        if (status.conflicts.isNotEmpty()) {
-            SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
-                status.conflicts.forEach { row ->
-                    ConflictCard(
-                        row = row,
-                        busy = state.busyRowId == row.id,
-                        onKeepMine = { viewModel.keepMine(row) },
-                        onDropMine = { viewModel.dropMine(row) },
-                    )
-                }
-            }
-        }
+    state.message?.let { msg ->
+        Text(
+            text = msg.asString(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 
-        if (status.failed.isNotEmpty()) {
-            SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
-                status.failed.forEach { row ->
-                    FailedCard(
-                        row = row,
-                        busy = state.busyRowId == row.id,
-                        onRetry = { viewModel.retry(row) },
-                        onDrop = { viewModel.dropFailed(row) },
-                    )
-                }
+    if (status.conflicts.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
+            status.conflicts.forEach { row ->
+                ConflictCard(
+                    row = row,
+                    busy = state.busyRowId == row.id,
+                    onKeepMine = { onKeepMine(row) },
+                    onDropMine = { onDropMine(row) },
+                )
             }
         }
     }
+
+    if (status.failed.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
+            status.failed.forEach { row ->
+                FailedCard(
+                    row = row,
+                    busy = state.busyRowId == row.id,
+                    onRetry = { onRetry(row) },
+                    onDrop = { onDropFailed(row) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The irreversible-discard confirm. Copy branches on what is being lost: a
+ * CONFLICT drop keeps the server version; a FAILED drop loses the change
+ * outright; a reaper-expired FAILED row reads 移除 (it can never sync again).
+ * The confirm word deliberately differs from the card button word so a
+ * double-tap cannot blow through both steps.
+ */
+@Composable
+private fun DropConfirmDialog(
+    row: OutboxRow,
+    failed: Boolean,
+    busy: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val expired = failed && isExpiredFailure(row.lastError)
+    val label = mutationLabel(row.type)
+    val title: String
+    val text: String
+    val confirmWord: String
+    when {
+        !failed -> {
+            title = stringResource(R.string.sync_status_conflict_drop_dialog_title)
+            text = stringResource(R.string.sync_status_conflict_drop_dialog_text, label)
+            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm)
+        }
+        expired -> {
+            title = stringResource(R.string.sync_status_failed_drop_dialog_title_expired)
+            text = stringResource(R.string.sync_status_failed_drop_dialog_text_expired, label)
+            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm_remove)
+        }
+        else -> {
+            title = stringResource(R.string.sync_status_failed_drop_dialog_title)
+            text = stringResource(R.string.sync_status_failed_drop_dialog_text, label)
+            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = onConfirm) {
+                Text(confirmWord, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        },
+    )
 }
 
 @Composable

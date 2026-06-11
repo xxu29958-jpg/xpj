@@ -293,6 +293,7 @@ internal class ExpenseEditViewModelTest {
         vm.saveItems()
         advanceUntilIdle()
 
+        assertEquals(0, fake.replaceItemsCalls)
         assertNotNull(vm.uiState.value.itemsMessage)
         assertTrue(vm.uiState.value.itemEditorOpen)
     }
@@ -397,6 +398,8 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         private set
     var confirmCalls: Int = 0
         private set
+    var replaceItemsCalls: Int = 0
+        private set
     var replaceSplitsCalls: Int = 0
         private set
     var confirmedExpense: Expense? = null
@@ -461,9 +464,11 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         expense: Expense,
         items: List<ExpenseItemDraft>,
         currentItems: ExpenseItems,
-    ): Result<ReplaceItemsOutcome> =
-        replaceItemsResponder?.invoke(expense, items, currentItems)
+    ): Result<ReplaceItemsOutcome> {
+        replaceItemsCalls += 1
+        return replaceItemsResponder?.invoke(expense, items, currentItems)
             ?: error("replaceItemsResponder not set")
+    }
 
     override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = Result.success(splits())
 

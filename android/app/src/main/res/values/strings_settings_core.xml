@@ -155,6 +155,16 @@
     <string name="sync_status_failed_button_remove">移除</string>
     <string name="sync_status_failed_button_drop">放弃</string>
 
+    <!-- 放弃/移除确认弹窗（SyncStatusScreen.DropConfirmDialog）：不可逆丢弃前的二次确认；确认词与卡片按钮词刻意不同 -->
+    <string name="sync_status_conflict_drop_dialog_title">放弃我的改动？</string>
+    <string name="sync_status_conflict_drop_dialog_text">「%1$s」的离线改动将被放弃，保留服务器上的版本，放弃后无法找回。</string>
+    <string name="sync_status_failed_drop_dialog_title">放弃这条改动？</string>
+    <string name="sync_status_failed_drop_dialog_text">「%1$s」没能同步成功，放弃后无法找回。</string>
+    <string name="sync_status_failed_drop_dialog_title_expired">移除这条记录？</string>
+    <string name="sync_status_failed_drop_dialog_text_expired">「%1$s」已过期、无法再同步，移除后如需保留请重新操作一次。</string>
+    <string name="sync_status_drop_dialog_confirm">确认放弃</string>
+    <string name="sync_status_drop_dialog_confirm_remove">确认移除</string>
+
     <!-- ADR-0044 wave 2：SettingsViewModel 用户可见反馈消息（连接 / 同步 / 检测 / 缓存 / 月预算 / 通知偏好），经 UiText 在 UI 层解析 -->
     <string name="settings_vm_connection_ok">连接正常</string>
     <string name="settings_vm_connection_failed">暂时连不上小票夹，请稍后再试。</string>
