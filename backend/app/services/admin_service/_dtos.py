@@ -30,6 +30,11 @@ class UploadLinkSummary:
     per_remote_min_interval_seconds: int
     expires_at: str | None
     is_expired: bool
+    # Whole days until expiry (ceil, min 0); None when expires_at is unset.
+    # Computed next to is_expired so both stay on the same clock source; the
+    # /owner list uses it for the "N 天后过期" warning badge. The /api/admin
+    # response schema intentionally does not expose it.
+    expires_in_days: int | None
     masked_url_path: str
     last_used_at: str | None
     revoked_at: str | None

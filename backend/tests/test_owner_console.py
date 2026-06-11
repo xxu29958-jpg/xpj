@@ -297,6 +297,128 @@ def test_owner_upload_links_invalid_public_base_url_treated_as_empty(
         app_config.get_settings.cache_clear()
 
 
+def test_owner_upload_links_reveal_has_copy_button_and_qr_handoff(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one-shot reveal card carries the copy-button + QR handoff markers.
+
+    The full URL itself must stay single-instance in the HTML (pinned by
+    ``test_owner_upload_links_create_reveals_once``), so the handoff script
+    reads it from the ``[data-upload-handoff-url]`` text content instead of a
+    second attribute — re-asserted here with the new markers in place.
+    """
+    import re
+
+    from app import config as app_config
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://api.zen70.cn")
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post("/owner/upload-links")
+        assert resp.status_code == 200
+        assert "data-upload-handoff-url" in resp.text
+        assert "data-copy-upload-url" in resp.text
+        assert "复制完整 URL" in resp.text
+        assert "data-upload-qr-section" in resp.text
+        assert "data-upload-qr" in resp.text
+        # Scan handoff copy: long-press → 拷贝, never open the POST-only /u URL.
+        assert "拷贝" in resp.text
+        assert "不要选「打开」" in resp.text
+        full_urls = re.findall(r"https://api\.zen70\.cn/u/[^\s\"<]+", resp.text)
+        assert len(full_urls) == 1, full_urls
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+def test_owner_upload_links_no_handoff_ui_without_public_base_url(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without PUBLIC_BASE_URL the relative path is unusable on iPhone — the
+    copy/QR handoff UI must not render around it."""
+    from app import config as app_config
+
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post("/owner/upload-links")
+        assert resp.status_code == 200
+        assert "data-upload-handoff-url" not in resp.text
+        assert "data-copy-upload-url" not in resp.text
+        assert "data-upload-qr" not in resp.text
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+def test_owner_static_qrcode_vendor_is_self_hosted(local_client: TestClient) -> None:
+    """Mirror of test_web_reports_static_echarts_vendor_is_self_hosted for the
+    /owner QR encoder: vendored file + license served locally, no CDN."""
+    script = local_client.get("/static/owner/vendor/qrcode.js")
+    license_file = local_client.get("/static/owner/vendor/qrcode.LICENSE")
+    handoff = local_client.get("/static/owner/upload-link-handoff.js")
+
+    assert script.status_code == 200
+    assert "QR Code Generator for JavaScript" in script.text[:2000]
+    assert "Kazuhiko Arase" in script.text[:2000]
+    assert "sourceMappingURL" not in script.text[-2000:]
+    assert license_file.status_code == 200
+    assert "MIT License" in license_file.text
+    assert handoff.status_code == 200
+    assert "data-copy-upload-url" in handoff.text
+    assert "data-upload-handoff-url" in handoff.text
+    assert "cdn.jsdelivr" not in handoff.text
+    assert "unpkg.com" not in handoff.text
+    # The owner shell loads both via defer — vendor before the handoff binder,
+    # so the global `qrcode` exists when the binder runs.
+    page = local_client.get("/owner/upload-links")
+    assert page.status_code == 200
+    vendor_pos = page.text.find("/static/owner/vendor/qrcode.js")
+    handoff_pos = page.text.find("/static/owner/upload-link-handoff.js")
+    assert vendor_pos != -1
+    assert handoff_pos != -1
+    assert vendor_pos < handoff_pos
+
+
+def test_owner_upload_links_expiring_soon_badge(local_client: TestClient) -> None:
+    """Active links within 7 days of expiry get the badge-warn countdown;
+    fresh 90-day links stay 正常, already-expired keeps 已过期 (no countdown),
+    and the extend button reads 续期 (not the old English label)."""
+    import re
+    from datetime import timedelta
+
+    from app.database import SessionLocal
+    from app.models import UploadLink
+    from app.services.time_service import now_utc
+
+    create = local_client.post("/owner/upload-links")
+    assert create.status_code == 200
+    matches = re.findall(r"/owner/upload-links/([0-9a-f\-]{36})/extend", create.text)
+    assert matches, create.text
+    public_id = matches[0]
+
+    fresh = local_client.get("/owner/upload-links")
+    assert "天后过期" not in fresh.text
+    assert "续期" in fresh.text
+    assert "Extend" not in fresh.text
+
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        link.expires_at = now_utc() + timedelta(days=3)
+        db.commit()
+
+    soon = local_client.get("/owner/upload-links")
+    assert "badge-warn" in soon.text
+    assert "3 天后过期" in soon.text
+
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        link.expires_at = now_utc() - timedelta(days=1)
+        db.commit()
+
+    expired = local_client.get("/owner/upload-links")
+    assert "已过期" in expired.text
+    assert "天后过期" not in expired.text
+
+
 def test_owner_diagnostics_page_opens(local_client: TestClient) -> None:
     resp = local_client.get("/owner/diagnostics")
     assert resp.status_code == 200
