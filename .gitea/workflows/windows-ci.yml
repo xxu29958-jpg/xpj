@@ -426,9 +426,11 @@ jobs:
 
       - name: Detekt complexity gate
         # The six Kotlin thresholds from docs/rules/CODE_QUALITY_STANDARDS.md,
-        # machine-enforced (plain syntax-only run; pre-existing violations are
-        # frozen in android/app/detekt-baseline.xml).
-        run: .\gradlew.bat --no-daemon :app:detekt
+        # machine-enforced. Type-resolving variant tasks on purpose: detekt 2.x
+        # runs LongParameterList only under full analysis (plain :app:detekt
+        # silently skips it). Pre-existing violations are frozen per variant in
+        # android/app/detekt-baseline-grayDebug(.UnitTest).xml.
+        run: .\gradlew.bat --no-daemon :app:detektGrayDebug :app:detektGrayDebugUnitTest
 
       - name: Assemble gray debug APK
         run: .\gradlew.bat --no-daemon :app:assembleGrayDebug

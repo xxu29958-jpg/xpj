@@ -96,7 +96,7 @@ jobs:
   android:
     steps:
       - run: ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
-      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease :app:lintGrayDebug :app:detekt
+      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
 """,
         encoding="utf-8",
     )

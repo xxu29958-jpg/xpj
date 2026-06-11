@@ -1,6 +1,6 @@
 # 工程规范
 
-> 规则版本 v1.6.0（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见 2026-06-04 注；v1.4.0→v1.5.0：§14 经 [[0044]] 反转 UI 字符串资源化条——做 string-resourcing（非翻译），见下行 2026-06-06 注，MINOR/收紧已列项落法；v1.5.0→v1.5.1：2026-06-11，PATCH/措辞——§13 运维 Runbook 列举补 CI，runbook 实质更新在 `docs/runbook/`：CI.md 对齐两-workflow 现实 + ci-gap 9+10 钉数、POSTGRES_MIGRATION.md 增表属主排查节、WINDOWS_BACKUP_TASK.md 增备份链健康自查节；v1.5.1→v1.5.2：2026-06-11，PATCH/纠假陈述——§14 速查「detekt 默认门槛」改「Kotlin 阈值（评审基准，机器接线待拍板）」，配套 CODE_QUALITY_STANDARDS.md 真相化：detekt 从未接线、Branch Protection 段换成 gitea 真实合并纪律、PR size 数字改议题纪律；v1.5.2→v1.6.0：2026-06-12，MINOR/新机器门——用户拍板接线 detekt，§14 速查 Kotlin 阈值由「评审基准」升级为 `:app:detekt` 机器门（1.23.8 稳定线，仅六条 complexity 规则 plain 跑、存量 344 处冻结 `android/app/detekt-baseline.xml`、CI android job + `_audit_ci_gap.py` 第 10 个 gradle 钉），详 CODE_QUALITY_STANDARDS.md「机器守护（2026-06 接线）」段）；后端 + 客户端协作项目契约。
+> 规则版本 v1.6.0（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见 2026-06-04 注；v1.4.0→v1.5.0：§14 经 [[0044]] 反转 UI 字符串资源化条——做 string-resourcing（非翻译），见下行 2026-06-06 注，MINOR/收紧已列项落法；v1.5.0→v1.5.1：2026-06-11，PATCH/措辞——§13 运维 Runbook 列举补 CI，runbook 实质更新在 `docs/runbook/`：CI.md 对齐两-workflow 现实 + ci-gap 9+10 钉数、POSTGRES_MIGRATION.md 增表属主排查节、WINDOWS_BACKUP_TASK.md 增备份链健康自查节；v1.5.1→v1.5.2：2026-06-11，PATCH/纠假陈述——§14 速查「detekt 默认门槛」改「Kotlin 阈值（评审基准，机器接线待拍板）」，配套 CODE_QUALITY_STANDARDS.md 真相化：detekt 从未接线、Branch Protection 段换成 gitea 真实合并纪律、PR size 数字改议题纪律；v1.5.2→v1.6.0：2026-06-12，MINOR/新机器门——用户拍板接线 detekt 并指定换掉旧内嵌编译器，§14 速查 Kotlin 阈值由「评审基准」升级为 detekt 机器门（2.0.0-alpha.3〔owner 显式拍板的预发布例外，回收条件 = 2.0 stable 即升正式〕，内嵌 Kotlin 与项目 2.3.21 对齐；CI 跑 type-resolving `:app:detektGrayDebug`+`:app:detektGrayDebugUnitTest`——plain task 会静默跳过 LongParameterList；仅六条 complexity 规则、存量 232+45 条冻结 per-variant baseline、`_audit_ci_gap.py` gradle 钉 9→11），详 CODE_QUALITY_STANDARDS.md「机器守护（2026-06 接线）」段）；后端 + 客户端协作项目契约。
 > §14 在 2026-05-22 增"字段命名"+"当前阶段不引入"两小节：解释 `expense_time`/`tenant_id` 项目命名与模板 §3/§4 的关系，并显式标注当前 v0.x 不引入 `/api/v1` 前缀、`client_request_id` 幂等键、`/health/liveness+readiness` 拆分、UI 字符串资源化（与 §13 "不做完整 i18n" 一致）。
 > §14 在 2026-06-04 更新「不引入 `client_request_id` 幂等键」条（MINOR / 增加规则）：[[0042]] 已为 **outbox-routed mutate 面**引入服务端请求幂等键（`Idempotency-Key` header + `api_idempotency_keys` 表），解除该范围的限制；其余写操作仍不带 client-side dedup key。
 > §14 在 2026-06-06 反转「UI 字符串资源化」条（MINOR / 收紧已列项落法）：[[0044]] 决定做 **string-resourcing**——Android 用户可见中文字面量外置到 `res/values/strings.xml` + `stringResource`，按 screen/module 分 PR。**仍是 resourcing 非翻译**：`strings.xml` 只放中文、不建第二语言，故 §13「完整 i18n / 完整 a11y」仍是「当前阶段不做」（真要翻译另开 ADR=MAJOR）。
@@ -455,7 +455,7 @@ Monarch、支付宝账单等外部产品只允许作为**体验模式**参考；
 
 ### 代码质量数字门槛
 
-详见 [CODE_QUALITY_STANDARDS.md](CODE_QUALITY_STANDARDS.md)：ruff 规则集、line-length、McCabe 复杂度、Kotlin 阈值（detekt 1.23.8 机器门，2026-06-12 接线：六条 complexity 规则、baseline 冻结存量、CI + ci-gap 钉）、PR 议题纪律、Conventional Commits、main 合并纪律。
+详见 [CODE_QUALITY_STANDARDS.md](CODE_QUALITY_STANDARDS.md)：ruff 规则集、line-length、McCabe 复杂度、Kotlin 阈值（detekt 2.0.0-alpha.3 机器门，2026-06-12 接线：六条 complexity 规则、type-resolving 双变体 task、per-variant baseline 冻结存量、CI + ci-gap 钉）、PR 议题纪律、Conventional Commits、main 合并纪律。
 
 ### 依赖与错误码查询
 

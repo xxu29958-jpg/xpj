@@ -7,10 +7,11 @@ compose-bom = "2026.04.01"
 core-ktx = "1.18.0"
 coroutines = "1.10.2"
 datastore = "1.2.1"
-# detekt 2.x is still alpha (rules engine rebuilt on K2); 1.23.8 is the stable
-# line. We only run syntax-based complexity rules (no type resolution), which
-# sidesteps its embedded Kotlin 2.0 compiler vs project Kotlin 2.3 metadata gap.
-detekt = "1.23.8"
+# detekt 2.0 alpha by explicit owner sign-off (2026-06-12): its embedded Kotlin
+# matches this project's 2.3.21 exactly, retiring the 1.23.x embedded-2.0 vs
+# project-2.3 metadata gap. Narrow exposure (six syntax-only complexity rules);
+# move to 2.0 stable the moment it ships.
+detekt = "2.0.0-alpha.3"
 exifinterface = "1.4.2"
 fragment = "1.8.9"
 kotlin = "2.3.21"
@@ -70,7 +71,7 @@ androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 # v1.1 Batch 3: OWASP dependency-check, applied at the root level

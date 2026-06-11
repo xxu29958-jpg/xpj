@@ -1,0 +1,238 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:ApiClient.kt:ApiClient$private fun createInternal: ApiService</ID>
+    <ID>CyclomaticComplexMethod:DashboardCardsScreen.kt:@Composable fun DashboardCardsScreen</ID>
+    <ID>CyclomaticComplexMethod:ErrorUiText.kt:@StringRes private fun errorCodeStringRes: Int?</ID>
+    <ID>CyclomaticComplexMethod:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
+    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
+    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
+    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
+    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getConfirmed: List&lt;ExpenseEntity&gt;</ID>
+    <ID>CyclomaticComplexMethod:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
+    <ID>CyclomaticComplexMethod:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
+    <ID>CyclomaticComplexMethod:ExpenseMappers.kt:fun ExpenseDraft.toRequest: ExpenseUpdateRequest</ID>
+    <ID>CyclomaticComplexMethod:FamilyMembersScreen.kt:@Composable fun FamilyMembersScreen</ID>
+    <ID>CyclomaticComplexMethod:ImmersiveBackground.kt:@Composable fun TicketboxBackgroundLayer</ID>
+    <ID>CyclomaticComplexMethod:ImmersiveBackground.kt:@Composable private fun BoxScope.BottomReadabilityScrim</ID>
+    <ID>CyclomaticComplexMethod:ImmersiveBackground.kt:fun resolveCardContainerAlpha: Float</ID>
+    <ID>CyclomaticComplexMethod:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LedgerScreen</ID>
+    <ID>CyclomaticComplexMethod:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
+    <ID>CyclomaticComplexMethod:OutboxDrainEngine.kt:OutboxDrainEngine$suspend fun drainOnce: DrainSummary</ID>
+    <ID>CyclomaticComplexMethod:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
+    <ID>CyclomaticComplexMethod:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
+    <ID>CyclomaticComplexMethod:SettingsServerComponents.kt:@Composable internal fun AccountStatusCard</ID>
+    <ID>CyclomaticComplexMethod:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
+    <ID>CyclomaticComplexMethod:SyncStatusScreen.kt:@Composable private fun mutationLabel: String</ID>
+    <ID>CyclomaticComplexMethod:_RepositorySupport.kt:internal fun backendErrorUserMessage: String</ID>
+    <ID>LargeClass:ExpenseDao_Impl.kt:ExpenseDao_Impl : ExpenseDao</ID>
+    <ID>LargeClass:PendingMutationDao_Impl.kt:PendingMutationDao_Impl : PendingMutationDao</ID>
+    <ID>LongMethod:ApiClient.kt:ApiClient$private fun createInternal: ApiService</ID>
+    <ID>LongMethod:AppDatabase.kt:AppDatabase.Companion.&lt;no name provided&gt;$override fun migrate</ID>
+    <ID>LongMethod:AppDatabase_Impl.kt:AppDatabase_Impl.&lt;no name provided&gt;$public override fun onValidateSchema: RoomOpenDelegate.ValidationResult</ID>
+    <ID>LongMethod:AppearanceScreen.kt:@Composable fun AppearanceScreen</ID>
+    <ID>LongMethod:BackgroundCropScreen.kt:@Composable fun BackgroundCropScreen</ID>
+    <ID>LongMethod:BackgroundGalleryScreen.kt:@Composable fun BackgroundGalleryScreen</ID>
+    <ID>LongMethod:BackgroundPreviewScreen.kt:@Composable fun BackgroundPreviewScreen</ID>
+    <ID>LongMethod:BackgroundTasksScreen.kt:@Composable private fun TaskRow</ID>
+    <ID>LongMethod:BindServerScreen.kt:@Composable fun BindServerScreen</ID>
+    <ID>LongMethod:BudgetScreen.kt:@Composable fun BudgetScreen</ID>
+    <ID>LongMethod:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>
+    <ID>LongMethod:CategoryStructureCard.kt:@Composable internal fun CategoryStructureCard</ID>
+    <ID>LongMethod:CategoryStructureCard.kt:@Composable private fun CategoryStructureBarRow</ID>
+    <ID>LongMethod:ChartTokens.kt:fun chartTokensForSkin: ChartTokens</ID>
+    <ID>LongMethod:ComponentPreviewSamples.kt:@Preview(showBackground = true) @Composable private fun AppVisualComponentsPreview</ID>
+    <ID>LongMethod:CurrencySection.kt:@Composable private fun CurrencyOptionCard</ID>
+    <ID>LongMethod:DashboardCardsScreen.kt:@Composable fun DashboardCardsScreen</ID>
+    <ID>LongMethod:DataExportScreen.kt:@Composable fun DataExportScreen</ID>
+    <ID>LongMethod:DuplicateConfirmSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun DuplicateConfirmSheetContent</ID>
+    <ID>LongMethod:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
+    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
+    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
+    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
+    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getConfirmed: List&lt;ExpenseEntity&gt;</ID>
+    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl.&lt;no name provided&gt;$protected override fun bind</ID>
+    <ID>LongMethod:ExpenseEditFields.kt:@Composable internal fun EditDraftPreviewCard</ID>
+    <ID>LongMethod:ExpenseEditMoreSection.kt:@Composable internal fun ExpenseEditMoreSection</ID>
+    <ID>LongMethod:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
+    <ID>LongMethod:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
+    <ID>LongMethod:FamilyMembersScreen.kt:@Composable fun FamilyMembersScreen</ID>
+    <ID>LongMethod:FamilyMembersScreen.kt:@Composable private fun FamilyMemberRow</ID>
+    <ID>LongMethod:ImmersiveBackground.kt:@Composable fun TicketboxBackgroundLayer</ID>
+    <ID>LongMethod:IncomePlanScreen.kt:@Composable private fun AddIncomePlanSheet</ID>
+    <ID>LongMethod:IncomePlanScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun IncomePlanScreen</ID>
+    <ID>LongMethod:ItemsEditorSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ItemsEditorSheet</ID>
+    <ID>LongMethod:JoinFamilyLedgerScreen.kt:@Composable fun JoinFamilyLedgerScreen</ID>
+    <ID>LongMethod:LedgerBulkEdit.kt:@Composable internal fun LedgerBulkEditSheet</ID>
+    <ID>LongMethod:LedgerEmptyState.kt:@Composable internal fun EmptyLedgerState</ID>
+    <ID>LongMethod:LedgerFilters.kt:@Composable private fun LedgerInlineFilters</ID>
+    <ID>LongMethod:LedgerHeader.kt:@Composable internal fun LedgerHeader</ID>
+    <ID>LongMethod:LedgerItems.kt:@Composable internal fun LedgerExpenseCard</ID>
+    <ID>LongMethod:LedgerItems.kt:@Composable internal fun LedgerExpenseTableRow</ID>
+    <ID>LongMethod:LedgerManualExpenseSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ManualExpenseSheet</ID>
+    <ID>LongMethod:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LedgerScreen</ID>
+    <ID>LongMethod:LedgerSwitcherScreen.kt:@Composable fun LedgerSwitcherScreen</ID>
+    <ID>LongMethod:LedgerToolsSheet.kt:@Composable internal fun LedgerToolsSheet</ID>
+    <ID>LongMethod:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
+    <ID>LongMethod:MerchantAliasesScreen.kt:@Composable fun MerchantAliasesScreen</ID>
+    <ID>LongMethod:MerchantAliasesScreen.kt:@Composable private fun MerchantAliasCard</ID>
+    <ID>LongMethod:MissingAmountSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun MissingAmountSheetContent</ID>
+    <ID>LongMethod:NotificationPreferencesScreen.kt:@Composable fun NotificationPreferencesScreen</ID>
+    <ID>LongMethod:OutboxDrainEngine.kt:OutboxDrainEngine$suspend fun drainOnce: DrainSummary</ID>
+    <ID>LongMethod:PendingComponents.kt:@Composable internal fun PendingTop</ID>
+    <ID>LongMethod:PendingEmptyStates.kt:@Composable internal fun EmptyPendingState</ID>
+    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override fun observeConflictRows: Flow&lt;List&lt;PendingMutationEntity&gt;&gt;</ID>
+    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override fun observeFailedRows: Flow&lt;List&lt;PendingMutationEntity&gt;&gt;</ID>
+    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override suspend fun activeForTarget: List&lt;PendingMutationEntity&gt;</ID>
+    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override suspend fun nextPendingBatch: List&lt;PendingMutationEntity&gt;</ID>
+    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override suspend fun nextRunnableBatch: List&lt;PendingMutationEntity&gt;</ID>
+    <ID>LongMethod:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
+    <ID>LongMethod:PendingViewModel.kt:PendingViewModel$fun undoReject</ID>
+    <ID>LongMethod:PendingViewModelReviewActions.kt:fun PendingViewModel.confirmReadyExpenses</ID>
+    <ID>LongMethod:PendingViewModelReviewActions.kt:fun PendingViewModel.saveAmountAndConfirm</ID>
+    <ID>LongMethod:QuickCategorySheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun QuickCategorySheetContent</ID>
+    <ID>LongMethod:RecurringScreen.kt:@Composable fun RecurringScreen</ID>
+    <ID>LongMethod:ReportsInsightCards.kt:@Composable internal fun ReportsInsightCard</ID>
+    <ID>LongMethod:SecurityPrivacyScreen.kt:@Composable fun SecurityPrivacyScreen</ID>
+    <ID>LongMethod:ServerSettingsScreen.kt:@Composable fun ServerSettingsScreen</ID>
+    <ID>LongMethod:SettingsAppearanceComponents.kt:@Composable internal fun ThemeMoodPreview</ID>
+    <ID>LongMethod:SettingsBackgroundComponents.kt:@Composable internal fun BuiltInBackgroundCard</ID>
+    <ID>LongMethod:SettingsBackgroundComponents.kt:@Composable internal fun GradientPreview</ID>
+    <ID>LongMethod:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
+    <ID>LongMethod:SettingsRootScreen.kt:@Composable fun SettingsRootScreen</ID>
+    <ID>LongMethod:SettingsRoute.kt:@Composable internal fun SettingsRoute</ID>
+    <ID>LongMethod:SettingsServerComponents.kt:@Composable internal fun AccountStatusCard</ID>
+    <ID>LongMethod:SettingsServerComponents.kt:@Composable internal fun PreviewRoleCard</ID>
+    <ID>LongMethod:SplitsEditorSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun SplitsEditorSheet</ID>
+    <ID>LongMethod:StatsMetricGrid.kt:@Composable private fun BudgetProgressCard</ID>
+    <ID>LongMethod:StatsMetricGrid.kt:@Composable private fun StatsMetricCard</ID>
+    <ID>LongMethod:StatsOverviewCard.kt:@Composable internal fun StatsOverviewCard</ID>
+    <ID>LongMethod:StatsOverviewCard.kt:@Composable private fun HeroSparkline</ID>
+    <ID>LongMethod:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
+    <ID>LongMethod:TagManagementScreen.kt:@Composable fun TagManagementScreen</ID>
+    <ID>LongMethod:TagStatsCard.kt:@Composable private fun TagStatsRow</ID>
+    <ID>LongMethod:Theme.kt:@Composable fun TicketboxAtmosphereBackground</ID>
+    <ID>LongMethod:ThemeVisuals.kt:fun themeVisualsForSkin: ThemeVisuals</ID>
+    <ID>LongMethod:TicketboxApp.kt:@Composable private fun TicketboxContent</ID>
+    <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/expenses/confirmed") suspend fun confirmedExpenses: PaginatedExpensesDto</ID>
+    <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/reports/overview") suspend fun reportsOverview: ReportsOverviewDto</ID>
+    <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/reports/overview.csv") @Streaming suspend fun reportsOverviewCsv: Response&lt;ResponseBody&gt;</ID>
+    <ID>LongParameterList:AppAsyncImage.kt:@Composable fun AppAsyncImage</ID>
+    <ID>LongParameterList:AppButtons.kt:@Composable fun AppOutlinedButton</ID>
+    <ID>LongParameterList:AppFilterChip.kt:@Composable fun AppFilterChip</ID>
+    <ID>LongParameterList:AppPageScaffold.kt:@Composable fun AppPageScaffold</ID>
+    <ID>LongParameterList:AppPageScaffold.kt:@Composable fun AppPageScrollableColumn</ID>
+    <ID>LongParameterList:AppPageScaffold.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun AppScrollableContent</ID>
+    <ID>LongParameterList:AppearanceScreen.kt:@Composable fun AppearanceScreen</ID>
+    <ID>LongParameterList:BudgetScreen.kt:@Composable fun BudgetScreen</ID>
+    <ID>LongParameterList:BulkConfirmSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun BulkConfirmSheetContent</ID>
+    <ID>LongParameterList:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>
+    <ID>LongParameterList:DashboardCardsScreen.kt:@Composable private fun DashboardCardRow</ID>
+    <ID>LongParameterList:DraggableReorderColumn.kt:@Composable fun &lt;T : Any&gt; DraggableReorderColumn</ID>
+    <ID>LongParameterList:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
+    <ID>LongParameterList:ExpenseDetailRepository.kt:ExpenseDetailRepository$private suspend fun enqueueRecognizeText</ID>
+    <ID>LongParameterList:ExpenseDetailRepository.kt:ExpenseDetailRepository$private suspend fun enqueueReplaceItems</ID>
+    <ID>LongParameterList:ExpenseDetailRepository.kt:ExpenseDetailRepository$private suspend fun enqueueReplaceSplits</ID>
+    <ID>LongParameterList:ExpenseEditFields.kt:@Composable internal fun EditDraftPreviewCard</ID>
+    <ID>LongParameterList:ExpenseEditFields.kt:@Composable internal fun ExpenseDateField</ID>
+    <ID>LongParameterList:ExpenseEditMoreSection.kt:@Composable internal fun ExpenseEditMoreSection</ID>
+    <ID>LongParameterList:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
+    <ID>LongParameterList:ExpenseEditV1Details.kt:@Composable internal fun ExpenseEditV1DetailsSection</ID>
+    <ID>LongParameterList:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
+    <ID>LongParameterList:ExpenseFilters.kt:fun filterConfirmedExpenses: List&lt;Expense&gt;</ID>
+    <ID>LongParameterList:ExpensePendingRepository.kt:ExpensePendingRepository$private suspend fun enqueuePatchExpense</ID>
+    <ID>LongParameterList:ExpenseRepository.kt:ExpenseRepository</ID>
+    <ID>LongParameterList:ExpenseRepositoryCore.kt:ExpenseRepositoryCore</ID>
+    <ID>LongParameterList:ExpenseRepositoryCore.kt:ExpenseRepositoryCore$suspend fun syncConfirmedFromService: List&lt;Expense&gt;</ID>
+    <ID>LongParameterList:FamilyMembersScreen.kt:@Composable private fun FamilyMemberRow</ID>
+    <ID>LongParameterList:IncomePlanRepository.kt:IncomePlanRepository$private suspend fun enqueueUpdateIncomePlan</ID>
+    <ID>LongParameterList:IncomePlanScreen.kt:@Composable private fun AddIncomePlanSheet</ID>
+    <ID>LongParameterList:IncomePlanScreen.kt:@Composable private fun IncomePlanCard</ID>
+    <ID>LongParameterList:ItemsEditorSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ItemsEditorSheet</ID>
+    <ID>LongParameterList:LedgerBulkEdit.kt:@Composable internal fun LedgerBulkEditSheet</ID>
+    <ID>LongParameterList:LedgerFilters.kt:@Composable internal fun LedgerFilterPanel</ID>
+    <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseCard</ID>
+    <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseListRow</ID>
+    <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseTableRow</ID>
+    <ID>LongParameterList:LedgerManualExpenseSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ManualExpenseSheet</ID>
+    <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LedgerScreen</ID>
+    <ID>LongParameterList:LedgerToolsSheet.kt:@Composable internal fun LedgerToolsSheet</ID>
+    <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
+    <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$suspend fun applyTransition</ID>
+    <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$suspend fun applyTransitionIfCurrent: Boolean</ID>
+    <ID>LongParameterList:MainNavGraph.kt:@Composable @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter") private fun MainRoute</ID>
+    <ID>LongParameterList:MainNavGraph.kt:@Composable internal fun MainNavGraph</ID>
+    <ID>LongParameterList:MainNavGraph.kt:@Composable private fun MainRouteContent</ID>
+    <ID>LongParameterList:MainNavGraph.kt:@Composable private fun MainTabRoute</ID>
+    <ID>LongParameterList:MainScreenFactory.kt:MainScreenFactory</ID>
+    <ID>LongParameterList:MerchantAliasesScreen.kt:@Composable fun MerchantAliasesScreen</ID>
+    <ID>LongParameterList:MerchantRepository.kt:MerchantRepository</ID>
+    <ID>LongParameterList:MerchantRepository.kt:MerchantRepository$private suspend fun enqueueDeleteMerchantAlias</ID>
+    <ID>LongParameterList:MerchantRepository.kt:MerchantRepository$private suspend fun enqueueUpdateMerchantAlias</ID>
+    <ID>LongParameterList:PendingComponents.kt:@Composable internal fun PendingTop</ID>
+    <ID>LongParameterList:PendingEmptyStates.kt:@Composable internal fun EmptyPendingState</ID>
+    <ID>LongParameterList:PendingFilters.kt:@Composable internal fun NeedsReviewFilterBar</ID>
+    <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT * FROM pending_mutations AS pm WHERE pm.serverUrl = :serverUrl AND pm.ledgerId = :ledgerId AND pm.status = :pendingStatus AND NOT EXISTS ( SELECT 1 FROM pending_mutations AS sib WHERE sib.serverUrl = pm.serverUrl AND sib.ledgerId = pm.ledgerId AND sib.targetId = pm.targetId AND sib.status IN (:inFlightStatus, :conflictStatus, :failedStatus) ) AND NOT EXISTS ( SELECT 1 FROM pending_mutations AS older WHERE older.serverUrl = pm.serverUrl AND older.ledgerId = pm.ledgerId AND older.targetId = pm.targetId AND older.status = :pendingStatus AND ( older.createdAt &lt; pm.createdAt OR (older.createdAt = pm.createdAt AND older.id &lt; pm.id) ) ) ORDER BY pm.createdAt ASC, pm.id ASC LIMIT :limit """, ) suspend fun nextRunnableBatch: List&lt;PendingMutationEntity&gt;</ID>
+    <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND targetId = :targetId AND status IN (:pendingStatus, :inFlightStatus, :conflictStatus, :failedStatus) ORDER BY createdAt ASC, id ASC """, ) suspend fun activeForTarget: List&lt;PendingMutationEntity&gt;</ID>
+    <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT COUNT(*) &gt; 0 FROM pending_mutations WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND targetId = :targetId AND status IN (:inFlightStatus, :conflictStatus, :failedStatus) """, ) suspend fun hasUnresolvedRowForTarget: Boolean</ID>
+    <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ UPDATE pending_mutations SET status = :pendingStatus, lastError = :recoveryMessage WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND status = :inFlightStatus AND (attemptedAt IS NULL OR attemptedAt &lt; :staleCutoffIso) """, ) suspend fun recoverStaleInFlight: Int</ID>
+    <ID>LongParameterList:PendingReviewActions.kt:PendingReviewActions$suspend fun uploadScreenshot: Result&lt;Long&gt;</ID>
+    <ID>LongParameterList:PendingReviewSheetHost.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) internal fun PendingReviewSheetHost</ID>
+    <ID>LongParameterList:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
+    <ID>LongParameterList:PendingViewModel.kt:PendingViewModel$fun uploadScreenshot</ID>
+    <ID>LongParameterList:PendingViewModel.kt:PendingViewModel$private fun launchStateTransition</ID>
+    <ID>LongParameterList:RecurringScreen.kt:@Composable fun RecurringScreen</ID>
+    <ID>LongParameterList:RecurringScreen.kt:@Composable private fun RecurringItemRow</ID>
+    <ID>LongParameterList:RecurringScreen.kt:@Composable private fun RecurringItemsCard</ID>
+    <ID>LongParameterList:ReportsRepository.kt:ReportsRepository$private suspend fun enqueueUpdateGoal</ID>
+    <ID>LongParameterList:RuleRepository.kt:RuleRepository</ID>
+    <ID>LongParameterList:RuleRepository.kt:RuleRepository$private suspend fun enqueueDeleteCategoryRule</ID>
+    <ID>LongParameterList:RuleRepository.kt:RuleRepository$private suspend fun enqueueUpdateCategoryRule</ID>
+    <ID>LongParameterList:RuleRepository.kt:RuleRepository$suspend fun updateCategoryRule: Result&lt;CategoryRule&gt;</ID>
+    <ID>LongParameterList:ServerSettingsScreen.kt:@Composable fun ServerSettingsScreen</ID>
+    <ID>LongParameterList:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
+    <ID>LongParameterList:SettingsRootScreen.kt:@Composable fun SettingsRootScreen</ID>
+    <ID>LongParameterList:SettingsRoute.kt:@Composable internal fun SettingsRoute</ID>
+    <ID>LongParameterList:SettingsServerComponents.kt:@Composable internal fun AccountStatusCard</ID>
+    <ID>LongParameterList:SplitsEditorSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun SplitsEditorSheet</ID>
+    <ID>LongParameterList:StatsScreen.kt:@Composable private fun StatsTopPanel</ID>
+    <ID>LongParameterList:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
+    <ID>LongParameterList:SwipeableActionRow.kt:@Composable fun SwipeableActionRow</ID>
+    <ID>LongParameterList:TagManagementScreen.kt:@Composable private fun MergeTagDialog</ID>
+    <ID>LongParameterList:TagManagementScreen.kt:@Composable private fun TagCard</ID>
+    <ID>LongParameterList:TicketboxApp.kt:@Composable fun TicketboxApp</ID>
+    <ID>LongParameterList:TicketboxApp.kt:@Composable private fun MainShell</ID>
+    <ID>LongParameterList:TicketboxApp.kt:@Composable private fun TicketboxContent</ID>
+    <ID>LongParameterList:TicketboxSettingsStore.kt:TicketboxSettingsStore$fun saveIdentity</ID>
+    <ID>TooManyFunctions:ApiService.kt:ApiService</ID>
+    <ID>TooManyFunctions:BudgetViewModel.kt:BudgetViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:CategoryRulesViewModel.kt:CategoryRulesViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao</ID>
+    <ID>TooManyFunctions:ExpenseDao_Impl.kt:ExpenseDao_Impl : ExpenseDao</ID>
+    <ID>TooManyFunctions:ExpenseDetailRepository.kt:ExpenseDetailRepository</ID>
+    <ID>TooManyFunctions:ExpenseEditActions.kt:ExpenseEditActions</ID>
+    <ID>TooManyFunctions:ExpenseEditV1Details.kt:com.ticketbox.ui.screens.expense.ExpenseEditV1Details.kt</ID>
+    <ID>TooManyFunctions:ExpenseEditViewModel.kt:ExpenseEditViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:ExpenseMappers.kt:com.ticketbox.data.repository.ExpenseMappers.kt</ID>
+    <ID>TooManyFunctions:ExpensePendingRepository.kt:ExpensePendingRepository : PendingReviewActions</ID>
+    <ID>TooManyFunctions:ExpenseRepository.kt:ExpenseRepository : ServerBindingRepositoryPendingReviewActionsLedgerActionsGlobalSearchActionsStatsActionsExpenseEditActions</ID>
+    <ID>TooManyFunctions:ExpenseRepositoryCore.kt:ExpenseRepositoryCore</ID>
+    <ID>TooManyFunctions:Formatters.kt:com.ticketbox.ui.components.Formatters.kt</ID>
+    <ID>TooManyFunctions:LedgerRepository.kt:LedgerRepository</ID>
+    <ID>TooManyFunctions:LedgerViewModel.kt:LedgerViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:LocalSettingsStore.kt:LocalSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:MonthlyStatsViewModel.kt:MonthlyStatsViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:OutboxRepository.kt:OutboxRepository</ID>
+    <ID>TooManyFunctions:PendingMutationDao.kt:PendingMutationDao</ID>
+    <ID>TooManyFunctions:PendingMutationDao_Impl.kt:PendingMutationDao_Impl : PendingMutationDao</ID>
+    <ID>TooManyFunctions:PendingReviewActions.kt:PendingReviewActions</ID>
+    <ID>TooManyFunctions:PendingViewModel.kt:PendingViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:PendingViewModelReviewActions.kt:com.ticketbox.viewmodel.PendingViewModelReviewActions.kt</ID>
+    <ID>TooManyFunctions:ReportsRepository.kt:ReportsRepository : ReportsActions</ID>
+    <ID>TooManyFunctions:RuleRepository.kt:RuleRepository</ID>
+    <ID>TooManyFunctions:ScreenshotUploadPreprocessor.kt:com.ticketbox.upload.ScreenshotUploadPreprocessor.kt</ID>
+    <ID>TooManyFunctions:TicketboxSettingsStore.kt:TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:ViewModelFactories.kt:com.ticketbox.viewmodel.ViewModelFactories.kt</ID>
+  </CurrentIssues>
+</SmellBaseline>

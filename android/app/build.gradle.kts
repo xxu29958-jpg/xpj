@@ -383,10 +383,15 @@ val androidTestAnnotations = listOf(
 // parsing). Keep them mentally separate.
 
 // Machine gate for the six Kotlin complexity thresholds in
-// docs/rules/CODE_QUALITY_STANDARDS.md. Plain (non-type-resolving) ``:app:detekt``
-// only: the six rules are pure-syntax, which keeps detekt 1.23.x's embedded
-// Kotlin 2.0 compiler away from this project's Kotlin 2.3 metadata. Pre-existing
-// violations are frozen in detekt-baseline.xml — new/edited code must comply.
+// docs/rules/CODE_QUALITY_STANDARDS.md. CI runs the type-resolving variant
+// tasks (:app:detektGrayDebug + :app:detektGrayDebugUnitTest): detekt 2.0's
+// embedded Kotlin matches this project's, and LongParameterList only runs
+// under full analysis (the plain :app:detekt task silently skips it).
+// Pre-existing violations are frozen per variant in
+// detekt-baseline-grayDebug.xml / detekt-baseline-grayDebugUnitTest.xml —
+// new/edited code must comply. Known alpha wart: the analysis classpath
+// misses AGP-generated BuildConfig (35 unresolved-reference warnings); the
+// six gated rules are syntax-level counts, so reporting stays accurate.
 detekt {
     buildUponDefaultConfig = false
     config.setFrom(rootProject.file("detekt.yml"))

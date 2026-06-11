@@ -24,21 +24,26 @@
 | 嵌套深度 | 4 | `NestedBlockDepth` |
 | 文件函数数 | 11 | `TooManyFunctions` |
 
-**机器守护（2026-06 接线）**：detekt **1.23.8**（稳定线；2.0 仍 alpha 不入主线，
-Apache-2.0，版本进 `android/gradle/libs.versions.toml`）。`:app:detekt` 为 plain
-纯语法分析——上表六条全部不需要 type resolution，从而绕开 detekt 1.23 内嵌
-Kotlin 2.0 编译器读不了本项目 Kotlin 2.3 metadata 的已知不兼容（detekt#8865，
-type-resolving 变体如 `detektMain` 不可用，勿接）。配置 `android/detekt.yml`
-**只激活这六条**（`buildUponDefaultConfig=false`，style/naming 等规则集显式关闭——
-未经拍板不混入门槛）；接线时存量 344 处违规（178 文件，大头 Compose 长函数/参数表）
-冻结在 `android/app/detekt-baseline.xml`，新代码与被改代码必须达标。CI 在
-android-unit job 的 lint 之后跑 `:app:detekt`，`_audit_ci_gap.py` 已钉（第 10 个
-gradle task）。已知债务：1.23.8 用了 Gradle 10 将废 API（Gradle 9 仅警告），
-detekt 2.0 stable 后按 DEPENDENCIES.md 升级流程换代。历史阈值超标按职责拆分
-收口（实证：`ExpenseEditViewModel` 曾膨到 815 行，靠手动 region 拆分回 ~470——
-正是接线前无机器守护的代价）；baseline 条目是冻结的债，不是许可。Android lane
-其余机器门：`lintGrayDebug`、`assertAndroidTestCountEqualsBaseline`（`@Test`
-计数 ratchet）、Room schema 漂移门、R8 release 编译、apksigner 指纹钉。
+**机器守护（2026-06 接线）**：detekt **2.0.0-alpha.3**（plugin id `dev.detekt`，
+Apache-2.0，版本进 `android/gradle/libs.versions.toml`）。**预发布版本是 owner
+显式拍板的例外**（2026-06-12「内嵌的去更新掉」）：理由 = 2.0 内嵌 Kotlin 与本项目
+2.3.21 完全一致，消除 1.23 稳定线「内嵌 Kotlin 2.0 编译器读不了项目 2.3 metadata」
+（detekt#8865）的结构性债；暴露面窄（仅六条 complexity 规则、开发期工具不进产品）；
+回收条件 = **2.0 stable 发布即升正式版**（按 DEPENDENCIES.md 升级流程）。CI 跑
+**type-resolving 变体任务 `:app:detektGrayDebug` + `:app:detektGrayDebugUnitTest`**
+（main + 单测源集），不是 plain `:app:detekt`——2.x 的 `LongParameterList` 只在
+full analysis 下运行，plain 会**静默跳过它**（实验实证：plain 下阈值压 0 仍零命中），
+勿换回。配置 `android/detekt.yml` **只激活六条**（`buildUponDefaultConfig=false`，
+2.0 schema 的 `allowed*` 属性族，style/naming 等规则集显式关闭——未经拍板不混入
+门槛）；接线时存量违规冻结在 per-variant baseline（`detekt-baseline-grayDebug.xml`
+232 条 + `detekt-baseline-grayDebugUnitTest.xml` 45 条，大头 Compose 长函数/参数表），
+新代码与被改代码必须达标。`_audit_ci_gap.py` 钉两个 task（gradle 钉 9→11）。
+已知 alpha 毛边：分析 classpath 缺 AGP 生成的 `BuildConfig`（35 条 unresolved
+警告）——六条规则全是语法级计数，报告精度不受影响。历史阈值超标按职责拆分收口
+（实证：`ExpenseEditViewModel` 曾膨到 815 行，靠手动 region 拆分回 ~470——正是
+接线前无机器守护的代价）；baseline 条目是冻结的债，不是许可。Android lane 其余
+机器门：`lintGrayDebug`、`assertAndroidTestCountEqualsBaseline`（`@Test` 计数
+ratchet）、Room schema 漂移门、R8 release 编译、apksigner 指纹钉。
 
 ## Pull Request
 
