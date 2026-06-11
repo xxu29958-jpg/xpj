@@ -25,7 +25,8 @@
 <div class="card">
   <h2>生成新绑定码</h2>
   <p class="text-meta" style="margin-bottom:var(--space-5)">
-    绑定码用于 Android 设备绑定本地私人账本。每次生成仅有一个有效码，过期自动失效。
+    绑定码用于把 Android 设备配成所选账本<strong>拥有者</strong>的账号，过期自动失效；
+    同一账号再次绑定会把旧设备踢下线。家庭成员入伙请改用「成员管理」里的邀请，不要把绑定码发给成员。
   </p>
   {% if not ledger_choices %}
   <div class="alert alert-danger">

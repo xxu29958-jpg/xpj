@@ -90,6 +90,57 @@ class AppViewModelBindingTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun refreshBindingStateFlipsToBoundAndUnlockedAfterOutOfBandJoin() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val settingsStore = FakeAppSettingsStore(initialBound = false, requiresUnlock = true)
+            val tokenStore = FakeSessionTokenStore(initialToken = null)
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+                requireLocalUnlock = true,
+            )
+            assertEquals(false, viewModel.uiState.value.isBound)
+
+            // Simulate LedgerRepository.acceptInvitation(serverUrlOverride=…)
+            // having persisted a binding behind the VM's back (the cold-start
+            // invitation join path).
+            settingsStore.bound = true
+            tokenStore.saveToken("tk_joined")
+            viewModel.refreshBindingState()
+
+            assertTrue(viewModel.uiState.value.isBound)
+            // Mirrors bind(): a freshly persisted binding starts unlocked —
+            // without this the new member lands on the unlock screen.
+            assertTrue(viewModel.uiState.value.unlocked)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun refreshBindingStateWithoutPersistedBindingStaysUnbound() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                settingsStore = FakeAppSettingsStore(initialBound = false),
+                tokenStore = FakeSessionTokenStore(initialToken = null),
+            )
+
+            viewModel.refreshBindingState()
+
+            assertEquals(false, viewModel.uiState.value.isBound)
+            assertEquals(false, viewModel.uiState.value.unlocked)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
 }
 
 private class FakeBindingRepository(
@@ -101,10 +152,11 @@ private class FakeBindingRepository(
 }
 
 private class FakeAppSettingsStore(
-    private val initialBound: Boolean,
+    initialBound: Boolean,
     private val requiresUnlock: Boolean = false,
 ) : TicketboxSettingsStore {
     override val backgroundSettingsFlow: Flow<BackgroundSettings> = emptyFlow()
+    var bound: Boolean = initialBound
     var markBackgroundedCalls: Int = 0
         private set
 
@@ -171,7 +223,7 @@ private class FakeAppSettingsStore(
 
     override fun saveServerUrl(serverUrl: String) = Unit
 
-    override fun isBound(): Boolean = initialBound
+    override fun isBound(): Boolean = bound
 
     override fun markUnlocked() = Unit
 
@@ -185,11 +237,17 @@ private class FakeAppSettingsStore(
 }
 
 private class FakeSessionTokenStore(
-    private val initialToken: String?,
+    initialToken: String?,
 ) : SessionTokenStore {
-    override fun saveToken(token: String) = Unit
+    private var token: String? = initialToken
 
-    override fun getToken(): String? = initialToken
+    override fun saveToken(token: String) {
+        this.token = token
+    }
 
-    override fun clear() = Unit
+    override fun getToken(): String? = token
+
+    override fun clear() {
+        token = null
+    }
 }

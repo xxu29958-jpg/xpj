@@ -69,7 +69,7 @@
     <string name="bind_server_field_code_placeholder">8 位数字</string>
     <string name="bind_server_button_binding">正在绑定</string>
     <string name="bind_server_button_bind">绑定账本</string>
-    <string name="bind_server_button_scan">扫码绑定</string>
+    <string name="bind_server_button_join_with_invitation">我有家庭邀请</string>
 
     <!-- LoginScreen：本机验证解锁 -->
     <string name="login_header_title">验证后查看账单</string>

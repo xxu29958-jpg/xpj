@@ -5,7 +5,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -32,9 +35,13 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.resolve
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.LoginScreen
+import com.ticketbox.ui.screens.ServerUrlEntryConfig
+import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
+import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
+import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 
 @Composable
 fun TicketboxApp(
@@ -122,12 +129,10 @@ private fun TicketboxContent(
             currentSkin = appState.skin,
             surfaceRole = SurfaceRole.Auth,
         ) {
-            BindServerScreen(
-                loading = appState.binding,
-                message = appState.authMessage,
-                defaultServerUrl = BuildConfig.DEFAULT_SERVER_URL,
-                showServerUrlInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
-                onBind = appViewModel::bind,
+            UnboundAuthFlow(
+                appState = appState,
+                appViewModel = appViewModel,
+                ledgerRepository = ledgerRepository,
             )
         }
         return
@@ -148,7 +153,9 @@ private fun TicketboxContent(
                     }
                     biometricAuthManager.authenticate(
                         onSuccess = appViewModel::unlockSucceeded,
-                        onError = appViewModel::unlockFailed,
+                        // BiometricAuthManager.onError hands an already-resolved
+                        // system string; wrap verbatim so the message is unchanged.
+                        onError = { message -> appViewModel.unlockFailed(UiText.raw(message)) },
                     )
                 },
             )
@@ -178,6 +185,50 @@ private fun TicketboxContent(
         onCurrencyChange = appViewModel::selectCurrency,
         onBindingCleared = appViewModel::clearBinding,
     )
+}
+
+/**
+ * Cold-start entry, two doors: pairing-code binding (configures this device
+ * as the ledger owner's account) and「我有家庭邀请」— the invitation join for
+ * family members, previously locked behind the already-bound settings tree
+ * (the audit-P1 onboarding dead end). Join success persists the binding via
+ * ``LedgerRepository.acceptInvitation`` and [AppViewModel.refreshBindingState]
+ * flips the gate.
+ */
+@Composable
+private fun UnboundAuthFlow(
+    appState: AppUiState,
+    appViewModel: AppViewModel,
+    ledgerRepository: LedgerRepository,
+) {
+    var showJoinFlow by rememberSaveable { mutableStateOf(false) }
+    val serverUrlEntry = ServerUrlEntryConfig(
+        defaultUrl = BuildConfig.DEFAULT_SERVER_URL,
+        showInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
+    )
+    if (showJoinFlow) {
+        val joinViewModel: JoinFamilyLedgerViewModel = viewModel(
+            key = "join-family-ledger-unbound",
+            factory = joinFamilyLedgerViewModelFactory(ledgerRepository),
+        )
+        // The VM is activity-retained; wipe a previous attempt's state on
+        // every (re-)entry so a stale success/error can't greet a new join.
+        LaunchedEffect(joinViewModel) { joinViewModel.reset() }
+        JoinFamilyLedgerScreen(
+            viewModel = joinViewModel,
+            onBack = { showJoinFlow = false },
+            onAccepted = appViewModel::refreshBindingState,
+            serverUrlEntry = serverUrlEntry,
+        )
+    } else {
+        BindServerScreen(
+            loading = appState.binding,
+            message = appState.authMessage,
+            serverUrlEntry = serverUrlEntry,
+            onBind = appViewModel::bind,
+            onJoinWithInvitation = { showJoinFlow = true },
+        )
+    }
 }
 
 @Composable

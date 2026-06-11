@@ -34,6 +34,7 @@ private fun errorCodeStringRes(code: String?): Int? = when (code) {
     "invalid_token" -> R.string.error_invalid_token
     "legacy_auth_removed" -> R.string.error_legacy_auth_removed
     "invalid_pairing_code" -> R.string.error_invalid_pairing_code
+    "rate_limited" -> R.string.error_rate_limited
     "file_too_large" -> R.string.error_file_too_large
     "unsupported_file_type" -> R.string.error_unsupported_file_type
     "expense_not_found" -> R.string.error_expense_not_found

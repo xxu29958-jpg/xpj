@@ -31,6 +31,9 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         // Backend collapses expired / used / invalid into one code (v1.1, to
         // avoid revealing whether a code existed); guide the user to re-obtain.
         "invalid_pairing_code" -> "绑定码无效，请重新获取。"
+        // §4 generic throttle code (currently emitted by the pairing-attempt
+        // limiter, 429); also the right copy when a CDN/Worker 429 carries it.
+        "rate_limited" -> "尝试太频繁，请稍后再试。"
         "file_too_large" -> "上传文件超过大小限制。"
         "unsupported_file_type" -> "不支持的图片格式。"
         "expense_not_found" -> "账单不存在。"

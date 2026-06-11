@@ -54,11 +54,13 @@ def _check_pairing_attempt_limit(db: Session, remote_id: str | None) -> None:
     key = _remote_attempt_key(remote_id)
     count = _active_failure_count(db, key, now_utc())
     if count >= PAIRING_MAX_FAILED_ATTEMPTS:
-        raise AppError(
-            "invalid_pairing_code",
-            "绑定码尝试次数过多，请稍后再试。",
-            status_code=429,
-        )
+        # §4 generic throttle code. Historically this 429 reused
+        # ``invalid_pairing_code``, which clients render as "绑定码无效，
+        # 请重新获取" — a dead loop for the user (the code may be perfectly
+        # fine; trying again is exactly what makes it worse). The message
+        # comes from ERROR_MESSAGES; the invalid/expired/used 401 collapse
+        # in _pair.py is unchanged (still non-oracle).
+        raise AppError("rate_limited", status_code=429)
 
 
 def _record_pairing_failure(db: Session, remote_id: str | None) -> None:

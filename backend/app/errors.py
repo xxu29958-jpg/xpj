@@ -32,6 +32,7 @@ ERROR_MESSAGES = {
     "bootstrap_secret_required": "缺少一次性初始化口令。",
     "invalid_bootstrap_secret": "初始化口令无效或已使用。",
     "invalid_pairing_code": "绑定码无效，请重新生成。",
+    "rate_limited": "尝试太频繁，请稍后再试。",
     "file_too_large": "图片太大，请换一张较小的截图。",
     "unsupported_file_type": "暂不支持这种图片格式。",
     "expense_not_found": "没有找到这笔账单。",

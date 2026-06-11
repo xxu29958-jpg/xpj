@@ -61,6 +61,7 @@
     <string name="error_invalid_token">绑定已失效，请重新绑定账本。</string>
     <string name="error_legacy_auth_removed">请使用新版绑定方式。</string>
     <string name="error_invalid_pairing_code">绑定码无效，请重新获取。</string>
+    <string name="error_rate_limited">尝试太频繁，请稍后再试。</string>
     <string name="error_file_too_large">上传文件超过大小限制。</string>
     <string name="error_unsupported_file_type">不支持的图片格式。</string>
     <string name="error_expense_not_found">账单不存在。</string>
