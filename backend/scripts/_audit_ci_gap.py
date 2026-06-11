@@ -84,6 +84,24 @@ REQUIRED_CI_INVOCATIONS = [
         "backend compileall",
         re.compile(r"\bpython(?:\.exe)?\s+-m\s+compileall\s+app\s+scripts\s+tests\b"),
     ),
+    # Desktop-manager job pins — previously the whole job could be deleted
+    # without this audit noticing. ``backend_manager tests`` is the
+    # desktop-only target set, so these cannot be satisfied by backend lines.
+    RequiredCommand(
+        "desktop compileall",
+        re.compile(r"\bpython(?:\.exe)?\s+-m\s+compileall\s+backend_manager\s+tests\b"),
+    ),
+    RequiredCommand(
+        "desktop ruff lint",
+        re.compile(r"\bruff(?:\.exe)?\s+check\s+backend_manager\s+tests\b"),
+    ),
+    RequiredCommand(
+        # End-of-line anchored: the backend suite's pytest line continues
+        # with ``-ra --tb=short -p no:cacheprovider`` after ``-q`` and must
+        # not satisfy the desktop pin.
+        "desktop pytest",
+        re.compile(r"\bpython(?:\.exe)?\s+-m\s+pytest\s+-q\s*$", re.MULTILINE),
+    ),
 ]
 
 
@@ -168,8 +186,12 @@ def _iter_workflow_run_commands(workflow_dir: pathlib.Path) -> list[WorkflowComm
         while index < len(lines):
             line = lines[index]
             indent = _line_indent(line)
-            while disabled_parent_indents and indent <= disabled_parent_indents[-1]:
-                disabled_parent_indents.pop()
+            # Blank lines have indent 0 but carry no structure — letting them
+            # pop the stack would un-mute an ``if: false`` step whose ``run:``
+            # sits after a blank line, so a disabled step could satisfy pins.
+            if line.strip():
+                while disabled_parent_indents and indent <= disabled_parent_indents[-1]:
+                    disabled_parent_indents.pop()
             disabled_parent_indent = _false_if_block_parent_indent(line)
             if disabled_parent_indent is not None:
                 disabled_parent_indents.append(disabled_parent_indent)
@@ -199,9 +221,19 @@ def _iter_workflow_run_commands(workflow_dir: pathlib.Path) -> list[WorkflowComm
     return commands
 
 
+def _gradle_invocation_pattern(task: str) -> re.Pattern[str]:
+    """Anchor the task on an actual gradlew invocation line — a prose/echo
+    mention of the task name must not satisfy the gate."""
+    return re.compile(r"\bgradlew(?:\.bat)?\b[^\n]*" + re.escape(task))
+
+
 def _missing_gradle_tasks(commands: list[WorkflowCommand]) -> list[str]:
     command_text = "\n".join(command.text for command in commands)
-    return [task for task in REQUIRED_GRADLE_TASKS if task not in command_text]
+    return [
+        task
+        for task in REQUIRED_GRADLE_TASKS
+        if not _gradle_invocation_pattern(task).search(command_text)
+    ]
 
 
 def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
