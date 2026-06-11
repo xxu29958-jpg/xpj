@@ -126,6 +126,7 @@ if (!ticketboxDebugKeystoreFile.exists()) {
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.detekt)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
@@ -380,6 +381,23 @@ val androidTestAnnotations = listOf(
 // counter measures source-level test method declarations; runtime test
 // count is a different metric (would need ``gradle test --dry-run`` and
 // parsing). Keep them mentally separate.
+
+// Machine gate for the six Kotlin complexity thresholds in
+// docs/rules/CODE_QUALITY_STANDARDS.md. CI runs the type-resolving variant
+// tasks (:app:detektGrayDebug + :app:detektGrayDebugUnitTest): detekt 2.0's
+// embedded Kotlin matches this project's, and LongParameterList only runs
+// under full analysis (the plain :app:detekt task silently skips it).
+// Pre-existing violations are frozen per variant in
+// detekt-baseline-grayDebug.xml / detekt-baseline-grayDebugUnitTest.xml —
+// new/edited code must comply. Known alpha wart: the analysis classpath
+// misses AGP-generated BuildConfig (35 unresolved-reference warnings); the
+// six gated rules are syntax-level counts, so reporting stays accurate.
+detekt {
+    buildUponDefaultConfig = false
+    config.setFrom(rootProject.file("detekt.yml"))
+    baseline = file("detekt-baseline.xml")
+    parallel = true
+}
 
 tasks.register("assertAndroidTestCountEqualsBaseline") {
     group = "verification"

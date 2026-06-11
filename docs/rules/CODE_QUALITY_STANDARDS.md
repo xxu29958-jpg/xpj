@@ -15,26 +15,35 @@
 
 ## Kotlin / Android
 
-| 维度 | 评审基准 | 数值出处 |
+| 维度 | 门槛 | detekt 规则 |
 |---|---|---|
-| 函数行数 | 60 | detekt `LongMethod` 默认值 |
-| 类行数 | 600 | detekt `LargeClass` 默认值 |
-| 函数参数 | 5（函数）/ 6（构造） | detekt `LongParameterList` 默认值 |
-| 圈复杂度 | 14 | detekt `CyclomaticComplexMethod` 默认值 |
-| 嵌套深度 | 4 | detekt `NestedBlockDepth` 默认值 |
-| 文件函数数 | 11 | detekt `TooManyFunctions` 默认值 |
+| 函数行数 | 60 | `LongMethod` |
+| 类行数 | 600 | `LargeClass` |
+| 函数参数 | 5（函数）/ 6（构造） | `LongParameterList` |
+| 圈复杂度 | 14 | `CyclomaticComplexMethod` |
+| 嵌套深度 | 4 | `NestedBlockDepth` |
+| 文件函数数 | 11 | `TooManyFunctions` |
 
-**机器守护现状（如实）**：以上阈值**当前没有任何机器接线**——detekt 从未引入
-（`android/detekt.yml` 在 git 全历史中不存在，gradle 零接线；`codebase_audit_gate.py`
-只扫 Python）。它们是 PR 评审时的人工基准，超标按职责拆分收口（实证：
-`ExpenseEditViewModel` 曾膨到 815 行，靠手动 region 拆分回 ~470——正是无机器守护
-的代价）。Android lane 现有的机器门是另一组：`lintGrayDebug`、
-`assertAndroidTestCountEqualsBaseline`（`@Test` 计数 ratchet）、Room schema 漂移门、
-R8 release 编译、apksigner 指纹钉。
-
-**引入 detekt 待拍板**：真接线 = gradle 插件依赖（过 §9 依赖治理 + DEPENDENCIES.md）
-+ 按本表落 `android/detekt.yml` + CI android job 加 task + `_audit_ci_gap.py` 同步钉子
-+ 对存量违规生成 baseline 豁免文件（Compose 长函数预计不少）。选了再立项。
+**机器守护（2026-06 接线）**：detekt **2.0.0-alpha.3**（plugin id `dev.detekt`，
+Apache-2.0，版本进 `android/gradle/libs.versions.toml`）。**预发布版本是 owner
+显式拍板的例外**（2026-06-12「内嵌的去更新掉」）：理由 = 2.0 内嵌 Kotlin 与本项目
+2.3.21 完全一致，消除 1.23 稳定线「内嵌 Kotlin 2.0 编译器读不了项目 2.3 metadata」
+（detekt#8865）的结构性债；暴露面窄（仅六条 complexity 规则、开发期工具不进产品）；
+回收条件 = **2.0 stable 发布即升正式版**（按 DEPENDENCIES.md 升级流程）。CI 跑
+**type-resolving 变体任务 `:app:detektGrayDebug` + `:app:detektGrayDebugUnitTest`**
+（main + 单测源集），不是 plain `:app:detekt`——2.x 的 `LongParameterList` 只在
+full analysis 下运行，plain 会**静默跳过它**（实验实证：plain 下阈值压 0 仍零命中），
+勿换回。配置 `android/detekt.yml` **只激活六条**（`buildUponDefaultConfig=false`，
+2.0 schema 的 `allowed*` 属性族，style/naming 等规则集显式关闭——未经拍板不混入
+门槛）；接线时存量违规冻结在 per-variant baseline（`detekt-baseline-grayDebug.xml`
+232 条 + `detekt-baseline-grayDebugUnitTest.xml` 45 条，大头 Compose 长函数/参数表），
+新代码与被改代码必须达标。`_audit_ci_gap.py` 钉两个 task（gradle 钉 9→11）。
+已知 alpha 毛边：分析 classpath 缺 AGP 生成的 `BuildConfig`（35 条 unresolved
+警告）——六条规则全是语法级计数，报告精度不受影响。历史阈值超标按职责拆分收口
+（实证：`ExpenseEditViewModel` 曾膨到 815 行，靠手动 region 拆分回 ~470——正是
+接线前无机器守护的代价）；baseline 条目是冻结的债，不是许可。Android lane 其余
+机器门：`lintGrayDebug`、`assertAndroidTestCountEqualsBaseline`（`@Test` 计数
+ratchet）、Room schema 漂移门、R8 release 编译、apksigner 指纹钉。
 
 ## Pull Request
 
@@ -71,6 +80,7 @@ R8 release 编译、apksigner 指纹钉。
 ## 参考来源
 
 - [Ruff configuration handbook](https://pydevtools.com/handbook/how-to/how-to-configure-recommended-ruff-defaults/)
-- [Detekt Complexity Rule Set](https://detekt.dev/docs/rules/complexity/)（Kotlin 表数值出处；工具本身未接线）
+- [Detekt Complexity Rule Set](https://detekt.dev/docs/rules/complexity/)（Kotlin 表数值出处）
+- [detekt#8865](https://github.com/detekt/detekt/issues/8865)（1.23.x 对 Kotlin 2.3 metadata 不兼容——plain 模式不受影响的依据）
 - [McCabe cyclomatic complexity (Wikipedia)](https://en.wikipedia.org/wiki/Cyclomatic_complexity)
 - [Conventional Commits 1.0](https://www.conventionalcommits.org/en/v1.0.0/)

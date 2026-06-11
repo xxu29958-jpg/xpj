@@ -31,6 +31,13 @@ REQUIRED_GRADLE_TASKS = [
     ":app:testGrayDebugUnitTest",
     ":app:assertAndroidTestCountEqualsBaseline",
     ":app:lintGrayDebug",
+    # Kotlin complexity gate (CODE_QUALITY_STANDARDS.md six thresholds) —
+    # wired 2026-06; pinned so the lane cannot silently vanish like the
+    # GitHub-era drill did. Both variant tasks pinned: detekt 2.x runs
+    # LongParameterList only under type resolution, so the plain :app:detekt
+    # task would be a weaker gate (and is NOT what CI runs).
+    ":app:detektGrayDebug",
+    ":app:detektGrayDebugUnitTest",
     ":app:assembleGrayDebug",
     ":app:assembleInternalDebug",
     ":app:assembleGrayRelease",

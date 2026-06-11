@@ -1,0 +1,51 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:OpenApiContractGateTest.kt:OpenApiContractGateTest$@Suppress("UNCHECKED_CAST") private fun synthesizeValue: Any?</ID>
+    <ID>CyclomaticComplexMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
+    <ID>LongMethod:ExpenseRepositoryAuthCheckTest.kt:ExpenseRepositoryAuthCheckTest$@Test fun authCheckLedgerCorrectionClearsTargetCacheBeforeIdentitySwitch</ID>
+    <ID>LongMethod:LedgerRepositoryInvitationTest.kt:LedgerRepositoryInvitationTest$@Test fun acceptInvitationSlowResponseDoesNotOverwriteBindingChangedDuringRequest</ID>
+    <ID>LongMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
+    <ID>LongParameterList:ExpenseDaoContractTest.kt:ExpenseDaoContractTest$private fun entity: ExpenseEntity</ID>
+    <ID>LongParameterList:ExpenseFiltersTest.kt:ExpenseFiltersTest$private fun expense: Expense</ID>
+    <ID>LongParameterList:ExpenseMappersTest.kt:ExpenseMappersTest$private fun expenseDto: ExpenseDto</ID>
+    <ID>LongParameterList:ExpensePendingRepositoryOutboxTestSupport.kt:ExpensePendingRepositoryOutboxTestBase.ApiServiceStub</ID>
+    <ID>LongParameterList:FakeApiService.kt:FakeApiService$private fun merchantAliasDto: MerchantAliasDto</ID>
+    <ID>LongParameterList:FormattersTest.kt:private fun formatterExpense: Expense</ID>
+    <ID>LongParameterList:LedgerRepositoryTestFixtures.kt:StubApi</ID>
+    <ID>LongParameterList:OutboxDrainWorkerTest.kt:OutboxDrainWorkerTest$private fun summary</ID>
+    <ID>LongParameterList:PendingViewModelReviewTestSupport.kt:PendingViewModelReviewTestBase$protected fun expense: Expense</ID>
+    <ID>TooManyFunctions:ApiServiceProviderTest.kt:ProviderSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:AppViewModelBindingTest.kt:FakeAppSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:BudgetRepositoryTest.kt:BudgetFakeSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:ExpenseDaoContractTest.kt:ExpenseDaoContractTest</ID>
+    <ID>TooManyFunctions:ExpenseDaoContractTest.kt:FakeExpenseDao : ExpenseDao</ID>
+    <ID>TooManyFunctions:ExpenseEditViewModelTest.kt:ExpenseEditViewModelTest</ID>
+    <ID>TooManyFunctions:ExpenseEditViewModelTest.kt:FakeExpenseEditActions : ExpenseEditActions</ID>
+    <ID>TooManyFunctions:ExpenseFiltersTest.kt:ExpenseFiltersTest</ID>
+    <ID>TooManyFunctions:ExpenseMappersTest.kt:ExpenseMappersTest</ID>
+    <ID>TooManyFunctions:ExpensePendingRepositoryOutboxStateActionsTest.kt:ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRepositoryOutboxTestBase</ID>
+    <ID>TooManyFunctions:FakeApiService.kt:FakeApiService : ApiService</ID>
+    <ID>TooManyFunctions:FakeExpenseDao.kt:FakeExpenseDao : ExpenseDao</ID>
+    <ID>TooManyFunctions:FakePendingMutationDao.kt:FakePendingMutationDao : PendingMutationDao</ID>
+    <ID>TooManyFunctions:FakeStores.kt:FakeTicketboxSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:FormattersTest.kt:FormattersTest</ID>
+    <ID>TooManyFunctions:IncomePlanViewModelTest.kt:IncomePlanViewModelTest</ID>
+    <ID>TooManyFunctions:LedgerRepositoryTestFixtures.kt:LedgerFakeDao : ExpenseDao</ID>
+    <ID>TooManyFunctions:LedgerRepositoryTestFixtures.kt:LedgerFakeSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:LedgerRepositoryTestFixtures.kt:StubApi : ApiService</ID>
+    <ID>TooManyFunctions:LedgerViewModelTest.kt:LedgerViewModelTest</ID>
+    <ID>TooManyFunctions:MerchantRepositoryOutboxFallbackTest.kt:MerchantRepositoryOutboxFallbackTest</ID>
+    <ID>TooManyFunctions:NetworkErrorMapperTest.kt:NetworkErrorMapperTest</ID>
+    <ID>TooManyFunctions:OutboxDrainEngineTest.kt:OutboxDrainEngineTest</ID>
+    <ID>TooManyFunctions:OutboxDrainWorkerTest.kt:OutboxDrainWorkerTest</ID>
+    <ID>TooManyFunctions:OutboxRepositoryTest.kt:OutboxRepositoryTest</ID>
+    <ID>TooManyFunctions:PendingThumbnailLoaderTest.kt:ThumbnailFakeReviewActions : PendingReviewActions</ID>
+    <ID>TooManyFunctions:PendingViewModelReviewSheetAndStateTest.kt:PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewTestBase</ID>
+    <ID>TooManyFunctions:PendingViewModelReviewTestSupport.kt:FakeReviewActions : PendingReviewActions</ID>
+    <ID>TooManyFunctions:ReportsRepositoryTest.kt:ReportsFakeSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:RuleRepositoryOutboxFallbackTest.kt:RuleRepositoryOutboxFallbackTest</ID>
+    <ID>TooManyFunctions:TagManagementViewModelTest.kt:TagManagementViewModelTest</ID>
+  </CurrentIssues>
+</SmellBaseline>

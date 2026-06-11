@@ -1,0 +1,82 @@
+# Kotlin complexity gate — the exact machine translation of the six thresholds
+# in docs/rules/CODE_QUALITY_STANDARDS.md ("Kotlin / Android" table). Nothing
+# else is active on purpose: style/naming/etc. rule sets were never part of the
+# review baseline and would need their own sign-off before joining the gate.
+# Applied via the type-resolving :app:detektGrayDebug / :app:detektGrayDebugUnitTest
+# (LongParameterList needs full analysis in detekt 2.x — the plain :app:detekt
+# task silently skips it). Pre-existing violations live in the per-variant
+# android/app/detekt-baseline-<variant>.xml files.
+# Property names follow the detekt 2.0 schema (allowed* family; the 1.x
+# threshold* spellings are rejected by its config validation).
+
+comments:
+  active: false
+
+complexity:
+  active: true
+  # The six gated rules — limits restated even where they equal the detekt
+  # default, so a detekt version bump can never silently move the gate.
+  CyclomaticComplexMethod:
+    active: true
+    allowedComplexity: 14
+  LargeClass:
+    active: true
+    allowedLines: 600
+  LongMethod:
+    active: true
+    allowedLines: 60
+  LongParameterList:
+    active: true
+    allowedFunctionParameters: 5
+    allowedConstructorParameters: 6
+    ignoreDefaultParameters: false
+  NestedBlockDepth:
+    active: true
+    allowedDepth: 4
+  TooManyFunctions:
+    active: true
+    allowedFunctionsPerFile: 11
+    allowedFunctionsPerClass: 11
+    allowedFunctionsPerInterface: 11
+    allowedFunctionsPerObject: 11
+    allowedFunctionsPerEnum: 11
+  # Default-active complexity rules outside the documented table — off.
+  ComplexCondition:
+    active: false
+  ComplexInterface:
+    active: false
+  CognitiveComplexMethod:
+    active: false
+  LabeledExpression:
+    active: false
+  MethodOverloading:
+    active: false
+  NamedArguments:
+    active: false
+  NestedScopeFunctions:
+    active: false
+  ReplaceSafeCallChainWithRun:
+    active: false
+  StringLiteralDuplication:
+    active: false
+
+coroutines:
+  active: false
+
+empty-blocks:
+  active: false
+
+exceptions:
+  active: false
+
+naming:
+  active: false
+
+performance:
+  active: false
+
+potential-bugs:
+  active: false
+
+style:
+  active: false
