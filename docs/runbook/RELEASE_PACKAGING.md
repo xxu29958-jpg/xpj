@@ -148,7 +148,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.
 
 ## 9. RC 发包源与交接红线
 
-自托管 Gitea CI 不上传 APK artifact（GitHub 时代的 `scripts\verify_rc_artifacts.ps1` 门禁靠 `gh run download` 拉取 GitHub Actions artifact，已随 GitHub→Gitea 迁移整体退役并删除）。当前版本真机验收包的**唯一来源是本机构建**：CI 四 job 全绿后，在同一 commit 上按 §4 构建、按 §8（`accept_gray_release.ps1`）校验 APK / SHA256 / manifest 一致，通过即为当前发布候选；未过 §8 校验的包不得发给任何用户。
+自托管 Gitea CI 不上传 APK artifact（GitHub 时代的 `scripts\verify_rc_artifacts.ps1` 门禁靠 `gh run download` 拉取 GitHub Actions artifact，已随 GitHub→Gitea 迁移整体退役并删除）。当前版本真机验收包的**唯一来源是本机构建**：CI 四 job 全绿后，在同一 commit 上按 §4 构建、按 §8（`accept_gray_release.ps1`）校验，通过即为当前发布候选；未过校验的包不得发给任何用户。
+
+「CI 全绿 + 同一 commit + 干净树」不再只是本节散文，由验收脚本**强制执行**（`Assert-ReleaseProvenance`）：
+
+1. **dirty 一票否决** —— `build_release_apk.ps1` 对 release 变体在构建前就拒绝
+   已跟踪文件有未提交改动的工作树（本机实验可 `-AllowDirty`，但 manifest 仍如实记
+   录 dirty）；验收脚本对 `manifest.git.dirty` 再做第二道硬校验，dirty 包直接失败。
+2. **commit 绑定** —— `manifest.git.commit` 必须等于验收时仓库的 `HEAD`。
+3. **CI 绑定** —— 该 commit 在 Gitea 上的 windows-ci 四 job（Backend full checks /
+   Backend (PostgreSQL) / Desktop manager / Android unit/build）最新一次必须全部
+   success；path-filtered 的 `Connected (emulator)` lane 若存在也必须 success。
+   查询需要 `TICKETBOX_GITEA_TOKEN` 环境变量（或 `-GiteaToken`）；Gitea 地址 / 仓库
+   可用 `-GiteaUrl` / `-GiteaRepo` 覆盖（默认 `http://localhost:3000` 的
+   `codex/xiaopiaojia`）。离线环境可 `-SkipCiBinding` 显式跳过——会醒目 SKIP，
+   **跳过 CI 绑定的包不得作为正式 RC 发出**。
 
 发包交接红线（不随门禁工具变化）：
 

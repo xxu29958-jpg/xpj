@@ -22,6 +22,13 @@ on:
       - "android/app/src/**"
       - "android/gradle/**"
       - "android/app/build.gradle.kts"
+      # Root-level Gradle config affects the instrumented build just as much
+      # as the module file — without these a toolchain/dependency change
+      # could ship past the emulator lane untested (codex review P2 #7).
+      - "android/build.gradle.kts"
+      - "android/gradle.properties"
+      - "android/gradlew.bat"
+      - "android/gradlew"
       - "android/settings.gradle.kts"
       - ".gitea/workflows/android-connected.yml"
   workflow_dispatch:

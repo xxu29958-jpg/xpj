@@ -3,7 +3,11 @@
     [string]$Flavor = "gray",
     [ValidateSet("release", "debug")]
     [string]$Variant = "release",
-    [switch]$SkipManifest
+    [switch]$SkipManifest,
+    # release 变体默认拒绝 dirty 工作树(发包必须可追溯到一个干净 commit);
+    # 本机实验性构建可显式加 -AllowDirty。manifest 仍如实记录 dirty,
+    # 灰度验收(accept_gray_release.ps1)会再次硬性拒绝 dirty manifest。
+    [switch]$AllowDirty
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,6 +93,21 @@ else {
 
 Ensure-JavaHome
 
+if ($Variant -eq "release" -and -not $AllowDirty) {
+    # codex review P1 #1: dirty 此前只写进 manifest、从不失败——脏树构建的
+    # 包可以一路走到发包。release 变体在动 gradle 之前就拦下;manifest 的
+    # dirty 字段仍然如实记录(覆盖 -AllowDirty 实验性构建),验收脚本对
+    # manifest.git.dirty 再做第二道硬校验。
+    # 语义=已跟踪文件的未提交改动(--untracked-files=no):本仓有长期
+    # untracked 的工作目录(docs/audits/),untracked-inclusive 会永久误拦;
+    # 代价是「纯新增且未 add 的源文件」检不到——但真实改动几乎总伴随
+    # 已跟踪文件(注册/import/gradle)变更,由本闸兜住。
+    $dirtyStatus = Get-GitValue -Arguments @("status", "--porcelain", "--untracked-files=no")
+    if (-not [string]::IsNullOrWhiteSpace($dirtyStatus)) {
+        throw "工作树有未提交改动（已跟踪文件），release 构建被拒绝：发包必须可追溯到干净 commit。本机实验加 -AllowDirty。"
+    }
+}
+
 $flavorCap = "$($Flavor.Substring(0, 1).ToUpperInvariant())$($Flavor.Substring(1))"
 $variantCap = "$($Variant.Substring(0, 1).ToUpperInvariant())$($Variant.Substring(1))"
 $task = ":app:assemble$flavorCap$variantCap"
@@ -139,7 +158,10 @@ if (-not $SkipManifest) {
     $gitShortCommit = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
     $gitBranch = Get-GitValue -Arguments @("rev-parse", "--abbrev-ref", "HEAD")
     $gitDirty = $false
-    $gitStatus = Get-GitValue -Arguments @("status", "--porcelain")
+    # 与上面 release 门禁同一语义(tracked-only):untracked-inclusive 会因
+    # 本仓长期 untracked 的 docs/audits/ 把每个包都标 dirty,验收的
+    # manifest.git.dirty 硬校验就永远过不了。
+    $gitStatus = Get-GitValue -Arguments @("status", "--porcelain", "--untracked-files=no")
     if (-not [string]::IsNullOrWhiteSpace($gitStatus)) {
         $gitDirty = $true
     }

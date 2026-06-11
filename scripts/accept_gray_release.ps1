@@ -5,6 +5,13 @@
     [switch]$SkipRelease,
     [switch]$UseTemporaryKeystore,
     [switch]$SkipDevice,
+    # codex review P1 #1: RC 发包门禁的 CI/commit 绑定(替代已退役的
+    # GitHub verify_rc_artifacts.ps1)。默认开;离线/无 CI 环境显式
+    # -SkipCiBinding(会醒目 SKIP,跳过的包不算 RC)。
+    [switch]$SkipCiBinding,
+    [string]$GiteaUrl = "http://localhost:3000",
+    [string]$GiteaRepo = "codex/xiaopiaojia",
+    [string]$GiteaToken = "",
     [string]$SessionToken = "",
     [string]$UploadLink = "",
     [string]$Serial = "",
@@ -259,6 +266,75 @@ function Assert-ReleaseArtifact {
     Write-Host "OK   release 产物校验通过：APK / SHA256 / manifest / server_url 一致。"
 }
 
+function Assert-ReleaseProvenance {
+    # codex review P1 #1: verify_rc_artifacts.ps1 随 GitHub→Gitea 迁移退役后,
+    # 验收只剩 APK/SHA/manifest/server_url 一致性——dirty 树或没过 CI 的
+    # commit 构建的包同样能通过。本函数把「§9 红线」从文档散文变成可执行
+    # 门禁:① manifest.git.dirty 一票否决;② manifest.git.commit 必须等于
+    # 当前 HEAD(包↔checkout 绑定);③ 该 commit 在 Gitea 上 windows-ci 四
+    # job 最新一次全 success(包↔CI 绑定;path-filtered 的 connected lane
+    # 存在则一并要求 success,缺席不强求)。
+    param([Parameter(Mandatory = $true)][string]$ApkPath)
+
+    $apkFile = Get-Item -LiteralPath $ApkPath
+    $manifestPath = Join-Path $apkFile.Directory.FullName "$($apkFile.BaseName).manifest.json"
+    $manifest = Get-Content -Encoding UTF8 -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+
+    if ($manifest.git.dirty) {
+        throw "release manifest 标记 dirty 构建——RC 必须从干净 commit 构建（重建前提交或还原改动）。"
+    }
+    $manifestCommit = [string]$manifest.git.commit
+    if ([string]::IsNullOrWhiteSpace($manifestCommit)) {
+        throw "release manifest 缺少 git.commit，无法绑定来源 commit。"
+    }
+    $headLines = @(& git -C $ProjectRoot rev-parse HEAD 2>$null)
+    $head = ($headLines -join "").Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($head)) {
+        throw "无法读取当前 HEAD，无法校验 release 来源 commit。"
+    }
+    if ($manifestCommit -ne $head) {
+        throw "release manifest commit($($manifestCommit.Substring(0, 8))) 与当前 HEAD($($head.Substring(0, 8))) 不一致——在发包 commit 上重新构建。"
+    }
+    Write-Host "OK   release 来源校验通过：干净构建，commit = $($head.Substring(0, 8))。"
+
+    if ($SkipCiBinding) {
+        Write-Host "SKIP CI 绑定校验（-SkipCiBinding）。该包未经 CI 绑定，不得作为正式 RC 发出。"
+        return
+    }
+    $token = Get-Secret -Name "TICKETBOX_GITEA_TOKEN" -ExplicitValue $GiteaToken
+    if ($token.Length -eq 0) {
+        throw "缺少 TICKETBOX_GITEA_TOKEN（或 -GiteaToken），无法查询 CI 状态。离线验收用 -SkipCiBinding 显式跳过。"
+    }
+    $headers = @{ Authorization = "token $token" }
+    $tasksUri = "$($GiteaUrl.TrimEnd('/'))/api/v1/repos/$GiteaRepo/actions/tasks?limit=200"
+    $tasks = Invoke-RestMethod -Headers $headers -Uri $tasksUri -TimeoutSec 20
+    $forCommit = @($tasks.workflow_runs | Where-Object { $_.head_sha -eq $head })
+    if ($forCommit.Count -eq 0) {
+        throw "Gitea 上找不到 commit $($head.Substring(0, 8)) 的任何 CI 任务——先推送该 commit 并等 CI 全绿。"
+    }
+    $requiredJobs = @("Backend full checks", "Backend (PostgreSQL)", "Desktop manager", "Android unit/build")
+    foreach ($jobName in $requiredJobs) {
+        $latest = $forCommit |
+            Where-Object { $_.name -eq $jobName } |
+            Sort-Object id -Descending |
+            Select-Object -First 1
+        if (-not $latest) {
+            throw "commit $($head.Substring(0, 8)) 缺少 CI job「$jobName」——等 windows-ci 跑完再验收。"
+        }
+        if ($latest.status -ne "success") {
+            throw "CI job「$jobName」最新状态为 $($latest.status)（commit $($head.Substring(0, 8))）——CI 全绿才能发包。"
+        }
+    }
+    $connected = $forCommit |
+        Where-Object { $_.name -eq "Connected (emulator)" } |
+        Sort-Object id -Descending |
+        Select-Object -First 1
+    if ($connected -and $connected.status -ne "success") {
+        throw "CI job「Connected (emulator)」最新状态为 $($connected.status)——instrumented lane 红着不能发包。"
+    }
+    Write-Host "OK   CI 绑定校验通过：commit $($head.Substring(0, 8)) 的 windows-ci 四 job 全 success。"
+}
+
 Write-Host "小票夹灰度版验收"
 Write-Host "项目目录：$ProjectRoot"
 Write-Host "公网地址：$BaseUrl"
@@ -333,6 +409,7 @@ if (-not $SkipRelease) {
         throw "release APK 不存在：$releaseApk"
     }
     Assert-ReleaseArtifact -ApkPath $releaseApk
+    Assert-ReleaseProvenance -ApkPath $releaseApk
     Write-Host "OK   release APK 已生成：$releaseApk"
 }
 else {
