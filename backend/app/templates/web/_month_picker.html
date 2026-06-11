@@ -20,8 +20,10 @@
   {% set _prev = '' %}
   {% set _next = '' %}
 {% endif %}
+{# 切月必须回到第 1 页：保留 page 会把上一月的页码带进可能只有 1 页的新月，
+   渲染出「该月还没有账单」的假空态（分页器也随之消失，没有恢复控件）。 #}
 {% macro _link(month) -%}
-{{ request.url.path }}?{% for k, v in request.query_params.multi_items() %}{% if k != 'month' %}{{ k }}={{ v }}&{% endif %}{% endfor %}month={{ month }}
+{{ request.url.path }}?{% for k, v in request.query_params.multi_items() %}{% if k != 'month' and k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}month={{ month }}
 {%- endmacro %}
 <div class="month-picker">
   {% if _prev %}<a href="{{ _link(_prev) }}" aria-label="上一月">‹</a>{% endif %}

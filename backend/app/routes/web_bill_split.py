@@ -193,19 +193,25 @@ def web_split_invite(
         db, request, selected_ledger_id=selected_id
     )
 
-    amount_cents = _yuan_to_cents(amount_yuan)
-    if amount_cents is None or amount_cents <= 0:
-        raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
-
-    bsplit.create_invitation(
-        db,
-        sender_account_id=sender_account_id,
-        sender_ledger_id=selected_id,
-        expense_id=expense_id,
-        receiver_account_id=receiver_account_id,
-        amount_cents=amount_cents,
-    )
-    return _web_redirect("/web/bill-splits/sent", selected_id, msg="已发起拆账邀请。")
+    # Form failures (bad amount / cap exceeded / duplicate pending invite …)
+    # flash back onto the page instead of escaping to the global AppError
+    # handler, which renders a bare-JSON page in the browser.
+    try:
+        amount_cents = _yuan_to_cents(amount_yuan)
+        if amount_cents is None or amount_cents <= 0:
+            raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
+        bsplit.create_invitation(
+            db,
+            sender_account_id=sender_account_id,
+            sender_ledger_id=selected_id,
+            expense_id=expense_id,
+            receiver_account_id=receiver_account_id,
+            amount_cents=amount_cents,
+        )
+        msg = "已发起拆账邀请。"
+    except AppError as exc:
+        msg = exc.message
+    return _web_redirect("/web/bill-splits/sent", selected_id, msg=msg)
 
 
 @router.post(
@@ -223,13 +229,19 @@ def web_split_accept(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
-    bsplit.accept_invitation(
-        db,
-        public_id=public_id,
-        accepting_account_id=account_id,
-        target_ledger_id=target_ledger_id,
-    )
-    return _web_redirect("/web/bill-splits/inbox", selected_id, msg="已接受拆账邀请。")
+    # TOCTOU is routine here (sender cancels / a peer accepts while the inbox
+    # page is open) — flash the conflict instead of a bare-JSON page.
+    try:
+        bsplit.accept_invitation(
+            db,
+            public_id=public_id,
+            accepting_account_id=account_id,
+            target_ledger_id=target_ledger_id,
+        )
+        msg = "已接受拆账邀请。"
+    except AppError as exc:
+        msg = exc.message
+    return _web_redirect("/web/bill-splits/inbox", selected_id, msg=msg)
 
 
 @router.post(
@@ -246,8 +258,12 @@ def web_split_reject(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
-    bsplit.reject_invitation(db, public_id=public_id, rejecting_account_id=account_id)
-    return _web_redirect("/web/bill-splits/inbox", selected_id, msg="已拒绝拆账邀请。")
+    try:
+        bsplit.reject_invitation(db, public_id=public_id, rejecting_account_id=account_id)
+        msg = "已拒绝拆账邀请。"
+    except AppError as exc:
+        msg = exc.message
+    return _web_redirect("/web/bill-splits/inbox", selected_id, msg=msg)
 
 
 @router.post(
@@ -265,8 +281,12 @@ def web_split_cancel(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
-    bsplit.cancel_invitation(db, public_id=public_id, sender_account_id=account_id)
-    return _web_redirect("/web/bill-splits/sent", selected_id, msg="已撤回拆账邀请。")
+    try:
+        bsplit.cancel_invitation(db, public_id=public_id, sender_account_id=account_id)
+        msg = "已撤回拆账邀请。"
+    except AppError as exc:
+        msg = exc.message
+    return _web_redirect("/web/bill-splits/sent", selected_id, msg=msg)
 
 
 # -------------------------------------------------------------------------

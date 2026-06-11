@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthToken, Device, Expense
+from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.spending_contract_service import (
     accounting_zone,
     clean_month,
@@ -27,12 +28,28 @@ from app.services.spending_contract_service import (
 )
 from app.services.time_service import now_utc
 
+# Keys are the literal ``Expense.source`` values the write paths persist
+# (uploads.py, expense_service create, csv import, bill-split accept) — the
+# previous key set (ios_upload_link/android_upload/manual/web) matched nothing
+# in the real value domain, so every page showed 未知/其他.
 SOURCE_LABELS: dict[str, str] = {
-    "ios_upload_link": "iPhone",
-    "android_upload": "Android",
-    "manual": "手动",
-    "web": "网页",
+    "iPhone截图": "iPhone",
+    "Android截图": "Android",
+    "手动记账": "手动",
+    "CSV导入": "CSV",
+    "bill_split_received": "拆账",
 }
+
+
+def source_label(source: str | None, default: str) -> str:
+    """Display label for an ``Expense.source`` value. Notification drafts are
+    a prefixed family (``通知草稿:微信`` …) matched by prefix."""
+    cleaned = (source or "").strip()
+    if not cleaned:
+        return default
+    if cleaned.startswith(NOTIFICATION_DRAFT_SOURCE_PREFIX):
+        return "通知"
+    return SOURCE_LABELS.get(cleaned, default)
 
 
 def sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
@@ -144,13 +161,20 @@ def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dic
     q = q.group_by(Expense.source)
     rows = list(db.execute(q))
     total = sum(int(c or 0) for _, c in rows) or 1
+    # Aggregate AFTER labeling: distinct source values can share one display
+    # label (every 通知草稿:* channel → 通知), and the previous dead key set
+    # produced multiple identically-named 其他 rows.
+    by_label: dict[str, int] = {}
+    for s, c in rows:
+        label = source_label(s, "其他")
+        by_label[label] = by_label.get(label, 0) + int(c)
     return [
         {
-            "label": SOURCE_LABELS.get((s or "").strip(), "其他"),
-            "count": int(c),
-            "percent": int(round(int(c) / total * 100)),
+            "label": label,
+            "count": count,
+            "percent": int(round(count / total * 100)),
         }
-        for s, c in sorted(rows, key=lambda r: -int(r[1] or 0))
+        for label, count in sorted(by_label.items(), key=lambda kv: -kv[1])
     ]
 
 

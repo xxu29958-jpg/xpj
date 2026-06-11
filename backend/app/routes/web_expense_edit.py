@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -37,10 +37,21 @@ def web_edit_get(
     fragment: int = 0,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> HTMLResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    ctx = web_edit_context(db, request, options, selected_id, expense_id)
+    try:
+        ctx = web_edit_context(db, request, options, selected_id, expense_id)
+    except AppError as exc:
+        # A deleted / cross-ledger expense (stale link, switched ledger) must
+        # not surface as a bare-JSON page — or, for the drawer fetch, as raw
+        # JSON injected into the drawer (desktop.js does not check res.ok).
+        if fragment:
+            return HTMLResponse(
+                f'<div class="empty-cell">{exc.message}</div>',
+                status_code=exc.status_code,
+            )
+        return _web_redirect("/web/confirmed", selected_id, msg=exc.message)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
     template_name = "_edit_drawer.html" if fragment else "edit.html"
     return templates.TemplateResponse(request=request, name=template_name, context=ctx)

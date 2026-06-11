@@ -16,7 +16,10 @@ a year-month f-string ``format_spec`` whose root is a UTC now — taken directly
 (``now_utc().month``), through a local variable holding a raw UTC now
 (``m = now_utc(); m.month``), or through a same-file zero-/any-arg helper that
 returns a raw UTC now (``def _now(): return now_utc()`` then ``_now().month``) —
-with NO ``.astimezone(...)`` between the now and the access. The canonical
+with NO ``.astimezone(...)`` between the now and the access. It also flags a
+literal ``current_month(None)`` call: the helper's ``tz=None`` means UTC, so
+that spelling is a UTC month hiding behind the canonical helper's name (the
+2026-06 /web/recurring regression). The canonical
 helpers thread the tz as a parameter (so the now is already localized via
 ``.astimezone``) and are not flagged; ``time_service`` IS the helper and is
 allowlisted.
@@ -241,7 +244,30 @@ def _hits(path: pathlib.Path, tree: ast.AST) -> list[str]:
                         f"{path.as_posix()}:{node.lineno} year-month f-string "
                         f"format_spec({fmt!r}) off a UTC now — {advice}"
                     )
+                continue
+            # case 4: current_month(None) — the helper's tz=None means UTC, so
+            # this is an explicit UTC month label hiding behind the canonical
+            # helper's name (the /web/recurring regression's exact shape).
+            if (
+                isinstance(node, ast.Call)
+                and _is_current_month_func(node.func)
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value is None
+            ):
+                out.append(
+                    f"{path.as_posix()}:{node.lineno} current_month(None) is a UTC "
+                    "month — use current_accounting_month(...) or pass the accounting tz"
+                )
     return out
+
+
+def _is_current_month_func(func: ast.AST) -> bool:
+    if isinstance(func, ast.Name):
+        return func.id == "current_month"
+    if isinstance(func, ast.Attribute):
+        return func.attr == "current_month"
+    return False
 
 
 def main() -> int:

@@ -161,3 +161,28 @@ def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identit
     )
     assert resp.status_code == 200
     assert "负数" in resp.text
+
+
+def test_web_edit_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
+    """A stale link / cross-ledger expense id must not render a bare-JSON
+    page; the full-page form redirects back to the confirmed list."""
+    resp = web_client.get(
+        "/web/expenses/999999/edit?ledger_id=owner", follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/web/confirmed")
+
+
+def test_web_edit_missing_expense_fragment_returns_readable_html(
+    web_client: TestClient,
+) -> None:
+    """The drawer fetch (desktop.js does not check res.ok) must receive a
+    readable HTML snippet, not raw JSON injected into the drawer."""
+    resp = web_client.get(
+        "/web/expenses/999999/edit?ledger_id=owner&fragment=1",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 404
+    assert "没有找到这笔账单" in resp.text
+    assert not resp.text.lstrip().startswith("{")
+

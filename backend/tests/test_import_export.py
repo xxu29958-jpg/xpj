@@ -319,3 +319,57 @@ def test_import_rows_persists_foreign_currency_metadata() -> None:
     assert expense.original_currency_code == "JPY"
     assert expense.original_amount_minor == 1200
     assert str(expense.exchange_rate_to_cny) == "0.04800000"
+
+
+def test_web_import_preview_bad_encoding_flashes_back_not_json(
+    web_client: TestClient,
+) -> None:
+    """Excel's default GBK/ANSI CSV is the most common bad upload — it must
+    flash「CSV 必须使用 UTF-8 编码」back onto /web/import (303), not escape
+    as a bare-JSON error page through the global AppError handler."""
+    resp = web_client.post(
+        "/web/import/preview",
+        data={"ledger_id": "owner"},
+        files={
+            "csv_file": (
+                "gbk.csv",
+                "amount_yuan,merchant\n8.50,咖啡店\n".encode("gbk"),
+                "text/csv",
+            ),
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = resp.headers["location"]
+    assert location.startswith("/web/import?")
+    followed = web_client.get(location)
+    assert followed.status_code == 200
+    assert "UTF-8" in followed.text
+
+
+def test_web_import_unknown_batch_pages_flash_back_not_json(
+    web_client: TestClient,
+) -> None:
+    """A stale/foreign batch id on any of the three batch entrypoints
+    redirects back to /web/import with a flash instead of bare JSON."""
+    detail = web_client.get(
+        "/web/import/no-such-batch?ledger_id=owner", follow_redirects=False
+    )
+    assert detail.status_code == 303
+    assert detail.headers["location"].startswith("/web/import?")
+
+    apply_resp = web_client.post(
+        "/web/import/no-such-batch/apply",
+        data={"ledger_id": "owner", "batch_size": "500"},
+        follow_redirects=False,
+    )
+    assert apply_resp.status_code == 303
+    assert apply_resp.headers["location"].startswith("/web/import?")
+
+    errors_csv = web_client.get(
+        "/web/import/no-such-batch/errors.csv?ledger_id=owner",
+        follow_redirects=False,
+    )
+    assert errors_csv.status_code == 303
+    assert errors_csv.headers["location"].startswith("/web/import?")
+

@@ -30,7 +30,7 @@ from app.services.recurring_service import (
     recurring_amount_anomalies,
     resume_recurring_item,
 )
-from app.services.time_service import current_month, to_iso
+from app.services.time_service import to_iso
 
 router = APIRouter(prefix="/web/recurring", tags=["web"])
 
@@ -98,11 +98,13 @@ def _render_recurring(
     flash_message: str | None = None,
 ) -> HTMLResponse:
     items = list_recurring_items(db, tenant_id=selected_id, status=status or None, include_archived=True)
+    # No explicit month: the service defaults to current_accounting_month
+    # (Asia/Shanghai). current_month(None) here was UTC — in the 00:00-07:59
+    # Beijing window on the 1st the whole page mis-binned into last month.
     anomalies = recurring_amount_anomalies(
         db,
         tenant_id=selected_id,
         items=items,
-        month=current_month(None),
         timezone_name=None,
     )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)

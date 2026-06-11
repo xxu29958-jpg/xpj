@@ -273,21 +273,30 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     location = imported_preview.headers["location"]
     batch_path = location.split("?", 1)[0]
 
-    owner_batch = local_web_client.get(f"{batch_path}?ledger_id=owner")
-    assert owner_batch.status_code == 404
-    assert owner_batch.json()["error"] == "import_batch_not_found"
+    # Cross-ledger batch access stays invisible — since the audit-P2 flash
+    # rework these /web pages redirect back to /web/import with the same
+    # "导入批次不存在" copy as a truly-missing id (no existence oracle),
+    # instead of the previous bare-JSON 404.
+    owner_batch = local_web_client.get(
+        f"{batch_path}?ledger_id=owner", follow_redirects=False
+    )
+    assert owner_batch.status_code == 303
+    assert owner_batch.headers["location"].startswith("/web/import?")
+    assert "TesterImportedOnly" not in owner_batch.text
 
     owner_apply = local_web_client.post(
         f"{batch_path}/apply",
         data={"ledger_id": "owner", "batch_size": "500"},
         follow_redirects=False,
     )
-    assert owner_apply.status_code == 404
-    assert owner_apply.json()["error"] == "import_batch_not_found"
+    assert owner_apply.status_code == 303
+    assert owner_apply.headers["location"].startswith("/web/import?")
 
-    owner_errors = local_web_client.get(f"{batch_path}/errors.csv?ledger_id=owner")
-    assert owner_errors.status_code == 404
-    assert owner_errors.json()["error"] == "import_batch_not_found"
+    owner_errors = local_web_client.get(
+        f"{batch_path}/errors.csv?ledger_id=owner", follow_redirects=False
+    )
+    assert owner_errors.status_code == 303
+    assert owner_errors.headers["location"].startswith("/web/import?")
 
     owner_pending_before_tester_apply = local_web_client.get(
         "/api/expenses/pending", headers=identity.app_headers

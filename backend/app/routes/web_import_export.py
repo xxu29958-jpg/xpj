@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -100,12 +101,18 @@ async def web_import_preview(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    batch = create_csv_import_batch(
-        db,
-        tenant_id=selected_id,
-        file_name=csv_file.filename,
-        file_obj=csv_file.file,
-    )
+    # A bad upload (GBK/ANSI CSV from Excel, oversized, headerless …) is the
+    # most common failure on this page — flash it back instead of letting the
+    # global handler render a bare-JSON page.
+    try:
+        batch = create_csv_import_batch(
+            db,
+            tenant_id=selected_id,
+            file_name=csv_file.filename,
+            file_obj=csv_file.file,
+        )
+    except AppError as exc:
+        return _web_redirect("/web/import", selected_id, msg=exc.message)
     msg = f"已解析 {batch.total_rows} 行，{batch.valid_rows} 行可导入。"
     return _web_redirect(f"/web/import/{batch.public_id}", selected_id, msg=msg)
 
@@ -121,18 +128,21 @@ def web_import_batch_detail(
     msg: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> HTMLResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    batch = get_csv_import_batch(db, tenant_id=selected_id, public_id=public_id)
-    rows_page = list_csv_import_rows(
-        db,
-        tenant_id=selected_id,
-        public_id=public_id,
-        page=page,
-        page_size=page_size,
-        status=status,
-    )
+    try:
+        batch = get_csv_import_batch(db, tenant_id=selected_id, public_id=public_id)
+        rows_page = list_csv_import_rows(
+            db,
+            tenant_id=selected_id,
+            public_id=public_id,
+            page=page,
+            page_size=page_size,
+            status=status,
+        )
+    except AppError as exc:
+        return _web_redirect("/web/import", selected_id, msg=exc.message)
     total_pages = max(1, (rows_page.total + rows_page.page_size - 1) // rows_page.page_size)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx.update(
@@ -167,12 +177,15 @@ def web_import_batch_apply(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     safe_batch_size = min(max(batch_size, 1), 1000)
-    applied = apply_csv_import_batch(
-        db,
-        tenant_id=selected_id,
-        public_id=public_id,
-        batch_size=safe_batch_size,
-    )
+    try:
+        applied = apply_csv_import_batch(
+            db,
+            tenant_id=selected_id,
+            public_id=public_id,
+            batch_size=safe_batch_size,
+        )
+    except AppError as exc:
+        return _web_redirect("/web/import", selected_id, msg=exc.message)
     msg = f"本次导入 {applied.inserted_count} 条，剩余 {applied.remaining_valid_rows} 条可导入。"
     return _web_redirect(f"/web/import/{public_id}", selected_id, msg=msg)
 
@@ -187,11 +200,14 @@ def web_import_batch_errors_csv(
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    content = "\ufeff" + build_csv_import_errors_csv(
-        db,
-        tenant_id=selected_id,
-        public_id=public_id,
-    )
+    try:
+        content = "\ufeff" + build_csv_import_errors_csv(
+            db,
+            tenant_id=selected_id,
+            public_id=public_id,
+        )
+    except AppError as exc:
+        return _web_redirect("/web/import", selected_id, msg=exc.message)
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",

@@ -133,3 +133,78 @@ def test_web_sent_omits_receiver_ledger_id(web_client: TestClient) -> None:
     # receiver's target ledger should never appear in HTML.
     assert recv_ledger not in body
     assert "receiver_ledger_id" not in body
+
+
+# --- form-action failures flash back instead of bare JSON (audit P2 #13) ---
+
+
+def test_web_split_cancel_after_accept_flashes_conflict_not_json(
+    web_client: TestClient,
+) -> None:
+    """TOCTOU is routine: receiver accepts while the sender's sent page is
+    open. The sender's cancel must flash the conflict back onto the sent
+    page (303 + readable msg), not escape as a bare-JSON error page."""
+    receiver_id, recv_ledger = _seed_receiver(ledger_id="receiver_toctou")
+    expense_id = _make_owner_expense()
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=1500,
+        )
+        public_id = inv.public_id
+        bsplit.accept_invitation(
+            db,
+            public_id=public_id,
+            accepting_account_id=receiver_id,
+            target_ledger_id=recv_ledger,
+        )
+
+    resp = web_client.post(
+        f"/web/bill-splits/{public_id}/cancel",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = resp.headers["location"]
+    assert location.startswith("/web/bill-splits/sent")
+    followed = web_client.get(location)
+    assert followed.status_code == 200
+    # The flash is the specific invitation_not_cancellable copy, not the
+    # generic server_error fallback (the code now has an ERROR_MESSAGES row).
+    assert "无法撤回" in followed.text
+
+
+def test_web_split_invite_duplicate_pending_flashes_message(
+    web_client: TestClient,
+) -> None:
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_dupinv")
+    expense_id = _make_owner_expense()
+    first = web_client.post(
+        f"/web/expenses/{expense_id}/split-invite",
+        data={
+            "ledger_id": "owner",
+            "receiver_account_id": str(receiver_id),
+            "amount_yuan": "12.00",
+        },
+        follow_redirects=False,
+    )
+    assert first.status_code == 303
+
+    second = web_client.post(
+        f"/web/expenses/{expense_id}/split-invite",
+        data={
+            "ledger_id": "owner",
+            "receiver_account_id": str(receiver_id),
+            "amount_yuan": "8.00",
+        },
+        follow_redirects=False,
+    )
+    assert second.status_code == 303
+    followed = web_client.get(second.headers["location"])
+    assert followed.status_code == 200
+    assert "待处理拆账邀请" in followed.text
+
