@@ -291,4 +291,3 @@ def test_web_sent_renders_local_time_not_utc_repr(web_client: TestClient) -> Non
     )
     assert expected in response.text
     assert "+00:00" not in response.text
-

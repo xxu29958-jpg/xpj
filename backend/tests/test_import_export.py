@@ -372,4 +372,3 @@ def test_web_import_unknown_batch_pages_flash_back_not_json(
     )
     assert errors_csv.status_code == 303
     assert errors_csv.headers["location"].startswith("/web/import?")
-
