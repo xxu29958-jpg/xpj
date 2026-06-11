@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知闭环 PR-1：系统通知 channel 名/标题/正文 + 通知权限提示。命名 notification_位置_用途
+     （见 strings.xml 头部约定）。文案句式：陈述事实+下一步，不用感叹号。只放中文，不建第二语言。 -->
+<resources>
+
+    <!-- TicketboxNotifier：NotificationChannel 名（系统通知设置里用户可见） -->
+    <string name="notification_channel_drafts_name">待确认草稿</string>
+    <string name="notification_channel_alerts_name">大额提醒</string>
+
+    <!-- TicketboxNotifier：通知标题/正文。正文 %1$s=商家、%2$s=本位币金额、%3$s=原币金额（外币票） -->
+    <string name="notification_draft_created_title">已记一笔待确认</string>
+    <string name="notification_large_amount_title">大额支出待确认</string>
+    <string name="notification_draft_created_body">%1$s %2$s，进入待确认页核对。</string>
+    <string name="notification_draft_created_body_with_original">%1$s %2$s（原币 %3$s），进入待确认页核对。</string>
+    <string name="notification_draft_created_merchant_missing">未填写商家</string>
+
+    <!-- NotificationPreferencesScreen：通知权限提示行 + 大额开关副标题。
+         副标题写明的 ¥500 与 TicketboxNotifier.LARGE_AMOUNT_THRESHOLD_CENTS=50000 同步改。
+         （大额副标题原在 strings_settings_family.xml，本 PR 改值并随通知文案包迁入本文件。） -->
+    <string name="notification_preferences_system_permission_hint">系统通知权限未开启，提醒不会展示。</string>
+    <string name="notification_preferences_reminder_large_amount_subtitle">金额达到 ¥500 时提醒，仍需手动确认。</string>
+</resources>

@@ -109,7 +109,7 @@
     <string name="notification_preferences_reminder_pending_title">待确认提醒</string>
     <string name="notification_preferences_reminder_pending_subtitle">有新的待确认草稿时提醒你回来核对。</string>
     <string name="notification_preferences_reminder_large_amount_title">大额提醒</string>
-    <string name="notification_preferences_reminder_large_amount_subtitle">结构化通知金额偏高时提醒，仍需手动确认。</string>
+    <!-- 大额开关副标题已随通知文案包迁入 strings_notifications.xml（写明 ¥500 阈值）。 -->
     <string name="notification_preferences_reminder_recurring_title">固定支出提醒</string>
     <string name="notification_preferences_reminder_recurring_subtitle">固定支出临近或金额异常时提醒。</string>
     <string name="notification_preferences_section_privacy">隐私边界</string>

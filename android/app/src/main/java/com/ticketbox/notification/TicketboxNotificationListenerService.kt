@@ -35,6 +35,8 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
             if (result.isFailure) {
                 draftDeduper.release(draft)
             }
+            // 通知闭环 PR-1：草稿建好后按「待确认提醒/大额提醒」开关发系统通知。
+            result.onSuccess { created -> container.notifier.onDraftCreated(created) }
         }
     }
 
