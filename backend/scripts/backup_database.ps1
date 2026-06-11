@@ -33,7 +33,12 @@ function Get-BackendEnvValue {
         return $value.Trim().Trim('"').Trim("'")
     }
 
-    $envFile = Join-Path $BackendRoot ".env"
+    # .env 落点跟随应用:app.config 在 DATA_ROOT\.env 上 load_dotenv(冻结 EXE /
+    # TICKETBOX_DATA_DIR 部署下 Owner Console 把设置写在那里),源码形态
+    # DataRoot==BackendRoot 自然不变。固定读 $BackendRoot\.env 会让备份在
+    # 自定义数据根部署下读错(或读不到)DATABASE_URL/UPLOAD_DIR——dump 错库
+    # 或漏备真实上传目录。
+    $envFile = Join-Path $DataRoot ".env"
     if (-not (Test-Path -LiteralPath $envFile)) {
         return $null
     }
