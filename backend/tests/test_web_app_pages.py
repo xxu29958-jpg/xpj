@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -16,6 +18,20 @@ def test_web_confirmed_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/confirmed")
     assert resp.status_code == 200
     assert "已确认" in resp.text
+
+
+def test_web_month_picker_links_drop_page_param(web_client: TestClient) -> None:
+    """Switching month must land on page 1: carrying ``page=2`` into a month
+    with a single page rendered the false「该月还没有已确认账单」empty state
+    (with the pager gone, leaving no recovery control)."""
+    resp = web_client.get("/web/confirmed?ledger_id=owner&month=2026-05&page=2")
+    assert resp.status_code == 200
+    hrefs = re.findall(r'href="([^"]*month=2026-0[46][^"]*)"', resp.text)
+    assert any("month=2026-04" in h for h in hrefs), hrefs
+    assert any("month=2026-06" in h for h in hrefs), hrefs
+    assert all("page=" not in h for h in hrefs), hrefs
+    # Other filters survive the month switch.
+    assert all("ledger_id=owner" in h for h in hrefs), hrefs
 
 
 def test_web_stats_local_returns_200(web_client: TestClient) -> None:

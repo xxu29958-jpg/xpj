@@ -22,6 +22,7 @@ from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
+    NOTIFICATION_DRAFT_SOURCE_PREFIX,
     _clean_category,
     _clean_notification_source,
     _clean_optional_text,
@@ -280,7 +281,7 @@ def create_notification_draft(
         merchant=_clean_optional_text(payload.merchant),
         category=_clean_category(payload.category),
         note="",
-        source=f"通知草稿:{source_label}",
+        source=f"{NOTIFICATION_DRAFT_SOURCE_PREFIX}{source_label}",
         image_path=None,
         thumbnail_path=None,
         image_hash=None,

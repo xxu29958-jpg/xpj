@@ -39,6 +39,7 @@ _ = EDITABLE_STATUSES  # quiet F401: re-exported through the package facade
 __all__ = [
     "EDITABLE_STATUSES",
     "NOTIFICATION_DRAFT_SOURCE_LABELS",
+    "NOTIFICATION_DRAFT_SOURCE_PREFIX",
     "NOTIFICATION_DRAFT_WINDOW_MINUTES",
     "logger",
     "background_failure_counts",
@@ -84,6 +85,10 @@ NOTIFICATION_DRAFT_SOURCE_LABELS = {
     "bank_app": "银行 App",
     "other": "其他通知",
 }
+#: ``Expense.source`` prefix for notification drafts (full stored value =
+#: this prefix + NOTIFICATION_DRAFT_SOURCE_LABELS[channel]). Single source
+#: of truth shared by the create path and /web source-label matching.
+NOTIFICATION_DRAFT_SOURCE_PREFIX = "通知草稿:"
 
 
 def _clean_optional_text(value: str | None) -> str | None:

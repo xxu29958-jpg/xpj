@@ -29,7 +29,10 @@ from app.services.expense_service._duplicate import (
     list_duplicate_expenses,
     mark_expense_not_duplicate,
 )
-from app.services.expense_service._helpers import EDITABLE_STATUSES
+from app.services.expense_service._helpers import (
+    EDITABLE_STATUSES,
+    NOTIFICATION_DRAFT_SOURCE_PREFIX,
+)
 from app.services.expense_service._image import ensure_image_file, ensure_thumbnail_file
 from app.services.expense_service._ocr import recognize_expense_text, retry_expense_ocr
 from app.services.expense_service._query import (
@@ -50,6 +53,7 @@ from app.services.expense_service._update import (
 
 __all__ = [
     "EDITABLE_STATUSES",
+    "NOTIFICATION_DRAFT_SOURCE_PREFIX",
     "batch_update_confirmed_expenses",
     "confirm_expense",
     "create_manual_expense",

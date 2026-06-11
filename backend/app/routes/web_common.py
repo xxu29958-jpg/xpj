@@ -379,9 +379,6 @@ def _confirmed_source_breakdown(db: Session, ledger_id: str, month: str | None) 
     return web_stats_service.source_breakdown(db, ledger_id, month)
 
 
-_SOURCE_LABELS = web_stats_service.SOURCE_LABELS
-
-
 def _expense_view(expense) -> dict:
     amount_label, fx_meta = _expense_amount_labels(expense)
     home_code = getattr(expense, "home_currency_code", None) or home_currency_code()
@@ -395,7 +392,7 @@ def _expense_view(expense) -> dict:
     else:
         image_state = "missing"
     source_raw = getattr(expense, "source", "") or ""
-    source_label = _SOURCE_LABELS.get(source_raw, "未知")
+    source_label = web_stats_service.source_label(source_raw, "未知")
     needs_amount = expense.amount_cents is None
     needs_merchant = not (expense.merchant or "").strip()
     is_duplicate = (getattr(expense, "duplicate_status", None) or "") == "suspected"
