@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_expense_helpers import item_replace_payload, web_edit_context
+from app.routes._web_expense_helpers import (
+    _edit_page_or_flash_redirect,
+    item_replace_payload,
+)
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -16,7 +19,6 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
-    templates,
 )
 from app.schemas import ExpenseItemReplaceRequest
 from app.services.receipt_item_service import (
@@ -69,9 +71,12 @@ def web_items_save(
         except AppError as exc:
             error = exc.message
     if error is not None:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        ctx["items_error"] = error
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        # codex follow-up on audit P2 #6: the re-read shares the main form's
+        # vanished-row guard (flash to /web/confirmed, mirroring the GET).
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id, error,
+            "/web/confirmed", error_key="items_error",
+        )
     return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id, msg="明细已保存。")
 
 
@@ -96,9 +101,11 @@ def web_items_acknowledge_mismatch(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        ctx["items_error"] = "页面已过期，请刷新后重新确认。"
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id,
+            "页面已过期，请刷新后重新确认。",
+            "/web/confirmed", error_key="items_error",
+        )
     error: str | None = None
     try:
         acknowledge_items_sum_mismatch(
@@ -111,7 +118,8 @@ def web_items_acknowledge_mismatch(
             else exc.message
         )
     if error is not None:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        ctx["items_error"] = error
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id, error,
+            "/web/confirmed", error_key="items_error",
+        )
     return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id, msg="已确认原小票如此。")

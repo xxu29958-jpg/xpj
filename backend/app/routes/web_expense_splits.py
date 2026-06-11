@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_expense_helpers import split_replace_payload, web_edit_context
+from app.routes._web_expense_helpers import _edit_page_or_flash_redirect, split_replace_payload
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -16,7 +16,6 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
-    templates,
 )
 from app.schemas import ExpenseSplitReplaceRequest
 from app.services.expense_split_service import replace_expense_splits
@@ -66,7 +65,10 @@ def web_splits_save(
         except AppError as exc:
             error = exc.message
     if error is not None:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        ctx["splits_error"] = error
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        # codex follow-up on audit P2 #6: the re-read shares the main form's
+        # vanished-row guard (flash to /web/confirmed, mirroring the GET).
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id, error,
+            "/web/confirmed", error_key="splits_error",
+        )
     return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id, msg="拆账已保存。")
