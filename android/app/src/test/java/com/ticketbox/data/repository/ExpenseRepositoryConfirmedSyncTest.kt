@@ -64,6 +64,38 @@ class ExpenseRepositoryConfirmedSyncTest {
     }
 
     @Test
+    fun fullConfirmedSyncDoesNotPruneRowConfirmedDuringFetch() = runTest {
+        // Audit follow-up P2: the full-list response predates anything cached
+        // while the (paginated) fetch is in flight. A row confirmed mid-fetch
+        // (cacheIfConfirmed) is missing from that response by timing alone —
+        // it must NOT be pruned as "server-deleted". The pre-fetch snapshot
+        // in syncConfirmedFromService scopes the prune to pre-existing rows.
+        val dao = FakeExpenseDao()
+        dao.insert(cachedConfirmedEntity(serverId = 9, publicId = "remote-kept", merchant = "旧高德"))
+        val settingsStore = boundSettingsStore()
+        val apiService = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0).apply {
+            onConfirmedRequest = {
+                dao.insert(
+                    cachedConfirmedEntity(serverId = 77, publicId = "in-flight-confirm", merchant = "新确认"),
+                )
+            }
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.syncConfirmed().getOrThrow()
+
+        // serverId=9 came back in the response (kept + updated); serverId=77
+        // was cached mid-fetch and must survive the prune.
+        assertEquals(setOf(9L, 77L), dao.getConfirmed("owner").map { it.serverId }.toSet())
+    }
+
+    @Test
     fun filteredConfirmedSyncDoesNotDeleteUnreturnedCachedRows() = runTest {
         val dao = FakeExpenseDao()
         dao.insert(cachedConfirmedEntity(serverId = 99, publicId = "other-filter-row", merchant = "不在当前筛选"))

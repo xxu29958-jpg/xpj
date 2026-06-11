@@ -147,6 +147,46 @@ class ExpenseDaoContractTest {
         assertEquals("c-new", byServerId[3L]?.merchant)
     }
 
+    @Test
+    fun confirmedSyncPruneSparesRowsCachedAfterTheSnapshot() = runTest {
+        // Audit follow-up P2: the full-list response is a snapshot of the
+        // server at request time. A row confirmed-and-cached while the fetch
+        // was in flight is missing from that response by timing alone — the
+        // prune must only delete rows that already existed pre-fetch.
+        val dao = FakeExpenseDao()
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1, merchant = "pre-existing"))
+        val preFetchSnapshot = dao.confirmedServerIdsForLedger("owner").toSet()
+        // Confirmed mid-fetch: cached after the snapshot, absent from the
+        // (stale) response below.
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 2, merchant = "in-flight-confirm"))
+
+        dao.applyConfirmedSyncForLedger(
+            ledgerId = "owner",
+            expenses = listOf(entity("owner", serverId = 1, merchant = "pre-existing")),
+            replaceCache = false,
+            pruneScope = preFetchSnapshot,
+        )
+
+        assertEquals(setOf(1L, 2L), dao.getConfirmed("owner").map { it.serverId }.toSet())
+    }
+
+    @Test
+    fun confirmedSyncPruneStillRemovesServerDeletedRows() = runTest {
+        val dao = FakeExpenseDao()
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1))
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "deleted-on-server"))
+        val preFetchSnapshot = dao.confirmedServerIdsForLedger("owner").toSet()
+
+        dao.applyConfirmedSyncForLedger(
+            ledgerId = "owner",
+            expenses = listOf(entity("owner", serverId = 1)),
+            replaceCache = false,
+            pruneScope = preFetchSnapshot,
+        )
+
+        assertEquals(listOf(1L), dao.getConfirmed("owner").map { it.serverId })
+    }
+
     private fun entity(
         ledgerId: String,
         serverId: Long,

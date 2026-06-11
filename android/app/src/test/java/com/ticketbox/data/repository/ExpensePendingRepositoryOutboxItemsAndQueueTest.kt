@@ -76,6 +76,46 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
     }
 
     @Test
+    fun `replaceItems with unresolved queued mutation enqueues behind it, direct PUT not attempted`() = runTest {
+        // Per-target FIFO guard (codex review P1) for the body-carrying detail
+        // path — mirrors the PATCH / confirm guards.
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        var directAttempted = false
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun replaceExpenseItems(
+                id: Long,
+                request: ExpenseItemReplaceRequestDto,
+                idempotencyKey: String?,
+            ): ExpenseItemsResponseDto {
+                directAttempted = true
+                throw IllegalStateException("direct PUT must not run while a same-target row is queued")
+            }
+        }
+        outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:${baseline.id}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-patch-key",
+        )
+
+        val outcome = itemsRepo(api, outbox)
+            .replaceExpenseItemsAllowingOffline(baseline, itemDrafts, itemsCurrent())
+            .getOrThrow() as ReplaceItemsOutcome.Queued
+
+        assertTrue(!directAttempted, "direct PUT must NOT be attempted while a same-target row is queued")
+        assertEquals("咖啡", outcome.items.items.first().name)
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.PatchExpense.wireValue, rows[0].type)
+        assertEquals(PendingMutationType.ReplaceItems.wireValue, rows[1].type)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+        assertTrue("咖啡" in rows[1].payload, "queued row must carry the edit payload: ${rows[1].payload}")
+    }
+
+    @Test
     fun `replaceItems direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()

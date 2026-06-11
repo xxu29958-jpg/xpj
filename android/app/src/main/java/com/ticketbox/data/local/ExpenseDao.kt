@@ -137,7 +137,15 @@ interface ExpenseDao {
         ledgerId: String,
         expenses: List<ExpenseEntity>,
         replaceCache: Boolean,
-        pruneMissing: Boolean,
+        // Prune eligibility snapshot, taken by the caller BEFORE the network
+        // fetch; null disables pruning. A full-list response is a snapshot of
+        // the server at request time — a row confirmed-and-cached WHILE the
+        // (paginated) fetch was in flight is missing from that response, and
+        // an unscoped prune would delete it. Restricting deletion to rows
+        // that already existed pre-fetch keeps the prune to genuinely
+        // server-deleted rows; anything cached mid-flight survives until the
+        // next sync reconciles it.
+        pruneScope: Set<Long>?,
     ) {
         if (replaceCache) {
             clearForLedger(ledgerId)
@@ -145,10 +153,10 @@ interface ExpenseDao {
         expenses.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
             upsertAllByServerIdForLedger(ledgerId, chunk)
         }
-        if (pruneMissing) {
+        if (pruneScope != null) {
             val remoteServerIds = expenses.map { it.serverId }.toSet()
             val staleServerIds = confirmedServerIdsForLedger(ledgerId)
-                .filter { it !in remoteServerIds }
+                .filter { it !in remoteServerIds && it in pruneScope }
             staleServerIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
                 if (chunk.isNotEmpty()) {
                     deleteConfirmedByServerIds(ledgerId, chunk)

@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -289,6 +290,79 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertTrue(outcome is ItemsAckOutcome.Synced)
         assertEquals(0, dao.rows.size)
     }
+
+    // region — per-target FIFO guard (codex review P1: queue-jump)
+
+    @Test
+    fun `confirm with unresolved queued mutation enqueues behind it instead of calling direct`() = runTest {
+        // The save→confirm chain's failure mode: a save QUEUED its PATCH (net
+        // blip), the network came back, and the chained confirm — direct-first
+        // before the guard — would commit the row server-side WITHOUT the
+        // user's edit, 409ing the queued PATCH on replay.
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        // Direct confirm WOULD succeed if attempted — only the guard, not the
+        // network, may divert this call to the queue.
+        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+        outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:${baseline.id}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-patch-key",
+        )
+
+        val outcome = repo.confirmExpenseAllowingOffline(baseline)
+            .getOrThrow() as ExpenseStateOutcome.Queued
+
+        assertEquals("confirmed", outcome.expense.status)
+        assertNull(
+            api.lastConfirmIdempotencyKey,
+            "direct confirm must NOT be attempted while a same-target row is queued",
+        )
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.PatchExpense.wireValue, rows[0].type)
+        assertEquals(PendingMutationType.ConfirmExpense.wireValue, rows[1].type)
+        assertEquals("expense:${baseline.id}", rows[1].targetId)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+        assertNotNull(rows[1].idempotencyKey, "guarded enqueue still carries an intent-time key")
+    }
+
+    @Test
+    fun `reject with unresolved queued mutation enqueues behind it instead of calling direct`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+        outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:${baseline.id}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-patch-key",
+        )
+
+        val outcome = repo.rejectExpenseAllowingOffline(baseline)
+            .getOrThrow() as ExpenseStateOutcome.Queued
+
+        assertEquals("rejected", outcome.expense.status)
+        assertNull(
+            api.lastRejectIdempotencyKey,
+            "direct reject must NOT be attempted while a same-target row is queued",
+        )
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.RejectExpense.wireValue, rows[1].type)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+    }
+
+    // endregion
 
     @Test
     fun `acknowledge HttpException 409 surfaces as failure, no enqueue`() = runTest {

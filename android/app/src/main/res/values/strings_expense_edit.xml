@@ -170,6 +170,7 @@
     <string name="expense_edit_save_offline_queued">已离线保存，联网后同步</string>
     <string name="expense_edit_save_failed">没有保存成功，请稍后再试。</string>
     <!-- 确认入账 / 删除 -->
+    <string name="expense_edit_confirm_offline_queued">已离线确认，联网后同步</string>
     <string name="expense_edit_confirm_failed">没有确认成功，请稍后再试。</string>
     <string name="expense_edit_reject_offline_queued">已离线删除，联网后同步</string>
     <string name="expense_edit_reject_failed">没有删除成功，请稍后再试。</string>

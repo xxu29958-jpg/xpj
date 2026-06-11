@@ -94,7 +94,9 @@ internal class FakeApiService(
     val expenseFetchIds = mutableListOf<Long>()
     val confirmExpenseIds = mutableListOf<Long>()
     val markNotDuplicateIds = mutableListOf<Long>()
-    var onConfirmedRequest: (() -> Unit)? = null
+    // suspend so a test can mutate the (suspend-API) FakeExpenseDao from the
+    // hook — e.g. simulate a row being confirmed-and-cached mid-fetch.
+    var onConfirmedRequest: (suspend () -> Unit)? = null
     var onExpenseFetch: (() -> Unit)? = null
     var onConfirmExpense: (() -> Unit)? = null
     var onCheckAuth: (() -> Unit)? = null
