@@ -145,9 +145,12 @@ private fun TaskRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        task.errorMessage?.takeIf { it.isNotBlank() }?.let {
+        task.errorMessage?.takeIf { it.isNotBlank() }?.let { rawError ->
+            // 后端 error_message 可能是原始异常串 / 英文（str(exc) / "No handler …"），
+            // 直出违反 §10。含中文才认为是可读文案直出，否则套泛化文案。
+            val genericError = stringResource(R.string.background_tasks_row_error_generic)
             Text(
-                text = it,
+                text = if (rawError.any { it in '一'..'鿿' }) rawError else genericError,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )

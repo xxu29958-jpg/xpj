@@ -25,7 +25,7 @@ class ConnectionDiagnosticsTest {
     fun warningsDoNotMakeDiagnosticsUnhealthy() {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
-                DiagnosticCheck("受保护图片", DiagnosticStatus.Warn, "暂无待确认截图", 0),
+                DiagnosticCheck("受保护图片", DiagnosticStatus.Warn, "还没有待确认截图", 0),
             ),
         )
 

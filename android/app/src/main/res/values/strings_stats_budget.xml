@@ -6,7 +6,7 @@
 <resources>
     <!-- StatsScreen：统计主屏 -->
     <string name="stats_month_picker_description">选择后刷新统计。本页按消费时间统计，没有消费时间时按确认时间。</string>
-    <string name="stats_category_empty_title">%1$s 暂无分类支出</string>
+    <string name="stats_category_empty_title">%1$s 还没有分类支出</string>
     <string name="stats_category_empty_body">确认几笔账单后，这里会显示分类占比。</string>
     <string name="stats_all_cards_hidden_title">首页卡片已全部隐藏</string>
     <string name="stats_all_cards_hidden_body">可以在设置 > 首页卡片中恢复默认卡片。</string>
@@ -31,7 +31,7 @@
     <string name="stats_metric_max_expense_label">最大一笔</string>
     <string name="stats_metric_frequent_merchant_label">常去商家</string>
     <string name="stats_metric_category_concentration_label">分类集中度</string>
-    <string name="stats_metric_empty_value">暂无记录</string>
+    <string name="stats_metric_empty_value">还没有记录</string>
     <string name="stats_metric_merchant_count">%1$d 笔</string>
     <string name="stats_metric_category_count">%1$d 个分类</string>
     <string name="stats_metric_top_share">占本月 %1$d%%</string>
@@ -58,7 +58,7 @@
     <!-- RecentTrendCard / RecentUploadCard：最近趋势 + 最近上传 -->
     <string name="stats_recent_trend_title">最近 7 天趋势</string>
     <string name="stats_recent_trend_source">本地账本</string>
-    <string name="stats_recent_trend_empty">手机里暂无最近支出，更新后会显示每日变化。</string>
+    <string name="stats_recent_trend_empty">手机里还没有最近支出，更新后会显示每日变化。</string>
     <string name="stats_recent_upload_title">最近上传</string>
     <string name="stats_recent_upload_empty">还没有上传记录</string>
     <string name="stats_recent_upload_hint">用于确认手机端和电脑端最近一次上传状态。</string>
@@ -70,7 +70,7 @@
     <string name="stats_lifestyle_max_expense">最大一笔</string>
     <string name="stats_lifestyle_max_expense_value">%1$s · %2$s</string>
     <string name="stats_lifestyle_merchant_fallback">未填写商家</string>
-    <string name="stats_lifestyle_empty">暂无特别统计项。</string>
+    <string name="stats_lifestyle_empty">还没有特别统计项。</string>
     <string name="stats_frequent_merchants_title">高频商家</string>
     <string name="stats_frequent_merchants_count">%1$d 笔</string>
 
@@ -133,7 +133,7 @@
     <string name="recurring_action_archive_description">归档固定支出</string>
     <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
     <string name="recurring_candidates_card_subtitle">根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。</string>
-    <string name="recurring_candidates_empty">暂无新的固定支出候选。</string>
+    <string name="recurring_candidates_empty">还没有新的固定支出候选。</string>
     <string name="recurring_candidate_merchant_fallback">未填写商家</string>
     <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
     <string name="recurring_candidate_confirm">确认</string>

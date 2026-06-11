@@ -86,7 +86,7 @@ internal class ExpenseConnectionRepository(
             checks += DiagnosticCheck(
                 name = "受保护图片",
                 status = DiagnosticStatus.Warn,
-                detail = "暂无待确认截图，跳过图片检查。",
+                detail = "还没有待确认截图，跳过图片检查。",
                 elapsedMs = 0,
             )
         } else {

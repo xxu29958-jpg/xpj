@@ -63,8 +63,6 @@ class OpenApiContractGateTest {
         Pairing(RecurringCandidateItemDto::class, "RecurringCandidateItem"),
         Pairing(RecurringCandidatesResponseDto::class, "RecurringCandidatesResponse"),
         Pairing(DataQualitySummaryDto::class, "DataQualitySummaryResponse"),
-        Pairing(UserUiPreferencesDto::class, "UserUiPreferencesResponse"),
-        Pairing(UserUiPreferencesUpdateRequestDto::class, "UserUiPreferencesUpdateRequest"),
         Pairing(TagListItemDto::class, "TagListItem"),
         Pairing(TagManagementListDto::class, "TagManagementListResponse"),
         Pairing(TagDetailDto::class, "TagDetailResponse"),

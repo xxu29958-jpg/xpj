@@ -47,8 +47,6 @@ import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
-import com.ticketbox.data.remote.dto.UserUiPreferencesDto
-import com.ticketbox.data.remote.dto.UserUiPreferencesUpdateRequestDto
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -581,12 +579,6 @@ internal class FakeApiService(
     override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = unsupported()
-
-    override suspend fun getUiPreferences(): Response<UserUiPreferencesDto> = unsupported()
-
-    override suspend fun putUiPreferences(
-        request: UserUiPreferencesUpdateRequestDto,
-    ): Response<UserUiPreferencesDto> = unsupported()
 
     override suspend fun listBackgroundTasks(): com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto =
         unsupported()

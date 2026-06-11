@@ -46,10 +46,10 @@
     <string name="bill_split_topbar_back">返回</string>
     <string name="bill_split_tab_inbox">收件箱 (%1$d)</string>
     <string name="bill_split_tab_sent">已发出 (%1$d)</string>
-    <string name="bill_split_inbox_empty">暂无拆账邀请。</string>
+    <string name="bill_split_inbox_empty">还没有拆账邀请。家人或其他账号给你发起拆账后，会出现在这里。</string>
     <string name="bill_split_inbox_accept">接受到 %1$s</string>
     <string name="bill_split_inbox_reject">拒绝</string>
-    <string name="bill_split_sent_empty">暂无已发出的拆账邀请。</string>
+    <string name="bill_split_sent_empty">还没有发出的拆账邀请。你从本账本发起的拆账会出现在这里。</string>
     <string name="bill_split_sent_cancel">撤回</string>
     <string name="bill_split_accept_picker_title">接受到哪个账本？</string>
     <string name="bill_split_status_invited">待处理</string>
