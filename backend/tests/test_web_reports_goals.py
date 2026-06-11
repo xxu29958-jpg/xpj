@@ -118,15 +118,6 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     assert 'id="reports-trend-chart"' in response.text
     assert 'id="reports-merchant-chart"' in response.text
     assert 'id="reports-category-chart"' in response.text
-    # 月度趋势卡(trend-chart.js)— f134d050 删容器后接回,数据与 KPI 同源。
-    assert 'id="chart-trend"' in response.text
-    trend_blob = re.search(
-        r'id="chart-trend"[^>]*\n?\s*data-series=\'(.*?)\'', response.text, re.DOTALL
-    )
-    assert trend_blob is not None
-    six_month = json.loads(trend_blob.group(1))
-    assert len(six_month) == 6
-    assert {"month", "amount_yuan", "budget_yuan"} <= six_month[0].keys()
     assert 'id="reports-export-png"' in response.text
     assert "/static/web/reports.js" in response.text
     assert "商家排行" in response.text
@@ -142,6 +133,31 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     assert "ticketbox-web-reports-2026-05-day.csv" in csv_response.headers["content-disposition"]
     assert "merchant_ranking,1,星巴克,4200,1" in csv_response.text
     assert "灰度账本商家" not in csv_response.text
+
+
+def test_web_reports_renders_six_month_trend_chart_container(
+    web_client: TestClient, *, identity
+) -> None:
+    """月度趋势卡(trend-chart.js)— f134d050 删容器后接回,数据与 KPI 同源
+    six_month_trend。撤掉 reports.html 的容器本测试必红。"""
+    _create_expense(
+        web_client,
+        amount_cents=4200,
+        merchant="星巴克",
+        category="餐饮",
+        expense_time="2026-05-03T12:00:00Z",
+        identity=identity,
+    )
+    response = web_client.get("/web/reports?ledger_id=owner&month=2026-05")
+    assert response.status_code == 200
+    assert 'id="chart-trend"' in response.text
+    trend_blob = re.search(
+        r'id="chart-trend"[^>]*\n?\s*data-series=\'(.*?)\'', response.text, re.DOTALL
+    )
+    assert trend_blob is not None
+    six_month = json.loads(trend_blob.group(1))
+    assert len(six_month) == 6
+    assert {"month", "amount_yuan", "budget_yuan"} <= six_month[0].keys()
 
 
 def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) -> None:
