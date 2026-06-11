@@ -31,7 +31,7 @@ What this lane counts
   precise-reconciliation purpose).
 
 Android ``@Test`` count is checked separately by the Android CI lane
-(``:app:verifyTestCountBaseline`` gradle task against
+(``:app:assertAndroidTestCountEqualsBaseline`` gradle task against
 ``android/audit/test_count_baseline.txt``). Cross-job coordination is
 intentionally avoided — each side enforces its own contract.
 
