@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseEditActions
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.ItemsAckOutcome
@@ -16,6 +17,7 @@ import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -173,6 +175,30 @@ internal class ExpenseEditViewModelTest {
         // confirm must write the post-save expense back into state — leaving
         // the stale pre-save baseline would 409 every later mutate on this page.
         assertEquals(saved, vm.uiState.value.expense)
+    }
+
+    @Test
+    fun confirmQueuedBehindOfflineSaveSurfacesOfflineHint() = edit { fake ->
+        // Per-target FIFO (codex review P1): when the save queued its PATCH,
+        // the repository diverts the chained confirm to the queue too. The VM
+        // must surface the offline hint (mirrors reject/save) instead of
+        // silently navigating away as if the confirm hit the server.
+        val vm = viewModel(fake)
+        val queued = fake.baseExpense.copy(merchant = "离线商家")
+        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Queued(queued)) }
+        fake.confirmOfflineResponder = { expense ->
+            Result.success(ExpenseStateOutcome.Queued(expense.copy(status = "confirmed")))
+        }
+
+        vm.confirm(draft(amountCents = 1200L))
+        advanceUntilIdle()
+
+        assertEquals(
+            UiText.res(R.string.expense_edit_confirm_offline_queued),
+            vm.uiState.value.message,
+        )
+        assertEquals("confirmed", vm.uiState.value.expense?.status)
+        assertTrue(vm.consumeDone())
     }
 
     @Test

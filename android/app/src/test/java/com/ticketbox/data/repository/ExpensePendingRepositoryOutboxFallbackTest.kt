@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -39,6 +40,43 @@ import kotlin.test.assertTrue
 internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingRepositoryOutboxTestBase() {
 
     // region — saveExpenseAllowingOffline
+
+    @Test
+    fun `save with unresolved queued mutation enqueues behind it, direct PATCH not attempted`() = runTest {
+        // Per-target FIFO guard (codex review P1): an unresolved queued
+        // mutation (here: an offline confirm) must replay before any later
+        // mutation on the same expense — a direct PATCH now would jump it.
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
+        // Direct PATCH WOULD succeed if attempted — only the guard may divert.
+        val api = ApiServiceStub(updateExpenseResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, outbox, adapter)
+        outbox.enqueue(
+            type = PendingMutationType.ConfirmExpense,
+            targetId = "expense:${baseline.id}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-confirm-key",
+        )
+
+        val outcome = repo.saveExpenseAllowingOffline(baseline.id, draft, baseline)
+            .getOrThrow() as SaveOutcome.Queued
+
+        // Queued surfaces the optimistic projection of the user's edit.
+        assertEquals("新商家", outcome.expense.merchant)
+        assertNull(
+            api.lastIdempotencyKey,
+            "direct PATCH must NOT be attempted while a same-target row is queued",
+        )
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.ConfirmExpense.wireValue, rows[0].type)
+        assertEquals(PendingMutationType.PatchExpense.wireValue, rows[1].type)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+        assertNotNull(rows[1].idempotencyKey, "guarded enqueue still carries an intent-time key")
+    }
 
     @Test
     fun `direct 2xx returns Synced with server expense, no enqueue`() = runTest {

@@ -297,14 +297,26 @@ class ExpenseEditViewModel(
                 .onSuccess { saveOutcome ->
                     repository.confirmExpenseAllowingOffline(saveOutcome.expense)
                         .onSuccess { confirmOutcome ->
+                            // Queued = the confirm sits behind the queued save in the
+                            // outbox (per-target FIFO; the repository diverts the
+                            // confirm to the queue whenever the save queued first) —
+                            // surface the offline hint like reject/save do.
+                            val message = when (confirmOutcome) {
+                                is ExpenseStateOutcome.Synced -> null
+                                is ExpenseStateOutcome.Queued -> UiText.res(R.string.expense_edit_confirm_offline_queued)
+                            }
                             _uiState.update { state ->
-                                state.copy(expense = confirmOutcome.expense, saving = false, done = true)
+                                state.copy(expense = confirmOutcome.expense, saving = false, message = message, done = true)
                             }
                         }
                         .onFailure { error ->
-                            // The save step COMMITTED (bumped row_version); keep the
-                            // post-save expense as the page baseline or every later
-                            // mutate replays the stale pre-save token and 409s.
+                            // Keep the post-save expense as the page baseline. After a
+                            // Synced save it carries the server's bumped row_version
+                            // (retrying with the stale pre-save token would always
+                            // 409); after a Queued save it's the optimistic projection
+                            // whose pre-save token is exactly what the queued PATCH
+                            // will replay — and any follow-up mutate now queues behind
+                            // it via the per-target FIFO guard.
                             _uiState.update { state -> state.copy(expense = saveOutcome.expense, saving = false, message = error.toUiText(R.string.expense_edit_confirm_failed)) }
                         }
                 }

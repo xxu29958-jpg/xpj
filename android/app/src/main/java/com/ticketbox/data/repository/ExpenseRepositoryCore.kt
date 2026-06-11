@@ -203,6 +203,16 @@ internal class ExpenseRepositoryCore(
         recordSyncTimestamp: Boolean = true,
     ): List<Expense> {
         val isFullLedgerSync = month == null && category == null && tag == null
+        // Prune-eligibility snapshot BEFORE the first page request: a row
+        // confirmed (and cached via cacheIfConfirmed) while the paginated
+        // fetch is in flight is missing from the response by timing alone —
+        // it must not be pruned as "server-deleted". See
+        // ExpenseDao.applyConfirmedSyncForLedger's pruneScope contract.
+        val preSyncConfirmedServerIds: Set<Long> = if (!replaceCache && isFullLedgerSync) {
+            expenseDao.confirmedServerIdsForLedger(ledgerIdAtRequest).toSet()
+        } else {
+            emptySet()
+        }
         val collectedDtos = mutableListOf<ExpenseDto>()
         var page = 1
         val pageSize = 50
@@ -237,7 +247,7 @@ internal class ExpenseRepositoryCore(
             ledgerId = ledgerIdAtRequest,
             expenses = entities,
             replaceCache = replaceCache,
-            pruneMissing = !replaceCache && isFullLedgerSync,
+            pruneScope = if (!replaceCache && isFullLedgerSync) preSyncConfirmedServerIds else null,
         )
         if (recordSyncTimestamp && isFullLedgerSync) {
             settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
@@ -276,18 +286,46 @@ internal class ExpenseRepositoryCore(
     }
 
     /**
+     * Per-target FIFO guard for the direct-first ``*AllowingOffline``
+     * mutations. ``true`` when the outbox already holds an unresolved row
+     * (PENDING / IN_FLIGHT / CONFLICT / FAILED) for this expense — a direct
+     * call now would jump the queue: e.g. a save that just QUEUED its PATCH
+     * chains into an online confirm, the confirm lands server-side with the
+     * pre-edit token (which still matches, because the PATCH never ran),
+     * the row is confirmed WITHOUT the user's edit, and the queued PATCH
+     * 409s on replay. Callers that CAN enqueue must divert to their enqueue
+     * branch instead; callers without outbox wiring keep the direct path
+     * (there is no queue to respect).
+     */
+    suspend fun hasUnresolvedQueuedMutationsFor(expenseId: Long): Boolean =
+        outbox?.activeForTarget("expense:$expenseId")?.isNotEmpty() ?: false
+
+    /**
+     * Whether [enqueueStateTransition] CAN enqueue for this expense —
+     * outbox + token adapter wired and the baseline carries a usable
+     * token. Pre-checked by the queue-jump guard branch so its
+     * ``networkError = null`` call never hits the rethrow path.
+     */
+    fun canEnqueueStateTransition(expense: Expense): Boolean =
+        outbox != null && expenseStateTokenAdapter != null && expense.rowVersion != 0L
+
+    /**
      * ADR-0038 PR-2g.7/8: shared IOException → outbox fallback for the
      * offline-aware token-only state-machine POSTs (confirm / reject /
-     * mark-not-duplicate in [ExpensePendingRepository]; retry-OCR in
-     * [ExpenseDetailRepository]). Enqueues a token-only row — the
-     * payload carries a ``0L`` placeholder and ``row.expectedRowVersion``
-     * is the single source of truth (the dispatcher overwrites the
-     * request token from the row on replay — round-8 P3#5). Re-checks
-     * session activity BEFORE enqueue so a mid-flight ledger switch
-     * can't slip an old-session row into the now-current ledger's queue
-     * (round-13 P1). Rethrows [networkError] when the outbox / adapter
-     * isn't wired or the baseline lacks a token (``rowVersion == 0L``), so
-     * the caller surfaces a hard failure instead of pretending to have queued.
+     * mark-not-duplicate in [ExpensePendingRepository]; retry-OCR /
+     * acknowledge-items-mismatch in [ExpenseDetailRepository]). Enqueues a
+     * token-only row — the payload carries a ``0L`` placeholder and
+     * ``row.expectedRowVersion`` is the single source of truth (the
+     * dispatcher overwrites the request token from the row on replay —
+     * round-8 P3#5). Re-checks session activity BEFORE enqueue so a
+     * mid-flight ledger switch can't slip an old-session row into the
+     * now-current ledger's queue (round-13 P1). Rethrows [networkError]
+     * when the outbox / adapter isn't wired or the baseline lacks a token
+     * (``rowVersion == 0L``), so the caller surfaces a hard failure instead
+     * of pretending to have queued. [networkError] is null only on the
+     * queue-jump guard path ([hasUnresolvedQueuedMutationsFor]), whose
+     * caller pre-checks [canEnqueueStateTransition] — the rethrow branch is
+     * unreachable there by contract.
      *
      * Lives on the core (not a single Repository) because both the
      * pending repo and the detail repo route their token-only POSTs
@@ -299,7 +337,7 @@ internal class ExpenseRepositoryCore(
         bound: BoundLedgerRequest,
         type: PendingMutationType,
         expense: Expense,
-        networkError: IOException,
+        networkError: IOException?,
         // ADR-0042 Slice D-1: the intent-time idempotency key the offline-aware
         // caller already used for its direct attempt. The enqueued row carries
         // the SAME key so a committed-but-unseen first attempt (the POST
@@ -311,7 +349,9 @@ internal class ExpenseRepositoryCore(
         val outboxRef = outbox
         val adapter = expenseStateTokenAdapter
         if (outboxRef == null || adapter == null || expense.rowVersion == 0L) {
-            throw networkError
+            throw networkError ?: IllegalStateException(
+                "enqueueStateTransition without outbox wiring — guard callers must pre-check canEnqueueStateTransition",
+            )
         }
         bound.requireStillActive()
         outboxRef.enqueue(

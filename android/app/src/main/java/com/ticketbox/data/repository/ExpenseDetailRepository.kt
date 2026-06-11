@@ -110,6 +110,21 @@ internal class ExpenseDetailRepository(
         // 409ing on the stale token. The dispatcher replays it from
         // row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            // Per-target FIFO guard — see confirmExpenseAllowingOffline
+            // (ExpensePendingRepository): a direct call must not jump an
+            // unresolved queued mutation for the same row.
+            core.enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.AcknowledgeItemsMismatch,
+                expense = expense,
+                networkError = null,
+                idempotencyKey = idempotencyKey,
+            )
+            return@safeCall ItemsAckOutcome.Queued(
+                currentItems.copy(itemsSumStatus = ItemsSumStatus.MISMATCH_ACKNOWLEDGED),
+            )
+        }
         try {
             val items = bound.call {
                 it.acknowledgeExpenseItemsMismatch(
@@ -164,35 +179,53 @@ internal class ExpenseDetailRepository(
         // the recorded success instead of false-409ing on the now-stale token.
         // The dispatcher replays it from row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
+        val outbox = core.outbox
+        val adapter = core.replaceItemsAdapter
+        val token = expense.rowVersion
+        if (outbox == null || adapter == null || token == 0L) {
+            // Outbox wiring missing OR baseline lacked a token — direct-only;
+            // any failure (incl. IOException) surfaces as Result.failure so we
+            // don't pretend we saved.
+            val saved = bound.call { it.replaceExpenseItems(expense.id, request, idempotencyKey) }.toDomain()
+            return@safeCall ReplaceItemsOutcome.Synced(saved)
+        }
+        if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
+            enqueueReplaceItems(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            return@safeCall ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items))
+        }
         try {
             val saved = bound.call { it.replaceExpenseItems(expense.id, request, idempotencyKey) }.toDomain()
             ReplaceItemsOutcome.Synced(saved) as ReplaceItemsOutcome
         } catch (networkError: IOException) {
-            val outbox = core.outbox
-            val adapter = core.replaceItemsAdapter
-            val token = expense.rowVersion
-            if (outbox == null || adapter == null || token == 0L) {
-                // Outbox wiring missing OR baseline lacked a token — fall back
-                // to the failure path so we don't pretend we saved.
-                throw networkError
-            }
-            // Session race guard: an IOException jumps past bound.call's
-            // post-check, so re-assert the session before queuing (a row
-            // queued under ledger A must not land in ledger B after a switch).
-            bound.requireStillActive()
-            // Strip the token from the payload — the row's expectedRowVersion is
-            // the single source of truth; the dispatcher overwrites it on replay.
-            outbox.enqueue(
-                type = PendingMutationType.ReplaceItems,
-                targetId = "expense:${expense.id}",
-                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-                expectedRowVersion = token,
-                // Same key as the direct attempt above — the dispatcher replays
-                // it from row.idempotencyKey.
-                idempotencyKey = idempotencyKey,
-            )
+            enqueueReplaceItems(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
             ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items)) as ReplaceItemsOutcome
         }
+    }
+
+    /**
+     * Shared ReplaceItems enqueue for the queue-jump guard and the
+     * IOException fallback. Session race guard + payload token strip — see
+     * [ExpensePendingRepository]'s ``enqueuePatchExpense`` for the full
+     * rationale (this mirrors it for the items PUT).
+     */
+    private suspend fun enqueueReplaceItems(
+        bound: BoundLedgerRequest,
+        outbox: OutboxRepository,
+        adapter: com.squareup.moshi.JsonAdapter<ExpenseItemReplaceRequestDto>,
+        expenseId: Long,
+        request: ExpenseItemReplaceRequestDto,
+        token: Long,
+        idempotencyKey: String,
+    ) {
+        bound.requireStillActive()
+        outbox.enqueue(
+            type = PendingMutationType.ReplaceItems,
+            targetId = "expense:$expenseId",
+            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+            expectedRowVersion = token,
+            idempotencyKey = idempotencyKey,
+        )
     }
 
     /**
@@ -309,35 +342,53 @@ internal class ExpenseDetailRepository(
         // the recorded success instead of false-409ing on the now-stale token.
         // The dispatcher replays it from row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
+        val outbox = core.outbox
+        val adapter = core.replaceSplitsAdapter
+        val token = expense.rowVersion
+        if (outbox == null || adapter == null || token == 0L) {
+            // Outbox wiring missing OR baseline lacked a token — direct-only;
+            // any failure (incl. IOException) surfaces as Result.failure so we
+            // don't pretend we saved.
+            val saved = bound.call { it.replaceExpenseSplits(expense.id, request, idempotencyKey) }.toDomain()
+            return@safeCall ReplaceSplitsOutcome.Synced(saved)
+        }
+        if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
+            enqueueReplaceSplits(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            return@safeCall ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits))
+        }
         try {
             val saved = bound.call { it.replaceExpenseSplits(expense.id, request, idempotencyKey) }.toDomain()
             ReplaceSplitsOutcome.Synced(saved) as ReplaceSplitsOutcome
         } catch (networkError: IOException) {
-            val outbox = core.outbox
-            val adapter = core.replaceSplitsAdapter
-            val token = expense.rowVersion
-            if (outbox == null || adapter == null || token == 0L) {
-                // Outbox wiring missing OR baseline lacked a token — fall back
-                // to the failure path so we don't pretend we saved.
-                throw networkError
-            }
-            // Session race guard: an IOException jumps past bound.call's
-            // post-check, so re-assert the session before queuing (a row
-            // queued under ledger A must not land in ledger B after a switch).
-            bound.requireStillActive()
-            // Strip the token from the payload — the row's expectedRowVersion is
-            // the single source of truth; the dispatcher overwrites it on replay.
-            outbox.enqueue(
-                type = PendingMutationType.ReplaceSplits,
-                targetId = "expense:${expense.id}",
-                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-                expectedRowVersion = token,
-                // Same key as the direct attempt above — the dispatcher replays
-                // it from row.idempotencyKey.
-                idempotencyKey = idempotencyKey,
-            )
+            enqueueReplaceSplits(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
             ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits)) as ReplaceSplitsOutcome
         }
+    }
+
+    /**
+     * Shared ReplaceSplits enqueue for the queue-jump guard and the
+     * IOException fallback. Session race guard + payload token strip — see
+     * [ExpensePendingRepository]'s ``enqueuePatchExpense`` for the full
+     * rationale (this mirrors it for the splits PUT).
+     */
+    private suspend fun enqueueReplaceSplits(
+        bound: BoundLedgerRequest,
+        outbox: OutboxRepository,
+        adapter: com.squareup.moshi.JsonAdapter<ExpenseSplitReplaceRequestDto>,
+        expenseId: Long,
+        request: ExpenseSplitReplaceRequestDto,
+        token: Long,
+        idempotencyKey: String,
+    ) {
+        bound.requireStillActive()
+        outbox.enqueue(
+            type = PendingMutationType.ReplaceSplits,
+            targetId = "expense:$expenseId",
+            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+            expectedRowVersion = token,
+            idempotencyKey = idempotencyKey,
+        )
     }
 
     /**
@@ -411,6 +462,17 @@ internal class ExpenseDetailRepository(
             // ADR-0042: one intent-time key for both the direct attempt and the
             // replay — see acknowledgeItemsMismatchAllowingOffline for rationale.
             val idempotencyKey = UUID.randomUUID().toString()
+            if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+                // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
+                core.enqueueStateTransition(
+                    bound = bound,
+                    type = PendingMutationType.RetryOcr,
+                    expense = expense,
+                    networkError = null,
+                    idempotencyKey = idempotencyKey,
+                )
+                return@safeCall ExpenseStateOutcome.Queued(expense)
+            }
             try {
                 val retried = bound.call {
                     it.retryOcr(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
@@ -460,38 +522,55 @@ internal class ExpenseDetailRepository(
         // the recorded success instead of false-409ing on the now-stale token.
         // The dispatcher replays it from row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
+        val outbox = core.outbox
+        val adapter = core.recognizeTextAdapter
+        val token = expense.rowVersion
+        if (outbox == null || adapter == null || token == 0L) {
+            // Outbox wiring missing OR baseline lacked a token — direct-only;
+            // any failure (incl. IOException) surfaces as Result.failure so we
+            // don't pretend we recognised.
+            val recognized = bound.call { it.recognizeText(expense.id, request, idempotencyKey) }.toDomain()
+            return@safeCall ExpenseStateOutcome.Synced(recognized)
+        }
+        if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
+            enqueueRecognizeText(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            return@safeCall ExpenseStateOutcome.Queued(expense)
+        }
         try {
             val recognized = bound.call { it.recognizeText(expense.id, request, idempotencyKey) }.toDomain()
             ExpenseStateOutcome.Synced(recognized) as ExpenseStateOutcome
         } catch (networkError: IOException) {
-            val outbox = core.outbox
-            val adapter = core.recognizeTextAdapter
-            val token = expense.rowVersion
-            if (outbox == null || adapter == null || token == 0L) {
-                // Outbox wiring missing OR baseline lacked a token — fall back
-                // to the failure path so we don't pretend we recognised.
-                throw networkError
-            }
-            // Session race guard: an IOException jumps past bound.call's
-            // post-check, so re-assert the session before queuing (a row
-            // queued under ledger A must not land in ledger B after a switch).
-            bound.requireStillActive()
-            // Strip the token from the payload — the row's expectedRowVersion is
-            // the single source of truth; the dispatcher overwrites it on replay.
-            // ``raw_text`` stays in the payload so the queued recognize replays
-            // the user's pasted text.
-            outbox.enqueue(
-                type = PendingMutationType.RecognizeText,
-                targetId = "expense:${expense.id}",
-                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-                expectedRowVersion = token,
-                // Same key as the direct attempt above — the dispatcher replays
-                // it from row.idempotencyKey.
-                idempotencyKey = idempotencyKey,
-            )
             // Queued is the expense UNCHANGED — the server does the parsing.
+            enqueueRecognizeText(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
             ExpenseStateOutcome.Queued(expense) as ExpenseStateOutcome
         }
+    }
+
+    /**
+     * Shared RecognizeText enqueue for the queue-jump guard and the
+     * IOException fallback. Session race guard + payload token strip — see
+     * [ExpensePendingRepository]'s ``enqueuePatchExpense`` for the full
+     * rationale. ``raw_text`` stays in the payload so the queued recognize
+     * replays the user's pasted text.
+     */
+    private suspend fun enqueueRecognizeText(
+        bound: BoundLedgerRequest,
+        outbox: OutboxRepository,
+        adapter: com.squareup.moshi.JsonAdapter<ExpenseRecognizeTextRequestDto>,
+        expenseId: Long,
+        request: ExpenseRecognizeTextRequestDto,
+        token: Long,
+        idempotencyKey: String,
+    ) {
+        bound.requireStillActive()
+        outbox.enqueue(
+            type = PendingMutationType.RecognizeText,
+            targetId = "expense:$expenseId",
+            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+            expectedRowVersion = token,
+            idempotencyKey = idempotencyKey,
+        )
     }
 
     suspend fun fetchDuplicates(): Result<List<Expense>> = core.errorHandler.safeCall {

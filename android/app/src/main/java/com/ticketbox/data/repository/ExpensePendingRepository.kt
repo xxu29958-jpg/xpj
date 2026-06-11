@@ -180,6 +180,28 @@ internal class ExpensePendingRepository(
         // this SAME key — the server HITs the recorded success and returns the
         // canonical row instead of false-409ing on the now-stale row_version.
         val idempotencyKey = UUID.randomUUID().toString()
+        val outbox = core.outbox
+        val adapter = core.patchExpenseAdapter
+        val token = request.expectedRowVersion
+        if (outbox == null || adapter == null || token == null || token == 0L) {
+            // Outbox wiring missing OR baseline lacked a token — direct-only;
+            // any failure (incl. IOException) surfaces as Result.failure so we
+            // don't pretend we saved.
+            val updated = core.cacheIfConfirmed(
+                bound.call { it.updateExpense(id, request, idempotencyKey) },
+                bound.ledgerId,
+            )
+            return SaveOutcome.Synced(updated.toDomain())
+        }
+        if (core.hasUnresolvedQueuedMutationsFor(id)) {
+            // Per-target FIFO guard: an unresolved queued mutation for this
+            // row exists, so a direct PATCH now would land out of intent
+            // order (e.g. ahead of a queued confirm whose token cascade
+            // expects to run first). Queue behind it; the dispatcher's
+            // fresh-token cascade corrects this row's token on replay.
+            enqueuePatchExpense(bound, outbox, adapter, id, request, token, idempotencyKey)
+            return SaveOutcome.Queued(optimistic)
+        }
         return try {
             // Direct PATCH first — fast path when online. Returns
             // Synced with the server's canonical Expense.
@@ -195,45 +217,50 @@ internal class ExpensePendingRepository(
             // IOException is the offline-fallback trigger —
             // HttpException (409 / 4xx / 5xx) propagates out to
             // safeCall and surfaces as Result.failure.
-            val outbox = core.outbox
-            val adapter = core.patchExpenseAdapter
-            val token = request.expectedRowVersion
-            if (outbox == null || adapter == null || token == null || token == 0L) {
-                // Outbox wiring missing OR baseline lacked a token.
-                // Fall back to the failure path so we don't pretend
-                // we saved.
-                throw networkError
-            }
-            // [codex round-13 P1] Session race guard. ``bound.call``
-            // only re-checks ``isStillActive`` when the API block
-            // returns normally; an IOException jumps straight here
-            // and would otherwise let a row queued under ledger A
-            // land in ledger B's outbox after a mid-flight switch
-            // (the OutboxRepository.clearAll that fires on switch
-            // already wiped the OLD queue; what this guard prevents
-            // is a NEW row being added AFTER the wipe with stale
-            // session context). Throws RepositoryException with
-            // "账本已切换…" if so; safeCall maps it to
-            // Result.failure.
-            bound.requireStillActive()
-            // codex round-8 P3#5: strip the token from the payload
-            // — outbox row's expectedRowVersion is the single source
-            // of truth; replay (PatchExpenseDispatcher) already
-            // overwrites the request token from the row before
-            // dispatching. Saving it in the payload too duplicates
-            // state and risks drift if KeepMine refreshes the row
-            // token without rewriting the serialised payload.
-            outbox.enqueue(
-                type = PendingMutationType.PatchExpense,
-                targetId = "expense:$id",
-                payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
-                expectedRowVersion = token,
-                // Same key as the direct attempt above — see the rationale where
-                // it's minted. The dispatcher replays it from row.idempotencyKey.
-                idempotencyKey = idempotencyKey,
-            )
+            enqueuePatchExpense(bound, outbox, adapter, id, request, token, idempotencyKey)
             SaveOutcome.Queued(optimistic)
         }
+    }
+
+    /**
+     * Shared PatchExpense enqueue for [patchExpenseOffline]'s two queue
+     * branches (queue-jump guard / IOException fallback).
+     *
+     * [codex round-13 P1] Session race guard: ``bound.call`` only re-checks
+     * ``isStillActive`` when the API block returns normally; the fallback
+     * branch jumps straight here on IOException and would otherwise let a row
+     * queued under ledger A land in ledger B's outbox after a mid-flight
+     * switch (the OutboxRepository.clearAll that fires on switch already
+     * wiped the OLD queue; what this guard prevents is a NEW row being added
+     * AFTER the wipe with stale session context). Throws RepositoryException
+     * with "账本已切换…" if so; safeCall maps it to Result.failure.
+     *
+     * codex round-8 P3#5: the token is stripped from the payload — the outbox
+     * row's expectedRowVersion is the single source of truth; replay
+     * (PatchExpenseDispatcher) already overwrites the request token from the
+     * row before dispatching. Saving it in the payload too duplicates state
+     * and risks drift if KeepMine refreshes the row token without rewriting
+     * the serialised payload.
+     */
+    private suspend fun enqueuePatchExpense(
+        bound: BoundLedgerRequest,
+        outbox: OutboxRepository,
+        adapter: com.squareup.moshi.JsonAdapter<ExpenseUpdateRequest>,
+        id: Long,
+        request: ExpenseUpdateRequest,
+        token: Long,
+        idempotencyKey: String,
+    ) {
+        bound.requireStillActive()
+        outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:$id",
+            payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
+            expectedRowVersion = token,
+            // Same key as the direct attempt would have used — see the rationale
+            // where it's minted. The dispatcher replays it from row.idempotencyKey.
+            idempotencyKey = idempotencyKey,
+        )
     }
 
     /**
@@ -328,6 +355,20 @@ internal class ExpensePendingRepository(
         // server HITs the recorded success instead of false-409ing on the stale
         // token. The dispatcher replays it from row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            // Per-target FIFO guard: an unresolved queued mutation (e.g. the
+            // PATCH a just-queued save enqueued) must replay BEFORE this
+            // confirm — a direct confirm now would commit the row WITHOUT the
+            // user's edit and 409 the queued PATCH on replay. Queue behind it.
+            core.enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.ConfirmExpense,
+                expense = expense,
+                networkError = null,
+                idempotencyKey = idempotencyKey,
+            )
+            return@safeCall ExpenseStateOutcome.Queued(expense.copy(status = "confirmed"))
+        }
         try {
             val confirmed = core.cacheIfConfirmed(
                 bound.call {
@@ -355,6 +396,17 @@ internal class ExpensePendingRepository(
         // ADR-0042: one intent-time key for both the direct attempt and the
         // replay — see confirmExpenseAllowingOffline for the rationale.
         val idempotencyKey = UUID.randomUUID().toString()
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            // Per-target FIFO guard — see confirmExpenseAllowingOffline.
+            core.enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.RejectExpense,
+                expense = expense,
+                networkError = null,
+                idempotencyKey = idempotencyKey,
+            )
+            return@safeCall ExpenseStateOutcome.Queued(expense.copy(status = "rejected"))
+        }
         try {
             val rejected = bound.call {
                 it.rejectExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
@@ -379,6 +431,17 @@ internal class ExpensePendingRepository(
         // ADR-0042: one intent-time key for both the direct attempt and the
         // replay — see confirmExpenseAllowingOffline for the rationale.
         val idempotencyKey = UUID.randomUUID().toString()
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            // Per-target FIFO guard — see confirmExpenseAllowingOffline.
+            core.enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.MarkNotDuplicate,
+                expense = expense,
+                networkError = null,
+                idempotencyKey = idempotencyKey,
+            )
+            return@safeCall ExpenseStateOutcome.Queued(expense.copy(duplicateStatus = "none"))
+        }
         try {
             val updated = core.cacheIfConfirmed(
                 bound.call {

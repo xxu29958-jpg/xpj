@@ -93,15 +93,16 @@ internal class FakeExpenseDao(
         ledgerId: String,
         expenses: List<ExpenseEntity>,
         replaceCache: Boolean,
-        pruneMissing: Boolean,
+        pruneScope: Set<Long>?,
     ) {
         if (replaceCache) {
             clearForLedger(ledgerId)
         }
         expenses.forEach { upsertByServerIdForLedger(ledgerId, it) }
-        if (pruneMissing) {
+        if (pruneScope != null) {
             val remoteServerIds = expenses.map { it.serverId }.toSet()
-            val staleServerIds = confirmedServerIdsForLedger(ledgerId).filter { it !in remoteServerIds }
+            val staleServerIds = confirmedServerIdsForLedger(ledgerId)
+                .filter { it !in remoteServerIds && it in pruneScope }
             if (staleServerIds.isNotEmpty()) {
                 deleteConfirmedByServerIds(ledgerId, staleServerIds)
             }
