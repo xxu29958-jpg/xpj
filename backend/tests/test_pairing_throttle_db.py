@@ -42,7 +42,12 @@ def test_throttle_returns_429_after_max_attempts(
         _pair(client, code="DEFINITELY-WRONG-CODE")
     response = _pair(client, code="DEFINITELY-WRONG-CODE")
     assert response.status_code == 429
-    assert response.json()["error"] == "invalid_pairing_code"
+    # §4 generic throttle code — NOT invalid_pairing_code: the client copy for
+    # that code ("绑定码无效，请重新获取") sends the user into a retry loop the
+    # throttle exists to stop. Copy is pinned here because the three-surface
+    # lane only reconciles strings.xml/doc against each other for repo-arm codes.
+    assert response.json()["error"] == "rate_limited"
+    assert response.json()["message"] == "尝试太频繁，请稍后再试。"
 
 
 def test_successful_pair_clears_throttle_rows(

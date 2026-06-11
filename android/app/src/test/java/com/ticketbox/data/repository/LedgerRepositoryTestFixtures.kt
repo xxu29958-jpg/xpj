@@ -70,9 +70,11 @@ import retrofit2.Response
 
 internal class LedgerStubApiFactory(private val service: ApiService) : ApiServiceFactory {
     val tokenProviders: MutableList<() -> String?> = mutableListOf()
+    val baseUrls: MutableList<String> = mutableListOf()
 
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
         tokenProviders += tokenProvider
+        baseUrls += baseUrl
         return service
     }
 }
@@ -457,8 +459,11 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     override fun saveServerUrl(serverUrl: String) {
         this.serverUrl = serverUrl.trim().trimEnd('/')
     }
+    var unlockedMarked: Boolean = false
     override fun isBound(): Boolean = !serverUrl.isNullOrBlank()
-    override fun markUnlocked() = Unit
+    override fun markUnlocked() {
+        unlockedMarked = true
+    }
     override fun markBackgrounded() = Unit
     override fun requiresUnlock(): Boolean = false
     override fun clear() {

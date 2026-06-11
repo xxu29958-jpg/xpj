@@ -170,12 +170,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 E:\projects\xiaopiaojia\android
 ```
 
-首次绑定输入账本地址和 6 位绑定码：
+首次绑定输入账本地址和 8 位绑定码：
 
 ```text
 https://api.我的域名.com
-738294
+73829461
 ```
+
+家庭成员不用绑定码：在绑定页点「我有家庭邀请」，粘贴拥有者从本机管理后台（成员管理）生成的邀请明文即可入伙。
 
 绑定时 Android 会先用新 session token 完整执行 `syncConfirmed()` 并替换 Room confirmed 缓存，成功后再保存 session token、账号名、账本名、设备名、角色和绑定时间。
 

@@ -26,6 +26,8 @@ import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.ServerUrlEntryConfig
+import com.ticketbox.viewmodel.JoinFamilyLedgerUiState
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 
 private const val INVITE_TOKEN_MAX = 128
@@ -45,6 +47,12 @@ private const val NAME_MAX = 120
  * for the duration of the request; on success the only persisted material
  * is the freshly minted session token returned by the server.
  *
+ * Dual-host: the settings tree mounts it on a bound device with
+ * [serverUrlEntry] = null (historic behaviour); the cold-start「我有家庭邀请」
+ * entry mounts it unbound with a non-null [serverUrlEntry] — the screen then
+ * collects (or silently defaults) the server URL and routes preview through
+ * it, while the current-binding line is hidden because there is no binding.
+ *
  * ViewModel-driven as of 2026-05; pre-refactor injected ``LedgerRepository``
  * into the screen body directly, which broke the Android layer rule.
  */
@@ -53,11 +61,13 @@ fun JoinFamilyLedgerScreen(
     viewModel: JoinFamilyLedgerViewModel,
     onBack: () -> Unit,
     onAccepted: () -> Unit,
+    serverUrlEntry: ServerUrlEntryConfig? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     var inviteToken by remember { mutableStateOf("") }
     var accountName by remember { mutableStateOf("") }
     var deviceName by remember { mutableStateOf("") }
+    var serverUrl by remember(serverUrlEntry) { mutableStateOf(serverUrlEntry?.defaultUrl.orEmpty()) }
 
     val currentAccountName = viewModel.currentAccountName.asString()
     val currentLedgerName = viewModel.currentLedgerName.asString()
@@ -77,15 +87,30 @@ fun JoinFamilyLedgerScreen(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
-                    Text(
-                        text = stringResource(
-                            R.string.join_family_ledger_current_binding,
-                            currentLedgerName,
-                            currentAccountName,
-                            currentRole,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (serverUrlEntry == null) {
+                        Text(
+                            text = stringResource(
+                                R.string.join_family_ledger_current_binding,
+                                currentLedgerName,
+                                currentAccountName,
+                                currentRole,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (serverUrlEntry?.showInput == true) {
+                        OutlinedTextField(
+                            value = serverUrl,
+                            onValueChange = { value ->
+                                serverUrl = value
+                                viewModel.onServerUrlChanged()
+                            },
+                            label = { Text(stringResource(R.string.bind_server_field_url_label)) },
+                            placeholder = { Text(stringResource(R.string.bind_server_field_url_placeholder)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     OutlinedTextField(
                         value = inviteToken,
                         onValueChange = { value ->
@@ -110,22 +135,16 @@ fun JoinFamilyLedgerScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedButton(
-                        onClick = { viewModel.previewInvitation(inviteToken) },
-                        enabled = !state.previewing && !state.submitting,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            if (state.previewing) {
-                                stringResource(R.string.join_family_ledger_preview_loading)
-                            } else {
-                                stringResource(R.string.join_family_ledger_preview_button)
-                            },
-                        )
-                    }
-                    state.preview?.let { InvitationPreviewPanel(preview = it) }
-                    Button(
-                        onClick = {
+                    JoinInvitationActions(
+                        state = state,
+                        previewEnabled = serverUrlEntry == null || serverUrl.isNotBlank(),
+                        onPreview = {
+                            viewModel.previewInvitation(
+                                inviteToken = inviteToken,
+                                serverUrlOverride = if (serverUrlEntry != null) serverUrl else null,
+                            )
+                        },
+                        onAccept = {
                             viewModel.acceptInvitation(
                                 inviteToken = inviteToken,
                                 accountName = accountName,
@@ -134,23 +153,7 @@ fun JoinFamilyLedgerScreen(
                                 onConsumed = { inviteToken = "" },
                             )
                         },
-                        enabled = !state.submitting && !state.previewing && state.preview != null,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            if (state.submitting) {
-                                stringResource(R.string.join_family_ledger_accept_loading)
-                            } else {
-                                stringResource(R.string.join_family_ledger_accept_button)
-                            },
-                        )
-                    }
-                    if (state.preview == null) {
-                        Text(
-                            text = stringResource(R.string.join_family_ledger_preview_required),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    )
                 }
             }
         }
@@ -169,6 +172,50 @@ fun JoinFamilyLedgerScreen(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+    }
+}
+
+/** Preview/accept 按钮对 + 预览面板 + 「先预览」提示——从主函数抽出以守
+ *  detekt CyclomaticComplexMethod(双宿主分支把主函数推过 14)。 */
+@Composable
+private fun JoinInvitationActions(
+    state: JoinFamilyLedgerUiState,
+    previewEnabled: Boolean,
+    onPreview: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onPreview,
+        enabled = !state.previewing && !state.submitting && previewEnabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            if (state.previewing) {
+                stringResource(R.string.join_family_ledger_preview_loading)
+            } else {
+                stringResource(R.string.join_family_ledger_preview_button)
+            },
+        )
+    }
+    state.preview?.let { InvitationPreviewPanel(preview = it) }
+    Button(
+        onClick = onAccept,
+        enabled = !state.submitting && !state.previewing && state.preview != null,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            if (state.submitting) {
+                stringResource(R.string.join_family_ledger_accept_loading)
+            } else {
+                stringResource(R.string.join_family_ledger_accept_button)
+            },
+        )
+    }
+    if (state.preview == null) {
+        Text(
+            text = stringResource(R.string.join_family_ledger_preview_required),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

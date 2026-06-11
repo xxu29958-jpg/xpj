@@ -103,6 +103,19 @@ class AppViewModel(
         }
     }
 
+    /**
+     * Re-derive the bound flag after an out-of-band binding write — i.e. a
+     * cold-start invitation join, where ``LedgerRepository.acceptInvitation``
+     * (not [bind]) persisted the server URL + session token. Mirrors [bind]'s
+     * success transition: a freshly persisted binding starts unlocked (the
+     * session coordinator already ran ``markUnlocked`` for it). No-op while
+     * nothing is actually persisted, so a spurious call can't fake a binding.
+     */
+    fun refreshBindingState() {
+        if (!hasActiveBinding) return
+        _uiState.update { it.copy(isBound = true, unlocked = true, authMessage = null) }
+    }
+
     fun markBackgrounded() {
         if (!requireLocalUnlock) return
         settingsStore.markBackgrounded()
@@ -127,10 +140,6 @@ class AppViewModel(
     fun unlockFailed(message: UiText) {
         _uiState.update { it.copy(authMessage = message) }
     }
-
-    /** Biometric/system callbacks (`BiometricAuthManager.onError`) hand us an
-     *  already-resolved string; wrap it verbatim so the message is unchanged. */
-    fun unlockFailed(message: String) = unlockFailed(UiText.raw(message))
 
     fun consumeAuthMessage() {
         _uiState.update { it.copy(authMessage = null) }

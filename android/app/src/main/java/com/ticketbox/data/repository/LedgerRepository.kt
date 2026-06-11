@@ -216,10 +216,23 @@ class LedgerRepository(
         result
     }
 
-    suspend fun previewInvitation(inviteToken: String): Result<InvitationPreview> = wrap {
+    /**
+     * Preview a family-ledger invitation. [serverUrlOverride] is the cold-start
+     * (unbound device) entry: the URL is normalized/validated through the same
+     * [validateServerUrlInput] rules as pairing-code binding and the call goes
+     * out unauthenticated against it. ``null`` keeps the historical behaviour:
+     * the device must already be bound (otherwise "账本地址未绑定").
+     */
+    suspend fun previewInvitation(
+        inviteToken: String,
+        serverUrlOverride: String? = null,
+    ): Result<InvitationPreview> = wrap {
         val cleanToken = inviteToken.trim()
         require(cleanToken.isNotEmpty()) { "请粘贴邀请明文。" }
-        unauthenticatedApi().previewInvitation(
+        val api = serverUrlOverride
+            ?.let { apiProvider.unauthenticated(validateServerUrlInput(it)) }
+            ?: unauthenticatedApi()
+        api.previewInvitation(
             InvitationPreviewRequestDto(inviteToken = cleanToken),
         ).toInvitationPreview()
     }
@@ -235,11 +248,19 @@ class LedgerRepository(
      * current binding — accept replaces the active session token, identity,
      * and active ledger. The local confirmed-cache for the joined ledger is
      * wiped so the next sync produces a clean view.
+     *
+     * [serverUrlOverride] is the cold-start (unbound device) join entry. It is
+     * validated through the bind-screen URL rules, the accept goes out
+     * **unauthenticated** (never attach a stored token to a caller-supplied
+     * host), and the success transition additionally persists the server URL
+     * and marks the device unlocked — mirroring pairing-code binding so the
+     * freshly joined member is not stranded on the unlock screen.
      */
     suspend fun acceptInvitation(
         inviteToken: String,
         accountName: String,
         deviceName: String,
+        serverUrlOverride: String? = null,
     ): Result<LedgerSummary> = wrap {
         val cleanToken = inviteToken.trim()
         require(cleanToken.isNotEmpty()) { "请粘贴邀请明文。" }
@@ -250,13 +271,14 @@ class LedgerRepository(
         require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
         require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
         val session = sessionCoordinator.currentSnapshot()
-        val serverUrl = requireNotNull(session.serverUrl?.takeIf { it.isNotBlank() }) {
-            "Ledger server is not bound."
+        val joiningUnbound = serverUrlOverride != null
+        val serverUrl = resolvedInvitationServerUrl(serverUrlOverride, session)
+        val acceptApi = when {
+            joiningUnbound -> apiProvider.unauthenticated(serverUrl)
+            else -> session.sessionToken
+                ?.let { apiProvider.temporary(serverUrl, tokenOverride = it) }
+                ?: apiProvider.unauthenticated(serverUrl)
         }
-        val previousToken = session.sessionToken
-        val acceptApi = previousToken
-            ?.let { apiProvider.temporary(serverUrl, tokenOverride = it) }
-            ?: unauthenticatedApi()
         val response = acceptApi.acceptInvitation(
             InvitationAcceptRequestDto(
                 inviteToken = cleanToken,
@@ -266,6 +288,7 @@ class LedgerRepository(
         )
         val applied = sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = session,
+            serverUrl = serverUrl.takeIf { joiningUnbound },
             sessionToken = response.sessionToken,
             tokenExpiresAt = response.expiresAt,
             tokenSoftRefreshAfter = response.softRefreshAfter,
@@ -279,6 +302,7 @@ class LedgerRepository(
             ),
             cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
             clearAvailableLedgers = true,
+            markUnlocked = joiningUnbound,
         )
         if (!applied) {
             throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
@@ -293,6 +317,18 @@ class LedgerRepository(
             createdAt = null,
             archivedAt = null,
         )
+    }
+
+    /** Override (cold-start join) goes through the shared bind-screen URL
+     *  rules; otherwise the device's persisted binding is the only source. */
+    private fun resolvedInvitationServerUrl(
+        serverUrlOverride: String?,
+        session: LedgerSessionSnapshot,
+    ): String {
+        if (serverUrlOverride != null) return validateServerUrlInput(serverUrlOverride)
+        return requireNotNull(session.serverUrl?.takeIf { it.isNotBlank() }) {
+            "Ledger server is not bound."
+        }
     }
 
     private suspend fun <T> wrap(block: suspend () -> T): Result<T> {
