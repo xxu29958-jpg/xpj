@@ -75,7 +75,8 @@
     <string name="background_tasks_page_title">后台任务</string>
     <string name="background_tasks_page_subtitle">CSV 导入 / v1.0 迁移等长任务。账本内每个账户只看到自己发起的任务。</string>
     <string name="background_tasks_section_recent_title">最近任务</string>
-    <string name="background_tasks_empty">暂无后台任务。</string>
+    <string name="background_tasks_empty">还没有后台任务。发起 CSV 导入或迁移等长任务后，进度会出现在这里。</string>
+    <string name="background_tasks_row_error_generic">这个任务没有完成，请稍后重试。</string>
     <string name="background_tasks_refreshing">刷新中…</string>
     <string name="background_tasks_refresh">刷新</string>
     <string name="background_tasks_row_created">创建：%1$s</string>

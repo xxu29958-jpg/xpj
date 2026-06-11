@@ -127,7 +127,7 @@
     <string name="expense_edit_v1_items_edit_button">编辑明细</string>
     <string name="expense_edit_v1_items_loading_title">明细加载中</string>
     <string name="expense_edit_v1_items_loading_body">商品级记录加载完成后会显示在这里。</string>
-    <string name="expense_edit_v1_items_empty">暂无商品明细</string>
+    <string name="expense_edit_v1_items_empty">还没有商品明细</string>
     <string name="expense_edit_v1_items_mismatch_title">明细合计与账单金额相差 %1$s</string>
     <string name="expense_edit_v1_items_mismatch_body">检查商品行，或如果原小票本身就是这个金额，可以确认差异。</string>
     <string name="expense_edit_v1_items_mismatch_ack_button">原小票如此</string>
@@ -138,7 +138,7 @@
     <string name="expense_edit_v1_splits_edit_button">编辑拆账</string>
     <string name="expense_edit_v1_splits_loading_title">拆账加载中</string>
     <string name="expense_edit_v1_splits_loading_body">家庭成员分摊加载完成后会显示在这里。</string>
-    <string name="expense_edit_v1_splits_empty">暂无家庭拆账</string>
+    <string name="expense_edit_v1_splits_empty">还没有家庭拆账</string>
     <string name="expense_edit_v1_reconcile_match_pill">合计一致</string>
     <string name="expense_edit_v1_reconcile_diff_pill">差额 %1$s</string>
     <string name="expense_edit_v1_reconcile_amounts">账单 %1$s · 明细 %2$s</string>

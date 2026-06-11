@@ -250,7 +250,11 @@ private fun MerchantAliasCard(
                 )
             }
             Text(
-                text = "${alias.aliasKey} -> ${alias.canonicalKey}",
+                text = stringResource(
+                    R.string.merchant_aliases_card_key_mapping,
+                    alias.aliasKey,
+                    alias.canonicalKey,
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,

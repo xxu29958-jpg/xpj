@@ -44,10 +44,10 @@
     <string name="ledger_bulk_tags_confirm_replace">替换</string>
 
     <!-- EmptyLedgerState：空态卡 -->
-    <string name="ledger_empty_title_tag">暂无 #%1$s 标签账单</string>
-    <string name="ledger_empty_title_month_category">%1$s 暂无 %2$s 分类账单</string>
-    <string name="ledger_empty_title_month">%1$s 暂无已确认账单</string>
-    <string name="ledger_empty_title_category">暂无 %1$s 分类账单</string>
+    <string name="ledger_empty_title_tag">还没有 #%1$s 标签账单</string>
+    <string name="ledger_empty_title_month_category">%1$s 还没有 %2$s 分类账单</string>
+    <string name="ledger_empty_title_month">%1$s 还没有已确认账单</string>
+    <string name="ledger_empty_title_category">还没有 %1$s 分类账单</string>
     <string name="ledger_empty_title_default">本地还没有已确认账单</string>
     <string name="ledger_empty_body_filtered">可以切换月份、分类或标签，或先更新账本。</string>
     <string name="ledger_empty_body_readonly">当前角色可查看已入账记录，不能手动记账。</string>
@@ -88,7 +88,7 @@
     <!-- LedgerViewModel：账本 ViewModel 状态/结果文案（ADR-0044 wave 2，纯②：经 UiText 外置） -->
     <string name="ledger_msg_sync_done">更新完成</string>
     <string name="ledger_msg_sync_failed">暂时更新不了，先看本机账本。</string>
-    <string name="ledger_msg_export_empty">暂无可导出的已确认账单。请先确认几笔账单，或重新更新后再试。</string>
+    <string name="ledger_msg_export_empty">没有可导出的已确认账单。请先确认几笔账单，或重新更新后再试。</string>
     <string name="ledger_msg_export_pick_location">请选择保存位置</string>
     <string name="ledger_msg_export_failed">没有导出成功，可以换个保存位置再试。</string>
     <string name="ledger_msg_export_cancelled">已取消导出</string>

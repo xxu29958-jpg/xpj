@@ -58,8 +58,6 @@ import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
-import com.ticketbox.data.remote.dto.UserUiPreferencesDto
-import com.ticketbox.data.remote.dto.UserUiPreferencesUpdateRequestDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
@@ -385,10 +383,6 @@ internal class StubApi(
     override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = ledgerUnsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = ledgerUnsupported()
     override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = ledgerUnsupported()
-    override suspend fun getUiPreferences(): Response<UserUiPreferencesDto> = ledgerUnsupported()
-    override suspend fun putUiPreferences(
-        request: UserUiPreferencesUpdateRequestDto,
-    ): Response<UserUiPreferencesDto> = ledgerUnsupported()
 
     override suspend fun listBackgroundTasks(): com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto =
         ledgerUnsupported()

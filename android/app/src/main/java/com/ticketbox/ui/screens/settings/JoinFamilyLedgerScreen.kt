@@ -25,6 +25,7 @@ import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ServerUrlEntryConfig
 import com.ticketbox.viewmodel.JoinFamilyLedgerUiState
@@ -237,7 +238,10 @@ private fun InvitationPreviewPanel(preview: InvitationPreview) {
         )
         preview.expiresAt?.takeIf { it.isNotBlank() }?.let {
             Text(
-                text = stringResource(R.string.join_family_ledger_preview_expires_at, it),
+                text = stringResource(
+                    R.string.join_family_ledger_preview_expires_at,
+                    displayDateTime(it),
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
