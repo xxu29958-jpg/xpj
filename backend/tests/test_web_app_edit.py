@@ -186,3 +186,53 @@ def test_web_edit_missing_expense_fragment_returns_readable_html(
     assert "没有找到这笔账单" in resp.text
     assert not resp.text.lstrip().startswith("{")
 
+
+def test_web_save_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
+    """Audit P2 #6: the save error path re-reads the expense to re-render the
+    form; for a vanished row that second read used to escape to the global
+    bare-JSON handler. It must flash-redirect like the GET guard instead."""
+    resp = web_client.post(
+        "/web/expenses/999999/save",
+        data={"amount_yuan": "1.00", "merchant": "", "category": "", "note": "",
+              "ledger_id": "owner", "expected_row_version": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/confirmed")
+    assert "msg=" in resp.headers["location"]
+    assert not resp.text.lstrip().startswith("{")
+
+
+def test_web_confirm_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
+    resp = web_client.post(
+        "/web/expenses/999999/confirm",
+        data={"ledger_id": "owner", "expected_row_version": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/pending")
+    assert "msg=" in resp.headers["location"]
+
+
+def test_web_confirm_stale_token_on_missing_expense_redirects_with_flash(
+    web_client: TestClient,
+) -> None:
+    """The parsed-None branch (stale form on a deleted row) shares the guard."""
+    resp = web_client.post(
+        "/web/expenses/999999/confirm",
+        data={"ledger_id": "owner", "expected_row_version": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/pending")
+
+
+def test_web_reject_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
+    resp = web_client.post(
+        "/web/expenses/999999/reject",
+        data={"ledger_id": "owner", "expected_row_version": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    assert resp.headers["location"].startswith("/web/pending")
+    assert "msg=" in resp.headers["location"]

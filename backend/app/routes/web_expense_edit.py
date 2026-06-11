@@ -29,6 +29,34 @@ from app.services.expense_service import (
 router = APIRouter(prefix="/web", tags=["web"])
 
 
+def _edit_page_or_flash_redirect(
+    db: Session,
+    request: Request,
+    options,
+    selected_id: str,
+    expense_id: int,
+    error_msg: str,
+    fallback_path: str,
+) -> Response:
+    """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
+    itself is gone.
+
+    Audit P2 #6: the POST error paths (save/confirm/reject) re-read the same
+    expense via ``web_edit_context`` to re-render the form. If the row vanished
+    between the action and the re-read (deleted on another surface, swept,
+    cross-ledger), that second read raises again and the response degrades to
+    the global bare-JSON handler — the GET route guards exactly this case, the
+    POST paths did not. The fallback list mirrors each action's success
+    redirect so the user lands somewhere sensible with a readable flash.
+    """
+    try:
+        ctx = web_edit_context(db, request, options, selected_id, expense_id)
+    except AppError as exc:
+        return _web_redirect(fallback_path, selected_id, msg=exc.message, flash_type="error")
+    ctx["error"] = error_msg
+    return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+
+
 @router.get("/expenses/{expense_id}/edit", response_class=HTMLResponse)
 def web_edit_get(
     expense_id: int,
@@ -102,9 +130,10 @@ def web_save(
             error = exc.message
 
     if error is not None:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        ctx["error"] = error
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        # Mirror the GET fallback (/web/confirmed) when the row is gone.
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id, error, "/web/confirmed"
+        )
 
     return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id)
 
@@ -123,20 +152,19 @@ def web_confirm(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        ctx["error"] = "页面已过期，请刷新后重新确认。"
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id,
+            "页面已过期，请刷新后重新确认。", "/web/pending",
+        )
     try:
         confirm_expense(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
         # ADR-0038 PR-2b: 409 state_conflict surfaces a clearer message
         # than the generic AppError text because user has to refetch.
-        if exc.error == "state_conflict":
-            ctx["error"] = "账单已在其它端被修改，请刷新后重新确认。"
-        else:
-            ctx["error"] = exc.message
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        error_msg = "账单已在其它端被修改，请刷新后重新确认。" if exc.error == "state_conflict" else exc.message
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id, error_msg, "/web/pending"
+        )
     return _web_redirect("/web/pending", selected_id)
 
 
@@ -154,18 +182,17 @@ def web_reject(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        ctx["error"] = "页面已过期，请刷新后重新操作。"
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id,
+            "页面已过期，请刷新后重新操作。", "/web/pending",
+        )
     try:
         reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
-        if exc.error == "state_conflict":
-            ctx["error"] = "账单已在其它端被修改，请刷新后重新操作。"
-        else:
-            ctx["error"] = exc.message
-        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+        error_msg = "账单已在其它端被修改，请刷新后重新操作。" if exc.error == "state_conflict" else exc.message
+        return _edit_page_or_flash_redirect(
+            db, request, options, selected_id, expense_id, error_msg, "/web/pending"
+        )
     # ADR-0038 undo: redirect to /web/pending with msg + just-rejected expense_id so
     # the page renders a 5s 撤销 banner. The row stays restorable until the 5-min
     # retention cutoff in soft_delete_policy (server-side; the banner auto-dismisses
