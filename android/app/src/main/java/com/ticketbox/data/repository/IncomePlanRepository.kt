@@ -171,36 +171,59 @@ class IncomePlanRepository(
             // ADR-0042: ONE intent-time key shared by the direct attempt and the
             // outbox replay — see updateCategoryRuleAllowingOffline.
             val idempotencyKey = UUID.randomUUID().toString()
+            val outboxRef = outbox
+            val adapter = incomePlanUpdateAdapter
+            if (outboxRef == null || adapter == null) {
+                // Wiring missing — direct-only; failures surface as Result.failure.
+                val updated = bound.call { api ->
+                    api.updateIncomePlan(cleanPublicId, request, idempotencyKey).toDomain()
+                }
+                return@safeCall IncomePlanSaveOutcome.Synced(updated)
+            }
+            if (outboxRef.activeForTarget("income_plan:$cleanPublicId").isNotEmpty()) {
+                // Per-target FIFO guard (codex follow-up review) — a direct
+                // PATCH must not jump an unresolved queued mutation for the
+                // same plan. Same mechanism as the expense:{id} guards.
+                enqueueUpdateIncomePlan(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+                return@safeCall IncomePlanSaveOutcome.Queued(projectOptimisticPlan(baseline, patch))
+            }
             try {
                 val updated = bound.call { api ->
                     api.updateIncomePlan(cleanPublicId, request, idempotencyKey).toDomain()
                 }
                 IncomePlanSaveOutcome.Synced(updated) as IncomePlanSaveOutcome
             } catch (networkError: IOException) {
-                val outboxRef = outbox
-                val adapter = incomePlanUpdateAdapter
-                if (outboxRef == null || adapter == null) {
-                    throw networkError
-                }
-                // [codex round-13 P1] Session-change race guard before enqueue.
-                bound.requireStillActive()
-                // [round-8 P3#5] strip token from payload — row's
-                // expectedRowVersion is the single source of truth. Dispatcher
-                // overwrites the request token from the row on replay.
-                outboxRef.enqueue(
-                    type = PendingMutationType.UpdateIncomePlan,
-                    targetId = "income_plan:$cleanPublicId",
-                    payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-                    expectedRowVersion = baseline.rowVersion,
-                    // Same key as the direct attempt above — the dispatcher
-                    // replays it from row.idempotencyKey.
-                    idempotencyKey = idempotencyKey,
-                )
+                enqueueUpdateIncomePlan(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
                 IncomePlanSaveOutcome.Queued(
                     projectOptimisticPlan(baseline, patch),
                 ) as IncomePlanSaveOutcome
             }
         }
+    }
+
+    /**
+     * Shared UpdateIncomePlan enqueue for the queue-jump guard and the
+     * IOException fallback. [codex round-13 P1] session race guard before
+     * enqueue + [round-8 P3#5] payload token strip (row.expectedRowVersion
+     * is the single source of truth; dispatcher overwrites on replay).
+     */
+    private suspend fun enqueueUpdateIncomePlan(
+        bound: BoundLedgerRequest,
+        outboxRef: OutboxRepository,
+        adapter: JsonAdapter<IncomePlanUpdateRequestDto>,
+        cleanPublicId: String,
+        request: IncomePlanUpdateRequestDto,
+        token: Long,
+        idempotencyKey: String,
+    ) {
+        bound.requireStillActive()
+        outboxRef.enqueue(
+            type = PendingMutationType.UpdateIncomePlan,
+            targetId = "income_plan:$cleanPublicId",
+            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+            expectedRowVersion = token,
+            idempotencyKey = idempotencyKey,
+        )
     }
 
     /**

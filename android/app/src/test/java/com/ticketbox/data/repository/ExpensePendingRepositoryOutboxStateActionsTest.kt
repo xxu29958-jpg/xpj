@@ -362,6 +362,55 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
     }
 
+    @Test
+    fun `guard window pin - row enqueued DURING the direct call is not retro-diverted`() = runTest {
+        // codex residual-risk note: the activeForTarget check and the direct
+        // call are NOT atomic. A row enqueued after the check passes (empty)
+        // but before the direct call completes is not seen — the direct call
+        // proceeds (Synced) and the late row stays queued, replaying
+        // afterwards (worst case it 409s into the conflict banner). This PINS
+        // that accepted window: closing it would need a per-target mutex
+        // spanning check+dispatch — do that deliberately, not by accident,
+        // and update this test when you do.
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val dto = successExpenseDto()
+        val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+        ) {
+            override suspend fun confirmExpense(
+                id: Long,
+                request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
+            ): com.ticketbox.data.remote.dto.ExpenseDto {
+                // Mid-flight: a sibling coroutine enqueues for the same target
+                // AFTER the guard already saw an empty queue.
+                outbox.enqueue(
+                    type = PendingMutationType.PatchExpense,
+                    targetId = "expense:$id",
+                    payloadJson = "{}",
+                    expectedRowVersion = 1L,
+                    idempotencyKey = "late-key",
+                )
+                return dto
+            }
+        }
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.confirmExpenseAllowingOffline(baseline).getOrThrow()
+
+        // Current (accepted) semantics: the direct call wins the race.
+        assertTrue(outcome is ExpenseStateOutcome.Synced)
+        assertEquals(1, dao.rows.size, "the late row stays queued for the normal drain")
+        assertEquals(
+            PendingMutationStatus.Pending.wireValue,
+            dao.rows.values.single().status,
+        )
+    }
+
     // endregion
 
     @Test

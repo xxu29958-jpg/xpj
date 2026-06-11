@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -133,6 +134,40 @@ class ReportsRepositoryOutboxFallbackTest {
         outbox = outbox,
         goalUpdateAdapter = adapter,
     )
+
+    @Test
+    fun `update with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
+        // Per-target FIFO guard (codex follow-up review) — see the expense
+        // guards. ISE (not IOException) so a broken guard fails loudly.
+        val baseline = baselineGoal()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(GoalUpdateRequestDto::class.java)
+        val api = ApiServiceStub(
+            updateGoalResult = ApiResult.Throw(IllegalStateException("direct PATCH must not run")),
+        )
+        val repo = buildRepository(api, outbox, adapter)
+        outbox.enqueue(
+            type = PendingMutationType.UpdateGoal,
+            targetId = "goal:${baseline.publicId}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-key",
+        )
+
+        val outcome = repo.updateGoalAllowingOffline(
+            baseline = baseline,
+            update = GoalUpdate(expectedRowVersion = baseline.rowVersion, category = "购物", targetAmountCents = 90000),
+        ).getOrThrow() as GoalSaveOutcome.Queued
+
+        assertEquals("购物", outcome.goal.category)
+        assertNull(api.lastIdempotencyKey, "direct PATCH must NOT be attempted while a same-target row is queued")
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.UpdateGoal.wireValue, rows[1].type)
+        assertEquals("goal:${baseline.publicId}", rows[1].targetId)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+    }
 
     @Test
     fun `direct 2xx returns Synced with server goal, no enqueue`() = runTest {

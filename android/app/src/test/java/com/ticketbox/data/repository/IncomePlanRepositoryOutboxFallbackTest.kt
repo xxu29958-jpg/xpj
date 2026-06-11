@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -115,6 +116,40 @@ class IncomePlanRepositoryOutboxFallbackTest {
         outbox = outbox,
         incomePlanUpdateAdapter = adapter,
     )
+
+    @Test
+    fun `update with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
+        // Per-target FIFO guard (codex follow-up review) — see the expense
+        // guards. ISE (not IOException) so a broken guard fails loudly.
+        val baseline = baselinePlan()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(IncomePlanUpdateRequestDto::class.java)
+        val api = ApiServiceStub(
+            updatePlanResult = ApiResult.Throw(IllegalStateException("direct PATCH must not run")),
+        )
+        val repo = buildRepository(api, outbox, adapter)
+        outbox.enqueue(
+            type = PendingMutationType.UpdateIncomePlan,
+            targetId = "income_plan:${baseline.publicId}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-key",
+        )
+
+        val outcome = repo.updateAllowingOffline(
+            baseline = baseline,
+            patch = IncomePlanPatch(expectedRowVersion = baseline.rowVersion, amountCents = 1800000),
+        ).getOrThrow() as IncomePlanSaveOutcome.Queued
+
+        assertEquals(1800000, outcome.plan.amountCents)
+        assertNull(api.lastIdempotencyKey, "direct PATCH must NOT be attempted while a same-target row is queued")
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.UpdateIncomePlan.wireValue, rows[1].type)
+        assertEquals("income_plan:${baseline.publicId}", rows[1].targetId)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+    }
 
     @Test
     fun `direct 2xx returns Synced with server plan, no enqueue`() = runTest {
