@@ -52,6 +52,23 @@ def test_find_pg_binary_windows_install_glob_fallback(tmp_path, monkeypatch) -> 
     assert pgval.find_pg_binary("pg_restore", "PG_RESTORE_PATH") is None
 
 
+def test_find_pg_binary_prefers_numerically_newest_install(tmp_path, monkeypatch) -> None:
+    # codex review P3 #8: a plain string sort on the glob results picks 9.x
+    # over 17 ("9" > "1" lexicographically) when an old client lingers next to
+    # the current install — the backup would silently run with the old tools.
+    monkeypatch.delenv("PG_RESTORE_PATH", raising=False)
+    monkeypatch.setattr(pgval.shutil, "which", lambda _name: None)
+    fake_root = tmp_path / "PostgreSQL"
+    modern = fake_root / "17" / "bin" / "pg_restore.exe"
+    legacy = fake_root / "9.6" / "bin" / "pg_restore.exe"
+    junk = fake_root / "scratch" / "bin" / "pg_restore.exe"
+    for binary in (modern, legacy, junk):
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"")
+    monkeypatch.setattr(pgval, "_PG_INSTALL_ROOT", fake_root)
+    assert pgval.find_pg_binary("pg_restore", "PG_RESTORE_PATH") == str(modern)
+
+
 def test_postgres_backup_validation_rejects_missing_file(tmp_path) -> None:
     missing = tmp_path / "ticketbox-nope.dump"
     assert pgval.is_postgres_backup_valid(missing) is False

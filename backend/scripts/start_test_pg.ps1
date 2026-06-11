@@ -38,8 +38,13 @@ if ($Port -eq 5432 -or $Port -eq 5433) {
     throw "Refusing port ${Port}: 5432 is prod, 5433 is CI. Use a dedicated test port (default 5438)."
 }
 
+# Numeric version sort: a lingering 9.x client must not beat 17 by string order ("9" > "1").
 $pgctl = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\pg_ctl.exe' -ErrorAction SilentlyContinue |
-    Sort-Object FullName -Descending | Select-Object -First 1
+    Sort-Object {
+        $v = 0.0
+        if ([double]::TryParse($_.Directory.Parent.Name, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$v)) { $v } else { -1.0 }
+    } -Descending |
+    Select-Object -First 1
 if (-not $pgctl) {
     throw "PostgreSQL not installed (expected C:\Program Files\PostgreSQL\<ver>\bin\pg_ctl.exe)."
 }

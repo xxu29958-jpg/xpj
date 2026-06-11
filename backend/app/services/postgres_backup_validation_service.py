@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,6 +33,17 @@ class PostgresBackupValidationError(RuntimeError):
 _PG_INSTALL_ROOT = Path(r"C:\Program Files\PostgreSQL")
 
 
+def _install_version_key(binary_path: Path) -> tuple[int, ...]:
+    """Numeric sort key from the install dir name (``…\\PostgreSQL\\17\\bin\\x.exe``
+    → ``(17,)``, ``9.6`` → ``(9, 6)``). A plain string sort picks 9.x over 17
+    ("9" > "1" lexicographically); unparsable names sort lowest so any real
+    versioned install wins over them."""
+    parts = re.findall(r"\d+", binary_path.parents[1].name)
+    if not parts:
+        return (-1,)
+    return tuple(int(part) for part in parts)
+
+
 def find_pg_binary(name: str, env_var: str) -> str | None:
     """Resolve a PostgreSQL client binary: env override → PATH → newest install.
 
@@ -45,7 +57,11 @@ def find_pg_binary(name: str, env_var: str) -> str | None:
     located = shutil.which(name)
     if located:
         return located
-    candidates = sorted(_PG_INSTALL_ROOT.glob(f"*/bin/{name}.exe"), reverse=True)
+    candidates = sorted(
+        _PG_INSTALL_ROOT.glob(f"*/bin/{name}.exe"),
+        key=_install_version_key,
+        reverse=True,
+    )
     if candidates:
         return str(candidates[0])
     return None

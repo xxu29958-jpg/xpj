@@ -62,6 +62,24 @@ function ConvertTo-LibpqUrl {
     return ($Url -replace '^postgresql\+\w+://', 'postgresql://')
 }
 
+function Get-PgInstallVersionKey {
+    # "17" / "9.6" → 数值排序键；字符串倒序会让 9.x 压过 17（"9" > "1"），
+    # 老客户端残留时备份会静默用旧工具跑。非数字目录名排最低。
+    param([Parameter(Mandatory = $true)][string]$VersionDirName)
+
+    $value = 0.0
+    $parsed = [double]::TryParse(
+        $VersionDirName,
+        [System.Globalization.NumberStyles]::Float,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [ref]$value
+    )
+    if ($parsed) {
+        return $value
+    }
+    return -1.0
+}
+
 function Get-PgDumpBinary {
     if (-not [string]::IsNullOrWhiteSpace($env:PG_DUMP_PATH)) {
         return $env:PG_DUMP_PATH
@@ -71,7 +89,7 @@ function Get-PgDumpBinary {
         return $command.Source
     }
     $candidate = Get-ChildItem -Path "C:\Program Files\PostgreSQL\*\bin\pg_dump.exe" -ErrorAction SilentlyContinue |
-        Sort-Object FullName -Descending |
+        Sort-Object { Get-PgInstallVersionKey $_.Directory.Parent.Name } -Descending |
         Select-Object -First 1
     if ($candidate) {
         return $candidate.FullName
@@ -149,6 +167,21 @@ function Backup-PostgresDatabase {
     }
 }
 
+function Get-UploadsSourceDir {
+    # 票据图片真实目录与 app.config.get_settings() 同一解析:UPLOAD_DIR
+    # (进程 env → backend\.env,默认 "uploads"),相对路径按数据根解析、
+    # 绝对路径原样使用。固定拼 $DataRoot\uploads 会在 UPLOAD_DIR 自定义
+    # 部署下把图片漏出异地备份(数据库 dump 有了、图片没有)。
+    $configured = Get-BackendEnvValue -Name "UPLOAD_DIR"
+    if ([string]::IsNullOrWhiteSpace($configured)) {
+        $configured = "uploads"
+    }
+    if ([System.IO.Path]::IsPathRooted($configured)) {
+        return $configured
+    }
+    return (Join-Path $DataRoot $configured)
+}
+
 function Get-OffsiteBackupDir {
     # 异地备份目标解析：XPJ_OFFSITE_BACKUP_DIR 显式优先（值为 off 表示禁用）；
     # 未设置时检测到 OneDrive 即默认 %OneDrive%\TicketboxBackups；都没有则跳过。
@@ -192,8 +225,9 @@ function Sync-BackupsOffsite {
         Where-Object { $_.LastWriteTime -lt $offsiteCutoff } |
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 
-    # 票据图片镜像 uploads/；空源守卫——本地 uploads 意外为空时跳过，防 /MIR 把异地副本一并清空。
-    $uploadsSource = Join-Path $DataRoot "uploads"
+    # 票据图片镜像真实上传目录(UPLOAD_DIR 感知,见 Get-UploadsSourceDir)；
+    # 空源守卫——本地 uploads 意外为空时跳过，防 /MIR 把异地副本一并清空。
+    $uploadsSource = Get-UploadsSourceDir
     if (Test-Path -LiteralPath $uploadsSource) {
         $uploadCount = @(Get-ChildItem -LiteralPath $uploadsSource -Recurse -File -ErrorAction SilentlyContinue).Count
         if ($uploadCount -gt 0) {
