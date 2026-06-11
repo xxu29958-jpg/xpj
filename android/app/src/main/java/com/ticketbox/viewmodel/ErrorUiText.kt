@@ -66,5 +66,15 @@ private fun errorCodeStringRes(code: String?): Int? = when (code) {
     "idempotency_key_reused" -> R.string.error_idempotency_key_reused
     "route_not_found" -> R.string.error_route_not_found
     "method_not_allowed" -> R.string.error_method_not_allowed
+    // Audit #17: bill-split invitation flow + task codes were unmapped, so a
+    // routine TOCTOU 409 fell through to each screen's generic fallback copy.
+    "invitation_not_found" -> R.string.error_invitation_not_found
+    "invitation_not_yours" -> R.string.error_invitation_not_yours
+    "invitation_not_acceptable" -> R.string.error_invitation_not_acceptable
+    "invitation_not_cancellable" -> R.string.error_invitation_not_cancellable
+    "invitation_expired" -> R.string.error_invitation_expired
+    "split_invitation_already_pending" -> R.string.error_split_invitation_already_pending
+    "not_found" -> R.string.error_not_found
+    "task_not_found" -> R.string.error_task_not_found
     else -> null
 }

@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -24,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,6 +48,7 @@ import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.viewmodel.BillSplitTargetLedger
 import com.ticketbox.viewmodel.BillSplitViewModel
 import com.valentinilk.shimmer.shimmer
 
@@ -108,7 +113,7 @@ fun BillSplitScreen(
                     loading = state.loading,
                     onAccept = viewModel::accept,
                     onReject = viewModel::reject,
-                    candidateTargetLedgerIds = state.candidateTargetLedgerIds,
+                    candidates = state.candidateTargetLedgers,
                 )
             } else {
                 SentCard(
@@ -148,7 +153,7 @@ private fun InboxCard(
     loading: Boolean,
     onAccept: (String, String) -> Unit,
     onReject: (String) -> Unit,
-    candidateTargetLedgerIds: List<String>,
+    candidates: List<BillSplitTargetLedger>,
 ) {
     BillSplitListCard(isEmpty = inbox.isEmpty(), loading = loading, emptyRes = R.string.bill_split_inbox_empty) {
         inbox.forEachIndexed { index, row ->
@@ -157,7 +162,7 @@ private fun InboxCard(
                 row = row,
                 onAccept = onAccept,
                 onReject = onReject,
-                candidateTargetLedgerIds = candidateTargetLedgerIds,
+                candidates = candidates,
             )
         }
     }
@@ -217,7 +222,7 @@ private fun InboxRow(
     row: BillSplitInbox,
     onAccept: (String, String) -> Unit,
     onReject: (String) -> Unit,
-    candidateTargetLedgerIds: List<String>,
+    candidates: List<BillSplitTargetLedger>,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -229,16 +234,27 @@ private fun InboxRow(
             Text(formatAmount(row.amountCents))
         }
         Text(
-            text = "${row.merchantSnapshot ?: "—"} · ${row.categorySuggestion ?: "—"} · ${row.status}",
+            text = "${row.merchantSnapshot ?: "—"} · ${row.categorySuggestion ?: "—"} · ${billSplitStatusLabel(row.status)}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
         if (row.status == BillSplitStatusValues.INVITED) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                candidateTargetLedgerIds.firstOrNull()?.let { firstLedger ->
-                    OutlinedButton(onClick = { onAccept(row.publicId, firstLedger) }) {
-                        Text(stringResource(R.string.bill_split_inbox_accept, firstLedger))
+                // Audit P3 #3: show the ledger NAME (the button used to print
+                // the internal ledger_id), and let a multi-ledger member PICK
+                // the target instead of hard-wiring the first writable one.
+                when {
+                    candidates.isEmpty() -> Unit
+                    candidates.size == 1 -> OutlinedButton(
+                        onClick = { onAccept(row.publicId, candidates.single().ledgerId) },
+                    ) {
+                        Text(stringResource(R.string.bill_split_inbox_accept, candidates.single().name))
                     }
+                    else -> AcceptTargetPicker(
+                        publicId = row.publicId,
+                        candidates = candidates,
+                        onAccept = onAccept,
+                    )
                 }
                 OutlinedButton(onClick = { onReject(row.publicId) }) {
                     Text(stringResource(R.string.bill_split_inbox_reject))
@@ -263,7 +279,7 @@ private fun SentRow(
             Text(formatAmount(row.amountCents))
         }
         Text(
-            text = "${row.merchantSnapshot ?: "—"} · ${row.status}",
+            text = "${row.merchantSnapshot ?: "—"} · ${billSplitStatusLabel(row.status)}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -274,3 +290,40 @@ private fun SentRow(
         }
     }
 }
+
+@Composable
+private fun AcceptTargetPicker(
+    publicId: String,
+    candidates: List<BillSplitTargetLedger>,
+    onAccept: (String, String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }) {
+            Text(stringResource(R.string.bill_split_accept_picker_title))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            candidates.forEach { candidate ->
+                DropdownMenuItem(
+                    text = { Text(candidate.name) },
+                    onClick = {
+                        expanded = false
+                        onAccept(publicId, candidate.ledgerId)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun billSplitStatusLabel(status: String): String = stringResource(
+    when (status) {
+        BillSplitStatusValues.INVITED -> R.string.bill_split_status_invited
+        BillSplitStatusValues.ACCEPTED -> R.string.bill_split_status_accepted
+        BillSplitStatusValues.REJECTED -> R.string.bill_split_status_rejected
+        BillSplitStatusValues.CANCELLED -> R.string.bill_split_status_cancelled
+        else -> R.string.bill_split_status_expired
+    },
+)
+

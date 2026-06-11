@@ -250,6 +250,49 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun saveItemsRefusesUnparsableAmountInsteadOfZero() = edit { fake ->
+        // Audit P3 #11: "1.2.3" used to silently become a ¥0 item via
+        // `parseAmountCents(...) ?: 0L`. The save must refuse loudly and keep
+        // the editor open; the repository must never be reached.
+        val vm = viewModel(fake)
+        vm._uiState.update {
+            it.copy(
+                itemEditorOpen = true,
+                expenseItems = fake.items(),
+                itemDrafts = listOf(EditableItem(name = "可乐", amountText = "1.2.3")),
+            )
+        }
+        fake.replaceItemsResponder = { _, _, _ -> error("save must not reach the repository") }
+
+        vm.saveItems()
+        advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.itemsMessage)
+        assertTrue(vm.uiState.value.itemEditorOpen)
+    }
+
+    @Test
+    fun saveSplitsRefusesUnparsableAmountInsteadOfZero() = edit { fake ->
+        val vm = viewModel(fake)
+        vm._uiState.update {
+            it.copy(
+                splitEditorOpen = true,
+                splitDrafts = listOf(
+                    EditableSplit(memberId = 1L, displayName = "甲", included = true, amountText = "3.00"),
+                    EditableSplit(memberId = 2L, displayName = "乙", included = true, amountText = "1.2.3"),
+                ),
+            )
+        }
+
+        vm.saveSplits()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.replaceSplitsCalls)
+        assertNotNull(vm.uiState.value.splitsMessage)
+        assertTrue(vm.uiState.value.splitEditorOpen)
+    }
+
+    @Test
     fun acknowledgeMismatchQueuedKeepsTokenAndShowsOptimisticItems() = edit { fake ->
         val vm = viewModel(fake)
         val tokenBefore = vm.uiState.value.expense

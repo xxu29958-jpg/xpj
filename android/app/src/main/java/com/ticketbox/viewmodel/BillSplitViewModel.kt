@@ -23,16 +23,23 @@ import kotlinx.coroutines.launch
  * do optimistic updates because invitation state transitions are
  * relatively rare and the server is the source of truth.
  *
- * Also owns ``candidateTargetLedgerIds``: the writable ledgers an
- * inbox row can be accepted into. Computed from a fresh
- * ``refreshLedgers()`` call so a fresh install / cold start doesn't
- * leave the accept action disabled because cache was empty (codex
- * P2 review, PR #88).
+ * Also owns ``candidateTargetLedgers``: the writable ledgers an
+ * inbox row can be accepted into — id (the API value) AND display name
+ * (audit P3 #3: the screen used to print the internal ledger_id on the
+ * accept button, ENGINEERING_RULES §3 forbids surfacing ids). Computed
+ * from a fresh ``refreshLedgers()`` call so a fresh install / cold start
+ * doesn't leave the accept action disabled because cache was empty
+ * (codex P2 review, PR #88).
  */
+data class BillSplitTargetLedger(
+    val ledgerId: String,
+    val name: String,
+)
+
 data class BillSplitUiState(
     val inbox: List<BillSplitInbox> = emptyList(),
     val sent: List<BillSplitSent> = emptyList(),
-    val candidateTargetLedgerIds: List<String> = emptyList(),
+    val candidateTargetLedgers: List<BillSplitTargetLedger> = emptyList(),
     val loading: Boolean = false,
     val message: UiText? = null,
 )
@@ -44,9 +51,9 @@ class BillSplitViewModel(
 
     private val _uiState = MutableStateFlow(
         BillSplitUiState(
-            candidateTargetLedgerIds = ledgerRepository.cachedLedgers()
+            candidateTargetLedgers = ledgerRepository.cachedLedgers()
                 .filter { ledgerRoleCanModify(it.role) }
-                .map { it.ledgerId },
+                .map { BillSplitTargetLedger(ledgerId = it.ledgerId, name = it.name) },
         ),
     )
     val uiState: StateFlow<BillSplitUiState> = _uiState.asStateFlow()
@@ -61,9 +68,9 @@ class BillSplitViewModel(
                 .onSuccess { ledgers ->
                     _uiState.update {
                         it.copy(
-                            candidateTargetLedgerIds = ledgers
+                            candidateTargetLedgers = ledgers
                                 .filter { l -> ledgerRoleCanModify(l.role) }
-                                .map { l -> l.ledgerId },
+                                .map { l -> BillSplitTargetLedger(ledgerId = l.ledgerId, name = l.name) },
                         )
                     }
                 }

@@ -51,6 +51,12 @@
     <string name="bill_split_inbox_reject">拒绝</string>
     <string name="bill_split_sent_empty">暂无已发出的拆账邀请。</string>
     <string name="bill_split_sent_cancel">撤回</string>
+    <string name="bill_split_accept_picker_title">接受到哪个账本？</string>
+    <string name="bill_split_status_invited">待处理</string>
+    <string name="bill_split_status_accepted">已接受</string>
+    <string name="bill_split_status_rejected">已拒绝</string>
+    <string name="bill_split_status_cancelled">已撤回</string>
+    <string name="bill_split_status_expired">已过期</string>
 
     <!-- BindServerScreen：绑定私人账本 -->
     <string name="bind_server_header_title">绑定私人账本</string>
