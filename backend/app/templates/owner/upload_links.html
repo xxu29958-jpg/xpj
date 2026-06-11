@@ -20,7 +20,15 @@
     <strong>请把下面的<u>完整公网 URL</u>整段复制到 iPhone 快捷指令的「URL」动作。必须包含 <code>https://</code> 开头的域名，<u>不能</u>只复制 <code>/u/...</code> 路径。</strong>
   </div>
   {% if new_secret_full_url %}
-  <div class="secret-box">{{ new_secret_full_url }}</div>
+  <div class="secret-box" data-upload-handoff-url>{{ new_secret_full_url }}</div>
+  <div style="margin:12px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button type="button" class="btn btn-primary" data-copy-upload-url>复制完整 URL</button>
+    <span class="help-text">点一下整段复制，去 iPhone「快捷指令」的「URL」动作里粘贴。</span>
+  </div>
+  <div data-upload-qr-section hidden style="margin:12px 0">
+    <div data-upload-qr style="display:inline-block;line-height:0"></div>
+    <p class="help-text" style="margin-top:6px;max-width:46em">或用 iPhone 相机扫上面的二维码：长按顶部识别横幅，选「<strong>拷贝</strong>」把链接粘进快捷指令。<u>不要选「打开」</u>——上传地址只接受快捷指令发出的 POST 上传，浏览器直接打开会提示无效。</p>
+  </div>
   <p class="secret-note">⚠️ 完整 URL 仅显示一次；离开本页面后无法再查看，列表中只保留 <code>/u/***</code> 掩码。</p>
   {% else %}
   <div class="alert alert-danger">
@@ -85,6 +93,8 @@
             <span class="badge badge-off">已停用</span>
           {% elif link.is_expired %}
             <span class="badge badge-off">已过期</span>
+          {% elif link.expires_in_days is not none and link.expires_in_days <= 7 %}
+            <span class="badge badge-warn">{{ link.expires_in_days }} 天后过期</span>
           {% else %}
             <span class="badge badge-ok">正常</span>
           {% endif %}
@@ -100,7 +110,7 @@
             </form>
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/extend">
-              <button type="submit" class="btn btn-secondary">Extend</button>
+              <button type="submit" class="btn btn-secondary">续期</button>
             </form>
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/revoke"
@@ -131,7 +141,7 @@
   <ol class="help-text" style="line-height:2;padding-left:20px">
     <li>在 iPhone「快捷指令」App 中创建新快捷指令，详情中开启「在共享表单中显示」，接收类型只勾选「图像」。</li>
     <li>动作 1：<strong>转换图像</strong>，格式选 JPEG。</li>
-    <li>动作 2：<strong>URL</strong>，把 Owner Console 上方<u>完整公网 URL</u>整段粘贴进去（含 <code>https://</code>，含 <code>?tz=Asia/Shanghai</code>）。<u>不要</u>只复制 <code>/u/...</code> 相对路径，<u>不要</u>复制 <code>/u/***</code> 掩码，<u>不要</u>再手动拼接 <code>?tz=</code>。</li>
+    <li>动作 2：<strong>URL</strong>，把 Owner Console 上方<u>完整公网 URL</u>整段粘贴进去（含 <code>https://</code>，含 <code>?tz=Asia/Shanghai</code>）。可以点上方「复制完整 URL」按钮一键复制，或用 iPhone 相机扫上方二维码后长按横幅选「拷贝」（不要直接打开链接）。<u>不要</u>只复制 <code>/u/...</code> 相对路径，<u>不要</u>复制 <code>/u/***</code> 掩码，<u>不要</u>再手动拼接 <code>?tz=</code>。</li>
     <li>动作 3：<strong>获取 URL 内容</strong>。URL 选上一步「URL」；方法 POST；请求正文「文件」；文件选「转换后的图像」。</li>
     <li>动作 4：<strong>获取词典值</strong>，从上一步「URL 内容」取键 <code>duplicate_status</code>。</li>
     <li>动作 5：<strong>如果</strong>，条件「词典值 等于 <code>suspected</code>」→ 显示通知「已上传，但疑似重复票，记得去待确认里看一眼」；「否则」→ 显示通知「已上传到小票夹 ✓」。</li>

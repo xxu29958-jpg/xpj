@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,6 +34,7 @@ def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
         per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
         expires_at=to_iso(link.expires_at),
         is_expired=_is_expired(link),
+        expires_in_days=_days_until_expiry(link),
         # Lists / dashboards must NEVER show the full upload key — only the
         # public_id is safe to reveal repeatedly.
         masked_url_path="/u/***",
@@ -86,6 +89,7 @@ def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> lis
                 per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
                 expires_at=to_iso(link.expires_at),
                 is_expired=_is_expired(link),
+                expires_in_days=_days_until_expiry(link),
                 # Lists / dashboards must NEVER show the full upload key — only the
                 # public_id is safe to reveal repeatedly.
                 masked_url_path="/u/***",
@@ -309,3 +313,16 @@ def _upload_url_path(upload_key: str, default_timezone: str | None) -> str:
 def _is_expired(link: UploadLink) -> bool:
     expires_at = ensure_utc(link.expires_at)
     return expires_at is not None and expires_at <= now_utc()
+
+
+def _days_until_expiry(link: UploadLink) -> int | None:
+    """Whole days until expiry (ceil, min 0); ``None`` when never expiring.
+
+    Lives next to ``_is_expired`` so the "N 天后过期" badge and the expired
+    flag read the same clock; 6.5 days left renders as "7 天后过期".
+    """
+    expires_at = ensure_utc(link.expires_at)
+    if expires_at is None:
+        return None
+    remaining_seconds = (expires_at - now_utc()).total_seconds()
+    return max(0, math.ceil(remaining_seconds / 86400.0))
