@@ -31,6 +31,13 @@ def owner_index(
     except Exception:  # noqa: BLE001 — index must not 500 if Windows task lookup fails
         logger.exception("owner_console index: list_windows_tasks failed")
         ctx["windows_tasks"] = []
+    try:
+        from app.services import backup_service
+
+        ctx["backup_health"] = backup_service.backup_health()
+    except Exception:  # noqa: BLE001 — index must not 500 if the backup scan fails
+        logger.exception("owner_console index: backup_health failed")
+        ctx["backup_health"] = None
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
 

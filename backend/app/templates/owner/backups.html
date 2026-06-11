@@ -15,6 +15,11 @@
 
 <div class="card">
   <h2>最近一次备份</h2>
+  {% if backup_health and backup_health.stale %}
+  <div class="alert alert-danger">
+    ⚠️ {% if backup_health.latest %}最近一次有效备份是 {{ backup_health.age_hours }} 小时前{% else %}备份目录里没有有效备份{% endif %}，请检查 TicketboxBackup 计划任务。
+  </div>
+  {% endif %}
   {% if latest %}
   <div class="kv-grid">
     <span class="kv-key">文件名</span>

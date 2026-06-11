@@ -218,16 +218,25 @@ def find_active_upload_link(db: Session, *, upload_key: str) -> UploadLink | Non
     )
 
 
+# /u upload-surface variant of the generic invalid_token copy. The default
+# ERROR_MESSAGES entry says「重新绑定设备」— an Android pairing action; iPhone
+# Shortcut users can only fix this by re-generating the UploadLink in the
+# Owner Console and pasting the new URL into the Shortcut. One message for
+# unknown / revoked / expired so the public surface stays a non-oracle
+# (does not reveal whether a link exists).
+UPLOAD_LINK_INVALID_MESSAGE = "上传链接已失效，请重新生成上传链接后更新 iPhone 快捷指令。"
+
+
 def authenticate_upload_link(db: Session, upload_key: str) -> AuthContext:
     link = find_active_upload_link(db, upload_key=upload_key)
     if link is None:
-        raise AppError("invalid_token", status_code=401)
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
     now = now_utc()
     expires_at = ensure_utc(link.expires_at)
     if expires_at is None or expires_at <= now:
         link.revoked_at = now
         db.commit()
-        raise AppError("invalid_token", status_code=401)
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
     account, device, ledger, role = _context_parts_from_ids(
         db,
         account_id=link.account_id,

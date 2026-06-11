@@ -87,6 +87,13 @@
       {% if show_month_picker %}
         {% include "_month_picker.html" %}
       {% endif %}
+      <a class="icon-btn" href="/web/tasks{{ q }}" title="后台任务" aria-label="后台任务">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <polyline points="12 7 12 12 15.5 14"/>
+        </svg>
+      </a>
       <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题" title="切换主题（纸本 / 墨白 / 玄夜）">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
              stroke-linecap="round" stroke-linejoin="round">

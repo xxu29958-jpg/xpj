@@ -246,7 +246,17 @@
       "",
       link("card-sub", dashboardUrl("/web/reports", ledgerId, { month: cards.month || "" }), "完整报表 →")
     ));
-    append(shell.card, renderCategoryRows(data.category_share || []));
+    // category-donut.js initCategoryDonut 读 #chart-category 的 data-categories;
+    // 仪表盘是 fetch 后渲染,晚于 desktop.js boot(),由 initDashboard 成功分支补调。
+    // 空账本不插容器:initCategoryDonut 对空数据 no-op,空容器只会留一块空白。
+    const categoryShare = data.category_share || [];
+    if (categoryShare.length) {
+      const donut = el("div", "chart-canvas");
+      donut.id = "chart-category";
+      donut.setAttribute("data-categories", JSON.stringify(categoryShare));
+      append(shell.card, donut);
+    }
+    append(shell.card, renderCategoryRows(categoryShare));
     return shell.outer;
   }
 
@@ -355,7 +365,14 @@
   function renderDashboard(data) {
     const layout = data.visible_layout || ((data.cards && data.cards.layout) || []).filter(function (item) { return item.visible; });
     if (!layout.length) {
-      return styled(el("div", "dt-card", "当前仪表盘没有可见卡片。可以在「仪表盘卡片」里重新启用。"), "padding:48px 24px;text-align:center;color:var(--text-meta)");
+      const empty = styled(el("div", "dt-card"), "padding:48px 24px;text-align:center;color:var(--text-meta)");
+      append(
+        empty,
+        "当前仪表盘没有可见卡片。可以在",
+        link("", dashboardUrl("/web/dashboard/cards", data.selected_ledger_id || ""), "「仪表盘卡片」"),
+        "里重新启用。"
+      );
+      return empty;
     }
     const grid = el("div", "dash-grid");
     layout.forEach(function (item) { append(grid, renderDashboardCard(item, data)); });
@@ -382,6 +399,7 @@
         target.replaceChildren(renderDashboard(data));
         root.setAttribute("data-dashboard-state", "ready");
         if (typeof app.initSparks === "function") app.initSparks(target);
+        if (typeof app.initCategoryDonut === "function") app.initCategoryDonut();
       })
       .catch(function () {
         root.setAttribute("data-dashboard-state", "fallback");

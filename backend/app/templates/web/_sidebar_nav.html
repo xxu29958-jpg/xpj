@@ -110,7 +110,7 @@
     </a>
   </div>
 
-  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/recurring' in _p or '/stats' in _p or '/data-quality' in _p %}open{% endif %}>
+  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/recurring' in _p or '/stats' in _p or '/data-quality' in _p or '/income-plans' in _p or '/budget-advise' in _p %}open{% endif %}>
     <summary class="nav-group-title">治理</summary>
     <a class="nav-item {% if '/budgets' in _p %}active{% endif %}" href="/web/budgets{{ q }}">
       <span class="nav-icon">
@@ -132,6 +132,27 @@
         </svg>
       </span>
       <span>目标</span>
+    </a>
+    <a class="nav-item {% if '/income-plans' in _p %}active{% endif %}" href="/web/income-plans{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+          <polyline points="16 7 22 7 22 13"/>
+        </svg>
+      </span>
+      <span>收入计划</span>
+    </a>
+    <a class="nav-item {% if '/budget-advise' in _p %}active{% endif %}" href="/web/budget-advise{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18h6"/>
+          <path d="M10 22h4"/>
+          <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2Z"/>
+        </svg>
+      </span>
+      <span>AI 预算建议</span>
     </a>
     <a class="nav-item {% if '/categories' in _p %}active{% endif %}" href="/web/categories{{ q }}">
       <span class="nav-icon">

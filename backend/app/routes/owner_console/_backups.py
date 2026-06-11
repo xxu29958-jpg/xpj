@@ -46,6 +46,7 @@ def owner_backups_get(
     ctx["created_now"] = None
     ctx["error"] = None
     ctx["backup_dir"] = backup_service.backup_directory_label()
+    ctx["backup_health"] = backup_service.backup_health()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
 
 
@@ -69,4 +70,5 @@ def owner_backups_create(
     ctx["created_now"] = created
     ctx["error"] = error
     ctx["backup_dir"] = backup_service.backup_directory_label()
+    ctx["backup_health"] = backup_service.backup_health()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)

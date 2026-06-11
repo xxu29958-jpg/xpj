@@ -19,6 +19,7 @@ import them via ``app.services.identity_service``.
 from __future__ import annotations
 
 from app.services.identity_service._auth import (
+    UPLOAD_LINK_INVALID_MESSAGE,
     authenticate_session_token,
     authenticate_upload_link,
     authenticate_web_session_token,
@@ -76,6 +77,7 @@ __all__ = [
     "PAIRING_ATTEMPT_WINDOW",
     "PAIRING_CODE_TTL_MINUTES",
     "PAIRING_MAX_FAILED_ATTEMPTS",
+    "UPLOAD_LINK_INVALID_MESSAGE",
     "WEB_SESSION_TTL_SECONDS",
     # DTOs
     "BootstrapResult",

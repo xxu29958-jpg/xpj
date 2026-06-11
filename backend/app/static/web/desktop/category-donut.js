@@ -61,10 +61,12 @@
               },
             },
           },
+          // Reads the dashboard category_share payload shape (name / amount_yuan).
+          // Yuan, not cents: tooltip and the center label print the value as-is.
           data: data.slice(0, 6).map(function (d, i) {
             return {
-              name: d.category,
-              value: d.amount_cents,
+              name: d.name,
+              value: d.amount_yuan,
               itemStyle: { color: palette[i % palette.length] },
             };
           }),

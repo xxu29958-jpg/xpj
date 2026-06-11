@@ -133,7 +133,8 @@
     <li>动作 1：<strong>转换图像</strong>，格式选 JPEG。</li>
     <li>动作 2：<strong>URL</strong>，把 Owner Console 上方<u>完整公网 URL</u>整段粘贴进去（含 <code>https://</code>，含 <code>?tz=Asia/Shanghai</code>）。<u>不要</u>只复制 <code>/u/...</code> 相对路径，<u>不要</u>复制 <code>/u/***</code> 掩码，<u>不要</u>再手动拼接 <code>?tz=</code>。</li>
     <li>动作 3：<strong>获取 URL 内容</strong>。URL 选上一步「URL」；方法 POST；请求正文「文件」；文件选「转换后的图像」。</li>
-    <li>动作 4：显示通知「已上传到小票夹」。</li>
+    <li>动作 4：<strong>获取词典值</strong>，从上一步「URL 内容」取键 <code>duplicate_status</code>。</li>
+    <li>动作 5：<strong>如果</strong>，条件「词典值 等于 <code>suspected</code>」→ 显示通知「已上传，但疑似重复票，记得去待确认里看一眼」；「否则」→ 显示通知「已上传到小票夹 ✓」。</li>
   </ol>
   <p class="secret-note">小票夹 v0.3 起不再使用 <code>Upload-Token</code> 请求头；UploadLink URL 自身就是凭证。</p>
 </div>

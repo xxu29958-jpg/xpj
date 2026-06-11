@@ -69,6 +69,11 @@
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
     <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+    {# 隐式提交守卫：tree-order 首个 submit 是浏览器 Enter 的默认按钮。没有这个
+       shim 时首个 submit 是「删除草稿」(formaction=/reject)——在输入框按 Enter
+       会直接软删。shim 无 formaction,Enter 走表单自身 action(/save),载荷与
+       点「保存草稿」一致。#}
+    {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
     <div class="field-row">
       <div class="field field--amount">
         <div class="field-label">
@@ -112,7 +117,7 @@
 
     {% if can_write %}
     <div class="drawer-foot">
-      <button class="dt-btn" type="submit" formaction="/web/expenses/{{ e.id }}/reject">删除草稿</button>
+      <button class="dt-btn" type="submit" formaction="/web/expenses/{{ e.id }}/reject" data-confirm="删除这条草稿？">删除草稿</button>
       {% if e.is_duplicate %}
       <button class="dt-btn" type="submit" formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
       {% endif %}
