@@ -2055,6 +2055,17 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -2073,6 +2084,11 @@
           "original_currency": {
             "default": "",
             "title": "Original Currency",
+            "type": "string"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
             "type": "string"
           }
         },

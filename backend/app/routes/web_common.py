@@ -32,8 +32,9 @@ from app.services.expense_service import list_pending
 from app.services.goal_service import list_goals
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
+from app.services.spending_contract_service import accounting_zone
 from app.services.stats_service import monthly_stats
-from app.services.time_service import current_month, now_utc
+from app.services.time_service import current_month, ensure_utc, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
 from app.version import BACKEND_VERSION
 
@@ -307,6 +308,23 @@ def _amount_yuan(amount_cents: int | None) -> str:
     return f"{amount_cents / 100:.2f}"
 
 
+def _expense_time_local_input(value) -> str:
+    """Render a stored UTC ``expense_time`` into the ``YYYY-MM-DDTHH:MM`` shape an
+    ``<input type="datetime-local">`` expects, in the accounting timezone
+    (Asia/Shanghai) — the same wall-clock the rest of /web shows (see
+    ``web_bill_split._fmt_local``). Empty when unset.
+
+    Storage stays UTC: this is only the prefill side. ``web_save`` parses the
+    submitted value back from accounting-tz to UTC (assume-local), so the
+    round-trip is consistent and never drifts 8h. Keeping the conversion in one
+    helper (not the template) honours ENGINEERING_RULES §14.
+    """
+    value = ensure_utc(value)
+    if value is None:
+        return ""
+    return value.astimezone(accounting_zone()).strftime("%Y-%m-%dT%H:%M")
+
+
 def _currency_symbol(currency_code: str | None) -> str:
     code = (currency_code or home_currency_code()).upper()
     return CURRENCY_SYMBOLS.get(code, f"{code} ")
@@ -416,8 +434,13 @@ def _expense_view(expense) -> dict:
         "merchant": expense.merchant or "",
         "category": expense.category or "未分类",
         "note": expense.note or "",
+        "tags": getattr(expense, "tags", None) or "",
         "status": expense.status,
         "expense_time": expense.expense_time.strftime("%Y-%m-%d %H:%M") if expense.expense_time else "",
+        # datetime-local prefill in accounting tz (storage stays UTC); the edit
+        # form's <input type="datetime-local"> binds to this, not the display
+        # string above (which is the legacy raw-UTC label kept for list views).
+        "expense_time_local": _expense_time_local_input(getattr(expense, "expense_time", None)),
         "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
         # ADR-0041: row_version is the OCC token the hidden form fields carry now
         # (updated_at_iso kept for any display use).

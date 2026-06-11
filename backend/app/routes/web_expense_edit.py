@@ -10,6 +10,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes._web_expense_helpers import (
     _edit_page_or_flash_redirect,
+    parse_expense_time_local,
     parse_original_amount,
     web_edit_context,
 )
@@ -70,6 +71,15 @@ def web_save(
     merchant: str = Form(default=""),
     category: str = Form(default=""),
     note: str = Form(default=""),
+    # ``expense_time``: blank = leave untouched (FastAPI normalises a blank
+    # optional Form to None, which matches the wanted semantics here).
+    expense_time: str | None = Form(default=None),
+    # ``tags``: blank = CLEAR. FastAPI normalises a blank ``str | None`` Form
+    # to None, making blank indistinguishable from omitted — so this field is
+    # a non-optional str and is forwarded unconditionally. The /web edit form
+    # always renders the input, so every browser submit carries it; the API
+    # PATCH (JSON, exclude_unset) keeps the richer omitted-leaves semantics.
+    tags: str = Form(default=""),
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     _local: None = LocalOnly,
@@ -79,6 +89,9 @@ def web_save(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     original_amount, error = parse_original_amount(amount_yuan)
+    expense_time_value, time_error = parse_expense_time_local(expense_time)
+    if error is None:
+        error = time_error
 
     if error is None:
         # ADR-0038: the edit form renders a hidden `expected_row_version`
@@ -92,6 +105,12 @@ def web_save(
             "category": category.strip() or None,
             "note": note.strip() or None,
         }
+        # Blank time = leave (parse returns None and the key stays unset);
+        # tags forward unconditionally — the form always carries the field,
+        # so "" means the user cleared it (normalize_tags("") -> None).
+        if expense_time_value is not None:
+            payload_args["expense_time"] = expense_time_value
+        payload_args["tags"] = tags
         if original_amount is not None:
             payload_args["original_currency"] = (
                 (original_currency or "").strip().upper() or None

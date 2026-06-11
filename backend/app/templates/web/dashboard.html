@@ -5,6 +5,7 @@
 {% set visible_cards = cards.layout | selectattr('visible') | list %}
 <div class="page-header">
   <div class="page-eyebrow">DASHBOARD · {{ cards.month }}</div>
+  {% if has_any_expense %}
   <h1 class="page-title">今日账面，井然有序。</h1>
   <div class="page-sub">
     本月已确认 {{ cards.confirmed_count }} 笔，待确认 {{ cards.pending_count }} 笔。
@@ -15,6 +16,19 @@
     {% endif %}
     <a href="/web/dashboard/cards{{ q }}">卡片设置</a>
   </div>
+  {% else %}
+  {# 首日引导:账本还没有任何账单(lifetime exists() = False)。page-header 在 JS 渲染区外,
+     服务端无条件渲染,所以无论脚本开关都会看到这段。给三个进票口直达,而不是满屏 0。 #}
+  <h1 class="page-title">欢迎使用，先记第一笔。</h1>
+  <div class="page-sub">
+    这个账本还没有账单。挑一个入口开始：
+    <a href="/owner/pairing">手机配对绑定码</a> ·
+    <a href="/owner/upload-links">配 iPhone 快捷指令上传</a> ·
+    <a href="/web/import{{ q }}">从 CSV 导入</a>。
+    {# 首日态也保留卡片设置入口——#49 钉的「/web 一次 GET 四孤儿页入口可达」不变量。 #}
+    <a href="/web/dashboard/cards{{ q }}">卡片设置</a>
+  </div>
+  {% endif %}
 </div>
 
 <div id="dashboard-app"

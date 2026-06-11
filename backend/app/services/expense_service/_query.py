@@ -14,10 +14,32 @@ __all__ = [
     "fetch_expense_row_version_in_status",
     "get_expense",
     "is_expense_in_status_for_tenant",
+    "ledger_has_any_expense",
     "list_confirmed",
     "list_expenses_by_ids",
     "list_pending",
 ]
+
+
+def ledger_has_any_expense(db: Session, tenant_id: str) -> bool:
+    """Cheap predicate: does this ledger have *any* expense row ever (any status)?
+
+    Drives the /web dashboard first-day onboarding branch — a brand-new ledger
+    with zero lifetime expenses gets directional guidance (where to add the first
+    receipt) instead of a screen full of zeros. Lifetime (not this-month) scope is
+    deliberate: a ledger that had expenses last month but none this month is NOT
+    first-day, so the month-scoped ``confirmed_count`` / ``pending_count`` already
+    in the dashboard payload can't answer this. ``LIMIT 1`` keeps it an existence
+    probe, not a count over the whole table.
+    """
+    return (
+        db.scalar(
+            ledger_scoped_select(Expense, tenant_id)
+            .with_only_columns(Expense.id)
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def is_expense_in_status_for_tenant(

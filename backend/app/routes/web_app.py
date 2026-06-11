@@ -40,6 +40,7 @@ from app.routes.web_common import (
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
+    ledger_has_any_expense,
     list_confirmed,
 )
 from app.services.stats_service import monthly_stats
@@ -97,6 +98,12 @@ def web_root(
     ctx["trend14"] = dashboard_payload["trend14"]
     ctx["category_share"] = dashboard_payload["category_share"]
     ctx["dashboard_data_url"] = _with_ledger("/web/dashboard/data", selected_id)
+    # First-day onboarding: a brand-new ledger (zero lifetime expenses) shows the
+    # page-header sub-line as three "where to add the first receipt" links instead
+    # of a row of zeros. This lives in the page ctx (page-header is server-rendered
+    # outside the JS-controlled dashboard region) — not in the JSON data payload,
+    # which only feeds the card grid.
+    ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
     return templates.TemplateResponse(request=request, name="dashboard.html", context=ctx)
 
 

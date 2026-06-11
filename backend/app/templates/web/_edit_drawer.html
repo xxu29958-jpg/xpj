@@ -103,10 +103,30 @@
 
     <div class="field">
       <div class="field-label">
+        <span>消费时间</span>
+        <span class="hint">留空表示不修改</span>
+      </div>
+      <input class="dt-input" type="datetime-local" name="expense_time"
+             value="{{ e.expense_time_local }}" {% if not can_write %}disabled{% endif %}>
+    </div>
+
+    <div class="field">
+      <div class="field-label">
         <span>分类</span>
       </div>
       <input class="dt-input" type="text" name="category" value="{{ e.category }}"
-             {% if not can_write %}disabled{% endif %}>
+             list="category-options-drawer" {% if not can_write %}disabled{% endif %}>
+      <datalist id="category-options-drawer">
+        {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
+      </datalist>
+    </div>
+
+    <div class="field">
+      <div class="field-label">
+        <span>标签</span>
+      </div>
+      <input class="dt-input" type="text" name="tags" value="{{ e.tags }}" maxlength="500"
+             placeholder="用逗号分隔，例如 报销, 出差" {% if not can_write %}disabled{% endif %}>
     </div>
 
     <div class="field">

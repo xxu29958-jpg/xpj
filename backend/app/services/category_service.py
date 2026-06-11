@@ -40,6 +40,24 @@ def merge_categories(values: list[str]) -> list[str]:
     return sorted(categories, key=category_sort_key)
 
 
+def list_ledger_category_options(db: Session, *, tenant_id: str) -> list[str]:
+    """Categories to offer as a ``<datalist>`` autocomplete on the edit page:
+    the ledger's own already-used categories unioned with ``DEFAULT_CATEGORIES``,
+    legacy aliases normalised, defaults first then the rest alphabetically.
+
+    Pure suggestion surface — the category field stays free text (AI/OCR only
+    fills blanks, ENGINEERING_RULES §8). The datalist just curbs spelling drift
+    (餐饮 vs 餐厅) at the input.
+    """
+    used = db.scalars(
+        select(Expense.category)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.category.is_not(None))
+        .distinct()
+    ).all()
+    return merge_categories([str(value) for value in used])
+
+
 def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
     changed = False
     expenses = db.scalars(
