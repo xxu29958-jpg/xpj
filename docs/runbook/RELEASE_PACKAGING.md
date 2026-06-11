@@ -152,9 +152,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.
 
 「CI 全绿 + 同一 commit + 干净树」不再只是本节散文，由验收脚本**强制执行**（`Assert-ReleaseProvenance`）：
 
-1. **dirty 一票否决** —— `build_release_apk.ps1` 对 release 变体在构建前就拒绝
-   已跟踪文件有未提交改动的工作树（本机实验可 `-AllowDirty`，但 manifest 仍如实记
-   录 dirty）；验收脚本对 `manifest.git.dirty` 再做第二道硬校验，dirty 包直接失败。
+1. **dirty 一票否决** —— `build_release_apk.ps1` 对 release 变体在构建前就拒绝：
+   已跟踪文件有未提交改动（全仓），或 `android/` 下存在未跟踪的非忽略文件（会被打
+   进 APK 的构建输入；untracked 检查 path-scope 到 android/，`docs/audits/` 这类
+   本地目录天然在范围外）。本机实验可 `-AllowDirty`，但 manifest 按同一语义如实记
+   录 dirty；验收脚本对 `manifest.git.dirty` 再做第二道硬校验，dirty 包直接失败。
 2. **commit 绑定** —— `manifest.git.commit` 必须等于验收时仓库的 `HEAD`。
 3. **CI 绑定** —— 该 commit 在 Gitea 上的 windows-ci 四 job（Backend full checks /
    Backend (PostgreSQL) / Desktop manager / Android unit/build）最新一次必须全部

@@ -93,18 +93,34 @@ else {
 
 Ensure-JavaHome
 
+function Get-UntrackedBuildInputs {
+    # codex review follow-up:--untracked-files=no 的洞——纯新增且未 add 的
+    # Kotlin/资源文件会被打进 APK 而 manifest 仍显示 clean。APK 的文件级
+    # 构建输入都在 android/ 下,把 untracked 检查 path-scope 到 android/
+    # (=no 全局误拦:docs/audits/ 等本地审计目录天然在范围外;
+    # android/local.properties 等被 .gitignore 忽略的不会出现在 porcelain)。
+    $status = Get-GitValue -Arguments @("status", "--porcelain", "--untracked-files=all", "--", "android")
+    if ([string]::IsNullOrWhiteSpace($status)) {
+        return @()
+    }
+    return @($status -split "`n" | Where-Object { $_ -match "^\?\?" } | ForEach-Object { $_.Substring(3).Trim() })
+}
+
 if ($Variant -eq "release" -and -not $AllowDirty) {
     # codex review P1 #1: dirty 此前只写进 manifest、从不失败——脏树构建的
     # 包可以一路走到发包。release 变体在动 gradle 之前就拦下;manifest 的
     # dirty 字段仍然如实记录(覆盖 -AllowDirty 实验性构建),验收脚本对
     # manifest.git.dirty 再做第二道硬校验。
-    # 语义=已跟踪文件的未提交改动(--untracked-files=no):本仓有长期
-    # untracked 的工作目录(docs/audits/),untracked-inclusive 会永久误拦;
-    # 代价是「纯新增且未 add 的源文件」检不到——但真实改动几乎总伴随
-    # 已跟踪文件(注册/import/gradle)变更,由本闸兜住。
+    # 语义=「已跟踪文件的未提交改动(全仓)」+「android/ 下未跟踪非忽略文件
+    # (构建输入)」。全局 untracked-inclusive 会被 docs/audits/ 这类长期
+    # untracked 的本地目录永久误拦,所以 untracked 只查构建输入范围。
     $dirtyStatus = Get-GitValue -Arguments @("status", "--porcelain", "--untracked-files=no")
     if (-not [string]::IsNullOrWhiteSpace($dirtyStatus)) {
         throw "工作树有未提交改动（已跟踪文件），release 构建被拒绝：发包必须可追溯到干净 commit。本机实验加 -AllowDirty。"
+    }
+    $untrackedInputs = Get-UntrackedBuildInputs
+    if ($untrackedInputs.Count -gt 0) {
+        throw "android/ 下有未跟踪文件会被打进 APK 但不在 commit 里：$($untrackedInputs -join '; ')。先 git add 提交（或删除），本机实验加 -AllowDirty。"
     }
 }
 
@@ -158,11 +174,15 @@ if (-not $SkipManifest) {
     $gitShortCommit = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
     $gitBranch = Get-GitValue -Arguments @("rev-parse", "--abbrev-ref", "HEAD")
     $gitDirty = $false
-    # 与上面 release 门禁同一语义(tracked-only):untracked-inclusive 会因
-    # 本仓长期 untracked 的 docs/audits/ 把每个包都标 dirty,验收的
-    # manifest.git.dirty 硬校验就永远过不了。
+    # 与上面 release 门禁同一语义:全仓已跟踪改动 OR android/ 下未跟踪
+    # 构建输入,二者任一即 dirty(全局 untracked-inclusive 会因 docs/audits/
+    # 这类长期 untracked 本地目录把每个包都标 dirty,故 untracked 只查
+    # 构建输入范围;验收的 manifest.git.dirty 硬校验依赖本字段如实)。
     $gitStatus = Get-GitValue -Arguments @("status", "--porcelain", "--untracked-files=no")
     if (-not [string]::IsNullOrWhiteSpace($gitStatus)) {
+        $gitDirty = $true
+    }
+    if (-not $gitDirty -and (Get-UntrackedBuildInputs).Count -gt 0) {
         $gitDirty = $true
     }
 
