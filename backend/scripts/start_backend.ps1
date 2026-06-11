@@ -149,11 +149,23 @@ $process = Start-Process `
     -RedirectStandardError $ErrLogFile `
     -PassThru
 
-Start-Sleep -Seconds 4
+# 轮询等待而不是固定 Start-Sleep 4：启动路径里 Alembic 可能正在补迁移
+# （2026-06-07 实录：4 秒时 0043 迁移还在跑 → 误判失败 exit 1 → 登录自启
+# 任务 result=1，任务引擎收割进程树，把迁移中的 uvicorn 一并杀掉——
+# transactional DDL 回滚，库无损，但服务从此静默停机）。spawned 进程
+# 自己退出时立即失败，否则等 listener 出现，上限 90 秒。
+$startDeadline = (Get-Date).AddSeconds(90)
+$listener = $null
+do {
+    Start-Sleep -Seconds 2
+    if ($process.HasExited) {
+        break
+    }
+    $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+} while (-not $listener -and (Get-Date) -lt $startDeadline)
 
-$listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $listener) {
-    "[{0}] failed to start ticketbox backend, spawned pid={1}" -f (Get-Date -Format "s"), $process.Id | Out-File -FilePath $LogFile -Append -Encoding utf8
+    "[{0}] failed to start ticketbox backend, spawned pid={1} exited={2}" -f (Get-Date -Format "s"), $process.Id, $process.HasExited | Out-File -FilePath $LogFile -Append -Encoding utf8
     if (Test-Path -LiteralPath $ErrLogFile) {
         Get-Content -LiteralPath $ErrLogFile -Tail 80 | Out-File -FilePath $LogFile -Append -Encoding utf8
     }

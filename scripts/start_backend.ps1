@@ -47,24 +47,24 @@ if ($NoWait) {
     exit 0
 }
 
+# 注意：不要从 /api/health 读 backend_version 做比对。该端点按 SECURITY.md /
+# ENGINEERING_RULES §14 匿名只返回 {status:ok}（version 走需 session 的
+# /api/status/private），字段永远为空 → 比对永远失败 → 登录自启任务每次
+# result=1 且进程树被任务引擎收割（2026-06-07 起生产静默停机 4 天的外层根因；
+# backend\scripts\start_backend.ps1 的 listener 检查早已为同一坑修过——见其
+# codex P2 #12 注释——本包装层是漏网残留）。代码新旧由内层脚本的
+# source-stamp + runtime 双证保障，这里只确认进程就绪。
 $healthUrl = "http://127.0.0.1:$Port/api/health"
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 do {
     try {
         $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 5
         if ($response.status -eq "ok") {
-            $runningVersion = [string]$response.backend_version
-            if ($runningVersion -ne $ExpectedBackendVersion) {
-                throw "后端版本不一致：expected=$ExpectedBackendVersion running=$runningVersion"
-            }
-            Write-Host "OK   后端已就绪：$healthUrl"
+            Write-Host "OK   后端已就绪：$healthUrl（expected_version=$ExpectedBackendVersion）"
             exit 0
         }
     }
     catch {
-        if ($_.Exception.Message -like "后端版本不一致*") {
-            throw
-        }
         Start-Sleep -Seconds 2
     }
 } while ((Get-Date) -lt $deadline)
