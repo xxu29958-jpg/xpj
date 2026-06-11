@@ -2087,15 +2087,9 @@
             "type": "string"
           },
           "tags": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
+            "default": "",
+            "title": "Tags",
+            "type": "string"
           }
         },
         "title": "Body_web_save_web_expenses__expense_id__save_post",
