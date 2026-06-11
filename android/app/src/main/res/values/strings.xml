@@ -93,5 +93,13 @@
     <string name="error_idempotency_key_reused">操作已处理，请勿重复提交。</string>
     <string name="error_route_not_found">账本版本过旧，请重启电脑上的小票夹后再试。</string>
     <string name="error_method_not_allowed">操作方式不正确，请更新 App 后再试。</string>
+    <string name="error_invitation_not_found">拆账邀请不存在或已被清理。</string>
+    <string name="error_invitation_not_yours">没有权限操作这条拆账邀请。</string>
+    <string name="error_invitation_not_acceptable">拆账邀请已被处理，无法再接受或拒绝。</string>
+    <string name="error_invitation_not_cancellable">拆账邀请已被对方处理，无法撤回。</string>
+    <string name="error_invitation_expired">拆账邀请已过期。</string>
+    <string name="error_split_invitation_already_pending">已有发给对方的待处理拆账邀请。</string>
+    <string name="error_not_found">没有找到对应的记录。</string>
+    <string name="error_task_not_found">后台任务不存在或已结束。</string>
     <string name="error_generic">操作失败。</string>
 </resources>

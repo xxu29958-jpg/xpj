@@ -77,7 +77,12 @@ interface ExpenseDao {
         val existing = findByServerId(ledgerId, expense.serverId)
         if (existing == null) {
             insert(expense.copy(id = 0))
-        } else {
+        } else if (expense.rowVersion >= existing.rowVersion) {
+            // rowVersion monotonic guard: a slow full-list sync response must
+            // not clobber a row a fresh PATCH already advanced (the server is
+            // the source of truth and would self-heal next sync, but the UI
+            // shows the stale snapshot until then). Same-version writes are
+            // allowed — identical token means identical server payload.
             update(expense.copy(id = existing.id))
         }
     }
@@ -99,7 +104,8 @@ interface ExpenseDao {
             val existing = existingByServerId[expense.serverId]
             if (existing == null) {
                 inserts += expense.copy(id = 0)
-            } else {
+            } else if (expense.rowVersion >= existing.rowVersion) {
+                // Same monotonic guard as upsertByServerIdForLedger.
                 updates += expense.copy(id = existing.id)
             }
         }

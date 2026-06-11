@@ -138,9 +138,15 @@ fun ExpenseEditViewModel.saveSplits() {
         _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_save)) }
         return
     }
-    val drafts = _uiState.value.splitDrafts
+    val draftRows = _uiState.value.splitDrafts
         .filter { (it.included || it.disabled) && it.amountText.isNotBlank() }
-        .map { it.toDomainDraft() }
+    // Audit P3 #11: same unparsable-amount guard as saveItems — "1.2.3" must
+    // not silently land as a ¥0 split share.
+    if (draftRows.any { parseAmountCents(it.amountText) == null }) {
+        _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_amount_unparsable)) }
+        return
+    }
+    val drafts = draftRows.map { it.toDomainDraft() }
     viewModelScope.launch {
         _uiState.update { it.copy(splitsSaving = true, splitsMessage = null) }
         repository.replaceExpenseSplitsAllowingOffline(expense, drafts, currentSplits)

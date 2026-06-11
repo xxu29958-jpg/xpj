@@ -187,6 +187,7 @@
     <string name="expense_edit_items_load_failed">小票明细暂时加载失败。</string>
     <string name="expense_edit_items_not_loaded_tap">账单还在加载，请稍后再点。</string>
     <string name="expense_edit_items_not_loaded_retry">账单还在加载，请稍后再试。</string>
+    <string name="expense_edit_items_amount_unparsable">有一行明细的金额没填对，请检查后再保存。</string>
     <string name="expense_edit_items_ack_synced">已确认原小票如此。</string>
     <string name="expense_edit_items_ack_offline_queued">已离线确认，联网后同步</string>
     <string name="expense_edit_items_ack_failed">确认差异失败，请稍后重试。</string>
@@ -198,6 +199,7 @@
     <string name="expense_edit_splits_not_loaded_tap">家庭拆账还在加载，请稍后再点。</string>
     <string name="expense_edit_splits_members_load_failed">家庭成员暂时加载失败。</string>
     <string name="expense_edit_splits_not_loaded_save">家庭拆账还在加载，请稍候再保存。</string>
+    <string name="expense_edit_splits_amount_unparsable">有一位成员的金额没填对，请检查后再保存。</string>
     <string name="expense_edit_splits_saved">家庭拆账已更新。</string>
     <string name="expense_edit_splits_saved_offline_queued">已离线保存，联网后同步。</string>
     <string name="expense_edit_splits_save_failed">拆账保存失败，请稍后再试。</string>

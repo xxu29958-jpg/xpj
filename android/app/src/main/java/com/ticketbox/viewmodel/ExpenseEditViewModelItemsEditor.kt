@@ -139,9 +139,17 @@ fun ExpenseEditViewModel.saveItems() {
         _uiState.update { it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_retry)) }
         return
     }
-    val drafts = _uiState.value.itemDrafts
+    val draftRows = _uiState.value.itemDrafts
         .filter { it.name.isNotBlank() || it.amountText.isNotBlank() }
-        .map { it.toDomainDraft() }
+    // Audit P3 #11: a non-blank amount that does not parse ("1.2.3", a pasted
+    // "¥12"…) used to silently become ¥0 via `parseAmountCents(...) ?: 0L` —
+    // every other amount input in the app rejects loudly instead. Refuse to
+    // save and keep the editor open.
+    if (draftRows.any { it.amountText.isNotBlank() && parseAmountCents(it.amountText) == null }) {
+        _uiState.update { it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_amount_unparsable)) }
+        return
+    }
+    val drafts = draftRows.map { it.toDomainDraft() }
     viewModelScope.launch {
         _uiState.update { it.copy(itemsSaving = true, itemsMessage = null) }
         repository.replaceExpenseItemsAllowingOffline(expense, drafts, currentItems)

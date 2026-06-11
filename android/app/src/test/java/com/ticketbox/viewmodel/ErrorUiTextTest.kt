@@ -56,4 +56,25 @@ class ErrorUiTextTest {
             RuntimeException().toUiText(R.string.error_generic),
         )
     }
+
+    @Test
+    fun billSplitFlowAndTaskCodesMapToResources() {
+        // Audit #17: these eight codes were unmapped — a routine bill-split
+        // TOCTOU 409 / background-task 404 fell back to each screen's generic
+        // copy. Pinned per code against the backend ERROR_MESSAGES rows.
+        val expected = mapOf(
+            "invitation_not_found" to R.string.error_invitation_not_found,
+            "invitation_not_yours" to R.string.error_invitation_not_yours,
+            "invitation_not_acceptable" to R.string.error_invitation_not_acceptable,
+            "invitation_not_cancellable" to R.string.error_invitation_not_cancellable,
+            "invitation_expired" to R.string.error_invitation_expired,
+            "split_invitation_already_pending" to R.string.error_split_invitation_already_pending,
+            "not_found" to R.string.error_not_found,
+            "task_not_found" to R.string.error_task_not_found,
+        )
+        expected.forEach { (code, res) ->
+            val ex = RepositoryException("raw server message", code)
+            assertEquals(UiText.res(res), ex.toUiText(R.string.error_generic), "code=$code")
+        }
+    }
 }

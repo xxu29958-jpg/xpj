@@ -108,12 +108,52 @@ class ExpenseDaoContractTest {
         assertEquals(listOf(43L), dao.findByServerIds("L_family", listOf(42L, 43L)).map { it.serverId })
     }
 
+    @Test
+    fun upsertGuardKeepsNewerRowAgainstStaleSnapshot() = runTest {
+        // Audit P3 #12: a slow full-list sync (stale rowVersion) must not
+        // clobber the row a fresh PATCH already advanced. Same-or-newer
+        // versions still apply (identical token = identical server payload).
+        val dao = FakeExpenseDao()
+
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "patched", rowVersion = 5))
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "stale-sync", rowVersion = 3))
+
+        val row = dao.getConfirmed("owner").single()
+        assertEquals("patched", row.merchant)
+        assertEquals(5L, row.rowVersion)
+
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "newer", rowVersion = 6))
+        assertEquals("newer", dao.getConfirmed("owner").single().merchant)
+    }
+
+    @Test
+    fun bulkUpsertGuardFiltersStaleRowsPerEntity() = runTest {
+        val dao = FakeExpenseDao()
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1, merchant = "a-v4", rowVersion = 4))
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 2, merchant = "b-v1", rowVersion = 1))
+
+        dao.upsertAllByServerIdForLedger(
+            "owner",
+            listOf(
+                entity("owner", serverId = 1, merchant = "a-stale", rowVersion = 2),
+                entity("owner", serverId = 2, merchant = "b-v3", rowVersion = 3),
+                entity("owner", serverId = 3, merchant = "c-new", rowVersion = 1),
+            ),
+        )
+
+        val byServerId = dao.getConfirmed("owner").associateBy { it.serverId }
+        assertEquals("a-v4", byServerId[1L]?.merchant)
+        assertEquals("b-v3", byServerId[2L]?.merchant)
+        assertEquals("c-new", byServerId[3L]?.merchant)
+    }
+
     private fun entity(
         ledgerId: String,
         serverId: Long,
         status: String = "confirmed",
         amountCents: Long? = 100,
         merchant: String? = "merchant",
+        rowVersion: Long = 1L,
     ): ExpenseEntity {
         return ExpenseEntity(
             ledgerId = ledgerId,
@@ -138,7 +178,7 @@ class ExpenseDaoContractTest {
             createdAt = "2026-05-04T08:00:00Z",
             confirmedAt = if (status == "confirmed") "2026-05-04T08:30:00Z" else null,
             updatedAt = "2026-05-04T08:30:00Z",
-            rowVersion = 1L,
+            rowVersion = rowVersion,
         )
     }
 }
