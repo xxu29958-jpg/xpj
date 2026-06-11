@@ -50,6 +50,7 @@ gradlew :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
 git status --porcelain android/app/schemas
 gradlew :app:assertAndroidTestCountEqualsBaseline   # ADR-0038 测试计数门
 gradlew :app:lintGrayDebug
+gradlew :app:detekt   # Kotlin 复杂度门（CODE_QUALITY_STANDARDS 六阈值；存量冻结在 app/detekt-baseline.xml）
 gradlew :app:assembleGrayDebug
 gradlew :app:assembleInternalDebug
 gradlew :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + shrinkResources 保温
@@ -62,7 +63,7 @@ Android SDK 用仓库本地 `.toolchains\android-sdk`（workflow 写 `local.prop
 
 第二个 workflow 文件 `.gitea/workflows/android-connected.yml`：只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。这是 GitHub 时代 `android-connected-test.yml` 的 Gitea 复活版。
 
-`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`（两个文件都扫），钉住 9 个 gradle task（上述清单 + ksp regen + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），防止 lane 静默丢失。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单**，否则该 lane 立刻红。
+`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`（两个文件都扫），钉住 10 个 gradle task（上述清单 + ksp regen + detekt + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），防止 lane 静默丢失。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单**，否则该 lane 立刻红。
 
 ## 安全边界
 

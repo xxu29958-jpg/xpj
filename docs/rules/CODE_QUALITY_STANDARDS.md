@@ -15,26 +15,30 @@
 
 ## Kotlin / Android
 
-| 维度 | 评审基准 | 数值出处 |
+| 维度 | 门槛 | detekt 规则 |
 |---|---|---|
-| 函数行数 | 60 | detekt `LongMethod` 默认值 |
-| 类行数 | 600 | detekt `LargeClass` 默认值 |
-| 函数参数 | 5（函数）/ 6（构造） | detekt `LongParameterList` 默认值 |
-| 圈复杂度 | 14 | detekt `CyclomaticComplexMethod` 默认值 |
-| 嵌套深度 | 4 | detekt `NestedBlockDepth` 默认值 |
-| 文件函数数 | 11 | detekt `TooManyFunctions` 默认值 |
+| 函数行数 | 60 | `LongMethod` |
+| 类行数 | 600 | `LargeClass` |
+| 函数参数 | 5（函数）/ 6（构造） | `LongParameterList` |
+| 圈复杂度 | 14 | `CyclomaticComplexMethod` |
+| 嵌套深度 | 4 | `NestedBlockDepth` |
+| 文件函数数 | 11 | `TooManyFunctions` |
 
-**机器守护现状（如实）**：以上阈值**当前没有任何机器接线**——detekt 从未引入
-（`android/detekt.yml` 在 git 全历史中不存在，gradle 零接线；`codebase_audit_gate.py`
-只扫 Python）。它们是 PR 评审时的人工基准，超标按职责拆分收口（实证：
-`ExpenseEditViewModel` 曾膨到 815 行，靠手动 region 拆分回 ~470——正是无机器守护
-的代价）。Android lane 现有的机器门是另一组：`lintGrayDebug`、
-`assertAndroidTestCountEqualsBaseline`（`@Test` 计数 ratchet）、Room schema 漂移门、
-R8 release 编译、apksigner 指纹钉。
-
-**引入 detekt 待拍板**：真接线 = gradle 插件依赖（过 §9 依赖治理 + DEPENDENCIES.md）
-+ 按本表落 `android/detekt.yml` + CI android job 加 task + `_audit_ci_gap.py` 同步钉子
-+ 对存量违规生成 baseline 豁免文件（Compose 长函数预计不少）。选了再立项。
+**机器守护（2026-06 接线）**：detekt **1.23.8**（稳定线；2.0 仍 alpha 不入主线，
+Apache-2.0，版本进 `android/gradle/libs.versions.toml`）。`:app:detekt` 为 plain
+纯语法分析——上表六条全部不需要 type resolution，从而绕开 detekt 1.23 内嵌
+Kotlin 2.0 编译器读不了本项目 Kotlin 2.3 metadata 的已知不兼容（detekt#8865，
+type-resolving 变体如 `detektMain` 不可用，勿接）。配置 `android/detekt.yml`
+**只激活这六条**（`buildUponDefaultConfig=false`，style/naming 等规则集显式关闭——
+未经拍板不混入门槛）；接线时存量 344 处违规（178 文件，大头 Compose 长函数/参数表）
+冻结在 `android/app/detekt-baseline.xml`，新代码与被改代码必须达标。CI 在
+android-unit job 的 lint 之后跑 `:app:detekt`，`_audit_ci_gap.py` 已钉（第 10 个
+gradle task）。已知债务：1.23.8 用了 Gradle 10 将废 API（Gradle 9 仅警告），
+detekt 2.0 stable 后按 DEPENDENCIES.md 升级流程换代。历史阈值超标按职责拆分
+收口（实证：`ExpenseEditViewModel` 曾膨到 815 行，靠手动 region 拆分回 ~470——
+正是接线前无机器守护的代价）；baseline 条目是冻结的债，不是许可。Android lane
+其余机器门：`lintGrayDebug`、`assertAndroidTestCountEqualsBaseline`（`@Test`
+计数 ratchet）、Room schema 漂移门、R8 release 编译、apksigner 指纹钉。
 
 ## Pull Request
 
@@ -71,6 +75,7 @@ R8 release 编译、apksigner 指纹钉。
 ## 参考来源
 
 - [Ruff configuration handbook](https://pydevtools.com/handbook/how-to/how-to-configure-recommended-ruff-defaults/)
-- [Detekt Complexity Rule Set](https://detekt.dev/docs/rules/complexity/)（Kotlin 表数值出处；工具本身未接线）
+- [Detekt Complexity Rule Set](https://detekt.dev/docs/rules/complexity/)（Kotlin 表数值出处）
+- [detekt#8865](https://github.com/detekt/detekt/issues/8865)（1.23.x 对 Kotlin 2.3 metadata 不兼容——plain 模式不受影响的依据）
 - [McCabe cyclomatic complexity (Wikipedia)](https://en.wikipedia.org/wiki/Cyclomatic_complexity)
 - [Conventional Commits 1.0](https://www.conventionalcommits.org/en/v1.0.0/)

@@ -126,6 +126,7 @@ if (!ticketboxDebugKeystoreFile.exists()) {
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.detekt)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
@@ -380,6 +381,18 @@ val androidTestAnnotations = listOf(
 // counter measures source-level test method declarations; runtime test
 // count is a different metric (would need ``gradle test --dry-run`` and
 // parsing). Keep them mentally separate.
+
+// Machine gate for the six Kotlin complexity thresholds in
+// docs/rules/CODE_QUALITY_STANDARDS.md. Plain (non-type-resolving) ``:app:detekt``
+// only: the six rules are pure-syntax, which keeps detekt 1.23.x's embedded
+// Kotlin 2.0 compiler away from this project's Kotlin 2.3 metadata. Pre-existing
+// violations are frozen in detekt-baseline.xml — new/edited code must comply.
+detekt {
+    buildUponDefaultConfig = false
+    config.setFrom(rootProject.file("detekt.yml"))
+    baseline = file("detekt-baseline.xml")
+    parallel = true
+}
 
 tasks.register("assertAndroidTestCountEqualsBaseline") {
     group = "verification"

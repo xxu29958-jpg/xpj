@@ -31,6 +31,10 @@ REQUIRED_GRADLE_TASKS = [
     ":app:testGrayDebugUnitTest",
     ":app:assertAndroidTestCountEqualsBaseline",
     ":app:lintGrayDebug",
+    # Kotlin complexity gate (CODE_QUALITY_STANDARDS.md six thresholds) —
+    # wired 2026-06; pinned so the lane cannot silently vanish like the
+    # GitHub-era drill did.
+    ":app:detekt",
     ":app:assembleGrayDebug",
     ":app:assembleInternalDebug",
     ":app:assembleGrayRelease",

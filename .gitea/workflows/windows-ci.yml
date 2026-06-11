@@ -424,6 +424,12 @@ jobs:
       - name: Lint
         run: .\gradlew.bat --no-daemon :app:lintGrayDebug
 
+      - name: Detekt complexity gate
+        # The six Kotlin thresholds from docs/rules/CODE_QUALITY_STANDARDS.md,
+        # machine-enforced (plain syntax-only run; pre-existing violations are
+        # frozen in android/app/detekt-baseline.xml).
+        run: .\gradlew.bat --no-daemon :app:detekt
+
       - name: Assemble gray debug APK
         run: .\gradlew.bat --no-daemon :app:assembleGrayDebug
 
