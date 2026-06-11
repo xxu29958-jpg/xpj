@@ -205,6 +205,27 @@ class ReportsRepository(
             // on the now-stale token. The dispatcher replays it from
             // row.idempotencyKey.
             val idempotencyKey = UUID.randomUUID().toString()
+            val outboxRef = outbox
+            val adapter = goalUpdateAdapter
+            if (outboxRef == null || adapter == null) {
+                // Wiring missing — direct-only; failures surface as Result.failure.
+                val updated = bound.call { api ->
+                    api.updateGoal(
+                        publicId = cleanPublicId,
+                        request = request,
+                        idempotencyKey = idempotencyKey,
+                        timezone = currentTimezoneId(),
+                    ).toDomain()
+                }
+                return@safeCall GoalSaveOutcome.Synced(updated)
+            }
+            if (outboxRef.activeForTarget("goal:$cleanPublicId").isNotEmpty()) {
+                // Per-target FIFO guard (codex follow-up review) — a direct
+                // PATCH must not jump an unresolved queued mutation for the
+                // same goal. Same mechanism as the expense:{id} guards.
+                enqueueUpdateGoal(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+                return@safeCall GoalSaveOutcome.Queued(projectOptimisticGoal(baseline, cleanUpdate))
+            }
             try {
                 val updated = bound.call { api ->
                     api.updateGoal(
@@ -216,34 +237,37 @@ class ReportsRepository(
                 }
                 GoalSaveOutcome.Synced(updated) as GoalSaveOutcome
             } catch (networkError: IOException) {
-                val outboxRef = outbox
-                val adapter = goalUpdateAdapter
-                if (outboxRef == null || adapter == null) {
-                    // Wiring missing — fall back to the original failure path so
-                    // we don't pretend to have saved.
-                    throw networkError
-                }
-                // [codex round-13 P1] Session-change race guard: throws
-                // RepositoryException ("账本已切换…") if the active ledger differs
-                // from the one we bound to, BEFORE outbox.enqueue.
-                bound.requireStillActive()
-                // [round-8 P3#5] strip token from payload — row's
-                // expectedRowVersion is the single source of truth. Dispatcher
-                // overwrites the request token from the row on replay.
-                outboxRef.enqueue(
-                    type = PendingMutationType.UpdateGoal,
-                    targetId = "goal:$cleanPublicId",
-                    payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-                    expectedRowVersion = baseline.rowVersion,
-                    // Same key as the direct attempt above — the dispatcher
-                    // replays it from row.idempotencyKey.
-                    idempotencyKey = idempotencyKey,
-                )
+                enqueueUpdateGoal(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
                 GoalSaveOutcome.Queued(
                     projectOptimisticGoal(baseline, cleanUpdate),
                 ) as GoalSaveOutcome
             }
         }
+    }
+
+    /**
+     * Shared UpdateGoal enqueue for the queue-jump guard and the IOException
+     * fallback. [codex round-13 P1] session race guard before enqueue +
+     * [round-8 P3#5] payload token strip (row.expectedRowVersion is the
+     * single source of truth; dispatcher overwrites on replay).
+     */
+    private suspend fun enqueueUpdateGoal(
+        bound: BoundLedgerRequest,
+        outboxRef: OutboxRepository,
+        adapter: com.squareup.moshi.JsonAdapter<GoalUpdateRequestDto>,
+        cleanPublicId: String,
+        request: GoalUpdateRequestDto,
+        token: Long,
+        idempotencyKey: String,
+    ) {
+        bound.requireStillActive()
+        outboxRef.enqueue(
+            type = PendingMutationType.UpdateGoal,
+            targetId = "goal:$cleanPublicId",
+            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+            expectedRowVersion = token,
+            idempotencyKey = idempotencyKey,
+        )
     }
 
     /**

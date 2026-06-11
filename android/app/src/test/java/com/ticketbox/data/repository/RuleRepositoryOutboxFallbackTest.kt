@@ -20,6 +20,7 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -105,6 +106,71 @@ class RuleRepositoryOutboxFallbackTest {
     )
 
     // region — saveExpenseAllowingOffline mirror
+
+    @Test
+    fun `update with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
+        // Per-target FIFO guard (codex follow-up review): the expense guards
+        // landed first; rules were still direct-first and could jump a queued
+        // same-target row. The stub THROWS IllegalStateException so a broken
+        // guard fails loudly (ISE is not the IOException fallback trigger).
+        val baseline = baselineRule()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
+        val api = ApiServiceStub(
+            updateCategoryRuleResult = ApiResult.Throw(IllegalStateException("direct PATCH must not run")),
+        )
+        val repo = buildRepository(api, outbox, adapter)
+        outbox.enqueue(
+            type = PendingMutationType.UpdateCategoryRule,
+            targetId = "category_rule:${baseline.id}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-key",
+        )
+
+        val outcome = repo.updateCategoryRuleAllowingOffline(baseline, keyword = "新关键词")
+            .getOrThrow() as CategoryRuleSaveOutcome.Queued
+
+        assertEquals("新关键词", outcome.rule.keyword)
+        assertNull(api.lastUpdateIdempotencyKey, "direct PATCH must NOT be attempted while a same-target row is queued")
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.UpdateCategoryRule.wireValue, rows[1].type)
+        assertEquals("category_rule:${baseline.id}", rows[1].targetId)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+        assertTrue(rows[1].idempotencyKey != null, "guarded enqueue still carries an intent-time key")
+    }
+
+    @Test
+    fun `delete with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
+        val baseline = baselineRule()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val updateAdapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
+        val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
+        val api = ApiServiceStub(
+            deleteCategoryRuleException = IllegalStateException("direct DELETE must not run"),
+        )
+        val repo = buildRepository(api, outbox, updateAdapter, deleteAdapter)
+        // e.g. a queued toggle for the same rule is still pending.
+        outbox.enqueue(
+            type = PendingMutationType.UpdateCategoryRule,
+            targetId = "category_rule:${baseline.id}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-key",
+        )
+
+        val outcome = repo.deleteCategoryRuleAllowingOffline(baseline).getOrThrow()
+
+        assertTrue(outcome is DeleteOutcome.Queued)
+        assertNull(api.lastDeleteIdempotencyKey, "direct DELETE must NOT be attempted while a same-target row is queued")
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.DeleteCategoryRule.wireValue, rows[1].type)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+    }
 
     @Test
     fun `direct 2xx returns Synced with server rule, no enqueue`() = runTest {

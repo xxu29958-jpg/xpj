@@ -21,6 +21,7 @@ import retrofit2.HttpException
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -108,6 +109,66 @@ class MerchantRepositoryOutboxFallbackTest {
 
         assertTrue(outcome is DeleteOutcome.Synced)
         assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+    }
+
+    @Test
+    fun `delete with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
+        // Per-target FIFO guard (codex follow-up review) — see the expense
+        // guards. The stub THROWS IllegalStateException so a broken guard
+        // fails loudly (ISE is not the IOException fallback trigger).
+        val baseline = baselineAlias()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(MerchantAliasDeleteRequest::class.java)
+        val api = ThrowingDeleteAliasApiService(IllegalStateException("direct DELETE must not run"))
+        val repo = buildRepository(api, outbox = outbox, deleteAdapter = adapter)
+        // e.g. a queued enable/disable toggle for the same alias is pending.
+        outbox.enqueue(
+            type = PendingMutationType.UpdateMerchantAlias,
+            targetId = "merchant_alias:${baseline.publicId}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-key",
+        )
+
+        val outcome = repo.deleteMerchantAliasAllowingOffline(baseline).getOrThrow()
+
+        assertTrue(outcome is DeleteOutcome.Queued)
+        assertNull(api.lastIdempotencyKey, "direct DELETE must NOT be attempted while a same-target row is queued")
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.DeleteMerchantAlias.wireValue, rows[1].type)
+        assertEquals("merchant_alias:${baseline.publicId}", rows[1].targetId)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
+    }
+
+    @Test
+    fun `update with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
+        val baseline = baselineAlias()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
+        val api = UpdateAliasApiServiceStub(
+            updateResult = UpdateAliasResult.Throw(IllegalStateException("direct PATCH must not run")),
+        )
+        val repo = buildRepository(api, outbox = outbox, updateAdapter = updateAdapter)
+        outbox.enqueue(
+            type = PendingMutationType.UpdateMerchantAlias,
+            targetId = "merchant_alias:${baseline.publicId}",
+            payloadJson = "{}",
+            expectedRowVersion = baseline.rowVersion,
+            idempotencyKey = "queued-key",
+        )
+
+        val outcome = repo.updateMerchantAliasAllowingOffline(baseline, enabled = false)
+            .getOrThrow() as MerchantAliasSaveOutcome.Queued
+
+        assertEquals(false, outcome.alias.enabled)
+        assertNull(api.lastIdempotencyKey, "direct PATCH must NOT be attempted while a same-target row is queued")
+        assertEquals(2, dao.rows.size)
+        val rows = dao.rows.values.sortedBy { it.id }
+        assertEquals(PendingMutationType.UpdateMerchantAlias.wireValue, rows[1].type)
+        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
     }
 
     @Test
