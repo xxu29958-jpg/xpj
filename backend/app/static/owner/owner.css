@@ -194,7 +194,7 @@ form.inline { display: inline; }
     text-decoration: none;
     color: var(--text-default);
     font-size: 13px;
-    transition: border-color .15s, box-shadow .15s;
+    transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .quick-links a:hover { border-color: var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-focus-ring); color: var(--brand-primary-strong); }
 
@@ -288,14 +288,14 @@ form.inline { display: inline; }
 .skeleton {
     background: linear-gradient(
         90deg,
-        var(--surface-sunken) 0%,
-        var(--border-card) 50%,
-        var(--surface-sunken) 100%
+        var(--skeleton-base-bg) 0%,
+        var(--skeleton-shine-bg) 50%,
+        var(--skeleton-base-bg) 100%
     );
     background-size: 320px 100%;
     background-repeat: no-repeat;
     border-radius: 4px;
-    animation: skeleton-shimmer 1200ms ease-in-out infinite;
+    animation: skeleton-shimmer var(--motion-shimmer) var(--ease-linear) infinite;
     color: transparent;
     user-select: none;
 }
@@ -367,7 +367,7 @@ form.inline { display: inline; }
     color: rgba(255, 255, 255, 0.72);
     text-decoration: none;
     font-size: 13px;
-    transition: background 120ms ease, color 120ms ease;
+    transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 .owner-sidebar__nav a:hover {
     background: rgba(255, 255, 255, 0.06);

@@ -4,6 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color as AndroidColor
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -22,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -44,6 +49,7 @@ import com.ticketbox.ui.design.LocalSkeletonTokens
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalSwipeActionTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.SkeletonTokens
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.backgroundVisualsForSkin
 import com.ticketbox.ui.design.chartTokensForSkin
@@ -53,6 +59,9 @@ import com.ticketbox.ui.design.skeletonTokensForSkin
 import com.ticketbox.ui.design.stateTokensForSkin
 import com.ticketbox.ui.design.swipeActionTokensForSkin
 import com.ticketbox.ui.design.themeVisualsForSkin
+import com.valentinilk.shimmer.LocalShimmerTheme
+import com.valentinilk.shimmer.ShimmerTheme
+import com.valentinilk.shimmer.defaultShimmerTheme
 
 // Material3 colorScheme —— 核心槽位从 ThemeVisuals / StateTokens 派生(单一真相源,
 // 刷新调色板时自动跟随,不再静默漂移)。仅 M3 专属的 on-container 对比文字 /
@@ -188,6 +197,7 @@ fun TicketboxTheme(
         }
     }
 
+    val skeletonTokens = skeletonTokensForSkin(skin)
     MaterialTheme(
         colorScheme = colorSchemeForSkin(skin),
         typography = TicketboxTypography,
@@ -201,7 +211,8 @@ fun TicketboxTheme(
                 LocalChartTokens provides chartTokensForSkin(skin),
                 LocalGoalTokens provides goalTokensForSkin(skin),
                 LocalDashboardCardTokens provides dashboardCardTokensForSkin(skin),
-                LocalSkeletonTokens provides skeletonTokensForSkin(skin),
+                LocalSkeletonTokens provides skeletonTokens,
+                LocalShimmerTheme provides shimmerThemeFor(skeletonTokens),
                 LocalSwipeActionTokens provides swipeActionTokensForSkin(skin),
                 com.ticketbox.ui.design.LocalCurrencyCode provides currency,
                 LocalCurrencyDisplay provides currencyDisplay,
@@ -211,6 +222,31 @@ fun TicketboxTheme(
         }
     }
 }
+
+/**
+ * 由 [SkeletonTokens] 派生 valentinilk shimmer 主题，让骨架扫光真正消费三端 token：
+ *
+ * - 扫光带改画 tokens.shine 渐变（midnight 暖金、paper/mono 白光），blendMode 用
+ *   [BlendMode.SrcOver]——库默认的 DstIn 是 alpha 蒙版（骨架大部分时间被压到
+ *   25%×base，midnight 6% 底直接被压到不可见），SrcOver 才是"底色常驻 + 光带扫过"。
+ * - 节奏改 [SkeletonTokens.shimmerDurationMillis]（1200ms）连续线性扫光，去掉库默认
+ *   800ms+1500ms 间歇，与 /web、/owner 的 `--motion-shimmer` 一致。
+ */
+private fun shimmerThemeFor(tokens: SkeletonTokens): ShimmerTheme = defaultShimmerTheme.copy(
+    animationSpec = infiniteRepeatable(
+        animation = tween(
+            durationMillis = tokens.shimmerDurationMillis,
+            easing = LinearEasing,
+        ),
+        repeatMode = RepeatMode.Restart,
+    ),
+    blendMode = BlendMode.SrcOver,
+    shaderColors = listOf(
+        tokens.shine.copy(alpha = 0f),
+        tokens.shine,
+        tokens.shine.copy(alpha = 0f),
+    ),
+)
 
 @Composable
 fun TicketboxAtmosphereBackground(

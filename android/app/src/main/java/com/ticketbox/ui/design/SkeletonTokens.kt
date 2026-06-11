@@ -4,10 +4,20 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.ticketbox.domain.model.AppSkin
 
+/**
+ * Skeleton 加载骨架 token，三端镜像 `shared/tokens.css` 的
+ * `--skeleton-base-bg` / `--skeleton-shine-bg` / `--motion-shimmer`。
+ *
+ * 消费方：
+ * - [base]：骨架块静止底色，[com.ticketbox.ui.components.SkeletonBlock] 默认色。
+ * - [shine]：shimmer 扫光带色，`ui/theme/Theme.kt` 派生 `LocalShimmerTheme` 的渐变。
+ * - [shimmerDurationMillis]：扫光周期（ms），同处派生 tween 时长；
+ *   与 `--motion-shimmer: 1200ms` 等值，三端加载态节奏一致。
+ */
 data class SkeletonTokens(
     val base: Color,
     val shine: Color,
-    val shimmerDurationMillis: Int = 1400,
+    val shimmerDurationMillis: Int = 1200,
 )
 
 val LocalSkeletonTokens = compositionLocalOf { skeletonTokensForSkin(AppSkin.Default) }
