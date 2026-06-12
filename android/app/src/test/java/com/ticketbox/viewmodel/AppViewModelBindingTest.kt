@@ -141,6 +141,91 @@ class AppViewModelBindingTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun disableLocalUnlockEntersAppAndRaisesBannerFlag() = runTest {
+        // Audit 8.1 branch 3: device has no biometric and no usable lock-screen
+        // credential. The gate's probe calls disableLocalUnlock() — the bound app
+        // must enter (unlocked) AND flag the advisory banner, with no stale error.
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true),
+                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
+                requireLocalUnlock = true,
+            )
+            assertEquals(false, viewModel.uiState.value.unlocked)
+
+            viewModel.unlockFailed(BIND_RESTORE_FAILED_MESSAGE)
+            viewModel.disableLocalUnlock()
+
+            assertTrue(viewModel.uiState.value.unlocked)
+            assertTrue(viewModel.uiState.value.localUnlockDisabled)
+            assertEquals(null, viewModel.uiState.value.authMessage)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun refreshUnlockRequirementStaysUnlockedOnceLocalUnlockDisabled() = runTest {
+        // Degradation path: a device whose local door was gracefully disabled must
+        // NOT be re-locked by a later background→resume cycle (refreshUnlockRequirement)
+        // — there is no way to satisfy the door, so re-locking would re-trap the user.
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true)
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
+                requireLocalUnlock = true,
+            )
+
+            viewModel.disableLocalUnlock()
+            assertTrue(viewModel.uiState.value.unlocked)
+
+            // Subsequent resume: store still says "requires unlock", but the disabled
+            // flag short-circuits the re-lock.
+            viewModel.markBackgrounded()
+            viewModel.refreshUnlockRequirement()
+
+            assertTrue(viewModel.uiState.value.unlocked)
+            assertTrue(viewModel.uiState.value.localUnlockDisabled)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun refreshUnlockRequirementReLocksWhenDoorStillActive() = runTest {
+        // Counterpart pin: while the local door is NOT disabled (a real biometric /
+        // credential device), a background→resume that the store says requires unlock
+        // MUST re-lock — the graceful-disable short-circuit must not leak into the
+        // normal secured path.
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true),
+                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
+                requireLocalUnlock = true,
+            )
+            viewModel.unlockSucceeded()
+            assertTrue(viewModel.uiState.value.unlocked)
+
+            viewModel.refreshUnlockRequirement()
+
+            assertEquals(false, viewModel.uiState.value.unlocked)
+            assertEquals(false, viewModel.uiState.value.localUnlockDisabled)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
 }
 
 private class FakeBindingRepository(
