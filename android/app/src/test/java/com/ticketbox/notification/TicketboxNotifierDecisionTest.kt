@@ -4,8 +4,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * 通知闭环 PR-1：[decideDraftNotification] 决策矩阵的纯 JVM 测试
- * （零 Android 依赖——顶层函数直测，不加载任何 Android 绑定类）。
+ * 通知闭环 PR-1：[decideDraftNotification] 决策矩阵的纯 JVM 测试（零 Android 依赖——
+ * 顶层函数直测，不加载任何 Android 绑定类）。PR-2 的内容规格测试在
+ * [TicketboxNotifierContentSpecTest]（按 TooManyFunctions 门拆分）。
  */
 class TicketboxNotifierDecisionTest {
 
@@ -126,4 +127,5 @@ class TicketboxNotifierDecisionTest {
             ),
         )
     }
+
 }

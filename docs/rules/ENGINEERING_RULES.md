@@ -1,6 +1,6 @@
 # 工程规范
 
-> 规则版本 v1.6.0（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见 2026-06-04 注；v1.4.0→v1.5.0：§14 经 [[0044]] 反转 UI 字符串资源化条——做 string-resourcing（非翻译），见下行 2026-06-06 注，MINOR/收紧已列项落法；v1.5.0→v1.5.1：2026-06-11，PATCH/措辞——§13 运维 Runbook 列举补 CI，runbook 实质更新在 `docs/runbook/`：CI.md 对齐两-workflow 现实 + ci-gap 9+10 钉数、POSTGRES_MIGRATION.md 增表属主排查节、WINDOWS_BACKUP_TASK.md 增备份链健康自查节；v1.5.1→v1.5.2：2026-06-11，PATCH/纠假陈述——§14 速查「detekt 默认门槛」改「Kotlin 阈值（评审基准，机器接线待拍板）」，配套 CODE_QUALITY_STANDARDS.md 真相化：detekt 从未接线、Branch Protection 段换成 gitea 真实合并纪律、PR size 数字改议题纪律；v1.5.2→v1.6.0：2026-06-12，MINOR/新机器门——用户拍板接线 detekt 并指定换掉旧内嵌编译器，§14 速查 Kotlin 阈值由「评审基准」升级为 detekt 机器门（2.0.0-alpha.3〔owner 显式拍板的预发布例外，回收条件 = 2.0 stable 即升正式〕，内嵌 Kotlin 与项目 2.3.21 对齐；CI 跑 type-resolving `:app:detektGrayDebug`+`:app:detektGrayDebugUnitTest`——plain task 会静默跳过 LongParameterList；仅六条 complexity 规则、存量 232+45 条冻结 per-variant baseline、`_audit_ci_gap.py` gradle 钉 9→11），详 CODE_QUALITY_STANDARDS.md「机器守护（2026-06 接线）」段）；后端 + 客户端协作项目契约。
+> 规则版本 v1.7.0（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见 2026-06-04 注；v1.4.0→v1.5.0：§14 经 [[0044]] 反转 UI 字符串资源化条——做 string-resourcing（非翻译），见下行 2026-06-06 注，MINOR/收紧已列项落法；v1.5.0→v1.5.1：2026-06-11，PATCH/措辞——§13 运维 Runbook 列举补 CI，runbook 实质更新在 `docs/runbook/`：CI.md 对齐两-workflow 现实 + ci-gap 9+10 钉数、POSTGRES_MIGRATION.md 增表属主排查节、WINDOWS_BACKUP_TASK.md 增备份链健康自查节；v1.5.1→v1.5.2：2026-06-11，PATCH/纠假陈述——§14 速查「detekt 默认门槛」改「Kotlin 阈值（评审基准，机器接线待拍板）」，配套 CODE_QUALITY_STANDARDS.md 真相化：detekt 从未接线、Branch Protection 段换成 gitea 真实合并纪律、PR size 数字改议题纪律；v1.5.2→v1.6.0：2026-06-12，MINOR/新机器门——用户拍板接线 detekt 并指定换掉旧内嵌编译器，§14 速查 Kotlin 阈值由「评审基准」升级为 detekt 机器门（2.0.0-alpha.3〔owner 显式拍板的预发布例外，回收条件 = 2.0 stable 即升正式〕，内嵌 Kotlin 与项目 2.3.21 对齐；CI 跑 type-resolving `:app:detektGrayDebug`+`:app:detektGrayDebugUnitTest`——plain task 会静默跳过 LongParameterList；仅六条 complexity 规则、存量 232+45 条冻结 per-variant baseline、`_audit_ci_gap.py` gradle 钉 9→11），详 CODE_QUALITY_STANDARDS.md「机器守护（2026-06 接线）」段）；v1.6.0→v1.7.0：2026-06-12，MINOR/增加规则——§14 增「Android 周期 Worker 与 §13 的边界」小节（经 [[0046]]：单个窄用途 Android WorkManager periodic worker 是移动端平台调度能力，不落 §13 backend 后台任务框架禁项，非 MAJOR 反转）；后端 + 客户端协作项目契约。
 > §14 在 2026-05-22 增"字段命名"+"当前阶段不引入"两小节：解释 `expense_time`/`tenant_id` 项目命名与模板 §3/§4 的关系，并显式标注当前 v0.x 不引入 `/api/v1` 前缀、`client_request_id` 幂等键、`/health/liveness+readiness` 拆分、UI 字符串资源化（与 §13 "不做完整 i18n" 一致）。
 > §14 在 2026-06-04 更新「不引入 `client_request_id` 幂等键」条（MINOR / 增加规则）：[[0042]] 已为 **outbox-routed mutate 面**引入服务端请求幂等键（`Idempotency-Key` header + `api_idempotency_keys` 表），解除该范围的限制；其余写操作仍不带 client-side dedup key。
 > §14 在 2026-06-06 反转「UI 字符串资源化」条（MINOR / 收紧已列项落法）：[[0044]] 决定做 **string-resourcing**——Android 用户可见中文字面量外置到 `res/values/strings.xml` + `stringResource`，按 screen/module 分 PR。**仍是 resourcing 非翻译**：`strings.xml` 只放中文、不建第二语言，故 §13「完整 i18n / 完整 a11y」仍是「当前阶段不做」（真要翻译另开 ADR=MAJOR）。
@@ -452,6 +452,10 @@ Android / `/web` / `/owner` 共享一套 design tokens（`backend/app/static/sha
 ### 外部产品参考边界
 
 Monarch、支付宝账单等外部产品只允许作为**体验模式**参考；不得照搬 UI 布局、素材、商标、专有文案（详见 `docs/roadmap/MONARCH_INSPIRED_UI.md`）。
+
+### Android 周期 Worker 与 §13 的边界（ADR-0046）
+
+§13「后台任务框架（Celery / RQ / 工作流引擎）」的禁项对象是 **backend / 平台级任务框架**；Android 端在既有 WorkManager 能力下的**单个窄用途周期 worker**（如固定支出提醒检测源，[[0046]]）不落入该禁项，按常规 PR + 规则 MINOR 处理。新增此类 worker 仍须守 [[0046]] 边界契约：Worker 只做调度、业务判断拆纯 Kotlin 可测层、本地显式去重、失败安全降级（不写任何服务端业务状态）、不引入 exact alarm / foreground service / boot receiver / 常驻进程。若未来要把「任何新增周期 worker」也解释为 §13 禁项，须重新裁定为 ADR + MAJOR。
 
 ### 代码质量数字门槛
 
