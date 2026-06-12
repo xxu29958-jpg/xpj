@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSolidCard
@@ -164,25 +165,19 @@ internal fun ExpenseEditSourceInfo(
     }
 }
 
-/** ``Expense.source`` 储存的是中文/英文 token（iPhone截图 / bill_split_received /
- *  通知草稿:微信 …）。映射到人话显示标签，镜像后端
- *  ``web_stats_service.SOURCE_LABELS`` + 通知草稿前缀，三端词汇同步。未知来源返回
- *  ``null``，由调用方回退到原始 token。纯函数，可单测。 */
+/** ``Expense.source`` 存储值（见 [ExpenseSourceValues]）映射到人话显示标签，
+ *  三端词汇同步。未知来源返回 ``null``，由调用方回退到原始 token。纯函数，可单测。 */
 @StringRes
 internal fun expenseSourceLabelRes(source: String): Int? {
-    if (source.startsWith(NOTIFICATION_DRAFT_SOURCE_PREFIX)) {
+    if (source.startsWith(ExpenseSourceValues.NOTIFICATION_DRAFT_PREFIX)) {
         return R.string.expense_edit_source_notification
     }
     return when (source) {
-        "iPhone截图" -> R.string.expense_edit_source_iphone
-        "Android截图" -> R.string.expense_edit_source_android
-        "手动记账" -> R.string.expense_edit_source_manual
-        "CSV导入" -> R.string.expense_edit_source_csv
-        "bill_split_received" -> R.string.expense_edit_source_bill_split
+        ExpenseSourceValues.IPHONE_SCREENSHOT -> R.string.expense_edit_source_iphone
+        ExpenseSourceValues.ANDROID_SCREENSHOT -> R.string.expense_edit_source_android
+        ExpenseSourceValues.MANUAL_ENTRY -> R.string.expense_edit_source_manual
+        ExpenseSourceValues.CSV_IMPORT -> R.string.expense_edit_source_csv
+        ExpenseSourceValues.BILL_SPLIT_RECEIVED -> R.string.expense_edit_source_bill_split
         else -> null
     }
 }
-
-/** ``Expense.source`` 通知草稿前缀（完整值 = 前缀 + 渠道名），镜像后端
- *  ``NOTIFICATION_DRAFT_SOURCE_PREFIX``。 */
-private const val NOTIFICATION_DRAFT_SOURCE_PREFIX = "通知草稿:"
