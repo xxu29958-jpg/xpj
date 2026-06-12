@@ -12,6 +12,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -220,50 +221,75 @@ class PendingViewModel(
     ) {
         if (blockReadOnlyWrite()) return
         if (!uploadAlreadyStarted && _uiState.value.uploading) return
+        val image = PreparedUploadImage(
+            fileName = fileName,
+            contentType = contentType,
+            bytes = bytes,
+            sourceSizeBytes = sourceSizeBytes ?: -1L,
+            preparationDurationMs = preparationDurationMs ?: 0L,
+        )
         viewModelScope.launch {
-            if (!uploadAlreadyStarted) {
-                uploadLedgerIdAtStart = repository.currentActiveLedgerId()
-                uploadGenerationAtStart = requestGeneration
-                _uiState.update { it.copy(uploading = true, message = null) }
+            performUpload(image = image, uploadAlreadyStarted = uploadAlreadyStarted)
+        }
+    }
+
+    /**
+     * 等待完成的单张上传，供「系统分享多图」按顺序逐张上传（W1）。调用方负责先
+     * [markUploadPreparing]（拿 in-progress 锁 + 快照 ledger/generation），再于此 await
+     * 一张完成后再处理下一张——因为上传链是**在线-only**（直连 POST，非 outbox 队列），
+     * 顺序串行是最朴素的「多图循环」。
+     *
+     * @return 该张是否上传成功（用于决定是否继续后续张 / 汇总提示）。
+     */
+    suspend fun uploadPreparedImage(image: PreparedUploadImage): Boolean =
+        performUpload(image = image, uploadAlreadyStarted = true)
+
+    private suspend fun performUpload(image: PreparedUploadImage, uploadAlreadyStarted: Boolean): Boolean {
+        if (!uploadAlreadyStarted) {
+            uploadLedgerIdAtStart = repository.currentActiveLedgerId()
+            uploadGenerationAtStart = requestGeneration
+            _uiState.update { it.copy(uploading = true, message = null) }
+        }
+        val expectedLedgerId = uploadLedgerIdAtStart
+        if (uploadGenerationAtStart != requestGeneration || expectedLedgerId != repository.currentActiveLedgerId()) {
+            uploadLedgerIdAtStart = null
+            _uiState.update {
+                it.copy(
+                    uploading = false,
+                    message = UiText.res(R.string.pending_msg_upload_ledger_switched),
+                )
             }
-            val expectedLedgerId = uploadLedgerIdAtStart
-            if (uploadGenerationAtStart != requestGeneration || expectedLedgerId != repository.currentActiveLedgerId()) {
+            return false
+        }
+        var succeeded = false
+        repository.uploadScreenshot(
+            fileName = image.fileName,
+            contentType = image.contentType,
+            bytes = image.bytes,
+            preparationDurationMs = image.preparationDurationMs,
+            sourceSizeBytes = image.sourceSizeBytes,
+            expectedLedgerId = expectedLedgerId,
+        )
+            .onSuccess {
+                if (uploadGenerationAtStart != requestGeneration) return@onSuccess
+                uploadLedgerIdAtStart = null
+                succeeded = true
+                _uiState.update { state ->
+                    state.copy(uploading = false, message = UiText.res(R.string.pending_msg_upload_succeeded))
+                }
+                refresh()
+            }
+            .onFailure { error ->
+                if (uploadGenerationAtStart != requestGeneration) return@onFailure
                 uploadLedgerIdAtStart = null
                 _uiState.update {
                     it.copy(
                         uploading = false,
-                        message = UiText.res(R.string.pending_msg_upload_ledger_switched),
+                        message = error.toUiText(R.string.pending_msg_upload_failed),
                     )
                 }
-                return@launch
             }
-            repository.uploadScreenshot(
-                fileName = fileName,
-                contentType = contentType,
-                bytes = bytes,
-                preparationDurationMs = preparationDurationMs,
-                sourceSizeBytes = sourceSizeBytes,
-                expectedLedgerId = expectedLedgerId,
-            )
-                .onSuccess {
-                    if (uploadGenerationAtStart != requestGeneration) return@onSuccess
-                    uploadLedgerIdAtStart = null
-                    _uiState.update { state ->
-                        state.copy(uploading = false, message = UiText.res(R.string.pending_msg_upload_succeeded))
-                    }
-                    refresh()
-                }
-                .onFailure { error ->
-                    if (uploadGenerationAtStart != requestGeneration) return@onFailure
-                    uploadLedgerIdAtStart = null
-                    _uiState.update {
-                        it.copy(
-                            uploading = false,
-                            message = error.toUiText(R.string.pending_msg_upload_failed),
-                        )
-                    }
-                }
-        }
+        return succeeded
     }
 
     private suspend fun loadThumbnails(expenses: List<Expense>, generation: Int) {

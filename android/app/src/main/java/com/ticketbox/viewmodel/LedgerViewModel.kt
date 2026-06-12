@@ -87,6 +87,16 @@ data class LedgerUiState(
 ) {
     val selectedCount: Int get() = selectedIds.size
 
+    /**
+     * 8.4: true only during the very first sync ever — no cached items, a sync
+     * in flight, and no prior sync timestamp (fresh install). LedgerScreen shows
+     * a skeleton list instead of the empty-state card in this window. A returning
+     * user always has a non-null [lastSyncAt], so this never masks the genuine
+     * "no expenses yet" empty state. Pure derivation, unit-testable.
+     */
+    val isFirstSync: Boolean
+        get() = items.isEmpty() && syncing && lastSyncAt == null
+
     val summary: LedgerSummaryUi
         get() = LedgerSummaryUi(
             totalAmountCents = items.sumOf { it.amountCents ?: 0L },
