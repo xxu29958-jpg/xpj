@@ -20,6 +20,15 @@
     <string name="common_saving">保存中</string>
     <string name="common_readonly_ledger">当前角色为只读，无法修改账本。</string>
 
+    <!-- 启动器静态快捷方式（长按应用图标弹出，res/xml/shortcuts.xml）。
+         shortLabel 显示在快捷菜单、longLabel 用于无障碍/长形态展示。 -->
+    <string name="shortcut_upload_short_label">传小票</string>
+    <string name="shortcut_upload_long_label">上传小票截图</string>
+    <string name="shortcut_manual_short_label">记一笔</string>
+    <string name="shortcut_manual_long_label">手动记一笔账</string>
+    <string name="shortcut_review_short_label">去确认</string>
+    <string name="shortcut_review_long_label">查看待确认账单</string>
+
     <!-- 底部导航 tab 标签（AppBottomNav 的可见 Text + contentDescription） -->
     <string name="nav_tab_ledger">账本</string>
     <string name="nav_tab_reports">报表</string>

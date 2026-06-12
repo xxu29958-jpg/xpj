@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>设置</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>本机的少量运行时开关：公网域名、接口放行、安全相关项。大部分配置还是要改 <code>.env</code> 文件，这里只放几项面向操作者、能在线安全调整的。不确定的项保持默认即可。</p>
+</details>
 <div class="settings-shell">
   <nav class="settings-side">
     {% for item in settings_nav %}

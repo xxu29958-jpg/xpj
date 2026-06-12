@@ -2,6 +2,10 @@
 {% block title %}生成绑定码 — 小票夹{% endblock %}
 {% block content %}
 <h1>生成 Android 绑定码</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>给自己的 Android 手机配上小票夹时用：在这里生成一个 8 位码，在手机 App 里输进去就绑定好了。注意绑定码只给你自己的手机用，给家人入伙请去账本管理里发邀请。</p>
+</details>
 
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
