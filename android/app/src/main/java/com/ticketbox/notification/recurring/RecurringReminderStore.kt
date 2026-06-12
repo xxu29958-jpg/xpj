@@ -13,6 +13,8 @@ import java.time.format.DateTimeParseException
  *
  * key 格式见 [recurringReminderSentKey]。retention 不是业务正确性底座：key 丢失最多导致重复提醒，
  * 不会写错账本，故 [prune] 是可选清理（本实现按 expectedDate 清理远期旧 key，见 impl）。
+ * **本 slice 无生产调用方**——无界保留是 Contract 5 显式允许的取舍（key 量级 = 固定支出数 ×
+ * 周期 × kind，天级增长可忽略）;snooze/mute/history 升 Room 表时再接定期 prune。
  */
 interface RecurringReminderStore {
     fun wasSent(key: String): Boolean

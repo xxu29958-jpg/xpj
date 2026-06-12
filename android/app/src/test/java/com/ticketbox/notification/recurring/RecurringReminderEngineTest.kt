@@ -65,6 +65,26 @@ class RecurringReminderEngineTest {
     }
 
     @Test
+    fun authShapedRepositoryFailureAlsoMapsToBoundedTransientRetry() = runTest {
+        // Contract 8 对抗审钉:仓库 NetworkErrorHandler 把 401/403 折叠成
+        // RepositoryException(与网络故障同形),engine 刻意不区分——存活但被撤销的
+        // token 走有界退避(TransientFailure→Result.retry),不 mark sent、不 dispatch;
+        // token 已清的常见失效态由 sessionReady 前置门拦截(见上方 session 测试)。
+        val source = FakeRecurringReminderSource.failing(
+            com.ticketbox.data.repository.RepositoryException(
+                message = "登录已失效，请重新绑定设备。",
+                errorCode = "invalid_token",
+            ),
+        )
+        val store = InMemoryRecurringReminderStore()
+        val dispatcher = FakeRecurringReminderDispatcher()
+        val outcome = engine(source = source, store = store, dispatcher = dispatcher).checkAndNotify()
+        assertTrue(outcome is RecurringReminderRunOutcome.TransientFailure)
+        assertTrue(store.keys.isEmpty())
+        assertTrue(dispatcher.dispatchedKeys.isEmpty())
+    }
+
+    @Test
     fun policyNoneIsNeitherCheckedNorMarked() = runTest {
         // 全部窗口外（today+30）→ policy NONE：不 dispatch、不写 sent key。
         val source = FakeRecurringReminderSource.of(

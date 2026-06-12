@@ -80,7 +80,11 @@ class RecurringReminderEngine(
         if (!runtime.sessionReady()) return RecurringReminderRunOutcome.EMPTY_SUCCESS
 
         val items = source.activeItems().getOrElse { error ->
-            // source 失败（网络 / API / 账本切换）→ 瞬时失败，worker 退避重试，不 mark sent。
+            // source 失败 → 瞬时失败，worker 退避重试，不 mark sent。401/403 在仓库的
+            // NetworkErrorHandler 里与网络故障同折叠为 RepositoryException，此处刻意不再
+            // 区分（Contract 8 的「session 失效路径」分支）：常见失效态（token 已清）已被
+            // sessionReady 前置门拦成 safe-success；存活但被撤销的 token 至多触发
+            // WorkManager 有界退避 + 下个 24h 周期，不构成无限 retry。
             runtime.logWarning("recurring source failed: ${error::class.java.simpleName}", error)
             return RecurringReminderRunOutcome.TransientFailure(error::class.java.simpleName)
         }
