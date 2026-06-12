@@ -27,6 +27,7 @@
     call("initLedgerSwitcher");
     call("initSparks");
     call("initDrawer");
+    call("initReviewHotkeys");
     call("initBulkBar");
     call("initReceiptSkeletons");
     call("initDashboard");

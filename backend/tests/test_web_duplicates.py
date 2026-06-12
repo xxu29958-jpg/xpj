@@ -149,3 +149,52 @@ def test_web_duplicates_unknown_id_returns_friendly_msg(web_client: TestClient) 
     )
     assert resp.status_code == 303
     assert "msg=" in resp.headers.get("location", "")
+
+
+# ── 批10: keep via the pending drawer fetch-mutation ────────────────────────
+
+
+def _token(web_client: TestClient, expense_id: int, *, identity) -> str:
+    snapshot = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert snapshot.status_code == 200, snapshot.text
+    return str(snapshot.json()["row_version"])
+
+
+def test_web_duplicate_keep_fragment_success_returns_marker(
+    web_client: TestClient, *, identity
+) -> None:
+    """批10: the pending drawer's 「标为非重复」 button posts here with fragment=1;
+    success returns a 200 marker (the client re-fetches the now-unflagged drawer),
+    not a redirect, and the flag is actually cleared."""
+    _, second = _seed_duplicate_pair(web_client, identity=identity)
+    resp = web_client.post(
+        f"/web/duplicates/{second}/keep",
+        data={"ledger_id": "owner", "expected_row_version": _token(
+            web_client, second, identity=identity
+        ), "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200, resp.text
+    assert 'data-drawer-ok="keep"' in resp.text
+    assert not resp.text.lstrip().startswith("{")
+    with SessionLocal() as db:
+        row = db.scalar(select(Expense).where(Expense.id == second))
+        assert row is not None
+        assert row.duplicate_status == "none"
+
+
+def test_web_duplicate_keep_fragment_missing_expense_returns_readable_html(
+    web_client: TestClient,
+) -> None:
+    """批10: a fetch-keep on a vanished row degrades to the readable empty-cell
+    snippet at the row's status, not bare JSON injected into the drawer."""
+    resp = web_client.post(
+        "/web/duplicates/99999/keep",
+        data={"ledger_id": "owner", "expected_row_version": "1", "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 404, resp.text
+    assert "empty-cell" in resp.text
+    assert not resp.text.lstrip().startswith("{")

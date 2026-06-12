@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import Request
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -108,6 +108,75 @@ def _edit_page_or_flash_redirect(
         return _web_redirect(fallback_path, selected_id, msg=exc.message, flash_type="error")
     ctx[error_key] = error_msg
     return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+
+
+# 批10: hidden ``return_to`` whitelist for the drawer review flow. The drawer is
+# served from /web/pending, so a successful save can redirect back there instead
+# of bouncing the reviewer into the full /web/expenses/{id}/edit page (the old
+# 303 that "pops you out of the queue", even with JS off). Only a fixed set of
+# list pages is honoured — an arbitrary value falls back to the route default,
+# so this never widens the same-site redirect surface beyond known /web list
+# views.
+_RETURN_TO_PATHS: dict[str, str] = {
+    "pending": "/web/pending",
+    "confirmed": "/web/confirmed",
+    "duplicates": "/web/duplicates",
+}
+
+
+def resolve_return_to(raw: str, default_path: str) -> str:
+    """Map a hidden ``return_to`` token to a whitelisted /web list path.
+
+    批10: blank or unknown → ``default_path`` (each route's existing
+    redirect target). Keeps the success redirect inside the known list-view
+    set; ``_web_redirect`` still runs the value through
+    ``_safe_same_site_redirect_path`` afterwards.
+    """
+    return _RETURN_TO_PATHS.get((raw or "").strip(), default_path)
+
+
+def drawer_fragment_ok(action: str) -> HTMLResponse:
+    """批10: minimal 200 body for a successful fetch-mutation from the drawer.
+
+    desktop drawer.js only reads ``res.ok`` for confirm/忽略 (it then removes
+    the row + opens the next drawer) and re-fetches the row fragment after a
+    save, so the success body just needs to be a tiny, non-JSON marker — never
+    the bare-JSON the global handler would emit. ``action`` is echoed in a data
+    attribute purely so the response is self-describing in logs / manual curls.
+    """
+    return HTMLResponse(f'<div data-drawer-ok="{action}"></div>')
+
+
+def drawer_fragment_error(
+    db: Session,
+    request: Request,
+    options,
+    selected_id: str,
+    expense_id: int,
+    error_msg: str,
+) -> Response:
+    """批10: re-render ``_edit_drawer.html`` carrying ``error_msg`` for a failed
+    fetch-mutation — or the readable empty-cell snippet when the row vanished.
+
+    Mirrors the GET fragment guard in ``web_edit_get`` (a deleted / cross-ledger
+    row must not inject raw JSON into the drawer, since drawer.js does not check
+    ``res.ok`` on the GET path). The fetch-mutation path *does* check ``res.ok``,
+    so this MUST carry a non-2xx status — otherwise the client treats the failure
+    as success and removes the row. The vanished-row branch keeps the row's own
+    status (404…); the still-present-but-rejected branch uses 422 so the client
+    swaps the error fragment into the open drawer instead of advancing.
+    """
+    try:
+        ctx = web_edit_context(db, request, options, selected_id, expense_id)
+    except AppError as exc:
+        return HTMLResponse(
+            f'<div class="empty-cell">{exc.message}</div>',
+            status_code=exc.status_code,
+        )
+    ctx["error"] = error_msg
+    return templates.TemplateResponse(
+        request=request, name="_edit_drawer.html", context=ctx, status_code=422
+    )
 
 
 def web_edit_context(
