@@ -239,97 +239,103 @@ class GlobalSearchViewModel(
 
     /** Apply the scope segment + per-bucket cap, reporting whether anything was
      *  cut so the screen can show the "仅显示前 N 条" footer. */
-    private fun sliceForScope(
-        pendingMatches: List<GlobalSearchResultUi>,
-        confirmedMatches: List<GlobalSearchResultUi>,
-        scope: GlobalSearchScope,
-    ): ScopedResults {
-        val pending = pendingMatches.take(MAX_RESULTS_PER_BUCKET)
-        val confirmed = confirmedMatches.take(MAX_RESULTS_PER_BUCKET)
-        val pendingCut = pendingMatches.size > MAX_RESULTS_PER_BUCKET
-        val confirmedCut = confirmedMatches.size > MAX_RESULTS_PER_BUCKET
-        return when (scope) {
-            GlobalSearchScope.All -> ScopedResults(pending + confirmed, pendingCut || confirmedCut)
-            GlobalSearchScope.Pending -> ScopedResults(pending, pendingCut)
-            GlobalSearchScope.Confirmed -> ScopedResults(confirmed, confirmedCut)
-        }
-    }
-
-    private fun Expense.toSearchResult(
-        kind: GlobalSearchResultKind,
-        criteria: SearchCriteria,
-    ): GlobalSearchResultUi? {
-        if (!criteria.category.isBlank() && category != criteria.category) return null
-        if (!criteria.month.isBlank() && expenseLedgerMonth(this) != criteria.month) return null
-        val match = matchTerm(criteria) ?: return null
-        return GlobalSearchResultUi(
-            kind = kind,
-            expense = this,
-            title = merchant?.takeIf { it.isNotBlank() } ?: category,
-            matchedField = match,
-        )
-    }
-
-    /** Resolve which field (or the amount) the [criteria] hit, or null for no
-     *  match. A blank term with active filters matches every filtered row. */
-    private fun Expense.matchTerm(criteria: SearchCriteria): UiText? {
-        if (criteria.term.isBlank()) return UiText.res(R.string.global_search_field_all)
-        val amountHit = criteria.amountCents != null && expenseMatchesAmountCents(this, criteria.amountCents)
-        val textMatch = textSearchMatch(criteria.term)
-        return when {
-            textMatch != null -> textMatch
-            amountHit -> UiText.res(R.string.global_search_field_amount)
-            else -> null
-        }
-    }
-
-    private fun Expense.textSearchMatch(term: String): UiText? {
-        val terms = term
-            .lowercase()
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
-        if (terms.isEmpty()) return null
-        val fields = listOf(
-            SearchField(UiText.res(R.string.global_search_field_merchant), merchant, 0),
-            SearchField(UiText.res(R.string.global_search_field_category), category, 1),
-            SearchField(UiText.res(R.string.global_search_field_note), note, 2),
-            SearchField(UiText.res(R.string.global_search_field_tags), tags, 2),
-            SearchField(UiText.res(R.string.global_search_field_source), source, 3),
-            SearchField(UiText.res(R.string.global_search_field_raw_text), rawText, 4),
-        ).filter { !it.value.isNullOrBlank() }
-
-        val matchesAllTerms = terms.all { termPart ->
-            fields.any { field -> field.value.orEmpty().lowercase().contains(termPart) }
-        }
-        if (!matchesAllTerms) return null
-        return fields
-            .filter { field ->
-                terms.any { termPart -> field.value.orEmpty().lowercase().contains(termPart) }
-            }
-            .minByOrNull { it.score }
-            ?.label
-    }
-
-    private data class SearchCriteria(
-        val term: String,
-        val amountCents: Long?,
-        val category: String,
-        val month: String,
-    )
-
-    private data class ScopedResults(
-        val results: List<GlobalSearchResultUi>,
-        val truncated: Boolean,
-    )
-
-    private data class SearchField(
-        val label: UiText,
-        val value: String?,
-        val score: Int,
-    )
 
     private companion object {
         const val MAX_QUERY_LENGTH = 80
-        const val MAX_RESULTS_PER_BUCKET = 20
     }
 }
+
+// Pure search mechanics, file-level so the class stays inside the detekt
+// functions-per-class budget; nothing here touches ViewModel state.
+private fun sliceForScope(
+    pendingMatches: List<GlobalSearchResultUi>,
+    confirmedMatches: List<GlobalSearchResultUi>,
+    scope: GlobalSearchScope,
+): ScopedResults {
+    val pending = pendingMatches.take(MAX_RESULTS_PER_BUCKET)
+    val confirmed = confirmedMatches.take(MAX_RESULTS_PER_BUCKET)
+    val pendingCut = pendingMatches.size > MAX_RESULTS_PER_BUCKET
+    val confirmedCut = confirmedMatches.size > MAX_RESULTS_PER_BUCKET
+    return when (scope) {
+        GlobalSearchScope.All -> ScopedResults(pending + confirmed, pendingCut || confirmedCut)
+        GlobalSearchScope.Pending -> ScopedResults(pending, pendingCut)
+        GlobalSearchScope.Confirmed -> ScopedResults(confirmed, confirmedCut)
+    }
+}
+
+private fun Expense.toSearchResult(
+    kind: GlobalSearchResultKind,
+    criteria: SearchCriteria,
+): GlobalSearchResultUi? {
+    if (!criteria.category.isBlank() && category != criteria.category) return null
+    if (!criteria.month.isBlank() && expenseLedgerMonth(this) != criteria.month) return null
+    val match = matchTerm(criteria) ?: return null
+    return GlobalSearchResultUi(
+        kind = kind,
+        expense = this,
+        title = merchant?.takeIf { it.isNotBlank() } ?: category,
+        matchedField = match,
+    )
+}
+
+/** Resolve which field (or the amount) the [criteria] hit, or null for no
+ *  match. A blank term with active filters matches every filtered row. */
+private fun Expense.matchTerm(criteria: SearchCriteria): UiText? {
+    if (criteria.term.isBlank()) return UiText.res(R.string.global_search_field_all)
+    val amountHit = criteria.amountCents != null && expenseMatchesAmountCents(this, criteria.amountCents)
+    val textMatch = textSearchMatch(criteria.term)
+    return when {
+        textMatch != null -> textMatch
+        amountHit -> UiText.res(R.string.global_search_field_amount)
+        else -> null
+    }
+}
+
+private fun Expense.textSearchMatch(term: String): UiText? {
+    val terms = term
+        .lowercase()
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+    if (terms.isEmpty()) return null
+    val fields = listOf(
+        SearchField(UiText.res(R.string.global_search_field_merchant), merchant, 0),
+        SearchField(UiText.res(R.string.global_search_field_category), category, 1),
+        SearchField(UiText.res(R.string.global_search_field_note), note, 2),
+        SearchField(UiText.res(R.string.global_search_field_tags), tags, 2),
+        SearchField(UiText.res(R.string.global_search_field_source), source, 3),
+        SearchField(UiText.res(R.string.global_search_field_raw_text), rawText, 4),
+    ).filter { !it.value.isNullOrBlank() }
+
+    val matchesAllTerms = terms.all { termPart ->
+        fields.any { field -> field.value.orEmpty().lowercase().contains(termPart) }
+    }
+    if (!matchesAllTerms) return null
+    return fields
+        .filter { field ->
+            terms.any { termPart -> field.value.orEmpty().lowercase().contains(termPart) }
+        }
+        .minByOrNull { it.score }
+        ?.label
+}
+
+private data class SearchCriteria(
+    val term: String,
+    val amountCents: Long?,
+    val category: String,
+    val month: String,
+)
+
+private data class ScopedResults(
+    val results: List<GlobalSearchResultUi>,
+    val truncated: Boolean,
+)
+
+private data class SearchField(
+    val label: UiText,
+    val value: String?,
+    val score: Int,
+)
+
+// File-level so both the VM and the UiState default parameter can read it
+// (a private companion member is invisible to the sibling data class).
+private const val MAX_RESULTS_PER_BUCKET = 20
