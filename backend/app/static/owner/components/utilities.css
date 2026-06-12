@@ -100,3 +100,31 @@
     font-size: var(--type-caption-size);
     color: var(--text-meta);
 }
+
+/* 页面顶部「这是什么」折叠帮助(每页标题旁, 原生 <details>, 零 JS)。
+ * 给小白一句话解释这页干什么/什么时候需要它; 老手保持折叠不挡运维。 */
+.page-help {
+    margin: calc(-1 * var(--space-3)) 0 var(--space-6);
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.page-help > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-input, 6px);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    font-size: var(--type-meta-size);
+    user-select: none;
+    width: fit-content;
+}
+.page-help > summary:hover { color: var(--text-default); }
+.page-help > p {
+    margin: var(--space-3) 0 0;
+    padding: 0 var(--space-3);
+    line-height: 1.7;
+    max-width: 60em;
+}

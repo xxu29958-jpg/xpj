@@ -2,6 +2,10 @@
 {% block title %}汇率同步 — 小票夹{% endblock %}
 {% block content %}
 <h1>汇率同步</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>记外币账单时用到的汇率从这里同步。默认每天自动拉一次，一般不用手动操作；只有出国前后想确认汇率是不是最新、或自动同步失败时进来点一下「立即拉取一次」。</p>
+</details>
 
 {% if refreshed == 'ok' %}
 <div class="alert alert-success">
@@ -18,7 +22,7 @@
   <div class="kv-grid">
     <span class="kv-key">数据源</span>
     <span class="kv-val">
-      {% if fx_source == 'ecb' %}ECB 直连{% else %}Frankfurter（欧央行参考价镜像，国内可达，免 key）{% endif %}
+      欧洲央行参考汇率{% if fx_source == 'ecb' %}（ECB 直连）{% else %}（经 Frankfurter 镜像，国内可达、免 key）{% endif %}
       <br><span class="path-mono">{{ fx_source_url }}</span>
     </span>
     <span class="kv-key">自动同步</span>
