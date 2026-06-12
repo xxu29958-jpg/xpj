@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, Request
+from html import escape as _html_escape
+
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
@@ -172,7 +174,127 @@ def _request_id(request: Request) -> str | None:
     return getattr(request.state, "request_id", None)
 
 
-async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+# ── Browser-friendly error pages (A3 fallback) ───────────────────────────────
+#
+# High-traffic /web write paths already convert errors into a 303-flash redirect
+# back to the originating list (batches #37 / #44 / #47). What was left exposed
+# was the *bottom* layer: a browser that lands on a /web (or /owner) URL with no
+# matching route (404), or hits an uncaught 500, would see the raw JSON envelope
+# instead of a page. This adds a minimal self-contained HTML page for exactly
+# that case. Everything else — /api, /u, Android (OkHttp sends no Accept
+# header by default, so it lands in the no-Accept bucket), shortcuts — keeps
+# the byte-identical JSON envelope (ENGINEERING_RULES §4 contract; the Android
+# ErrorResponse decoder must never receive HTML).
+
+_HTML_ERROR_PREFIXES = ("/web", "/owner")
+_VALID_UI_THEMES = frozenset({"paper", "mono", "midnight"})
+
+
+def _wants_html_error_page(request: Request) -> bool:
+    """True only when a browser on a /web or /owner URL prefers HTML.
+
+    Simplified Accept negotiation (per A3 scope): a substring match on
+    ``text/html`` is enough — real browsers always send it with a high weight,
+    and our only non-browser callers on these prefixes are tests. The path gate
+    is the hard guarantee that no /api or /u (Android / UploadLink / shortcuts)
+    response is ever turned into HTML, regardless of a forged Accept header.
+    """
+    path = request.url.path
+    if not (path == "/web" or path == "/owner" or any(path.startswith(p + "/") for p in _HTML_ERROR_PREFIXES)):
+        return False
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept.lower()
+
+
+def _error_page_theme(request: Request) -> str:
+    """Mirror web_common._read_ui_theme without importing it.
+
+    Importing app.routes.web_common here would drag the whole /web service tree
+    into this bottom-layer module at import time and form an import cycle
+    (web_common imports app.errors.AppError). The cookie read is two lines, so
+    we inline it. Absent/garbled cookie → the 'paper' default, same as /web.
+    """
+    raw = request.cookies.get("ui_theme")
+    return raw if raw in _VALID_UI_THEMES else "paper"
+
+
+# Status → (page <title> / 大标题, 一句下一步). Generic buckets cover anything
+# not called out explicitly. Copy is "生活 App" voice per §10 — never leaks the
+# status number, route name, host path, or a stack trace.
+_ERROR_PAGE_COPY = {
+    403: ("没有权限", "这个账本或页面当前账号无法访问。"),
+    404: ("这个页面不存在", "链接可能已经失效，或者地址打错了。"),
+    500: ("暂时出了点问题", "刚才的操作没能完成，请稍后再试。"),
+}
+_GENERIC_4XX_COPY = ("请求无法完成", "这个操作现在没法处理，请返回后重试。")
+_GENERIC_5XX_COPY = _ERROR_PAGE_COPY[500]
+
+
+def _error_page_copy(status_code: int) -> tuple[str, str]:
+    if status_code in _ERROR_PAGE_COPY:
+        return _ERROR_PAGE_COPY[status_code]
+    if status_code >= 500:
+        return _GENERIC_5XX_COPY
+    return _GENERIC_4XX_COPY
+
+
+def html_error_response(request: Request, status_code: int) -> HTMLResponse:
+    """Render the minimal browser error page for /web and /owner.
+
+    Self-contained: links the shared design tokens so all three themes apply,
+    carries ``data-theme`` from the ui_theme cookie (paper default), and shows
+    the request_id in small text so a screenshot is actionable (§12). No body
+    field exposes internals (§4 / §10).
+    """
+    heading, hint = _error_page_copy(status_code)
+    theme = _error_page_theme(request)
+    request_id = _request_id(request)
+    # "回到首页" must land on the surface the user was on: the /owner console is
+    # loopback-only and has its own home — sending its errors to /web would 303
+    # the operator into the session-gated user surface.
+    path = request.url.path
+    home_href = "/owner" if path == "/owner" or path.startswith("/owner/") else "/web"
+    rid_line = (
+        f'<p class="error-page__rid">问题编号 {_html_escape(request_id)}</p>' if request_id else ""
+    )
+    body = (
+        "<!DOCTYPE html>"
+        f'<html lang="zh-CN" data-theme="{_html_escape(theme)}">'
+        "<head>"
+        '<meta charset="UTF-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        f"<title>{_html_escape(heading)} · 小票夹</title>"
+        '<link rel="stylesheet" href="/static/shared/tokens.css">'
+        "<style>"
+        # Consume the real shared tokens (--surface-app / --text-* / --brand-* /
+        # --radius-*) so paper/mono/midnight all theme correctly via data-theme;
+        # literal fallbacks mirror the paper palette if a token is ever absent.
+        # Font family stays a local system stack (tokens.css keeps font-family per-end).
+        "body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;"
+        "background:var(--surface-app,#f8f7f4);color:var(--text-default,#21201c);"
+        "font-family:system-ui,-apple-system,'Segoe UI',sans-serif;}"
+        ".error-page{max-width:30rem;padding:2.5rem 1.5rem;text-align:center;}"
+        ".error-page__title{font-size:var(--type-headline-size,22px);font-weight:700;margin:0 0 .5rem;}"
+        ".error-page__hint{font-size:1rem;line-height:1.6;color:var(--text-muted,#63635e);margin:0 0 1.75rem;}"
+        ".error-page__home{display:inline-block;padding:.6rem 1.4rem;border-radius:var(--radius-md,10px);"
+        "background:var(--brand-primary,#a0561f);color:var(--text-on-primary,#fff);"
+        "text-decoration:none;font-weight:600;}"
+        ".error-page__rid{margin:1.75rem 0 0;font-size:.8rem;color:var(--text-meta,#9c9b96);}"
+        "</style>"
+        "</head>"
+        '<body><main class="error-page">'
+        f'<h1 class="error-page__title">{_html_escape(heading)}</h1>'
+        f'<p class="error-page__hint">{_html_escape(hint)}</p>'
+        f'<a class="error-page__home" href="{home_href}">回到首页</a>'
+        f"{rid_line}"
+        "</main></body></html>"
+    )
+    return HTMLResponse(content=body, status_code=status_code)
+
+
+async def app_error_handler(request: Request, exc: AppError) -> Response:
+    if exc.status_code >= 400 and _wants_html_error_page(request):
+        return html_error_response(request, exc.status_code)
     return error_response(
         exc.error,
         exc.message,
@@ -182,7 +304,9 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     )
 
 
-async def validation_error_handler(request: Request, __: RequestValidationError) -> JSONResponse:
+async def validation_error_handler(request: Request, __: RequestValidationError) -> Response:
+    if _wants_html_error_page(request):
+        return html_error_response(request, 422)
     return error_response(
         "invalid_request",
         ERROR_MESSAGES["invalid_request"],
@@ -191,7 +315,9 @@ async def validation_error_handler(request: Request, __: RequestValidationError)
     )
 
 
-async def http_error_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_error_handler(request: Request, exc: StarletteHTTPException) -> Response:
+    if _wants_html_error_page(request):
+        return html_error_response(request, exc.status_code)
     request_id = _request_id(request)
     if exc.status_code in {401, 403}:
         return error_response("invalid_token", ERROR_MESSAGES["invalid_token"], exc.status_code, request_id=request_id)
@@ -202,7 +328,9 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException) -> J
     return error_response("invalid_request", str(exc.detail), exc.status_code, request_id=request_id)
 
 
-async def unhandled_error_handler(request: Request, __: Exception) -> JSONResponse:
+async def unhandled_error_handler(request: Request, __: Exception) -> Response:
+    if _wants_html_error_page(request):
+        return html_error_response(request, 500)
     return error_response(
         "server_error",
         ERROR_MESSAGES["server_error"],

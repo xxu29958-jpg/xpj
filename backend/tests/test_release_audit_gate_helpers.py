@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import subprocess
 import sys
 from pathlib import Path
 
@@ -55,6 +56,40 @@ def test_allowlist_reason_scope_claims_are_machine_checked() -> None:
         "POST /owner/upload-links/{public_id}/limits",
         "owner-console-only - single-writer rate-limit edit",
     ) is None
+
+
+def test_release_audit_compact_mode_suppresses_success_noise(monkeypatch, capsys) -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+    calls: list[dict[str, object]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(cmd, 0, stdout="noisy success details\n", stderr="")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    assert mod._run_lane("sample", "_audit_sample.py", SCRIPTS, compact=True)
+
+    captured = capsys.readouterr()
+    assert "PASS  sample" in captured.out
+    assert "noisy success details" not in captured.out
+    assert calls[0]["capture_output"] is True
+
+
+def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+
+    def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 1, stdout="failure detail\n", stderr="stderr detail\n")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    assert not mod._run_lane("sample", "_audit_sample.py", SCRIPTS, compact=True)
+
+    captured = capsys.readouterr()
+    assert "FAIL  sample" in captured.out
+    assert "failure detail" in captured.out
+    assert "stderr detail" in captured.err
 
 
 def test_mutate_token_ledger_is_consistent_with_live_tables() -> None:
@@ -141,6 +176,25 @@ def test_outbox_dispatcher_coverage_holds_on_live_tree() -> None:
         )
         == []
     )
+
+
+def test_outbox_dispatcher_registry_parser_ignores_non_outbox_dispatchers() -> None:
+    mod = importlib.reload(importlib.import_module("_audit_android_outbox_dispatcher_coverage"))
+    source = """
+class AppContainer {
+    private val outboxDispatchers: List<OutboxMutationDispatcher> = listOf(
+        PatchExpenseDispatcher(
+            apiProvider = { api },
+        ),
+    )
+
+    val recurringReminderEngine = RecurringReminderEngine(
+        dispatcher = NotifierRecurringReminderDispatcher(notifier::onRecurringDue),
+    )
+}
+"""
+
+    assert mod.parse_registered_classes(source) == {"PatchExpenseDispatcher"}
 
 
 def test_outbox_dispatcher_coverage_flags_three_way_drift() -> None:
