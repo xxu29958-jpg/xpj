@@ -22,9 +22,9 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
-import com.ticketbox.ui.screens.ledger.EmptyLedgerState
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerDayHeader
+import com.ticketbox.ui.screens.ledger.LedgerEmptyOrFirstSync
 import com.ticketbox.ui.screens.ledger.LedgerExpenseCard
 import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
 import com.ticketbox.ui.screens.ledger.LedgerExpenseTableRow
@@ -185,8 +185,14 @@ fun LedgerScreen(
             item { PendingMessageCard(message = message.asString()) }
         }
         if (state.items.isEmpty()) {
+            // 8.4: first-ever sync (no cache + nothing synced before) shows a
+            // skeleton list instead of the empty-state card, so the user doesn't
+            // see "还没有账单" flash before the first data lands. Any later sync
+            // has a non-null lastSyncAt (returning user), so this never replaces
+            // the genuine empty state. Both branches are extracted composables to
+            // keep this item{} body shallow (NestedBlockDepth gate).
             item {
-                EmptyLedgerState(
+                LedgerEmptyOrFirstSync(
                     state = state,
                     onClearFilters = onClearFilters,
                     onSync = onSync,
