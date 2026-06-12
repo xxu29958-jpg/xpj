@@ -1,0 +1,202 @@
+{
+  "source": "docs/design_reference/jiajia-mascot-character-sheet-v4-polished.png",
+  "sourceSize": {
+    "width": 1536,
+    "height": 1024
+  },
+  "note": "Crops are extracted from v4 polished reference and should be used as visual tracing underlays. Preserve these proportions before enforcing top-wire-arm-only cleanup.",
+  "items": [
+    {
+      "id": "turnaround_front",
+      "looseCrop": {
+        "x": 130,
+        "y": 35,
+        "width": 415,
+        "height": 495
+      },
+      "trimWithinLooseCrop": {
+        "x": 26,
+        "y": 14,
+        "width": 389,
+        "height": 479
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/turnaround_front.png",
+      "outputSize": {
+        "width": 389,
+        "height": 479
+      },
+      "aspect": 0.8121
+    },
+    {
+      "id": "turnaround_threeQuarter",
+      "looseCrop": {
+        "x": 580,
+        "y": 35,
+        "width": 455,
+        "height": 495
+      },
+      "trimWithinLooseCrop": {
+        "x": 24,
+        "y": 17,
+        "width": 396,
+        "height": 478
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/turnaround_threeQuarter.png",
+      "outputSize": {
+        "width": 396,
+        "height": 478
+      },
+      "aspect": 0.8285
+    },
+    {
+      "id": "turnaround_side",
+      "looseCrop": {
+        "x": 1130,
+        "y": 35,
+        "width": 325,
+        "height": 495
+      },
+      "trimWithinLooseCrop": {
+        "x": 0,
+        "y": 20,
+        "width": 246,
+        "height": 475
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/turnaround_side.png",
+      "outputSize": {
+        "width": 246,
+        "height": 475
+      },
+      "aspect": 0.5179
+    },
+    {
+      "id": "pose_sleep",
+      "looseCrop": {
+        "x": 0,
+        "y": 575,
+        "width": 265,
+        "height": 390
+      },
+      "trimWithinLooseCrop": {
+        "x": 6,
+        "y": 24,
+        "width": 259,
+        "height": 342
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/pose_sleep.png",
+      "outputSize": {
+        "width": 259,
+        "height": 342
+      },
+      "aspect": 0.7573
+    },
+    {
+      "id": "pose_wave",
+      "looseCrop": {
+        "x": 285,
+        "y": 560,
+        "width": 240,
+        "height": 405
+      },
+      "trimWithinLooseCrop": {
+        "x": 0,
+        "y": 36,
+        "width": 240,
+        "height": 345
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/pose_wave.png",
+      "outputSize": {
+        "width": 240,
+        "height": 345
+      },
+      "aspect": 0.6957
+    },
+    {
+      "id": "pose_success",
+      "looseCrop": {
+        "x": 510,
+        "y": 565,
+        "width": 225,
+        "height": 400
+      },
+      "trimWithinLooseCrop": {
+        "x": 0,
+        "y": 56,
+        "width": 225,
+        "height": 320
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/pose_success.png",
+      "outputSize": {
+        "width": 225,
+        "height": 320
+      },
+      "aspect": 0.7031
+    },
+    {
+      "id": "pose_confetti",
+      "looseCrop": {
+        "x": 746,
+        "y": 525,
+        "width": 254,
+        "height": 440
+      },
+      "trimWithinLooseCrop": {
+        "x": 0,
+        "y": 39,
+        "width": 254,
+        "height": 381
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/pose_confetti.png",
+      "outputSize": {
+        "width": 254,
+        "height": 381
+      },
+      "aspect": 0.6667
+    },
+    {
+      "id": "pose_shock",
+      "looseCrop": {
+        "x": 1018,
+        "y": 620,
+        "width": 212,
+        "height": 345
+      },
+      "trimWithinLooseCrop": {
+        "x": 0,
+        "y": 67,
+        "width": 212,
+        "height": 258
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/pose_shock.png",
+      "outputSize": {
+        "width": 212,
+        "height": 258
+      },
+      "aspect": 0.8217
+    },
+    {
+      "id": "pose_shrug",
+      "looseCrop": {
+        "x": 1210,
+        "y": 575,
+        "width": 326,
+        "height": 390
+      },
+      "trimWithinLooseCrop": {
+        "x": 0,
+        "y": 56,
+        "width": 305,
+        "height": 315
+      },
+      "output": "docs/design_reference/jiajia-v4-reference-crops/pose_shrug.png",
+      "outputSize": {
+        "width": 305,
+        "height": 315
+      },
+      "aspect": 0.9683
+    }
+  ],
+  "contactSheet": "docs/design_reference/jiajia-v4-reference-crops-contact-sheet.png",
+  "tracingUnderlay": "docs/design_reference/jiajia-mascot-v4-tracing-underlay.svg",
+  "tracingUnderlayEmbedding": "inline data:image/png underlays for reliable preview and handoff"
+}

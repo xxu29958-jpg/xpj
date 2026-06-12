@@ -76,14 +76,28 @@ memorable, original design — NOT an owl, NOT copying any existing mascot.
 
 - [x] 最终风格档：**A 软糯平涂**。理由：圆润厚描边 + 平涂 + 轻微深度最适合现代 app 吉祥物，也最利于后续 Rive 拆层。
 - [x] 名字定稿：**夹夹**。
-- [x] 当前候选原画：[`docs/design_reference/jiajia-mascot-character-sheet-v3.png`](../design_reference/jiajia-mascot-character-sheet-v3.png)。
+- [x] 视觉拍板稿（最终颜值参考，锁定）：[`docs/design_reference/jiajia-mascot-character-sheet-final-reference-lock.png`](../design_reference/jiajia-mascot-character-sheet-final-reference-lock.png)。这是 v4 参考图的字节级副本，SHA256 = `3739B76BF49981FE20EA738BB0E2CCB71F987EB3E0845F831919B147CB57378A`。后续所有 Rive / 矢量稿必须以这张为视觉真相源；不要再通过 AI 生成或手工重画替代它。
+- [x] 原始高颜值参考：[`docs/design_reference/jiajia-mascot-character-sheet-v4-polished.png`](../design_reference/jiajia-mascot-character-sheet-v4-polished.png)。v4 是不可偏离的视觉母版；`final-reference-lock` 与 v4 哈希相同。
+- [x] 上一轮保真编辑稿：[`docs/design_reference/jiajia-mascot-character-sheet-v8-reference-preserve-edit.png`](../design_reference/jiajia-mascot-character-sheet-v8-reference-preserve-edit.png)。v8 比 v7 更接近 v4，但仍是生成编辑变体，**不得替代锁定参考图**。
+- [x] 上一轮参考匹配稿：[`docs/design_reference/jiajia-mascot-character-sheet-v7-reference-match.png`](../design_reference/jiajia-mascot-character-sheet-v7-reference-match.png)。v7 比手工 SVG 更接近参考图，但已被锁定参考图取代。
+- [x] 严格规则参考：[`docs/design_reference/jiajia-mascot-character-sheet-v5-strict-polished.png`](../design_reference/jiajia-mascot-character-sheet-v5-strict-polished.png)。用于压住「只有顶部金属丝手臂」的结构红线；但 v5 仍有 AI 偷加辅助小手的倾向，不直接照搬。
+- [x] 清理尝试稿：[`docs/design_reference/jiajia-mascot-character-sheet-v6-cleaned-attempt.png`](../design_reference/jiajia-mascot-character-sheet-v6-cleaned-attempt.png)。已尝试用 v4 颜值 + 严格「无侧手」约束重出；模型仍会在局部姿态补小圆手，因此只保留为参考，不作为可直接矢量化源。
+- [x] 结构候选原画：[`docs/design_reference/jiajia-mascot-character-sheet-v3.png`](../design_reference/jiajia-mascot-character-sheet-v3.png)。v3 的「顶部金属丝就是手臂」规则最干净，优先作为 Rive 动作结构参考。
 - [x] 10 态动作参考：[`docs/design_reference/jiajia-mascot-10-state-sheet-v1.png`](../design_reference/jiajia-mascot-10-state-sheet-v1.png)。
-- [x] 对比稿保留：[`v1`](../design_reference/jiajia-mascot-character-sheet-v1.png)、[`v2`](../design_reference/jiajia-mascot-character-sheet-v2.png)。其中 v3 的「顶部金属丝就是手臂」规则最干净，优先作为 Rive 真相源。
+- [x] Rive 构造源（人工重绘脚手架）：[`三视图 SVG`](../design_reference/jiajia-mascot-rive-source-sheet.svg)、[`表情 SVG`](../design_reference/jiajia-mascot-expression-sheet-rive.svg)。这两张用于部件命名、拆层、状态结构；不是最终视觉上限。进入 Rive 时按 v4 的圆润比例、描边和表情重绘/微调。
+- [x] Rive 抛光矢量实验稿：[`docs/design_reference/jiajia-mascot-rive-polished-master.svg`](../design_reference/jiajia-mascot-rive-polished-master.svg)，预览 [`PNG`](../design_reference/jiajia-mascot-rive-polished-master-preview.png)。用户反馈「和参考图一点也不像」，因此**不得作为最终视觉主稿**；只保留其拆层 id / SVG 结构经验，后续应按 v7/v4 重新临摹。
+- [x] 参考图临摹底板：[`docs/design_reference/jiajia-mascot-v4-tracing-underlay.svg`](../design_reference/jiajia-mascot-v4-tracing-underlay.svg)，预览 [`PNG`](../design_reference/jiajia-mascot-v4-tracing-underlay-preview.png)，裁片目录 [`jiajia-v4-reference-crops/`](../design_reference/jiajia-v4-reference-crops/)，尺寸账本 [`jiajia-v4-reference-measurements.json`](../design_reference/jiajia-v4-reference-measurements.json)。后续矢量化必须先对齐这组参考裁片的外轮廓、比例、五官位置和线条轻重。
+- [x] 对比稿保留：[`v1`](../design_reference/jiajia-mascot-character-sheet-v1.png)、[`v2`](../design_reference/jiajia-mascot-character-sheet-v2.png)。
 
 出图结论：
 
 - 角色方向成立：长尾夹身体 + 顶部两条金属丝手臂 + 前方小票，记忆钩清晰。
+- 视觉 / 工程分工：`final-reference-lock` / v4 PNG 是「颜值真相源」，SVG 是「Rive 拆层脚手架」。两者冲突时，以锁定参考图为准。
+- 不再用 v7/v8 作为最终审美依据：它们只是尝试稿。若用户说「不像参考图」，裁决方式不是继续生成变体，而是回到 `final-reference-lock`。
+- v6 清理尝试证明：继续纯靠 AI prompt 很难稳定消除辅助小手；最终 Rive 矢量化必须人工删掉这些错误肢体，并把动作全部重绑定到顶部金属丝。
 - 生产红线：不得新增侧边小手、圆手、爪子、手指或其它肢体；所有挥手、捂眼、举镜、抛硬币动作都必须由顶部两条金属丝完成。
+- `jiajia-mascot-rive-polished-master.svg` 仍然走样：身体过大、描边过硬、五官/夹口比例不像参考图。后续 Rive 不要从这张继续修外观，应从 v7/v4 视觉稿重新临摹，只复用命名和拆层思路。
+- 「像不像」的验收方式改为参考图裁片对齐：先打开 `jiajia-mascot-v4-tracing-underlay.svg` 或 `jiajia-v4-reference-crops-contact-sheet.png`，按九个裁片逐姿态临摹；任何手工矢量稿若外轮廓/五官高度/夹口大小明显偏离这些裁片，即视为未过。最终视觉以 `final-reference-lock` / v4 为准，不以任何生成变体或手工 SVG 为准。
 - 10 态 sheet 覆盖完整状态谱，可作为动效分镜参考；最终矢量化时仍要逐帧核对第 8/10 态的道具必须挂在金属丝上，而不是被隐藏手握住。
 
 ### 7.1 主题 token 映射
