@@ -2,6 +2,10 @@
 {% block title %}成员管理 — {{ ledger_name or '账本' }} — 小票夹{% endblock %}
 {% block content %}
 <h1>成员管理 <span class="ledger-title text-break" class="text-meta" style="font-weight:normal">/ {{ ledger_name or ledger_id }}</span></h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>给这本账本邀请家人、调整谁能记账谁只能看。发邀请生成一串邀请明文（只显示一次），私下发给家人，家人在自己手机上粘贴即可入伙。别把绑定码发给家人——那会把对方配成你的账号。</p>
+</details>
 
 <p class="text-meta" style="margin-top:-8px;margin-bottom:var(--space-6)">
   <a class="text-link" href="/owner/ledgers">← 返回账本列表</a>
@@ -23,7 +27,11 @@
 <div class="card alert-success">
   <h2 style="margin-top:0;color:var(--state-success-fg)">邀请已生成（仅显示一次）</h2>
   <p style="color:var(--state-success-fg);margin-bottom:var(--space-2)">把下面这串邀请明文发给家庭成员。关闭页面或刷新后无法再次查看。</p>
-  <pre class="one-time-secret">{{ new_invitation_token }}</pre>
+  <pre class="one-time-secret" data-upload-handoff-url>{{ new_invitation_token }}</pre>
+  <div style="margin-top:var(--space-3);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button type="button" class="btn btn-primary" data-copy-upload-url>复制邀请明文</button>
+    <span class="help-text">点一下整段复制，私下发给家庭成员（微信/口头）。</span>
+  </div>
 </div>
 {% endif %}
 

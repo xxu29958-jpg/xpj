@@ -2,6 +2,10 @@
 {% block title %}仪表盘 — 小票夹{% endblock %}
 {% block content %}
 <h1>仪表盘</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>本机管理后台的首页：一眼看清待办、设备、备份是否正常。日常只需要从下面的「常用操作」进去绑定手机、邀请家人、看体检；遇到红色提示再点进去处理。</p>
+</details>
 
 {% if backup_health and backup_health.stale %}
 <div class="alert alert-danger">
@@ -9,6 +13,18 @@
   <a href="/owner/backups">查看备份</a>
 </div>
 {% endif %}
+
+<div class="card">
+  <h2>常用操作</h2>
+  <div class="quick-links">
+    <a href="/owner/pairing">🔑 绑定你的手机</a>
+    <a href="/owner/ledgers">👪 给家人发邀请</a>
+    <a href="/owner/upload-links">📎 给 iPhone 配上传</a>
+    <a href="/owner/diagnostics">🩺 看系统体检</a>
+    <a href="/owner/backups">💾 数据库备份</a>
+    <a href="/web" target="_blank">🖥️ 网页版账本</a>
+  </div>
+</div>
 
 <div class="stat-grid">
   <div class="stat">
@@ -34,7 +50,7 @@
   <div class="kv-grid">
     <span class="kv-key">后端版本</span>
     <span class="kv-val">{{ backend_version }}</span>
-    <span class="kv-key">身份模型版本</span>
+    <span class="kv-key">账号系统版本</span>
     <span class="kv-val">{{ identity_schema }}</span>
     <span class="kv-key">数据库状态</span>
     <span class="kv-val">
@@ -46,7 +62,7 @@
       {% if upload_dir_status == 'ok' %}<span class="badge badge-ok">正常</span>
       {% else %}<span class="badge badge-err">缺失</span>{% endif %}
     </span>
-    <span class="kv-key">Owner Console</span>
+    <span class="kv-key">本机管理后台</span>
     <span class="kv-val"><span class="badge badge-ok">{{ owner_console_status }}</span></span>
     <span class="kv-key">最近备份</span>
     <span class="kv-val">
@@ -54,6 +70,7 @@
       {% elif backup_health.age_hours is not none %}
         {% if backup_health.stale %}<span class="badge badge-err">{{ backup_health.age_hours }} 小时前</span>
         {% else %}<span class="badge badge-ok">{{ backup_health.age_hours }} 小时前</span>{% endif %}
+        {% if backup_health.age_hours < 26 %}<span class="text-meta">（正常）</span>{% else %}<span class="text-meta">（该检查了）</span>{% endif %}
       {% else %}<span class="badge badge-err">无有效备份</span>{% endif %}
     </span>
     <span class="kv-key">当前账号</span>
@@ -310,19 +327,4 @@
   </table>
 </div>
 {% endif %}
-
-<div class="card">
-  <h2>快捷入口</h2>
-  <div class="quick-links">
-    <a href="/owner/devices">📱 管理设备</a>
-    <a href="/owner/pairing">🔑 生成绑定码</a>
-    <a href="/owner/upload-links">📎 iPhone 上传链接</a>
-    <a href="/owner/rule-applications">规则审计</a>
-    <a href="/owner/backups">💾 数据库备份</a>
-    <a href="/owner/diagnostics">🔍 诊断信息</a>
-    <a href="/owner/settings">⚙️ 设置</a>
-    <a href="/web" target="_blank">🖥️ 网页版账本</a>
-    <a href="/api/health" target="_blank">❤️ 健康检查</a>
-  </div>
-</div>
 {% endblock %}
