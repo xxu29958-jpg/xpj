@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -126,6 +127,51 @@ class MonthlyStatsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(StatsSource.LocalFallback, viewModel.uiState.value.statsSource)
+        // 审计 8.4: a usable local fallback is data, not an error — no error card.
+        assertNull(viewModel.uiState.value.statsLoadError)
+    }
+
+    @Test
+    fun totalFailureWithNoCacheSetsRetryableError() = statsTest {
+        // 审计 8.4: a load that fails with nothing to render becomes a retryable error
+        // state, not the empty card that reads like "没有数据".
+        val stats = FakeStatsActions()
+        stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        viewModel.setMonth("2026-05")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertNull(state.stats)
+        assertEquals(StatsSource.None, state.statsSource)
+        assertNotNull(state.statsLoadError)
+        // The error card is the single failure surface — a loose message line
+        // would render the same copy twice (对抗审 P2).
+        assertNull(state.message)
+    }
+
+    @Test
+    fun retryAfterTotalFailureClearsError() = statsTest {
+        val stats = FakeStatsActions()
+        stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        viewModel.setMonth("2026-05")
+        advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.statsLoadError)
+
+        // Retry goes through refresh() (the UI's onRetry); now the backend answers.
+        stats.monthlyStatsResponder = null
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.statsLoadError)
+        assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
     }
 }
 

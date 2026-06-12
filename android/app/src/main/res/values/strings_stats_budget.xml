@@ -114,6 +114,10 @@
     <string name="stats_empty_card_title">还没有统计数据</string>
     <string name="stats_empty_card_body">确认账单后刷新统计，这里会显示本月总支出、分类占比和高频商家。</string>
     <string name="stats_empty_card_refresh">刷新统计</string>
+
+    <!-- StatsScreen：统计加载失败错误态卡（区别于空态——请求失败而非没有数据） -->
+    <string name="stats_error_card_title">统计没能打开</string>
+    <string name="stats_error_card_body">可能是网络不稳定或电脑端没在运行，重试一下或稍后再来。</string>
     <string name="stats_empty_skeleton_month_spend">本月总支出</string>
     <string name="stats_empty_skeleton_category_share">分类占比</string>
     <string name="stats_empty_skeleton_frequent_merchants">高频商家</string>
@@ -151,6 +155,9 @@
     <string name="budget_summary_percent">%1$d%%</string>
     <string name="budget_summary_unconfigured">未配置</string>
     <string name="budget_summary_loading">正在读取预算。</string>
+    <!-- 加载失败错误态（区别于 loading——之前失败也常驻 budget_summary_loading 文案，看着像一直在读取） -->
+    <string name="budget_summary_error_title">预算没能打开</string>
+    <string name="budget_summary_error_body">可能是网络不稳定或电脑端没在运行，重试一下或稍后再来。</string>
     <string name="budget_summary_metric_total">总额</string>
     <string name="budget_summary_metric_overspent">超支</string>
     <string name="budget_summary_metric_remaining">剩余</string>

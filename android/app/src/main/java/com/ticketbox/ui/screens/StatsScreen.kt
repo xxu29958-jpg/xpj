@@ -35,6 +35,7 @@ import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.CardSkeleton
 import com.ticketbox.ui.components.AppPageHeader
@@ -124,15 +125,23 @@ fun StatsScreen(
         val stats = state.stats
         if (stats == null) {
             item {
-                if (state.loading) {
-                    Column(
+                when {
+                    state.loading -> Column(
                         modifier = Modifier.shimmer(),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     ) {
                         repeat(4) { CardSkeleton(lines = 3) }
                     }
-                } else {
-                    EmptyStatsCard(onRefresh = onRefresh)
+                    // A failed load with no data → retryable error state, not the empty
+                    // card that reads like "没有数据" (审计 8.4).
+                    state.statsLoadError != null -> AppErrorState(
+                        title = stringResource(R.string.stats_error_card_title),
+                        body = state.statsLoadError.asString().ifBlank {
+                            stringResource(R.string.stats_error_card_body)
+                        },
+                        onRetry = onRefresh,
+                    )
+                    else -> EmptyStatsCard(onRefresh = onRefresh)
                 }
             }
             return@AppScrollableContent

@@ -48,6 +48,14 @@ data class StatsUiState(
     val selectedTag: String = "",
     val loading: Boolean = false,
     val message: UiText? = null,
+    /**
+     * Monthly-stats **load failure** with no data to show at all (no backend stats,
+     * no local-cache fallback). When set — and not [loading] — the screen renders a
+     * retryable error state instead of the empty card, so a failed request stops
+     * masquerading as "没有数据" (audit 8.4). Stays null when a local fallback exists
+     * (that path uses [message] for the informational "本机估算" notice).
+     */
+    val statsLoadError: UiText? = null,
 )
 
 data class MonthlyStatsUiState(
@@ -67,6 +75,7 @@ data class MonthlyStatsUiState(
     val selectedTag: String = "",
     val loading: Boolean = false,
     val message: UiText? = null,
+    val statsLoadError: UiText? = null,
     val ledgerReady: Boolean = false,
     val activeLedgerId: String? = null,
 )
@@ -123,5 +132,6 @@ internal fun mergeStatsUiState(
         selectedTag = monthly.selectedTag,
         loading = monthly.loading,
         message = monthly.message,
+        statsLoadError = monthly.statsLoadError,
     )
 }
