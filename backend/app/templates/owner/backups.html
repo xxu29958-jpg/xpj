@@ -2,6 +2,10 @@
 {% block title %}数据库备份 — 小票夹{% endblock %}
 {% block content %}
 <h1>数据库备份</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>账本数据每天会自动备份一次。这里能看到最近一次备份是否正常，也能手动立即备份一次（比如大改动前）。如果首页提示备份太旧，进来点一下「立即备份一次」并检查计划任务。</p>
+</details>
 
 {% if error %}
 <div class="alert alert-danger">⚠️ {{ error }}</div>
