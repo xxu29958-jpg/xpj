@@ -420,33 +420,16 @@ jobs:
           }
           Write-Host "Room schema snapshots match the committed files"
 
-      - name: Assert test count equals baseline
-        run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline
-
-      - name: Lint
-        run: .\gradlew.bat --no-daemon :app:lintGrayDebug
-
-      - name: Detekt complexity gate
-        # The six Kotlin thresholds from docs/rules/CODE_QUALITY_STANDARDS.md,
-        # machine-enforced. Type-resolving variant tasks on purpose: detekt 2.x
-        # runs LongParameterList only under full analysis (plain :app:detekt
-        # silently skips it). Pre-existing violations are frozen per variant in
-        # android/app/detekt-baseline-grayDebug(.UnitTest).xml.
-        run: .\gradlew.bat --no-daemon :app:detektGrayDebug :app:detektGrayDebugUnitTest
-
-      - name: Assemble gray debug APK
-        run: .\gradlew.bat --no-daemon :app:assembleGrayDebug
-
-      - name: Assemble internal debug APK
-        run: .\gradlew.bat --no-daemon :app:assembleInternalDebug
-
-      - name: Assemble release APKs (R8)
-        # Release builds run minify + shrinkResources. Keeps R8 keep rules
-        # warm in CI instead of discovering Retrofit/Moshi issues only when
-        # someone manually assembles a release. Unsigned: the release
-        # signingConfig is findByName-optional and absent in CI on purpose.
-        # (GitHub-era step, revived.)
-        run: .\gradlew.bat --no-daemon :app:assembleGrayRelease :app:assembleInternalRelease
+      - name: Android verification and APK builds
+        # Keep the same required Gradle gates, but run them in one invocation
+        # after the Room schema drift check. On the single Windows runner this
+        # avoids paying Gradle configuration + single-use daemon startup six
+        # separate times while preserving the same fail-fast behavior.
+        #
+        # Detekt remains type-resolving (both grayDebug variants), and release
+        # builds still run R8 minify + shrinkResources. Unsigned release APKs
+        # are expected in CI because the release signingConfig is optional.
+        run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease
 
       - name: Verify debug APK signing certificate
         # Both debug APKs must carry the repository-level stable debug
