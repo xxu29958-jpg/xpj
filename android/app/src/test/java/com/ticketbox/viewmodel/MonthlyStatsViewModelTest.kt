@@ -148,6 +148,9 @@ class MonthlyStatsViewModelTest {
         assertNull(state.stats)
         assertEquals(StatsSource.None, state.statsSource)
         assertNotNull(state.statsLoadError)
+        // The error card is the single failure surface — a loose message line
+        // would render the same copy twice (对抗审 P2).
+        assertNull(state.message)
     }
 
     @Test

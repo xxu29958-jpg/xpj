@@ -282,10 +282,13 @@ class MonthlyStatsViewModel(
                 statsSource = nextSource,
                 categoryInsight = monthlyCategoryInsight(visibleStats),
                 loading = false,
+                // On total failure the retryable error card below is the single
+                // failure surface — also setting message would render the same
+                // copy twice on the screen this change exists to clean up.
                 message = if (fallbackStats != null) {
                     UiText.res(R.string.stats_message_local_fallback)
                 } else {
-                    error.toUiText(R.string.stats_message_stats_failed)
+                    null
                 },
                 // Only a total failure with nothing to render becomes a retryable error
                 // state (audit 8.4); when a local fallback exists the screen shows data +
