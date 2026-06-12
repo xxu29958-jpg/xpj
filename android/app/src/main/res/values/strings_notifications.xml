@@ -11,6 +11,7 @@
     <string name="notification_channel_alerts_name">大额提醒</string>
     <string name="notification_channel_recurring_name">固定支出提醒</string>
     <string name="notification_channel_budget_name">预算超支提醒</string>
+    <string name="notification_channel_backup_name">备份超龄提醒</string>
 
     <!-- TicketboxNotifier：通知标题/正文。正文 %1$s=商家、%2$s=本位币金额、%3$s=原币金额（外币票）。
          大额标题 %1$s=商家、%2$s=本位币金额（拍板⑨口语化，锁屏 public 版不带这些字段）。 -->
@@ -29,10 +30,18 @@
     <string name="notification_budget_overspent_title">本月预算超了</string>
     <string name="notification_budget_overspent_body">已超出预算 %1$s，打开看看花在哪。</string>
 
+    <!-- TicketboxNotifier：备份超龄提醒（轴6 主动性收官）。正文 %1$s=备份年龄（天，stale 阈值
+         48h 在服务端单源，故恒 ≥2）；_never 变体用于服务器上还没有任何备份。日级提醒
+         （BackupStaleEngine 本地 sent-key 去重，一天最多一响，次日仍超龄再响）。 -->
+    <string name="notification_backup_stale_title">备份太久没更新</string>
+    <string name="notification_backup_stale_body">最近一次备份已是 %1$s 天前，去服务器上看看。</string>
+    <string name="notification_backup_stale_body_never">还没有任何备份，去服务器上看看。</string>
+
     <!-- TicketboxNotifier：锁屏可见的 public 脱敏版（不带商家/金额，避免在锁屏泄露）。 -->
     <string name="notification_public_draft_summary">有一笔待确认，进入应用核对。</string>
     <string name="notification_public_recurring_summary">有一笔固定支出提醒。</string>
     <string name="notification_public_budget_summary">有一条预算提醒。</string>
+    <string name="notification_public_backup_summary">有一条备份提醒。</string>
 
     <!-- TicketboxNotifier：通知 action 按钮。「去核对」进待确认页（锁屏快捷核对）；
          「去查看」用于预算提醒（无深链，点击同样进 App）。 -->

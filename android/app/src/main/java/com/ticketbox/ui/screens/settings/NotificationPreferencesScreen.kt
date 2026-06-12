@@ -198,6 +198,12 @@ private fun ReminderSwitchesCard(
                 checked = preferences.budgetOverspendAlerts,
                 onCheckedChange = { toggleReminder(it, preferences.copy(budgetOverspendAlerts = it)) },
             )
+            NotificationSwitchLine(
+                title = stringResource(R.string.notification_preferences_reminder_backup_title),
+                subtitle = stringResource(R.string.notification_preferences_reminder_backup_subtitle),
+                checked = preferences.backupStaleAlerts,
+                onCheckedChange = { toggleReminder(it, preferences.copy(backupStaleAlerts = it)) },
+            )
             ReminderPermissionHint(
                 preferences = preferences,
                 systemNotificationsAllowed = systemNotificationsAllowed,
@@ -215,7 +221,8 @@ private fun ReminderPermissionHint(
     val anyReminderEnabled = preferences.pendingDraftReminders ||
         preferences.largeAmountAlerts ||
         preferences.recurringReminders ||
-        preferences.budgetOverspendAlerts
+        preferences.budgetOverspendAlerts ||
+        preferences.backupStaleAlerts
     if (!anyReminderEnabled || systemNotificationsAllowed) return
     Text(
         text = stringResource(R.string.notification_preferences_system_permission_hint),

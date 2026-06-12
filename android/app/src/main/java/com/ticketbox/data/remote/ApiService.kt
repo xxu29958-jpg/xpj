@@ -58,6 +58,7 @@ import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
+import com.ticketbox.data.remote.dto.StatusPrivateDto
 import com.ticketbox.data.remote.dto.TagDeleteRequest
 import com.ticketbox.data.remote.dto.TagDetailDto
 import com.ticketbox.data.remote.dto.TagManagementListDto
@@ -87,6 +88,10 @@ import retrofit2.http.Streaming
 interface ApiService {
     @GET("api/auth/check")
     suspend fun checkAuth(): AuthCheckDto
+
+    /** server 级私有状态(备份链健康,轴6 备份超龄通知数据源);只要 app token,与 ledger 无关。 */
+    @GET("api/status/private")
+    suspend fun privateStatus(): StatusPrivateDto
 
     @POST("api/auth/pair")
     suspend fun pairDevice(@Body request: PairRequestDto): PairResponseDto

@@ -15,6 +15,7 @@ import com.ticketbox.MainActivity
 import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.notification.backup.BackupStaleDispatchOutcome
 import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.recurring.RecurringReminderDispatchOutcome
 import com.ticketbox.ui.components.formatAmount
@@ -163,6 +164,26 @@ fun budgetOverspendNotificationContentSpec(overspentAmount: String): Notificatio
     )
 
 /**
+ * 纯 JVM 构造备份超龄提醒的内容规格。[daysText] 为备份年龄折算的「天」字符串
+ * （stale 阈值 48h，故恒 ≥2）；null=服务器上还没有任何备份，正文换「还没有任何备份」
+ * 变体。锁屏 public 用备份脱敏摘要（不带天数）。
+ */
+fun backupStaleNotificationContentSpec(daysText: String?): NotificationContentSpec =
+    NotificationContentSpec(
+        channelId = TicketboxNotifier.CHANNEL_BACKUP,
+        titleRes = R.string.notification_backup_stale_title,
+        titleArgs = emptyList(),
+        bodyRes = if (daysText != null) {
+            R.string.notification_backup_stale_body
+        } else {
+            R.string.notification_backup_stale_body_never
+        },
+        bodyArgs = if (daysText != null) listOf(daysText) else emptyList(),
+        publicSummaryRes = R.string.notification_public_backup_summary,
+        actionLabelRes = R.string.notification_action_open,
+    )
+
+/**
  * 通知闭环 PR-1/PR-2：把「通知监听 → 待确认草稿」「固定支出到期」的结果按设置页提醒开关
  * （待确认提醒 / 大额提醒 / 固定支出提醒）转成系统通知。NLS 与 App 同进程，进程内直发。
  *
@@ -252,6 +273,25 @@ class TicketboxNotifier(
         return BudgetOverspendDispatchOutcome.SENT
     }
 
+    /**
+     * 备份超龄提醒出口。判定（是否超龄、今天是否已提醒）不在本类：检测源是
+     * [com.ticketbox.notification.backup.BackupStaleEngine]（24h worker 唤醒），它在日级
+     * 去重后调用本方法。本方法仍是纯 dispatcher（Contract 7 同款）：只按「备份超龄提醒」
+     * 开关 + 系统通知权限决定是否出一条提醒。返回 outcome——SENT 才 markSent。
+     *
+     * @param daysText 备份年龄折算的「天」字符串；null=还没有任何备份（换文案变体）。
+     * @param dedupeTag 通知栏覆盖 tag（同一天覆盖）。
+     */
+    fun onBackupStale(daysText: String?, dedupeTag: String): BackupStaleDispatchOutcome {
+        val preferences = settingsStore.notificationPreferences()
+        if (!preferences.backupStaleAlerts) return BackupStaleDispatchOutcome.SKIPPED_DISABLED
+        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+            return BackupStaleDispatchOutcome.SKIPPED_PERMISSION_DENIED
+        }
+        publish(backupStaleNotificationContentSpec(daysText), dedupeTag = dedupeTag)
+        return BackupStaleDispatchOutcome.SENT
+    }
+
     private fun publish(spec: NotificationContentSpec, dedupeTag: String) {
         // API 33+ 的显式权限检查：行为上已被 areNotificationsEnabled() 守卫覆盖
         // （T+ 上未授权即返回 false），这里再查一次是 notify() 的
@@ -316,6 +356,10 @@ class TicketboxNotifier(
                 NotificationChannelCompat.Builder(CHANNEL_BUDGET, NotificationManagerCompat.IMPORTANCE_DEFAULT)
                     .setName(appContext.getString(R.string.notification_channel_budget_name))
                     .build(),
+                // 备份超龄：日级运维提醒，DEFAULT。
+                NotificationChannelCompat.Builder(CHANNEL_BACKUP, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+                    .setName(appContext.getString(R.string.notification_channel_backup_name))
+                    .build(),
             ),
         )
     }
@@ -340,6 +384,7 @@ class TicketboxNotifier(
         const val CHANNEL_ALERTS = "ticketbox.alerts"
         const val CHANNEL_RECURRING = "ticketbox.recurring"
         const val CHANNEL_BUDGET = "ticketbox.budget"
+        const val CHANNEL_BACKUP = "ticketbox.backup"
         const val DRAFT_NOTIFICATION_ID = 1
     }
 }
