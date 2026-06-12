@@ -91,22 +91,25 @@ fun chartTokensForSkin(skin: AppSkin): ChartTokens {
             empty = Color(0xFFD6D5D0),
         )
         AppSkin.Midnight -> ChartTokens(
+            // series 5-8 跨色相重排（plum / teal 族），脱离 1-4 暖金/鼠尾草/陶土/天蓝 邻位；
+            // 逐色对 #15171c 卡底 WCAG 对比度：5=7.95 6=7.05 7=6.42 8=7.75（均 ≥3:1）。
+            // 与 shared/tokens.css [data-theme=midnight] 的 --chart-series-5..8 逐值镜像。
             series = listOf(
                 Color(0xFFD6B487),
                 Color(0xFFA8B88A),
                 Color(0xFFD97757),
                 Color(0xFF84BCD4),
-                Color(0xFFB89564),
-                Color(0xFF8A6A3E),
-                Color(0xFF7C8A6A),
-                Color(0xFF5E7A8A),
+                Color(0xFFC9A0C4),
+                Color(0xFF5FB0A8),
+                Color(0xFFB88AC9),
+                Color(0xFF6CBA93),
             ),
             sequentialFrom = Color(0xFF1C1F25),
             sequentialTo = Color(0xFFD6B487),
             divergingNegative = Color(0xFFD97757),
             divergingZero = Color(0xFF2A2D35),
             divergingPositive = Color(0xFFA8B88A),
-            axis = Color(0xFF4A4E58),
+            axis = Color(0xFF5E636F),
             axisLabel = Color(0xFFB8B4A8),
             grid = Color(0x0FFFFFFF),
             gridEmphasis = Color(0x66D6B487),
