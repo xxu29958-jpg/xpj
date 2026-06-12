@@ -34,6 +34,8 @@ internal class LaunchActionState {
     var pending by mutableStateOf<LaunchAction?>(null)
         private set
 
+    // 单槽语义(有意为之,非队列):极端的「一帧内连续两次分享」会让后一次覆盖
+    // 未消费的前一次,前一批 uri 丢弃——用户重新分享即可,不为亚帧窗口建队列。
     fun post(action: LaunchAction) {
         pending = action
     }

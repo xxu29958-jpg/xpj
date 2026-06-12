@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * 会冒泡到 message。纯 JVM（FakeReviewActions），不碰 android.net.Uri。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase() {
+internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase() {
 
     private fun preparedImage(name: String): PreparedUploadImage = PreparedUploadImage(
         fileName = name,

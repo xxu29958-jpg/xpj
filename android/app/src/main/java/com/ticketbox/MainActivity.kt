@@ -24,6 +24,8 @@ class MainActivity : FragmentActivity() {
     // 系统分享 / 启动器 shortcut 带进来的待处理请求。Activity 是 singleTask，
     // 在前台时新分享走 onNewIntent，更新此 state；MainShell 的 LaunchedEffect
     // 消费后置回 null。冷启动则由 onCreate 用 getIntent() 填充。
+    // 纯内存持有(不进 savedInstanceState):分享到达时若未绑定/锁屏,请求挂着等
+    // 过门;期间进程被杀则请求丢失——分享动作用户可重发,语义可接受。
     private val launchRequest = mutableStateOf<LaunchIntentRequest?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {

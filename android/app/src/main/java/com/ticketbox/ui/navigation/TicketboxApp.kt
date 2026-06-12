@@ -154,18 +154,7 @@ private fun TicketboxContent(
         ) {
             LoginScreen(
                 message = appState.authMessage,
-                onUnlock = {
-                    if (!biometricAuthManager.canAuthenticate()) {
-                        appViewModel.unlockFailed(UiText.res(R.string.app_unlock_no_biometric))
-                        return@LoginScreen
-                    }
-                    biometricAuthManager.authenticate(
-                        onSuccess = appViewModel::unlockSucceeded,
-                        // BiometricAuthManager.onError hands an already-resolved
-                        // system string; wrap verbatim so the message is unchanged.
-                        onError = { message -> appViewModel.unlockFailed(UiText.raw(message)) },
-                    )
-                },
+                onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
             )
         }
         return
@@ -352,6 +341,21 @@ private fun LaunchRequestEffect(
  * 抽成顶层非 composable 函数（而非内联进 LaunchedEffect）以压平嵌套——内联的
  * 双层 when 会触顶 detekt NestedBlockDepth；Navigate 再下沉一层保留单层 when。
  */
+private fun attemptBiometricUnlock(
+    biometricAuthManager: BiometricAuthManager,
+    appViewModel: AppViewModel,
+) {
+    if (!biometricAuthManager.canAuthenticate()) {
+        appViewModel.unlockFailed(UiText.res(R.string.app_unlock_no_biometric))
+        return
+    }
+    biometricAuthManager.authenticate(
+        onSuccess = appViewModel::unlockSucceeded,
+        // BiometricAuthManager.onError 给的是已解析系统串,原样包装保持消息不变。
+        onError = { message -> appViewModel.unlockFailed(UiText.raw(message)) },
+    )
+}
+
 private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: MainShellState) {
     when (request) {
         is LaunchIntentRequest.ShareImages -> {

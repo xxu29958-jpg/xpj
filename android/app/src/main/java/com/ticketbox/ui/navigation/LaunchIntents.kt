@@ -16,7 +16,7 @@ package com.ticketbox.ui.navigation
 // Kotlin 不允许 public API 暴露 internal 类型。本模块是 application 模块、无外部消费方，
 // 故 public 与 internal 实际等效，这里取 public 仅为满足该可见性约束。
 sealed interface LaunchIntentRequest {
-    /** 系统分享（ACTION_SEND / ACTION_SEND_MULTIPLE，image/*）带进来的一张或多张图。 */
+    /** 系统分享（ACTION_SEND / ACTION_SEND_MULTIPLE，image 类 MIME）带进来的一张或多张图。 */
     data class ShareImages(val uris: List<String>) : LaunchIntentRequest
 
     /** 启动器静态 shortcut 指定的导航目标。 */
@@ -62,7 +62,7 @@ internal const val ACTION_SHORTCUT = "com.ticketbox.action.SHORTCUT"
  * 把一次「分享/shortcut」入口归一成 [LaunchIntentRequest]。纯函数：
  *
  * @param action          Intent.action（可空）。
- * @param mimeType        Intent.type（可空）；只处理 image/*。
+ * @param mimeType        Intent.type（可空）；只处理 image 类 MIME。
  * @param streamUris      从 EXTRA_STREAM（单/多）+ clipData 抽出的 uri 字符串（边界层已 null/空过滤前的原始集）。
  * @param shortcutTarget  shortcut extra 携带的目标标识（可空）。
  *
@@ -90,7 +90,7 @@ internal fun resolveShortcutTarget(target: String?): ShortcutTarget? {
     return ShortcutTarget.entries.firstOrNull { it.id == trimmed }
 }
 
-/** action 是 SEND / SEND_MULTIPLE 且 MIME 落在 image/* 才算图片分享。 */
+/** action 是 SEND / SEND_MULTIPLE 且 MIME 落在 image 前缀才算图片分享。 */
 private fun isImageShareAction(action: String?, mimeType: String?): Boolean {
     val isSend = action == LaunchIntentActions.ACTION_SEND || action == LaunchIntentActions.ACTION_SEND_MULTIPLE
     if (!isSend) return false

@@ -1,5 +1,7 @@
 package com.ticketbox.ui.navigation
 
+import android.content.Context
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -28,9 +30,7 @@ internal fun LedgerRoute(
     val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingExport by remember { mutableStateOf<CsvExport?>(null) }
-    // ADR-0044: stringResource is @Composable-only; hoist the post-save export copy
-    // here so the (non-composable) launcher-result callbacks pass already-resolved
-    // text into exportFinished (which carries it as UiText.Raw).
+    // ADR-0044: stringResource 是 @Composable-only,导出回调要的文案在此提升为已解析文本。
     val exportCancelledMessage = stringResource(R.string.ledger_msg_export_cancelled)
     val exportSucceededMessage = stringResource(R.string.ledger_msg_export_succeeded)
     val exportFailedMessage = stringResource(R.string.ledger_msg_export_failed)
@@ -50,13 +50,9 @@ internal fun LedgerRoute(
             ledgerViewModel.exportFinished(exportCancelledMessage)
             return@rememberLauncherForActivityResult
         }
-        runCatching {
-            context.contentResolver.openOutputStream(uri)?.use { output ->
-                output.write(exportFile.bytes)
-            } ?: error("Output stream is null")
+        writeCsvExport(context, uri, exportFile) { ok ->
+            ledgerViewModel.exportFinished(if (ok) exportSucceededMessage else exportFailedMessage)
         }
-            .onSuccess { ledgerViewModel.exportFinished(exportSucceededMessage) }
-            .onFailure { ledgerViewModel.exportFinished(exportFailedMessage) }
     }
 
     LaunchedEffect(state.exportFile) {
@@ -68,13 +64,10 @@ internal fun LedgerRoute(
 
     LedgerScreen(
         state = state,
-        // 「记一笔」启动器 shortcut：切到本 tab 后由此一次性动作自动拉起手动记账表单。
-        // 只消费属于自己的 OpenManualEntry 变体，别吞掉别的 Route 的动作。
+        // 「记一笔」shortcut 一次性动作:只消费属于自己的 OpenManualEntry 变体。
         openManualEntryRequested = shellState.launchAction.pending is LaunchAction.OpenManualEntry,
         onManualEntryConsumed = {
-            if (shellState.launchAction.pending is LaunchAction.OpenManualEntry) {
-                shellState.launchAction.consume()
-            }
+            if (shellState.launchAction.pending is LaunchAction.OpenManualEntry) shellState.launchAction.consume()
         },
         onMonthChange = ledgerViewModel::setMonthFilter,
         onCategoryChange = ledgerViewModel::setCategoryFilter,
@@ -94,4 +87,18 @@ internal fun LedgerRoute(
         onApplyBatchTags = ledgerViewModel::applyBatchTags,
         onManualCreateSettled = ledgerViewModel::manualCreateSettled,
     )
+}
+private fun writeCsvExport(
+    context: Context,
+    uri: Uri,
+    exportFile: CsvExport,
+    onResult: (Boolean) -> Unit,
+) {
+    runCatching {
+        context.contentResolver.openOutputStream(uri)?.use { output ->
+            output.write(exportFile.bytes)
+        } ?: error("Output stream is null")
+    }
+        .onSuccess { onResult(true) }
+        .onFailure { onResult(false) }
 }

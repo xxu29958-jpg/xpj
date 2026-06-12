@@ -10,6 +10,8 @@
 
   文案走 strings（shortcut_*），图标用 res/drawable 下的单色 vector。
 -->
+<!-- internal flavor override: applicationId = com.ticketbox.internal,
+     仅 targetPackage 与 main 副本不同(targetClass 是 FQCN 不随 suffix 变)。 -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
         android:shortcutId="upload_receipt"
@@ -19,7 +21,7 @@
         android:shortcutLongLabel="@string/shortcut_upload_long_label">
         <intent
             android:action="com.ticketbox.action.SHORTCUT"
-            android:targetPackage="com.ticketbox"
+            android:targetPackage="com.ticketbox.internal"
             android:targetClass="com.ticketbox.MainActivity">
             <extra
                 android:name="com.ticketbox.shortcut.target"
@@ -35,7 +37,7 @@
         android:shortcutLongLabel="@string/shortcut_manual_long_label">
         <intent
             android:action="com.ticketbox.action.SHORTCUT"
-            android:targetPackage="com.ticketbox"
+            android:targetPackage="com.ticketbox.internal"
             android:targetClass="com.ticketbox.MainActivity">
             <extra
                 android:name="com.ticketbox.shortcut.target"
@@ -51,7 +53,7 @@
         android:shortcutLongLabel="@string/shortcut_review_long_label">
         <intent
             android:action="com.ticketbox.action.SHORTCUT"
-            android:targetPackage="com.ticketbox"
+            android:targetPackage="com.ticketbox.internal"
             android:targetClass="com.ticketbox.MainActivity">
             <extra
                 android:name="com.ticketbox.shortcut.target"
