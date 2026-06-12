@@ -11,8 +11,8 @@ class Utf8JSONResponse(JSONResponse):
 
 
 ERROR_MESSAGES = {
-    "split_amount_invalid": "拆账金额必须大于 0。",
-    "split_receiver_invalid": "接收方不可用。",
+    "split_amount_invalid": "请填写大于 0 的拆账金额。",
+    "split_receiver_invalid": "对方现在不能接收拆账邀请。",
     "split_parent_amount_missing": "原账单金额未确定，无法发起拆账。",
     "split_amount_exceeds_parent": "拆账金额不能超过原账单金额。",
     "split_total_exceeds_parent": "拆账邀请总额不能超过原账单金额。",

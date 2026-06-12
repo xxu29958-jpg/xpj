@@ -375,6 +375,7 @@ internal class ExpenseEditViewModelTest {
         advanceUntilIdle()
         vm.selectBillSplitInviteMember(3L)
         vm.updateBillSplitInviteAmount("4.00")
+        val sentListFetchesBeforeSend = fake.fetchBillSplitSentCalls
         vm.sendBillSplitInvite()
         advanceUntilIdle()
 
@@ -383,6 +384,8 @@ internal class ExpenseEditViewModelTest {
         assertEquals(Triple(7L, 333L, 400L), fake.lastCreateBillSplitArgs)
         assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
         assertEquals(UiText.res(R.string.expense_edit_bill_split_sent), vm.uiState.value.message)
+        // 测试名里的 Refreshes 必须真断到：发起成功后已发列表重新拉取(对抗审 P3)。
+        assertEquals(sentListFetchesBeforeSend + 1, fake.fetchBillSplitSentCalls)
     }
 
     @Test
@@ -558,6 +561,8 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         private set
     var confirmCalls: Int = 0
         private set
+    var fetchBillSplitSentCalls: Int = 0
+        private set
     var replaceItemsCalls: Int = 0
         private set
     var replaceSplitsCalls: Int = 0
@@ -660,8 +665,10 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
             ?: error("createBillSplitResponder not set")
     }
 
-    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> =
-        fetchBillSplitSentResponder?.invoke() ?: Result.success(emptyList())
+    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> {
+        fetchBillSplitSentCalls += 1
+        return fetchBillSplitSentResponder?.invoke() ?: Result.success(emptyList())
+    }
 
     override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
         cancelBillSplitResponder?.invoke(publicId) ?: error("cancelBillSplitResponder not set")

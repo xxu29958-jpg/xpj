@@ -102,10 +102,10 @@
     <string name="error_split_invitation_already_pending">已有发给对方的待处理拆账邀请。</string>
     <!-- ADR-0029 拆账发起（批 13）。后端这些码都带中文 message，App 侧改走资源以便
          端内可控文案（守 §10：用户面文案在 App，不依赖透传）。-->
-    <string name="error_split_receiver_invalid">这位家人现在不能作为分摊对象。</string>
-    <string name="error_split_amount_invalid">请填写大于 0 的分摊金额。</string>
-    <string name="error_split_amount_exceeds_parent">分摊金额不能超过原账单金额。</string>
-    <string name="error_split_total_exceeds_parent">本笔的拆账总额不能超过账单金额。</string>
+    <string name="error_split_receiver_invalid">对方现在不能接收拆账邀请。</string>
+    <string name="error_split_amount_invalid">请填写大于 0 的拆账金额。</string>
+    <string name="error_split_amount_exceeds_parent">拆账金额不能超过原账单金额。</string>
+    <string name="error_split_total_exceeds_parent">拆账邀请总额不能超过原账单金额。</string>
     <string name="error_split_parent_amount_missing">原账单金额未确定，无法发起拆账。</string>
     <string name="error_not_found">没有找到对应的记录。</string>
     <string name="error_task_not_found">后台任务不存在或已结束。</string>

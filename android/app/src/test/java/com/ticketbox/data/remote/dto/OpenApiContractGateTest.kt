@@ -68,6 +68,9 @@ class OpenApiContractGateTest {
         Pairing(TagDetailDto::class, "TagDetailResponse"),
         Pairing(TagMutationDto::class, "TagMutationResponse"),
         Pairing(TagUndoDto::class, "TagUndoResponse"),
+        // 批 13 拆账发起:成员 API 增 account_id(receiver_account_id 的来源);
+        // snapshot regen 后入闸,防该字段被后端静默漂移。
+        Pairing(LedgerMemberDto::class, "LedgerMemberResponse"),
     )
 
     // Backend `required` fields a DTO intentionally does NOT model (Android doesn't

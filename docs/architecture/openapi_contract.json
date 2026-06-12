@@ -6642,6 +6642,10 @@
       },
       "LedgerMemberResponse": {
         "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
           "account_name": {
             "title": "Account Name",
             "type": "string"
@@ -6687,6 +6691,7 @@
         },
         "required": [
           "member_id",
+          "account_id",
           "account_public_id",
           "account_name",
           "role",

@@ -49,7 +49,7 @@ def create_invitation(
     Sender does NOT specify receiver_ledger_id — receiver picks at accept.
     """
     if amount_cents <= 0:
-        raise AppError("split_amount_invalid", "拆账金额必须大于 0。", status_code=422)
+        raise AppError("split_amount_invalid", "请填写大于 0 的拆账金额。", status_code=422)
 
     if receiver_account_id == sender_account_id:
         raise AppError("split_receiver_invalid", status_code=422)
