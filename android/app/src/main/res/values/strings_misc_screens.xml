@@ -40,7 +40,6 @@
     <string name="global_search_result_matched">命中：%1$s</string>
     <string name="global_search_badge_pending">待确认</string>
     <string name="global_search_badge_confirmed">已确认</string>
-    <string name="global_search_filter_category_label">分类</string>
     <string name="global_search_filter_category_all">全部分类</string>
     <string name="global_search_filter_month_all">全部月份</string>
     <string name="global_search_filter_month_picker_description">选择月份</string>
