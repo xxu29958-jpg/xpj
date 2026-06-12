@@ -78,6 +78,7 @@ class AppContainer(context: Context) {
     private val database = AppDatabase.getDatabase(appContext)
     private val apiClient = ApiClient(appContext)
     private val apiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore)
+    private val budgetOverspendZone = ZoneId.of("Asia/Shanghai")
 
     // 通知闭环 PR-1：草稿创建成功后的系统通知出口（NLS 与 App 同进程，进程内直发）。
     // 开关状态在发出时从 settingsStore 现读，channel 在 publish 前惰性创建。
@@ -442,7 +443,9 @@ class AppContainer(context: Context) {
     // 10min throttle 压「未超支时」的拉取频率。
     val budgetOverspendChecker = BudgetOverspendChecker(
         // 纯透传 budgetRepository（超支口径全在服务端算好，客户端不重算）。
-        source = BudgetOverspendSource { month -> budgetRepository.monthlyBudget(month) },
+        source = BudgetOverspendSource { month ->
+            budgetRepository.monthlyBudget(month = month, timezone = budgetOverspendZone.id)
+        },
         store = SharedPrefsBudgetOverspendStore(appContext),
         dispatcher = NotifierBudgetOverspendDispatcher(notifier::onBudgetOverspent),
         runtime = BudgetOverspendRuntime(
@@ -451,7 +454,7 @@ class AppContainer(context: Context) {
             activeLedgerId = { settingsStore.activeLedgerId() },
             // Asia/Shanghai 当月：对齐服务端统计口径（COALESCE(expense_time, confirmed_at)
             // 按沪月聚合），不用设备时区——跨日几小时窗口里宁可保守。
-            currentMonth = { YearMonth.now(ZoneId.of("Asia/Shanghai")).toString() },
+            currentMonth = { YearMonth.now(budgetOverspendZone).toString() },
             // 单调时钟：throttle 不受改系统时间影响。
             monotonicNowMillis = { SystemClock.elapsedRealtime() },
         ),

@@ -42,6 +42,21 @@ class BudgetRepositoryTest {
     }
 
     @Test
+    fun monthlyBudgetCanUseExplicitTimezone() = withTimezone("America/Los_Angeles") {
+        runTest {
+            val api = BudgetApiHandler()
+            val repository = repository(api)
+
+            val result = repository.monthlyBudget("2026-05", timezone = "Asia/Shanghai")
+                .getOrThrow()
+
+            assertEquals("2026-05", api.monthlyBudgetCalls.single().month)
+            assertEquals("Asia/Shanghai", api.monthlyBudgetCalls.single().timezone)
+            assertEquals("owner", result.ledgerId)
+        }
+    }
+
+    @Test
     fun saveMonthlyBudgetForwardsNormalizedRequest() = withTimezone("UTC") {
         runTest {
             val api = BudgetApiHandler()
