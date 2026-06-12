@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
+from datetime import UTC
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -73,6 +75,7 @@ from app.routes import (
 )
 from app.routes import web_rules as web_rules_routes
 from app.schemas import ErrorResponse, HealthResponse, StatusResponse
+from app.services import backup_service
 from app.services.app_meta_service import assert_binary_compatible_with_db
 from app.services.background_task_service import (
     recover_orphaned_tasks,
@@ -94,6 +97,7 @@ from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _PROJECT_ERROR_RESPONSE_REF = {"$ref": "#/components/schemas/ErrorResponse"}
+_logger = logging.getLogger(__name__)
 
 
 def _assert_admin_api_gate_safe() -> None:
@@ -331,6 +335,23 @@ def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> Hea
     # split off the v0.x roadmap). This public-tunnel endpoint never surfaces
     # host paths regardless.
     db_status = "ok"
+    # 备份链健康(轴6 备份超龄通知数据源):复用 owner dashboard 的 backup_health()
+    # ——48h stale 阈值留在服务端单源。只暴露时间戳/小时数/stale 布尔,不暴露
+    # 文件名/目录(本端点过公网 tunnel,不得泄露本机路径)。
+    try:
+        backup = backup_service.backup_health()
+        latest_backup_at = (
+            backup.latest.created_at.astimezone(UTC).isoformat()
+            if backup.latest is not None
+            else None
+        )
+        backup_age_hours = backup.age_hours
+        backup_stale = backup.stale
+    except (OSError, RuntimeError):
+        _logger.exception("private_status: backup_health failed")
+        latest_backup_at = None
+        backup_age_hours = None
+        backup_stale = True
     return HealthResponse(
         status="ok",
         backend_version=BACKEND_VERSION,
@@ -338,4 +359,7 @@ def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> Hea
         database_status=db_status,
         upload_dir_status=upload_status,
         owner_console_status="available",
+        latest_backup_at=latest_backup_at,
+        backup_age_hours=backup_age_hours,
+        backup_stale=backup_stale,
     )
