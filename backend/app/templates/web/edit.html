@@ -85,6 +85,84 @@
   </div>
 </div>
 
+{# A8: 找家人分摊（拆账）—— 给已确认账单发起跨账本拆账邀请。仅当后端判定可发起
+   （已确认 + 有金额 + 非收到的拆账 + 当前角色可写）时渲染。概念区分（对照 Android
+   批 13）：拆账 = 发邀请到 TA 自己的账本；下方“家庭拆账”卡 = 只记在本账本的分摊。 #}
+{% if split_invite %}
+<div class="dt-card bsplit-invite-card">
+  <div class="card-header">
+    <div>
+      <h2>找家人分摊</h2>
+      <div class="meta">发一份拆账邀请到家人自己的账本；对方接受后会在 TA 的账本里生成一笔独立账单，不影响这笔账。要只在本账本内记录分摊，请用下方的“家庭拆账”。</div>
+    </div>
+  </div>
+  {% if not split_invite.members %}
+  <div class="bsplit-invite-note">本账本暂时只有你一个成员，先邀请家人加入，才能发起拆账。</div>
+  {% else %}
+  <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="bsplit-invite-form">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <div class="bsplit-invite-fields">
+      <label class="bsplit-invite-field">
+        <span class="bsplit-invite-label">分摊给</span>
+        <select name="receiver_account_id" required>
+          {% for member in split_invite.members %}
+          <option value="{{ member.account_id }}">{{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="bsplit-invite-field bsplit-invite-field--amount">
+        <span class="bsplit-invite-label">分摊金额（{{ home_currency_symbol }}）</span>
+        <input type="text" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" inputmode="decimal" placeholder="例如 12.34" required>
+      </label>
+      <button type="submit" class="dt-btn primary">发起拆账</button>
+    </div>
+    <div class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</div>
+  </form>
+  {% endif %}
+
+  {% if split_invite.sent_rows %}
+  <table class="dt-table dt-table--compact bsplit-invite-sent">
+    <thead>
+      <tr>
+        <th>已发给</th>
+        <th class="amount">金额</th>
+        <th>状态</th>
+        <th>到期</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in split_invite.sent_rows %}
+      <tr>
+        <td>{{ row.receiver_display_name or '—' }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+        <td>
+          {% if row.status == 'invited' %}<span class="dt-pill">待处理</span>
+          {% elif row.status == 'accepted' %}<span class="dt-pill ok">已接受</span>
+          {% elif row.status == 'rejected' %}<span class="dt-pill muted">已拒绝</span>
+          {% elif row.status == 'cancelled' %}<span class="dt-pill muted">已撤回</span>
+          {% else %}<span class="dt-pill muted">已过期</span>{% endif %}
+        </td>
+        <td class="num">{{ row.expires_at or '—' }}</td>
+        <td>
+          {% if row.is_cancellable %}
+          <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
+            <button type="submit" class="dt-btn link" data-confirm="撤回这份拆账邀请？">撤回</button>
+          </form>
+          {% else %}
+          <span class="meta">—</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="grid two-col detail-sections">
   <div class="dt-card">
     <div class="card-header">
