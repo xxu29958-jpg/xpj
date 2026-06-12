@@ -37,6 +37,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import bill_split_service as bsplit
+from app.services.invitation_members import list_members
 from app.services.ledger_service import (
     find_owner_account_id_for_ledger,
     list_ledgers_for_account,
@@ -79,6 +80,97 @@ def _resolve_request_account_id(
             status_code=400,
         )
     return account_id
+
+
+# -------------------------------------------------------------------------
+# Split-invite card (rendered on the /web edit page for a confirmed expense)
+
+
+_INVITE_ACTIVE_STATUSES = ("invited", "accepted")
+
+
+def build_split_invite_context(
+    db: Session,
+    request: Request,
+    *,
+    selected_ledger_id: str,
+    expense: dict,
+    can_write: bool,
+) -> dict | None:
+    """Context for the "找家人分摊" 发起卡 on edit.html, or ``None`` to hide it.
+
+    A8: the sender-side ``POST /web/expenses/{id}/split-invite`` route already
+    exists; this wires a form to it from the confirmed-expense edit page.
+
+    The card only makes sense for a **confirmed** expense that has an amount,
+    is writable by the caller, and is not itself a received split (no chain
+    split — ``create_invitation`` 也会兜底). When any of those fail, return
+    ``None`` so the template skips the whole block.
+
+    The receiver dropdown lists the *current ledger's* other active members
+    (拆账=发邀请到 TA 自己的账本，对照 Android 批 13 的概念区分；份额=记在本账本
+    走编辑页下方的"家庭拆账"卡)。``account_id`` rides each option value as the
+    ``receiver_account_id`` the route expects — an internal int, never shown.
+    """
+    if not (
+        can_write
+        and expense.get("status") == "confirmed"
+        and expense.get("amount_cents") is not None
+        and not expense.get("is_split_received")
+    ):
+        return None
+
+    # Resolving the acting account can fail in loopback when no owner row
+    # exists for the selected ledger; degrade to no-card rather than 500 the
+    # whole edit page.
+    try:
+        sender_account_id = _resolve_request_account_id(
+            db, request, selected_ledger_id=selected_ledger_id
+        )
+    except AppError:
+        return None
+
+    members = [
+        {
+            "account_id": summary.account_id,
+            "account_name": summary.account_name,
+            "role": summary.role,
+        }
+        for summary in list_members(
+            db, ledger_id=selected_ledger_id, requester_account_id=sender_account_id
+        )
+        if not summary.is_self and summary.disabled_at is None
+    ]
+
+    invitations = bsplit.list_sent_for_expense(
+        db, sender_account_id=sender_account_id, expense_id=expense["id"]
+    )
+    sent_rows = [
+        {
+            "public_id": inv.public_id,
+            "status": inv.status,
+            "amount_yuan": _cents_to_yuan(inv.amount_cents),
+            "receiver_display_name": inv.receiver_display_name_snapshot or "",
+            "expires_at": _fmt_local(inv.expires_at),
+            "is_cancellable": inv.status == "invited",
+        }
+        for inv in invitations
+    ]
+
+    active_total_cents = sum(
+        inv.amount_cents
+        for inv in invitations
+        if inv.status in _INVITE_ACTIVE_STATUSES
+    )
+    parent_cents = expense.get("amount_cents") or 0
+    remaining_cents = max(parent_cents - active_total_cents, 0)
+
+    return {
+        "members": members,
+        "sent_rows": sent_rows,
+        "remaining_yuan": _cents_to_yuan(remaining_cents),
+        "has_capacity": remaining_cents > 0,
+    }
 
 
 # -------------------------------------------------------------------------

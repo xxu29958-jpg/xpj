@@ -1,0 +1,85 @@
+/* /web 拆账两页 + 编辑页发起卡 · 行制精装 (B16, 2026-06)
+ *
+ * bill_splits_inbox.html / bill_splits_sent.html / edit.html 的“找家人分摊”卡。
+ * 行制对照 confirmed.html：金额列用 --font-num + 完整 tabular 特性（"tnum","ss01"，
+ * 比裸 font-variant-numeric 更稳，与英雄月合计同形），时间/到期列用 --font-num 等宽，
+ * 状态徽标 baseline 对齐。只改展示，不改功能；尺度全走 design scale token，不硬编码 px。
+ */
+
+/* ── 两页表格金额 / 数字列精装 ──
+ * .dt-table td.amount 已给 tabular-nums；这里升级到与英雄行制同源的 font-feature-settings,
+ * 并把“到期/时间”这类 .num 列也统一成等宽数字,避免逐位跳动。 */
+.bsplit-table td.amount,
+.bsplit-table th.amount {
+    font-feature-settings: var(--type-tabular-features);
+}
+.bsplit-table td.num {
+    font-family: var(--font-num);
+    font-feature-settings: var(--type-tabular-features);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+/* 商家/对方姓名首列：列表项首行字重,对齐 confirmed 的 .lrow-merch 语义 */
+.bsplit-table td.party {
+    font-weight: 600;
+    color: var(--text-default);
+}
+/* 行内表单（接受/拒绝/撤回）纵向对齐 + 间距走 scale token */
+.bsplit-table .inline-form { margin-right: var(--space-3); }
+.bsplit-table .inline-form:last-child { margin-right: 0; }
+.bsplit-table td .meta { color: var(--text-meta); }
+
+/* ── 编辑页“找家人分摊”发起卡 ── */
+.bsplit-invite-card .card-header { margin-bottom: var(--space-4); }
+.bsplit-invite-note {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    padding: var(--space-2) 0;
+}
+.bsplit-invite-form { margin-top: var(--space-2); }
+.bsplit-invite-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-4);
+}
+.bsplit-invite-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+.bsplit-invite-field select { min-width: 12rem; }
+.bsplit-invite-field--amount input {
+    width: 8rem;
+    font-family: var(--font-num);
+    font-feature-settings: var(--type-tabular-features);
+}
+.bsplit-invite-label {
+    font-size: var(--type-meta-size);
+    font-weight: var(--type-meta-weight);
+    letter-spacing: var(--type-meta-tracking);
+    text-transform: uppercase;
+    color: var(--text-meta);
+}
+.bsplit-invite-form .meta {
+    margin-top: var(--space-3);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* 卡内“已发邀请”小表：金额等宽 + 到期等宽 */
+.bsplit-invite-sent { margin-top: var(--space-5); }
+.bsplit-invite-sent td.amount { font-feature-settings: var(--type-tabular-features); }
+.bsplit-invite-sent td.num {
+    font-family: var(--font-num);
+    font-feature-settings: var(--type-tabular-features);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+    .bsplit-invite-fields { gap: var(--space-3); }
+    .bsplit-invite-field select,
+    .bsplit-invite-field--amount input { width: 100%; min-width: 0; }
+}
