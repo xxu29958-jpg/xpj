@@ -1,20 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 通知闭环 PR-1：系统通知 channel 名/标题/正文 + 通知权限提示。命名 notification_位置_用途
-     （见 strings.xml 头部约定）。文案句式：陈述事实+下一步，不用感叹号。只放中文，不建第二语言。 -->
+<!-- 通知闭环 PR-1/PR-2：系统通知 channel 名/标题/正文 + 锁屏 public 脱敏版 + 去核对 action + 通知权限提示。
+     命名 notification_位置_用途（见 strings.xml 头部约定）。文案句式：陈述事实+下一步，不用感叹号。
+     只放中文，不建第二语言。 -->
 <resources>
 
     <!-- TicketboxNotifier：NotificationChannel 名（系统通知设置里用户可见）。
-         逐字对齐设置页提醒开关标题（strings_settings_family.xml 的待确认提醒 / 大额提醒），
+         逐字对齐设置页提醒开关标题（strings_settings_family.xml 的待确认提醒 / 大额提醒 / 固定支出提醒），
          让系统通知分类与 App 内开关一一对应。 -->
     <string name="notification_channel_drafts_name">待确认提醒</string>
     <string name="notification_channel_alerts_name">大额提醒</string>
+    <string name="notification_channel_recurring_name">固定支出提醒</string>
 
-    <!-- TicketboxNotifier：通知标题/正文。正文 %1$s=商家、%2$s=本位币金额、%3$s=原币金额（外币票） -->
+    <!-- TicketboxNotifier：通知标题/正文。正文 %1$s=商家、%2$s=本位币金额、%3$s=原币金额（外币票）。
+         大额标题 %1$s=商家、%2$s=本位币金额（拍板⑨口语化，锁屏 public 版不带这些字段）。 -->
     <string name="notification_draft_created_title">已记一笔待确认</string>
-    <string name="notification_large_amount_title">大额支出待确认</string>
+    <string name="notification_large_amount_title">这笔有点大：%1$s %2$s</string>
     <string name="notification_draft_created_body">%1$s %2$s，核对后才会入账。</string>
     <string name="notification_draft_created_body_with_original">%1$s %2$s（原币 %3$s），核对后才会入账。</string>
     <string name="notification_draft_created_merchant_missing">未填写商家</string>
+
+    <!-- TicketboxNotifier：固定支出提醒（PR-2）。标题 %1$s=固定支出名/商家。 -->
+    <string name="notification_recurring_due_title">%1$s 这几天该到了</string>
+    <string name="notification_recurring_due_body">只做提醒，核对后才会入账。</string>
+
+    <!-- TicketboxNotifier：锁屏可见的 public 脱敏版（不带商家/金额，避免在锁屏泄露）。 -->
+    <string name="notification_public_draft_summary">有一笔待确认，进入应用核对。</string>
+    <string name="notification_public_recurring_summary">有一笔固定支出提醒。</string>
+
+    <!-- TicketboxNotifier：通知 action 按钮。点击进待确认页（锁屏快捷核对）。 -->
+    <string name="notification_action_review">去核对</string>
 
     <!-- NotificationPreferencesScreen：通知权限提示行 + 大额开关副标题。
          副标题写明的 ¥500 与 TicketboxNotifier.LARGE_AMOUNT_THRESHOLD_CENTS=50000 同步改。

@@ -15,7 +15,7 @@
     <string name="income_plan_total_hint">来自下方所有「在用」状态的收入计划。</string>
     <string name="income_plan_card_payday">每月 %1$d 号</string>
     <string name="income_plan_empty_title">还没有收入计划</string>
-    <string name="income_plan_empty_body">点右下角「添加收入」，写好后「本月可自由支配」才能算出来。</string>
+    <string name="income_plan_empty_body">点右上角「添加收入」，写好后「本月可自由支配」才能算出来。</string>
     <string name="income_plan_sheet_title">添加收入</string>
     <string name="income_plan_sheet_label_name">名称</string>
     <string name="income_plan_sheet_label_type">类型</string>
