@@ -231,6 +231,25 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
+    // Recent global-search queries persist as a newline-joined string (queries
+    // are single-line so the delimiter is unambiguous). Non-secure UI sugar,
+    // same as app_skin / currency — not ledger-scoped, wiped only by clear().
+    override fun recentSearches(): List<String> {
+        val raw = prefs.getString(KEY_RECENT_SEARCHES, null) ?: return emptyList()
+        return raw.split('\n').filter { it.isNotBlank() }
+    }
+
+    override fun saveRecentSearches(queries: List<String>) {
+        val sanitized = queries.map { it.trim() }.filter { it.isNotBlank() }
+        prefs.edit {
+            if (sanitized.isEmpty()) {
+                remove(KEY_RECENT_SEARCHES)
+            } else {
+                putString(KEY_RECENT_SEARCHES, sanitized.joinToString("\n"))
+            }
+        }
+    }
+
     override fun isBound(): Boolean = !serverUrl().isNullOrBlank()
 
     override fun markUnlocked() {
@@ -309,6 +328,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     private companion object {
         const val KEY_SERVER_URL = "server_url"
+        const val KEY_RECENT_SEARCHES = "recent_searches"
         const val KEY_APP_SKIN = "app_skin"
         const val KEY_CURRENCY_CODE = "currency_code"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
