@@ -31,6 +31,13 @@ def test_web_tags_local_returns_200(web_client: TestClient, *, identity) -> None
     assert resp.status_code == 200
     assert "标签管理" in resp.text
     assert "出差" in resp.text
+    # UI/UX 批 14: 旧「按标签看统计」(跳已删除的 /web/stats) 改成行级「看账单」,
+    # 跳已确认账单页并按本标签过滤(tag 经 urlencode;& 写字面量,不经 autoescape)。
+    assert "看账单" in resp.text
+    assert (
+        "/web/confirmed?ledger_id=owner&tag=%E5%87%BA%E5%B7%AE" in resp.text
+    )
+    assert "/web/stats" not in resp.text
 
 
 def test_web_tag_rename(web_client: TestClient, *, identity) -> None:

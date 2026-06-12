@@ -78,14 +78,15 @@ def test_web_selected_ledger_confirmed_isolated(web_client: TestClient, *, ident
     assert "9.99" not in tester_confirmed.text
 
 
-def test_web_selected_ledger_stats_isolated(web_client: TestClient) -> None:
-    resp_owner = web_client.get("/web/stats?ledger_id=owner")
-    resp_tester = web_client.get("/web/stats?ledger_id=tester_1")
+def test_web_selected_ledger_reports_isolated(web_client: TestClient) -> None:
+    # UI/UX 批 14: /web/stats 归并进 /web/reports;选中账本隔离冒烟改打报表页。
+    resp_owner = web_client.get("/web/reports?ledger_id=owner")
+    resp_tester = web_client.get("/web/reports?ledger_id=tester_1")
     assert resp_owner.status_code == 200
     assert resp_tester.status_code == 200
     # Both render but with their own scope; basic smoke
-    assert "月度统计" in resp_owner.text
-    assert "月度统计" in resp_tester.text
+    assert "动态报表" in resp_owner.text
+    assert "动态报表" in resp_tester.text
 
 
 def test_web_reject_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:

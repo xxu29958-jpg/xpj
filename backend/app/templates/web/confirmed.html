@@ -7,7 +7,7 @@
 {% block content %}
 {# ── 月份 chip + 英雄月合计 ── #}
 <div class="ledger-hero">
-  <span class="lh-month">{{ selected_month }} ▾</span>
+  <span class="lh-month">{{ selected_month }}</span>
   {% set _t = ('%.2f' % month_total_amount_yuan).split('.') %}
   <div class="lh-amt"><span class="cur">{{ home_currency_symbol }}</span><span class="int">{{ _t[0] }}</span><span class="dec">.{{ _t[1] }}</span></div>
   <div class="lh-ctx">

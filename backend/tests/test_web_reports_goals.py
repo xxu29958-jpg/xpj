@@ -94,6 +94,20 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     assert "历史不足" in response.text
     assert "¥60.00" in response.text
 
+    # UI/UX 批 14: /web/stats 整页归并进 reports。stats 页唯一不可替代内容
+    # 「大额支出 Top 5」迁来此处;granularity/ranking_metric 死 ctx 转正成 GET
+    # 链接 segmented 控件(切到本月最大的「星巴克 ¥42.00」)。
+    assert "大额支出" in response.text
+    assert "星巴克" in response.text
+    assert "灰度账本商家" not in response.text  # top-expenses 仍账本隔离
+    # seg 控件 GET 链接：& 写字面量(模板里非变量输出,不经 autoescape)。
+    assert (
+        "/web/reports?ledger_id=owner&month=2026-05&granularity=week&ranking_metric=count"
+        in response.text
+    )
+    assert "趋势粒度" in response.text
+    assert "排行口径" in response.text
+
     # ADR-0026: reports.js renders the charts from the injected JSON; verify the
     # data contract + that the category-filtered merchant ranking is correct.
     blob = re.search(

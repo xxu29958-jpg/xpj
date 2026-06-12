@@ -1,7 +1,7 @@
 /* /web 桌面账本 · 报表 + KPI 词汇 (v0.10.1 从 desktop.css 拆出)
  *
  * chart/legend 为 reports.html 专属; .kpi-strip / .kpi-cell (含 --bare/--hero
- * 变体) 是跨页 KPI 词汇 (reports/stats/data_quality/rules/import_batch/
+ * 变体) 是跨页 KPI 词汇 (reports/data_quality/rules/import_batch/
  * recurring 的指标网格 + budgets/dashboard/budget_advise/income_plans 的
  * 卡内 hero 金额), 经 base.html 全量加载。
  */
@@ -10,6 +10,10 @@
 .chart-block { position: relative; }
 .chart-canvas { width: 100%; height: 280px; }
 .chart-canvas.tall { height: 320px; }
+
+/* 趋势粒度 / 排行口径的 segmented 控件分组：label + .seg 横向成组 (UI/UX 批 14)。 */
+.reports-toolbar { gap: var(--space-5); }
+.seg-group { display: inline-flex; align-items: center; gap: var(--space-2); }
 
 .legend {
     display: flex;

@@ -157,7 +157,13 @@ def _render_budgets(
         month=month,
         timezone_name=timezone_name,
     )
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        show_month_picker=True,
+        selected_month=month,
+    )
     ctx["month"] = month
     ctx["budget"] = _budget_view(budget)
     ctx["message"] = message

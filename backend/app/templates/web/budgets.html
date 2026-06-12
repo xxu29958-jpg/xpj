@@ -13,15 +13,6 @@
 <div class="callout-info">只读角色可以查看预算和月度可花,但不能保存预算设置。</div>
 {% endif %}
 
-<form method="get" action="/web/budgets" class="toolbar">
-  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <label class="dt-form-row dt-form-row--inline">
-    <span class="dt-eyebrow">月份</span>
-    <input class="dt-input" type="month" name="month" value="{{ month }}">
-  </label>
-  <button class="dt-btn" type="submit">查看</button>
-</form>
-
 <div class="dash-grid">
   <div class="dt-card">
     <div class="dt-eyebrow">月度总预算</div>
@@ -110,11 +101,9 @@
   {% if can_write %}
   <form method="post" action="/web/budgets/save">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    {# 月份由顶栏月份切换器统一管理；保存针对当前所选月份。 #}
+    <input type="hidden" name="month" value="{{ month }}">
     <div class="dt-form-grid">
-      <div class="dt-form-row">
-        <label>月份</label>
-        <input class="dt-input" type="month" name="month" value="{{ month }}" required>
-      </div>
       <div class="dt-form-row">
         <label>月度总预算（元）</label>
         <input class="dt-input" type="text" name="total_amount_yuan" value="{{ budget.total_yuan if budget.configured else '' }}" inputmode="decimal" required>

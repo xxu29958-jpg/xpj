@@ -68,7 +68,6 @@ from app.routes import (
     web_recurring,
     web_reports,
     web_search,
-    web_stats,
     web_tags,
     web_tasks,
 )
@@ -301,7 +300,6 @@ app.include_router(web_expense_splits.router)
 app.include_router(web_media.router)
 app.include_router(web_pending.router)
 app.include_router(web_rules_routes.router)
-app.include_router(web_stats.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
 app.include_router(web_income_plans.router)

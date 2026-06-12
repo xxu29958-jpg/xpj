@@ -48,7 +48,7 @@
         {% elif row.status == 'failed' %}<span class="dt-pill danger">失败</span>
         {% endif %}
       </td>
-      <td><code>{{ row.task_type }}</code></td>
+      <td><span title="{{ row.task_type }}">{{ row.task_type_label }}</span></td>
       <td>
         {% if row.progress_total %}{{ row.progress_current }}/{{ row.progress_total }}{% else %}—{% endif %}
       </td>

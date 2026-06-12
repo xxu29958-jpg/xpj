@@ -58,7 +58,7 @@ def test_web_root_slash_redirects_to_root_with_ledger(web_client: TestClient) ->
 
 def test_web_no_secret_leaks(web_client: TestClient, *, identity) -> None:
     """No token_hash, upload_key, pairing_code or absolute path in HTML."""
-    pages = ["/web", "/web/pending", "/web/confirmed", "/web/stats", "/web/search"]
+    pages = ["/web", "/web/pending", "/web/confirmed", "/web/reports", "/web/search"]
     for path in pages:
         resp = web_client.get(path)
         assert resp.status_code == 200, path

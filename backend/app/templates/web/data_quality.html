@@ -48,7 +48,7 @@
     <div class="val">
       {% if summary.oldest_pending_age_days is none %}—{% else %}{{ summary.oldest_pending_age_days }} 天{% endif %}
     </div>
-    <div class="foot">距今 ingest 时间</div>
+    <div class="foot">距今录入的天数</div>
   </div>
 </div>
 
@@ -77,7 +77,7 @@
     <li>
       <strong>{{ summary.ready_to_confirm }} 条可批量确认：</strong>
       <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">{% if can_write %}去待确认{% else %}查看可确认项{% endif %} →</a>
-      <span class="hint">{% if can_write %}需手动勾选，slice 2 不自动确认{% else %}只读角色不能确认{% endif %}</span>
+      <span class="hint">{% if can_write %}需手动勾选，不会自动确认{% else %}只读角色不能确认{% endif %}</span>
     </li>
     {% endif %}
     {% if summary.missing_category > 0 %}
@@ -90,6 +90,6 @@
     <li class="dq-empty">数据状态良好。继续保持。</li>
     {% endif %}
   </ul>
-  <p class="page-footer-hint">本页快照生成于 {{ summary.generated_at }}（UTC）。</p>
+  <p class="page-footer-hint">本页快照生成于 {{ generated_at_local }}。</p>
 </div>
 {% endblock %}

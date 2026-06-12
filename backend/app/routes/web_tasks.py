@@ -29,6 +29,21 @@ from app.services.ledger_service import find_owner_account_id_for_ledger
 
 router = APIRouter(prefix="/web", tags=["web"])
 
+# Map the machine ``task_type`` string to a 生活化 Chinese label for the /web
+# tasks list. Unknown types fall back to the raw string so a new task type is
+# still legible (and visibly un-labelled) rather than hidden. The background
+# task framework currently has no live producers (the v1 cut-over handler was
+# retired with the PostgreSQL migration), so this is a small forward-looking map
+# keyed by the producers the model documents.
+_TASK_TYPE_LABELS: dict[str, str] = {
+    "csv_import": "CSV 导入",
+    "v1_migration": "数据迁移",
+}
+
+
+def _task_type_label(task_type: str) -> str:
+    return _TASK_TYPE_LABELS.get(task_type, task_type)
+
 
 def _resolve_account_id(db: Session, request: Request, ledger_id: str) -> int:
     """Reuse the same resolver as /web/bill-splits."""
@@ -67,6 +82,7 @@ def web_tasks(
         rows.append({
             "public_id": task.public_id,
             "task_type": task.task_type,
+            "task_type_label": _task_type_label(task.task_type),
             "status": task.status,
             "progress_current": task.progress_current,
             "progress_total": task.progress_total,

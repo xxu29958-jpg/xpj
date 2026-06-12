@@ -129,7 +129,9 @@ def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> N
         assert db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id)) == "archived"
 
 
-def test_web_stats_distinguishes_formal_recurring_from_candidates(web_client: TestClient) -> None:
+def test_web_recurring_distinguishes_formal_recurring_from_candidates(web_client: TestClient) -> None:
+    # UI/UX 批 14: /web/stats 页删除,固定支出表是 /web/recurring 的严格子集,未迁移;
+    # 「正式 vs 候选」区分改在 /web/recurring 页守护(dashboard 摘要不变)。
     _seed_candidate()
     before = web_client.get("/web")
     assert before.status_code == 200
@@ -138,12 +140,12 @@ def test_web_stats_distinguishes_formal_recurring_from_candidates(web_client: Te
 
     _confirm_candidate(web_client)
 
-    stats = web_client.get("/web/stats?ledger_id=owner&month=2026-05")
-    assert stats.status_code == 200
-    assert "正式固定支出" in stats.text
-    assert "固定支出候选（未确认）" in stats.text
-    assert "ChatGPT Plus" in stats.text
-    assert "只做提醒和对比，不会自动入账" in stats.text
+    recurring = web_client.get("/web/recurring?ledger_id=owner")
+    assert recurring.status_code == 200
+    assert "正式固定支出" in recurring.text
+    assert "固定支出候选（未确认）" in recurring.text
+    assert "ChatGPT Plus" in recurring.text
+    assert "只做提醒和对比，不会自动入账" in recurring.text
 
 
 def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:

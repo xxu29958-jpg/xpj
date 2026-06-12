@@ -174,9 +174,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/rules/{rule_id}/undo"): "writer-only",
     ("POST", "/web/rules/apply-pending"): "writer-only",
     ("POST", "/web/rules/apply-confirmed"): "writer-only",
-    # Search / Stats
+    # Search
     ("GET", "/web/search"): "local-only-rendering",
-    ("GET", "/web/stats"): "local-only-rendering",
     # Tags (ADR-0043 slice C)
     ("GET", "/web/tags"): "local-only-rendering",
     ("POST", "/web/tags/{public_id}/rename"): "writer-only",

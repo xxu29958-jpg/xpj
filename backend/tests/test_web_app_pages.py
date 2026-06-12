@@ -55,33 +55,17 @@ def test_web_month_picker_links_drop_page_param(web_client: TestClient) -> None:
     assert all("ledger_id=owner" in h for h in hrefs), hrefs
 
 
-def test_web_stats_local_returns_200(web_client: TestClient) -> None:
-    resp = web_client.get("/web/stats?month=2026-05")
+def test_web_reports_local_returns_200(web_client: TestClient) -> None:
+    # UI/UX 批 14: /web/stats 整页归并进 /web/reports(月度统计页删除)。
+    resp = web_client.get("/web/reports?month=2026-05")
     assert resp.status_code == 200
-    assert "月度统计" in resp.text
-
-
-def test_web_stats_reports_recurring_candidate_errors(
-    web_client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.routes import web_stats as web_stats_module
-
-    def fail_recurring_candidates(*args, **kwargs):
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(web_stats_module, "recurring_candidates", fail_recurring_candidates)
-
-    resp = web_client.get("/web/stats?month=2026-05")
-
-    assert resp.status_code == 200
-    assert "固定支出候选分析暂时不可用" in resp.text
+    assert "动态报表" in resp.text
 
 
 @pytest.mark.parametrize(
     "path",
     [
-        "/web/stats?month=2026-13",
+        "/web/reports?month=2026-13",
         "/web/confirmed?month=0000-05",
         "/web/categories?month=2026-5",
     ],

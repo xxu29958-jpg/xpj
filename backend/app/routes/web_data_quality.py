@@ -20,6 +20,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.data_quality_service import data_quality_summary
+from app.services.spending_contract_service import accounting_zone
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -36,6 +37,12 @@ def web_data_quality(
     summary = data_quality_summary(db, tenant_id=selected_id)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["summary"] = summary
+    # Render the snapshot stamp in the accounting timezone (wall-clock the rest
+    # of /web shows) instead of the raw UTC ``str(datetime)`` — keeping the
+    # shared DataQualitySummary (also used by the API) untouched.
+    ctx["generated_at_local"] = (
+        summary.generated_at.astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
+    )
     return templates.TemplateResponse(
         request=request, name="data_quality.html", context=ctx
     )

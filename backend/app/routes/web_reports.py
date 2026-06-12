@@ -30,6 +30,7 @@ from app.services.reports_service import (
     reports_overview,
     six_month_summary,
 )
+from app.services.stats_service import top_expenses_for_month
 from app.services.time_service import current_month
 
 router = APIRouter(prefix="/web/reports", tags=["web"])
@@ -159,6 +160,29 @@ def _budget_verdict_label(value: str) -> str:
     return labels.get(value, value)
 
 
+def _top_expenses_view(
+    db: Session, *, tenant_id: str, month: str, timezone_name: str
+) -> list[dict[str, str]]:
+    """Highest-amount confirmed expenses for the month (former /web/stats panel).
+
+    This was the only content unique to the deleted /web/stats page, so it moves
+    here when stats is merged into reports (UI/UX 批 14).
+    """
+    rows: list[dict[str, str]] = []
+    for e in top_expenses_for_month(
+        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
+    ):
+        rows.append(
+            {
+                "merchant": e.merchant or "未填写商家",
+                "amount_yuan": _amount_yuan(e.amount_cents),
+                "category": e.category or "未分类",
+                "expense_time": e.expense_time.strftime("%Y-%m-%d") if e.expense_time else "",
+            }
+        )
+    return rows
+
+
 @router.get("", response_class=HTMLResponse)
 def web_reports(
     request: Request,
@@ -230,6 +254,12 @@ def web_reports(
             "month": target_month,
             "granularity_options": [("day", "日"), ("week", "周"), ("month", "月")],
             "ranking_metric_options": [("amount", "金额"), ("count", "笔数")],
+            "top_expenses": _top_expenses_view(
+                db,
+                tenant_id=selected_id,
+                month=target_month,
+                timezone_name=timezone_name,
+            ),
             "six_month_trend": six_month_summary(
                 db,
                 anchor_month=target_month,

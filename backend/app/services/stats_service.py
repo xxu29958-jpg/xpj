@@ -271,7 +271,8 @@ def top_expenses_for_month(
 ) -> list[Expense]:
     """Highest-amount confirmed expenses for the period (ledger-scoped).
 
-    Used by /web/stats top-spenders panel. Skips rows with NULL amount_cents.
+    Used by the /web/reports 大额支出 panel (moved from the retired /web/stats
+    page in UI/UX 批 14). Skips rows with NULL amount_cents.
     """
     return list(
         db.scalars(

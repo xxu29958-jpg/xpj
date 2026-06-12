@@ -45,7 +45,6 @@
 <section class="dt-card">
   <div class="card-header">
     <h2>当前标签（{{ tags|length }} 个）</h2>
-    <a class="dt-btn" href="/web/stats{{ q }}">按标签看统计</a>
   </div>
   {% if tags %}
   <table class="dt-table">
@@ -65,8 +64,10 @@
           {% else %}<span class="dt-pill muted">孤儿</span>{% endif %}
         </td>
         <td>
-          {% if can_write %}
           <div class="tag-actions">
+            {# 看账单：跳已确认账单页并按本标签过滤(读操作,所有角色可用)。 #}
+            <a class="dt-btn" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&tag={{ item.name | urlencode }}">看账单</a>
+            {% if can_write %}
             <form method="post" action="/web/tags/{{ item.public_id }}/rename" class="dt-inline-form">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
               <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
@@ -93,10 +94,10 @@
               <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
               <button type="submit" class="dt-btn danger">删除</button>
             </form>
+            {% else %}
+            <span class="readonly-inline">只读</span>
+            {% endif %}
           </div>
-          {% else %}
-          <span class="readonly-inline">只读</span>
-          {% endif %}
         </td>
       </tr>
     {% endfor %}
