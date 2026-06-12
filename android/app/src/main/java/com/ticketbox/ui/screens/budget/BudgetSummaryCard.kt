@@ -16,6 +16,9 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -27,8 +30,20 @@ import com.valentinilk.shimmer.shimmer
 internal fun BudgetSummaryCard(
     budget: BudgetMonthly?,
     loading: Boolean,
+    loadError: UiText?,
     currencyDisplay: CurrencyDisplay,
+    onRetry: () -> Unit,
 ) {
+    // A failed load with no budget gets a retryable error state instead of the card
+    // (审计 8.4)——otherwise the placeholder's "正在读取预算。" loading copy stays forever.
+    if (budget == null && !loading && loadError != null) {
+        AppErrorState(
+            title = stringResource(R.string.budget_summary_error_title),
+            body = loadError.asString().ifBlank { stringResource(R.string.budget_summary_error_body) },
+            onRetry = onRetry,
+        )
+        return
+    }
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),

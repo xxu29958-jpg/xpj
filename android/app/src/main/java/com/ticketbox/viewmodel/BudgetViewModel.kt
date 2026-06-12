@@ -37,6 +37,11 @@ data class BudgetUiState(
     val loading: Boolean = false,
     val saving: Boolean = false,
     val message: UiText? = null,
+    /**
+     * 本月预算**加载失败**且无数据时的错误说明（区别于 [message]：后者还承载保存成功 /
+     * 校验提示等）。仅当 [budget] 为空、非 [loading] 时由概况卡渲染为可重试错误态（审计 8.4）。
+     */
+    val loadError: UiText? = null,
     val canModify: Boolean = true,
     val budget: BudgetMonthly? = null,
     val form: BudgetFormState = BudgetFormState(),
@@ -74,6 +79,7 @@ class BudgetViewModel(
                             budget = null,
                             form = BudgetFormState(),
                             message = null,
+                            loadError = null,
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -86,7 +92,9 @@ class BudgetViewModel(
         viewModelScope.launch {
             val month = _uiState.value.month
             val generation = requestGeneration
-            _uiState.update { it.copy(loading = true, message = null, canModify = repository.canModifyLedger()) }
+            _uiState.update {
+                it.copy(loading = true, message = null, loadError = null, canModify = repository.canModifyLedger())
+            }
             repository.monthlyBudget(month)
                 .onSuccess { budget ->
                     _uiState.update {
@@ -95,6 +103,7 @@ class BudgetViewModel(
                             loading = false,
                             budget = budget,
                             form = budget.toFormState(),
+                            loadError = null,
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -102,9 +111,12 @@ class BudgetViewModel(
                 .onFailure { error ->
                     _uiState.update {
                         if (requestGeneration != generation || it.month != month) return@update it
+                        // Load failure with no budget → a retryable error state, not the
+                        // permanent "正在读取预算。" loading copy (audit 8.4). Distinct from
+                        // [message] which carries save-flow / validation feedback.
                         it.copy(
                             loading = false,
-                            message = error.toUiText(R.string.budget_message_load_failed),
+                            loadError = error.toUiText(R.string.budget_message_load_failed),
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -210,6 +222,7 @@ class BudgetViewModel(
                 budget = null,
                 form = BudgetFormState(),
                 message = null,
+                loadError = null,
             )
         }
         refresh()

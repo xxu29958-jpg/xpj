@@ -18,6 +18,7 @@
     <string name="common_cancel">取消</string>
     <string name="common_confirm">确定</string>
     <string name="common_saving">保存中</string>
+    <string name="common_retry">重试</string>
     <string name="common_readonly_ledger">当前角色为只读，无法修改账本。</string>
 
     <!-- 底部导航 tab 标签（AppBottomNav 的可见 Text + contentDescription） -->
