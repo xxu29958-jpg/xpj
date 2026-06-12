@@ -28,9 +28,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import kotlinx.coroutines.delay
@@ -92,6 +93,7 @@ fun MerchantAliasesScreen(
         title = stringResource(R.string.merchant_aliases_page_title),
         subtitle = merchantAliasSummary(aliases),
         onBack = onBack,
+        status = { AppStatusBanner(message = message, tone = MessageTone.Neutral) },
     ) {
         // ADR-0038 undo: a soft-deleted alias is recoverable for a 5s window.
         // Online-only (only shown after a synced delete); auto-dismisses.
@@ -197,10 +199,6 @@ fun MerchantAliasesScreen(
                     }
                 }
             }
-        }
-
-        message?.asString()?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

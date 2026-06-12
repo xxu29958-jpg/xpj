@@ -21,10 +21,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.backgroundTaskStatusLabel
 import com.ticketbox.domain.model.backgroundTaskTypeLabel
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppSpacing
@@ -52,6 +53,7 @@ fun BackgroundTasksScreen(
         title = stringResource(R.string.background_tasks_page_title),
         subtitle = stringResource(R.string.background_tasks_page_subtitle),
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
         SettingsSection(title = stringResource(R.string.background_tasks_section_recent_title), icon = Icons.Filled.Tune) {
             AppGlassCard(containerAlpha = 0.96f) {
@@ -83,13 +85,6 @@ fun BackgroundTasksScreen(
                     ) { Text(if (state.loading) stringResource(R.string.background_tasks_refreshing) else stringResource(R.string.background_tasks_refresh)) }
                 }
             }
-        }
-        state.message?.let {
-            Text(
-                text = it.asString(),
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.padding(top = 4.dp),
-            )
         }
     }
 }

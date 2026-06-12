@@ -24,11 +24,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleEditorCard
@@ -93,6 +94,7 @@ fun CategoryRulesScreen(
         title = stringResource(R.string.category_rules_page_title),
         subtitle = categoryRuleSummary(rules),
         onBack = onBack,
+        status = { AppStatusBanner(message = message, tone = MessageTone.Neutral) },
     ) {
         // ADR-0038 undo: a soft-deleted rule is recoverable for a 5s window.
         // Online-only (shown only after a synced delete); auto-dismisses.
@@ -190,9 +192,6 @@ fun CategoryRulesScreen(
                 busy = busy,
                 onRollback = { application -> rollbackApplication = application },
             )
-        }
-        message?.asString()?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

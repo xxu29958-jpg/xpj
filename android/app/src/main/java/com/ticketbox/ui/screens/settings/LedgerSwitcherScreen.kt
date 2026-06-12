@@ -27,9 +27,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
@@ -66,6 +67,7 @@ fun LedgerSwitcherScreen(
         title = stringResource(R.string.ledger_switcher_page_title),
         subtitle = stringResource(R.string.ledger_switcher_page_subtitle),
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
         SettingsSection(
             title = stringResource(R.string.ledger_switcher_section_joined),
@@ -183,14 +185,6 @@ fun LedgerSwitcherScreen(
                     ) { Text(stringResource(R.string.ledger_switcher_create_button)) }
                 }
             }
-        }
-
-        state.message?.let {
-            Text(
-                text = it.asString(),
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.padding(top = 4.dp),
-            )
         }
     }
 }

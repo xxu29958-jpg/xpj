@@ -33,11 +33,12 @@ import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerAuditEntry
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppSpacing
@@ -85,6 +86,7 @@ fun FamilyMembersScreen(
             stringResource(R.string.family_members_page_subtitle_view)
         },
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
         SettingsSection(
             title = stringResource(R.string.family_members_section_members),
@@ -167,13 +169,6 @@ fun FamilyMembersScreen(
                     }
                 }
             }
-        }
-        state.message?.let {
-            Text(
-                text = it.asString(),
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.padding(top = 4.dp),
-            )
         }
     }
 }

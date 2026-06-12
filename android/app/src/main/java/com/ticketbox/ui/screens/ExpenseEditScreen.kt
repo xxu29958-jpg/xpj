@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,14 +35,15 @@ import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
 import com.ticketbox.ui.screens.expense.ExpenseDateField
+import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
+import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
+import com.ticketbox.ui.screens.expense.ExpenseEditActionBarState
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
-import com.ticketbox.ui.screens.expense.ExpenseEditConfirmActions
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseEditDatePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
 import com.ticketbox.ui.screens.expense.ExpenseEditMoreSection
 import com.ticketbox.ui.screens.expense.ExpenseEditNoteField
-import com.ticketbox.ui.screens.expense.ExpenseEditPrimaryActions
 import com.ticketbox.ui.screens.expense.ExpenseEditRecognizeTextDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
@@ -240,11 +240,49 @@ fun ExpenseEditScreen(
         )
     }
 
+    // 操作栏的保存/确认入账点击逻辑用具名局部函数（普通 return），避免在
+    // 构造器实参 lambda 里玩 return@label。
+    fun submitSave() {
+        val draft = draftOrMessage() ?: return
+        haptics.tick()
+        onSave(draft)
+    }
+
+    fun submitConfirm() {
+        val draft = draftOrMessage() ?: return
+        if (draft.originalAmountMinor == null) {
+            message = amountRequiredMessage
+            return
+        }
+        haptics.confirm()
+        onConfirm(draft)
+    }
+
     AppPageScrollableColumn(
         role = AppPageRole.Edit,
+        // 操作栏浮在底部：底部空间由实测栏高让出（见 AppPageScrollableColumn），
+        // 不走静态 BottomBarHeight 估算，故 hasBottomBar = false 避免双重预留。
         hasBottomBar = false,
         includeStatusBarPadding = true,
         verticalArrangement = Arrangement.spacedBy(12.dp),
+        bottomBar = {
+            ExpenseEditActionBar(
+                state = ExpenseEditActionBarState(
+                    saving = state.saving,
+                    allowSave = !readOnly,
+                    allowConfirm = allowConfirm && !readOnly,
+                    allowReject = allowReject && !readOnly,
+                    validationMessage = message,
+                    statusMessage = state.message?.asString(),
+                ),
+                actions = ExpenseEditActionBarActions(
+                    onBack = onDone,
+                    onSave = ::submitSave,
+                    onConfirm = ::submitConfirm,
+                    onRequestReject = { showRejectDialog = true },
+                ),
+            )
+        },
     ) {
         AppPageHeader(
             title = stringResource(R.string.expense_edit_header_title),
@@ -372,38 +410,7 @@ fun ExpenseEditScreen(
             onRecognizeText = onOpenRecognizeText,
         )
 
-        message?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
-        }
-        state.message?.let {
-            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
-        }
-
-        ExpenseEditPrimaryActions(
-            saving = state.saving,
-            allowSave = !readOnly,
-            onBack = onDone,
-            onSave = {
-                val draft = draftOrMessage() ?: return@ExpenseEditPrimaryActions
-                haptics.tick()
-                onSave(draft)
-            },
-        )
-
-        ExpenseEditConfirmActions(
-            saving = state.saving,
-            allowConfirm = allowConfirm && !readOnly,
-            allowReject = allowReject && !readOnly,
-            onConfirm = {
-                val draft = draftOrMessage() ?: return@ExpenseEditConfirmActions
-                if (draft.originalAmountMinor == null) {
-                    message = amountRequiredMessage
-                    return@ExpenseEditConfirmActions
-                }
-                haptics.confirm()
-                onConfirm(draft)
-            },
-            onRequestReject = { showRejectDialog = true },
-        )
+        // 保存 / 确认入账 / 删除 与校验提示现在浮在底部操作栏（见 bottomBar），
+        // 不再钉在长表单滚动末尾。
     }
 }

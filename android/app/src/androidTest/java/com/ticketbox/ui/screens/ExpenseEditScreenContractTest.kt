@@ -57,7 +57,9 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("值不值评分，1-5").performScrollTo()
         composeRule.onNodeWithText("查看识别原文").performScrollTo().performClick()
         composeRule.onNodeWithText("重新识别").performScrollTo().performClick()
-        composeRule.onNodeWithText("保存").performScrollTo().performClick()
+        // 「保存」现在浮在底部操作栏（不在滚动流里），无需 performScrollTo——
+        // 永远一拇指可达正是批 9 的目标。
+        composeRule.onNodeWithText("保存").performClick()
 
         composeRule.runOnIdle {
             assertEquals(1, retryCount)
@@ -68,6 +70,81 @@ class ExpenseEditScreenContractTest {
             assertEquals(1, draft.regretScore)
             assertEquals("2026-05-12T10:15:00Z", draft.expenseTime)
         }
+    }
+
+    @Test
+    fun pendingActionBarShowsConfirmRejectWithoutScrolling() {
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                ExpenseEditScreen(
+                    expense = expense(),
+                    state = ExpenseEditUiState(),
+                    onSave = {},
+                    onConfirm = {},
+                    onReject = {},
+                    onRetryOcr = {},
+                    onLoadFullImage = {},
+                    onKeepDuplicate = {},
+                    onDone = {},
+                    allowConfirm = true,
+                    allowReject = true,
+                )
+            }
+        }
+
+        // pending 态：确认入账 / 保存 / 删除 都在浮动栏里，开屏即可见。
+        composeRule.onNodeWithText("确认入账").assertIsDisplayed()
+        composeRule.onNodeWithText("保存").assertIsDisplayed()
+        composeRule.onNodeWithText("删除").assertIsDisplayed()
+    }
+
+    @Test
+    fun confirmedExpenseActionBarHidesConfirmAndReject() {
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                ExpenseEditScreen(
+                    expense = expense().copy(status = "confirmed"),
+                    state = ExpenseEditUiState(),
+                    onSave = {},
+                    onConfirm = {},
+                    onReject = {},
+                    onRetryOcr = {},
+                    onLoadFullImage = {},
+                    onKeepDuplicate = {},
+                    onDone = {},
+                    allowConfirm = false,
+                    allowReject = false,
+                )
+            }
+        }
+
+        // 已入账：只剩保存 + 返回，确认/删除收起（语义对齐 ExpenseEditRoute）。
+        composeRule.onNodeWithText("保存").assertIsDisplayed()
+        composeRule.onNodeWithText("返回").assertIsDisplayed()
+        composeRule.onNodeWithText("确认入账").assertDoesNotExist()
+        composeRule.onNodeWithText("删除").assertDoesNotExist()
+    }
+
+    @Test
+    fun billSplitSourceRendersHumanLabelNotRawToken() {
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                ExpenseEditScreen(
+                    expense = expense().copy(source = "bill_split_received"),
+                    state = ExpenseEditUiState(),
+                    onSave = {},
+                    onConfirm = {},
+                    onReject = {},
+                    onRetryOcr = {},
+                    onLoadFullImage = {},
+                    onKeepDuplicate = {},
+                    onDone = {},
+                )
+            }
+        }
+
+        // 来源行不再漏裸 token：bill_split_received → 来源：拆账。
+        composeRule.onNodeWithText("来源：拆账").performScrollTo().assertIsDisplayed()
     }
 
     private fun expense(): Expense = Expense(

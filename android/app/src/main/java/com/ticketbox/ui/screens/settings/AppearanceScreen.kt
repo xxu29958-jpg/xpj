@@ -78,6 +78,7 @@ import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.appearance.AppearanceDefaults
 import com.ticketbox.ui.appearance.BackgroundCatalog
@@ -88,7 +89,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
-import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
@@ -123,6 +124,7 @@ fun AppearanceScreen(
         title = stringResource(R.string.appearance_page_title),
         subtitle = stringResource(R.string.appearance_page_subtitle),
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
         SettingsSection(title = stringResource(R.string.appearance_section_skin_title), icon = Icons.Filled.Palette) {
             AppSkin.entries.chunked(2).forEach { rowSkins ->
@@ -230,9 +232,6 @@ fun AppearanceScreen(
                 enabled = true,
                 onCheckedChange = onReduceMotionChange,
             )
-        }
-        state.message?.let {
-            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

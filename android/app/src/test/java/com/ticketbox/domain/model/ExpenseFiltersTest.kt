@@ -253,6 +253,69 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun recentMerchantsAreNewestFirstDedupedAndCarryLastCategory() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-01T04:00:00Z", merchant = "早餐店"),
+            expense(id = 2, category = "交通", expenseTime = "2026-05-05T04:00:00Z", merchant = "地铁"),
+            // Same merchant as #1 but more recent AND a different category — the
+            // newest occurrence must win the slot and supply the category.
+            expense(id = 3, category = "夜宵", expenseTime = "2026-05-06T04:00:00Z", merchant = "早餐店"),
+        )
+
+        val recent = recentLedgerMerchants(items)
+
+        assertEquals(
+            listOf(
+                RecentMerchant(merchant = "早餐店", category = "夜宵"),
+                RecentMerchant(merchant = "地铁", category = "交通"),
+            ),
+            recent,
+        )
+    }
+
+    @Test
+    fun recentMerchantsSkipBlankMerchantsAndRespectLimit() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-01T04:00:00Z", merchant = "A"),
+            expense(id = 2, category = "餐饮", expenseTime = "2026-05-02T04:00:00Z", merchant = "  "),
+            expense(id = 3, category = "餐饮", expenseTime = "2026-05-03T04:00:00Z", merchant = null),
+            expense(id = 4, category = "餐饮", expenseTime = "2026-05-04T04:00:00Z", merchant = "B"),
+            expense(id = 5, category = "餐饮", expenseTime = "2026-05-05T04:00:00Z", merchant = "C"),
+        )
+
+        // Blank/null merchants drop out; limit caps the list (newest first).
+        assertEquals(
+            listOf("C", "B"),
+            recentLedgerMerchants(items, limit = 2).map { it.merchant },
+        )
+        assertEquals(emptyList(), recentLedgerMerchants(items, limit = 0))
+    }
+
+    @Test
+    fun recentMerchantsFallBackToConfirmedAtForRecency() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = null, confirmedAt = "2026-05-01T04:00:00Z", merchant = "旧店"),
+            expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-09T04:00:00Z", merchant = "新店"),
+        )
+
+        assertEquals(
+            listOf("新店", "旧店"),
+            recentLedgerMerchants(items).map { it.merchant },
+        )
+    }
+
+    @Test
+    fun shiftLedgerMonthStepsAcrossYearBoundaryAndRejectsNonMonths() {
+        assertEquals("2026-04", shiftLedgerMonth("2026-05", -1L))
+        assertEquals("2026-06", shiftLedgerMonth("2026-05", 1L))
+        assertEquals("2025-12", shiftLedgerMonth("2026-01", -1L))
+        assertEquals("2027-01", shiftLedgerMonth("2026-12", 1L))
+        assertEquals(null, shiftLedgerMonth("", -1L))
+        assertEquals(null, shiftLedgerMonth("全部月份", 1L))
+        assertEquals(null, shiftLedgerMonth("2026-13", 1L))
+    }
+
+    @Test
     fun buildsMonthlyStatsFromLocalConfirmedCache() {
         val items = listOf(
             expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200, tags = "真香，AI，真香"),

@@ -24,8 +24,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -193,6 +198,17 @@ fun AppPageScaffold(
     }
 }
 
+/**
+ * 可滚动的页面列。可选 [bottomBar] 槽：传入时在 [Box] 底部居中浮一条操作栏。
+ * 滚动内容按**实测**的栏高让出底部空间——栏可能两行加提示，高度不固定，
+ * 静态估算（[AppPageDefaults.BottomBarHeight]）会算少导致最后一块内容被遮，
+ * 所以这里测量真实高度再当 content 底 padding。传 [bottomBar] 时调用方应让
+ * `hasBottomBar = false`（不要再叠静态估算）。
+ *
+ * 栏自己负责导航栏 inset；软键盘 inset 由外层 [AppPageScaffold] 的
+ * `imePadding()` 统一处理，槽内不要再叠一层。`bottomBar` 默认 `null`——
+ * 既有调用方零影响。
+ */
 @Composable
 fun AppPageScrollableColumn(
     role: PageRole,
@@ -201,8 +217,12 @@ fun AppPageScrollableColumn(
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = true,
     verticalArrangement: Arrangement.Vertical? = null,
+    bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.(AppPageLayoutValues) -> Unit,
 ) {
+    val density = LocalDensity.current
+    var bottomBarHeight by remember { mutableStateOf(0.dp) }
+
     AppPageScaffold(
         role = role,
         modifier = modifier,
@@ -210,22 +230,35 @@ fun AppPageScrollableColumn(
         horizontalPadding = horizontalPadding,
         includeStatusBarPadding = includeStatusBarPadding,
     ) { layout ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    top = layout.statusPadding,
-                    bottom = layout.bottomViewportPadding,
-                )
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = layout.horizontalPadding)
-                .padding(
-                    top = layout.contentTopPadding,
-                    bottom = layout.bottomContentExtraPadding,
-                ),
-            verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
-        ) {
-            content(layout)
+        // align(BottomCenter) needs a BoxScope — the scaffold's content lambda has
+        // no receiver, so the column + floating bar pair gets its own Box root.
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = layout.statusPadding,
+                        bottom = layout.bottomViewportPadding,
+                    )
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = layout.horizontalPadding)
+                    .padding(
+                        top = layout.contentTopPadding,
+                        bottom = layout.bottomContentExtraPadding + bottomBarHeight,
+                    ),
+                verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+            ) {
+                content(layout)
+            }
+            if (bottomBar != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
+                ) {
+                    bottomBar()
+                }
+            }
         }
     }
 }

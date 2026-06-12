@@ -17,7 +17,7 @@
     <ID>CyclomaticComplexMethod:ImmersiveBackground.kt:@Composable fun TicketboxBackgroundLayer</ID>
     <ID>CyclomaticComplexMethod:ImmersiveBackground.kt:@Composable private fun BoxScope.BottomReadabilityScrim</ID>
     <ID>CyclomaticComplexMethod:ImmersiveBackground.kt:fun resolveCardContainerAlpha: Float</ID>
-    <ID>CyclomaticComplexMethod:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LedgerScreen</ID>
+    <ID>CyclomaticComplexMethod:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>
     <ID>CyclomaticComplexMethod:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
     <ID>CyclomaticComplexMethod:OutboxDrainEngine.kt:OutboxDrainEngine$suspend fun drainOnce: DrainSummary</ID>
     <ID>CyclomaticComplexMethod:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
@@ -71,7 +71,7 @@
     <ID>LongMethod:LedgerItems.kt:@Composable internal fun LedgerExpenseCard</ID>
     <ID>LongMethod:LedgerItems.kt:@Composable internal fun LedgerExpenseTableRow</ID>
     <ID>LongMethod:LedgerManualExpenseSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ManualExpenseSheet</ID>
-    <ID>LongMethod:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LedgerScreen</ID>
+    <ID>LongMethod:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>
     <ID>LongMethod:LedgerSwitcherScreen.kt:@Composable fun LedgerSwitcherScreen</ID>
     <ID>LongMethod:LedgerToolsSheet.kt:@Composable internal fun LedgerToolsSheet</ID>
     <ID>LongMethod:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
@@ -114,7 +114,6 @@
     <ID>LongMethod:TagStatsCard.kt:@Composable private fun TagStatsRow</ID>
     <ID>LongMethod:Theme.kt:@Composable fun TicketboxAtmosphereBackground</ID>
     <ID>LongMethod:ThemeVisuals.kt:fun themeVisualsForSkin: ThemeVisuals</ID>
-    <ID>LongMethod:TicketboxApp.kt:@Composable private fun TicketboxContent</ID>
     <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/expenses/confirmed") suspend fun confirmedExpenses: PaginatedExpensesDto</ID>
     <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/reports/overview") suspend fun reportsOverview: ReportsOverviewDto</ID>
     <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/reports/overview.csv") @Streaming suspend fun reportsOverviewCsv: Response&lt;ResponseBody&gt;</ID>
@@ -156,7 +155,7 @@
     <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseListRow</ID>
     <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseTableRow</ID>
     <ID>LongParameterList:LedgerManualExpenseSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ManualExpenseSheet</ID>
-    <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LedgerScreen</ID>
+    <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>
     <ID>LongParameterList:LedgerToolsSheet.kt:@Composable internal fun LedgerToolsSheet</ID>
     <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
     <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$suspend fun applyTransition</ID>

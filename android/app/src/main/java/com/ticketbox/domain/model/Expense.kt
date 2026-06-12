@@ -196,6 +196,17 @@ data class FrequentMerchant(
     val count: Int,
 )
 
+/**
+ * A merchant the user spent at recently, paired with the category last used for
+ * it. Drives the ledger "最近" quick-fill chips on the manual-entry sheet — one
+ * tap fills the merchant and carries the matching category. Derived purely from
+ * the confirmed cache (see [recentLedgerMerchants]); never an OCR/AI guess.
+ */
+data class RecentMerchant(
+    val merchant: String,
+    val category: String,
+)
+
 data class RecurringCandidate(
     val merchant: String,
     val amountCents: Long,

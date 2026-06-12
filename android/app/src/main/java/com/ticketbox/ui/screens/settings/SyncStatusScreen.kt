@@ -38,10 +38,11 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
-import com.ticketbox.ui.asString
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSolidCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
@@ -143,13 +144,10 @@ private fun SyncStatusPageBody(
     val status = state.status
     SyncSummaryCard(status)
 
-    state.message?.let { msg ->
-        Text(
-            text = msg.asString(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    // The lone transient note (e.g. "keep mine" needs a re-fetch that failed):
+    // same position, unified into the shared banner form. Info-toned — it points
+    // the user at another action rather than reporting a hard failure.
+    AppStatusBanner(message = state.message, tone = MessageTone.Info)
 
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {

@@ -131,6 +131,11 @@ internal fun SettingsPageFrame(
     title: String,
     subtitle: String,
     onBack: (() -> Unit)?,
+    // Page-header status slot (= /web flash position): rendered between the
+    // header and the content so operation feedback appears where the user is
+    // already looking, not at the bottom of the scroll. Default null leaves the
+    // callers that pass no status untouched.
+    status: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val isSecondaryPage = onBack != null
@@ -157,6 +162,7 @@ internal fun SettingsPageFrame(
             }
             AppPageHeader(title = title, subtitle = subtitle)
         }
+        status?.invoke()
         content()
     }
 }

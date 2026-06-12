@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.annotation.StringRes
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -149,8 +150,10 @@ internal fun ExpenseEditSourceInfo(
     source: String,
     confidence: Double?,
 ) {
+    val labelRes = expenseSourceLabelRes(source)
+    val display = labelRes?.let { stringResource(it) } ?: source
     Text(
-        stringResource(R.string.expense_edit_source_label, source),
+        stringResource(R.string.expense_edit_source_label, display),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     confidence?.let {
@@ -160,3 +163,26 @@ internal fun ExpenseEditSourceInfo(
         )
     }
 }
+
+/** ``Expense.source`` 储存的是中文/英文 token（iPhone截图 / bill_split_received /
+ *  通知草稿:微信 …）。映射到人话显示标签，镜像后端
+ *  ``web_stats_service.SOURCE_LABELS`` + 通知草稿前缀，三端词汇同步。未知来源返回
+ *  ``null``，由调用方回退到原始 token。纯函数，可单测。 */
+@StringRes
+internal fun expenseSourceLabelRes(source: String): Int? {
+    if (source.startsWith(NOTIFICATION_DRAFT_SOURCE_PREFIX)) {
+        return R.string.expense_edit_source_notification
+    }
+    return when (source) {
+        "iPhone截图" -> R.string.expense_edit_source_iphone
+        "Android截图" -> R.string.expense_edit_source_android
+        "手动记账" -> R.string.expense_edit_source_manual
+        "CSV导入" -> R.string.expense_edit_source_csv
+        "bill_split_received" -> R.string.expense_edit_source_bill_split
+        else -> null
+    }
+}
+
+/** ``Expense.source`` 通知草稿前缀（完整值 = 前缀 + 渠道名），镜像后端
+ *  ``NOTIFICATION_DRAFT_SOURCE_PREFIX``。 */
+private const val NOTIFICATION_DRAFT_SOURCE_PREFIX = "通知草稿:"

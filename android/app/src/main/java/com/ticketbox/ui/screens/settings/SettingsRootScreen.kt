@@ -52,11 +52,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -96,7 +94,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
-import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
@@ -147,6 +145,7 @@ fun SettingsRootScreen(
         title = stringResource(R.string.settings_root_page_title),
         subtitle = stringResource(R.string.settings_root_page_subtitle),
         onBack = null,
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
             AccountStatusCard(
@@ -274,9 +273,6 @@ fun SettingsRootScreen(
                     icon = Icons.Filled.Info,
                     onClick = onOpenAbout,
                 )
-            }
-            state.message?.let {
-                Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
             }
         }
     }

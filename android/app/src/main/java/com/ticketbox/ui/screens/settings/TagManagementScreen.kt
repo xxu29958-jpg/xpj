@@ -34,8 +34,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
-import com.ticketbox.ui.asString
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.TagManagementViewModel
@@ -142,6 +143,7 @@ fun TagManagementScreen(
         title = stringResource(R.string.tag_management_page_title),
         subtitle = tagSummary(state.tags),
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
         // ADR-0043 undo: delete/merge are recoverable for a 5s window. Online-only
         // (the handle only exists after a synced mutation); auto-dismisses.
@@ -203,10 +205,6 @@ fun TagManagementScreen(
                     }
                 }
             }
-        }
-
-        state.message?.asString()?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

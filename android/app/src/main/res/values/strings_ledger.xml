@@ -20,6 +20,7 @@
     <string name="ledger_manual_now_button">现在</string>
     <string name="ledger_manual_saving_button">保存中</string>
     <string name="ledger_manual_save_button">记入账本</string>
+    <string name="ledger_manual_recent_label">最近</string>
 
     <!-- CategoryFilterRow：分类筛选行 -->
     <string name="ledger_category_filter_label">分类</string>
@@ -59,6 +60,8 @@
     <!-- LedgerInlineFilters：内联 chip 筛选 -->
     <string name="ledger_inline_month_all">全部月份</string>
     <string name="ledger_inline_month_picker_description">选择月份</string>
+    <string name="ledger_inline_month_prev">上一个月</string>
+    <string name="ledger_inline_month_next">下一个月</string>
     <string name="ledger_inline_category_all">全部分类</string>
     <string name="ledger_inline_searched">已搜索</string>
     <string name="ledger_inline_search_note">搜索备注</string>

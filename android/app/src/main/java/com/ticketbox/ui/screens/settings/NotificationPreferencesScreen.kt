@@ -37,6 +37,12 @@ import com.ticketbox.ui.design.AppSpacing
 fun NotificationPreferencesScreen(
     preferences: NotificationPreferences,
     readOnly: Boolean,
+    // Page-header status feedback (this screen used to render none — saving
+    // gave no on-screen signal). Owned by SettingsViewModel; the host builds an
+    // AppStatusBanner from its message + tone and passes it as this slot so the
+    // feedback lands in the same /web-flash position as the rest of the tree.
+    // A slot (not message+tone params) keeps the signature within the 5-param gate.
+    status: (@Composable () -> Unit)? = null,
     onBack: () -> Unit,
     onSave: (NotificationPreferences) -> Unit,
 ) {
@@ -50,6 +56,7 @@ fun NotificationPreferencesScreen(
         title = stringResource(R.string.notification_preferences_page_title),
         subtitle = stringResource(R.string.notification_preferences_page_subtitle),
         onBack = onBack,
+        status = status,
     ) {
         SettingsSection(
             title = stringResource(R.string.notification_preferences_section_auto_draft),
