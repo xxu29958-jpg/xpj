@@ -24,6 +24,7 @@ import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.backgroundTaskStatusLabel
 import com.ticketbox.domain.model.backgroundTaskTypeLabel
+import com.ticketbox.domain.model.shouldGeneralizeTaskError
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
@@ -141,11 +142,12 @@ private fun TaskRow(
             )
         }
         task.errorMessage?.takeIf { it.isNotBlank() }?.let { rawError ->
-            // 后端 error_message 可能是原始异常串 / 英文（str(exc) / "No handler …"），
-            // 直出违反 §10。含中文才认为是可读文案直出，否则套泛化文案。
+            // 后端 error_message 可能是原始异常串 / 英文（str(exc) / "No handler …" /
+            // orphan 诊断），直出违反 §10。判定拆到 domain 纯函数（可单测）：诊断/英文/
+            // 超长 → 泛化文案；正常中文短消息原样展示。
             val genericError = stringResource(R.string.background_tasks_row_error_generic)
             Text(
-                text = if (rawError.any { it in '一'..'鿿' }) rawError else genericError,
+                text = if (shouldGeneralizeTaskError(rawError)) genericError else rawError,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )

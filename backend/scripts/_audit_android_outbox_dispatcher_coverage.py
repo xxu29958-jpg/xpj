@@ -72,11 +72,36 @@ def parse_dispatchers(files: dict[str, str]) -> dict[str, str]:
     return out
 
 
+def _outbox_dispatchers_block(app_container_source: str) -> str:
+    """Return only the ``outboxDispatchers = listOf(...)`` call body."""
+    marker = "outboxDispatchers"
+    marker_index = app_container_source.find(marker)
+    if marker_index < 0:
+        return ""
+
+    list_index = app_container_source.find("listOf", marker_index)
+    if list_index < 0:
+        return ""
+
+    open_index = app_container_source.find("(", list_index)
+    if open_index < 0:
+        return ""
+
+    depth = 0
+    for index in range(open_index, len(app_container_source)):
+        char = app_container_source[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return app_container_source[open_index + 1 : index]
+    return ""
+
+
 def parse_registered_classes(app_container_source: str) -> set[str]:
-    """Dispatcher classes instantiated in AppContainer (imports have no ``(``)."""
-    block = app_container_source
-    if "outboxDispatchers" in block:
-        block = block.split("outboxDispatchers", 1)[1]
+    """Dispatcher classes instantiated in ``AppContainer.outboxDispatchers``."""
+    block = _outbox_dispatchers_block(app_container_source)
     return set(re.findall(r"(\w+Dispatcher)\s*\(", block))
 
 

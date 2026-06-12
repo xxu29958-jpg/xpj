@@ -49,7 +49,15 @@ import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.notification.TicketboxNotifier
+import com.ticketbox.notification.recurring.NotifierRecurringReminderDispatcher
+import com.ticketbox.notification.recurring.RecurringReminderEngine
+import com.ticketbox.notification.recurring.RecurringReminderPolicy
+import com.ticketbox.notification.recurring.RecurringReminderRuntime
+import com.ticketbox.notification.recurring.RepositoryRecurringReminderSource
+import com.ticketbox.notification.recurring.SharedPrefsRecurringReminderStore
+import com.ticketbox.notification.recurring.WorkManagerRecurringReminderScheduler
 import com.ticketbox.security.SecureTokenStore
+import java.time.LocalDate
 import kotlinx.coroutines.flow.map
 
 class AppContainer(context: Context) {
@@ -387,5 +395,33 @@ class AppContainer(context: Context) {
         settingsStore = settingsStore,
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
+    )
+
+    // ADR-0046 Slice 5: 固定支出提醒检测源的 WorkManager 调度器。
+    // TicketboxApplication.onCreate 调 ensurePeriodic()（幂等）注册 24h 周期 worker。
+    val recurringReminderScheduler = WorkManagerRecurringReminderScheduler()
+
+    // ADR-0046 Slice 4: 提醒编排核心。source 只读 recurringRepository（active items），
+    // dispatcher 委托 notifier（Slice 1 返回 outcome），store 本地去重，policy 纯函数判 due/overdue。
+    // 全部 IO / 时钟 / 设置依赖在此注入，engine 本身保持可纯 JVM 测试（业务契约落 EngineTest）。
+    val recurringReminderEngine = RecurringReminderEngine(
+        source = RepositoryRecurringReminderSource(recurringRepository),
+        policy = RecurringReminderPolicy(),
+        store = SharedPrefsRecurringReminderStore(appContext),
+        dispatcher = NotifierRecurringReminderDispatcher(notifier::onRecurringDue),
+        runtime = RecurringReminderRuntime(
+            // 「固定支出提醒」开关现读：关 → engine 不拉 source、不发、不 markSent（Contract 8）。
+            recurringRemindersEnabled = { settingsStore.notificationPreferences().recurringReminders },
+            // session 就绪 = 已绑定 token + 有 active ledger + server 地址。任一缺失 → safe success
+            // 不提醒（未登录 / 无 active ledger，Contract 8 / Contract 11 仅扫当前 active ledger）。
+            sessionReady = {
+                !tokenStore.getToken().isNullOrBlank() &&
+                    !settingsStore.activeLedgerId().isNullOrBlank() &&
+                    !settingsStore.serverUrl().isNullOrBlank()
+            },
+            // 设备本地当天（与 RecurringRepository 的 API timezone=TimeZone.getDefault() 一致），
+            // 用户看到的「今天」即提醒窗口锚点；day-level 比较，可注入便于测试钉边界。
+            today = { LocalDate.now() },
+        ),
     )
 }

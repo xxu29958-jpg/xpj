@@ -40,6 +40,13 @@
     <string name="global_search_result_matched">命中：%1$s</string>
     <string name="global_search_badge_pending">待确认</string>
     <string name="global_search_badge_confirmed">已确认</string>
+    <string name="global_search_filter_category_all">全部分类</string>
+    <string name="global_search_filter_month_all">全部月份</string>
+    <string name="global_search_filter_month_picker_description">选择月份</string>
+    <string name="global_search_filter_amount_hint">输入金额可按金额精确匹配，如 12.50</string>
+    <string name="global_search_recent_title">最近搜索</string>
+    <string name="global_search_recent_clear">清除</string>
+    <string name="global_search_result_truncated">仅显示前 %1$d 条，可加筛选缩小范围。</string>
 
     <!-- BillSplitScreen：拆账 -->
     <string name="bill_split_topbar_title">拆账</string>
@@ -95,11 +102,16 @@
     <string name="global_search_field_tags">标签</string>
     <string name="global_search_field_source">来源</string>
     <string name="global_search_field_raw_text">原文</string>
+    <string name="global_search_field_amount">金额</string>
+    <string name="global_search_field_all">筛选</string>
 
     <!-- AppViewModel：绑定 / 解锁 / 外观切换 全局状态文案（ADR-0044 wave 2） -->
     <string name="app_bind_restore_failed">已绑定，但历史账本恢复失败，可稍后在账本页更新。</string>
     <string name="app_bind_failed">绑定没成功，请检查账本地址和绑定码。</string>
     <string name="app_unlock_no_biometric">请先在系统中设置指纹或面容。</string>
+    <!-- 本机没有任何锁屏方式（无指纹/面容、也没设 PIN / 图案 / 密码）时，进入 App 顶部的常驻提示。
+         本机解锁会优雅停用，不把人挡在解锁页外；账本会话凭证仍是真正的鉴权。 -->
+    <string name="app_local_unlock_disabled_banner">这台手机还没设锁屏，进入小票夹时不再需要本机验证。想更安心，建议先到系统设置里开启锁屏。</string>
     <string name="app_skin_switched">已切换为%1$s</string>
     <string name="app_currency_switched">已切换为%1$s默认记账币种</string>
 

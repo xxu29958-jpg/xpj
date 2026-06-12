@@ -73,7 +73,9 @@ fun BudgetScreen(
             BudgetSummaryCard(
                 budget = state.budget,
                 loading = state.loading,
+                loadError = state.loadError,
                 currencyDisplay = currencyDisplay,
+                onRetry = onRefresh,
             )
         }
         item {

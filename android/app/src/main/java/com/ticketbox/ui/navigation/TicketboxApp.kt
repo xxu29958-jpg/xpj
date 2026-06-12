@@ -1,5 +1,10 @@
 package com.ticketbox.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -9,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -19,19 +25,23 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ticketbox.BuildConfig
+import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
-import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.security.BiometricAuthManager
+import com.ticketbox.security.LocalUnlockAvailability
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
+import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.resolve
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.LoginScreen
@@ -146,15 +156,16 @@ private fun TicketboxContent(
         return
     }
 
-    if (BuildConfig.REQUIRE_LOCAL_UNLOCK && !appState.unlocked) {
+    if (BuildConfig.REQUIRE_LOCAL_UNLOCK && !appState.unlocked && !appState.localUnlockDisabled) {
         ImmersiveBackgroundScaffold(
             backgroundSettings = appState.backgroundSettings,
             currentSkin = appState.skin,
             surfaceRole = SurfaceRole.Auth,
         ) {
-            LoginScreen(
-                message = appState.authMessage,
-                onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
+            LocalUnlockGate(
+                authMessage = appState.authMessage,
+                biometricAuthManager = biometricAuthManager,
+                appViewModel = appViewModel,
             )
         }
         return
@@ -177,12 +188,39 @@ private fun TicketboxContent(
         currentCurrency = appState.currency,
         backgroundSettings = appState.backgroundSettings,
         startupMessage = appState.authMessage,
+        localUnlockDisabled = appState.localUnlockDisabled,
         onStartupMessageShown = onAuthMessageShown,
         onSkinChange = appViewModel::selectSkin,
         onCurrencyChange = appViewModel::selectCurrency,
         onBindingCleared = appViewModel::clearBinding,
         launchRequest = launchRequest,
         onLaunchRequestHandled = onLaunchRequestHandled,
+    )
+}
+
+/**
+ * The local-unlock gate (audit 8.1). Probes [BiometricAuthManager.unlockAvailability]
+ * once on entry: if the device has no way to satisfy the door
+ * ([LocalUnlockAvailability.None] — no enrolled biometric and no usable lock-screen
+ * credential), it gracefully disables the door via [AppViewModel.disableLocalUnlock]
+ * (the caller then flips into [MainShell] with an advisory banner) instead of
+ * stranding the user on the unlock screen. Otherwise it shows [LoginScreen] whose
+ * button raises the biometric / device-credential prompt.
+ */
+@Composable
+private fun LocalUnlockGate(
+    authMessage: UiText?,
+    biometricAuthManager: BiometricAuthManager,
+    appViewModel: AppViewModel,
+) {
+    LaunchedEffect(Unit) {
+        if (biometricAuthManager.unlockAvailability() == LocalUnlockAvailability.None) {
+            appViewModel.disableLocalUnlock()
+        }
+    }
+    LoginScreen(
+        message = authMessage,
+        onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
     )
 }
 
@@ -248,6 +286,7 @@ private fun MainShell(
     currentCurrency: com.ticketbox.domain.model.CurrencyCode,
     backgroundSettings: BackgroundSettings,
     startupMessage: UiText?,
+    localUnlockDisabled: Boolean,
     onStartupMessageShown: () -> Unit,
     onSkinChange: (AppSkin) -> Unit,
     onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
@@ -255,7 +294,6 @@ private fun MainShell(
     launchRequest: LaunchIntentRequest?,
     onLaunchRequestHandled: () -> Unit,
 ) {
-    val context = LocalContext.current
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
 
@@ -293,28 +331,73 @@ private fun MainShell(
         )
     }
 
-    LaunchedEffect(startupMessage) {
-        val message = startupMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message.resolve(context))
-        onStartupMessageShown()
-    }
+    StartupMessageSnackbarEffect(startupMessage, snackbarHostState, onStartupMessageShown)
 
     ImmersiveBackgroundScaffold(
         backgroundSettings = backgroundSettings,
         currentSkin = currentSkin,
         surfaceRole = shellState.surfaceRole(currentBackStackEntry?.destination?.route),
     ) {
-        MainNavGraph(
-            navController = navController,
-            shellState = shellState,
-            screenFactory = screenFactory,
-            currentSkin = currentSkin,
-            currentCurrency = currentCurrency,
-            snackbarHostState = snackbarHostState,
-            onSkinChange = onSkinChange,
-            onCurrencyChange = onCurrencyChange,
-            onBindingCleared = onBindingCleared,
-        )
+        ShellBodyWithBanner(localUnlockDisabled = localUnlockDisabled) {
+            MainNavGraph(
+                navController = navController,
+                shellState = shellState,
+                screenFactory = screenFactory,
+                currentSkin = currentSkin,
+                currentCurrency = currentCurrency,
+                snackbarHostState = snackbarHostState,
+                onSkinChange = onSkinChange,
+                onCurrencyChange = onCurrencyChange,
+                onBindingCleared = onBindingCleared,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StartupMessageSnackbarEffect(
+    startupMessage: UiText?,
+    snackbarHostState: SnackbarHostState,
+    onShown: () -> Unit,
+) {
+    val context = LocalContext.current
+    LaunchedEffect(startupMessage) {
+        val message = startupMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message.resolve(context))
+        onShown()
+    }
+}
+
+/**
+ * Shell body wrapper: when the local door was gracefully disabled (audit 8.1 — device
+ * has no biometric and no usable lock-screen credential), stacks a persistent,
+ * non-dismissable advisory banner above [content], which fills the remaining height.
+ * The banner reuses [AppStatusBanner] (the unified /web `.dt-alert` mirror) with
+ * [MessageTone.Info] — it is由设计 informational, not an error — and sits in the
+ * status-bar inset. With no banner this is a transparent pass-through, so the normal
+ * shell layout is unchanged.
+ */
+@Composable
+private fun ShellBodyWithBanner(
+    localUnlockDisabled: Boolean,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (localUnlockDisabled) {
+            AppStatusBanner(
+                message = UiText.res(R.string.app_local_unlock_disabled_banner),
+                tone = MessageTone.Info,
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(
+                        horizontal = AppSpacing.screenHorizontal,
+                        vertical = AppSpacing.compactGap,
+                    ),
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            content()
+        }
     }
 }
 
@@ -337,16 +420,18 @@ private fun LaunchRequestEffect(
 }
 
 /**
- * 把已解析的 [LaunchIntentRequest] 落到 [MainShellState] 的 tab 选择 + 一次性动作信号。
- * 抽成顶层非 composable 函数（而非内联进 LaunchedEffect）以压平嵌套——内联的
- * 双层 when 会触顶 detekt NestedBlockDepth；Navigate 再下沉一层保留单层 when。
+ * 本机解锁按钮的动作（audit 8.1 三分支兜底）。设备完全没有可用的解锁方式
+ * （[LocalUnlockAvailability.None]：没录指纹/面容、也没设锁屏凭证）时优雅停用本机门
+ * （[AppViewModel.disableLocalUnlock]，外层翻进带提示横幅的主壳），不把人卡在解锁页;
+ * 否则拉起生物识别 / 设备凭证 prompt。门通常先被 [LocalUnlockGate] 的探测拦下，这里
+ * 再兜一次「探测到点击之间凭证被删」的窗口。
  */
 private fun attemptBiometricUnlock(
     biometricAuthManager: BiometricAuthManager,
     appViewModel: AppViewModel,
 ) {
-    if (!biometricAuthManager.canAuthenticate()) {
-        appViewModel.unlockFailed(UiText.res(R.string.app_unlock_no_biometric))
+    if (biometricAuthManager.unlockAvailability() == LocalUnlockAvailability.None) {
+        appViewModel.disableLocalUnlock()
         return
     }
     biometricAuthManager.authenticate(
@@ -356,6 +441,11 @@ private fun attemptBiometricUnlock(
     )
 }
 
+/**
+ * 把已解析的 [LaunchIntentRequest] 落到 [MainShellState] 的 tab 选择 + 一次性动作信号。
+ * 抽成顶层非 composable 函数（而非内联进 LaunchedEffect）以压平嵌套——内联的
+ * 双层 when 会触顶 detekt NestedBlockDepth；Navigate 再下沉一层保留单层 when。
+ */
 private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: MainShellState) {
     when (request) {
         is LaunchIntentRequest.ShareImages -> {

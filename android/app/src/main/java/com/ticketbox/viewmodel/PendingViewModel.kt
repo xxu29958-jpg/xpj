@@ -83,6 +83,13 @@ data class PendingUiState(
      * by Queued(B) case.
      */
     val undoableExpense: Expense? = null,
+    /**
+     * 连续审阅「还剩 N 条」计数：当前打开的快补 sheet 对应字段、本轮未跳过、仍
+     * 待补的票数（含当前票）。仅在快补 sheet（金额/商家/分类）打开时有意义，
+     * sheet 关闭后归 0。口径见 [PendingReviewQueue.remaining]；VM 在每次设置快补
+     * sheet / 推进 / 跳过 / 刷新后重算，Screen 只读不算。
+     */
+    val reviewRemaining: Int = 0,
 )
 
 class PendingViewModel(
@@ -107,6 +114,13 @@ class PendingViewModel(
     // retention window.
     private var undoTimerJob: Job? = null
 
+    // 连续审阅（批量过堆积待确认票）本轮已「跳过」的票 id。快补 sheet 的
+    // 保存并下一笔 / 跳过都朝列表后方推进，跳过的票留在 pending 列表里、不出队、
+    // 不改后端状态，但本轮不再回头载入它——靠这个集合排除（口径见
+    // [PendingReviewQueue]）。开新一轮（从列表点开快补）/ 关闭 sheet / 换账本
+    // 即清空，所以它是「一次连续审阅」的局部状态，不跨 pass 残留。
+    internal val reviewSkippedIds = mutableSetOf<Long>()
+
     init {
         val readOnly = !repository.canModifyLedger()
         _uiState.update { it.copy(readOnly = readOnly, message = if (readOnly) readOnlyMessage() else it.message) }
@@ -123,6 +137,7 @@ class PendingViewModel(
                 .collect {
                     requestGeneration += 1
                     uploadLedgerIdAtStart = null
+                    reviewSkippedIds.clear()
                     val readOnly = isReadOnly()
                     _uiState.value = PendingUiState(
                         readOnly = readOnly,
@@ -187,6 +202,9 @@ class PendingViewModel(
                     // afresh.
                     if (refreshSkipEpoch != skipEpoch) return@onSuccess
                     _uiState.update { PendingUiStateReducer.afterRefresh(it, expenses, readOnly = isReadOnly()) }
+                    // 后台刷新可能改变 items / 经 reconcile 关闭已离开的快补 sheet，
+                    // 「还剩 N 条」随之重算（sheet 没开则归 0）。
+                    recomputeReviewRemaining()
                     loadThumbnails(expenses, generation)
                 }
                 .onFailure { error ->
