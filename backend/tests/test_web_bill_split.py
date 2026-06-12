@@ -291,3 +291,48 @@ def test_web_sent_renders_local_time_not_utc_repr(web_client: TestClient) -> Non
     )
     assert expected in response.text
     assert "+00:00" not in response.text
+
+
+# --- B16: row-craft (tabular amount + bsplit-table class) -----------------
+
+
+def test_web_bill_split_tables_use_bsplit_rowcraft_classes(web_client: TestClient) -> None:
+    """B16: both pages opt into the精装 row craft (bsplit-table) and keep the
+    amount column on the tabular ``.amount`` cell + the local-time ``.num``
+    columns (no raw UTC repr)."""
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_rc", display="B-rc")
+    expense_id = _make_owner_expense()
+    with SessionLocal() as db:
+        bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=1500,
+        )
+
+    sent = web_client.get("/web/bill-splits/sent?ledger_id=owner")
+    assert sent.status_code == 200
+    assert 'class="dt-table bsplit-table"' in sent.text
+    assert '<td class="amount">' in sent.text
+    assert '<td class="num">' in sent.text  # 到期 / 消费时间 列
+
+    # Inbox renders its table only when owner is the RECEIVER — a sent-only
+    # seed leaves it on the empty state, so seed an inbound invitation too.
+    sender_id, sender_ledger = _seed_receiver(ledger_id="sender_rc", display="B-rc2")
+    inbound_expense = _seed_expense_in(sender_ledger)
+    with SessionLocal() as db:
+        bsplit.create_invitation(
+            db,
+            sender_account_id=sender_id,
+            sender_ledger_id=sender_ledger,
+            expense_id=inbound_expense,
+            receiver_account_id=_owner_account_id(),
+            amount_cents=900,
+        )
+
+    inbox = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
+    assert inbox.status_code == 200
+    assert 'class="dt-table bsplit-table"' in inbox.text
+    assert '<td class="amount">' in inbox.text

@@ -26,6 +26,25 @@ def list_sent(
     return list(rows)
 
 
+def list_sent_for_expense(
+    db: Session, *, sender_account_id: int, expense_id: int, limit: int = 50
+) -> list[BillSplitInvitation]:
+    """Invitations this sender created from one specific source expense.
+
+    Used by the /web edit-page 发起卡 to list the invitations already sent
+    *from this bill* (``list_sent`` is ledger-scoped over every expense).
+    Sender-account-scoped so it cannot surface another account's rows.
+    """
+    rows = db.scalars(
+        select(BillSplitInvitation)
+        .where(BillSplitInvitation.sender_account_id == sender_account_id)
+        .where(BillSplitInvitation.sender_expense_id == expense_id)
+        .order_by(BillSplitInvitation.created_at.desc())
+        .limit(limit)
+    )
+    return list(rows)
+
+
 def list_inbox(
     db: Session, *, receiver_account_id: int, status: str | None = None, limit: int = 50
 ) -> list[BillSplitInvitation]:

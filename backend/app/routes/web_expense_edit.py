@@ -17,6 +17,7 @@ from app.routes._web_expense_helpers import (
     resolve_return_to,
     web_edit_context,
 )
+from app.routes.web_bill_split import build_split_invite_context
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -121,8 +122,20 @@ def web_edit_get(
             )
         return _web_redirect("/web/confirmed", selected_id, msg=exc.message)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
-    template_name = "_edit_drawer.html" if fragment else "edit.html"
-    return templates.TemplateResponse(request=request, name=template_name, context=ctx)
+    if fragment:
+        return templates.TemplateResponse(
+            request=request, name="_edit_drawer.html", context=ctx
+        )
+    # A8: full edit page only — wire the "找家人分摊" 发起卡 to the existing
+    # /web/expenses/{id}/split-invite route (None hides the whole block).
+    ctx["split_invite"] = build_split_invite_context(
+        db,
+        request,
+        selected_ledger_id=selected_id,
+        expense=ctx["expense"],
+        can_write=ctx["can_write"],
+    )
+    return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
 
 
 @router.post("/expenses/{expense_id}/save", response_class=HTMLResponse)

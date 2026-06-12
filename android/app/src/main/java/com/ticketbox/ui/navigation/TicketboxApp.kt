@@ -59,6 +59,10 @@ fun TicketboxApp(
     merchantAliasViewModelFactory: ViewModelProvider.Factory,
     appearanceViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
+    // 系统分享 / 启动器 shortcut 带进来的待处理请求；仅在 MainShell（已绑定+已解锁）
+    // 内被消费。未绑定/未解锁时挂起等待，待门通过后由对应 LaunchedEffect 处理。
+    launchRequest: LaunchIntentRequest? = null,
+    onLaunchRequestHandled: () -> Unit = {},
 ) {
     val appViewModel: AppViewModel = viewModel(
         factory = appViewModelFactory,
@@ -100,6 +104,8 @@ fun TicketboxApp(
             appearanceViewModelFactory = appearanceViewModelFactory,
             biometricAuthManager = biometricAuthManager,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
+            launchRequest = launchRequest,
+            onLaunchRequestHandled = onLaunchRequestHandled,
         )
     }
 }
@@ -122,6 +128,8 @@ private fun TicketboxContent(
     appearanceViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
     onAuthMessageShown: () -> Unit,
+    launchRequest: LaunchIntentRequest?,
+    onLaunchRequestHandled: () -> Unit,
 ) {
     if (!appState.isBound) {
         ImmersiveBackgroundScaffold(
@@ -146,18 +154,7 @@ private fun TicketboxContent(
         ) {
             LoginScreen(
                 message = appState.authMessage,
-                onUnlock = {
-                    if (!biometricAuthManager.canAuthenticate()) {
-                        appViewModel.unlockFailed(UiText.res(R.string.app_unlock_no_biometric))
-                        return@LoginScreen
-                    }
-                    biometricAuthManager.authenticate(
-                        onSuccess = appViewModel::unlockSucceeded,
-                        // BiometricAuthManager.onError hands an already-resolved
-                        // system string; wrap verbatim so the message is unchanged.
-                        onError = { message -> appViewModel.unlockFailed(UiText.raw(message)) },
-                    )
-                },
+                onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
             )
         }
         return
@@ -184,6 +181,8 @@ private fun TicketboxContent(
         onSkinChange = appViewModel::selectSkin,
         onCurrencyChange = appViewModel::selectCurrency,
         onBindingCleared = appViewModel::clearBinding,
+        launchRequest = launchRequest,
+        onLaunchRequestHandled = onLaunchRequestHandled,
     )
 }
 
@@ -253,10 +252,15 @@ private fun MainShell(
     onSkinChange: (AppSkin) -> Unit,
     onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
+    launchRequest: LaunchIntentRequest?,
+    onLaunchRequestHandled: () -> Unit,
 ) {
     val context = LocalContext.current
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
+
+    LaunchRequestEffect(launchRequest, shellState, onLaunchRequestHandled)
+
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val screenFactory = remember(
@@ -311,5 +315,68 @@ private fun MainShell(
             onCurrencyChange = onCurrencyChange,
             onBindingCleared = onBindingCleared,
         )
+    }
+}
+
+/**
+ * 系统分享 / 启动器 shortcut 路由：只在 MainShell（已绑定+已解锁）里消费。把入口请求
+ * 落成 tab 选择 + 一次性动作信号（拉起图片选择 / 待上传图 / 打开记一笔），由对应 Route
+ * 接力；消费后回调清空 Activity 持有的请求（置回 null → 本 effect 以 null 重跑即 no-op）。
+ */
+@Composable
+private fun LaunchRequestEffect(
+    launchRequest: LaunchIntentRequest?,
+    shellState: MainShellState,
+    onLaunchRequestHandled: () -> Unit,
+) {
+    LaunchedEffect(launchRequest) {
+        val request = launchRequest ?: return@LaunchedEffect
+        dispatchLaunchRequest(request, shellState)
+        onLaunchRequestHandled()
+    }
+}
+
+/**
+ * 把已解析的 [LaunchIntentRequest] 落到 [MainShellState] 的 tab 选择 + 一次性动作信号。
+ * 抽成顶层非 composable 函数（而非内联进 LaunchedEffect）以压平嵌套——内联的
+ * 双层 when 会触顶 detekt NestedBlockDepth；Navigate 再下沉一层保留单层 when。
+ */
+private fun attemptBiometricUnlock(
+    biometricAuthManager: BiometricAuthManager,
+    appViewModel: AppViewModel,
+) {
+    if (!biometricAuthManager.canAuthenticate()) {
+        appViewModel.unlockFailed(UiText.res(R.string.app_unlock_no_biometric))
+        return
+    }
+    biometricAuthManager.authenticate(
+        onSuccess = appViewModel::unlockSucceeded,
+        // BiometricAuthManager.onError 给的是已解析系统串,原样包装保持消息不变。
+        onError = { message -> appViewModel.unlockFailed(UiText.raw(message)) },
+    )
+}
+
+private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: MainShellState) {
+    when (request) {
+        is LaunchIntentRequest.ShareImages -> {
+            shellState.launchAction.post(LaunchAction.UploadSharedImages(request.uris))
+            shellState.selectBottomTab(BottomTab.Pending.key)
+        }
+        is LaunchIntentRequest.Navigate -> dispatchShortcutNavigation(request.target, shellState)
+    }
+}
+
+private fun dispatchShortcutNavigation(target: ShortcutTarget, shellState: MainShellState) {
+    when (target) {
+        ShortcutTarget.UploadReceipt -> {
+            shellState.launchAction.post(LaunchAction.OpenImagePicker)
+            shellState.selectBottomTab(BottomTab.Pending.key)
+        }
+        ShortcutTarget.ReviewPending ->
+            shellState.selectBottomTab(BottomTab.Pending.key)
+        ShortcutTarget.ManualEntry -> {
+            shellState.launchAction.post(LaunchAction.OpenManualEntry)
+            shellState.selectBottomTab(BottomTab.Ledger.key)
+        }
     }
 }
