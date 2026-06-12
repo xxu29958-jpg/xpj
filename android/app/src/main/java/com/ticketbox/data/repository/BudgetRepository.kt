@@ -35,14 +35,17 @@ class BudgetRepository(
 
     override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
 
-    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
+    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> =
+        monthlyBudget(month = month, timezone = currentTimezoneId())
+
+    suspend fun monthlyBudget(month: String, timezone: String): Result<BudgetMonthly> {
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
                 api.monthlyBudget(
                     month = cleanMonth,
-                    timezone = currentTimezoneId(),
+                    timezone = timezone,
                 ).toDomain()
             }
         }
