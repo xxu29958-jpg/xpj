@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -31,6 +33,8 @@ from app.services.recurring_service import (
     resume_recurring_item,
 )
 from app.services.time_service import to_iso
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web/recurring", tags=["web"])
 
@@ -112,10 +116,17 @@ def _render_recurring(
         _item_view(item, anomalies.get(item.public_id) or RecurringAmountAnomaly())
         for item in items
     ]
-    ctx["candidates"] = [
-        _candidate_view(candidate)
-        for candidate in recurring_candidates(db, tenant_id=selected_id, timezone_name=None)
-    ]
+    # Coverage migrated from the deleted /web/stats page: candidate insight
+    # failure must degrade to an inline notice, never 500 the recurring page.
+    candidates_error = False
+    try:
+        candidate_rows = recurring_candidates(db, tenant_id=selected_id, timezone_name=None)
+    except Exception:  # noqa: BLE001 - recurring page must never 500 on insight
+        logger.warning("Recurring candidate insight failed for /web/recurring.", exc_info=True)
+        candidate_rows = []
+        candidates_error = True
+    ctx["candidates"] = [_candidate_view(candidate) for candidate in candidate_rows]
+    ctx["candidates_error"] = candidates_error
     ctx["status_filter"] = status or ""
     ctx["flash_message"] = flash_message
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)

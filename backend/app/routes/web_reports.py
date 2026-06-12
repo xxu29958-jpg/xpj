@@ -183,6 +183,32 @@ def _top_expenses_view(
     return rows
 
 
+def _monthly_report_sections(
+    db: Session, *, tenant_id: str, month: str, timezone_name: str
+) -> tuple[dict, list[dict]]:
+    """月报摘要 + 预算解释两段的 ctx 视图(从 route 拆出守 80 行债线)。"""
+    monthly_report = compose_monthly_report(
+        db,
+        tenant_id=tenant_id,
+        year_month=month,
+        timezone_name=timezone_name,
+    )
+    explanations = [
+        compose_budget_explanation(
+            db,
+            tenant_id=tenant_id,
+            category=row.category,
+            year_month=month,
+            timezone_name=timezone_name,
+        )
+        for row in monthly_report.top_categories[:5]
+    ]
+    return (
+        _monthly_report_view_model(monthly_report),
+        [_budget_explanation_view_model(item) for item in explanations],
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 def web_reports(
     request: Request,
@@ -209,22 +235,12 @@ def web_reports(
         ranking_metric=selected_metric,
         merchant_category=merchant_category,
     )
-    monthly_report = compose_monthly_report(
+    monthly_report_vm, budget_explanations = _monthly_report_sections(
         db,
         tenant_id=selected_id,
-        year_month=target_month,
+        month=target_month,
         timezone_name=timezone_name,
     )
-    explanations = [
-        compose_budget_explanation(
-            db,
-            tenant_id=selected_id,
-            category=row.category,
-            year_month=target_month,
-            timezone_name=timezone_name,
-        )
-        for row in monthly_report.top_categories[:5]
-    ]
     ctx = _base_ctx(
         request,
         options=options,
@@ -237,11 +253,8 @@ def web_reports(
     ctx.update(
         {
             "report": _view_model(payload),
-            "monthly_report": _monthly_report_view_model(monthly_report),
-            "budget_explanations": [
-                _budget_explanation_view_model(item)
-                for item in explanations
-            ],
+            "monthly_report": monthly_report_vm,
+            "budget_explanations": budget_explanations,
             "report_export_query": urlencode(
                 {
                     "ledger_id": selected_id,

@@ -88,6 +88,25 @@ def test_web_recurring_renders_candidates(web_client: TestClient) -> None:
     assert "确认" in response.text
 
 
+def test_web_recurring_candidate_insight_failure_degrades(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Coverage migrated from the deleted /web/stats page: the candidate
+    # insight blowing up must degrade to an inline notice, never 500.
+    from app.routes import web_recurring as web_recurring_module
+
+    def fail_recurring_candidates(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(web_recurring_module, "recurring_candidates", fail_recurring_candidates)
+
+    resp = web_client.get("/web/recurring?ledger_id=owner")
+
+    assert resp.status_code == 200
+    assert "固定支出候选分析暂时不可用" in resp.text
+
+
 def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> None:
     _seed_candidate()
     page = web_client.get("/web/recurring?ledger_id=owner")
