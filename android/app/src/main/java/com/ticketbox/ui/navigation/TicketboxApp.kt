@@ -294,7 +294,6 @@ private fun MainShell(
     launchRequest: LaunchIntentRequest?,
     onLaunchRequestHandled: () -> Unit,
 ) {
-    val context = LocalContext.current
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
 
@@ -332,11 +331,7 @@ private fun MainShell(
         )
     }
 
-    LaunchedEffect(startupMessage) {
-        val message = startupMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message.resolve(context))
-        onStartupMessageShown()
-    }
+    StartupMessageSnackbarEffect(startupMessage, snackbarHostState, onStartupMessageShown)
 
     ImmersiveBackgroundScaffold(
         backgroundSettings = backgroundSettings,
@@ -356,6 +351,20 @@ private fun MainShell(
                 onBindingCleared = onBindingCleared,
             )
         }
+    }
+}
+
+@Composable
+private fun StartupMessageSnackbarEffect(
+    startupMessage: UiText?,
+    snackbarHostState: SnackbarHostState,
+    onShown: () -> Unit,
+) {
+    val context = LocalContext.current
+    LaunchedEffect(startupMessage) {
+        val message = startupMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message.resolve(context))
+        onShown()
     }
 }
 
