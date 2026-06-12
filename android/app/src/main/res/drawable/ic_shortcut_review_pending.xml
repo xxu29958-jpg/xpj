@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动器快捷方式「去确认」图标：对勾徽标，表意「待确认/去确认」。
+     单色填充（品牌深色 #102018），launcher 会按自身规则蒙版/着色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48"
+    android:tint="#102018">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M24,4C12.95,4 4,12.95 4,24s8.95,20 20,20 20,-8.95 20,-20S35.05,4 24,4zM20,34L10,24l2.83,-2.83L20,28.34l15.17,-15.17L38,16 20,34z" />
+</vector>

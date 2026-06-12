@@ -360,6 +360,25 @@ form.inline { display: inline; }
     color: rgba(255, 255, 255, 0.45);
     padding: 6px 8px 2px;
 }
+/* 「高级」折叠组: <details>/<summary> 形态; summary 复用 group-label 视觉,
+ * 默认折叠把开发者深页收起来, 当前在深页时模板加 open 自动展开。 */
+.owner-sidebar__advanced > summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.owner-sidebar__advanced > summary::-webkit-details-marker { display: none; }
+.owner-sidebar__advanced > summary::before {
+    content: "▸";
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.45);
+    transition: transform var(--motion-fast) ease;
+}
+.owner-sidebar__advanced[open] > summary::before { transform: rotate(90deg); }
+.owner-sidebar__advanced > summary:hover { color: rgba(255, 255, 255, 0.72); }
 .owner-sidebar__nav a {
     display: block;
     padding: 7px 10px;
@@ -401,4 +420,7 @@ form.inline { display: inline; }
     .owner-sidebar__group { flex-direction: row; flex-wrap: wrap; gap: 4px; }
     .owner-sidebar__group-label { display: none; }
     .owner-sidebar__foot { display: none; }
+    /* 「高级」折叠组在窄屏仍需可展开: summary 是它的唯一入口, 不能跟普通
+     * group-label 一起隐藏, 否则折叠态下深页链接彻底点不到。 */
+    .owner-sidebar__advanced > summary { display: inline-flex; }
 }

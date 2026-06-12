@@ -126,6 +126,10 @@ internal class FakeReviewActions(
     var markNotDuplicateOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
     var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null
     var thumbnailResponder: (suspend (Long) -> Result<ProtectedImage>)? = null
+    // W1: drives [uploadScreenshot] so the share-multi-image path can be unit
+    // tested. Default (unset) keeps the historical "upload not exercised"
+    // failure so existing tests are unaffected. Receives the file name per call.
+    var uploadResponder: (suspend (String) -> Result<Long>)? = null
 
     var updateCalls: Int = 0
         private set
@@ -235,6 +239,10 @@ internal class FakeReviewActions(
 
     override suspend fun categories(): Result<List<String>> = Result.success(categoryOptions)
 
+    // Each uploadScreenshot call records the file name it was given so multi-image
+    // share tests can assert order + count without leaking bytes.
+    val uploadedFileNames = mutableListOf<String>()
+
     override suspend fun uploadScreenshot(
         fileName: String,
         contentType: String?,
@@ -244,6 +252,8 @@ internal class FakeReviewActions(
         expectedLedgerId: String?,
     ): Result<Long> {
         uploadCalls += 1
+        uploadedFileNames += fileName
+        uploadResponder?.let { return it(fileName) }
         return Result.failure(IllegalStateException("upload not exercised in tests"))
     }
 }

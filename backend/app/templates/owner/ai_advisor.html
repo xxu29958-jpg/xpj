@@ -1,7 +1,11 @@
 {% extends "base.html" %}
-{% block title %}AI 顾问 - 小票夹 Owner Console{% endblock %}
+{% block title %}AI 顾问 - 小票夹 本机管理后台{% endblock %}
 {% block content %}
 <h1>AI 顾问</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>高级功能：让外部 AI 帮看预算给点建议。要先在这里确认才会把已脱敏的请求发出去，建议默认是参考、不会自动改账。没配置外部 AI 就不用进来。</p>
+</details>
 
 <div class="card">
   <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
