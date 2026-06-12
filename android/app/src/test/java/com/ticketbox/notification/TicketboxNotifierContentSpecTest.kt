@@ -113,8 +113,23 @@ class TicketboxNotifierContentSpecTest {
     }
 
     @Test
-    fun threeChannelsAreDistinctStableIds() {
-        // channel id 一经发布不可改；三类互不相同，避免分类串台。
+    fun budgetSpecUsesBudgetChannelAmountBodyArgAndDeIdentifiedPublicSummary() {
+        // 预算超支：独立 channel；标题无参；正文带超出金额 arg；锁屏 public 用预算脱敏摘要
+        // （不带金额）；action 用中性「去查看」（无预算页深链，点击进 App）。
+        val spec = budgetOverspendNotificationContentSpec(overspentAmount = "¥123.45")
+        assertEquals("ticketbox.budget", spec.channelId)
+        assertEquals(R.string.notification_budget_overspent_title, spec.titleRes)
+        assertEquals(emptyList(), spec.titleArgs)
+        assertEquals(R.string.notification_budget_overspent_body, spec.bodyRes)
+        assertEquals(listOf("¥123.45"), spec.bodyArgs)
+        assertEquals(R.string.notification_public_budget_summary, spec.publicSummaryRes)
+        assertNotEquals(spec.bodyRes, spec.publicSummaryRes)
+        assertEquals(R.string.notification_action_open, spec.actionLabelRes)
+    }
+
+    @Test
+    fun fourChannelsAreDistinctStableIds() {
+        // channel id 一经发布不可改；四类互不相同，避免分类串台。
         val draftChannel = draftNotificationContentSpec(
             DraftNotificationDecision.DRAFT, "a", "¥1.00", null,
         ).channelId
@@ -122,9 +137,11 @@ class TicketboxNotifierContentSpecTest {
             DraftNotificationDecision.LARGE, "a", "¥1.00", null,
         ).channelId
         val recurringChannel = recurringNotificationContentSpec("a").channelId
+        val budgetChannel = budgetOverspendNotificationContentSpec("¥1.00").channelId
         assertEquals("ticketbox.drafts", draftChannel)
         assertEquals("ticketbox.alerts", largeChannel)
         assertEquals("ticketbox.recurring", recurringChannel)
-        assertTrue(setOf(draftChannel, largeChannel, recurringChannel).size == 3)
+        assertEquals("ticketbox.budget", budgetChannel)
+        assertTrue(setOf(draftChannel, largeChannel, recurringChannel, budgetChannel).size == 4)
     }
 }

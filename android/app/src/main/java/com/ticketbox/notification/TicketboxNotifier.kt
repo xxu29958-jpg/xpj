@@ -15,6 +15,7 @@ import com.ticketbox.MainActivity
 import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.recurring.RecurringReminderDispatchOutcome
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatMinorAmount
@@ -146,6 +147,22 @@ fun recurringNotificationContentSpec(merchant: String): NotificationContentSpec 
     )
 
 /**
+ * 纯 JVM 构造预算超支提醒的内容规格。正文带超出金额（本位币，调用方已格式化），
+ * 锁屏 public 用预算脱敏摘要（不带金额）。action 用中性的「去查看」——点击同样进 App
+ * （无预算页深链基建，与其他通知共用 contentIntent）。
+ */
+fun budgetOverspendNotificationContentSpec(overspentAmount: String): NotificationContentSpec =
+    NotificationContentSpec(
+        channelId = TicketboxNotifier.CHANNEL_BUDGET,
+        titleRes = R.string.notification_budget_overspent_title,
+        titleArgs = emptyList(),
+        bodyRes = R.string.notification_budget_overspent_body,
+        bodyArgs = listOf(overspentAmount),
+        publicSummaryRes = R.string.notification_public_budget_summary,
+        actionLabelRes = R.string.notification_action_open,
+    )
+
+/**
  * 通知闭环 PR-1/PR-2：把「通知监听 → 待确认草稿」「固定支出到期」的结果按设置页提醒开关
  * （待确认提醒 / 大额提醒 / 固定支出提醒）转成系统通知。NLS 与 App 同进程，进程内直发。
  *
@@ -213,6 +230,28 @@ class TicketboxNotifier(
         return RecurringReminderDispatchOutcome.SENT
     }
 
+    /**
+     * 预算超支提醒出口。判定（当月是否超支、是否已提醒过）不在本类：检测源是
+     * [com.ticketbox.notification.budget.BudgetOverspendChecker]，它在月级去重 + throttle 后
+     * 调用本方法。本方法仍是纯 dispatcher（镜像 [onRecurringDue] 的 Contract 7）：只按
+     * 「预算超支提醒」开关 + 系统通知权限决定是否出一条提醒，不拉 API、不判超支、不维护 sent-key。
+     *
+     * 返回 outcome 而非 Unit，让上游能据此决定「只有 SENT 才 markSent」——权限/开关关闭不得
+     * 写假「已提醒」（否则用户打开开关后整月收不到）。
+     *
+     * @param overspentAmount 已格式化的超出金额（本位币），进正文占位符。
+     * @param dedupeTag 通知栏覆盖 tag（同账本同月覆盖）。
+     */
+    fun onBudgetOverspent(overspentAmount: String, dedupeTag: String): BudgetOverspendDispatchOutcome {
+        val preferences = settingsStore.notificationPreferences()
+        if (!preferences.budgetOverspendAlerts) return BudgetOverspendDispatchOutcome.SKIPPED_DISABLED
+        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+            return BudgetOverspendDispatchOutcome.SKIPPED_PERMISSION_DENIED
+        }
+        publish(budgetOverspendNotificationContentSpec(overspentAmount), dedupeTag = dedupeTag)
+        return BudgetOverspendDispatchOutcome.SENT
+    }
+
     private fun publish(spec: NotificationContentSpec, dedupeTag: String) {
         // API 33+ 的显式权限检查：行为上已被 areNotificationsEnabled() 守卫覆盖
         // （T+ 上未授权即返回 false），这里再查一次是 notify() 的
@@ -273,6 +312,10 @@ class TicketboxNotifier(
                 NotificationChannelCompat.Builder(CHANNEL_RECURRING, NotificationManagerCompat.IMPORTANCE_DEFAULT)
                     .setName(appContext.getString(R.string.notification_channel_recurring_name))
                     .build(),
+                // 预算超支：月级一次性提醒，DEFAULT 即可（不像大额需要 heads-up 即时决策）。
+                NotificationChannelCompat.Builder(CHANNEL_BUDGET, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+                    .setName(appContext.getString(R.string.notification_channel_budget_name))
+                    .build(),
             ),
         )
     }
@@ -296,6 +339,7 @@ class TicketboxNotifier(
         const val CHANNEL_DRAFTS = "ticketbox.drafts"
         const val CHANNEL_ALERTS = "ticketbox.alerts"
         const val CHANNEL_RECURRING = "ticketbox.recurring"
+        const val CHANNEL_BUDGET = "ticketbox.budget"
         const val DRAFT_NOTIFICATION_ID = 1
     }
 }
