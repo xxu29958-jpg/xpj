@@ -5737,6 +5737,28 @@
             ],
             "title": "Backend Version"
           },
+          "backup_age_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Age Hours"
+          },
+          "backup_stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Stale"
+          },
           "database_status": {
             "anyOf": [
               {
@@ -5758,6 +5780,17 @@
               }
             ],
             "title": "Identity Schema"
+          },
+          "latest_backup_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Backup At"
           },
           "owner_console_status": {
             "anyOf": [

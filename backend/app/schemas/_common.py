@@ -29,6 +29,13 @@ class HealthResponse(BaseModel):
     database_status: str | None = None
     upload_dir_status: str | None = None
     owner_console_status: str | None = None
+    # 备份链健康(轴6 备份超龄通知的数据源;复用 owner dashboard 的
+    # backup_service.backup_health(),48h stale 阈值留在服务端单源,客户端只消费
+    # backup_stale 不自带阈值)。latest_backup_at 为 ISO 8601 UTC;无备份时三者
+    # 分别为 None / None / True。
+    latest_backup_at: str | None = None
+    backup_age_hours: int | None = None
+    backup_stale: bool | None = None
 
 
 class AuthCheckResponse(BaseModel):
