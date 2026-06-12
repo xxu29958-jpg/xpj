@@ -143,6 +143,25 @@ def test_outbox_dispatcher_coverage_holds_on_live_tree() -> None:
     )
 
 
+def test_outbox_dispatcher_registry_parser_ignores_non_outbox_dispatchers() -> None:
+    mod = importlib.reload(importlib.import_module("_audit_android_outbox_dispatcher_coverage"))
+    source = """
+class AppContainer {
+    private val outboxDispatchers: List<OutboxMutationDispatcher> = listOf(
+        PatchExpenseDispatcher(
+            apiProvider = { api },
+        ),
+    )
+
+    val recurringReminderEngine = RecurringReminderEngine(
+        dispatcher = NotifierRecurringReminderDispatcher(notifier::onRecurringDue),
+    )
+}
+"""
+
+    assert mod.parse_registered_classes(source) == {"PatchExpenseDispatcher"}
+
+
 def test_outbox_dispatcher_coverage_flags_three_way_drift() -> None:
     mod = importlib.reload(importlib.import_module("_audit_android_outbox_dispatcher_coverage"))
     # PatchExpense: enqueued but has no dispatcher -> rows drain to FAILED.
