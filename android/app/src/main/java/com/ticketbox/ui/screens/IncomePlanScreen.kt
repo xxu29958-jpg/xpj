@@ -76,7 +76,8 @@ private const val FlashDismissMillis = 4000L
  * [AppStatusBanner]（flashMessage→Success / error→Danger），添加入口收编到页头的
  * [PrimaryCtaButton]。不照搬 /web 的"表 + form"，按移动端单手操作模式：每条收入是
  * 一个卡片，添加进底部抽屉。共享 design token 通过 MaterialTheme + AppSpacing +
- * AppGlassCard（token 三端同步是硬约束，layout 按端形态自决）。
+ * AppGlassCard（参考 [[feedback_three_surface_visual_sync]]：token 同步是硬约束；
+ * layout 按端特点自决）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
