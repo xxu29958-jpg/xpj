@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0046（0018 已撤回；0032–0034 未使用，编号跳过）。
+**编号范围**：0001–0047（0018 已撤回；0032–0034 未使用，编号跳过）。
 
 ## 索引
 
@@ -51,10 +51,11 @@
 | [0044](0044-android-string-resourcing.md) | Android UI 字符串外置 strings.xml | resourcing 非翻译：只放中文、不建第二语言；按 screen/module 分 PR | accepted；反转 §14 deferral，§13 i18n 仍不做 |
 | [0045](0045-csrf-signing-key.md) | CSRF 签名密钥 per-install 化 | 公开占位常量 → app_meta 持久化随机密钥派生（budget-advisor audit HMAC 同源） | accepted |
 | [0046](0046-android-recurring-reminder-detection-source.md) | Android 固定支出提醒检测源 | WorkManager 仅作 Scheduler；Engine/Policy/Store/Dispatcher 四层契约；本地 sent-key 去重；不触 §13 MAJOR | accepted；recurring 通知出口见 notif-loop PR-2 |
+| [0047](0047-bundled-installer-portable-postgres.md) | 分发形态：捆绑安装器 + portable PG | EDB 官方 zip 捆绑 PG 17（major 钉死，升级另 ADR）；管理器双进程监督；局域网默认；应用角色直建堵 owner 陷阱 | **proposed**（owner 已口头定调「发给别人用」） |
 
 ## 编写新 ADR
 
-下一编号 `0047`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0048`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题
