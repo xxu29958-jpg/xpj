@@ -8,14 +8,17 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseEditActions
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.SaveOutcome
+import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.canInitiateBillSplit
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -74,6 +77,19 @@ data class ExpenseEditUiState(
     val splitMembersLoading: Boolean = false,
     val splitsSaving: Boolean = false,
     val splitsMessage: UiText? = null,
+    // ADR-0029 拆账发起（批 13）。billSplitSent 已按本票 senderExpenseId 过滤；
+    // inviteSheetOpen 控制发起 sheet；inviteMembers 是可选收件人（已剔自己/停用）；
+    // inviteSelectedMemberId/inviteAmountText 是 sheet 表单态；inviteSending 是发送中。
+    val billSplitSent: List<BillSplitSent> = emptyList(),
+    val billSplitLoading: Boolean = false,
+    val billSplitMessage: UiText? = null,
+    val billSplitInviteSheetOpen: Boolean = false,
+    val billSplitInviteMembers: List<FamilyMember> = emptyList(),
+    val billSplitInviteMembersLoading: Boolean = false,
+    val billSplitInviteSelectedMemberId: Long? = null,
+    val billSplitInviteAmountText: String = "",
+    val billSplitInviteSending: Boolean = false,
+    val billSplitInviteMessage: UiText? = null,
     val recognizeTextDialogOpen: Boolean = false,
     val message: UiText? = null,
     val done: Boolean = false,
@@ -125,6 +141,11 @@ class ExpenseEditViewModel(
                             expenseLoading = false,
                             message = null,
                         )
+                    }
+                    // 批 13：仅已确认/有金额/非收到拆账/可写的票才拉本票已发邀请，
+                    // 给「找家人分摊」卡填列表（pending/received 票不发无谓请求）。
+                    if (expense.canInitiateBillSplit(_uiState.value.readOnly)) {
+                        loadBillSplitSent()
                     }
                 }
                 .onFailure { error ->

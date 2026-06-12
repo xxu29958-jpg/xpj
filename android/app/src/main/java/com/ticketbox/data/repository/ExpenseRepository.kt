@@ -176,7 +176,7 @@ class ExpenseRepository(
     ): Result<ReplaceItemsOutcome> =
         detailRepository.replaceExpenseItemsAllowingOffline(expense, items, currentItems)
 
-    suspend fun createBillSplitInvitation(
+    override suspend fun createBillSplitInvitation(
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,
@@ -189,7 +189,7 @@ class ExpenseRepository(
     suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> =
         billSplitRepository.fetchBillSplitInbox()
 
-    suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> =
+    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> =
         billSplitRepository.fetchBillSplitSent()
 
     suspend fun acceptBillSplitInvitation(
@@ -200,7 +200,7 @@ class ExpenseRepository(
     suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> =
         billSplitRepository.rejectBillSplitInvitation(publicId)
 
-    suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
+    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
         billSplitRepository.cancelBillSplitInvitation(publicId)
 
     suspend fun fetchBackgroundTasks(): Result<List<BackgroundTask>> =

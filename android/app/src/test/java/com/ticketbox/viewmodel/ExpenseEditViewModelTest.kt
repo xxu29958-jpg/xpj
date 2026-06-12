@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.ItemsAckOutcome
 import com.ticketbox.data.repository.ReplaceItemsOutcome
 import com.ticketbox.data.repository.ReplaceSplitsOutcome
 import com.ticketbox.data.repository.SaveOutcome
+import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -335,6 +336,120 @@ internal class ExpenseEditViewModelTest {
         assertNull(vm.uiState.value.itemsMessage)
         assertNotNull(vm.uiState.value.message)
     }
+
+    // ── 批 13 拆账发起 ──
+
+    /** 一个已确认、有金额的账单 fake，作为发起拆账的前提（init 会自动拉本票已发列表）。 */
+    private fun confirmedExpenseFake(fake: FakeExpenseEditActions) {
+        fake.fetchExpenseResponder = {
+            Result.success(fake.baseExpense.copy(status = "confirmed", amountCents = 1000L))
+        }
+    }
+
+    @Test
+    fun loadBillSplitSentFiltersByThisExpense() = edit { fake ->
+        confirmedExpenseFake(fake)
+        // 账号维度返回两条：一条属本票(7)、一条属别票(99)。卡里只应留本票那条。
+        fake.fetchBillSplitSentResponder = {
+            Result.success(
+                listOf(
+                    fake.sentInvite(publicId = "mine", senderExpenseId = 7L),
+                    fake.sentInvite(publicId = "other", senderExpenseId = 99L),
+                ),
+            )
+        }
+        val vm = viewModel(fake)
+
+        assertEquals(listOf("mine"), vm.uiState.value.billSplitSent.map { it.publicId })
+    }
+
+    @Test
+    fun sendBillSplitInviteSuccessCreatesWithMemberAccountIdAndRefreshes() = edit { fake ->
+        confirmedExpenseFake(fake)
+        fake.fetchBillSplitSentResponder = { Result.success(emptyList()) }
+        fake.splitMembersResponder = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResponder = { _, _, _ -> Result.success(fake.sentInvite(publicId = "new")) }
+        val vm = viewModel(fake)
+
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("4.00")
+        vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        assertEquals(1, fake.createBillSplitCalls)
+        // 发起必须用成员的 account_id（333），不是 member_id（3）——守 receiver_account_id 语义。
+        assertEquals(Triple(7L, 333L, 400L), fake.lastCreateBillSplitArgs)
+        assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
+        assertEquals(UiText.res(R.string.expense_edit_bill_split_sent), vm.uiState.value.message)
+    }
+
+    @Test
+    fun sendBillSplitInviteRejectsAmountOverRemainingWithoutCallingRepository() = edit { fake ->
+        confirmedExpenseFake(fake)
+        // 父金额 10.00，已有一条活跃(invited)拆账 8.00 → 剩余 2.00；发 5.00 必须本地拒。
+        fake.fetchBillSplitSentResponder = {
+            Result.success(listOf(fake.sentInvite(publicId = "active", status = "invited", amountCents = 800L)))
+        }
+        fake.splitMembersResponder = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResponder = { _, _, _ -> error("must not reach repository on over-limit amount") }
+        val vm = viewModel(fake)
+
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("5.00")
+        vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.createBillSplitCalls)
+        assertNotNull(vm.uiState.value.billSplitInviteMessage)
+        assertTrue(vm.uiState.value.billSplitInviteSheetOpen)
+    }
+
+    @Test
+    fun sendBillSplitInviteFailureShowsErrorInSheet() = edit { fake ->
+        confirmedExpenseFake(fake)
+        fake.fetchBillSplitSentResponder = { Result.success(emptyList()) }
+        fake.splitMembersResponder = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResponder = { _, _, _ -> Result.failure(RuntimeException("boom")) }
+        val vm = viewModel(fake)
+
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("4.00")
+        vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        // 在线-only：失败留在 sheet 内，sheet 不关、不报「已发起」、不入队。
+        assertEquals(1, fake.createBillSplitCalls)
+        assertNotNull(vm.uiState.value.billSplitInviteMessage)
+        assertTrue(vm.uiState.value.billSplitInviteSheetOpen)
+        assertNull(vm.uiState.value.message)
+    }
+
+    @Test
+    fun openBillSplitInviteSheetExcludesSelfAndDisabledMembers() = edit { fake ->
+        confirmedExpenseFake(fake)
+        fake.fetchBillSplitSentResponder = { Result.success(emptyList()) }
+        fake.splitMembersResponder = {
+            Result.success(
+                listOf(
+                    fake.member(memberId = 1L, isSelf = true),
+                    fake.member(memberId = 2L, disabledAt = "2025-01-01T00:00:00Z"),
+                    fake.member(memberId = 3L, displayName = "可选家人"),
+                ),
+            )
+        }
+        val vm = viewModel(fake)
+
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+
+        assertEquals(listOf(3L), vm.uiState.value.billSplitInviteMembers.map { it.memberId })
+    }
 }
 
 internal class FakeExpenseEditActions : ExpenseEditActions {
@@ -387,12 +502,57 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         splits = emptyList<ExpenseSplit>(),
     )
 
+    fun member(
+        memberId: Long,
+        accountId: Long = memberId * 100,
+        displayName: String = "成员$memberId",
+        isSelf: Boolean = false,
+        disabledAt: String? = null,
+    ): FamilyMember = FamilyMember(
+        memberId = memberId,
+        accountId = accountId,
+        accountPublicId = "acc-$memberId",
+        displayName = displayName,
+        role = "member",
+        joinedAt = null,
+        disabledAt = disabledAt,
+        isSelf = isSelf,
+    )
+
+    fun sentInvite(
+        publicId: String = "bs-1",
+        status: String = "invited",
+        amountCents: Long = 500L,
+        senderExpenseId: Long = 7L,
+    ): BillSplitSent = BillSplitSent(
+        publicId = publicId,
+        status = status,
+        amountCents = amountCents,
+        merchantSnapshot = null,
+        categorySuggestion = null,
+        expenseTimeSnapshot = null,
+        expiresAt = "2025-02-01T00:00:00Z",
+        createdAt = "2025-01-01T00:00:00Z",
+        acceptedAt = null,
+        rejectedAt = null,
+        cancelledAt = null,
+        expiredAt = null,
+        receiverAccountId = 200L,
+        receiverDisplayNameSnapshot = "家人",
+        senderExpenseId = senderExpenseId,
+    )
+
     var fetchExpenseResponder: (suspend (Long) -> Result<Expense>)? = null
     var saveOfflineResponder: (suspend (Long, ExpenseDraft, Expense) -> Result<SaveOutcome>)? = null
     var confirmOfflineResponder: (suspend (Expense) -> Result<ExpenseStateOutcome>)? = null
     var ackResponder: (suspend (Expense, ExpenseItems) -> Result<ItemsAckOutcome>)? = null
     var replaceItemsResponder: (suspend (Expense, List<ExpenseItemDraft>, ExpenseItems) -> Result<ReplaceItemsOutcome>)? = null
     var replaceSplitsResponder: (suspend (Expense, List<ExpenseSplitDraft>, ExpenseSplits) -> Result<ReplaceSplitsOutcome>)? = null
+    // 批 13 拆账发起：成员花名册 / 已发列表 / 发起 / 撤回。
+    var splitMembersResponder: (suspend () -> Result<List<FamilyMember>>)? = null
+    var fetchBillSplitSentResponder: (suspend () -> Result<List<BillSplitSent>>)? = null
+    var createBillSplitResponder: (suspend (Long, Long, Long) -> Result<BillSplitSent>)? = null
+    var cancelBillSplitResponder: (suspend (String) -> Result<BillSplitSent>)? = null
 
     var saveCalls: Int = 0
         private set
@@ -401,6 +561,10 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     var replaceItemsCalls: Int = 0
         private set
     var replaceSplitsCalls: Int = 0
+        private set
+    var createBillSplitCalls: Int = 0
+        private set
+    var lastCreateBillSplitArgs: Triple<Long, Long, Long>? = null
         private set
     var confirmedExpense: Expense? = null
         private set
@@ -472,7 +636,8 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
 
     override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = Result.success(splits())
 
-    override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> = Result.success(emptyList())
+    override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> =
+        splitMembersResponder?.invoke() ?: Result.success(emptyList())
 
     override suspend fun replaceExpenseSplitsAllowingOffline(
         expense: Expense,
@@ -483,4 +648,21 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         return replaceSplitsResponder?.invoke(expense, splits, currentSplits)
             ?: error("replaceSplitsResponder not set")
     }
+
+    override suspend fun createBillSplitInvitation(
+        expenseId: Long,
+        receiverAccountId: Long,
+        amountCents: Long,
+    ): Result<BillSplitSent> {
+        createBillSplitCalls += 1
+        lastCreateBillSplitArgs = Triple(expenseId, receiverAccountId, amountCents)
+        return createBillSplitResponder?.invoke(expenseId, receiverAccountId, amountCents)
+            ?: error("createBillSplitResponder not set")
+    }
+
+    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> =
+        fetchBillSplitSentResponder?.invoke() ?: Result.success(emptyList())
+
+    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
+        cancelBillSplitResponder?.invoke(publicId) ?: error("cancelBillSplitResponder not set")
 }

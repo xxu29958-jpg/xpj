@@ -167,6 +167,10 @@ class InvitationAcceptResponse(BaseModel):
 
 class LedgerMemberResponse(BaseModel):
     member_id: int
+    # ADR-0029 拆账发起需要 receiver_account_id（内部账号 int）。成员 API 历史只给
+    # member_id / account_public_id；此处补 account_id 与 BillSplitSentResponse 的
+    # receiver_account_id 同形（内部 int 走 API、不上 UI，守 §3）。
+    account_id: int
     account_public_id: str
     account_name: str
     role: str

@@ -17,9 +17,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPageHeader
@@ -33,7 +35,11 @@ import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
+import com.ticketbox.ui.screens.expense.BillSplitInviteSheetActions
+import com.ticketbox.ui.screens.expense.BillSplitInviteSheetState
 import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
+import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseDateField
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
@@ -82,6 +88,13 @@ fun ExpenseEditScreen(
     onEvenSplit: () -> Unit = {},
     onSaveSplits: () -> Unit = {},
     onDismissSplitsEditor: () -> Unit = {},
+    // 批 13 拆账发起：卡片「发起拆账」/ 卡内撤回 + 发起 sheet 表单。
+    onStartBillSplit: () -> Unit = {},
+    onCancelBillSplit: (publicId: String) -> Unit = {},
+    onSelectBillSplitMember: (memberId: Long) -> Unit = {},
+    onUpdateBillSplitAmount: (amountText: String) -> Unit = {},
+    onSendBillSplit: () -> Unit = {},
+    onDismissBillSplitSheet: () -> Unit = {},
     allowConfirm: Boolean = true,
     allowReject: Boolean = true,
 ) {
@@ -115,6 +128,26 @@ fun ExpenseEditScreen(
             onEvenSplit = onEvenSplit,
             onSave = onSaveSplits,
             onDismiss = onDismissSplitsEditor,
+        )
+    }
+
+    if (state.billSplitInviteSheetOpen) {
+        BillSplitInviteSheet(
+            state = BillSplitInviteSheetState(
+                members = state.billSplitInviteMembers,
+                membersLoading = state.billSplitInviteMembersLoading,
+                selectedMemberId = state.billSplitInviteSelectedMemberId,
+                amountText = state.billSplitInviteAmountText,
+                sending = state.billSplitInviteSending,
+                message = state.billSplitInviteMessage,
+            ),
+            remainingCents = billSplitRemainingCents(state),
+            actions = BillSplitInviteSheetActions(
+                onSelectMember = onSelectBillSplitMember,
+                onUpdateAmount = onUpdateBillSplitAmount,
+                onSend = onSendBillSplit,
+                onDismiss = onDismissBillSplitSheet,
+            ),
         )
     }
 
@@ -390,6 +423,17 @@ fun ExpenseEditScreen(
             onEditSplits = if (state.readOnly) null else onEditSplits,
         )
 
+        // 批 13：跨账本「找家人分摊」卡——仅已确认 + 有金额 + 非收到拆账 + 可写时出现。
+        if (currentExpense.canInitiateBillSplit(state.readOnly)) {
+            ExpenseBillSplitInvitePanel(
+                sent = state.billSplitSent,
+                loading = state.billSplitLoading,
+                message = state.billSplitMessage,
+                onStartInvite = onStartBillSplit,
+                onCancelInvite = onCancelBillSplit,
+            )
+        }
+
         ExpenseEditMoreSection(
             tags = tags,
             onTagsChange = { tags = it },
@@ -413,4 +457,17 @@ fun ExpenseEditScreen(
         // 保存 / 确认入账 / 删除 与校验提示现在浮在底部操作栏（见 bottomBar），
         // 不再钉在长表单滚动末尾。
     }
+}
+
+/**
+ * 批 13：本笔还可分摊的金额 = 账单金额 − 已活跃（invited/accepted）拆账总额。
+ * 仅作 sheet 内的非阻塞提示；金额上限的权威校验在 VM + 后端 split_total_exceeds_parent。
+ * 账单无金额时返回 null（卡片本就不会出现，此处只为安全）。
+ */
+private fun billSplitRemainingCents(state: ExpenseEditUiState): Long? {
+    val parent = state.expense?.amountCents ?: return null
+    val active = state.billSplitSent
+        .filter { it.status == BillSplitStatusValues.INVITED || it.status == BillSplitStatusValues.ACCEPTED }
+        .sumOf { it.amountCents }
+    return (parent - active).coerceAtLeast(0L)
 }

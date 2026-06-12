@@ -20,6 +20,7 @@ class LedgerRepositoryFamilyMembersTest {
                 members = listOf(
                     LedgerMemberDto(
                         memberId = 1,
+                        accountId = 11,
                         accountPublicId = "acc_owner",
                         accountName = "阿方",
                         role = "owner",
@@ -29,6 +30,7 @@ class LedgerRepositoryFamilyMembersTest {
                     ),
                     LedgerMemberDto(
                         memberId = 2,
+                        accountId = 22,
                         accountPublicId = "acc_viewer",
                         accountName = "",
                         role = "viewer",
@@ -55,6 +57,9 @@ class LedgerRepositoryFamilyMembersTest {
         assertEquals("L_family", api.memberLedgerRequests.single())
         assertEquals(listOf("阿方", "未命名成员"), members.map { it.displayName })
         assertEquals(listOf("owner", "viewer"), members.map { it.role })
+        // ADR-0029 拆账发起 enabler：account_id 必须从 DTO 透传到 domain（split-invite
+        // 的 receiver_account_id 来源）；与 memberId 是两套 id，不能糊成同一个。
+        assertEquals(listOf(11L, 22L), members.map { it.accountId })
         assertTrue(members.first().isSelf)
         assertTrue(members.last().isDisabled)
     }
@@ -66,6 +71,7 @@ class LedgerRepositoryFamilyMembersTest {
                 members = listOf(
                     LedgerMemberDto(
                         memberId = 1,
+                        accountId = 11,
                         accountPublicId = "acc_self",
                         accountName = "我",
                         role = "viewer",
@@ -108,6 +114,7 @@ class LedgerRepositoryFamilyMembersTest {
                 members = listOf(
                     LedgerMemberDto(
                         memberId = 1,
+                        accountId = 11,
                         accountPublicId = "acc_self",
                         accountName = "我",
                         role = "viewer",

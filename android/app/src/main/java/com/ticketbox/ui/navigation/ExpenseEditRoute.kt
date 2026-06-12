@@ -27,15 +27,21 @@ import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.acknowledgeItemsMismatch
 import com.ticketbox.viewmodel.addItemRow
+import com.ticketbox.viewmodel.cancelBillSplitInvitation
+import com.ticketbox.viewmodel.closeBillSplitInviteSheet
 import com.ticketbox.viewmodel.closeItemsEditor
 import com.ticketbox.viewmodel.closeSplitsEditor
 import com.ticketbox.viewmodel.evenSplitAmounts
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
+import com.ticketbox.viewmodel.openBillSplitInviteSheet
 import com.ticketbox.viewmodel.openItemsEditor
 import com.ticketbox.viewmodel.openSplitsEditor
 import com.ticketbox.viewmodel.removeItemRow
 import com.ticketbox.viewmodel.saveItems
 import com.ticketbox.viewmodel.saveSplits
+import com.ticketbox.viewmodel.selectBillSplitInviteMember
+import com.ticketbox.viewmodel.sendBillSplitInvite
+import com.ticketbox.viewmodel.updateBillSplitInviteAmount
 import com.ticketbox.viewmodel.updateItemDraft
 import com.ticketbox.viewmodel.updateSplitAmount
 import com.ticketbox.viewmodel.updateSplitIncluded
@@ -88,6 +94,12 @@ internal fun ExpenseEditRoute(
         onEvenSplit = editViewModel::evenSplitAmounts,
         onSaveSplits = editViewModel::saveSplits,
         onDismissSplitsEditor = editViewModel::closeSplitsEditor,
+        onStartBillSplit = editViewModel::openBillSplitInviteSheet,
+        onCancelBillSplit = editViewModel::cancelBillSplitInvitation,
+        onSelectBillSplitMember = editViewModel::selectBillSplitInviteMember,
+        onUpdateBillSplitAmount = editViewModel::updateBillSplitInviteAmount,
+        onSendBillSplit = editViewModel::sendBillSplitInvite,
+        onDismissBillSplitSheet = editViewModel::closeBillSplitInviteSheet,
         onDone = {
             if (editViewModel.consumeDone()) {
                 onCompleted()

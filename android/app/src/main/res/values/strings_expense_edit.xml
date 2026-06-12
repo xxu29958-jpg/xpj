@@ -213,4 +213,42 @@
     <string name="expense_edit_splits_saved_offline_queued">已离线保存，联网后同步。</string>
     <string name="expense_edit_splits_save_failed">拆账保存失败，请稍后再试。</string>
 
+    <!-- UI/UX 第三波 批 13：跨账本「找家人分摊」卡（发起拆账邀请）。
+         关键文案：让用户分清「份额」与「拆账」——份额记在本账本，拆账是把一笔分给家人、
+         对方在自己的账本记一笔，接受后两笔互不影响。 -->
+    <string name="expense_edit_bill_split_card_title">找家人分摊</string>
+    <string name="expense_edit_bill_split_card_subtitle">把这笔的一部分分给家人，对方在自己的账本记一笔；接受后与本账单各自独立、互不影响。和上面「家庭拆账（份额）」不同——那只是记下本账本里谁分摊多少。</string>
+    <string name="expense_edit_bill_split_start_button">发起拆账</string>
+    <string name="expense_edit_bill_split_loading">拆账邀请加载中…</string>
+    <string name="expense_edit_bill_split_empty">还没有发出的拆账邀请。点「发起拆账」分给家人。</string>
+    <string name="expense_edit_bill_split_row_to">发给 %1$s</string>
+    <string name="expense_edit_bill_split_row_to_unknown">发给家人</string>
+    <string name="expense_edit_bill_split_row_cancel">撤回</string>
+    <!-- 卡内已发邀请的状态标签 -->
+    <string name="expense_edit_bill_split_status_invited">待对方处理</string>
+    <string name="expense_edit_bill_split_status_accepted">对方已接受</string>
+    <string name="expense_edit_bill_split_status_rejected">对方已拒绝</string>
+    <string name="expense_edit_bill_split_status_cancelled">已撤回</string>
+    <string name="expense_edit_bill_split_status_expired">已过期</string>
+
+    <!-- 发起 sheet -->
+    <string name="expense_edit_bill_split_sheet_title">发起拆账</string>
+    <string name="expense_edit_bill_split_sheet_subtitle">选一位家人，填要分给 TA 的金额。对方会在自己的账本里收到这笔邀请。</string>
+    <string name="expense_edit_bill_split_sheet_member_label">分给谁</string>
+    <string name="expense_edit_bill_split_sheet_no_members">本账本暂时没有可分摊的家人。先邀请家人加入本账本，再发起拆账。</string>
+    <string name="expense_edit_bill_split_sheet_amount_label">分摊金额</string>
+    <string name="expense_edit_bill_split_sheet_remaining">本笔还可分摊 %1$s</string>
+    <string name="expense_edit_bill_split_sheet_send_button">发送邀请</string>
+    <string name="expense_edit_bill_split_sheet_sending_button">发送中…</string>
+
+    <!-- billSplitMessage / billSplitInviteMessage（经 UiText 解析） -->
+    <string name="expense_edit_bill_split_load_failed">拆账邀请暂时加载失败。</string>
+    <string name="expense_edit_bill_split_members_load_failed">家人名单暂时加载失败。</string>
+    <string name="expense_edit_bill_split_pick_member">请先选一位要分摊的家人。</string>
+    <string name="expense_edit_bill_split_amount_invalid">请填写大于 0 的分摊金额。</string>
+    <string name="expense_edit_bill_split_amount_exceeds">分摊金额不能超过本笔还可分摊的部分。</string>
+    <string name="expense_edit_bill_split_sent">拆账邀请已发出。</string>
+    <string name="expense_edit_bill_split_send_failed">没有发出成功，请稍后再试。</string>
+    <string name="expense_edit_bill_split_cancel_failed">撤回失败，请稍后再试。</string>
+
 </resources>
