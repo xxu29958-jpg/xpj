@@ -68,6 +68,14 @@ internal fun LedgerRoute(
 
     LedgerScreen(
         state = state,
+        // 「记一笔」启动器 shortcut：切到本 tab 后由此一次性动作自动拉起手动记账表单。
+        // 只消费属于自己的 OpenManualEntry 变体，别吞掉别的 Route 的动作。
+        openManualEntryRequested = shellState.launchAction.pending is LaunchAction.OpenManualEntry,
+        onManualEntryConsumed = {
+            if (shellState.launchAction.pending is LaunchAction.OpenManualEntry) {
+                shellState.launchAction.consume()
+            }
+        },
         onMonthChange = ledgerViewModel::setMonthFilter,
         onCategoryChange = ledgerViewModel::setCategoryFilter,
         onTagChange = ledgerViewModel::setTagFilter,

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  启动器静态快捷方式（长按应用图标）：传小票 / 记一笔 / 去确认。
+
+  每个 <intent> 用自定义 action `com.ticketbox.action.SHORTCUT` 派发，而**不写**
+  android:targetPackage —— internal flavor 的 applicationId 带 `.internal` 后缀，
+  硬编码 targetPackage 会在该变体下解析失败、快捷方式静默丢失。action-only intent
+  在本 App 内由 MainActivity 的同名 intent-filter 接住，跨 flavor 稳定。
+  目标用 EXTRA `com.ticketbox.shortcut.target` 携带（值见 ShortcutTarget.id）。
+
+  文案走 strings（shortcut_*），图标用 res/drawable 下的单色 vector。
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="upload_receipt"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_upload_receipt"
+        android:shortcutShortLabel="@string/shortcut_upload_short_label"
+        android:shortcutLongLabel="@string/shortcut_upload_long_label">
+        <intent
+            android:action="com.ticketbox.action.SHORTCUT"
+            android:targetClass="com.ticketbox.MainActivity">
+            <extra
+                android:name="com.ticketbox.shortcut.target"
+                android:value="upload_receipt" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="manual_entry"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_manual_entry"
+        android:shortcutShortLabel="@string/shortcut_manual_short_label"
+        android:shortcutLongLabel="@string/shortcut_manual_long_label">
+        <intent
+            android:action="com.ticketbox.action.SHORTCUT"
+            android:targetClass="com.ticketbox.MainActivity">
+            <extra
+                android:name="com.ticketbox.shortcut.target"
+                android:value="manual_entry" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="review_pending"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_review_pending"
+        android:shortcutShortLabel="@string/shortcut_review_short_label"
+        android:shortcutLongLabel="@string/shortcut_review_long_label">
+        <intent
+            android:action="com.ticketbox.action.SHORTCUT"
+            android:targetClass="com.ticketbox.MainActivity">
+            <extra
+                android:name="com.ticketbox.shortcut.target"
+                android:value="review_pending" />
+        </intent>
+    </shortcut>
+</shortcuts>

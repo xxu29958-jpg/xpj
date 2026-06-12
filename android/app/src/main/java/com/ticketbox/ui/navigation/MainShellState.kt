@@ -57,6 +57,10 @@ internal class MainShellState {
     var expenseEditCompletionRevision by mutableStateOf(0)
         private set
 
+    // 系统分享 / 启动器 shortcut 的一次性入口动作（W1），单独成类（见 LaunchActionState）：
+    // MainShellState 已贴着 detekt 每文件函数上限，把那两个 post/consume 方法外置避免触顶。
+    val launchAction = LaunchActionState()
+
     fun selectBottomTab(key: String) {
         BottomTab.entries.firstOrNull { it.key == key }?.let { selectedTab = it }
     }
