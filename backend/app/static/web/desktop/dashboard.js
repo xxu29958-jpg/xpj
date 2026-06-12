@@ -177,6 +177,27 @@
     return list;
   }
 
+  // Shared top-N progress rows for the 预算 / 目标 cards. Mirrors the
+  // server-rendered ``.cat-list--gap > .cat-row`` markup in dashboard.html so
+  // both render paths produce the same bars (#49 dual-renderer pattern, same
+  // as renderCategoryRows). ``barColor`` / ``amountNode`` differ per card.
+  function renderProgressRows(rows, barColor, amountNode) {
+    const list = el("div", "cat-list cat-list--gap");
+    rows.forEach(function (item) {
+      const width = Math.max(0, Math.min(100, Number(item.percent || 0)));
+      const row = el("div", "cat-row");
+      const bar = el("div", "cat-bar");
+      append(
+        row,
+        el("div", "cat-name", item.name),
+        append(bar, styled(el("div", "cat-bar-fill"), "width:" + width + "%;background:" + barColor(item))),
+        amountNode(item)
+      );
+      append(list, row);
+    });
+    return list;
+  }
+
   function renderPendingCard(cards, ledgerId) {
     const shell = cardShell("col-4", "pending");
     append(shell.card, cardHead(
@@ -278,6 +299,24 @@
         value.textContent = money(cards.budget_total_yuan) + " · 剩 " + money(cards.budget_remaining_yuan);
       }
       append(shell.card, append(el("div"), append(row, el("div", "budget-label", "总额"), value)));
+      const budgetTop = cards.budget_top || [];
+      if (budgetTop.length) {
+        append(shell.card, renderProgressRows(
+          budgetTop,
+          function (b) {
+            if (b.is_over) return "var(--state-danger-fg)";
+            if (Number(b.percent || 0) >= 80) return "var(--brand-primary)";
+            return "var(--text-default)";
+          },
+          function (b) {
+            if (b.is_over) {
+              const over = el("span", "cat-amt text-danger", "超 " + money(b.overspent_yuan));
+              return over;
+            }
+            return el("div", "cat-amt", money(b.spent_yuan) + "/" + b.limit_yuan);
+          }
+        ));
+      }
     } else {
       append(shell.card, emptyState(
         "本月还没有预算",
@@ -309,6 +348,21 @@
       if (cards.goals_risk_count) append(body, " · ", pill("dt-pill warn", text(cards.goals_risk_count) + " 接近上限"));
       append(body, "。");
       append(shell.card, body);
+      const goalsTop = cards.goals_top || [];
+      if (goalsTop.length) {
+        append(shell.card, renderProgressRows(
+          goalsTop,
+          function (g) {
+            if (g.state === "over_limit") return "var(--state-danger-fg)";
+            if (g.state === "near_limit") return "var(--brand-primary)";
+            return "var(--text-default)";
+          },
+          function (g) {
+            const cls = g.state === "over_limit" ? "cat-amt text-danger" : "cat-amt";
+            return el("div", cls, text(g.percent) + "%");
+          }
+        ));
+      }
     }
     return shell.outer;
   }
