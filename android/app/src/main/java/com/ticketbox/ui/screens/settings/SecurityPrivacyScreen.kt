@@ -108,6 +108,10 @@ fun SecurityPrivacyScreen(
     onBack: () -> Unit,
     onClearCache: () -> Unit,
     onBindingCleared: () -> Unit,
+    // Page-header status feedback (this screen used to render none — clearing
+    // cache / logging out gave no on-screen signal). The host builds an
+    // AppStatusBanner from SettingsViewModel's message + tone and passes it here.
+    status: (@Composable () -> Unit)? = null,
 ) {
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearBindingDialog by remember { mutableStateOf(false) }
@@ -157,6 +161,7 @@ fun SecurityPrivacyScreen(
             stringResource(R.string.settings_security_page_subtitle_unlocked)
         },
         onBack = onBack,
+        status = status,
     ) {
         SettingsSection(
             title = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {

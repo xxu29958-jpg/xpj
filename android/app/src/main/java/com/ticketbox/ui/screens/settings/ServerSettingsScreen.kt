@@ -88,7 +88,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
-import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
@@ -128,6 +128,7 @@ fun ServerSettingsScreen(
         title = pageTitle,
         subtitle = pageSubtitle,
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         AccountStatusCard(
             serverSettings = state.serverSettings,
@@ -174,9 +175,6 @@ fun ServerSettingsScreen(
                     onToggleExpanded = { showDiagnosticsDetails = !showDiagnosticsDetails },
                 )
             }
-        }
-        state.message?.let {
-            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

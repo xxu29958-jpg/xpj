@@ -27,7 +27,7 @@
     <string name="expense_edit_loading_reload_button">重新加载</string>
     <string name="expense_edit_loading_back_button">返回</string>
 
-    <!-- ExpenseEditPrimaryActions / ExpenseEditConfirmActions：底部操作按钮 -->
+    <!-- ExpenseEditActionBar：底部浮动操作栏（保存 / 确认入账 / 返回 / 删除） -->
     <string name="expense_edit_primary_back_button">返回</string>
     <string name="expense_edit_primary_saving_button">保存中</string>
     <string name="expense_edit_primary_save_button">保存</string>
@@ -44,6 +44,14 @@
     <string name="expense_edit_note_field_label">备注</string>
     <string name="expense_edit_source_label">来源：%1$s</string>
     <string name="expense_edit_confidence_label">识别置信度：%1$d%%</string>
+    <!-- 来源标签：镜像后端 web_stats_service.SOURCE_LABELS，让来源行显示
+         人话而不是 bill_split_received 这种裸 token；未知来源回退原值。 -->
+    <string name="expense_edit_source_iphone">iPhone</string>
+    <string name="expense_edit_source_android">Android</string>
+    <string name="expense_edit_source_manual">手动</string>
+    <string name="expense_edit_source_csv">CSV</string>
+    <string name="expense_edit_source_bill_split">拆账</string>
+    <string name="expense_edit_source_notification">通知</string>
 
     <!-- ItemsEditorSheet：小票明细编辑 sheet -->
     <string name="expense_edit_items_sheet_title">编辑小票明细</string>

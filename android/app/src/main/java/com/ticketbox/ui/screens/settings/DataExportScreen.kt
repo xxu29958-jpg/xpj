@@ -84,7 +84,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
-import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.AppGlassCard
@@ -133,6 +133,7 @@ fun DataExportScreen(
         title = stringResource(R.string.settings_data_export_page_title),
         subtitle = stringResource(R.string.settings_data_export_page_subtitle),
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         SettingsSection(title = stringResource(R.string.settings_data_export_section_refresh_cache), icon = Icons.Filled.RestartAlt) {
             Text(
@@ -170,6 +171,5 @@ fun DataExportScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
     }
 }

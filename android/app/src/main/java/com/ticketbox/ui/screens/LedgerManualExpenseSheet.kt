@@ -38,6 +38,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
@@ -58,6 +59,7 @@ import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 fun ManualExpenseSheet(
     categories: List<String>,
     saving: Boolean,
+    recentMerchants: List<RecentMerchant> = emptyList(),
     initialCurrency: CurrencyCode = FxContract.HomeCurrency,
     errorMessage: String? = null,
     onCreate: (ExpenseDraft) -> Unit,
@@ -185,6 +187,18 @@ fun ManualExpenseSheet(
             onOriginalAmountChange = { amountText = it },
             enabled = !saving,
         )
+        if (recentMerchants.isNotEmpty()) {
+            ManualRecentMerchants(
+                recentMerchants = recentMerchants,
+                selectedMerchant = merchant,
+                onPick = { picked ->
+                    // User-initiated quick fill (not an AI/OCR auto-fill): carry
+                    // both the merchant and the category it was last paired with.
+                    merchant = picked.merchant
+                    category = picked.category
+                },
+            )
+        }
         OutlinedTextField(
             value = merchant,
             onValueChange = { merchant = it },
@@ -267,6 +281,36 @@ fun ManualExpenseSheet(
                     } else {
                         stringResource(R.string.ledger_manual_save_button)
                     },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Quick-fill chips of the user's recently-used merchants on the manual-entry
+ * sheet. One tap fills the merchant field and carries the category last paired
+ * with it (see [recentLedgerMerchants]). Tapping is an explicit manual action,
+ * so this is not an AI/OCR auto-fill of a blank field.
+ */
+@Composable
+private fun ManualRecentMerchants(
+    recentMerchants: List<RecentMerchant>,
+    selectedMerchant: String,
+    onPick: (RecentMerchant) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        Text(
+            text = stringResource(R.string.ledger_manual_recent_label),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+            items(recentMerchants, key = { it.merchant }) { recent ->
+                SelectableFilterChip(
+                    selected = selectedMerchant == recent.merchant,
+                    label = recent.merchant,
+                    onClick = { onPick(recent) },
                 )
             }
         }

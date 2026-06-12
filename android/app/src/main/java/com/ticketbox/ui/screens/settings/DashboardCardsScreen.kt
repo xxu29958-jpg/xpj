@@ -37,7 +37,10 @@ import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardSurface
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.DraggableReorderColumn
@@ -142,6 +145,7 @@ fun DashboardCardsScreen(
             stringResource(R.string.dashboard_cards_page_subtitle_default)
         },
         onBack = onBack,
+        status = { AppStatusBanner(message = message?.let(UiText::Raw), tone = MessageTone.Neutral) },
     ) {
         SettingsSection(title = stringResource(R.string.dashboard_cards_section_order), icon = Icons.Filled.DashboardCustomize) {
             when {
@@ -244,12 +248,6 @@ fun DashboardCardsScreen(
                     }
                 }
             }
-        }
-        message?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.secondary,
-            )
         }
     }
 }

@@ -14,7 +14,15 @@ data class LedgerExpenseGroup(
     val key: String,
     val label: String,
     val items: List<Expense>,
-)
+) {
+    /**
+     * Sum of this day's confirmed amounts in home-currency minor units (rows
+     * with a null amount contribute 0). Rendered as the day-header subtotal so
+     * the list reads as daily totals, not just a flat stream. Pure derivation —
+     * unit-tested through [groupLedgerExpenses].
+     */
+    val dayTotalCents: Long get() = items.sumOf { it.amountCents ?: 0L }
+}
 
 fun groupLedgerExpenses(resources: Resources, items: List<Expense>): List<LedgerExpenseGroup> {
     return items

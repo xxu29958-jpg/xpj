@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +34,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.tabularNum
 
 private object LedgerItemLayout {
     const val CardContainerAlpha = 0.995f
@@ -44,17 +46,47 @@ private object LedgerItemLayout {
     const val TableMerchantWeight = 1.35f
     const val TableCategoryWeight = 0.72f
     const val TableAmountWeight = 0.88f
+    const val DayHeaderSurfaceAlpha = 0.96f
 }
 
+/**
+ * Day-group header: date on the left, that day's subtotal on the right. The
+ * subtotal uses tabular figures and ink color (金额永远用墨), matching the
+ * /web confirmed day-row rhythm. A solid surface background is carried on the
+ * header itself so it stays readable when pinned by the sticky-header behavior
+ * (otherwise the glass expense cards would show through the translucent pin).
+ */
 @Composable
-internal fun LedgerDayHeader(label: String) {
-    Text(
-        text = label,
-        color = MaterialTheme.colorScheme.onBackground,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = AppTypography.cardTitle.weight,
-        modifier = Modifier.padding(top = AppSpacing.miniGap, bottom = AppSpacing.tinyGap),
-    )
+internal fun LedgerDayHeader(label: String, dayTotalCents: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadius.small))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = LedgerItemLayout.DayHeaderSurfaceAlpha))
+            .padding(
+                horizontal = AppSpacing.smallGap,
+                vertical = AppSpacing.tinyGap + AppSpacing.tinyGap,
+            ),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTypography.cardTitle.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = formatAmount(dayTotalCents),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.labelLarge.tabularNum(),
+            fontWeight = AppTypography.cardTitle.weight,
+            maxLines = 1,
+        )
+    }
 }
 
 @Composable

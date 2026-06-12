@@ -30,6 +30,7 @@ import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.appearance.background.BackgroundImageStore
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.BillSplitScreen
 import com.ticketbox.ui.screens.IncomePlanScreen
@@ -340,6 +341,9 @@ internal fun SettingsDestinationHost(
         SettingsDestination.NotificationPreferences -> NotificationPreferencesScreen(
             preferences = states.settings.notificationPreferences,
             readOnly = !ledgerRoleCanModify(states.settings.role),
+            // Revives the previously silent save feedback: SettingsViewModel
+            // already writes message + tone; surface it in the page-header slot.
+            status = { AppStatusBanner(message = states.settings.message, tone = states.settings.messageTone) },
             onBack = { route = SettingsDestination.Root },
             onSave = actions.onSaveNotificationPreferences,
         )
@@ -348,6 +352,8 @@ internal fun SettingsDestinationHost(
             onBack = { route = SettingsDestination.Root },
             onClearCache = actions.onClearCache,
             onBindingCleared = actions.onBindingCleared,
+            // Revives the previously silent clear-cache / logout feedback.
+            status = { AppStatusBanner(message = states.settings.message, tone = states.settings.messageTone) },
         )
 
         SettingsDestination.Ledgers -> {

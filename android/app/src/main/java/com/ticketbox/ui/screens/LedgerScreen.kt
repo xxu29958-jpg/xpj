@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,7 +35,7 @@ import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LedgerScreen(
     state: LedgerUiState,
@@ -94,6 +95,7 @@ fun LedgerScreen(
             ManualExpenseSheet(
                 categories = state.categories,
                 saving = state.creatingManual,
+                recentMerchants = state.recentMerchants,
                 errorMessage = state.manualCreateError?.asString(),
                 onCreate = onManualCreate,
                 onDismiss = dismissManualSheet,
@@ -161,6 +163,7 @@ fun LedgerScreen(
                     onOpenTools = { showLedgerTools = true },
                     onManualAdd = { if (!state.readOnly) showManualSheet = true },
                     onCategoryChange = onCategoryChange,
+                    onMonthChange = onMonthChange,
                     onViewModeChange = onViewModeChange,
                 )
             }
@@ -179,8 +182,11 @@ fun LedgerScreen(
             }
         }
         groupedItems.forEach { group ->
-            item(key = "ledger-day-${group.key}") {
-                LedgerDayHeader(group.label)
+            // stickyHeader pins the current day's header (date + subtotal) to the
+            // top edge while its rows scroll under it, so the day context never
+            // disappears mid-scroll.
+            stickyHeader(key = "ledger-day-${group.key}") {
+                LedgerDayHeader(group.label, group.dayTotalCents)
             }
             items(group.items, key = { it.id }) { expense ->
                 val selected = expense.id in state.selectedIds

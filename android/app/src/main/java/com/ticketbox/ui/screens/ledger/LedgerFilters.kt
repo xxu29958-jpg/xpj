@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.FilterChipDefaults
@@ -16,12 +18,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.domain.model.shiftLedgerMonth
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.screens.SelectableFilterChip
@@ -37,6 +41,7 @@ internal fun LedgerFilterPanel(
     onOpenTools: () -> Unit,
     onManualAdd: () -> Unit,
     onCategoryChange: (String) -> Unit,
+    onMonthChange: (String) -> Unit,
     onViewModeChange: (LedgerViewMode) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
@@ -54,6 +59,7 @@ internal fun LedgerFilterPanel(
             onOpenMonthPicker = onOpenMonthPicker,
             onOpenTools = onOpenTools,
             onCategoryChange = onCategoryChange,
+            onMonthChange = onMonthChange,
         )
     }
 }
@@ -86,12 +92,25 @@ private fun LedgerInlineFilters(
     onOpenMonthPicker: () -> Unit,
     onOpenTools: () -> Unit,
     onCategoryChange: (String) -> Unit,
+    onMonthChange: (String) -> Unit,
 ) {
     val hasQuery = state.query.isNotBlank()
     val hasTag = state.tagFilter.isNotBlank()
     val quickCategories = remember(state.categories) { state.categories.take(2) }
     val selectedOutsideQuick = state.categoryFilter.isNotBlank() && state.categoryFilter !in quickCategories
+    // Prev/next only when a concrete month is selected; "全部月份" has no neighbor.
+    val previousMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, -1L) }
+    val nextMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, 1L) }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+        if (previousMonth != null) {
+            item {
+                LedgerMonthArrowChip(
+                    icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    description = stringResource(R.string.ledger_inline_month_prev),
+                    onClick = { onMonthChange(previousMonth) },
+                )
+            }
+        }
         item {
             AppFilterChip(
                 selected = true,
@@ -106,6 +125,15 @@ private fun LedgerInlineFilters(
                     )
                 },
             )
+        }
+        if (nextMonth != null) {
+            item {
+                LedgerMonthArrowChip(
+                    icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    description = stringResource(R.string.ledger_inline_month_next),
+                    onClick = { onMonthChange(nextMonth) },
+                )
+            }
         }
         item {
             SelectableFilterChip(
@@ -167,6 +195,32 @@ private fun LedgerInlineFilters(
             )
         }
     }
+}
+
+/**
+ * Compact icon-only chip flanking the month chip for one-tap previous/next
+ * month. Reuses [AppFilterChip] (so it stays visually in the chip row and on
+ * the shared token palette); the [description] rides the icon for a11y since
+ * the chip carries no visible label.
+ */
+@Composable
+private fun LedgerMonthArrowChip(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+) {
+    AppFilterChip(
+        selected = false,
+        onClick = onClick,
+        label = "",
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                modifier = Modifier.size(FilterChipDefaults.IconSize),
+            )
+        },
+    )
 }
 
 @Composable

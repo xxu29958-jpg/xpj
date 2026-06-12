@@ -9,9 +9,11 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.expenseLedgerMonth
 import com.ticketbox.domain.model.filterConfirmedExpenses
+import com.ticketbox.domain.model.recentLedgerMerchants
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,6 +79,11 @@ data class LedgerUiState(
     // manualCreateSettled() (mirrors ExpenseEditUiState.done).
     val manualCreateDone: Boolean = false,
     val manualCreateError: UiText? = null,
+    // Most-recently-used merchants (with their last category) derived from the
+    // FULL confirmed cache (not the filtered view) — quick-fill chips on the
+    // manual-entry sheet. A tap is a manual fill, so the "AI only fills blanks"
+    // rule doesn't apply.
+    val recentMerchants: List<RecentMerchant> = emptyList(),
 ) {
     val selectedCount: Int get() = selectedIds.size
 
@@ -129,6 +136,7 @@ class LedgerViewModel(
                         // changes while a selection is open.
                         selectedHaveTags = state.selectionMode &&
                             expenses.any { it.id in state.selectedIds && !it.tags.isNullOrBlank() },
+                        recentMerchants = recentLedgerMerchants(expenses),
                     )
                 }
             }

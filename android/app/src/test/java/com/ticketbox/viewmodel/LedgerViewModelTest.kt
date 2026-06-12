@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -83,6 +84,37 @@ class LedgerViewModelTest {
         assertTrue(state.filter.hasFilters)
         assertEquals("餐饮", state.filter.categoryFilter)
         assertEquals("早餐", state.filter.query)
+    }
+
+    @Test
+    fun exposesRecentMerchantsFromFullConfirmedCacheNewestFirst() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")
+                    .copy(expenseTime = "2026-05-01T08:00:00Z"),
+                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁")
+                    .copy(expenseTime = "2026-05-09T08:00:00Z"),
+                // Same merchant as #1 but newer + different category: the newest
+                // occurrence supplies the slot and its category.
+                expense(id = 3, amountCents = 1500, category = "夜宵", merchant = "早餐店")
+                    .copy(expenseTime = "2026-05-10T08:00:00Z"),
+            ),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        // Recent merchants come from the WHOLE confirmed cache, independent of
+        // the active month filter — narrowing the list mustn't drop suggestions.
+        vm.setMonthFilter("2026-01")
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                RecentMerchant(merchant = "早餐店", category = "夜宵"),
+                RecentMerchant(merchant = "地铁", category = "交通"),
+            ),
+            vm.uiState.value.recentMerchants,
+        )
     }
 
     // ADR-0042 Slice C — multi-select + batch edit -------------------------

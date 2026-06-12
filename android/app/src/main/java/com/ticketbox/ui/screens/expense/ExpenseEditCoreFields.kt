@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.annotation.StringRes
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -17,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSolidCard
@@ -149,8 +151,10 @@ internal fun ExpenseEditSourceInfo(
     source: String,
     confidence: Double?,
 ) {
+    val labelRes = expenseSourceLabelRes(source)
+    val display = labelRes?.let { stringResource(it) } ?: source
     Text(
-        stringResource(R.string.expense_edit_source_label, source),
+        stringResource(R.string.expense_edit_source_label, display),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     confidence?.let {
@@ -158,5 +162,22 @@ internal fun ExpenseEditSourceInfo(
             stringResource(R.string.expense_edit_confidence_label, (it * 100).toInt()),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** ``Expense.source`` 存储值（见 [ExpenseSourceValues]）映射到人话显示标签，
+ *  三端词汇同步。未知来源返回 ``null``，由调用方回退到原始 token。纯函数，可单测。 */
+@StringRes
+internal fun expenseSourceLabelRes(source: String): Int? {
+    if (source.startsWith(ExpenseSourceValues.NOTIFICATION_DRAFT_PREFIX)) {
+        return R.string.expense_edit_source_notification
+    }
+    return when (source) {
+        ExpenseSourceValues.IPHONE_SCREENSHOT -> R.string.expense_edit_source_iphone
+        ExpenseSourceValues.ANDROID_SCREENSHOT -> R.string.expense_edit_source_android
+        ExpenseSourceValues.MANUAL_ENTRY -> R.string.expense_edit_source_manual
+        ExpenseSourceValues.CSV_IMPORT -> R.string.expense_edit_source_csv
+        ExpenseSourceValues.BILL_SPLIT_RECEIVED -> R.string.expense_edit_source_bill_split
+        else -> null
     }
 }

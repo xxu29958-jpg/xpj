@@ -43,6 +43,22 @@ data class Expense(
     val rejectedAt: String?,
 )
 
+/**
+ * [Expense.source] 的服务端存储值（domain 值，非 UI 文案）。中文 token 是后端
+ * 落库的历史值，镜像 `web_stats_service.SOURCE_LABELS` 的键；展示层据此映射到
+ * string 资源，未列出的值原样回显。
+ */
+object ExpenseSourceValues {
+    const val IPHONE_SCREENSHOT = "iPhone截图"
+    const val ANDROID_SCREENSHOT = "Android截图"
+    const val MANUAL_ENTRY = "手动记账"
+    const val CSV_IMPORT = "CSV导入"
+    const val BILL_SPLIT_RECEIVED = "bill_split_received"
+
+    /** 通知草稿来源前缀（完整值 = 前缀 + 渠道名），镜像后端同名前缀。 */
+    const val NOTIFICATION_DRAFT_PREFIX = "通知草稿:"
+}
+
 data class ExpenseDraft(
     val amountCents: Long?,
     val originalCurrencyCode: CurrencyCode? = null,
@@ -194,6 +210,17 @@ data class MonthlyStats(
 data class FrequentMerchant(
     val merchant: String,
     val count: Int,
+)
+
+/**
+ * A merchant the user spent at recently, paired with the category last used for
+ * it. Drives the ledger "最近" quick-fill chips on the manual-entry sheet — one
+ * tap fills the merchant and carries the matching category. Derived purely from
+ * the confirmed cache (see [recentLedgerMerchants]); never an OCR/AI guess.
+ */
+data class RecentMerchant(
+    val merchant: String,
+    val category: String,
 )
 
 data class RecurringCandidate(
