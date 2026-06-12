@@ -200,14 +200,16 @@ fun AppPageScaffold(
 
 /**
  * 可滚动的页面列。可选 [bottomBar] 槽：传入时在 [Box] 底部居中浮一条操作栏。
- * 滚动内容按**实测**的栏高让出底部空间——栏可能两行加提示，高度不固定，
- * 静态估算（[AppPageDefaults.BottomBarHeight]）会算少导致最后一块内容被遮，
- * 所以这里测量真实高度再当 content 底 padding。传 [bottomBar] 时调用方应让
+ * 滚动**视口止于栏上沿**：按**实测**栏高（栏可能两行加提示，高度不固定，
+ * 静态估算 [AppPageDefaults.BottomBarHeight] 会算少）收缩视口，而不是把栏高
+ * 折成滚动内容的底 padding。后者会让视口延伸到栏背后——"最小滚动"类的
+ * bring-into-view（无障碍聚焦、测试 `performScrollTo`）把目标停在视口底缘
+ * 即栏底下，看似可见、点击却被栏吃掉。传 [bottomBar] 时调用方应让
  * `hasBottomBar = false`（不要再叠静态估算）。
  *
- * 栏自己负责导航栏 inset；软键盘 inset 由外层 [AppPageScaffold] 的
- * `imePadding()` 统一处理，槽内不要再叠一层。`bottomBar` 默认 `null`——
- * 既有调用方零影响。
+ * 栏自己负责导航栏 inset（实测高度已含），所以视口收缩量就是栏高本身；
+ * 软键盘 inset 由外层 [AppPageScaffold] 的 `imePadding()` 统一处理，槽内
+ * 不要再叠一层。`bottomBar` 默认 `null`——既有调用方零影响。
  */
 @Composable
 fun AppPageScrollableColumn(
@@ -238,13 +240,15 @@ fun AppPageScrollableColumn(
                     .fillMaxSize()
                     .padding(
                         top = layout.statusPadding,
-                        bottom = layout.bottomViewportPadding,
+                        // 栏自带导航栏 inset，实测高度已覆盖 bottomViewportPadding
+                        // 的导航栏份额，二者取一不叠加。
+                        bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
                     )
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = layout.horizontalPadding)
                     .padding(
                         top = layout.contentTopPadding,
-                        bottom = layout.bottomContentExtraPadding + bottomBarHeight,
+                        bottom = layout.bottomContentExtraPadding,
                     ),
                 verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
             ) {
