@@ -1,0 +1,380 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1320" role="img" aria-labelledby="title desc">
+  <title id="title">Jiajia polished mascot vector master</title>
+  <desc id="desc">Polished vector-friendly master sheet for the Jiajia binder-clip mascot. Includes front, three-quarter, side turnaround and six expression poses. Parts are named for Rive rigging.</desc>
+  <defs>
+    <linearGradient id="bodyFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff4dc"/>
+      <stop offset="0.56" stop-color="#f6e5c6"/>
+      <stop offset="1" stop-color="#ead3aa"/>
+    </linearGradient>
+    <linearGradient id="bodyHighlight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fffdf5" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#fff7e7" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="sideFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d5bf99"/>
+      <stop offset="1" stop-color="#806f5c"/>
+    </linearGradient>
+    <linearGradient id="wireFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f1e8"/>
+      <stop offset="0.52" stop-color="#d9d0c5"/>
+      <stop offset="1" stop-color="#a99c8f"/>
+    </linearGradient>
+    <linearGradient id="receiptFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffef9"/>
+      <stop offset="1" stop-color="#f5efe4"/>
+    </linearGradient>
+    <linearGradient id="clipAccent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff9a7c"/>
+      <stop offset="1" stop-color="#e4674f"/>
+    </linearGradient>
+    <style>
+      .outline { stroke: #241c16; stroke-width: 7.5; stroke-linecap: round; stroke-linejoin: round; }
+      .thin { fill: none; stroke: #241c16; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round; }
+      .wireOuter { fill: none; stroke: #241c16; stroke-width: 16.5; stroke-linecap: round; stroke-linejoin: round; }
+      .wireInner { fill: none; stroke: url(#wireFill); stroke-width: 8.5; stroke-linecap: round; stroke-linejoin: round; }
+      .body { fill: url(#bodyFill); }
+      .side { fill: url(#sideFill); }
+      .highlight { fill: url(#bodyHighlight); }
+      .receipt { fill: url(#receiptFill); }
+      .receiptLine { stroke: #d8cfc2; stroke-width: 5; stroke-linecap: round; }
+      .accent { fill: url(#clipAccent); }
+      .eye { fill: #241c16; }
+      .shine { fill: #fffdf7; }
+      .blush { fill: #f79b84; opacity: .95; }
+      .shadow { fill: #241c16; opacity: .13; }
+      .coralStroke { fill: none; stroke: #ef765e; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round; }
+      .success { fill: #6f9a51; }
+      .warn { fill: #e0a23d; }
+      .info { fill: #63a9c9; }
+      .confettiRed { fill: #ef765e; }
+      .confettiYellow { fill: #f6b547; }
+      .confettiBlue { fill: #63a9c9; }
+      .confettiGreen { fill: #7eae67; }
+      .sweat { fill: #66b8d8; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1320" fill="#ffffff"/>
+
+  <g id="turnaround-front" transform="translate(105 54)">
+    <ellipse id="front-groundShadow" class="shadow" cx="220" cy="462" rx="176" ry="24"/>
+    <g id="front-wireArmLeft">
+      <path class="wireOuter" d="M142 166 C133 103 154 52 209 47 C272 41 292 108 250 149 C225 173 224 195 224 213"/>
+      <path class="wireInner" d="M142 166 C133 103 154 52 209 47 C272 41 292 108 250 149 C225 173 224 195 224 213"/>
+    </g>
+    <g id="front-wireArmRight">
+      <path class="wireOuter" d="M292 166 C283 103 304 52 359 47 C422 41 442 108 400 149 C375 173 374 195 374 213"/>
+      <path class="wireInner" d="M292 166 C283 103 304 52 359 47 C422 41 442 108 400 149 C375 173 374 195 374 213"/>
+    </g>
+    <g id="front-footLeft">
+      <path class="outline body" d="M93 421 Q121 398 158 419 Q162 455 126 464 Q91 458 93 421Z"/>
+      <ellipse class="highlight" cx="128" cy="423" rx="30" ry="12"/>
+    </g>
+    <g id="front-footRight">
+      <path class="outline body" d="M382 419 Q419 398 447 421 Q449 458 413 464 Q378 455 382 419Z"/>
+      <ellipse class="highlight" cx="414" cy="423" rx="30" ry="12"/>
+    </g>
+    <g id="front-body">
+      <path class="outline body" d="M89 167 Q99 118 151 114 L389 114 Q441 118 451 167 L483 339 Q498 426 418 438 L122 438 Q42 426 57 339Z"/>
+      <path class="highlight" d="M113 143 Q130 125 166 125 L373 125 Q413 126 432 149 Q396 190 310 205 Q194 226 101 190Z"/>
+      <ellipse fill="#fffdf7" opacity=".58" cx="126" cy="152" rx="18" ry="10" transform="rotate(-33 126 152)"/>
+    </g>
+    <g id="front-receipt">
+      <path class="outline receipt" d="M203 320 L337 320 L337 490 L318 480 L299 490 L280 480 L261 490 L242 480 L223 490 L203 480Z"/>
+      <line class="receiptLine" x1="234" y1="365" x2="306" y2="365"/>
+      <line class="receiptLine" x1="234" y1="401" x2="306" y2="401"/>
+      <line class="receiptLine" x1="234" y1="436" x2="287" y2="436"/>
+    </g>
+    <g id="front-clipMouth">
+      <path class="outline accent" d="M232 283 L308 283 L308 344 Q270 359 232 344Z"/>
+      <path class="thin" d="M255 291 L255 335 M285 291 L285 335"/>
+    </g>
+    <g id="front-eyeLeft">
+      <circle class="eye" cx="185" cy="248" r="26"/>
+      <circle class="shine" cx="174" cy="237" r="8"/>
+      <circle class="shine" cx="197" cy="262" r="5"/>
+    </g>
+    <g id="front-eyeRight">
+      <circle class="eye" cx="355" cy="248" r="26"/>
+      <circle class="shine" cx="344" cy="237" r="8"/>
+      <circle class="shine" cx="367" cy="262" r="5"/>
+    </g>
+    <g id="front-mouth">
+      <path class="thin" stroke="#b8523a" d="M247 278 Q258 293 270 278 Q282 293 293 278"/>
+    </g>
+    <g id="front-blushLeft"><ellipse class="blush" cx="146" cy="288" rx="25" ry="17"/></g>
+    <g id="front-blushRight"><ellipse class="blush" cx="394" cy="288" rx="25" ry="17"/></g>
+  </g>
+
+  <g id="turnaround-threeQuarter" transform="translate(650 54)">
+    <ellipse id="threeQuarter-groundShadow" class="shadow" cx="244" cy="464" rx="180" ry="24"/>
+    <g id="threeQuarter-wireArmLeft">
+      <path class="wireOuter" d="M151 168 C141 103 163 50 218 47 C280 44 298 109 257 149 C232 173 232 195 232 213"/>
+      <path class="wireInner" d="M151 168 C141 103 163 50 218 47 C280 44 298 109 257 149 C232 173 232 195 232 213"/>
+    </g>
+    <g id="threeQuarter-wireArmRight">
+      <path class="wireOuter" d="M316 168 C306 103 328 50 383 47 C445 44 463 109 422 149 C397 173 397 195 397 213"/>
+      <path class="wireInner" d="M316 168 C306 103 328 50 383 47 C445 44 463 109 422 149 C397 173 397 195 397 213"/>
+    </g>
+    <g id="threeQuarter-footLeft"><path class="outline body" d="M104 421 Q132 400 169 421 Q171 457 135 465 Q101 457 104 421Z"/></g>
+    <g id="threeQuarter-footRight"><path class="outline body" d="M399 421 Q436 400 465 421 Q468 457 432 465 Q397 457 399 421Z"/></g>
+    <g id="threeQuarter-body">
+      <path class="outline body" d="M96 167 Q106 119 158 115 L402 115 Q452 118 478 156 L536 251 L471 420 Q443 440 403 440 L128 440 Q50 428 65 340Z"/>
+      <path class="outline side" d="M477 156 Q525 199 536 251 L471 420 Q464 294 477 156Z"/>
+      <path class="highlight" d="M121 144 Q137 126 174 126 L389 126 Q428 126 453 151 Q410 190 315 206 Q198 226 105 191Z"/>
+    </g>
+    <g id="threeQuarter-receipt">
+      <path class="outline receipt" d="M216 320 L350 320 L350 490 L331 480 L312 490 L293 480 L274 490 L255 480 L236 490 L216 480Z"/>
+      <line class="receiptLine" x1="247" y1="365" x2="319" y2="365"/>
+      <line class="receiptLine" x1="247" y1="401" x2="319" y2="401"/>
+      <line class="receiptLine" x1="247" y1="436" x2="300" y2="436"/>
+    </g>
+    <g id="threeQuarter-clipMouth">
+      <path class="outline accent" d="M245 283 L321 283 L321 344 Q283 359 245 344Z"/>
+      <path class="thin" d="M268 291 L268 335 M298 291 L298 335"/>
+    </g>
+    <g id="threeQuarter-eyeLeft"><circle class="eye" cx="194" cy="248" r="25"/><circle class="shine" cx="184" cy="237" r="8"/><circle class="shine" cx="205" cy="262" r="5"/></g>
+    <g id="threeQuarter-eyeRight"><circle class="eye" cx="365" cy="248" r="25"/><circle class="shine" cx="355" cy="237" r="8"/><circle class="shine" cx="376" cy="262" r="5"/></g>
+    <g id="threeQuarter-mouth"><path class="thin" stroke="#b8523a" d="M258 278 Q269 293 281 278 Q293 293 304 278"/></g>
+    <g id="threeQuarter-blushLeft"><ellipse class="blush" cx="155" cy="288" rx="24" ry="17"/></g>
+    <g id="threeQuarter-blushRight"><ellipse class="blush" cx="406" cy="288" rx="24" ry="17"/></g>
+  </g>
+
+  <g id="turnaround-side" transform="translate(1270 54)">
+    <ellipse id="side-groundShadow" class="shadow" cx="218" cy="464" rx="144" ry="23"/>
+    <g id="side-wireArmLeft">
+      <path class="wireOuter" d="M184 168 C176 99 190 48 232 47 C278 47 291 109 263 149 C247 172 247 196 248 214"/>
+      <path class="wireInner" d="M184 168 C176 99 190 48 232 47 C278 47 291 109 263 149 C247 172 247 196 248 214"/>
+    </g>
+    <g id="side-wireArmRight">
+      <path class="wireOuter" d="M225 168 C217 99 231 48 273 47 C319 47 332 109 304 149 C288 172 288 196 289 214"/>
+      <path class="wireInner" d="M225 168 C217 99 231 48 273 47 C319 47 332 109 304 149 C288 172 288 196 289 214"/>
+    </g>
+    <g id="side-footLeft"><path class="outline body" d="M139 421 Q173 399 210 421 Q212 457 176 465 Q140 458 139 421Z"/></g>
+    <g id="side-footRight"><path class="outline body" d="M267 421 Q301 399 338 421 Q340 457 304 465 Q268 458 267 421Z"/></g>
+    <g id="side-body">
+      <path class="outline body" d="M130 156 Q154 116 194 115 L305 115 Q348 116 370 156 L457 319 Q480 385 425 430 L172 430 Q107 419 112 340Z"/>
+      <path class="outline side" d="M317 153 Q380 220 457 319 Q456 382 405 418 Q373 300 317 153Z"/>
+      <path class="highlight" d="M150 142 Q168 126 199 126 L299 126 Q334 126 353 157 Q305 187 235 198 Q170 208 131 190Z"/>
+    </g>
+    <g id="side-receipt">
+      <path class="outline receipt" d="M105 318 L184 318 L184 488 L169 478 L154 488 L139 478 L124 488 L105 478Z"/>
+      <line class="receiptLine" x1="127" y1="363" x2="163" y2="363"/>
+      <line class="receiptLine" x1="127" y1="399" x2="160" y2="399"/>
+      <line class="receiptLine" x1="127" y1="434" x2="153" y2="434"/>
+    </g>
+    <g id="side-clipMouth">
+      <path class="outline accent" d="M126 281 L178 281 L178 342 Q152 354 126 342Z"/>
+      <path class="thin" d="M142 289 L142 333 M162 289 L162 333"/>
+    </g>
+    <g id="side-eyeLeft"><circle class="eye" cx="178" cy="248" r="23"/><circle class="shine" cx="170" cy="238" r="7"/><circle class="shine" cx="187" cy="261" r="5"/></g>
+    <g id="side-mouth"><path class="thin" stroke="#b8523a" d="M126 279 Q137 293 149 279"/></g>
+    <g id="side-blushLeft"><ellipse class="blush" cx="132" cy="288" rx="20" ry="15"/></g>
+  </g>
+
+  <g id="pose-sleep" transform="translate(92 565) scale(.72)">
+    <ellipse id="sleep-groundShadow" class="shadow" cx="220" cy="430" rx="174" ry="24"/>
+    <g id="sleep-wireArmLeft">
+      <path class="wireOuter" d="M132 161 C91 129 79 82 119 62 C168 37 205 91 180 132 C163 160 166 181 181 199"/>
+      <path class="wireInner" d="M132 161 C91 129 79 82 119 62 C168 37 205 91 180 132 C163 160 166 181 181 199"/>
+    </g>
+    <g id="sleep-wireArmRight">
+      <path class="wireOuter" d="M290 155 C262 104 276 59 323 60 C379 62 389 122 350 154 C327 173 322 194 331 212"/>
+      <path class="wireInner" d="M290 155 C262 104 276 59 323 60 C379 62 389 122 350 154 C327 173 322 194 331 212"/>
+    </g>
+    <g id="sleep-footLeft"><path class="outline body" d="M92 393 Q121 370 158 391 Q163 427 126 437 Q90 431 92 393Z"/></g>
+    <g id="sleep-footRight"><path class="outline body" d="M382 391 Q420 370 448 393 Q451 431 414 437 Q379 427 382 391Z"/></g>
+    <g id="sleep-body" transform="rotate(-7 270 275)">
+      <path class="outline body" d="M89 167 Q99 118 151 114 L389 114 Q441 118 451 167 L483 339 Q498 426 418 438 L122 438 Q42 426 57 339Z"/>
+      <path class="highlight" d="M113 143 Q130 125 166 125 L373 125 Q413 126 432 149 Q396 190 310 205 Q194 226 101 190Z"/>
+    </g>
+    <g id="sleep-receipt">
+      <path class="outline receipt" d="M203 310 L337 310 L337 480 L318 470 L299 480 L280 470 L261 480 L242 470 L223 480 L203 470Z"/>
+      <line class="receiptLine" x1="234" y1="355" x2="306" y2="355"/>
+      <line class="receiptLine" x1="234" y1="391" x2="300" y2="391"/>
+    </g>
+    <g id="sleep-clipMouth"><path class="outline accent" d="M232 273 L308 273 L308 334 Q270 349 232 334Z"/></g>
+    <g id="sleep-eyeLeft"><path class="thin" d="M162 242 Q185 260 209 242"/></g>
+    <g id="sleep-eyeRight"><path class="thin" d="M332 242 Q355 260 379 242"/></g>
+    <g id="sleep-mouth"><path class="thin" stroke="#b8523a" d="M247 277 Q258 292 270 277 Q282 292 293 277"/></g>
+    <g id="sleep-blushLeft"><ellipse class="blush" cx="146" cy="288" rx="25" ry="17"/></g>
+    <g id="sleep-blushRight"><ellipse class="blush" cx="394" cy="288" rx="25" ry="17"/></g>
+    <g id="sleep-zzz">
+      <path class="thin" stroke="#243b5c" d="M8 136 L49 136 L12 182 L56 182"/>
+      <path class="thin" stroke="#243b5c" d="M47 83 L82 83 L51 121 L88 121"/>
+      <path class="thin" stroke="#243b5c" d="M89 45 L118 45 L93 77 L123 77"/>
+    </g>
+  </g>
+
+  <g id="pose-wave" transform="translate(676 565) scale(.72)">
+    <ellipse id="wave-groundShadow" class="shadow" cx="220" cy="432" rx="174" ry="24"/>
+    <g id="wave-wireArmLeft">
+      <path class="wireOuter" d="M142 166 C133 103 154 52 209 47 C272 41 292 108 250 149 C225 173 224 195 224 213"/>
+      <path class="wireInner" d="M142 166 C133 103 154 52 209 47 C272 41 292 108 250 149 C225 173 224 195 224 213"/>
+    </g>
+    <g id="wave-wireArmRight">
+      <path class="wireOuter" d="M306 172 C363 151 396 101 360 69 C321 35 271 82 292 126 C306 154 305 176 294 208"/>
+      <path class="wireInner" d="M306 172 C363 151 396 101 360 69 C321 35 271 82 292 126 C306 154 305 176 294 208"/>
+    </g>
+    <g id="wave-motionLines">
+      <path class="coralStroke" d="M416 103 C439 88 455 70 464 46"/>
+      <path class="coralStroke" d="M427 144 C456 140 480 130 499 111"/>
+    </g>
+    <g id="wave-footLeft"><path class="outline body" d="M93 421 Q121 398 158 419 Q162 455 126 464 Q91 458 93 421Z"/></g>
+    <g id="wave-footRight"><path class="outline body" d="M382 419 Q419 398 447 421 Q449 458 413 464 Q378 455 382 419Z"/></g>
+    <g id="wave-body">
+      <path class="outline body" d="M89 167 Q99 118 151 114 L389 114 Q441 118 451 167 L483 339 Q498 426 418 438 L122 438 Q42 426 57 339Z"/>
+      <path class="highlight" d="M113 143 Q130 125 166 125 L373 125 Q413 126 432 149 Q396 190 310 205 Q194 226 101 190Z"/>
+    </g>
+    <g id="wave-receipt">
+      <path class="outline receipt" d="M203 320 L337 320 L337 490 L318 480 L299 490 L280 480 L261 490 L242 480 L223 490 L203 480Z"/>
+      <line class="receiptLine" x1="234" y1="365" x2="306" y2="365"/>
+      <line class="receiptLine" x1="234" y1="401" x2="306" y2="401"/>
+    </g>
+    <g id="wave-clipMouth"><path class="outline accent" d="M232 283 L308 283 L308 344 Q270 359 232 344Z"/></g>
+    <g id="wave-eyeLeft"><circle class="eye" cx="185" cy="248" r="26"/><circle class="shine" cx="174" cy="237" r="8"/><circle class="shine" cx="197" cy="262" r="5"/></g>
+    <g id="wave-eyeRight"><circle class="eye" cx="355" cy="248" r="26"/><circle class="shine" cx="344" cy="237" r="8"/><circle class="shine" cx="367" cy="262" r="5"/></g>
+    <g id="wave-mouth"><path class="thin" stroke="#b8523a" d="M247 278 Q258 293 270 278 Q282 293 293 278"/></g>
+    <g id="wave-blushLeft"><ellipse class="blush" cx="146" cy="288" rx="25" ry="17"/></g>
+    <g id="wave-blushRight"><ellipse class="blush" cx="394" cy="288" rx="25" ry="17"/></g>
+  </g>
+
+  <g id="pose-success" transform="translate(1260 565) scale(.72)">
+    <ellipse id="success-groundShadow" class="shadow" cx="220" cy="432" rx="174" ry="24"/>
+    <g id="success-wireArmLeft">
+      <path class="wireOuter" d="M142 150 C117 91 143 42 204 44 C268 45 292 111 248 148 C222 170 221 194 224 213"/>
+      <path class="wireInner" d="M142 150 C117 91 143 42 204 44 C268 45 292 111 248 148 C222 170 221 194 224 213"/>
+    </g>
+    <g id="success-wireArmRight">
+      <path class="wireOuter" d="M292 150 C267 91 293 42 354 44 C418 45 442 111 398 148 C372 170 371 194 374 213"/>
+      <path class="wireInner" d="M292 150 C267 91 293 42 354 44 C418 45 442 111 398 148 C372 170 371 194 374 213"/>
+    </g>
+    <g id="success-hearts">
+      <path class="confettiRed" d="M65 136 C40 109 73 77 102 104 C131 77 164 109 139 136 L102 172Z"/>
+      <path class="confettiRed" d="M454 118 C434 96 462 69 486 92 C510 69 538 96 518 118 L486 149Z"/>
+    </g>
+    <g id="success-footLeft"><path class="outline body" d="M93 421 Q121 398 158 419 Q162 455 126 464 Q91 458 93 421Z"/></g>
+    <g id="success-footRight"><path class="outline body" d="M382 419 Q419 398 447 421 Q449 458 413 464 Q378 455 382 419Z"/></g>
+    <g id="success-body">
+      <path class="outline body" d="M89 167 Q99 118 151 114 L389 114 Q441 118 451 167 L483 339 Q498 426 418 438 L122 438 Q42 426 57 339Z"/>
+      <path class="highlight" d="M113 143 Q130 125 166 125 L373 125 Q413 126 432 149 Q396 190 310 205 Q194 226 101 190Z"/>
+    </g>
+    <g id="success-receipt">
+      <path class="outline receipt" d="M203 320 L337 320 L337 490 L318 480 L299 490 L280 480 L261 490 L242 480 L223 490 L203 480Z"/>
+      <line class="receiptLine" x1="234" y1="365" x2="306" y2="365"/>
+      <line class="receiptLine" x1="234" y1="401" x2="306" y2="401"/>
+    </g>
+    <g id="success-clipMouth"><path class="outline accent" d="M232 283 L308 283 L308 344 Q270 359 232 344Z"/></g>
+    <g id="success-eyeLeft"><path class="thin" d="M162 250 Q185 269 209 250"/></g>
+    <g id="success-eyeRight"><path class="thin" d="M332 250 Q355 269 379 250"/></g>
+    <g id="success-mouth"><path class="thin" stroke="#b8523a" d="M247 278 Q258 293 270 278 Q282 293 293 278"/></g>
+    <g id="success-blushLeft"><ellipse class="blush" cx="146" cy="288" rx="25" ry="17"/></g>
+    <g id="success-blushRight"><ellipse class="blush" cx="394" cy="288" rx="25" ry="17"/></g>
+  </g>
+
+  <g id="pose-confetti" transform="translate(92 918) scale(.72)">
+    <ellipse id="confetti-groundShadow" class="shadow" cx="220" cy="432" rx="174" ry="24"/>
+    <g id="confetti-wireArmLeft">
+      <path class="wireOuter" d="M142 150 C117 91 143 42 204 44 C268 45 292 111 248 148 C222 170 221 194 224 213"/>
+      <path class="wireInner" d="M142 150 C117 91 143 42 204 44 C268 45 292 111 248 148 C222 170 221 194 224 213"/>
+    </g>
+    <g id="confetti-wireArmRight">
+      <path class="wireOuter" d="M292 150 C267 91 293 42 354 44 C418 45 442 111 398 148 C372 170 371 194 374 213"/>
+      <path class="wireInner" d="M292 150 C267 91 293 42 354 44 C418 45 442 111 398 148 C372 170 371 194 374 213"/>
+    </g>
+    <g id="confetti-pieces">
+      <rect class="confettiRed" x="248" y="27" width="15" height="15" rx="3" transform="rotate(23 256 35)"/>
+      <rect class="confettiYellow" x="323" y="54" width="15" height="15" rx="3" transform="rotate(12 331 62)"/>
+      <rect class="confettiBlue" x="395" y="84" width="14" height="14" rx="3" transform="rotate(-33 402 91)"/>
+      <rect class="confettiGreen" x="180" y="81" width="14" height="14" rx="3" transform="rotate(-22 187 88)"/>
+      <circle class="confettiRed" cx="133" cy="130" r="8"/>
+      <circle class="confettiBlue" cx="438" cy="142" r="8"/>
+      <path class="confettiYellow" d="M86 88 L104 100 L90 113Z"/>
+      <path class="confettiGreen" d="M470 67 L490 72 L478 90Z"/>
+    </g>
+    <g id="confetti-footLeft"><path class="outline body" d="M93 421 Q121 398 158 419 Q162 455 126 464 Q91 458 93 421Z"/></g>
+    <g id="confetti-footRight"><path class="outline body" d="M382 419 Q419 398 447 421 Q449 458 413 464 Q378 455 382 419Z"/></g>
+    <g id="confetti-body">
+      <path class="outline body" d="M89 167 Q99 118 151 114 L389 114 Q441 118 451 167 L483 339 Q498 426 418 438 L122 438 Q42 426 57 339Z"/>
+      <path class="highlight" d="M113 143 Q130 125 166 125 L373 125 Q413 126 432 149 Q396 190 310 205 Q194 226 101 190Z"/>
+    </g>
+    <g id="confetti-receipt">
+      <path class="outline receipt" d="M203 320 L337 320 L337 490 L318 480 L299 490 L280 480 L261 490 L242 480 L223 490 L203 480Z"/>
+      <line class="receiptLine" x1="234" y1="365" x2="306" y2="365"/>
+      <line class="receiptLine" x1="234" y1="401" x2="306" y2="401"/>
+    </g>
+    <g id="confetti-clipMouth"><path class="outline accent" d="M232 283 L308 283 L308 344 Q270 359 232 344Z"/></g>
+    <g id="confetti-eyeLeft"><path class="thin" d="M162 250 Q185 269 209 250"/></g>
+    <g id="confetti-eyeRight"><path class="thin" d="M332 250 Q355 269 379 250"/></g>
+    <g id="confetti-mouth"><path class="thin" stroke="#b8523a" d="M247 278 Q258 293 270 278 Q282 293 293 278"/></g>
+    <g id="confetti-blushLeft"><ellipse class="blush" cx="146" cy="288" rx="25" ry="17"/></g>
+    <g id="confetti-blushRight"><ellipse class="blush" cx="394" cy="288" rx="25" ry="17"/></g>
+  </g>
+
+  <g id="pose-shock" transform="translate(676 918) scale(.72)">
+    <ellipse id="shock-groundShadow" class="shadow" cx="220" cy="432" rx="174" ry="24"/>
+    <g id="shock-footLeft"><path class="outline body" d="M93 421 Q121 398 158 419 Q162 455 126 464 Q91 458 93 421Z"/></g>
+    <g id="shock-footRight"><path class="outline body" d="M382 419 Q419 398 447 421 Q449 458 413 464 Q378 455 382 419Z"/></g>
+    <g id="shock-body">
+      <path class="outline body" d="M89 167 Q99 118 151 114 L389 114 Q441 118 451 167 L483 339 Q498 426 418 438 L122 438 Q42 426 57 339Z"/>
+      <path class="highlight" d="M113 143 Q130 125 166 125 L373 125 Q413 126 432 149 Q396 190 310 205 Q194 226 101 190Z"/>
+    </g>
+    <g id="shock-wireArmLeft">
+      <path class="wireOuter" d="M150 165 C132 109 152 62 207 61 C265 60 282 116 245 151 C218 178 185 205 171 247 C160 280 190 302 211 275 C230 249 211 224 188 238"/>
+      <path class="wireInner" d="M150 165 C132 109 152 62 207 61 C265 60 282 116 245 151 C218 178 185 205 171 247 C160 280 190 302 211 275 C230 249 211 224 188 238"/>
+    </g>
+    <g id="shock-wireArmRight">
+      <path class="wireOuter" d="M290 165 C308 109 288 62 233 61 C175 60 158 116 195 151 C222 178 355 205 369 247 C380 280 350 302 329 275 C310 249 329 224 352 238"/>
+      <path class="wireInner" d="M290 165 C308 109 288 62 233 61 C175 60 158 116 195 151 C222 178 355 205 369 247 C380 280 350 302 329 275 C310 249 329 224 352 238"/>
+    </g>
+    <g id="shock-receipt">
+      <path class="outline receipt" d="M203 320 L337 320 L337 490 L318 480 L299 490 L280 480 L261 490 L242 480 L223 490 L203 480Z"/>
+      <line class="receiptLine" x1="234" y1="365" x2="306" y2="365"/>
+      <line class="receiptLine" x1="234" y1="401" x2="306" y2="401"/>
+    </g>
+    <g id="shock-clipMouth"><path class="outline accent" d="M232 283 L308 283 L308 344 Q270 359 232 344Z"/></g>
+    <g id="shock-eyeLeft"><path class="thin" opacity=".35" d="M166 260 Q185 247 204 260"/></g>
+    <g id="shock-eyeRight"><path class="thin" opacity=".35" d="M336 260 Q355 247 374 260"/></g>
+    <g id="shock-mouth"><path class="thin" stroke="#b8523a" d="M255 284 Q270 302 285 284"/></g>
+    <g id="shock-blushLeft"><ellipse class="blush" cx="146" cy="288" rx="25" ry="17"/></g>
+    <g id="shock-blushRight"><ellipse class="blush" cx="394" cy="288" rx="25" ry="17"/></g>
+    <g id="shock-sweatDrop"><path class="sweat outline" stroke-width="4.5" d="M455 218 C478 248 485 268 465 284 C445 299 421 286 425 260 C427 244 438 230 455 218Z"/></g>
+  </g>
+
+  <g id="pose-shrug" transform="translate(1260 918) scale(.72)">
+    <ellipse id="shrug-groundShadow" class="shadow" cx="220" cy="432" rx="174" ry="24"/>
+    <g id="shrug-wireArmLeft">
+      <path class="wireOuter" d="M142 166 C96 175 67 151 72 113 C78 67 134 57 161 96 C179 122 177 154 150 184"/>
+      <path class="wireInner" d="M142 166 C96 175 67 151 72 113 C78 67 134 57 161 96 C179 122 177 154 150 184"/>
+    </g>
+    <g id="shrug-wireArmRight">
+      <path class="wireOuter" d="M300 168 C336 120 392 104 431 139 C469 174 443 228 392 220 C364 216 345 232 333 256"/>
+      <path class="wireInner" d="M300 168 C336 120 392 104 431 139 C469 174 443 228 392 220 C364 216 345 232 333 256"/>
+    </g>
+    <g id="shrug-footLeft"><path class="outline body" d="M93 421 Q121 398 158 419 Q162 455 126 464 Q91 458 93 421Z"/></g>
+    <g id="shrug-footRight"><path class="outline body" d="M382 419 Q419 398 447 421 Q449 458 413 464 Q378 455 382 419Z"/></g>
+    <g id="shrug-body">
+      <path class="outline body" d="M89 167 Q99 118 151 114 L389 114 Q441 118 451 167 L483 339 Q498 426 418 438 L122 438 Q42 426 57 339Z"/>
+      <path class="highlight" d="M113 143 Q130 125 166 125 L373 125 Q413 126 432 149 Q396 190 310 205 Q194 226 101 190Z"/>
+    </g>
+    <g id="shrug-receipt">
+      <path class="outline receipt" d="M203 320 L337 320 L337 490 L318 480 L299 490 L280 480 L261 490 L242 480 L223 490 L203 480Z"/>
+      <line class="receiptLine" x1="234" y1="365" x2="306" y2="365"/>
+      <line class="receiptLine" x1="234" y1="401" x2="306" y2="401"/>
+    </g>
+    <g id="shrug-clipMouth"><path class="outline accent" d="M232 283 L308 283 L308 344 Q270 359 232 344Z"/></g>
+    <g id="shrug-eyeLeft"><circle class="eye" cx="185" cy="248" r="22"/><circle class="shine" cx="176" cy="239" r="7"/></g>
+    <g id="shrug-eyeRight"><circle class="eye" cx="355" cy="248" r="22"/><circle class="shine" cx="346" cy="239" r="7"/></g>
+    <g id="shrug-mouth"><path class="thin" stroke="#b8523a" d="M247 278 Q258 293 270 278 Q282 293 293 278"/></g>
+    <g id="shrug-blushLeft"><ellipse class="blush" cx="146" cy="288" rx="25" ry="17"/></g>
+    <g id="shrug-blushRight"><ellipse class="blush" cx="394" cy="288" rx="25" ry="17"/></g>
+    <g id="shrug-magnifier">
+      <circle class="outline" fill="#e7f5fa" cx="429" cy="156" r="45"/>
+      <circle fill="#fffdf7" opacity=".75" cx="416" cy="141" r="17"/>
+      <line class="outline" x1="459" y1="189" x2="501" y2="232"/>
+      <path class="coralStroke" d="M522 102 Q548 76 573 101"/>
+      <path class="coralStroke" d="M548 113 L548 141"/>
+    </g>
+  </g>
+</svg>

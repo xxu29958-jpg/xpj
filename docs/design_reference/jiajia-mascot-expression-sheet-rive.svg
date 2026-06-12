@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Jiajia mascot expression sheet for Rive</title>
+  <desc id="desc">Six vector expression poses for Jiajia: sleep, wave, success, confetti, shock, and shrug/search, with named groups for Rive rigging.</desc>
+  <defs>
+    <style>
+      :root {
+        --body: #f3e6cd;
+        --body-hi: #fff7e8;
+        --outline: #231f1a;
+        --wire: #d9d2c8;
+        --receipt: #fffdf7;
+        --receipt-line: #d7d0c5;
+        --accent: #e87359;
+        --blush: #f39c86;
+        --shadow: rgba(35,31,26,.13);
+        --success: #5f8a46;
+        --warn: #d19a35;
+        --info: #5fa8c3;
+      }
+      .outline { stroke: #231f1a; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .thin { stroke: #231f1a; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-outline { fill: none; stroke: #231f1a; stroke-width: 15; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-inner { fill: none; stroke: #d9d2c8; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+      .body-fill { fill: #f3e6cd; }
+      .highlight { fill: #fff7e8; opacity: .48; }
+      .receipt-fill { fill: #fffdf7; }
+      .receipt-line { stroke: #d7d0c5; stroke-width: 5; stroke-linecap: round; }
+      .eye { fill: #231f1a; }
+      .shine { fill: #fffdf7; }
+      .blush { fill: #f39c86; }
+      .accent { fill: #e87359; }
+      .shadow { fill: rgba(35,31,26,.13); }
+      .none { fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1000" fill="#ffffff"/>
+
+  <g id="pose-sleep" transform="translate(95 70)">
+    <ellipse id="sleep-groundShadow" class="shadow" cx="210" cy="360" rx="155" ry="20"/>
+    <g id="sleep-wireArmLeft">
+      <path class="wire-outline" d="M116 135 C78 108 69 60 108 44 C155 24 186 72 166 111 C152 138 154 155 166 169"/>
+      <path class="wire-inner" d="M116 135 C78 108 69 60 108 44 C155 24 186 72 166 111 C152 138 154 155 166 169"/>
+    </g>
+    <g id="sleep-wireArmRight">
+      <path class="wire-outline" d="M254 130 C231 85 240 40 285 42 C339 44 346 103 309 132 C289 148 285 164 291 179"/>
+      <path class="wire-inner" d="M254 130 C231 85 240 40 285 42 C339 44 346 103 309 132 C289 148 285 164 291 179"/>
+    </g>
+    <g id="sleep-footLeft"><ellipse class="outline body-fill" cx="118" cy="338" rx="39" ry="28"/></g>
+    <g id="sleep-footRight"><ellipse class="outline body-fill" cx="394" cy="338" rx="39" ry="28"/></g>
+    <g id="sleep-body" transform="rotate(-8 260 255)">
+      <path class="outline body-fill" d="M93 145 Q101 98 150 98 L370 98 Q419 98 427 145 L460 305 Q474 380 402 390 L118 390 Q46 380 60 305Z"/>
+      <path class="highlight" d="M112 126 Q121 110 154 110 L360 110 Q394 110 405 128 Q384 168 312 180 Q198 200 100 168Z"/>
+    </g>
+    <g id="sleep-receipt">
+      <path class="outline receipt-fill" d="M198 267 L322 267 L322 418 L302 408 L283 418 L264 408 L245 418 L226 408 L207 418 L198 409Z"/>
+      <line class="receipt-line" x1="226" y1="307" x2="292" y2="307"/>
+      <line class="receipt-line" x1="226" y1="340" x2="286" y2="340"/>
+    </g>
+    <g id="sleep-clipMouth"><path class="outline accent" d="M224 232 L296 232 L296 288 Q260 302 224 288Z"/></g>
+    <g id="sleep-eyeLeft"><path class="thin none" d="M160 210 Q181 228 204 210"/></g>
+    <g id="sleep-eyeRight"><path class="thin none" d="M316 210 Q337 228 360 210"/></g>
+    <g id="sleep-mouth"><path class="thin none" d="M238 240 Q248 254 260 240 Q272 254 282 240"/></g>
+    <g id="sleep-blushLeft"><ellipse class="blush" cx="139" cy="249" rx="23" ry="16"/></g>
+    <g id="sleep-blushRight"><ellipse class="blush" cx="374" cy="249" rx="23" ry="16"/></g>
+    <g id="sleep-zzz">
+      <path class="thin none" d="M12 110 L52 110 L16 154 L58 154"/>
+      <path class="thin none" d="M49 62 L82 62 L53 98 L87 98"/>
+      <path class="thin none" d="M86 28 L112 28 L89 57 L116 57"/>
+    </g>
+  </g>
+
+  <g id="pose-wave" transform="translate(695 70)">
+    <ellipse id="wave-groundShadow" class="shadow" cx="210" cy="360" rx="155" ry="20"/>
+    <g id="wave-wireArmLeft">
+      <path class="wire-outline" d="M145 150 C138 92 145 30 205 28 C270 26 279 100 238 133 C218 150 218 168 218 181"/>
+      <path class="wire-inner" d="M145 150 C138 92 145 30 205 28 C270 26 279 100 238 133 C218 150 218 168 218 181"/>
+    </g>
+    <g id="wave-wireArmRight">
+      <path class="wire-outline" d="M286 154 C342 130 370 84 335 54 C298 20 248 64 267 107 C278 130 278 149 270 178"/>
+      <path class="wire-inner" d="M286 154 C342 130 370 84 335 54 C298 20 248 64 267 107 C278 130 278 149 270 178"/>
+      <path class="thin none" stroke="#e87359" d="M366 94 C390 80 405 63 411 39 M378 126 C404 122 425 114 441 98"/>
+    </g>
+    <g id="wave-footLeft"><ellipse class="outline body-fill" cx="122" cy="342" rx="39" ry="28"/></g>
+    <g id="wave-footRight"><ellipse class="outline body-fill" cx="398" cy="342" rx="39" ry="28"/></g>
+    <g id="wave-body">
+      <path class="outline body-fill" d="M93 154 Q101 107 150 107 L370 107 Q419 107 427 154 L460 314 Q474 388 402 398 L118 398 Q46 388 60 314Z"/>
+      <path class="highlight" d="M112 135 Q121 119 154 119 L360 119 Q394 119 405 137 Q384 176 312 188 Q198 208 100 176Z"/>
+    </g>
+    <g id="wave-receipt">
+      <path class="outline receipt-fill" d="M198 285 L322 285 L322 437 L302 427 L283 437 L264 427 L245 437 L226 427 L207 437 L198 428Z"/>
+      <line class="receipt-line" x1="226" y1="325" x2="294" y2="325"/>
+      <line class="receipt-line" x1="226" y1="358" x2="292" y2="358"/>
+      <line class="receipt-line" x1="226" y1="391" x2="274" y2="391"/>
+    </g>
+    <g id="wave-clipMouth"><path class="outline accent" d="M224 250 L296 250 L296 306 Q260 320 224 306Z"/></g>
+    <g id="wave-eyeLeft"><circle class="eye" cx="182" cy="219" r="24"/><circle class="shine" cx="172" cy="209" r="8"/><circle class="shine" cx="192" cy="231" r="5"/></g>
+    <g id="wave-eyeRight"><circle class="eye" cx="338" cy="219" r="24"/><circle class="shine" cx="328" cy="209" r="8"/><circle class="shine" cx="348" cy="231" r="5"/></g>
+    <g id="wave-mouth"><path class="thin none" d="M238 247 Q248 261 260 247 Q272 261 282 247"/></g>
+    <g id="wave-blushLeft"><ellipse class="blush" cx="146" cy="258" rx="24" ry="17"/></g>
+    <g id="wave-blushRight"><ellipse class="blush" cx="374" cy="258" rx="24" ry="17"/></g>
+  </g>
+
+  <g id="pose-success" transform="translate(1295 70)">
+    <ellipse id="success-groundShadow" class="shadow" cx="210" cy="368" rx="155" ry="20"/>
+    <g id="success-wireArmLeft">
+      <path class="wire-outline" d="M145 136 C124 78 146 20 205 21 C270 22 279 92 238 124 C218 140 218 158 218 171"/>
+      <path class="wire-inner" d="M145 136 C124 78 146 20 205 21 C270 22 279 92 238 124 C218 140 218 158 218 171"/>
+    </g>
+    <g id="success-wireArmRight">
+      <path class="wire-outline" d="M276 136 C255 78 277 20 336 21 C401 22 410 92 369 124 C349 140 349 158 349 171"/>
+      <path class="wire-inner" d="M276 136 C255 78 277 20 336 21 C401 22 410 92 369 124 C349 140 349 158 349 171"/>
+    </g>
+    <g id="success-footLeft"><ellipse class="outline body-fill" cx="122" cy="350" rx="39" ry="28"/></g>
+    <g id="success-footRight"><ellipse class="outline body-fill" cx="398" cy="350" rx="39" ry="28"/></g>
+    <g id="success-body">
+      <path class="outline body-fill" d="M93 145 Q101 98 150 98 L370 98 Q419 98 427 145 L460 305 Q474 380 402 390 L118 390 Q46 380 60 305Z"/>
+      <path class="highlight" d="M112 126 Q121 110 154 110 L360 110 Q394 110 405 128 Q384 168 312 180 Q198 200 100 168Z"/>
+    </g>
+    <g id="success-receipt">
+      <path class="outline receipt-fill" d="M198 277 L322 277 L322 429 L302 419 L283 429 L264 419 L245 429 L226 419 L207 429 L198 420Z"/>
+      <line class="receipt-line" x1="226" y1="317" x2="294" y2="317"/>
+      <line class="receipt-line" x1="226" y1="350" x2="292" y2="350"/>
+    </g>
+    <g id="success-clipMouth"><path class="outline accent" d="M224 242 L296 242 L296 298 Q260 312 224 298Z"/></g>
+    <g id="success-eyeLeft"><path class="thin none" d="M160 211 Q182 230 206 211"/></g>
+    <g id="success-eyeRight"><path class="thin none" d="M314 211 Q337 230 360 211"/></g>
+    <g id="success-mouth"><path class="thin none" d="M238 241 Q248 255 260 241 Q272 255 282 241"/></g>
+    <g id="success-blushLeft"><ellipse class="blush" cx="146" cy="251" rx="24" ry="17"/></g>
+    <g id="success-blushRight"><ellipse class="blush" cx="374" cy="251" rx="24" ry="17"/></g>
+    <g id="success-hearts" fill="#e87359">
+      <path d="M44 128 C20 102 52 70 80 98 C108 70 140 102 116 128 L80 162Z"/>
+      <path d="M440 108 C421 88 447 62 470 84 C493 62 519 88 500 108 L470 137Z"/>
+    </g>
+  </g>
+
+  <g id="pose-confetti" transform="translate(95 545)">
+    <ellipse id="confetti-groundShadow" class="shadow" cx="210" cy="368" rx="155" ry="20"/>
+    <g id="confetti-wireArmLeft">
+      <path class="wire-outline" d="M145 144 C123 84 146 30 205 31 C270 32 276 100 238 130 C216 148 216 166 217 179"/>
+      <path class="wire-inner" d="M145 144 C123 84 146 30 205 31 C270 32 276 100 238 130 C216 148 216 166 217 179"/>
+    </g>
+    <g id="confetti-wireArmRight">
+      <path class="wire-outline" d="M278 144 C256 84 279 30 338 31 C403 32 409 100 371 130 C349 148 349 166 350 179"/>
+      <path class="wire-inner" d="M278 144 C256 84 279 30 338 31 C403 32 409 100 371 130 C349 148 349 166 350 179"/>
+    </g>
+    <g id="confetti-footLeft"><ellipse class="outline body-fill" cx="122" cy="350" rx="39" ry="28"/></g>
+    <g id="confetti-footRight"><ellipse class="outline body-fill" cx="398" cy="350" rx="39" ry="28"/></g>
+    <g id="confetti-body">
+      <path class="outline body-fill" d="M93 154 Q101 107 150 107 L370 107 Q419 107 427 154 L460 314 Q474 388 402 398 L118 398 Q46 388 60 314Z"/>
+      <path class="highlight" d="M112 135 Q121 119 154 119 L360 119 Q394 119 405 137 Q384 176 312 188 Q198 208 100 176Z"/>
+    </g>
+    <g id="confetti-receipt">
+      <path class="outline receipt-fill" d="M198 285 L322 285 L322 437 L302 427 L283 437 L264 427 L245 437 L226 427 L207 437 L198 428Z"/>
+      <line class="receipt-line" x1="226" y1="325" x2="294" y2="325"/>
+      <line class="receipt-line" x1="226" y1="358" x2="292" y2="358"/>
+    </g>
+    <g id="confetti-clipMouth"><path class="outline accent" d="M224 250 L296 250 L296 306 Q260 320 224 306Z"/></g>
+    <g id="confetti-eyeLeft"><path class="thin none" d="M160 221 Q182 240 206 221"/></g>
+    <g id="confetti-eyeRight"><path class="thin none" d="M314 221 Q337 240 360 221"/></g>
+    <g id="confetti-mouth"><path class="thin none" d="M238 251 Q248 265 260 251 Q272 265 282 251"/></g>
+    <g id="confetti-blushLeft"><ellipse class="blush" cx="146" cy="261" rx="24" ry="17"/></g>
+    <g id="confetti-blushRight"><ellipse class="blush" cx="374" cy="261" rx="24" ry="17"/></g>
+    <g id="confetti-pieces">
+      <rect x="56" y="72" width="17" height="17" rx="3" fill="#5f8a46" transform="rotate(-18 64 80)"/>
+      <rect x="116" y="40" width="17" height="17" rx="3" fill="#d19a35" transform="rotate(24 124 48)"/>
+      <rect x="382" y="58" width="17" height="17" rx="3" fill="#5fa8c3" transform="rotate(18 390 66)"/>
+      <rect x="436" y="98" width="17" height="17" rx="3" fill="#e87359" transform="rotate(-24 444 106)"/>
+      <path class="thin none" stroke="#e87359" d="M88 122 C115 107 115 144 141 128"/>
+      <path class="thin none" stroke="#5fa8c3" d="M396 132 C423 117 423 154 449 138"/>
+    </g>
+  </g>
+
+  <g id="pose-shock" transform="translate(695 545)">
+    <ellipse id="shock-groundShadow" class="shadow" cx="210" cy="368" rx="155" ry="20"/>
+    <g id="shock-wireArmLeft">
+      <path class="wire-outline" d="M148 154 C110 166 103 220 147 230 C196 240 212 185 176 166 C154 154 149 148 148 154Z"/>
+      <path class="wire-inner" d="M148 154 C110 166 103 220 147 230 C196 240 212 185 176 166 C154 154 149 148 148 154Z"/>
+    </g>
+    <g id="shock-wireArmRight">
+      <path class="wire-outline" d="M276 154 C238 166 231 220 275 230 C324 240 340 185 304 166 C282 154 277 148 276 154Z"/>
+      <path class="wire-inner" d="M276 154 C238 166 231 220 275 230 C324 240 340 185 304 166 C282 154 277 148 276 154Z"/>
+    </g>
+    <g id="shock-footLeft"><ellipse class="outline body-fill" cx="122" cy="350" rx="39" ry="28"/></g>
+    <g id="shock-footRight"><ellipse class="outline body-fill" cx="398" cy="350" rx="39" ry="28"/></g>
+    <g id="shock-body">
+      <path class="outline body-fill" d="M93 154 Q101 107 150 107 L370 107 Q419 107 427 154 L460 314 Q474 388 402 398 L118 398 Q46 388 60 314Z"/>
+      <path class="highlight" d="M112 135 Q121 119 154 119 L360 119 Q394 119 405 137 Q384 176 312 188 Q198 208 100 176Z"/>
+    </g>
+    <g id="shock-receipt">
+      <path class="outline receipt-fill" d="M198 285 L322 285 L322 437 L302 427 L283 437 L264 427 L245 437 L226 427 L207 437 L198 428Z"/>
+      <line class="receipt-line" x1="226" y1="325" x2="294" y2="325"/>
+      <line class="receipt-line" x1="226" y1="358" x2="292" y2="358"/>
+    </g>
+    <g id="shock-clipMouth"><path class="outline accent" d="M224 250 L296 250 L296 306 Q260 320 224 306Z"/></g>
+    <g id="shock-eyeLeft"><circle class="eye" cx="182" cy="220" r="13"/></g>
+    <g id="shock-eyeRight"><circle class="eye" cx="338" cy="220" r="13"/></g>
+    <g id="shock-mouth"><ellipse class="thin" fill="#fffdf7" cx="260" cy="252" rx="11" ry="16"/></g>
+    <g id="shock-blushLeft"><ellipse class="blush" cx="146" cy="261" rx="24" ry="17"/></g>
+    <g id="shock-blushRight"><ellipse class="blush" cx="374" cy="261" rx="24" ry="17"/></g>
+    <g id="shock-sweatDrop"><path class="outline" fill="#5fa8c3" d="M414 205 C444 245 431 276 404 277 C378 276 371 246 414 205Z"/></g>
+  </g>
+
+  <g id="pose-shrug" transform="translate(1295 545)">
+    <ellipse id="shrug-groundShadow" class="shadow" cx="210" cy="368" rx="155" ry="20"/>
+    <g id="shrug-wireArmLeft">
+      <path class="wire-outline" d="M146 154 C122 120 112 74 154 62 C202 49 219 105 185 133 C166 149 157 164 150 187"/>
+      <path class="wire-inner" d="M146 154 C122 120 112 74 154 62 C202 49 219 105 185 133 C166 149 157 164 150 187"/>
+    </g>
+    <g id="shrug-wireArmRight">
+      <path class="wire-outline" d="M292 148 C330 112 391 116 410 162 C426 205 387 240 346 217 C319 202 301 195 288 198"/>
+      <path class="wire-inner" d="M292 148 C330 112 391 116 410 162 C426 205 387 240 346 217 C319 202 301 195 288 198"/>
+    </g>
+    <g id="shrug-footLeft"><ellipse class="outline body-fill" cx="122" cy="350" rx="39" ry="28"/></g>
+    <g id="shrug-footRight"><ellipse class="outline body-fill" cx="398" cy="350" rx="39" ry="28"/></g>
+    <g id="shrug-body">
+      <path class="outline body-fill" d="M93 154 Q101 107 150 107 L370 107 Q419 107 427 154 L460 314 Q474 388 402 398 L118 398 Q46 388 60 314Z"/>
+      <path class="highlight" d="M112 135 Q121 119 154 119 L360 119 Q394 119 405 137 Q384 176 312 188 Q198 208 100 176Z"/>
+    </g>
+    <g id="shrug-receipt">
+      <path class="outline receipt-fill" d="M198 285 L322 285 L322 437 L302 427 L283 437 L264 427 L245 437 L226 427 L207 437 L198 428Z"/>
+      <line class="receipt-line" x1="226" y1="325" x2="294" y2="325"/>
+      <line class="receipt-line" x1="226" y1="358" x2="292" y2="358"/>
+    </g>
+    <g id="shrug-clipMouth"><path class="outline accent" d="M224 250 L296 250 L296 306 Q260 320 224 306Z"/></g>
+    <g id="shrug-eyeLeft"><circle class="eye" cx="182" cy="220" r="21"/><circle class="shine" cx="174" cy="211" r="7"/></g>
+    <g id="shrug-eyeRight"><circle class="eye" cx="338" cy="220" r="21"/><circle class="shine" cx="330" cy="211" r="7"/></g>
+    <g id="shrug-mouth"><ellipse class="thin" fill="#fffdf7" cx="260" cy="252" rx="9" ry="13"/></g>
+    <g id="shrug-blushLeft"><ellipse class="blush" cx="146" cy="261" rx="24" ry="17"/></g>
+    <g id="shrug-blushRight"><ellipse class="blush" cx="374" cy="261" rx="24" ry="17"/></g>
+    <g id="shrug-magnifier">
+      <circle class="outline" fill="#dff2f8" cx="410" cy="150" r="44"/>
+      <circle fill="#ffffff" opacity=".55" cx="398" cy="138" r="14"/>
+      <path class="outline none" d="M440 182 L485 226"/>
+      <path class="thin none" stroke="#d9d2c8" d="M292 148 C326 146 357 145 374 148"/>
+    </g>
+    <g id="shrug-question"><path class="thin none" stroke="#e87359" d="M488 101 C523 79 551 111 526 136 C510 152 506 164 506 178 M506 214 L506 216"/></g>
+  </g>
+</svg>
