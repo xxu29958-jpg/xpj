@@ -54,3 +54,23 @@ def test_private_status_reports_missing_backup_as_stale(
     assert body["latest_backup_at"] is None
     assert body["backup_age_hours"] is None
     assert body["backup_stale"] is True
+
+
+def test_private_status_degrades_backup_health_failure(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
+) -> None:
+    """备份探测异常不能打挂私有状态;保守判 stale,等待客户端提醒。"""
+
+    def fail_backup_health() -> backup_service.BackupHealth:
+        raise RuntimeError("pg_restore exploded")
+
+    monkeypatch.setattr(backup_service, "backup_health", fail_backup_health)
+    response = client.get("/api/status/private", headers=identity.app_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["latest_backup_at"] is None
+    assert body["backup_age_hours"] is None
+    assert body["backup_stale"] is True
+    assert "pg_restore exploded" not in response.text
