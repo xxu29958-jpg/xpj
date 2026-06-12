@@ -475,6 +475,78 @@ def _previous_month_string(month: str) -> str | None:
     return f"{year:04d}-{month_number - 1:02d}"
 
 
+def _budget_top_rows(budget) -> list[dict]:
+    """Top per-category budget rows for the dashboard 预算 card progress bars.
+
+    Reuses ``budget.category_budgets`` (already computed by ``budget_service`` —
+    no new aggregation): per category we have the limit (``amount_cents``),
+    used (``spent_amount_cents``) and overspend. ``percent`` is used/limit
+    capped at 100 for the bar width; ``overspent_yuan`` carries the
+    over-the-limit amount so the template/JS can show「超 ¥X」. Sorted by spend
+    desc so the most-used categories surface first, top 3."""
+    rows = sorted(
+        budget.category_budgets,
+        key=lambda c: c.spent_amount_cents,
+        reverse=True,
+    )[:3]
+    out: list[dict] = []
+    for category in rows:
+        limit_cents = int(category.amount_cents)
+        spent_cents = int(category.spent_amount_cents)
+        percent = int(round(spent_cents * 100 / limit_cents)) if limit_cents > 0 else 0
+        out.append(
+            {
+                "name": category.category,
+                "limit_yuan": _amount_yuan(limit_cents),
+                "spent_yuan": _amount_yuan(spent_cents),
+                "overspent_yuan": _amount_yuan(int(category.overspent_amount_cents)),
+                "percent": min(percent, 100),
+                "is_over": category.overspent_amount_cents > 0,
+            }
+        )
+    return out
+
+
+def _goals_top_rows(goals) -> list[dict]:
+    """Top goal rows for the dashboard 目标 card progress bars.
+
+    Reuses ``list_goals`` output (already carries ``progress_percent`` /
+    ``progress_state`` from ``goal_service`` — no new aggregation). The bar
+    width is ``progress_percent`` capped at 100; ``state`` drives the bar
+    colour (over_limit → danger, near_limit → brand-primary, 对齐 dashboard
+    bar 调色板——同卡上方的 pill 用 warn 琥珀,bar 与既有 cat-bar 同语自洽). Sorted by
+    progress desc so the most-at-risk goals surface first, top 3."""
+    rows = sorted(goals, key=lambda g: g.progress_percent, reverse=True)[:3]
+    return [
+        {
+            "name": goal.name,
+            "target_yuan": _amount_yuan(int(goal.target_amount_cents)),
+            "spent_yuan": _amount_yuan(int(goal.spent_amount_cents)),
+            "percent": min(int(goal.progress_percent), 100),
+            "state": goal.progress_state,
+        }
+        for goal in rows
+    ]
+
+
+def _dashboard_budget_goals_block(budget, goals) -> dict:
+    """budget/goals 两卡的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。"""
+    goal_risk_count = sum(
+        1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"}
+    )
+    return {
+        "budget_configured": budget.configured,
+        "budget_total_yuan": _amount_yuan(int(budget.total_amount_cents)),
+        "budget_remaining_yuan": _amount_yuan(int(budget.remaining_amount_cents)),
+        "budget_overspent_yuan": _amount_yuan(int(budget.overspent_amount_cents)),
+        "budget_is_over": budget.remaining_amount_cents < 0,
+        "budget_top": _budget_top_rows(budget),
+        "goals_count": len(goals),
+        "goals_risk_count": goal_risk_count,
+        "goals_top": _goals_top_rows(goals),
+    }
+
+
 def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     pending_rows = list_pending(db, ledger_id)
     pending_count = len(pending_rows)
@@ -493,7 +565,6 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     candidate_count = len(recurring_candidates(db, tenant_id=ledger_id))
     budget = get_monthly_budget(db, tenant_id=ledger_id, month=month, timezone_name="Asia/Shanghai")
     goals = list_goals(db, tenant_id=ledger_id, month=month, timezone_name="Asia/Shanghai")
-    goal_risk_count = sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"})
     now = now_utc()
     week_ago = now - timedelta(days=7)
     recent_count = web_stats_service.recent_expense_count(db, ledger_id, week_ago)
@@ -543,15 +614,35 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
         "recurring_active_count": active_recurring,
         "recurring_paused_count": paused_recurring,
         "recurring_candidate_count": candidate_count,
-        "budget_configured": budget.configured,
-        "budget_total_yuan": _amount_yuan(int(budget.total_amount_cents)),
-        "budget_remaining_yuan": _amount_yuan(int(budget.remaining_amount_cents)),
-        "budget_overspent_yuan": _amount_yuan(int(budget.overspent_amount_cents)),
-        "budget_is_over": budget.remaining_amount_cents < 0,
-        "goals_count": len(goals),
-        "goals_risk_count": goal_risk_count,
+        **_dashboard_budget_goals_block(budget, goals),
         "recent_count": recent_count,
         "active_device_count": active_device_count,
         "backup_available": latest_backup is not None,
         "backup_age_days": backup_age_days,
+    }
+
+
+def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
+    month = current_month("Asia/Shanghai")
+    stats = monthly_stats(db, month, selected_id, timezone_name="Asia/Shanghai")
+    return [
+        {
+            "name": item["category"],
+            "amount_yuan": int(item["amount_cents"]) / 100.0,
+            "amount_cents": int(item["amount_cents"]),
+            "count": int(item["count"]),
+        }
+        for item in stats.get("by_category", [])[:6]
+    ]
+
+
+def _dashboard_data_payload(db: Session, selected_id: str) -> dict:
+    cards = _dashboard_cards(db, selected_id)
+    return {
+        "selected_ledger_id": selected_id,
+        "month": cards["month"],
+        "cards": cards,
+        "visible_layout": [item for item in cards["layout"] if item["visible"]],
+        "trend14": _trend14_amounts(db, selected_id),
+        "category_share": _dashboard_category_share(db, selected_id),
     }

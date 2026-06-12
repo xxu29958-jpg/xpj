@@ -131,7 +131,7 @@ class ExpenseEditScreenContractTest {
             TicketboxTheme(skin = AppSkin.Default) {
                 ExpenseEditScreen(
                     expense = expense().copy(source = "bill_split_received"),
-                    state = ExpenseEditUiState(),
+                    state = ExpenseEditUiState(readOnly = true),
                     onSave = {},
                     onConfirm = {},
                     onReject = {},

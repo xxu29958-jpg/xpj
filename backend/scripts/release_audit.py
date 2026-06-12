@@ -45,13 +45,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Windows CI runs Python with cp1252 stdout by default; audit output
-# contains Chinese identifiers and string literals from source code,
-# so charmap blows up mid-print. Force UTF-8 here so every spawned
-# subprocess inherits it via PYTHONIOENCODING.
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
-os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+def _configure_utf8_stdio() -> None:
+    # Windows CI runs Python with cp1252 stdout by default; audit output
+    # contains Chinese identifiers and string literals from source code,
+    # so charmap blows up mid-print. Force UTF-8 here so every spawned
+    # subprocess inherits it via PYTHONIOENCODING.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 
 def _discover_lanes(scripts_dir: Path) -> list[tuple[str, str]]:
@@ -78,7 +81,42 @@ def _discover_lanes(scripts_dir: Path) -> list[tuple[str, str]]:
     return lanes
 
 
+def _compact_output_enabled() -> bool:
+    return os.environ.get("XPJ_RELEASE_AUDIT_COMPACT") == "1"
+
+
+def _run_lane(label: str, filename: str, scripts_dir: Path, *, compact: bool) -> bool:
+    script = scripts_dir / filename
+    if not compact:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=scripts_dir.parent,
+        )
+        return result.returncode == 0
+
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=scripts_dir.parent,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    ok = result.returncode == 0
+    if ok:
+        print(f"PASS  {label}")
+        return True
+
+    print(f"FAIL  {label}")
+    if result.stdout:
+        print(result.stdout.rstrip())
+    if result.stderr:
+        print(result.stderr.rstrip(), file=sys.stderr)
+    return False
+
+
 def main() -> int:
+    _configure_utf8_stdio()
     scripts_dir = Path(__file__).resolve().parent
     lanes = _discover_lanes(scripts_dir)
     if not lanes:
@@ -87,18 +125,14 @@ def main() -> int:
 
     overall_ok = True
     summary: list[tuple[str, bool]] = []
+    compact = _compact_output_enabled()
 
     for label, filename in lanes:
-        script = scripts_dir / filename
         print("=" * 78)
         print(f"AUDIT LANE: {label} ({filename})")
         print("=" * 78)
         sys.stdout.flush()
-        result = subprocess.run(
-            [sys.executable, str(script)],
-            cwd=scripts_dir.parent,
-        )
-        ok = result.returncode == 0
+        ok = _run_lane(label, filename, scripts_dir, compact=compact)
         summary.append((label, ok))
         if not ok:
             overall_ok = False
