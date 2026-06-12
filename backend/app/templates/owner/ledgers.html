@@ -6,7 +6,7 @@
 <div class="alert alert-warn">
   v0.5：本页是<strong>本机管理流</strong>，用于查看/新建账本和进入家庭成员管理。所有账本的待确认 / 已确认 / 报表请在
   <a class="text-link" href="/web">桌面账本流 /web</a> 中切换查看。<br>
-  家庭成员邀请、角色调整和拥有者转让在“成员/邀请”中处理；当前不会自动入账或自动扣预算，疑似重复只提示不自动处理。
+  家庭成员邀请、角色调整和拥有者转让在「成员/邀请」中处理；当前不会自动入账或自动扣预算，疑似重复只提示不自动处理。
 </div>
 
 {% if error %}
@@ -46,7 +46,7 @@
           <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">打开账本</a>
           <a href="/owner/ledgers/{{ row.ledger_id }}/members" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size);margin-left:var(--space-2)">成员/邀请</a>
           {% if row.role == 'owner' and not row.is_default %}
-          {% set archive_confirm = '归档账本「' ~ row.name ~ '」？该账本将从所有活跃界面（账本列表、登录、配对、邀请）隐藏，已绑定设备的会话随即失效。数据完整保留，可在下方“已归档账本”中恢复。' %}
+          {% set archive_confirm = '归档账本「' ~ row.name ~ '」？该账本将从所有活跃界面（账本列表、登录、配对、邀请）隐藏，已绑定设备的会话随即失效。数据完整保留，可在下方「已归档账本」中恢复。' %}
           <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/archive" style="display:inline" onsubmit='return confirm({{ archive_confirm | tojson }});'>
             <button type="submit" class="btn btn-danger" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size);margin-left:var(--space-2)">归档</button>
           </form>
@@ -82,7 +82,7 @@
 <div class="card">
   <h2>已归档账本</h2>
   <p class="text-meta">
-    以下账本已归档：从活跃界面隐藏、会话失效，但数据完整保留。恢复后将重新出现在“当前账本”，其会话与邀请能力一并恢复。
+    以下账本已归档：从活跃界面隐藏、会话失效，但数据完整保留。恢复后将重新出现在「当前账本」，其会话与邀请能力一并恢复。
   </p>
   <div class="table-scroll">
   <table>
@@ -101,7 +101,7 @@
         <td>{{ row.pending_count }}</td>
         <td>{{ row.confirmed_count }}</td>
         <td>
-          {% set unarchive_confirm = '恢复账本「' ~ row.name ~ '」？它将重新出现在“当前账本”列表中。' %}
+          {% set unarchive_confirm = '恢复账本「' ~ row.name ~ '」？它将重新出现在「当前账本」列表中。' %}
           <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/unarchive" style="display:inline" onsubmit='return confirm({{ unarchive_confirm | tojson }});'>
             <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">恢复</button>
           </form>

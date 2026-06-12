@@ -14,7 +14,7 @@
 
     <!-- DuplicateNotice：疑似重复上传提示卡 -->
     <string name="components_duplicate_notice_title">可能重复上传</string>
-    <string name="components_duplicate_notice_image_hash">这张截图和之前上传过的一张完全一致。确认前先看一眼，确实要记账就点“不是重复，保留”。</string>
+    <string name="components_duplicate_notice_image_hash">这张截图和之前上传过的一张完全一致。确认前先看一眼，确实要记账就点「不是重复，保留」。</string>
     <string name="components_duplicate_notice_field_match">这笔账单和已有记录很接近。确认前先看一眼，避免重复入账。</string>
     <string name="components_duplicate_notice_generic">这笔账单可能已经上传过。确认前先看一眼，避免重复入账。</string>
 

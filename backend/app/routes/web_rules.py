@@ -223,7 +223,7 @@ def web_rules_toggle(
             updated_rule = update_rule(
                 db, rule, expected_row_version=parsed, enabled=not rule.enabled
             )
-            msg = f"规则 [{updated_rule.keyword}] {'已启用' if updated_rule.enabled else '已停用'}。"
+            msg = f"规则「{updated_rule.keyword}」{'已启用' if updated_rule.enabled else '已停用'}。"
         except AppError as exc:
             msg = (
                 "规则已在其它端被修改，请刷新后重试。"
@@ -266,7 +266,7 @@ def web_rules_delete(
         return _web_redirect("/web/rules", selected_id, msg=msg)
     # ADR-0038 undo: surface a 撤销 banner; the row is recoverable until purge.
     return _web_redirect(
-        "/web/rules", selected_id, msg=f"规则 [{keyword}] 已删除。", undo=str(rule_id)
+        "/web/rules", selected_id, msg=f"规则「{keyword}」已删除。", undo=str(rule_id)
     )
 
 
@@ -286,7 +286,7 @@ def web_rules_undo(
     _require_selected_ledger_write(options, selected_id)
     try:
         rule = undo_delete_rule(db, tenant_id=selected_id, rule_id=rule_id)
-        msg = f"已恢复规则 [{rule.keyword}]。"
+        msg = f"已恢复规则 「{rule.keyword}」。"
     except AppError:
         msg = "无法撤销：规则不存在或撤销窗口已过期。"
     return _web_redirect("/web/rules", selected_id, msg=msg)

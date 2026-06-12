@@ -12,7 +12,7 @@
     <string name="appearance_background_pick_image">从相册选择</string>
     <string name="appearance_background_follow_theme">跟随主题包</string>
     <string name="appearance_background_clear_image">移除自定义图</string>
-    <string name="appearance_background_local_hint">自定义图只存在本机。想重新使用松雾、港湾等主题氛围时，点“跟随主题包”即可切回。</string>
+    <string name="appearance_background_local_hint">自定义图只存在本机。想重新使用松雾、港湾等主题氛围时，点「跟随主题包」即可切回。</string>
     <string name="appearance_section_immersion_title">沉浸强度</string>
     <string name="appearance_parallax_title">视差动效</string>
     <string name="appearance_parallax_subtitle">背景轻微参与层次变化</string>

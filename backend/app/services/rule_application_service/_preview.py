@@ -220,7 +220,7 @@ def _preview_apply_rules_to_status(
                 "current_category": current_category,
                 "suggested_category": suggested_category,
                 "rule_keyword": rule.keyword,
-                "reason": f"规则[{rule.keyword}] 将分类改为 {suggested_category}",
+                "reason": f"规则「{rule.keyword}」将分类改为 {suggested_category}",
             }
         )
 

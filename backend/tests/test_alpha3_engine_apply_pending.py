@@ -82,7 +82,7 @@ def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
             "current_category": "其他",
             "suggested_category": "餐饮",
             "rule_keyword": "Starbucks",
-            "reason": "规则[Starbucks] 将分类改为 餐饮",
+            "reason": "规则「Starbucks」将分类改为 餐饮",
         }
     ]
 

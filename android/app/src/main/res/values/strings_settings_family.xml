@@ -69,7 +69,7 @@
     <string name="join_family_ledger_binding_unbound">未绑定</string>
     <string name="join_family_ledger_message_preview_failed">预览邀请失败。</string>
     <string name="join_family_ledger_message_accept_failed">接受邀请失败。</string>
-    <string name="join_family_ledger_message_accepted">已加入“%1$s”，当前角色：%2$s</string>
+    <string name="join_family_ledger_message_accepted">已加入「%1$s」，当前角色：%2$s</string>
 
     <!-- LedgerSwitcherScreen：设置→账本 屏 -->
     <string name="ledger_switcher_page_title">账本</string>
@@ -81,14 +81,14 @@
     <string name="ledger_switcher_refresh_loading">刷新中…</string>
     <string name="ledger_switcher_refresh_button">刷新列表</string>
     <string name="ledger_switcher_section_create">新建账本</string>
-    <string name="ledger_switcher_create_hint">账本名称最多 %1$d 个字。新建后不会自动切换，可以在上方点击“切换”。</string>
+    <string name="ledger_switcher_create_hint">账本名称最多 %1$d 个字。新建后不会自动切换，可以在上方点击「切换」。</string>
     <string name="ledger_switcher_field_ledger_name">账本名称</string>
     <string name="ledger_switcher_create_button">新建账本</string>
     <!-- LedgerSwitcherViewModel：状态/反馈消息（ADR-0044 wave 2） -->
     <string name="ledger_switcher_message_load_failed">获取账本失败。</string>
-    <string name="ledger_switcher_message_switched">已切换到“%1$s”</string>
+    <string name="ledger_switcher_message_switched">已切换到「%1$s」</string>
     <string name="ledger_switcher_message_switch_failed">切换账本失败。</string>
-    <string name="ledger_switcher_message_created">已新建账本“%1$s”</string>
+    <string name="ledger_switcher_message_created">已新建账本「%1$s」</string>
     <string name="ledger_switcher_message_create_failed">新建账本失败。</string>
     <string name="ledger_switcher_message_name_required">请填写账本名称。</string>
 

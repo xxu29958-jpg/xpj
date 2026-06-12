@@ -54,7 +54,7 @@
     <!-- CategoryRuleDialogs（categoryrules/）：删除/回退对话框 -->
     <string name="category_rule_delete_dialog_title">删除这条规则？</string>
     <string name="category_rule_delete_dialog_text">删除后，后续识别不再参考「%1$s」。</string>
-    <string name="category_rule_delete_dialog_confirm">删除</string>
+    <string name="category_rule_delete_dialog_confirm">确定删除</string>
     <string name="category_rule_rollback_dialog_title">回退这次应用？</string>
     <string name="category_rule_rollback_dialog_text">会尽量恢复这次规则应用前的分类，已经手动改过的账单会跳过。</string>
     <string name="category_rule_rollback_dialog_confirm">回退</string>
@@ -74,7 +74,7 @@
     <string name="merchant_aliases_list_empty">还没有商家别名。添加后，分类规则可用标准商家命中不同写法的商家名。</string>
     <string name="merchant_aliases_delete_dialog_title">删除这个别名？</string>
     <string name="merchant_aliases_delete_dialog_text">删除后，「%1$s」不再自动归到「%2$s」。</string>
-    <string name="merchant_aliases_delete_dialog_confirm">删除</string>
+    <string name="merchant_aliases_delete_dialog_confirm">确定删除</string>
     <string name="merchant_aliases_card_canonical">归到 %1$s</string>
     <string name="merchant_aliases_card_key_mapping">%1$s → %2$s</string>
     <string name="merchant_aliases_card_status_enabled">已启用</string>
@@ -114,7 +114,7 @@
     <string name="tag_management_delete_dialog_title">删除标签？</string>
     <string name="tag_management_delete_dialog_text_used">「%1$s」会从 %2$d 笔账单上移除。5 秒内可撤销。</string>
     <string name="tag_management_delete_dialog_text_unused">「%1$s」没有任何账单使用，可以安全删除。</string>
-    <string name="tag_management_delete_dialog_confirm">删除</string>
+    <string name="tag_management_delete_dialog_confirm">确定删除</string>
     <string name="tag_management_card_usage_count">%1$d 笔</string>
     <string name="tag_management_card_orphan">孤儿</string>
     <string name="tag_management_card_action_rename">重命名</string>

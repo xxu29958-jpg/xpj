@@ -118,7 +118,7 @@ def web_merchant_alias_toggle(
         updated = update_merchant_alias(
             db, item, expected_row_version=parsed, enabled=not item.enabled
         )
-        msg = f"别名 [{updated.alias}] {'已启用' if updated.enabled else '已停用'}。"
+        msg = f"别名「{updated.alias}」{'已启用' if updated.enabled else '已停用'}。"
     except AppError as exc:
         msg = (
             "别名已在其它端被修改，请刷新后重试。"
@@ -162,7 +162,7 @@ def web_merchant_alias_delete(
     # ADR-0038 undo: pass the soft-deleted public_id so the page renders a 5s
     # 撤销 banner; the row is recoverable until cleanup purges it.
     return _web_redirect(
-        "/web/merchants", selected_id, msg=f"别名 [{alias}] 已删除。", undo=public_id
+        "/web/merchants", selected_id, msg=f"别名「{alias}」已删除。", undo=public_id
     )
 
 
@@ -182,7 +182,7 @@ def web_merchant_alias_undo(
     _require_selected_ledger_write(options, selected_id)
     try:
         item = undo_delete_merchant_alias(db, tenant_id=selected_id, public_id=public_id)
-        msg = f"已恢复别名 [{item.alias}]。"
+        msg = f"已恢复别名 「{item.alias}」。"
     except AppError as exc:
         msg = (
             "无法恢复：该别名已被永久清理或不存在。"

@@ -92,7 +92,7 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     )
     assert resp.status_code in {303, 307}
     msg = parse_qs(urlparse(resp.headers["location"]).query)["msg"][0]
-    assert msg == "规则 [测试关键词A] 已停用。"
+    assert msg == "规则「测试关键词A」已停用。"
     # Delete — refresh the page so the delete form's hidden token is
     # post-toggle and not stale.
     page = web_client.get("/web/rules?ledger_id=owner")
