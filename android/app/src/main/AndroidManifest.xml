@@ -19,11 +19,34 @@
         android:theme="@style/Theme.Ticketbox">
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 系统分享直传：从相册/截图分享小票图进 App，复用待确认上传链。
+                 singleTask + onNewIntent 保证复用唯一实例、不破坏既有导航栈。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <!-- 启动器静态快捷方式的目标：用自定义 action（而非 targetPackage）派发，
+                 internal flavor 的 .internal 后缀下也能解析（见 shortcuts.xml 注释）。 -->
+            <intent-filter>
+                <action android:name="com.ticketbox.action.SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- 启动器静态快捷方式（长按图标）。 -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
         <service
             android:name=".notification.TicketboxNotificationListenerService"

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动器快捷方式「传小票」图标：相机 + 上箭头，表意「拍/传小票」。
+     单色填充（沿用品牌深色 #102018），launcher 会按自身规则蒙版/着色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48"
+    android:tint="#102018">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M40,15h-7l-2.6,-3.5C29.6,10.5 28.4,10 27,10h-6c-1.4,0 -2.6,0.5 -3.4,1.5L15,15H8c-2.2,0 -4,1.8 -4,4v17c0,2.2 1.8,4 4,4h32c2.2,0 4,-1.8 4,-4V19C44,16.8 42.2,15 40,15zM24,36c-5,0 -9,-4 -9,-9s4,-9 9,-9 9,4 9,9 -4,9 -9,9z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M24,33l5,-5h-3v-6h-4v6h-3z" />
+</vector>
