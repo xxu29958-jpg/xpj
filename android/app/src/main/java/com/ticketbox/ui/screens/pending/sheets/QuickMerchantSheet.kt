@@ -36,10 +36,11 @@ import com.ticketbox.ui.design.AppTextHierarchy
 @Composable
 internal fun QuickMerchantSheetContent(
     expense: Expense,
-    saving: Boolean,
+    chrome: ReviewSheetChrome,
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val saving = chrome.saving
     var value by remember(expense.id) { mutableStateOf(expense.merchant.orEmpty()) }
     val cleaned = value.trim()
     // P1-2: single-field sheet — auto-focus so the keyboard pops on open.
@@ -50,6 +51,7 @@ internal fun QuickMerchantSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        ReviewQueueHeader(chrome = chrome)
         Text(
             stringResource(R.string.pending_quick_merchant_title),
             style = MaterialTheme.typography.titleLarge,
@@ -75,6 +77,8 @@ internal fun QuickMerchantSheetContent(
                 { Text(stringResource(R.string.pending_quick_merchant_blank_error), color = MaterialTheme.colorScheme.error) }
             } else null,
         )
+
+        ReviewSheetStatusMessage(chrome = chrome)
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppSecondaryButton(

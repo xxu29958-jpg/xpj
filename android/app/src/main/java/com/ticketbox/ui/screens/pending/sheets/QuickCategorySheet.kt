@@ -36,10 +36,11 @@ import com.ticketbox.ui.design.AppTextHierarchy
 internal fun QuickCategorySheetContent(
     expense: Expense,
     options: List<String>,
-    saving: Boolean,
+    chrome: ReviewSheetChrome,
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val saving = chrome.saving
     val initial = expense.category.takeIf { it.isNotBlank() } ?: options.firstOrNull().orEmpty()
     var selected by remember(expense.id) { mutableStateOf(initial) }
     var custom by remember(expense.id) { mutableStateOf("") }
@@ -48,6 +49,7 @@ internal fun QuickCategorySheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        ReviewQueueHeader(chrome = chrome)
         Text(
             stringResource(R.string.quick_category_sheet_title),
             style = MaterialTheme.typography.titleLarge,
@@ -85,6 +87,8 @@ internal fun QuickCategorySheetContent(
             modifier = Modifier.fillMaxWidth(),
             enabled = !saving,
         )
+
+        ReviewSheetStatusMessage(chrome = chrome)
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppSecondaryButton(

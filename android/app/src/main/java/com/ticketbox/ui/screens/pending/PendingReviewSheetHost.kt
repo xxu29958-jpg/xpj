@@ -23,6 +23,7 @@ import com.ticketbox.ui.screens.pending.sheets.DuplicateConfirmSheetContent
 import com.ticketbox.ui.screens.pending.sheets.MissingAmountSheetContent
 import com.ticketbox.ui.screens.pending.sheets.QuickCategorySheetContent
 import com.ticketbox.ui.screens.pending.sheets.QuickMerchantSheetContent
+import com.ticketbox.ui.screens.pending.sheets.ReviewSheetChrome
 import com.ticketbox.viewmodel.PendingSheet
 
 /**
@@ -40,22 +41,33 @@ internal fun PendingReviewSheetHost(
     missingAmountSkip: Int,
     duplicateSkip: Int,
     bulkRunning: Boolean,
+    reviewRemaining: Int,
+    statusMessage: String?,
     onSaveQuickCategory: (Long, String) -> Unit,
     onSaveQuickMerchant: (Long, String) -> Unit,
     onSaveAmountDraft: (Long, Long) -> Unit,
     onSaveAmountAndConfirm: (Long, Long) -> Unit,
+    onSkipReviewField: () -> Unit,
     onKeepBoth: (Expense) -> Unit,
     onIgnoreCurrent: (Expense) -> Unit,
     onConfirmReady: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // 三个快补 sheet 共享的连续审阅外壳（计数/状态/跳过 + 保存中标记）。各 sheet 的
+    // saving 取「当前票是否在 actionInProgressIds 里」，其余三项全 sheet 同值。
+    fun chromeFor(expenseId: Long) = ReviewSheetChrome(
+        saving = expenseId in actionInProgressIds,
+        remaining = reviewRemaining,
+        statusMessage = statusMessage,
+        onSkip = onSkipReviewField,
+    )
     when (sheet) {
         is PendingSheet.None -> Unit
         is PendingSheet.QuickCategory -> ModalBottomSheet(onDismissRequest = onDismiss) {
             QuickCategorySheetContent(
                 expense = sheet.expense,
                 options = categoryOptions,
-                saving = sheet.expense.id in actionInProgressIds,
+                chrome = chromeFor(sheet.expense.id),
                 onSave = { value -> onSaveQuickCategory(sheet.expense.id, value) },
                 onDismiss = onDismiss,
             )
@@ -63,7 +75,7 @@ internal fun PendingReviewSheetHost(
         is PendingSheet.QuickMerchant -> ModalBottomSheet(onDismissRequest = onDismiss) {
             QuickMerchantSheetContent(
                 expense = sheet.expense,
-                saving = sheet.expense.id in actionInProgressIds,
+                chrome = chromeFor(sheet.expense.id),
                 onSave = { value -> onSaveQuickMerchant(sheet.expense.id, value) },
                 onDismiss = onDismiss,
             )
@@ -71,7 +83,7 @@ internal fun PendingReviewSheetHost(
         is PendingSheet.MissingAmount -> ModalBottomSheet(onDismissRequest = onDismiss) {
             MissingAmountSheetContent(
                 expense = sheet.expense,
-                saving = sheet.expense.id in actionInProgressIds,
+                chrome = chromeFor(sheet.expense.id),
                 onSaveDraft = { cents -> onSaveAmountDraft(sheet.expense.id, cents) },
                 onSaveAndConfirm = { cents -> onSaveAmountAndConfirm(sheet.expense.id, cents) },
                 onDismiss = onDismiss,

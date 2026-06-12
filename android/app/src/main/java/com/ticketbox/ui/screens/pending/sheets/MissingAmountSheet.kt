@@ -40,11 +40,12 @@ import com.ticketbox.ui.design.AppTextHierarchy
 @Composable
 internal fun MissingAmountSheetContent(
     expense: Expense,
-    saving: Boolean,
+    chrome: ReviewSheetChrome,
     onSaveDraft: (Long) -> Unit,
     onSaveAndConfirm: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val saving = chrome.saving
     val currency = expense.originalCurrencyCode
     var input by remember(expense.id) {
         mutableStateOf(formatMinorAmountInput(expense.originalAmountMinor ?: expense.amountCents, currency))
@@ -61,6 +62,7 @@ internal fun MissingAmountSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        ReviewQueueHeader(chrome = chrome)
         Text(
             stringResource(R.string.pending_missing_amount_title),
             style = MaterialTheme.typography.titleLarge,
@@ -98,6 +100,8 @@ internal fun MissingAmountSheetContent(
                 { Text(stringResource(R.string.pending_missing_amount_invalid), color = MaterialTheme.colorScheme.error) }
             } else null,
         )
+
+        ReviewSheetStatusMessage(chrome = chrome)
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppSecondaryButton(

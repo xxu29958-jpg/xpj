@@ -126,6 +126,11 @@
     <string name="pending_review_bulk_all_succeeded">已确认 %1$d 条</string>
     <string name="pending_review_bulk_partial">确认完成：成功 %1$d，失败 %2$d</string>
 
+    <!-- 连续审阅（快补 sheet「保存并下一笔」/「跳过」/「还剩 N 条」） -->
+    <string name="pending_review_queue_remaining">还剩 %1$d 条</string>
+    <string name="pending_review_queue_skip_button">跳过</string>
+    <string name="pending_review_queue_skip_last">已是最后一条，没有更多待补账单了。</string>
+
     <!-- ADR-0044 wave 2 tail：sheet 内 plain Composable 字面量（wave 1 漏了 sheets/ 子目录） -->
     <!-- QuickMerchantSheet -->
     <string name="pending_quick_merchant_title">补一下商家</string>
