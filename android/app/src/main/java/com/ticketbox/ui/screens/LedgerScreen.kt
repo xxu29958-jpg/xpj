@@ -39,6 +39,10 @@ import com.ticketbox.viewmodel.LedgerViewMode
 @Composable
 fun LedgerScreen(
     state: LedgerUiState,
+    // 启动器「记一笔」shortcut 的一次性信号；true 时自动打开手动记账表单，[onManualEntryConsumed]
+    // 复位避免 tab 重入重复弹。默认 false/no-op = 普通进入此屏，不自动弹。
+    openManualEntryRequested: Boolean = false,
+    onManualEntryConsumed: () -> Unit = {},
     onMonthChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
     onTagChange: (String) -> Unit,
@@ -69,6 +73,15 @@ fun LedgerScreen(
         if (state.manualCreateDone) {
             showManualSheet = false
             onManualCreateSettled()
+        }
+    }
+
+    // 启动器「记一笔」shortcut：信号置位即拉起手动记账表单（只读角色不弹，写入也会被
+    // 后端 403）。消费后复位，tab 切走再切回不重复弹。
+    LaunchedEffect(openManualEntryRequested) {
+        if (openManualEntryRequested) {
+            onManualEntryConsumed()
+            if (!state.readOnly) showManualSheet = true
         }
     }
 

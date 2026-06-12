@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动器快捷方式「记一笔」图标：铅笔，表意「手动记账」。
+     单色填充（品牌深色 #102018），launcher 会按自身规则蒙版/着色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48"
+    android:tint="#102018">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M9,33.2V39h5.8l17.1,-17.1 -5.8,-5.8zM38.5,17.4c0.6,-0.6 0.6,-1.6 0,-2.2l-3.7,-3.7c-0.6,-0.6 -1.6,-0.6 -2.2,0l-2.9,2.9 5.8,5.8z" />
+</vector>
