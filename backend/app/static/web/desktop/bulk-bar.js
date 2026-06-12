@@ -75,19 +75,33 @@
       el.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        handler();
+        handler(e);
       });
       el.addEventListener("keydown", function (e) {
         if (e.key !== " " && e.key !== "Enter") return;
         e.preventDefault();
         e.stopPropagation();
-        handler();
+        handler(e);
       });
     }
 
-    checks.forEach(function (cb) {
-      bindCheckbox(cb, function () {
-        cb.classList.toggle("checked");
+    // 批10: shift-click 范围连选。记最近点击的行 index;按住 shift 点另一行时,把
+    // 区间内的可见行全部设成被点行的新状态(剔除隐藏行,与 isVisible 一致)。
+    let lastIndex = -1;
+    checks.forEach(function (cb, index) {
+      bindCheckbox(cb, function (e) {
+        const turnOn = !cb.classList.contains("checked");
+        if (e && e.shiftKey && lastIndex !== -1 && lastIndex !== index) {
+          const lo = Math.min(lastIndex, index);
+          const hi = Math.max(lastIndex, index);
+          for (let i = lo; i <= hi; i++) {
+            if (!isVisible(checks[i])) continue; // 只作用可见行
+            checks[i].classList.toggle("checked", turnOn);
+          }
+        } else {
+          cb.classList.toggle("checked", turnOn);
+        }
+        lastIndex = index;
         refresh();
       });
     });

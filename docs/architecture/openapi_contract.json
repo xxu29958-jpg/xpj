@@ -1314,6 +1314,11 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1434,6 +1439,11 @@
             "default": "",
             "title": "Expected Row Version",
             "type": "string"
+          },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
           },
           "ledger_id": {
             "default": "",
@@ -1846,6 +1856,11 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -2066,6 +2081,11 @@
             ],
             "title": "Expense Time"
           },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -2084,6 +2104,11 @@
           "original_currency": {
             "default": "",
             "title": "Original Currency",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
             "type": "string"
           },
           "tags": {

@@ -65,10 +65,22 @@
   </div>
   {% endif %}
 
+  {# 批10: a failed fetch-mutation swaps this fragment back in with `error` set,
+     so the reviewer sees the reason inline without leaving the queue. Mirrors
+     edit.html's error banner. #}
+  {% if error %}
+  <div class="dt-alert danger" data-drawer-error>⚠️ {{ error }}</div>
+  {% endif %}
+
   <form method="post" action="/web/expenses/{{ e.id }}/save" data-drawer-form>
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
     <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+    {# 批10: hidden return_to sends a no-JS save back to the pending queue instead
+       of the full edit page (fixes the "saved → popped out of queue" 303). The JS
+       drawer flow reads/sets fragment=1 itself; this static value keeps the
+       no-JS submit landing on /web/pending. #}
+    <input type="hidden" name="return_to" value="pending">
     {# 隐式提交守卫：tree-order 首个 submit 是浏览器 Enter 的默认按钮。没有这个
        shim 时首个 submit 是「删除草稿」(formaction=/reject)——在输入框按 Enter
        会直接软删。shim 无 formaction,Enter 走表单自身 action(/save),载荷与

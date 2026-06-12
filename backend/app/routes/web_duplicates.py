@@ -19,11 +19,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_expense_helpers import (
+    drawer_fragment_error,
+    drawer_fragment_ok,
+)
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -142,22 +146,40 @@ def web_duplicate_keep(
     expense_id: int,
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    # 批10: the pending drawer's 「标为非重复」 button has formaction → this route.
+    # ``fragment=1`` switches to the drawer fetch-mutation contract (success →
+    # tiny 200 so the client re-fetches the now-unflagged drawer; error → the
+    # drawer fragment carrying the error). The /web/duplicates side-by-side page
+    # keeps the existing full-page redirect.
+    fragment: int = Form(0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
+        if fragment:
+            return drawer_fragment_error(
+                db, request, options, selected_id, expense_id, _STALE_DUPLICATE_MSG
+            )
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
+    error_msg: str | None = None
     try:
         mark_expense_not_duplicate(
             db, expense_id, selected_id, expected_row_version=parsed
         )
         msg = "已标记为「不是重复」。"
     except AppError as exc:
-        msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
+        error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
+        msg = error_msg
+    if fragment:
+        if error_msg is not None:
+            return drawer_fragment_error(
+                db, request, options, selected_id, expense_id, error_msg
+            )
+        return drawer_fragment_ok("keep")
     return _web_redirect("/web/duplicates", selected_id, msg=msg)
 
 
