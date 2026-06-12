@@ -162,8 +162,8 @@
     <string name="sync_status_failed_drop_dialog_text">「%1$s」没能同步成功，放弃后无法找回。</string>
     <string name="sync_status_failed_drop_dialog_title_expired">移除这条记录？</string>
     <string name="sync_status_failed_drop_dialog_text_expired">「%1$s」已过期、无法再同步，移除后如需保留请重新操作一次。</string>
-    <string name="sync_status_drop_dialog_confirm">确认放弃</string>
-    <string name="sync_status_drop_dialog_confirm_remove">确认移除</string>
+    <string name="sync_status_drop_dialog_confirm">确定放弃</string>
+    <string name="sync_status_drop_dialog_confirm_remove">确定移除</string>
 
     <!-- ADR-0044 wave 2：SettingsViewModel 用户可见反馈消息（连接 / 同步 / 检测 / 缓存 / 月预算 / 通知偏好），经 UiText 在 UI 层解析 -->
     <string name="settings_vm_connection_ok">连接正常</string>

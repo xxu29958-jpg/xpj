@@ -330,8 +330,8 @@
           {% set conditions = [] %}
           {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ home_currency_symbol ~ ('%.2f' % (r.amount_min_cents / 100))) %}{% endif %}
           {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ home_currency_symbol ~ ('%.2f' % (r.amount_max_cents / 100))) %}{% endif %}
-          {% if r.source_contains %}{% set _ = conditions.append('来源含“' ~ r.source_contains ~ '”') %}{% endif %}
-          {% if r.tag_contains %}{% set _ = conditions.append('标签“' ~ r.tag_contains ~ '”') %}{% endif %}
+          {% if r.source_contains %}{% set _ = conditions.append('来源含「' ~ r.source_contains ~ '」') %}{% endif %}
+          {% if r.tag_contains %}{% set _ = conditions.append('标签「' ~ r.tag_contains ~ '」') %}{% endif %}
           {{ conditions|join(' · ') if conditions else '—' }}
         </td>
         <td>
@@ -348,7 +348,7 @@
             </button>
           </form>
           <form method="post" action="/web/rules/{{ r.id }}/delete" style="display:inline"
-                data-confirm="删除规则 [{{ r.keyword }}]？">
+                data-confirm="删除规则「{{ r.keyword }}」？">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
             <button type="submit" class="dt-btn danger">删除</button>

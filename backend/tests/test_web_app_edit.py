@@ -411,7 +411,7 @@ def test_web_edit_drawer_default_submit_is_save_not_reject(
 ) -> None:
     """隐式提交守卫:抽屉表单 tree-order 首个 submit 必须是无 formaction 的
     shim(Enter=保存),且所有 /reject formaction 按钮带 data-confirm。没有
-    shim 时首个可见 submit 是「删除草稿」——在输入框按 Enter 直接软删。"""
+    shim 时首个可见 submit 是「忽略草稿」——在输入框按 Enter 直接软删。"""
     import re
 
     expense_id = _create_pending(web_client, identity=identity)

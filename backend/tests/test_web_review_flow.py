@@ -1,6 +1,6 @@
 """批10: /web 待确认复核流 — drawer fetch-mutation contract + return_to whitelist.
 
-The pending drawer's save / 确认 / 删除草稿 (and the duplicate 标为非重复 button)
+The pending drawer's save / 确认 / 忽略草稿 (and the duplicate 标为非重复 button)
 gained two opt-in Form params:
 
 - ``fragment=1`` switches the response to the drawer fetch-mutation contract:

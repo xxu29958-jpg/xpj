@@ -30,13 +30,13 @@
     <string name="family_members_action_disable">停用</string>
     <string name="family_members_dialog_change_role_title">调整成员角色？</string>
     <string name="family_members_dialog_change_role_text">将%1$s调整为%2$s。已有会话下次请求会立即按新角色生效。</string>
-    <string name="family_members_dialog_change_role_confirm">确认调整</string>
+    <string name="family_members_dialog_change_role_confirm">调整</string>
     <string name="family_members_dialog_disable_title">停用成员？</string>
     <string name="family_members_dialog_disable_text">停用后%1$s将不能继续访问当前账本，当前账本下的活跃会话会被吊销。</string>
-    <string name="family_members_dialog_disable_confirm">确认停用</string>
+    <string name="family_members_dialog_disable_confirm">确定停用</string>
     <string name="family_members_dialog_transfer_owner_title">转让拥有者？</string>
     <string name="family_members_dialog_transfer_owner_text">转让后%1$s会成为唯一拥有者，你会降为成员。此操作会立即影响成员管理权限。</string>
-    <string name="family_members_dialog_transfer_owner_confirm">确认转让</string>
+    <string name="family_members_dialog_transfer_owner_confirm">确定转让</string>
     <!-- FamilyMembersViewModel：状态/反馈消息（ADR-0044 wave 2） -->
     <string name="family_members_message_members_load_failed">成员列表暂时打不开。</string>
     <string name="family_members_message_audit_load_failed">成员记录暂时打不开。</string>
@@ -69,7 +69,7 @@
     <string name="join_family_ledger_binding_unbound">未绑定</string>
     <string name="join_family_ledger_message_preview_failed">预览邀请失败。</string>
     <string name="join_family_ledger_message_accept_failed">接受邀请失败。</string>
-    <string name="join_family_ledger_message_accepted">已加入“%1$s”，当前角色：%2$s</string>
+    <string name="join_family_ledger_message_accepted">已加入「%1$s」，当前角色：%2$s</string>
 
     <!-- LedgerSwitcherScreen：设置→账本 屏 -->
     <string name="ledger_switcher_page_title">账本</string>
@@ -81,14 +81,14 @@
     <string name="ledger_switcher_refresh_loading">刷新中…</string>
     <string name="ledger_switcher_refresh_button">刷新列表</string>
     <string name="ledger_switcher_section_create">新建账本</string>
-    <string name="ledger_switcher_create_hint">账本名称最多 %1$d 个字。新建后不会自动切换，可以在上方点击“切换”。</string>
+    <string name="ledger_switcher_create_hint">账本名称最多 %1$d 个字。新建后不会自动切换，可以在上方点击「切换」。</string>
     <string name="ledger_switcher_field_ledger_name">账本名称</string>
     <string name="ledger_switcher_create_button">新建账本</string>
     <!-- LedgerSwitcherViewModel：状态/反馈消息（ADR-0044 wave 2） -->
     <string name="ledger_switcher_message_load_failed">获取账本失败。</string>
-    <string name="ledger_switcher_message_switched">已切换到“%1$s”</string>
+    <string name="ledger_switcher_message_switched">已切换到「%1$s」</string>
     <string name="ledger_switcher_message_switch_failed">切换账本失败。</string>
-    <string name="ledger_switcher_message_created">已新建账本“%1$s”</string>
+    <string name="ledger_switcher_message_created">已新建账本「%1$s」</string>
     <string name="ledger_switcher_message_create_failed">新建账本失败。</string>
     <string name="ledger_switcher_message_name_required">请填写账本名称。</string>
 

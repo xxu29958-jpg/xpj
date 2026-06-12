@@ -114,8 +114,8 @@
     <string name="ledger_status_line">%1$s · %2$s</string>
     <string name="ledger_filter_summary_month_all">全部月份</string>
     <string name="ledger_filter_summary_category_all">全部分类</string>
-    <string name="ledger_filter_summary_tag">" · 标签“%1$s”"</string>
-    <string name="ledger_filter_summary_query">" · 搜索“%1$s”"</string>
+    <string name="ledger_filter_summary_tag">" · 标签「%1$s」"</string>
+    <string name="ledger_filter_summary_query">" · 搜索「%1$s」"</string>
     <string name="ledger_filter_summary_template">当前查看：%1$s · %2$s%3$s%4$s</string>
 
     <!-- LedgerGrouping：日期分组头（ledgerDayLabel）。月/日 格式 pattern 不外置，见代码注释。 -->

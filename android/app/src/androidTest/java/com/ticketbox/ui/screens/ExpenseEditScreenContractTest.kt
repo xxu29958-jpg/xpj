@@ -92,10 +92,10 @@ class ExpenseEditScreenContractTest {
             }
         }
 
-        // pending 态：确认入账 / 保存 / 删除 都在浮动栏里，开屏即可见。
+        // pending 态：确认入账 / 保存 / 忽略 都在浮动栏里，开屏即可见。
         composeRule.onNodeWithText("确认入账").assertIsDisplayed()
         composeRule.onNodeWithText("保存").assertIsDisplayed()
-        composeRule.onNodeWithText("删除").assertIsDisplayed()
+        composeRule.onNodeWithText("忽略").assertIsDisplayed()
     }
 
     @Test
@@ -118,11 +118,11 @@ class ExpenseEditScreenContractTest {
             }
         }
 
-        // 已入账：只剩保存 + 返回，确认/删除收起（语义对齐 ExpenseEditRoute）。
+        // 已入账：只剩保存 + 返回，确认/忽略收起（语义对齐 ExpenseEditRoute）。
         composeRule.onNodeWithText("保存").assertIsDisplayed()
         composeRule.onNodeWithText("返回").assertIsDisplayed()
         composeRule.onNodeWithText("确认入账").assertDoesNotExist()
-        composeRule.onNodeWithText("删除").assertDoesNotExist()
+        composeRule.onNodeWithText("忽略").assertDoesNotExist()
     }
 
     @Test

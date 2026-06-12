@@ -270,7 +270,7 @@ def web_reject(
     return _web_redirect(
         "/web/pending",
         selected_id,
-        msg="账单已删除。",
+        msg="已忽略这笔账单。",
         undo=str(expense_id),
         flash_type="success",
     )

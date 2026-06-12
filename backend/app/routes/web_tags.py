@@ -110,7 +110,7 @@ def web_tag_rename(
             expected_row_version=parsed,
             name=name,
         )
-        msg = f"标签已重命名为 [{tag.name}]。"
+        msg = f"标签已重命名为 「{tag.name}」。"
     except AppError as exc:
         msg = _conflict_message(exc)
     return _web_redirect("/web/tags", selected_id, msg=msg)
