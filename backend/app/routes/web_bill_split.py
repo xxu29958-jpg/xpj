@@ -99,13 +99,11 @@ def build_split_invite_context(
 ) -> dict | None:
     """Context for the "找家人分摊" 发起卡 on edit.html, or ``None`` to hide it.
 
-    A8: the sender-side ``POST /web/expenses/{id}/split-invite`` route already
-    exists; this wires a form to it from the confirmed-expense edit page.
-
     The card only makes sense for a **confirmed** expense that has an amount,
     is writable by the caller, and is not itself a received split (no chain
     split — ``create_invitation`` 也会兜底). When any of those fail, return
-    ``None`` so the template skips the whole block.
+    ``None`` so the template skips the whole block (A8 wires the form to the
+    pre-existing ``POST /web/expenses/{id}/split-invite`` route).
 
     The receiver dropdown lists the *current ledger's* other active members
     (拆账=发邀请到 TA 自己的账本，对照 Android 批 13 的概念区分；份额=记在本账本
@@ -385,6 +383,7 @@ def web_split_cancel(
     public_id: str,
     request: Request,
     ledger_id: str = Form(default=""),
+    return_expense_id: int = Form(default=0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -397,7 +396,14 @@ def web_split_cancel(
         msg = "已撤回拆账邀请。"
     except AppError as exc:
         msg = exc.message
-    return _web_redirect("/web/bill-splits/sent", selected_id, msg=msg)
+    # 编辑页发起卡的撤回带 return_expense_id 回编辑页(int 类型天然挡住任意
+    # 跳转目标;0=未带,落已发列表——sent 页自己的撤回表单不带此字段)。
+    target = (
+        f"/web/expenses/{return_expense_id}/edit"
+        if return_expense_id > 0
+        else "/web/bill-splits/sent"
+    )
+    return _web_redirect(target, selected_id, msg=msg)
 
 
 # -------------------------------------------------------------------------

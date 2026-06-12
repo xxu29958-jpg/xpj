@@ -148,6 +148,7 @@
           {% if row.is_cancellable %}
           <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
             <button type="submit" class="dt-btn link" data-confirm="撤回这份拆账邀请？">撤回</button>
           </form>
           {% else %}
