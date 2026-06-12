@@ -21,7 +21,7 @@ import org.junit.Test
  * Pins the irreversible-discard confirm step on 离线同步: 「放弃我的改动」
  * (conflict) and 「放弃」/「移除」 (failed) must NOT fire the VM callback
  * directly — first an AlertDialog, cancel keeps the row, and only the
- * explicit confirm word (确认放弃 / 确认移除) fires the drop.
+ * explicit confirm word (确定放弃 / 确定移除) fires the drop.
  */
 class SyncStatusScreenConfirmTest {
     @get:Rule
@@ -49,7 +49,7 @@ class SyncStatusScreenConfirmTest {
         composeRule.runOnIdle { assertNull(dropped) }
 
         composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
-        composeRule.onNodeWithText("确认放弃").performClick()
+        composeRule.onNodeWithText("确定放弃").performClick()
         composeRule.runOnIdle { assertEquals(row, dropped) }
     }
 
@@ -75,7 +75,7 @@ class SyncStatusScreenConfirmTest {
         composeRule.runOnIdle { assertNull(dropped) }
 
         composeRule.onNodeWithText("放弃").performScrollTo().performClick()
-        composeRule.onNodeWithText("确认放弃").performClick()
+        composeRule.onNodeWithText("确定放弃").performClick()
         composeRule.runOnIdle { assertEquals(row, dropped) }
     }
 
@@ -99,7 +99,7 @@ class SyncStatusScreenConfirmTest {
         composeRule.onNodeWithText("移除这条记录？").assertIsDisplayed()
         composeRule.runOnIdle { assertNull(dropped) }
 
-        composeRule.onNodeWithText("确认移除").performClick()
+        composeRule.onNodeWithText("确定移除").performClick()
         composeRule.runOnIdle { assertEquals(row, dropped) }
     }
 

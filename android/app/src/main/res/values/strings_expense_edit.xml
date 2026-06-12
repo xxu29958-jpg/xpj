@@ -27,12 +27,12 @@
     <string name="expense_edit_loading_reload_button">重新加载</string>
     <string name="expense_edit_loading_back_button">返回</string>
 
-    <!-- ExpenseEditActionBar：底部浮动操作栏（保存 / 确认入账 / 返回 / 删除） -->
+    <!-- ExpenseEditActionBar：底部浮动操作栏（保存 / 确认入账 / 返回 / 忽略） -->
     <string name="expense_edit_primary_back_button">返回</string>
     <string name="expense_edit_primary_saving_button">保存中</string>
     <string name="expense_edit_primary_save_button">保存</string>
     <string name="expense_edit_confirm_button">确认入账</string>
-    <string name="expense_edit_reject_button">删除</string>
+    <string name="expense_edit_reject_button">忽略</string>
 
     <!-- ExpenseEditCoreFields：金额/币种/商家/分类/备注/来源 -->
     <string name="expense_edit_amount_field_label">金额，单位元</string>
@@ -66,12 +66,12 @@
     <string name="expense_edit_items_footer_face_label">票面</string>
     <string name="expense_edit_items_footer_diff_label">差额</string>
 
-    <!-- ExpenseEditDialogs：日期/时间/删除/粘贴识别对话框 -->
+    <!-- ExpenseEditDialogs：日期/时间/忽略/粘贴识别对话框 -->
     <string name="expense_edit_date_picker_title">选择日期</string>
     <string name="expense_edit_time_picker_title">选择时间</string>
-    <string name="expense_edit_reject_dialog_title">删除这笔账单？</string>
-    <string name="expense_edit_reject_dialog_body">删除后会标记为已拒绝，不会进入账本。</string>
-    <string name="expense_edit_reject_dialog_confirm_button">确定删除</string>
+    <string name="expense_edit_reject_dialog_title">忽略这笔账单？</string>
+    <string name="expense_edit_reject_dialog_body">忽略后这笔不会进入账本。</string>
+    <string name="expense_edit_reject_dialog_confirm_button">忽略</string>
     <string name="expense_edit_recognize_dialog_title">粘贴文字识别</string>
     <string name="expense_edit_recognize_field_label">粘贴小票文字</string>
     <string name="expense_edit_recognize_field_placeholder">例如：星巴克 拿铁 ¥35 2026-05-20 …</string>
@@ -177,11 +177,11 @@
     <string name="expense_edit_save_success">已保存</string>
     <string name="expense_edit_save_offline_queued">已离线保存，联网后同步</string>
     <string name="expense_edit_save_failed">没有保存成功，请稍后再试。</string>
-    <!-- 确认入账 / 删除 -->
+    <!-- 确认入账 / 忽略 -->
     <string name="expense_edit_confirm_offline_queued">已离线确认，联网后同步</string>
     <string name="expense_edit_confirm_failed">没有确认成功，请稍后再试。</string>
-    <string name="expense_edit_reject_offline_queued">已离线删除，联网后同步</string>
-    <string name="expense_edit_reject_failed">没有删除成功，请稍后再试。</string>
+    <string name="expense_edit_reject_offline_queued">已离线忽略，联网后同步</string>
+    <string name="expense_edit_reject_failed">没有忽略成功，请稍后再试。</string>
     <!-- 重新识别 / 粘贴识别 -->
     <string name="expense_edit_ocr_retried">识别已重试</string>
     <string name="expense_edit_ocr_retry_offline_queued">已离线，联网后重试识别</string>

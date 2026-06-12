@@ -75,7 +75,7 @@
             </form>
             {% if tags|length > 1 %}
             <form method="post" action="/web/tags/{{ item.public_id }}/merge" class="dt-inline-form"
-                  data-confirm="把标签 [{{ item.name }}] 合并到所选标签？该标签下的账单会改用目标标签。">
+                  data-confirm="把标签「{{ item.name }}」合并到所选标签？该标签下的账单会改用目标标签。">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
               <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
               <select class="dt-input" name="target" required aria-label="合并到">
@@ -88,7 +88,7 @@
             </form>
             {% endif %}
             <form method="post" action="/web/tags/{{ item.public_id }}/delete" class="dt-inline-form"
-                  data-confirm="删除标签 [{{ item.name }}]？{% if item.usage_count %}（{{ item.usage_count }} 笔账单将移除该标签）{% endif %}">
+                  data-confirm="删除标签「{{ item.name }}」？{% if item.usage_count %}（{{ item.usage_count }} 笔账单将移除该标签）{% endif %}">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
               <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
               <button type="submit" class="dt-btn danger">删除</button>

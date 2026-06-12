@@ -50,14 +50,15 @@ internal data class ExpenseEditActionBarActions(
 )
 
 /**
- * 编辑页底部浮动操作栏。把原先散落在长表单尾部的「保存 / 确认入账 / 删除」
+ * 编辑页底部浮动操作栏。把原先散落在长表单尾部的「保存 / 确认入账 / 忽略」
  * 合并成永远一拇指可达的单条——最高频的「确认一张票」不再需要滚到底。
- * （删除的动词最终定名见批 15 拍板②，本批不动既有 `expense_edit_reject_button`。）
+ * （动作动词批 15 拍板②统一为「忽略」：草稿不入账、可撤销，区别于真销毁的「删除」；
+ *   resource key 沿用既有 `expense_edit_reject_button`，只改文案值。）
  *
  * 层级：
  *  - 主行（前进动作）：保存（tonal outlined）+ 确认入账（filled primary，主操作，
  *    仅 [ExpenseEditActionBarState.allowConfirm]）。
- *  - 次行（低强调）：返回（text）+ 删除（danger text，仅 allowReject）。
+ *  - 次行（低强调）：返回（text）+ 忽略（danger text，仅 allowReject）。
  *  - message 校验/状态提示锚在按钮上沿，"点确认→缺金额"永远在视野内。
  *
  * 软键盘 inset 由外层 [com.ticketbox.ui.components.AppPageScaffold] 的

@@ -348,7 +348,7 @@
             </button>
           </form>
           <form method="post" action="/web/rules/{{ r.id }}/delete" style="display:inline"
-                data-confirm="删除规则 [{{ r.keyword }}]？">
+                data-confirm="删除规则「{{ r.keyword }}」？">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
             <button type="submit" class="dt-btn danger">删除</button>

@@ -30,13 +30,13 @@
     <string name="family_members_action_disable">停用</string>
     <string name="family_members_dialog_change_role_title">调整成员角色？</string>
     <string name="family_members_dialog_change_role_text">将%1$s调整为%2$s。已有会话下次请求会立即按新角色生效。</string>
-    <string name="family_members_dialog_change_role_confirm">确认调整</string>
+    <string name="family_members_dialog_change_role_confirm">调整</string>
     <string name="family_members_dialog_disable_title">停用成员？</string>
     <string name="family_members_dialog_disable_text">停用后%1$s将不能继续访问当前账本，当前账本下的活跃会话会被吊销。</string>
-    <string name="family_members_dialog_disable_confirm">确认停用</string>
+    <string name="family_members_dialog_disable_confirm">确定停用</string>
     <string name="family_members_dialog_transfer_owner_title">转让拥有者？</string>
     <string name="family_members_dialog_transfer_owner_text">转让后%1$s会成为唯一拥有者，你会降为成员。此操作会立即影响成员管理权限。</string>
-    <string name="family_members_dialog_transfer_owner_confirm">确认转让</string>
+    <string name="family_members_dialog_transfer_owner_confirm">确定转让</string>
     <!-- FamilyMembersViewModel：状态/反馈消息（ADR-0044 wave 2） -->
     <string name="family_members_message_members_load_failed">成员列表暂时打不开。</string>
     <string name="family_members_message_audit_load_failed">成员记录暂时打不开。</string>

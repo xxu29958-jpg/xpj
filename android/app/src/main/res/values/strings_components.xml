@@ -36,10 +36,10 @@
     <string name="components_expense_card_keep_duplicate">不是重复，保留</string>
     <string name="components_expense_card_category_fallback">账</string>
 
-    <!-- ExpenseCard 删除确认对话框 -->
-    <string name="components_expense_card_reject_dialog_title">删除这笔待确认账单？</string>
-    <string name="components_expense_card_reject_dialog_body">删除后这张截图会标记为已拒绝，不会进入账本。</string>
-    <string name="components_expense_card_reject_dialog_confirm">确定删除</string>
+    <!-- ExpenseCard 忽略确认对话框 -->
+    <string name="components_expense_card_reject_dialog_title">忽略这笔待确认账单？</string>
+    <string name="components_expense_card_reject_dialog_body">忽略后这张截图不会进入账本。</string>
+    <string name="components_expense_card_reject_dialog_confirm">忽略</string>
 
     <!-- MonthPickerSheet：月份选择 -->
     <string name="components_month_picker_title">选择月份</string>

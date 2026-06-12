@@ -6,8 +6,8 @@ in a single click:
 
 * **保留两条** — calls ``mark_expense_not_duplicate`` (records the ignore
   pair so it never re-fires for the same kind).
-* **删除当前** — rejects the suspected row.
-* **删除被复制的那条** — rejects the original row instead, then clears the
+* **忽略新草稿** — rejects the suspected row (draft not booked, restorable).
+* **忽略原账单** — rejects the original row instead, then clears the
   suspected flag on the kept row so it stops blocking review.
 
 All actions stay loopback-only via ``LocalOnly`` and respect ledger
@@ -200,7 +200,7 @@ def web_duplicate_reject_current(
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
         reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
-        msg = "已删除当前账单。"
+        msg = "已忽略当前账单。"
     except AppError as exc:
         msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/duplicates", selected_id, msg=msg)
@@ -221,7 +221,7 @@ def web_duplicate_reject_original(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
-    msg = "已删除被复制的那条，并保留当前账单。"
+    msg = "已忽略被复制的那条，并保留当前账单。"
     try:
         current, original = _load_pair(db, tenant_id=selected_id, expense_id=expense_id)
         if original is None:

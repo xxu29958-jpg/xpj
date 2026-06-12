@@ -3,15 +3,17 @@
      （见 strings.xml 头部约定）。文案句式：陈述事实+下一步，不用感叹号。只放中文，不建第二语言。 -->
 <resources>
 
-    <!-- TicketboxNotifier：NotificationChannel 名（系统通知设置里用户可见） -->
-    <string name="notification_channel_drafts_name">待确认草稿</string>
+    <!-- TicketboxNotifier：NotificationChannel 名（系统通知设置里用户可见）。
+         逐字对齐设置页提醒开关标题（strings_settings_family.xml 的待确认提醒 / 大额提醒），
+         让系统通知分类与 App 内开关一一对应。 -->
+    <string name="notification_channel_drafts_name">待确认提醒</string>
     <string name="notification_channel_alerts_name">大额提醒</string>
 
     <!-- TicketboxNotifier：通知标题/正文。正文 %1$s=商家、%2$s=本位币金额、%3$s=原币金额（外币票） -->
     <string name="notification_draft_created_title">已记一笔待确认</string>
     <string name="notification_large_amount_title">大额支出待确认</string>
-    <string name="notification_draft_created_body">%1$s %2$s，进入待确认页核对。</string>
-    <string name="notification_draft_created_body_with_original">%1$s %2$s（原币 %3$s），进入待确认页核对。</string>
+    <string name="notification_draft_created_body">%1$s %2$s，核对后才会入账。</string>
+    <string name="notification_draft_created_body_with_original">%1$s %2$s（原币 %3$s），核对后才会入账。</string>
     <string name="notification_draft_created_merchant_missing">未填写商家</string>
 
     <!-- NotificationPreferencesScreen：通知权限提示行 + 大额开关副标题。

@@ -54,7 +54,7 @@
     <string name="pending_filter_label_ready_to_confirm">可直接确认</string>
 
     <!-- Needs Review 空筛选卡片 -->
-    <string name="pending_filter_empty_title">没有符合 [%1$s] 的待确认账单</string>
+    <string name="pending_filter_empty_title">没有符合「%1$s」的待确认账单</string>
     <string name="pending_filter_empty_body">切换其他筛选可以看到剩余账单。当前不会自动判断，也不会自动入账。</string>
 
     <!-- 页头 PendingTop -->
@@ -71,8 +71,8 @@
     <string name="pending_display_mode_button_loading">刷新中</string>
 
     <!-- 撤销 banner -->
-    <string name="pending_undo_banner_label_with_descriptor">已删除 · %1$s</string>
-    <string name="pending_undo_banner_label">已删除</string>
+    <string name="pending_undo_banner_label_with_descriptor">已忽略 · %1$s</string>
+    <string name="pending_undo_banner_label">已忽略</string>
     <string name="pending_undo_banner_action">撤销</string>
 
     <!-- 批量确认入口卡片 -->
@@ -98,9 +98,9 @@
     <string name="pending_msg_confirmed">已确认入账</string>
     <string name="pending_msg_confirmed_offline">已离线确认，联网后同步</string>
     <string name="pending_msg_confirm_failed">没有确认成功，请稍后再试。</string>
-    <string name="pending_msg_rejected">已删除</string>
-    <string name="pending_msg_rejected_offline">已离线删除，联网后同步</string>
-    <string name="pending_msg_reject_failed">没有删除成功，请稍后再试。</string>
+    <string name="pending_msg_rejected">已忽略</string>
+    <string name="pending_msg_rejected_offline">已离线忽略，联网后同步</string>
+    <string name="pending_msg_reject_failed">没有忽略成功，请稍后再试。</string>
     <string name="pending_msg_ignored_duplicate">已忽略重复</string>
     <string name="pending_msg_ignored_duplicate_offline">已离线忽略，联网后同步</string>
     <string name="pending_msg_ignore_duplicate_failed">没有处理成功，请稍后再试。</string>
@@ -160,10 +160,10 @@
 
     <!-- DuplicateConfirmSheet -->
     <string name="pending_duplicate_sheet_title">处理疑似重复</string>
-    <string name="pending_duplicate_sheet_hint">请你来决定。我们不会自动删除，也不会自动确认入账。</string>
+    <string name="pending_duplicate_sheet_hint">请你来决定。我们不会自动忽略，也不会自动确认入账。</string>
     <string name="pending_duplicate_sheet_merchant_missing">未填写商家</string>
     <string name="pending_duplicate_sheet_reason">可能原因：%1$s</string>
     <string name="pending_duplicate_sheet_processing">处理中…</string>
     <string name="pending_duplicate_sheet_keep_both">保留两笔（不是重复）</string>
-    <string name="pending_duplicate_sheet_ignore_current">忽略当前（删除这条）</string>
+    <string name="pending_duplicate_sheet_ignore_current">忽略当前这条</string>
 </resources>

@@ -66,7 +66,7 @@ def test_web_reject_redirects_with_undo_query_and_success_flash(
     location = response.headers.get("location", "")
     assert "/web/pending" in location
     assert f"undo={expense_id}" in location
-    assert "msg=" in location  # 账单已删除。 banner text
+    assert "msg=" in location  # 已忽略这笔账单。 banner text
     assert "flash_type=success" in location  # review P2 #1: green banner
 
 
@@ -79,7 +79,7 @@ def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     )
 
     page = web_client.get(
-        f"/web/pending?ledger_id=owner&undo={expense_id}&msg=账单已删除。&flash_type=success"
+        f"/web/pending?ledger_id=owner&undo={expense_id}&msg=已忽略这笔账单。&flash_type=success"
     )
     assert page.status_code == 200, page.text
     body = page.text
@@ -155,7 +155,7 @@ def test_web_pending_drops_undo_for_cross_ledger_expense(
 
     # Page rendered for the other ledger with a stale ``undo`` query: banner gone.
     page = web_client.get(
-        f"/web/pending?ledger_id={other_ledger_id}&undo={expense_id}&msg=已删除&flash_type=success"
+        f"/web/pending?ledger_id={other_ledger_id}&undo={expense_id}&msg=已忽略&flash_type=success"
     )
     assert page.status_code == 200, page.text
     assert "undo-banner" not in page.text
@@ -170,7 +170,7 @@ def test_web_pending_drops_undo_for_non_rejected_row(
     # else / the same user from another tab already undid it.
     expense_id = _create_pending(web_client, identity=identity)
     page = web_client.get(
-        f"/web/pending?ledger_id=owner&undo={expense_id}&msg=已删除&flash_type=success"
+        f"/web/pending?ledger_id=owner&undo={expense_id}&msg=已忽略&flash_type=success"
     )
     assert page.status_code == 200, page.text
     assert "undo-banner" not in page.text
