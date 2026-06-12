@@ -10,6 +10,7 @@
     <string name="notification_channel_drafts_name">待确认提醒</string>
     <string name="notification_channel_alerts_name">大额提醒</string>
     <string name="notification_channel_recurring_name">固定支出提醒</string>
+    <string name="notification_channel_budget_name">预算超支提醒</string>
 
     <!-- TicketboxNotifier：通知标题/正文。正文 %1$s=商家、%2$s=本位币金额、%3$s=原币金额（外币票）。
          大额标题 %1$s=商家、%2$s=本位币金额（拍板⑨口语化，锁屏 public 版不带这些字段）。 -->
@@ -23,12 +24,20 @@
     <string name="notification_recurring_due_title">%1$s 这几天该到了</string>
     <string name="notification_recurring_due_body">只做提醒，核对后才会入账。</string>
 
+    <!-- TicketboxNotifier：预算超支提醒（轴6 主动性）。正文 %1$s=超出金额（本位币）。
+         月级一次性提醒（BudgetOverspendChecker 本地 sent-key 去重，一月一响）。 -->
+    <string name="notification_budget_overspent_title">本月预算超了</string>
+    <string name="notification_budget_overspent_body">已超出预算 %1$s，打开看看花在哪。</string>
+
     <!-- TicketboxNotifier：锁屏可见的 public 脱敏版（不带商家/金额，避免在锁屏泄露）。 -->
     <string name="notification_public_draft_summary">有一笔待确认，进入应用核对。</string>
     <string name="notification_public_recurring_summary">有一笔固定支出提醒。</string>
+    <string name="notification_public_budget_summary">有一条预算提醒。</string>
 
-    <!-- TicketboxNotifier：通知 action 按钮。点击进待确认页（锁屏快捷核对）。 -->
+    <!-- TicketboxNotifier：通知 action 按钮。「去核对」进待确认页（锁屏快捷核对）；
+         「去查看」用于预算提醒（无深链，点击同样进 App）。 -->
     <string name="notification_action_review">去核对</string>
+    <string name="notification_action_open">去查看</string>
 
     <!-- NotificationPreferencesScreen：通知权限提示行 + 大额开关副标题。
          副标题写明的 ¥500 与 TicketboxNotifier.LARGE_AMOUNT_THRESHOLD_CENTS=50000 同步改。

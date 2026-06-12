@@ -48,7 +48,13 @@ import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
+import android.os.SystemClock
 import com.ticketbox.notification.TicketboxNotifier
+import com.ticketbox.notification.budget.BudgetOverspendChecker
+import com.ticketbox.notification.budget.BudgetOverspendRuntime
+import com.ticketbox.notification.budget.BudgetOverspendSource
+import com.ticketbox.notification.budget.NotifierBudgetOverspendDispatcher
+import com.ticketbox.notification.budget.SharedPrefsBudgetOverspendStore
 import com.ticketbox.notification.recurring.NotifierRecurringReminderDispatcher
 import com.ticketbox.notification.recurring.RecurringReminderEngine
 import com.ticketbox.notification.recurring.RecurringReminderPolicy
@@ -58,6 +64,11 @@ import com.ticketbox.notification.recurring.SharedPrefsRecurringReminderStore
 import com.ticketbox.notification.recurring.WorkManagerRecurringReminderScheduler
 import com.ticketbox.security.SecureTokenStore
 import java.time.LocalDate
+import java.time.YearMonth
+import java.time.ZoneId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.map
 
 class AppContainer(context: Context) {
@@ -424,4 +435,36 @@ class AppContainer(context: Context) {
             today = { LocalDate.now() },
         ),
     )
+
+    // 轴 6 主动性 · 预算超支提醒：检测器挂在「确认态写入本地缓存」单点
+    // （ExpenseRepositoryCore.cacheIfConfirmed → onConfirmedCommitted，init 块注入）。
+    // 事件驱动、零周期 worker（不落 ADR-0046 的 worker 边界）；月级 sent-key 一月一响 +
+    // 10min throttle 压「未超支时」的拉取频率。
+    val budgetOverspendChecker = BudgetOverspendChecker(
+        // 纯透传 budgetRepository（超支口径全在服务端算好，客户端不重算）。
+        source = BudgetOverspendSource { month -> budgetRepository.monthlyBudget(month) },
+        store = SharedPrefsBudgetOverspendStore(appContext),
+        dispatcher = NotifierBudgetOverspendDispatcher(notifier::onBudgetOverspent),
+        runtime = BudgetOverspendRuntime(
+            // 「预算超支提醒」开关现读：关 → 不拉预算、不发、不 markSent。
+            budgetOverspendAlertsEnabled = { settingsStore.notificationPreferences().budgetOverspendAlerts },
+            activeLedgerId = { settingsStore.activeLedgerId() },
+            // Asia/Shanghai 当月：对齐服务端统计口径（COALESCE(expense_time, confirmed_at)
+            // 按沪月聚合），不用设备时区——跨日几小时窗口里宁可保守。
+            currentMonth = { YearMonth.now(ZoneId.of("Asia/Shanghai")).toString() },
+            // 单调时钟：throttle 不受改系统时间影响。
+            monotonicNowMillis = { SystemClock.elapsedRealtime() },
+        ),
+        // 进程级 scope（镜像 NLS serviceScope 哲学）：检测随进程存活，失败由 SupervisorJob 隔离。
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    )
+
+    init {
+        // 触发接缝注入（var 而非构造参数：facade 构造已 12 参，加参会让 detekt
+        // LongParameterList baseline 按签名失配，详见 ExpenseRepositoryCore.onConfirmedCommitted）。
+        // checkAfterConfirmedWrite 自身 fire-and-forget，不阻塞确认链路。
+        expenseRepository.onConfirmedCommitted = { ledgerId ->
+            budgetOverspendChecker.checkAfterConfirmedWrite(ledgerId)
+        }
+    }
 }

@@ -94,6 +94,16 @@ internal class ExpenseRepositoryCore(
     )
     val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
 
+    /**
+     * 「确认态写入本地缓存」的单点回调（轴 6 预算超支检测的触发接缝）。[cacheIfConfirmed]
+     * 真正 upsert 后同步调用；实现必须 fire-and-forget（立即返回、内部自行 launch），
+     * 不得阻塞确认链路。var 而非构造参数：facade 构造已 12 参，加参会让 detekt
+     * LongParameterList baseline 按签名失配（RuleRepository 的 onConfirmedChanged 是构造注入
+     * 先例，本处选 var 纯为 baseline 零搅动）。AppContainer 经
+     * [ExpenseRepository.onConfirmedCommitted] 注入；默认 no-op 保持既有测试行为。
+     */
+    var onConfirmedCommitted: (ledgerId: String) -> Unit = {}
+
     fun currentTimezoneId(): String = TimeZone.getDefault().id
 
     fun currentLedgerRole(): String? = settingsStore.role()
@@ -189,6 +199,7 @@ internal class ExpenseRepositoryCore(
     suspend fun cacheIfConfirmed(dto: ExpenseDto, ledgerIdAtRequest: String): ExpenseDto {
         if (dto.status == "confirmed" && activeLedgerIdOrLegacy() == ledgerIdAtRequest) {
             expenseDao.upsertByServerIdForLedger(ledgerIdAtRequest, dto.toEntity(ledgerIdAtRequest))
+            onConfirmedCommitted(ledgerIdAtRequest)
         }
         return dto
     }

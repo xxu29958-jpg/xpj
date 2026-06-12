@@ -59,6 +59,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             pendingDraftReminders = prefs.getBoolean(KEY_NOTIFY_PENDING_DRAFTS, false),
             largeAmountAlerts = prefs.getBoolean(KEY_NOTIFY_LARGE_AMOUNT, false),
             recurringReminders = prefs.getBoolean(KEY_NOTIFY_RECURRING, false),
+            budgetOverspendAlerts = prefs.getBoolean(KEY_NOTIFY_BUDGET_OVERSPEND, false),
         )
 
     override fun saveNotificationPreferences(preferences: NotificationPreferences) {
@@ -67,6 +68,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             putBoolean(KEY_NOTIFY_PENDING_DRAFTS, preferences.pendingDraftReminders)
             putBoolean(KEY_NOTIFY_LARGE_AMOUNT, preferences.largeAmountAlerts)
             putBoolean(KEY_NOTIFY_RECURRING, preferences.recurringReminders)
+            putBoolean(KEY_NOTIFY_BUDGET_OVERSPEND, preferences.budgetOverspendAlerts)
         }
     }
 
@@ -350,6 +352,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_NOTIFY_PENDING_DRAFTS = "notify_pending_drafts"
         const val KEY_NOTIFY_LARGE_AMOUNT = "notify_large_amount"
         const val KEY_NOTIFY_RECURRING = "notify_recurring"
+        const val KEY_NOTIFY_BUDGET_OVERSPEND = "notify_budget_overspend"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
         const val NO_BUDGET = -1L

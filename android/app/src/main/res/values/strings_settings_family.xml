@@ -112,6 +112,8 @@
     <!-- 大额开关副标题已随通知文案包迁入 strings_notifications.xml（写明 ¥500 阈值）。 -->
     <string name="notification_preferences_reminder_recurring_title">固定支出提醒</string>
     <string name="notification_preferences_reminder_recurring_subtitle">固定支出临近或金额异常时提醒。</string>
+    <string name="notification_preferences_reminder_budget_title">预算超支提醒</string>
+    <string name="notification_preferences_reminder_budget_subtitle">本月支出超过预算时提醒一次。</string>
     <string name="notification_preferences_section_privacy">隐私边界</string>
     <string name="notification_preferences_privacy_title">通知原文不会上传到小票夹服务。</string>
     <string name="notification_preferences_privacy_body">支付通知只在本机解析，上传字段限定为来源、金额、商家、分类和时间。系统授权和 App 开关任一关闭，都会停止自动草稿。</string>

@@ -87,6 +87,16 @@ class ExpenseRepository(
         replaceSplitsAdapter = replaceSplitsAdapter,
         recognizeTextAdapter = recognizeTextAdapter,
     )
+    /**
+     * 见 [ExpenseRepositoryCore.onConfirmedCommitted]：确认态落本地缓存的单点回调
+     * （轴 6 预算超支检测的触发接缝），AppContainer 构造后注入。
+     */
+    var onConfirmedCommitted: (ledgerId: String) -> Unit
+        get() = core.onConfirmedCommitted
+        set(value) {
+            core.onConfirmedCommitted = value
+        }
+
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
     private val pendingRepository = ExpensePendingRepository(core)
