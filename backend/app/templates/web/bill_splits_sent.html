@@ -22,7 +22,7 @@
   </div>
 </div>
 {% else %}
-<table class="dt-table">
+<table class="dt-table bsplit-table">
   <thead>
     <tr>
       <th>状态</th>
@@ -50,11 +50,11 @@
           <span class="dt-pill">已过期</span>
         {% endif %}
       </td>
-      <td>{{ row.receiver_display_name }}</td>
+      <td class="party">{{ row.receiver_display_name }}</td>
       <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
       <td>{{ row.merchant or '—' }}</td>
-      <td>{{ row.expense_time or '—' }}</td>
-      <td>{{ row.expires_at or '—' }}</td>
+      <td class="num">{{ row.expense_time or '—' }}</td>
+      <td class="num">{{ row.expires_at or '—' }}</td>
       <td>
         {% if row.status == 'invited' %}
           <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">

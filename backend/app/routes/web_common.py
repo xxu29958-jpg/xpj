@@ -23,7 +23,7 @@ from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
-from app.services import backup_service, web_stats_service
+from app.services import backup_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
 from app.services.dashboard_service import list_dashboard_cards
@@ -411,6 +411,10 @@ def _expense_view(expense) -> dict:
         image_state = "missing"
     source_raw = getattr(expense, "source", "") or ""
     source_label = web_stats_service.source_label(source_raw, "未知")
+    # ADR-0029: a received split expense is itself the foot of a split chain and
+    # cannot be re-split (服务端 ``create_invitation`` 也会 split_chain_not_allowed
+    # 兜底)。发起卡据此隐藏。
+    is_split_received = source_raw == bill_split_service.SPLIT_RECEIVED_SOURCE
     needs_amount = expense.amount_cents is None
     needs_merchant = not (expense.merchant or "").strip()
     is_duplicate = (getattr(expense, "duplicate_status", None) or "") == "suspected"
@@ -453,6 +457,7 @@ def _expense_view(expense) -> dict:
         "needs_amount": needs_amount,
         "needs_merchant": needs_merchant,
         "source_label": source_label,
+        "is_split_received": is_split_received,
     }
 
 

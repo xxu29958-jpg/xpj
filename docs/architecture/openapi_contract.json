@@ -2144,6 +2144,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "return_expense_id": {
+            "default": 0,
+            "title": "Return Expense Id",
+            "type": "integer"
           }
         },
         "title": "Body_web_split_cancel_web_bill_splits__public_id__cancel_post",
