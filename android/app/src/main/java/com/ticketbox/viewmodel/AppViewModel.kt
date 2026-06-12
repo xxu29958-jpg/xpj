@@ -27,6 +27,14 @@ data class AppUiState(
     val currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val authMessage: UiText? = null,
+    /**
+     * The local-unlock door was gracefully disabled because the device has no way to
+     * satisfy it (no enrolled biometric and no usable lock-screen credential — audit
+     * 8.1). The app is entered (the gate doesn't trap the user) and a persistent,
+     * non-dismissable banner advises setting up a lock screen. Server-side auth is
+     * unaffected (§5: the local door only unlocks local state).
+     */
+    val localUnlockDisabled: Boolean = false,
 )
 
 class AppViewModel(
@@ -38,7 +46,17 @@ class AppViewModel(
     private val hasActiveBinding: Boolean
         get() = settingsStore.isBound() && tokenStore.getToken() != null
 
-    private val initialSkin = normalizedInitialSkin()
+    // Normalize the persisted skin key on construction: if the stored key isn't the
+    // canonical form, rewrite it. Inlined into the initializer (not a helper method)
+    // so the class stays within the detekt per-class function budget.
+    private val initialSkin: AppSkin = run {
+        val rawKey = settingsStore.appSkinKey()
+        val skin = AppSkin.fromStorageKey(rawKey)
+        if (rawKey != skin.storageKey) {
+            settingsStore.saveAppSkinKey(skin.storageKey)
+        }
+        skin
+    }
     private val initialCurrency = CurrencyCode.fromStorageKey(settingsStore.currencyCodeKey())
     private val _uiState = MutableStateFlow(
         AppUiState(
@@ -72,15 +90,6 @@ class AppViewModel(
                 }
             }
         }
-    }
-
-    private fun normalizedInitialSkin(): AppSkin {
-        val rawKey = settingsStore.appSkinKey()
-        val skin = AppSkin.fromStorageKey(rawKey)
-        if (rawKey != skin.storageKey) {
-            settingsStore.saveAppSkinKey(skin.storageKey)
-        }
-        return skin
     }
 
     fun bind(serverUrl: String, pairingCode: String) {
@@ -127,6 +136,10 @@ class AppViewModel(
             _uiState.update { it.copy(unlocked = true) }
             return
         }
+        // Device can't satisfy the local door (no biometric / no lock screen): the
+        // door is gracefully disabled and must stay open — re-locking would re-trap
+        // the user with no way out.
+        if (_uiState.value.localUnlockDisabled) return
         if (settingsStore.requiresUnlock()) {
             _uiState.update { it.copy(unlocked = false) }
         }
@@ -139,6 +152,17 @@ class AppViewModel(
 
     fun unlockFailed(message: UiText) {
         _uiState.update { it.copy(authMessage = message) }
+    }
+
+    /**
+     * Gracefully disable the local-unlock door: the device has no enrolled biometric
+     * and no lock-screen credential the prompt can use (audit 8.1 dead-end). Enter the
+     * app (flip [AppUiState.unlocked]) and flag [AppUiState.localUnlockDisabled] so the
+     * shell shows a persistent advisory banner. Clears any stale unlock error message.
+     * Server-side auth is untouched (§5).
+     */
+    fun disableLocalUnlock() {
+        _uiState.update { it.copy(unlocked = true, localUnlockDisabled = true, authMessage = null) }
     }
 
     fun consumeAuthMessage() {
