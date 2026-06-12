@@ -48,6 +48,10 @@ data class LedgerSwitchResponseDto(
 data class LedgerMemberDto(
     @param:Json(name = "member_id")
     val memberId: Long,
+    // ADR-0029 拆账发起：后端成员 API 现带内部 account_id，用作 split-invite 的
+    // receiver_account_id。映射到 domain FamilyMember.accountId，不上 UI（守 §3）。
+    @param:Json(name = "account_id")
+    val accountId: Long,
     @param:Json(name = "account_public_id")
     val accountPublicId: String,
     @param:Json(name = "account_name")

@@ -44,6 +44,17 @@ data class Expense(
 )
 
 /**
+ * UI/UX 第三波 批 13：本票是否可发起跨账本拆账邀请（ADR-0029）。
+ * 已确认 + 有金额 + 非「收到的拆账」（不能对收到的拆账再拆，后端 split_chain_not_allowed
+ * 亦兜底）+ 可写。卡片可见性与 VM 懒加载触发共用这一个判断，避免两处漂移。
+ */
+fun Expense.canInitiateBillSplit(readOnly: Boolean): Boolean =
+    status == "confirmed" &&
+        amountCents != null &&
+        source != ExpenseSourceValues.BILL_SPLIT_RECEIVED &&
+        !readOnly
+
+/**
  * [Expense.source] 的服务端存储值（domain 值，非 UI 文案）。中文 token 是后端
  * 落库的历史值，镜像 `web_stats_service.SOURCE_LABELS` 的键；展示层据此映射到
  * string 资源，未列出的值原样回显。

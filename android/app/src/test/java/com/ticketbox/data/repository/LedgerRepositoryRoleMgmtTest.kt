@@ -17,6 +17,7 @@ class LedgerRepositoryRoleMgmtTest {
         val api = StubApi(
             roleUpdateResult = LedgerMemberDto(
                 memberId = 2,
+                accountId = 22,
                 accountPublicId = "acc_member",
                 accountName = "家人",
                 role = "viewer",
@@ -57,6 +58,7 @@ class LedgerRepositoryRoleMgmtTest {
         val api = StubApi(
             disableResult = LedgerMemberDto(
                 memberId = 2,
+                accountId = 22,
                 accountPublicId = "acc_member",
                 accountName = "家人",
                 role = "member",
@@ -89,6 +91,7 @@ class LedgerRepositoryRoleMgmtTest {
                 ledgerId = "L_family",
                 previousOwner = LedgerMemberDto(
                     memberId = 1,
+                    accountId = 11,
                     accountPublicId = "acc_self",
                     accountName = "我",
                     role = "member",
@@ -98,6 +101,7 @@ class LedgerRepositoryRoleMgmtTest {
                 ),
                 newOwner = LedgerMemberDto(
                     memberId = 2,
+                    accountId = 22,
                     accountPublicId = "acc_new",
                     accountName = "家人",
                     role = "owner",

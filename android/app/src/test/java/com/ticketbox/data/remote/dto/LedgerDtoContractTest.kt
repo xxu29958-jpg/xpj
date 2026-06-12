@@ -19,6 +19,7 @@ class LedgerDtoContractTest {
                   "members": [
                     {
                       "member_id": 1,
+                      "account_id": 101,
                       "account_public_id": "acc_1",
                       "account_name": "阿方",
                       "role": "owner",
@@ -33,6 +34,9 @@ class LedgerDtoContractTest {
         )
 
         assertEquals(1L, dto.members.single().memberId)
+        // ADR-0029 拆账发起 enabler：成员 API 现带内部 account_id，DTO 必须解出它
+        // （split-invite 的 receiver_account_id 来源）。与 member_id 是两套 id。
+        assertEquals(101L, dto.members.single().accountId)
         assertEquals("acc_1", dto.members.single().accountPublicId)
         assertEquals("阿方", dto.members.single().accountName)
         assertEquals("owner", dto.members.single().role)

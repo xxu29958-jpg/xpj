@@ -82,6 +82,7 @@ def _to_invitation_response(summary: InvitationSummary) -> InvitationSummaryResp
 def _to_member_response(summary: MemberSummary) -> LedgerMemberResponse:
     return LedgerMemberResponse(
         member_id=summary.member_id,
+        account_id=summary.account_id,
         account_public_id=summary.account_public_id,
         account_name=summary.account_name,
         role=summary.role,

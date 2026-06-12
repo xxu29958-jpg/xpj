@@ -408,6 +408,7 @@ private fun LedgerDto.toSummary(): LedgerSummary = LedgerSummary(
 
 internal fun LedgerMemberDto.toFamilyMember(): FamilyMember = FamilyMember(
     memberId = memberId,
+    accountId = accountId,
     accountPublicId = accountPublicId,
     displayName = accountName.ifBlank { "未命名成员" },
     role = role,

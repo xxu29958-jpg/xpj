@@ -2,6 +2,9 @@ package com.ticketbox.domain.model
 
 data class FamilyMember(
     val memberId: Long,
+    // ADR-0029 拆账发起：内部账号 id，作 split-invite 的 receiver_account_id。
+    // 仅用于 API 请求体，绝不展示（守 §3：普通 UI 不暴露任何 id）。
+    val accountId: Long,
     val accountPublicId: String,
     val displayName: String,
     val role: String,

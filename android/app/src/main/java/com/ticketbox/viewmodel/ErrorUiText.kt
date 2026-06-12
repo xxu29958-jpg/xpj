@@ -75,6 +75,13 @@ private fun errorCodeStringRes(code: String?): Int? = when (code) {
     "invitation_not_cancellable" -> R.string.error_invitation_not_cancellable
     "invitation_expired" -> R.string.error_invitation_expired
     "split_invitation_already_pending" -> R.string.error_split_invitation_already_pending
+    // ADR-0029 拆账发起（批 13）：发起 sheet 可能命中的 split_* 码。后端虽都带 message，
+    // 但用户面文案改走 App 资源以便端内可控（split_receiver_invalid 尤其需要更人话）。
+    "split_receiver_invalid" -> R.string.error_split_receiver_invalid
+    "split_amount_invalid" -> R.string.error_split_amount_invalid
+    "split_amount_exceeds_parent" -> R.string.error_split_amount_exceeds_parent
+    "split_total_exceeds_parent" -> R.string.error_split_total_exceeds_parent
+    "split_parent_amount_missing" -> R.string.error_split_parent_amount_missing
     "not_found" -> R.string.error_not_found
     "task_not_found" -> R.string.error_task_not_found
     else -> null

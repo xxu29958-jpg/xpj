@@ -442,6 +442,21 @@ def test_owner_can_change_member_between_writer_and_viewer(client: TestClient, *
     ).json()["members"]
     member_id = next(m for m in members if m["role"] == "member")["member_id"]
 
+    # ADR-0029 拆账发起 enabler：成员 API 必须带内部 account_id（receiver_account_id
+    # 来源）。逐成员核对 API 回的 account_id == DB 的 LedgerMember.account_id；并钉
+    # owner 行的 account_id == Ledger.owner_account_id（与 member_id 是两套主键，
+    # 误把 member_id 当 account_id 透传会红——owner 这两个值在本场景不同）。
+    with SessionLocal() as db:
+        ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == family_id))
+        assert ledger is not None
+        for m in members:
+            db_member = db.get(LedgerMember, m["member_id"])
+            assert db_member is not None
+            assert m["account_id"] == db_member.account_id
+            assert m["account_id"] > 0
+        owner_row = next(m for m in members if m["role"] == "owner")
+        assert owner_row["account_id"] == ledger.owner_account_id
+
     to_viewer = client.post(
         f"/api/ledgers/{family_id}/members/{member_id}/role",
         headers=_bearer(family_app),

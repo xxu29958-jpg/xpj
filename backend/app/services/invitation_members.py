@@ -25,6 +25,9 @@ from app.services.time_service import now_utc, to_iso
 @dataclass(frozen=True)
 class MemberSummary:
     member_id: int
+    # ADR-0029 拆账发起需要内部 account_id 作 receiver_account_id；与 member_id
+    # 一同从 LedgerMember 取（route 转 DTO 时透传，不上 UI）。
+    account_id: int
     account_public_id: str
     account_name: str
     role: str
@@ -47,6 +50,7 @@ def member_summary(
 ) -> MemberSummary:
     return MemberSummary(
         member_id=member.id,
+        account_id=member.account_id,
         account_public_id=account.public_id if account else "",
         account_name=account.display_name if account else "",
         role=member.role,
