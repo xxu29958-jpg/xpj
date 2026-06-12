@@ -13,12 +13,10 @@
 {% if message %}<div class="callout-info callout-info--success">{{ message }}</div>{% endif %}
 {% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
 
+{# 月份由顶栏月份切换器统一管理；本表单只保留「显示已归档」过滤(切月经顶栏会保留它)。 #}
 <form method="get" action="/web/goals" class="toolbar">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <label class="dt-form-row dt-form-row--inline">
-    <span class="dt-eyebrow">月份</span>
-    <input class="dt-input" type="month" name="month" value="{{ month }}">
-  </label>
+  <input type="hidden" name="month" value="{{ month }}">
   <label class="dt-form-row dt-form-row--inline">
     <input type="checkbox" name="include_archived" value="true" {% if include_archived %}checked{% endif %}>
     <span class="text-muted">显示已归档</span>

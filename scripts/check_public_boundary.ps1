@@ -347,7 +347,7 @@ $webRedirectChecks = @(
     @{ Name = 'public /web (no cookie)';                  Url = "$BaseUrl/web";                              Method = 'GET'; Location = '/web/auth/login?next=%2Fweb' }
     @{ Name = 'public /web/pending (no cookie)';          Url = "$BaseUrl/web/pending";                      Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fpending' }
     @{ Name = 'public /web/confirmed (no cookie)';        Url = "$BaseUrl/web/confirmed";                    Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fconfirmed' }
-    @{ Name = 'public /web/stats (no cookie)';            Url = "$BaseUrl/web/stats";                        Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fstats' }
+    @{ Name = 'public /web/reports (no cookie)';          Url = "$BaseUrl/web/reports";                      Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Freports' }
     @{ Name = 'public GET /web/expenses/1/edit (no cookie)'; Url = "$BaseUrl/web/expenses/1/edit";           Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fexpenses%2F1%2Fedit' }
     @{ Name = 'public GET /web/expenses/1/image (no cookie)';     Url = "$BaseUrl/web/expenses/1/image";     Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fexpenses%2F1%2Fimage' }
     @{ Name = 'public GET /web/expenses/1/thumbnail (no cookie)'; Url = "$BaseUrl/web/expenses/1/thumbnail"; Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fexpenses%2F1%2Fthumbnail' }

@@ -127,7 +127,7 @@
 /web              -> Dashboard（导航 + Selector + 卡片）
 /web/pending      -> 桌面 Needs Review Queue
 /web/confirmed    -> 桌面 Transaction Center（按月份过滤）
-/web/stats        -> 桌面 Reports Cards
+/web/reports      -> 桌面 Reports Cards（原 /web/stats 已归并入此，UI/UX 批 14）
 /web/expenses/{id}/edit    -> 快速编辑
 /web/expenses/{id}/confirm -> POST 确认
 /web/expenses/{id}/reject  -> POST 忽略

@@ -79,7 +79,13 @@ def _render_goals(
         timezone_name=timezone_name,
         include_archived=include_archived,
     )
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        show_month_picker=True,
+        selected_month=month,
+    )
     ctx.update(
         {
             "month": month,

@@ -110,7 +110,7 @@
     </a>
   </div>
 
-  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/recurring' in _p or '/stats' in _p or '/data-quality' in _p or '/income-plans' in _p or '/budget-advise' in _p %}open{% endif %}>
+  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/recurring' in _p or '/data-quality' in _p or '/income-plans' in _p or '/budget-advise' in _p %}open{% endif %}>
     <summary class="nav-group-title">治理</summary>
     <a class="nav-item {% if '/budgets' in _p %}active{% endif %}" href="/web/budgets{{ q }}">
       <span class="nav-icon">
@@ -202,17 +202,6 @@
         </svg>
       </span>
       <span>固定支出</span>
-    </a>
-    <a class="nav-item {% if '/stats' in _p %}active{% endif %}" href="/web/stats{{ q }}">
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="20" x2="18" y2="10"/>
-          <line x1="12" y1="20" x2="12" y2="4"/>
-          <line x1="6" y1="20" x2="6" y2="14"/>
-        </svg>
-      </span>
-      <span>月度统计</span>
     </a>
     <a class="nav-item {% if '/data-quality' in _p %}active{% endif %}" href="/web/data-quality{{ q }}">
       <span class="nav-icon">

@@ -58,7 +58,7 @@ try {
         @{ name="web-categories.png";              url="/web/categories" },
         @{ name="web-categories-uncategorized.png";url="/web/categories/uncategorized" },
         @{ name="web-import.png";                  url="/web/import" },
-        @{ name="web-stats.png";                   url="/web/stats" }
+        @{ name="web-reports.png";                 url="/web/reports" }
     )
 
     $absOut = Join-Path $root $OutDir

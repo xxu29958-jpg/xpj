@@ -82,7 +82,6 @@ def web_tags(
     # affordance that POSTs to the undo route (契约 2 needs BOTH).
     ctx["undo_mutation_public_id"] = undo
     ctx["undo_row_version"] = undo_rv
-    ctx["q"] = "?ledger_id=" + selected_id
     return templates.TemplateResponse(request=request, name="tags.html", context=ctx)
 
 

@@ -30,6 +30,7 @@ from app.services.reports_service import (
     reports_overview,
     six_month_summary,
 )
+from app.services.stats_service import top_expenses_for_month
 from app.services.time_service import current_month
 
 router = APIRouter(prefix="/web/reports", tags=["web"])
@@ -159,6 +160,55 @@ def _budget_verdict_label(value: str) -> str:
     return labels.get(value, value)
 
 
+def _top_expenses_view(
+    db: Session, *, tenant_id: str, month: str, timezone_name: str
+) -> list[dict[str, str]]:
+    """Highest-amount confirmed expenses for the month (former /web/stats panel).
+
+    This was the only content unique to the deleted /web/stats page, so it moves
+    here when stats is merged into reports (UI/UX 批 14).
+    """
+    rows: list[dict[str, str]] = []
+    for e in top_expenses_for_month(
+        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
+    ):
+        rows.append(
+            {
+                "merchant": e.merchant or "未填写商家",
+                "amount_yuan": _amount_yuan(e.amount_cents),
+                "category": e.category or "未分类",
+                "expense_time": e.expense_time.strftime("%Y-%m-%d") if e.expense_time else "",
+            }
+        )
+    return rows
+
+
+def _monthly_report_sections(
+    db: Session, *, tenant_id: str, month: str, timezone_name: str
+) -> tuple[dict, list[dict]]:
+    """月报摘要 + 预算解释两段的 ctx 视图(从 route 拆出守 80 行债线)。"""
+    monthly_report = compose_monthly_report(
+        db,
+        tenant_id=tenant_id,
+        year_month=month,
+        timezone_name=timezone_name,
+    )
+    explanations = [
+        compose_budget_explanation(
+            db,
+            tenant_id=tenant_id,
+            category=row.category,
+            year_month=month,
+            timezone_name=timezone_name,
+        )
+        for row in monthly_report.top_categories[:5]
+    ]
+    return (
+        _monthly_report_view_model(monthly_report),
+        [_budget_explanation_view_model(item) for item in explanations],
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 def web_reports(
     request: Request,
@@ -185,22 +235,12 @@ def web_reports(
         ranking_metric=selected_metric,
         merchant_category=merchant_category,
     )
-    monthly_report = compose_monthly_report(
+    monthly_report_vm, budget_explanations = _monthly_report_sections(
         db,
         tenant_id=selected_id,
-        year_month=target_month,
+        month=target_month,
         timezone_name=timezone_name,
     )
-    explanations = [
-        compose_budget_explanation(
-            db,
-            tenant_id=selected_id,
-            category=row.category,
-            year_month=target_month,
-            timezone_name=timezone_name,
-        )
-        for row in monthly_report.top_categories[:5]
-    ]
     ctx = _base_ctx(
         request,
         options=options,
@@ -213,11 +253,8 @@ def web_reports(
     ctx.update(
         {
             "report": _view_model(payload),
-            "monthly_report": _monthly_report_view_model(monthly_report),
-            "budget_explanations": [
-                _budget_explanation_view_model(item)
-                for item in explanations
-            ],
+            "monthly_report": monthly_report_vm,
+            "budget_explanations": budget_explanations,
             "report_export_query": urlencode(
                 {
                     "ledger_id": selected_id,
@@ -230,6 +267,12 @@ def web_reports(
             "month": target_month,
             "granularity_options": [("day", "日"), ("week", "周"), ("month", "月")],
             "ranking_metric_options": [("amount", "金额"), ("count", "笔数")],
+            "top_expenses": _top_expenses_view(
+                db,
+                tenant_id=selected_id,
+                month=target_month,
+                timezone_name=timezone_name,
+            ),
             "six_month_trend": six_month_summary(
                 db,
                 anchor_month=target_month,

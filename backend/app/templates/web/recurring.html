@@ -160,6 +160,11 @@
     {% endfor %}
     </tbody>
   </table>
+  {% elif candidates_error %}
+  <div class="empty-state">
+    <div class="empty-state-title">固定支出候选分析暂时不可用</div>
+    <div class="empty-state-hint">固定支出列表仍可查看，请稍后刷新本页。</div>
+  </div>
   {% else %}
   <div class="empty-state">
     <div class="empty-state-title">还没有固定支出候选</div>

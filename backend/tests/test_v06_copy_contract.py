@@ -37,15 +37,16 @@ def _android_copy() -> str:
 
 
 def test_recurring_copy_contract_across_web_owner_and_android() -> None:
+    # UI/UX 批 14: /web/stats 页删除,固定支出表是 /web/recurring 的严格子集,未迁移;
+    # 这套固定支出文案契约改由 recurring.html / android 守护(stats_web 已不存在)。
     recurring_web = _read("backend/app/templates/web/recurring.html")
-    stats_web = _read("backend/app/templates/web/stats.html")
     owner_index = _read("backend/app/templates/owner/index.html")
     android_copy = _android_copy()
 
     for surface in (recurring_web, android_copy):
         assert RECURRING_HEADER_COPY in surface
 
-    for surface in (recurring_web, stats_web, android_copy):
+    for surface in (recurring_web, android_copy):
         assert FORMAL_COPY in surface
         assert CANDIDATE_TITLE in surface
         assert CANDIDATE_COPY in surface
@@ -55,11 +56,12 @@ def test_recurring_copy_contract_across_web_owner_and_android() -> None:
 
 
 def test_recurring_anomaly_copy_stays_consistent() -> None:
+    # stats_web 随 UI/UX 批 14 删除;「本月偏高」异常文案仍由 web_recurring 路由
+    # (/web/recurring) 与 android 守护。
     web_recurring_route = _read("backend/app/routes/web_recurring.py")
-    stats_web = _read("backend/app/templates/web/stats.html")
     android_copy = _android_copy()
 
-    for surface in (web_recurring_route, stats_web, android_copy):
+    for surface in (web_recurring_route, android_copy):
         assert "本月偏高" in surface
 
 

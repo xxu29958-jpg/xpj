@@ -109,28 +109,7 @@ def test_web_export_csv_uses_tag_filter(web_client: TestClient, *, identity) -> 
     assert "Gray Shared" not in response.text
 
 
-def test_web_stats_uses_tag_filter(web_client: TestClient, *, identity) -> None:
-    _manual(
-        web_client,
-        headers=identity.app_headers,
-        amount_cents=2100,
-        merchant="Owner Shared",
-        tags="Shared",
-    )
-    _manual(
-        web_client,
-        headers=identity.app_headers,
-        amount_cents=900,
-        merchant="Owner Other",
-        tags="Other",
-    )
-
-    response = web_client.get("/web/stats?ledger_id=owner&month=2026-05&tag=Shared")
-    assert response.status_code == 200
-    assert 'name="tag" value="Shared"' in response.text
-    assert "当前统计范围：标签「Shared」" in response.text
-    assert "¥21.00" in response.text
-    assert "Owner Shared" in response.text
-    assert "Owner Other" not in response.text
-    assert "共 1 笔已确认" in response.text
-    assert "¥30.00" not in response.text
+# UI/UX 批 14: /web/stats 页删除。原 test_web_stats_uses_tag_filter 覆盖的「按标签
+# 看统计」已由 test_web_confirmed_tag_filter_is_ledger_scoped(本文件,/web/confirmed
+# ?tag=)+ test_web_app_tags.test_web_tags_local_returns_200(看账单链接 → /web/confirmed
+# ?tag=)联合接管,不再单测已删除的统计页。

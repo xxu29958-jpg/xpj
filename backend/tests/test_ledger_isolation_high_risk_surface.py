@@ -321,14 +321,16 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     assert all(row["merchant"] != "TesterImportedOnly" for row in owner_pending.json())
     assert any(row["merchant"] == "TesterImportedOnly" for row in tester_pending.json())
 
-    owner_stats = local_web_client.get("/web/stats?ledger_id=owner&month=2026-01")
-    tester_stats = local_web_client.get("/web/stats?ledger_id=tester_1&month=2026-01")
-    assert owner_stats.status_code == 200
-    assert tester_stats.status_code == 200
-    assert "OwnerWebOnly" in owner_stats.text
-    assert "TesterWebOnly" not in owner_stats.text
-    assert "TesterWebOnly" in tester_stats.text
-    assert "OwnerWebOnly" not in tester_stats.text
+    # UI/UX 批 14: /web/stats 归并进 /web/reports;高风险账本隔离断言改打报表页
+    # (商家名出现在大额支出表 + 注入的商家排行 JSON,仍严格账本隔离)。
+    owner_reports = local_web_client.get("/web/reports?ledger_id=owner&month=2026-01")
+    tester_reports = local_web_client.get("/web/reports?ledger_id=tester_1&month=2026-01")
+    assert owner_reports.status_code == 200
+    assert tester_reports.status_code == 200
+    assert "OwnerWebOnly" in owner_reports.text
+    assert "TesterWebOnly" not in owner_reports.text
+    assert "TesterWebOnly" in tester_reports.text
+    assert "OwnerWebOnly" not in tester_reports.text
 
     invalid_ledger = local_web_client.get("/web?ledger_id=not_a_real_ledger")
     assert invalid_ledger.status_code == 400

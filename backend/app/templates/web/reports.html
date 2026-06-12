@@ -9,8 +9,32 @@
   <div class="page-eyebrow">REPORTS · {{ _earliest_month }} → {{ r.month }}</div>
   <h1 class="page-title">动态报表，六个月看清节奏。</h1>
   <div class="page-sub">
-    按当前账本的已确认账单聚合，时间口径为 expense_time，fallback confirmed_at。
+    按当前账本的已确认账单聚合，时间口径为记账时间（无记账时间时取确认时间）。
     CSV 导出走结构化数据，不依赖图表渲染层。
+  </div>
+</div>
+
+{# 趋势粒度 / 商家排行口径：GET 链接 segmented 控件（切换走整页刷新，无 JS 依赖）。
+   每个链接保留另一维度的当前取值、账本和月份，月份本身由顶栏月份切换器统一管理。
+   & 写字面量（与 pending.html 顶栏 seg 同惯例），保持一条链接里分隔符一致。 #}
+<div class="toolbar reports-toolbar">
+  <div class="seg-group">
+    <span class="dt-eyebrow">趋势粒度</span>
+    <div class="seg">
+      {% for value, label in granularity_options %}
+      <a class="{% if r.granularity == value %}is-active{% endif %}"
+         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ value }}&ranking_metric={{ r.ranking_metric }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="seg-group">
+    <span class="dt-eyebrow">排行口径</span>
+    <div class="seg">
+      {% for value, label in ranking_metric_options %}
+      <a class="{% if r.ranking_metric == value %}is-active{% endif %}"
+         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ r.granularity }}&ranking_metric={{ value }}">{{ label }}</a>
+      {% endfor %}
+    </div>
   </div>
 </div>
 
@@ -192,6 +216,46 @@
         <a class="dt-btn ghost" href="/web/reports/export.csv?{{ report_export_query }}">导出 CSV</a>
       </div>
       <div id="reports-merchant-chart" class="chart-canvas tall"></div>
+    </div>
+  </div>
+
+  {# 大额支出 Top 5 — 原 /web/stats 页唯一不可替代内容,随 IA 归并迁来 (UI/UX 批 14)。
+     结构化表格,不依赖图表渲染层。 #}
+  <div class="col-12">
+    <div class="dt-card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">大额支出</div>
+          <div class="card-sub" style="margin-top:4px">本月金额最高的前 5 笔已确认支出</div>
+        </div>
+      </div>
+      {% if top_expenses %}
+      <table class="dt-table">
+        <thead>
+          <tr>
+            <th>商家</th>
+            <th style="width:120px">分类</th>
+            <th style="width:120px">日期</th>
+            <th style="width:150px;text-align:right">金额</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in top_expenses %}
+          <tr>
+            <td>{{ row.merchant }}</td>
+            <td><span class="dt-tag">{{ row.category }}</span></td>
+            <td class="meta">{{ row.expense_time }}</td>
+            <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-state-title">本月还没有已确认账单可统计</div>
+        <div class="empty-state-hint">确认账单后,这里会列出本月金额最高的几笔。</div>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
