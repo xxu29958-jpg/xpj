@@ -65,6 +65,9 @@
 
 /* ───── Category list ───── */
 .cat-list { display: flex; flex-direction: column; gap: 10px; }
+/* --gap: separate a cat-bar list from a summary / total line above it
+   (dashboard 预算 / 目标 卡片的 top-N 进度条段). */
+.cat-list--gap { margin-top: var(--space-4); }
 .cat-row { display: grid; grid-template-columns: 70px 1fr 64px; gap: 10px; align-items: center; }
 .cat-name { font-size: 12.5px; color: var(--text-muted); }
 .cat-bar { height: 4px; background: var(--surface-sunken); border-radius: 999px; overflow: hidden; position: relative; }

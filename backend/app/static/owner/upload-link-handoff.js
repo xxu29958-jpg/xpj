@@ -38,10 +38,17 @@
             function settle(ok) {
                 if (ok) {
                     btn.textContent = "已复制";
-                    if (window.OwnerToast) window.OwnerToast.success("完整 URL 已复制，去 iPhone 快捷指令里粘贴");
+                    // 复用面语境化：按钮可带 data-copy-toast 覆盖确认句
+                    // （成员页邀请明文复用本脚本，默认句的 iPhone 语境不通）。
+                    var okToast = btn.getAttribute("data-copy-toast")
+                        || "完整 URL 已复制，去 iPhone 快捷指令里粘贴";
+                    if (window.OwnerToast) window.OwnerToast.success(okToast);
                     setTimeout(function () { btn.textContent = idleLabel; }, 2000);
                 } else if (window.OwnerToast) {
-                    window.OwnerToast.danger("复制失败，请手动全选上面的 URL 复制");
+                    window.OwnerToast.danger(
+                        btn.getAttribute("data-copy-fail-toast")
+                            || "复制失败，请手动全选上面的 URL 复制"
+                    );
                 }
             }
             if (navigator.clipboard && navigator.clipboard.writeText) {
