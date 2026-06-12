@@ -28,24 +28,26 @@
   }
 
   function palette() {
+    // fallback 兜底色 = paper 主题真值（shared/tokens.css :root），仅在 getComputedStyle
+    // 读不到 CSS 变量时生效；正常运行总是拿到主题实时值。务必与 tokens.css paper 块同步。
     return {
       series: [
-        cssVar('--chart-series-1', '#245d78'),
-        cssVar('--chart-series-2', '#d5a35d'),
-        cssVar('--chart-series-3', '#185b4f'),
-        cssVar('--chart-series-4', '#a86a52'),
-        cssVar('--chart-series-5', '#3e92ae'),
-        cssVar('--chart-series-6', '#6b7f4d'),
-        cssVar('--chart-series-7', '#b87a48'),
-        cssVar('--chart-series-8', '#5a4e78'),
+        cssVar('--chart-series-1', '#8a5a2b'),
+        cssVar('--chart-series-2', '#1c1a18'),
+        cssVar('--chart-series-3', '#4f6b3a'),
+        cssVar('--chart-series-4', '#a4361c'),
+        cssVar('--chart-series-5', '#3e6770'),
+        cssVar('--chart-series-6', '#d6b487'),
+        cssVar('--chart-series-7', '#5a4a6e'),
+        cssVar('--chart-series-8', '#807968'),
       ],
-      axis: cssVar('--chart-axis', '#8fa1a6'),
-      axisLabel: cssVar('--chart-axis-label', '#52646a'),
-      grid: cssVar('--chart-grid', 'rgba(159, 180, 187, 0.2)'),
-      tooltipBg: cssVar('--chart-tooltip-bg', '#112a35'),
-      tooltipFg: cssVar('--chart-tooltip-fg', '#f1f6f7'),
+      axis: cssVar('--chart-axis', '#aaa294'),
+      axisLabel: cssVar('--chart-axis-label', '#4a463f'),
+      grid: cssVar('--chart-grid', 'rgba(28, 26, 24, 0.08)'),
+      tooltipBg: cssVar('--chart-tooltip-bg', '#1c1a18'),
+      tooltipFg: cssVar('--chart-tooltip-fg', '#fbf8f1'),
       surface: cssVar('--surface-card', '#ffffff'),
-      overspend: cssVar('--chart-overspend', '#b04a3c'),
+      overspend: cssVar('--chart-overspend', '#a4361c'),
     };
   }
 

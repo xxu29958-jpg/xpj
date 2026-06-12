@@ -278,16 +278,18 @@
     --chart-series-2: #a8b88a;
     --chart-series-3: #d97757;
     --chart-series-4: #84bcd4;
-    --chart-series-5: #b89564;
-    --chart-series-6: #8a6a3e;
-    --chart-series-7: #7c8a6a;
-    --chart-series-8: #5e7a8a;
+    /* 5-8 跨色相重排（plum / teal 族），脱离 1-4 暖金/鼠尾草/陶土/天蓝 邻位，
+     * 多分类环图相邻系列才分得开；逐色对 #15171c 卡底 WCAG ≥3:1（见 ChartTokens.kt 镜像注）。 */
+    --chart-series-5: #c9a0c4;
+    --chart-series-6: #5fb0a8;
+    --chart-series-7: #b88ac9;
+    --chart-series-8: #6cba93;
     --chart-sequential-from: #1c1f25;
     --chart-sequential-to:   #d6b487;
     --chart-diverging-negative: #d97757;
     --chart-diverging-zero:     #2a2d35;
     --chart-diverging-positive: #a8b88a;
-    --chart-axis: #4a4e58;
+    --chart-axis: #5e636f;
     --chart-axis-label: #b8b4a8;
     --chart-grid: rgba(255, 255, 255, 0.06);
     --chart-grid-emphasis: rgba(214, 180, 135, 0.40);
