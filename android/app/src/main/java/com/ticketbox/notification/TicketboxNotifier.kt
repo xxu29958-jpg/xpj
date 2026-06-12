@@ -15,6 +15,7 @@ import com.ticketbox.MainActivity
 import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.notification.recurring.RecurringReminderDispatchOutcome
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatMinorAmount
 
@@ -156,12 +157,11 @@ fun recurringNotificationContentSpec(merchant: String): NotificationContentSpec 
  * - 每条通知带「去核对」action（进待确认页），与 contentIntent 同目标，给锁屏一个快捷入口。
  * - 正文金额走 ui/components/Formatters 的 [formatAmount]/[formatMinorAmount]，不散写 ÷100。
  *
- * PR-2 降级说明（固定支出提醒判定源）：channel + 文案 + [onRecurringDue] 出口已就绪，但**没有
- * 自动触发点**——客户端当前只有 NLS（按支付通知逐条触发）和 outbox drain worker（只重放排队
- * 变更），**没有**「周期扫描本月 active recurring item、判断预期窗口已到且未匹配」的调度源。
- * 可靠实现需要 WorkManager 周期任务 + 本地去重存储 + 同步钩子，属新后台任务子系统（§13「当前
- * 阶段不做」，要做先开 ADR）。故本 PR 不硬造一个不可靠的判定，把检测接缝留作 TODO，见
- * [onRecurringDue] 上方注释。
+ * 固定支出提醒判定源（ADR-0046，PR-2 时缺、本批补齐）：channel + 文案 + [onRecurringDue] 出口由
+ * PR-2 落地；ADR-0046 补上检测源——WorkManager 周期 worker 唤醒
+ * [com.ticketbox.notification.recurring.RecurringReminderEngine]，由它读 active recurring item、
+ * 按 next_expected_date 判 due/overdue、本地去重后调用本类 [onRecurringDue]。本类仍只是 dispatcher
+ * （Contract 7）：不拉 API、不判 due、不维护 sent-key。
  */
 class TicketboxNotifier(
     context: Context,
@@ -189,22 +189,28 @@ class TicketboxNotifier(
 
     /**
      * 固定支出（recurring）到期提醒出口。判定本身（哪条 recurring item 该提醒、是否已提醒过）
-     * 不在客户端：见类注释「PR-2 降级说明」。本方法仅在「固定支出提醒」开关开 + 系统通知允许时
-     * 出一条提醒，留给未来的检测调度源（WorkManager 周期任务 / 同步钩子，需先开 ADR）调用。
+     * 不在本类：检测源是 [com.ticketbox.notification.recurring.RecurringReminderEngine]（ADR-0046），
+     * 它在去重后调用本方法。本方法仍是纯 dispatcher（Contract 7）：只按「固定支出提醒」开关 +
+     * 系统通知权限决定是否出一条提醒，不拉 API、不判 due、不维护 sent-key。
      *
-     * TODO(notif-loop): 接入固定支出到期检测调度源后调用本方法。检测源需自带去重（同一 item
-     *  同一预期窗口只提醒一次），本方法不负责去重判定，只负责按开关出通知。
+     * ADR-0046 Slice 1：返回 [RecurringReminderDispatchOutcome] 而非 Unit，
+     * 让上游（engine）能据此决定「只有 SENT 才 markSent」，使「权限/开关关闭不 mark sent」可测。
+     * 商家为空走「未填写商家」fallback 文案照常 SENT（不算 SKIPPED_INVALID_INPUT）。
      *
      * @param merchant 固定支出名 / 商家，进标题占位符。
      * @param dedupeTag 同一提醒的去重 tag（同 tag 覆盖、不同 tag 各保留一条）。
+     * @return 投递结果：SENT / SKIPPED_DISABLED / SKIPPED_PERMISSION_DENIED。
      */
-    fun onRecurringDue(merchant: String, dedupeTag: String) {
+    fun onRecurringDue(merchant: String, dedupeTag: String): RecurringReminderDispatchOutcome {
         val preferences = settingsStore.notificationPreferences()
-        if (!preferences.recurringReminders) return
-        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) return
+        if (!preferences.recurringReminders) return RecurringReminderDispatchOutcome.SKIPPED_DISABLED
+        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+            return RecurringReminderDispatchOutcome.SKIPPED_PERMISSION_DENIED
+        }
         val resolved = merchant.trim().takeIf { it.isNotEmpty() }
             ?: appContext.getString(R.string.notification_draft_created_merchant_missing)
         publish(recurringNotificationContentSpec(resolved), dedupeTag = dedupeTag)
+        return RecurringReminderDispatchOutcome.SENT
     }
 
     private fun publish(spec: NotificationContentSpec, dedupeTag: String) {
