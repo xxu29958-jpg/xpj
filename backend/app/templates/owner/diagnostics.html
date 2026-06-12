@@ -2,6 +2,10 @@
 {% block title %}诊断 — 小票夹{% endblock %}
 {% block content %}
 <h1>诊断信息</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>系统体检页：版本、数据库 / 上传目录是否正常、账单概要、图片识别引擎配置一眼看全。怀疑哪里不对、或想确认升级后还好用时进来看；平时不用管。本页只在本机可见，不会暴露到公网。</p>
+</details>
 <p class="text-meta">
   此页面仅在本机可见，不通过 Cloudflare Tunnel 暴露到公网。
 </p>
@@ -10,8 +14,8 @@
   <h2>版本与身份</h2>
   <div class="kv-grid">
     <span class="kv-key">后端版本</span><span class="kv-val">{{ backend_version }}</span>
-    <span class="kv-key">身份模型</span><span class="kv-val">{{ identity_schema }}</span>
-    <span class="kv-key">Owner Console</span><span class="kv-val">{{ owner_console_status }}</span>
+    <span class="kv-key">账号系统版本</span><span class="kv-val">{{ identity_schema }}</span>
+    <span class="kv-key">本机管理后台</span><span class="kv-val">{{ owner_console_status }}</span>
     <span class="kv-key">当前账号</span><span class="kv-val">{{ account_name }}</span>
     <span class="kv-key">当前账本</span><span class="kv-val">{{ ledger_name }}</span>
   </div>
@@ -44,16 +48,16 @@
 </div>
 
 <div class="card">
-  <h2>OCR 配置</h2>
+  <h2>图片识别（OCR）配置</h2>
   <div class="kv-grid">
-    <span class="kv-key">OCR 提供方</span><span class="kv-val">{{ ocr_provider }}</span>
-    <span class="kv-key">自动 OCR</span>
+    <span class="kv-key">图片识别引擎</span><span class="kv-val">{{ ocr_provider }}</span>
+    <span class="kv-key">自动识别图片</span>
     <span class="kv-val">
       {% if ocr_auto_run %}<span class="badge badge-ok">开启</span>
       {% else %}<span class="badge badge-off">关闭</span>{% endif %}
     </span>
     <span class="kv-key">最大上传大小</span><span class="kv-val">{{ max_upload_size_mb }} MB</span>
-    <span class="kv-key">HTTP Bootstrap</span>
+    <span class="kv-key">远程初始化入口<span class="text-meta">（HTTP Bootstrap）</span></span>
     <span class="kv-val">
       {% if enable_http_bootstrap %}<span class="badge badge-warn">已开启</span>
       {% else %}<span class="badge badge-off">已禁用（安全默认）</span>{% endif %}

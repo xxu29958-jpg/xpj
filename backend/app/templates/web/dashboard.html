@@ -194,6 +194,19 @@
             </div>
           </div>
         </div>
+        {% if cards.budget_top %}
+        <div class="cat-list cat-list--gap">
+          {% for b in cards.budget_top %}
+          <div class="cat-row">
+            <div class="cat-name">{{ b.name }}</div>
+            <div class="cat-bar">
+              <div class="cat-bar-fill" style="width:{{ b.percent }}%;background:{% if b.is_over %}var(--state-danger-fg){% elif b.percent >= 80 %}var(--brand-primary){% else %}var(--text-default){% endif %}"></div>
+            </div>
+            <div class="cat-amt">{% if b.is_over %}<span class="text-danger">超 {{ home_currency_symbol }}{{ b.overspent_yuan }}</span>{% else %}{{ home_currency_symbol }}{{ b.spent_yuan }}/{{ b.limit_yuan }}{% endif %}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
         {% else %}
         <div class="empty-state">
           <div class="empty-state-title">本月还没有预算</div>
@@ -223,6 +236,19 @@
           共 {{ cards.goals_count }} 条目标
           {% if cards.goals_risk_count %} · <span class="dt-pill warn">{{ cards.goals_risk_count }} 接近上限</span>{% endif %}。
         </div>
+        {% if cards.goals_top %}
+        <div class="cat-list cat-list--gap">
+          {% for g in cards.goals_top %}
+          <div class="cat-row">
+            <div class="cat-name">{{ g.name }}</div>
+            <div class="cat-bar">
+              <div class="cat-bar-fill" style="width:{{ g.percent }}%;background:{% if g.state == 'over_limit' %}var(--state-danger-fg){% elif g.state == 'near_limit' %}var(--brand-primary){% else %}var(--text-default){% endif %}"></div>
+            </div>
+            <div class="cat-amt">{% if g.state == 'over_limit' %}<span class="text-danger">{{ g.percent }}%</span>{% else %}{{ g.percent }}%{% endif %}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
         {% endif %}
       </div>
     </div>
