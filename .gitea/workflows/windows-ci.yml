@@ -98,6 +98,8 @@ jobs:
 
       - name: Release audit
         working-directory: backend
+        env:
+          XPJ_RELEASE_AUDIT_COMPACT: "1"
         run: .\.ci-venv\Scripts\python.exe scripts\release_audit.py
 
       - name: Dependency vulnerability scan
