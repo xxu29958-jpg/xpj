@@ -40,6 +40,13 @@
     <string name="global_search_result_matched">命中：%1$s</string>
     <string name="global_search_badge_pending">待确认</string>
     <string name="global_search_badge_confirmed">已确认</string>
+    <string name="global_search_filter_category_all">全部分类</string>
+    <string name="global_search_filter_month_all">全部月份</string>
+    <string name="global_search_filter_month_picker_description">选择月份</string>
+    <string name="global_search_filter_amount_hint">输入金额可按金额精确匹配，如 12.50</string>
+    <string name="global_search_recent_title">最近搜索</string>
+    <string name="global_search_recent_clear">清除</string>
+    <string name="global_search_result_truncated">仅显示前 %1$d 条，可加筛选缩小范围。</string>
 
     <!-- BillSplitScreen：拆账 -->
     <string name="bill_split_topbar_title">拆账</string>
@@ -95,6 +102,8 @@
     <string name="global_search_field_tags">标签</string>
     <string name="global_search_field_source">来源</string>
     <string name="global_search_field_raw_text">原文</string>
+    <string name="global_search_field_amount">金额</string>
+    <string name="global_search_field_all">筛选</string>
 
     <!-- AppViewModel：绑定 / 解锁 / 外观切换 全局状态文案（ADR-0044 wave 2） -->
     <string name="app_bind_restore_failed">已绑定，但历史账本恢复失败，可稍后在账本页更新。</string>

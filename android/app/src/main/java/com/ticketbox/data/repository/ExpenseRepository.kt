@@ -92,7 +92,7 @@ class ExpenseRepository(
     private val pendingRepository = ExpensePendingRepository(core)
     private val ledgerRepository = ExpenseLedgerRepositoryActions(core)
     private val statsRepository = ExpenseStatsRepositoryActions(core, ledgerRepository)
-    private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository)
+    private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, settingsStore)
     private val detailRepository = ExpenseDetailRepository(core)
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
@@ -313,6 +313,12 @@ class ExpenseRepository(
 
     override fun observeConfirmed(): Flow<List<Expense>> =
         ledgerRepository.observeConfirmed()
+
+    override fun recentSearches(): List<String> =
+        searchRepository.recentSearches()
+
+    override fun saveRecentSearches(queries: List<String>) =
+        searchRepository.saveRecentSearches(queries)
 
     override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> =
         statsRepository.monthlyStats(month, tag)

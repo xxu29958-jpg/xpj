@@ -70,6 +70,7 @@ class MonthlyStatsViewModel(
                             dataQuality = null,
                             loading = false,
                             message = null,
+                            statsLoadError = null,
                             ledgerReady = true,
                             activeLedgerId = normalizedLedgerId,
                         )
@@ -174,6 +175,7 @@ class MonthlyStatsViewModel(
                 it.copy(
                     loading = true,
                     message = null,
+                    statsLoadError = null,
                     lastUploadAt = repository.lastUploadAt(),
                 )
             }
@@ -239,6 +241,7 @@ class MonthlyStatsViewModel(
                         lifestyleStats = lifestyle,
                         categoryInsight = monthlyCategoryInsight(stats),
                         loading = false,
+                        statsLoadError = null,
                     )
                 }
             }
@@ -251,6 +254,7 @@ class MonthlyStatsViewModel(
                         categoryInsight = monthlyCategoryInsight(stats),
                         loading = false,
                         message = error.toUiText(R.string.stats_message_lifestyle_failed),
+                        statsLoadError = null,
                     )
                 }
             }
@@ -278,10 +282,21 @@ class MonthlyStatsViewModel(
                 statsSource = nextSource,
                 categoryInsight = monthlyCategoryInsight(visibleStats),
                 loading = false,
+                // On total failure the retryable error card below is the single
+                // failure surface — also setting message would render the same
+                // copy twice on the screen this change exists to clean up.
                 message = if (fallbackStats != null) {
                     UiText.res(R.string.stats_message_local_fallback)
                 } else {
+                    null
+                },
+                // Only a total failure with nothing to render becomes a retryable error
+                // state (audit 8.4); when a local fallback exists the screen shows data +
+                // the "本机估算" message, so no error card.
+                statsLoadError = if (visibleStats == null) {
                     error.toUiText(R.string.stats_message_stats_failed)
+                } else {
+                    null
                 },
             )
         }

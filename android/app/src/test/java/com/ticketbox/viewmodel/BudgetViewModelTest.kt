@@ -116,6 +116,42 @@ class BudgetViewModelTest {
     }
 
     @Test
+    fun loadFailureSetsRetryableErrorNotLoadingPlaceholder() = budgetTest {
+        // 审计 8.4: a failed load must surface a distinct, retryable error (not the
+        // permanent "正在读取预算。" loading copy). The error rides loadError, not the
+        // message channel that carries save-flow feedback. A code-less, message-less
+        // failure resolves to the screen fallback string (toUiText).
+        val fake = FakeBudgetActions(budget = budget())
+        fake.monthlyBudgetResponder = { Result.failure(RuntimeException()) }
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertFalse(state.loading)
+        assertNull(state.budget)
+        assertNull(state.message)
+        assertEquals(UiText.res(R.string.budget_message_load_failed), state.loadError)
+    }
+
+    @Test
+    fun retryAfterLoadFailureClearsErrorAndPopulatesBudget() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 700000))
+        fake.monthlyBudgetResponder = { Result.failure(RuntimeException()) }
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.budget_message_load_failed), vm.uiState.value.loadError)
+
+        // Retry routes through the same refresh() the UI's onRetry calls; this time it succeeds.
+        fake.monthlyBudgetResponder = null
+        vm.refresh()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertNull(state.loadError)
+        assertEquals(700000L, state.budget?.totalAmountCents)
+    }
+
+    @Test
     fun monthChangeLoadsRequestedMonth() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(month = "2026-05"))
         val vm = BudgetViewModel(fake, initialMonth = "2026-05")

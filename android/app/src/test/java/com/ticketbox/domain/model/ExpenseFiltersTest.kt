@@ -2,6 +2,9 @@ package com.ticketbox.domain.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -457,6 +460,66 @@ class ExpenseFiltersTest {
                     byCategory = listOf(CategoryStats(category = "其他", amountCents = 0, count = 0)),
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun parsesSearchAmountToCentsWithBoundaryRules() {
+        // Whole yuan, one decimal, currency-symbol + two decimals all parse.
+        assertEquals(1_200L, parseSearchAmountCents("12"))
+        assertEquals(1_250L, parseSearchAmountCents("12.5"))
+        assertEquals(1_250L, parseSearchAmountCents("¥12.50"))
+        assertEquals(1_250L, parseSearchAmountCents("￥12.5"))
+        assertEquals(12_800L, parseSearchAmountCents("128"))
+        assertEquals(128_000L, parseSearchAmountCents("1,280"))
+        assertEquals(0L, parseSearchAmountCents("0"))
+        // More than two fraction digits is rejected (no silent rounding).
+        assertNull(parseSearchAmountCents("12.345"))
+        // Non-numeric / blank / negative do not parse to an amount.
+        assertNull(parseSearchAmountCents("咖啡"))
+        assertNull(parseSearchAmountCents("12a"))
+        assertNull(parseSearchAmountCents("   "))
+        assertNull(parseSearchAmountCents("-12"))
+    }
+
+    @Test
+    fun expenseMatchesAmountOnHomeOrOriginalLeg() {
+        val homeLeg = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 1_250)
+        val foreignLeg = expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 9_900)
+            .copy(originalAmountMinor = 1_250)
+
+        assertTrue(expenseMatchesAmountCents(homeLeg, 1_250))
+        assertTrue(expenseMatchesAmountCents(foreignLeg, 1_250))
+        assertFalse(expenseMatchesAmountCents(homeLeg, 800))
+    }
+
+    @Test
+    fun searchableMonthsAndCategoriesAreDerivedFromCaches() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-10T08:00:00Z"),
+            expense(id = 2, category = "购物", expenseTime = "2026-06-10T08:00:00Z"),
+            expense(id = 3, category = "餐饮", expenseTime = "2026-05-12T08:00:00Z"),
+        )
+
+        // Distinct months, newest first.
+        assertEquals(listOf("2026-06", "2026-05"), searchableMonths(items, ZoneOffset.UTC))
+        // Default catalog first, then any extras present (deduped).
+        val categories = searchableCategories(items)
+        assertEquals(DEFAULT_EXPENSE_CATEGORIES, categories)
+        assertTrue("餐饮" in categories && "购物" in categories)
+    }
+
+    @Test
+    fun appendRecentSearchDedupesCapsAndMovesToFront() {
+        // Newest first; blank is a no-op.
+        assertEquals(listOf("b", "a"), appendRecentSearch(listOf("a"), "b"))
+        assertEquals(listOf("a"), appendRecentSearch(listOf("a"), "   "))
+        // Case-insensitive de-dup moves the existing entry to the front.
+        assertEquals(listOf("Cafe", "x"), appendRecentSearch(listOf("x", "cafe"), "Cafe"))
+        // Cap enforced (oldest drops).
+        assertEquals(
+            listOf("9", "8", "7", "6", "5", "4", "3", "2"),
+            appendRecentSearch(listOf("8", "7", "6", "5", "4", "3", "2", "1"), "9", max = 8),
         )
     }
 
