@@ -24,12 +24,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
+import com.valentinilk.shimmer.shimmer
 
 @Composable
 internal fun EmptyLedgerState(
@@ -116,6 +118,38 @@ internal fun EmptyLedgerState(
                 }
             }
         }
+    }
+}
+
+/**
+ * 8.4: chooses between the first-sync skeleton and the genuine empty-state card.
+ * Extracted from LedgerScreen's ``item {}`` so that screen's lambda body stays
+ * shallow (NestedBlockDepth gate) — the branch + skeleton blocks live here.
+ */
+@Composable
+internal fun LedgerEmptyOrFirstSync(
+    state: LedgerUiState,
+    onClearFilters: () -> Unit,
+    onSync: () -> Unit,
+    onManualAdd: () -> Unit,
+) {
+    if (state.isFirstSync) {
+        LedgerFirstSyncSkeleton()
+    } else {
+        EmptyLedgerState(
+            state = state,
+            onClearFilters = onClearFilters,
+            onSync = onSync,
+            onManualAdd = onManualAdd,
+        )
+    }
+}
+
+/** First-ever-sync placeholder list (shimmer skeleton rows). Mirrors PendingScreen. */
+@Composable
+private fun LedgerFirstSyncSkeleton() {
+    Column(modifier = Modifier.shimmer()) {
+        repeat(6) { ListItemSkeleton(horizontalPadding = 0.dp) }
     }
 }
 

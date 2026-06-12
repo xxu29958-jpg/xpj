@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -357,6 +358,45 @@ class LedgerViewModelTest {
         vm.setCategoryFilter("交通")
         advanceUntilIdle()
         assertTrue(vm.uiState.value.selectedHaveTags)
+    }
+
+    // 8.4 — first-sync skeleton signal (pure LedgerUiState derivation) ------
+
+    @Test
+    fun isFirstSyncOnlyWhenEmptyAndSyncingAndNeverSyncedBefore() {
+        // Fresh install: no cache, sync in flight, no prior sync timestamp.
+        assertTrue(
+            LedgerUiState(items = emptyList(), syncing = true, lastSyncAt = null).isFirstSync,
+        )
+    }
+
+    @Test
+    fun isFirstSyncFalseOncePreviouslySynced() {
+        // Returning user (lastSyncAt set) refreshing an empty month: this is a
+        // genuine empty state / pull-to-refresh, NOT the first-sync skeleton.
+        assertFalse(
+            LedgerUiState(
+                items = emptyList(),
+                syncing = true,
+                lastSyncAt = "2026-05-17T10:00:00Z",
+            ).isFirstSync,
+        )
+    }
+
+    @Test
+    fun isFirstSyncFalseWhenItemsPresentOrNotSyncing() {
+        // Has cached items while first sync runs → show the cache, not a skeleton.
+        assertFalse(
+            LedgerUiState(
+                items = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+                syncing = true,
+                lastSyncAt = null,
+            ).isFirstSync,
+        )
+        // Idle + empty + never synced (e.g. first sync failed) → empty state, not skeleton.
+        assertFalse(
+            LedgerUiState(items = emptyList(), syncing = false, lastSyncAt = null).isFirstSync,
+        )
     }
 }
 
