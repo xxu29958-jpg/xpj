@@ -11,46 +11,17 @@ from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
-    _dashboard_cards,
+    _dashboard_data_payload,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _trend14_amounts,
     _web_redirect,
     templates,
 )
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
-from app.services.stats_service import monthly_stats
-from app.services.time_service import current_month
 
 router = APIRouter(prefix="/web", tags=["web"])
-
-
-def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
-    month = current_month("Asia/Shanghai")
-    stats = monthly_stats(db, month, selected_id, timezone_name="Asia/Shanghai")
-    return [
-        {
-            "name": item["category"],
-            "amount_yuan": int(item["amount_cents"]) / 100.0,
-            "amount_cents": int(item["amount_cents"]),
-            "count": int(item["count"]),
-        }
-        for item in stats.get("by_category", [])[:6]
-    ]
-
-
-def _dashboard_data_payload(db: Session, selected_id: str) -> dict:
-    cards = _dashboard_cards(db, selected_id)
-    return {
-        "selected_ledger_id": selected_id,
-        "month": cards["month"],
-        "cards": cards,
-        "visible_layout": [item for item in cards["layout"] if item["visible"]],
-        "trend14": _trend14_amounts(db, selected_id),
-        "category_share": _dashboard_category_share(db, selected_id),
-    }
 
 
 @router.get("/dashboard/data", response_class=JSONResponse)
