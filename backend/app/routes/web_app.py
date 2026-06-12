@@ -24,14 +24,13 @@ from app.routes.web_common import (
     _base_ctx,
     _confirmed_by_day,
     _confirmed_source_breakdown,
-    _dashboard_cards,
+    _dashboard_data_payload,
     _expense_view,
     _list_ledger_options,
     _require_local,  # re-exported for tests
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
-    _trend14_amounts,
     _web_redirect,
     _with_ledger,
     parse_form_row_version_token,
@@ -49,32 +48,6 @@ from app.services.time_service import current_month
 __all__ = ["router", "_require_local", "templates"]
 
 router = APIRouter(prefix="/web", tags=["web"])
-
-
-def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
-    month = current_month("Asia/Shanghai")
-    stats = monthly_stats(db, month, selected_id, timezone_name="Asia/Shanghai")
-    return [
-        {
-            "name": item["category"],
-            "amount_yuan": int(item["amount_cents"]) / 100.0,
-            "amount_cents": int(item["amount_cents"]),
-            "count": int(item["count"]),
-        }
-        for item in stats.get("by_category", [])[:6]
-    ]
-
-
-def _dashboard_data_payload(db: Session, selected_id: str) -> dict:
-    cards = _dashboard_cards(db, selected_id)
-    return {
-        "selected_ledger_id": selected_id,
-        "month": cards["month"],
-        "cards": cards,
-        "visible_layout": [item for item in cards["layout"] if item["visible"]],
-        "trend14": _trend14_amounts(db, selected_id),
-        "category_share": _dashboard_category_share(db, selected_id),
-    }
 
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False)
