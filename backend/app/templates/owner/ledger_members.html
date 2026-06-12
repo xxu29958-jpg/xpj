@@ -29,7 +29,9 @@
   <p style="color:var(--state-success-fg);margin-bottom:var(--space-2)">把下面这串邀请明文发给家庭成员。关闭页面或刷新后无法再次查看。</p>
   <pre class="one-time-secret" data-upload-handoff-url>{{ new_invitation_token }}</pre>
   <div style="margin-top:var(--space-3);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <button type="button" class="btn btn-primary" data-copy-upload-url>复制邀请明文</button>
+    <button type="button" class="btn btn-primary" data-copy-upload-url
+            data-copy-toast="邀请明文已复制，私下发给家人"
+            data-copy-fail-toast="复制失败，请手动全选上面的邀请明文">复制邀请明文</button>
     <span class="help-text">点一下整段复制，私下发给家庭成员（微信/口头）。</span>
   </div>
 </div>

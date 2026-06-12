@@ -70,7 +70,7 @@
       {% elif backup_health.age_hours is not none %}
         {% if backup_health.stale %}<span class="badge badge-err">{{ backup_health.age_hours }} 小时前</span>
         {% else %}<span class="badge badge-ok">{{ backup_health.age_hours }} 小时前</span>{% endif %}
-        {% if backup_health.age_hours < 26 %}<span class="text-meta">（正常）</span>{% else %}<span class="text-meta">（该检查了）</span>{% endif %}
+        {% if backup_health.age_hours < 48 %}<span class="text-meta">（正常）</span>{% else %}<span class="text-meta">（该检查了）</span>{% endif %}
       {% else %}<span class="badge badge-err">无有效备份</span>{% endif %}
     </span>
     <span class="kv-key">当前账号</span>
