@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -45,7 +46,7 @@ fun AppFilterChip(
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = selectedContainerColor ?: visuals.chipSelected,
             selectedLabelColor = MaterialTheme.colorScheme.primary,
-            containerColor = visuals.chipUnselected.copy(alpha = 0.86f),
+            containerColor = visuals.chipUnselected.copy(alpha = AppAlpha.opaque),
             labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
         border = BorderStroke(

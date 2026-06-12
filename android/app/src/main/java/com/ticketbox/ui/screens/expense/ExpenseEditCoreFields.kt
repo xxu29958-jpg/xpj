@@ -12,7 +12,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -49,6 +53,17 @@ internal fun ExpenseCurrencyFields(
     onOriginalAmountChange: (String) -> Unit,
     enabled: Boolean = true,
 ) {
+    // A9: auto-focus the amount field when this card enters composition — for
+    // both the manual-entry sheet and the edit screen the amount is the first
+    // thing the user fixes (OCR draft / fresh entry), so pop the keyboard on it.
+    // Internal FocusRequester (no new param): the focus needs no outer
+    // coordination, and the `enabled` flag already gates read-only (don't steal
+    // focus / pop the keyboard on a non-editable expense). Mirrors
+    // MissingAmountSheet / QuickMerchantSheet.
+    val amountFocus = remember { FocusRequester() }
+    LaunchedEffect(enabled) {
+        if (enabled) amountFocus.requestFocus()
+    }
     AppSolidCard {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -68,7 +83,7 @@ internal fun ExpenseCurrencyFields(
             OutlinedTextField(
                 value = originalAmountText,
                 onValueChange = onOriginalAmountChange,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(amountFocus),
                 label = { Text(stringResource(R.string.expense_edit_original_amount_field_label, currency.storageKey)) },
                 placeholder = { Text(if (currency.noFractionDigits) "1280" else "36.80") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),

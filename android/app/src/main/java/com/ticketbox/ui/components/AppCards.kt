@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
@@ -45,7 +46,7 @@ fun AppGlassCard(
             )
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.heavy),
                 shape = radius,
             ),
     ) {
@@ -118,7 +119,7 @@ fun AppHeroCard(
             )
             .border(
                 width = 1.dp,
-                color = visuals.accent.copy(alpha = 0.42f),
+                color = visuals.accent.copy(alpha = AppAlpha.medium),
                 shape = shape,
             ),
     ) {
@@ -128,7 +129,7 @@ fun AppHeroCard(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.10f),
+                            Color.White.copy(alpha = AppAlpha.faint),
                             Color.Transparent,
                             Color.Black.copy(alpha = 0.08f),
                         ),
