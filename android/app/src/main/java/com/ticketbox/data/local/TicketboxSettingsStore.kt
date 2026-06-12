@@ -120,6 +120,16 @@ interface TicketboxSettingsStore {
 
     fun saveServerUrl(serverUrl: String)
 
+    /**
+     * Recently committed global-search queries, most-recent-first. A non-secure
+     * local convenience (like [appSkinKey] / budget) — never holds tokens or
+     * ledger-scoped data, so it survives ledger switches and is cleared only on
+     * sign-out via [clear]. Default empty for stores that don't persist it.
+     */
+    fun recentSearches(): List<String> = emptyList()
+
+    fun saveRecentSearches(queries: List<String>) = Unit
+
     fun isBound(): Boolean
 
     fun markUnlocked()
