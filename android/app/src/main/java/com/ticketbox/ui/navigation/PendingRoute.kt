@@ -30,6 +30,7 @@ import com.ticketbox.viewmodel.saveAmountAndConfirm
 import com.ticketbox.viewmodel.saveAmountDraft
 import com.ticketbox.viewmodel.saveQuickCategory
 import com.ticketbox.viewmodel.saveQuickMerchant
+import com.ticketbox.viewmodel.skipReviewField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,6 +86,8 @@ internal fun PendingRoute(
         // different UX. "忽略" on duplicate sheet must NOT seed the 撤销
         // banner or show "已删除".
         onIgnoreDuplicate = pendingViewModel::ignoreDuplicate,
+        // 连续审阅：快补 sheet「跳过」当前票，载入下一条仍缺同字段的待确认票。
+        onSkipReviewField = pendingViewModel::skipReviewField,
         onCloseSheet = pendingViewModel::closeSheet,
         onUndoReject = pendingViewModel::undoReject,
     )

@@ -90,6 +90,7 @@ fun PendingScreen(
     onConfirmReady: () -> Unit = {},
     onOpenDuplicate: (Expense) -> Unit = {},
     onIgnoreDuplicate: (Expense) -> Unit = {},
+    onSkipReviewField: () -> Unit = {},
     onCloseSheet: () -> Unit = {},
     // ADR-0038 undo: 撤销 snackbar 的回调,默认 no-op 兼容旧调用方。
     // 自动消失由 VM 拥有,不再走 UI 回调。
@@ -151,10 +152,15 @@ fun PendingScreen(
         missingAmountSkip = needsAmountCount,
         duplicateSkip = duplicateCount,
         bulkRunning = state.bulkConfirm.running,
+        reviewRemaining = state.reviewRemaining,
+        // 连续审阅：保存失败时把状态文案钉进 sheet 内（镜像批 9）。成功保存会推进/
+        // 关闭并清掉文案，故 sheet 内实际只在失败留守时出现这条。
+        statusMessage = state.message?.asString(),
         onSaveQuickCategory = onSaveQuickCategory,
         onSaveQuickMerchant = onSaveQuickMerchant,
         onSaveAmountDraft = onSaveAmountDraft,
         onSaveAmountAndConfirm = onSaveAmountAndConfirm,
+        onSkipReviewField = onSkipReviewField,
         onKeepBoth = onKeepDuplicate,
         onIgnoreCurrent = onIgnoreDuplicate,
         onConfirmReady = onConfirmReady,
