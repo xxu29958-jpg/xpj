@@ -76,3 +76,40 @@ object AppTextHierarchy {
  *   )
  */
 fun TextStyle.tabularNum(): TextStyle = copy(fontFeatureSettings = "tnum")
+
+/**
+ * 金额排版"角色"——把两类强调金额的字号 / 字重 / 行高锁成命名档位。
+ *
+ * 此前各屏都手写 `MaterialTheme.typography.titleLarge.copy(fontSize = …,
+ * lineHeight = …, letterSpacing = 0.sp, fontWeight = …).tabularNum()`，字号 /
+ * 行高靠手感复制、容易漂。这里把"焦点金额"收成两档单源：
+ *   - [Hero]   —— 每屏唯一的英雄数字（月度总支出等），38sp Black。
+ *   - [Medium] —— 卡片 / 列表里的次级金额，24sp Bold。
+ *
+ * 字号 / 字重直接复用 [AppTypography] 的 `amountLarge` / `amountMedium`，
+ * 不再写第二份字面量；只补金额特有的行高。配合 [asAmount] 使用。
+ */
+enum class AppAmountRole(val role: AppTextRole, val lineHeight: TextUnit) {
+    Hero(AppTypography.amountLarge, 38.sp),
+    Medium(AppTypography.amountMedium, 28.sp),
+}
+
+/**
+ * 金额排版制度单源：在任意基准 [TextStyle] 上套用一档 [AppAmountRole]——
+ * 角色字号 / 字重 / 行高 + 字距归零 + 等宽数字（[tabularNum]）。
+ *
+ * 用 `copy` 而非新建 TextStyle：保留基准 style 的字族 / 色等其它属性，
+ * 只覆盖金额需要锁定的几项，行为等价于此前手写的
+ * `.copy(fontSize, lineHeight, letterSpacing = 0.sp, fontWeight).tabularNum()`。
+ *
+ *   Text(
+ *     text = formatDisplayAmount(cents, currencyDisplay),
+ *     style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
+ *   )
+ */
+fun TextStyle.asAmount(amount: AppAmountRole): TextStyle = copy(
+    fontSize = amount.role.size,
+    lineHeight = amount.lineHeight,
+    letterSpacing = 0.sp,
+    fontWeight = amount.role.weight,
+).tabularNum()
