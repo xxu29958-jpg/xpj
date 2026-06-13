@@ -99,6 +99,75 @@
 .kpi-cell--hero .val .yuan { font-size: 18px; margin-right: 4px; }
 .kpi-cell--hero .val .decimals { font-size: 22px; color: var(--text-meta); font-family: var(--font-num); }
 
+/* ───── 轴5 内联 style 收口批1: reports.html 专属 ───── */
+/* 月度趋势图例三色(与 trend-chart.js 系列色一致) */
+.legend-dot--actual { background: var(--text-default); }
+.legend-dot--budget { background: var(--text-faint); }
+.legend-dot--trend  { background: var(--brand-primary); }
+
+/* 月报摘要: 两列指标 + 卡内放大 val(24px 与 .kpi-cell .val 同档;裸结构无卡皮,
+   IA 重排轮再归并进 kpi 词汇) */
+.report-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+}
+.val--lg { font-size: 24px; }
+.report-top-categories {
+    margin-top: var(--space-4-5);
+    display: grid;
+    gap: var(--space-3);
+}
+.report-top-category-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    font-size: 13px;
+}
+
+/* 预算解释列表 */
+.report-explain-list {
+    display: grid;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+}
+.report-explain-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: var(--space-4);
+    align-items: center;
+    border-bottom: 1px solid var(--border-card);
+    padding: var(--space-3) 0;
+}
+.report-explain-category { font-weight: 650; }
+
+/* 大额支出表列宽(右对齐复用 utilities 的 .text-end) */
+.dt-table .th-narrow { width: 120px; }
+.dt-table .th-amount { width: 150px; }
+
+/* 趋势图 PNG 导出 dialog */
+.report-export-dialog {
+    border: none;
+    border-radius: 12px;
+    padding: 18px;
+    max-width: 90vw;
+    background: var(--surface-card, #fff);
+}
+.report-export-dialog__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-5);
+    margin-bottom: var(--space-3-5);
+}
+.report-export-dialog__image {
+    max-width: min(80vw, 720px);
+    height: auto;
+    border-radius: 8px;
+    display: block;
+}
+
 /* ───── Merchant ranking ───── */
 .merch-rank { display: flex; flex-direction: column; gap: 0; }
 .merch-row {

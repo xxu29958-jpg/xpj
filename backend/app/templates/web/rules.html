@@ -98,7 +98,7 @@
 <section class="dt-card">
   <div class="card-header">
     <h2>批量应用前预览</h2>
-    <form method="get" action="/web/rules" style="display:inline">
+    <form method="get" action="/web/rules" class="inline-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="apply_preview" value="1">
       <button type="submit" class="dt-btn">预览影响范围</button>
@@ -150,7 +150,7 @@
   </div>
   {% endif %}
   {% if can_write and bulk_preview.changed_count > 0 %}
-  <form method="post" action="/web/rules/apply-pending" style="margin-top:12px">
+  <form method="post" action="/web/rules/apply-pending" class="form--gap">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="preview_confirmed" value="yes">
     <input type="hidden" name="preview_token" value="{{ bulk_preview.preview_token }}">
@@ -173,7 +173,7 @@
 <section class="dt-card">
   <div class="card-header">
     <h2>历史账单规则预览</h2>
-    <form method="get" action="/web/rules" style="display:inline">
+    <form method="get" action="/web/rules" class="inline-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="confirmed_preview" value="1">
       <button type="submit" class="dt-btn">预览已确认影响</button>
@@ -228,7 +228,7 @@
   </div>
   {% endif %}
   {% if can_write and confirmed_bulk_preview.changed_count > 0 %}
-  <form method="post" action="/web/rules/apply-confirmed" style="margin-top:12px">
+  <form method="post" action="/web/rules/apply-confirmed" class="form--gap">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="preview_confirmed" value="yes">
     <input type="hidden" name="preview_token" value="{{ confirmed_bulk_preview.preview_token }}">
@@ -259,10 +259,10 @@
     <thead>
       <tr>
         <th>批次</th>
-        <th style="width:90px">状态</th>
-        <th style="width:90px">改写</th>
-        <th style="width:90px">扫描</th>
-        <th style="width:150px">操作</th>
+        <th class="th-w-90">状态</th>
+        <th class="th-w-90">改写</th>
+        <th class="th-w-90">扫描</th>
+        <th class="th-w-150">操作</th>
       </tr>
     </thead>
     <tbody>
@@ -280,7 +280,7 @@
         <td>{{ batch.pending_scanned }}</td>
         <td>
           {% if can_write and not batch.rolled_back_at %}
-          <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" style="display:inline"
+          <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" class="inline-form"
                 data-confirm="回滚这次规则应用？只会恢复未被手动改过的账单。">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <button type="submit" class="dt-btn danger">回滚</button>
@@ -312,12 +312,12 @@
   <table class="dt-table">
     <thead>
       <tr>
-        <th style="width:60px">优先级</th>
+        <th class="th-w-60">优先级</th>
         <th>关键词</th>
         <th>分类</th>
         <th>条件</th>
-        <th style="width:80px">状态</th>
-        <th style="width:180px">操作</th>
+        <th class="th-w-80">状态</th>
+        <th class="th-w-180">操作</th>
       </tr>
     </thead>
     <tbody>
@@ -340,14 +340,14 @@
         </td>
         <td>
           {% if can_write %}
-          <form method="post" action="/web/rules/{{ r.id }}/toggle" style="display:inline">
+          <form method="post" action="/web/rules/{{ r.id }}/toggle" class="inline-form">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
             <button type="submit" class="dt-btn">
               {% if r.enabled %}停用{% else %}启用{% endif %}
             </button>
           </form>
-          <form method="post" action="/web/rules/{{ r.id }}/delete" style="display:inline"
+          <form method="post" action="/web/rules/{{ r.id }}/delete" class="inline-form"
                 data-confirm="删除规则「{{ r.keyword }}」？">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">

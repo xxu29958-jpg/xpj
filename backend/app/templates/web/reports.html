@@ -67,32 +67,32 @@
   </div>
   <div class="kpi-cell">
     <div class="label">入账笔数</div>
-    <div class="val">{{ r.count }} <span class="yuan" style="font-size:12px">笔</span></div>
+    <div class="val">{{ r.count }} <span class="yuan yuan--caption">笔</span></div>
     {% if r.previous_count %}
     <div class="foot">上月 {{ r.previous_count }} 笔</div>
     {% endif %}
   </div>
   <div class="kpi-cell">
     <div class="label">超支月份</div>
-    <div class="val">{{ _over.count }} <span class="yuan" style="font-size:12px">个月</span></div>
+    <div class="val">{{ _over.count }} <span class="yuan yuan--caption">个月</span></div>
     <div class="foot">最近 6 个月内</div>
   </div>
 </div>
 
 {# 月度趋势(六个月)— trend-chart.js initTrendChart 经 desktop.js boot() 自动挂载。
    f134d050 删容器时保留了渲染器;数据与上方 KPI 同源(six_month_trend)。#}
-<div class="dash-grid" style="margin-top:18px">
+<div class="dash-grid dash-grid--gap">
   <div class="col-12">
     <div class="dt-card">
       <div class="card-head">
         <div>
           <div class="card-title">月度趋势</div>
-          <div class="card-sub" style="margin-top:4px">柱：实际支出 · 虚线：预算 · 曲线：趋势</div>
+          <div class="card-sub card-sub--gap">柱：实际支出 · 虚线：预算 · 曲线：趋势</div>
         </div>
         <div class="legend">
-          <span><span class="legend-dot" style="background:var(--text-default)"></span>实际</span>
-          <span><span class="legend-dot" style="background:var(--text-faint)"></span>预算</span>
-          <span><span class="legend-dot" style="background:var(--brand-primary)"></span>趋势</span>
+          <span><span class="legend-dot legend-dot--actual"></span>实际</span>
+          <span><span class="legend-dot legend-dot--budget"></span>预算</span>
+          <span><span class="legend-dot legend-dot--trend"></span>趋势</span>
         </div>
       </div>
       <div id="chart-trend" class="chart-canvas tall"
@@ -102,23 +102,23 @@
 </div>
 
 {% if monthly_report %}
-<div class="dash-grid" style="margin-top:18px">
+<div class="dash-grid dash-grid--gap">
   <div class="col-5">
     <div class="dt-card">
       <div class="card-head">
         <div>
           <div class="card-title">月报摘要</div>
-          <div class="card-sub" style="margin-top:4px">{{ monthly_report.year_month }} · 本月账单汇总</div>
+          <div class="card-sub card-sub--gap">{{ monthly_report.year_month }} · 本月账单汇总</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px">
+      <div class="report-summary-grid">
         <div>
           <div class="label">本月合计</div>
-          <div class="val" style="font-size:24px"><span class="yuan">{{ home_currency_symbol }}</span>{{ monthly_report.total_amount_yuan }}</div>
+          <div class="val val--lg"><span class="yuan">{{ home_currency_symbol }}</span>{{ monthly_report.total_amount_yuan }}</div>
         </div>
         <div>
           <div class="label">较上月</div>
-          <div class="val" style="font-size:24px">
+          <div class="val val--lg">
             {% if monthly_report.delta_pct is not none %}
               {{ '%+.1f' % monthly_report.delta_pct }}%
             {% else %}
@@ -127,9 +127,9 @@
           </div>
         </div>
       </div>
-      <div style="margin-top:14px;display:grid;gap:8px">
+      <div class="report-top-categories">
         {% for c in monthly_report.top_categories[:4] %}
-        <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px">
+        <div class="report-top-category-row">
           <span>{{ c.category }}</span>
           <span class="num">{{ home_currency_symbol }}{{ c.amount_yuan }}</span>
         </div>
@@ -145,14 +145,14 @@
       <div class="card-head">
         <div>
           <div class="card-title">预算解释</div>
-          <div class="card-sub" style="margin-top:4px">当前分类对照历史节奏</div>
+          <div class="card-sub card-sub--gap">当前分类对照历史节奏</div>
         </div>
       </div>
-      <div style="display:grid;gap:8px;margin-top:12px">
+      <div class="report-explain-list">
         {% for item in budget_explanations %}
-        <div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;border-bottom:1px solid var(--border-card);padding:8px 0">
+        <div class="report-explain-row">
           <div>
-            <div style="font-weight:650">{{ item.category }}</div>
+            <div class="report-explain-category">{{ item.category }}</div>
             <div class="card-sub">{{ item.verdict_label }}</div>
           </div>
           <div class="num">{{ home_currency_symbol }}{{ item.actual_yuan }}</div>
@@ -186,7 +186,7 @@
       <div class="card-head">
         <div>
           <div class="card-title">支出趋势</div>
-          <div class="card-sub" style="margin-top:4px">按所选粒度的本月支出走势</div>
+          <div class="card-sub card-sub--gap">按所选粒度的本月支出走势</div>
         </div>
         <button type="button" id="reports-export-png" class="dt-btn ghost">导出 PNG</button>
       </div>
@@ -211,7 +211,7 @@
       <div class="card-head">
         <div>
           <div class="card-title">商家排行</div>
-          <div class="card-sub" style="margin-top:4px">按本月{{ '笔数' if report.ranking_metric == 'count' else '支出金额' }}降序 · 前 8 名</div>
+          <div class="card-sub card-sub--gap">按本月{{ '笔数' if report.ranking_metric == 'count' else '支出金额' }}降序 · 前 8 名</div>
         </div>
         <a class="dt-btn ghost" href="/web/reports/export.csv?{{ report_export_query }}">导出 CSV</a>
       </div>
@@ -226,7 +226,7 @@
       <div class="card-head">
         <div>
           <div class="card-title">大额支出</div>
-          <div class="card-sub" style="margin-top:4px">本月金额最高的前 5 笔已确认支出</div>
+          <div class="card-sub card-sub--gap">本月金额最高的前 5 笔已确认支出</div>
         </div>
       </div>
       {% if top_expenses %}
@@ -234,9 +234,9 @@
         <thead>
           <tr>
             <th>商家</th>
-            <th style="width:120px">分类</th>
-            <th style="width:120px">日期</th>
-            <th style="width:150px;text-align:right">金额</th>
+            <th class="th-narrow">分类</th>
+            <th class="th-narrow">日期</th>
+            <th class="th-amount text-end">金额</th>
           </tr>
         </thead>
         <tbody>
@@ -262,15 +262,15 @@
 
 {# PNG export of the trend chart (reports.js bindExport) #}
 <dialog id="reports-export-dialog"
-        style="border:none;border-radius:12px;padding:18px;max-width:90vw;background:var(--surface-card,#fff)">
-  <form method="dialog" style="margin:0">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:10px">
+        class="report-export-dialog">
+  <form method="dialog" class="m-0">
+    <div class="report-export-dialog__head">
       <strong>趋势图 PNG</strong>
       <button class="dt-btn ghost" value="close">关闭</button>
     </div>
     <img id="reports-export-image" alt="趋势图 PNG 预览"
-         style="max-width:min(80vw,720px);height:auto;border-radius:8px;display:block" />
-    <div class="card-sub" style="margin-top:8px">右键图片可另存为 PNG。</div>
+         class="report-export-dialog__image" />
+    <div class="card-sub card-sub--gap-loose">右键图片可另存为 PNG。</div>
   </form>
 </dialog>
 {% endblock %}
