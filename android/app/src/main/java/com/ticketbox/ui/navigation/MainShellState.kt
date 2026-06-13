@@ -28,7 +28,7 @@ internal fun expenseRoute(expenseId: Long): String = "expense/$expenseId"
 
 internal enum class BottomTab(
     val key: String,
-    @StringRes val labelRes: Int,
+    @param:StringRes val labelRes: Int,
     val icon: ImageVector,
 ) {
     // v0.10 IA 重排: 账本作主入口, Reports 独立 tab (从 Stats 二级拆出, 内容 V0.11 再拆分)

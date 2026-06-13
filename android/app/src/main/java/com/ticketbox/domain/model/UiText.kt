@@ -15,7 +15,7 @@ import androidx.annotation.StringRes
  * value with no resource).
  */
 sealed interface UiText {
-    data class Res(@StringRes val id: Int, val args: List<Any> = emptyList()) : UiText
+    data class Res(@param:StringRes val id: Int, val args: List<Any> = emptyList()) : UiText
 
     data class Raw(val text: String) : UiText
 

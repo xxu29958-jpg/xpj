@@ -57,7 +57,7 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.RecurringUiState
 import com.valentinilk.shimmer.shimmer
 
-private enum class RecurringTab(@StringRes val labelRes: Int) {
+private enum class RecurringTab(@param:StringRes val labelRes: Int) {
     Upcoming(R.string.recurring_tab_upcoming),
     Active(R.string.recurring_tab_active),
     Paused(R.string.recurring_tab_paused),

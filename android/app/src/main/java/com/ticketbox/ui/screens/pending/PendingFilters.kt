@@ -25,7 +25,7 @@ import com.ticketbox.ui.components.AppGlassCard
  * Needs Review filter — UI-only client-side filter over already-loaded pending items.
  * 不触碰 Retrofit/Room；只在已加载的列表上做筛选。
  */
-internal enum class NeedsReviewFilter(@StringRes val labelRes: Int) {
+internal enum class NeedsReviewFilter(@param:StringRes val labelRes: Int) {
     All(R.string.pending_filter_label_all),
     NeedsAmount(R.string.pending_filter_label_needs_amount),
     NeedsMerchant(R.string.pending_filter_label_needs_merchant),

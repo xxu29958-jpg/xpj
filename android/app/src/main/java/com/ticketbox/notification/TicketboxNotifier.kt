@@ -81,12 +81,12 @@ fun decideDraftNotification(
  */
 data class NotificationContentSpec(
     val channelId: String,
-    @StringRes val titleRes: Int,
+    @param:StringRes val titleRes: Int,
     val titleArgs: List<String>,
-    @StringRes val bodyRes: Int,
+    @param:StringRes val bodyRes: Int,
     val bodyArgs: List<String>,
-    @StringRes val publicSummaryRes: Int,
-    @StringRes val actionLabelRes: Int,
+    @param:StringRes val publicSummaryRes: Int,
+    @param:StringRes val actionLabelRes: Int,
 )
 
 /**
