@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +64,9 @@ fun FamilyMembersScreen(
 
     LaunchedEffect(activeLedgerId) {
         viewModel.refresh(activeLedgerId, currentRole)
+    }
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.dismissCreatedInvite() }
     }
 
     pendingAction?.let { action ->
@@ -211,25 +215,7 @@ private fun InviteFamilySection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                ) {
-                    OutlinedButton(
-                        onClick = { onCreate(LEDGER_ROLE_MEMBER) },
-                        enabled = !creating,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(stringResource(R.string.family_members_invite_as_member))
-                    }
-                    OutlinedButton(
-                        onClick = { onCreate(LEDGER_ROLE_VIEWER) },
-                        enabled = !creating,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(stringResource(R.string.family_members_invite_as_viewer))
-                    }
-                }
+                InviteRoleButtons(creating = creating, onCreate = onCreate)
                 if (creating) {
                     Text(
                         text = stringResource(R.string.family_members_invite_creating),
@@ -238,51 +224,84 @@ private fun InviteFamilySection(
                     )
                 }
                 createdInvite?.let { invite ->
-                    Text(
-                        text = stringResource(
-                            R.string.family_members_invite_created_title,
-                            ledgerRoleLabel(invite.role),
-                        ),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
+                    CreatedInviteResult(
+                        invite = invite,
+                        onCopy = { clipboard.setText(AnnotatedString(invite.inviteToken)) },
+                        onDismissResult = onDismissResult,
                     )
-                    Text(
-                        text = invite.inviteToken,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    invite.expiresAt?.let { expiresAt ->
-                        Text(
-                            text = stringResource(
-                                R.string.family_members_invite_expires_at,
-                                displayTime(expiresAt),
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.family_members_invite_once_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedButton(
-                            onClick = { clipboard.setText(AnnotatedString(invite.inviteToken)) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(stringResource(R.string.family_members_invite_copy))
-                        }
-                        TextButton(onClick = onDismissResult) {
-                            Text(stringResource(R.string.family_members_invite_dismiss))
-                        }
-                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun InviteRoleButtons(
+    creating: Boolean,
+    onCreate: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        OutlinedButton(
+            onClick = { onCreate(LEDGER_ROLE_MEMBER) },
+            enabled = !creating,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(stringResource(R.string.family_members_invite_as_member))
+        }
+        OutlinedButton(
+            onClick = { onCreate(LEDGER_ROLE_VIEWER) },
+            enabled = !creating,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(stringResource(R.string.family_members_invite_as_viewer))
+        }
+    }
+}
+
+@Composable
+private fun CreatedInviteResult(
+    invite: FamilyInvitationCreated,
+    onCopy: () -> Unit,
+    onDismissResult: () -> Unit,
+) {
+    Text(
+        text = stringResource(
+            R.string.family_members_invite_created_title,
+            ledgerRoleLabel(invite.role),
+        ),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    Text(
+        text = invite.inviteToken,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    invite.expiresAt?.let { expiresAt ->
+        Text(
+            text = stringResource(R.string.family_members_invite_expires_at, displayTime(expiresAt)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Text(
+        text = stringResource(R.string.family_members_invite_once_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(onClick = onCopy, modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.family_members_invite_copy))
+        }
+        TextButton(onClick = onDismissResult) {
+            Text(stringResource(R.string.family_members_invite_dismiss))
         }
     }
 }
