@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,6 +81,12 @@ fun BillSplitScreen(
     LaunchedEffect(Unit) {
         viewModel.refresh()
     }
+
+    // 系统返回键交给 onBack(镜像 BudgetScreen/RecurringScreen)。本屏可作全屏二级页
+    // 渲染——账本工具表入口走 statsSecondaryPage overlay、设置树入口走 SettingsDestinationHost——
+    // overlay 路径下没有外层 BackHandler(NavHost 仍在 start destination、回退栈为空),
+    // 缺这一句系统返回会穿透到 Activity 把 app 切后台而非回账本。
+    BackHandler { onBack() }
 
     AppScrollableContent(
         role = AppPageRole.Stats,

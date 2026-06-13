@@ -440,7 +440,7 @@ internal fun SettingsDestinationHost(
 
         SettingsDestination.IncomePlans -> {
             val vm: IncomePlanViewModel = viewModel(
-                key = "income-plans",
+                key = IncomePlanViewModelKey,
                 factory = incomePlanViewModelFactory(repositories.incomePlanRepository),
             )
             IncomePlanScreen(

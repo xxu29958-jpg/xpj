@@ -43,6 +43,9 @@ internal enum class StatsSecondaryPage {
     Budget,
     Recurring,
     IncomePlans,
+    // A3 IA: 拆账中心从账本动作区提级为全屏二级页, 复用本 overlay 机制(与预算/固定支出同形)。
+    // 它是账本域页面而非统计面, 故 surfaceRole 单独归 Ledger(见下方 surfaceRole)。
+    BillSplits,
 }
 
 internal class MainShellState {
@@ -81,6 +84,10 @@ internal class MainShellState {
         statsSecondaryPage = StatsSecondaryPage.IncomePlans
     }
 
+    fun openBillSplits() {
+        statsSecondaryPage = StatsSecondaryPage.BillSplits
+    }
+
     fun closeStatsSecondaryPage() {
         statsSecondaryPage = null
     }
@@ -95,6 +102,8 @@ internal class MainShellState {
 
     fun surfaceRole(currentRoute: String?): SurfaceRole = when {
         currentRoute == EXPENSE_ROUTE -> SurfaceRole.Edit
+        // 拆账中心从账本进入, 背景归账本域; 其余二级页是统计/规划面, 仍归 Stats。
+        statsSecondaryPage == StatsSecondaryPage.BillSplits -> SurfaceRole.Ledger
         statsSecondaryPage != null -> SurfaceRole.Stats
         else -> selectedTab.surfaceRole
     }

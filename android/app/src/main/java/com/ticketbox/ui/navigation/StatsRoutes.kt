@@ -21,6 +21,8 @@ import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
+internal const val IncomePlanViewModelKey = "income-plans"
+
 @Composable
 internal fun BudgetRoute(
     screenFactory: MainScreenFactory,
@@ -73,6 +75,7 @@ internal fun IncomePlanRoute(
     onBack: () -> Unit,
 ) {
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
+        key = IncomePlanViewModelKey,
         factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository),
     )
     IncomePlanScreen(
