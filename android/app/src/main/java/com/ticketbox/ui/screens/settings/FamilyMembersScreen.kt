@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,10 +25,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
@@ -60,6 +64,9 @@ fun FamilyMembersScreen(
 
     LaunchedEffect(activeLedgerId) {
         viewModel.refresh(activeLedgerId, currentRole)
+    }
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.dismissCreatedInvite() }
     }
 
     pendingAction?.let { action ->
@@ -138,6 +145,14 @@ fun FamilyMembersScreen(
             }
         }
         if (canManageMembers) {
+            // 轴7 发邀请:owner-only(canManageMembers 已双查 currentRole + deviceIsOwner,
+            // VM 再查一次,后端 403 兜底)。此前发邀请唯一入口在 /owner 控制台。
+            InviteFamilySection(
+                creating = state.inviteCreating,
+                createdInvite = state.createdInvite,
+                onCreate = { role -> viewModel.createInvitation(role, activeLedgerId) },
+                onDismissResult = { viewModel.dismissCreatedInvite() },
+            )
             SettingsSection(
                 title = stringResource(R.string.family_members_section_audit),
                 icon = Icons.Filled.Info,
@@ -169,6 +184,124 @@ fun FamilyMembersScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 轴7 发邀请区(owner-only,调用方守门):两个角色按钮生成邀请,结果卡展示
+ * 明文 token+复制+有效期。明文只在创建响应出现一次(服务端只存哈希),收起即不可
+ * 再取;复制反馈依赖系统剪贴板浮窗(Android 13+ 自带),不另做 toast。
+ */
+@Composable
+private fun InviteFamilySection(
+    creating: Boolean,
+    createdInvite: FamilyInvitationCreated?,
+    onCreate: (String) -> Unit,
+    onDismissResult: () -> Unit,
+) {
+    val clipboard = LocalClipboardManager.current
+    SettingsSection(
+        title = stringResource(R.string.family_members_section_invite),
+        icon = Icons.Filled.Group,
+    ) {
+        AppGlassCard(containerAlpha = 0.96f) {
+            Column(
+                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            ) {
+                Text(
+                    text = stringResource(R.string.family_members_invite_intro),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                InviteRoleButtons(creating = creating, onCreate = onCreate)
+                if (creating) {
+                    Text(
+                        text = stringResource(R.string.family_members_invite_creating),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                createdInvite?.let { invite ->
+                    CreatedInviteResult(
+                        invite = invite,
+                        onCopy = { clipboard.setText(AnnotatedString(invite.inviteToken)) },
+                        onDismissResult = onDismissResult,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InviteRoleButtons(
+    creating: Boolean,
+    onCreate: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        OutlinedButton(
+            onClick = { onCreate(LEDGER_ROLE_MEMBER) },
+            enabled = !creating,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(stringResource(R.string.family_members_invite_as_member))
+        }
+        OutlinedButton(
+            onClick = { onCreate(LEDGER_ROLE_VIEWER) },
+            enabled = !creating,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(stringResource(R.string.family_members_invite_as_viewer))
+        }
+    }
+}
+
+@Composable
+private fun CreatedInviteResult(
+    invite: FamilyInvitationCreated,
+    onCopy: () -> Unit,
+    onDismissResult: () -> Unit,
+) {
+    Text(
+        text = stringResource(
+            R.string.family_members_invite_created_title,
+            ledgerRoleLabel(invite.role),
+        ),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    Text(
+        text = invite.inviteToken,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    invite.expiresAt?.let { expiresAt ->
+        Text(
+            text = stringResource(R.string.family_members_invite_expires_at, displayTime(expiresAt)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Text(
+        text = stringResource(R.string.family_members_invite_once_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(onClick = onCopy, modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.family_members_invite_copy))
+        }
+        TextButton(onClick = onDismissResult) {
+            Text(stringResource(R.string.family_members_invite_dismiss))
         }
     }
 }

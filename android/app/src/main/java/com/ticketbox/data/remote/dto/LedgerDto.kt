@@ -119,6 +119,48 @@ data class InvitationPreviewRequestDto(
     val inviteToken: String,
 )
 
+/**
+ * 轴7 发邀请:``POST /api/ledgers/{ledger_id}/invitations`` 请求体(owner 级)。
+ * 后端 ``InvitationCreateRequest`` 为 extra=forbid,字段集必须严格对齐;
+ * role 只接受 member/viewer(repository 层先校验,后端 403/422 兜底)。
+ */
+data class InvitationCreateRequestDto(
+    val role: String,
+    val note: String? = null,
+    @param:Json(name = "ttl_days")
+    val ttlDays: Int = 7,
+)
+
+/** 邀请摘要(创建响应内嵌;后端 ``InvitationSummaryResponse``)。 */
+data class InvitationSummaryDto(
+    @param:Json(name = "public_id")
+    val publicId: String,
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
+    val role: String,
+    val note: String? = null,
+    @param:Json(name = "created_at")
+    val createdAt: String? = null,
+    @param:Json(name = "expires_at")
+    val expiresAt: String? = null,
+    @param:Json(name = "used_at")
+    val usedAt: String? = null,
+    @param:Json(name = "revoked_at")
+    val revokedAt: String? = null,
+    @param:Json(name = "used_by_account_name")
+    val usedByAccountName: String? = null,
+)
+
+/**
+ * 创建邀请响应(后端 ``InvitationCreateResponse``)。``invite_token`` 是**唯一一次**
+ * 返回的明文(服务端只存哈希)——UI 必须当场展示/复制,离开即不可再取。
+ */
+data class InvitationCreateResponseDto(
+    @param:Json(name = "invite_token")
+    val inviteToken: String,
+    val invitation: InvitationSummaryDto,
+)
+
 data class InvitationPreviewResponseDto(
     @param:Json(name = "ledger_id")
     val ledgerId: String,

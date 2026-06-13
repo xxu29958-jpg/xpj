@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LedgerAuditEntry
@@ -29,6 +30,13 @@ data class FamilyMembersUiState(
     val auditLoading: Boolean = false,
     val busyMemberId: Long? = null,
     val message: UiText? = null,
+    /** 轴7 发邀请:生成请求在途(禁双击)。 */
+    val inviteCreating: Boolean = false,
+    /**
+     * 最近一次生成的邀请(明文 token 只在创建响应出现一次,故由本状态持有直到用户
+     * 收起/再次生成覆盖/离开屏幕)。非 null 时屏幕渲染结果卡(token+复制+有效期)。
+     */
+    val createdInvite: FamilyInvitationCreated? = null,
 )
 
 sealed class FamilyMemberAction(open val member: FamilyMember) {
@@ -98,6 +106,36 @@ class FamilyMembersViewModel(
             }
             _uiState.update { it.copy(loading = false) }
         }
+    }
+
+    /**
+     * 轴7 发邀请(owner-only:屏幕按 currentRole 隐藏入口,这里再以 [deviceIsOwner]
+     * 双查,后端 403 兜底)。成功置 [FamilyMembersUiState.createdInvite] 渲染结果卡。
+     */
+    fun createInvitation(role: String, activeLedgerId: String?) {
+        if (!deviceIsOwner()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(inviteCreating = true, message = null) }
+            repository.createFamilyInvitation(role = role, ledgerId = activeLedgerId)
+                .onSuccess { created ->
+                    _uiState.update {
+                        it.copy(inviteCreating = false, createdInvite = created)
+                    }
+                }
+                .onFailure { err ->
+                    _uiState.update {
+                        it.copy(
+                            inviteCreating = false,
+                            message = err.toUiText(R.string.family_members_message_invite_failed),
+                        )
+                    }
+                }
+        }
+    }
+
+    /** 收起邀请结果卡(明文不再展示;服务端只存哈希,收起后不可再取回)。 */
+    fun dismissCreatedInvite() {
+        _uiState.update { it.copy(createdInvite = null) }
     }
 
     fun runAction(

@@ -93,6 +93,10 @@ internal class StubApi(
     var previewError: Throwable? = null,
     var acceptResult: InvitationAcceptResponseDto? = null,
     var acceptError: Throwable? = null,
+    var createInvitationResult: com.ticketbox.data.remote.dto.InvitationCreateResponseDto? = null,
+    var createInvitationError: Throwable? = null,
+    val createInvitationTargets: MutableList<String> = mutableListOf(),
+    val createInvitationRequests: MutableList<com.ticketbox.data.remote.dto.InvitationCreateRequestDto> = mutableListOf(),
     val switchRequests: MutableList<String> = mutableListOf(),
     val memberLedgerRequests: MutableList<String> = mutableListOf(),
     val auditRequests: MutableList<Pair<String, Int>> = mutableListOf(),
@@ -163,6 +167,16 @@ internal class StubApi(
     ): OwnerTransferResponseDto {
         transferTargets += ledgerId to memberId
         return transferResult ?: error("Unexpected transfer call")
+    }
+
+    override suspend fun createInvitation(
+        ledgerId: String,
+        request: com.ticketbox.data.remote.dto.InvitationCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.InvitationCreateResponseDto {
+        createInvitationTargets += ledgerId
+        createInvitationRequests += request
+        createInvitationError?.let { throw it }
+        return createInvitationResult ?: error("Unexpected createInvitation call")
     }
 
     override suspend fun previewInvitation(

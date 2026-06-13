@@ -10,12 +10,15 @@ import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
+import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
+import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
+import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.LedgerAuditEntry
@@ -193,6 +196,27 @@ class LedgerRepository(
             memberId = memberId,
             request = LedgerMemberRoleUpdateRequestDto(role = cleanRole),
         ).toFamilyMember()
+    }
+
+    /**
+     * 轴7 发邀请(owner 级,后端 403 兜底;UI 已按角色隐藏只做体验)。返回的
+     * [FamilyInvitationCreated.inviteToken] 是唯一一次明文——调用方负责当场展示/复制。
+     * note / ttl_days 走后端默认(7 天),MVP 不在客户端暴露。
+     */
+    suspend fun createFamilyInvitation(
+        role: String,
+        ledgerId: String? = activeLedgerId(),
+    ): Result<FamilyInvitationCreated> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        val cleanRole = role.trim()
+        // 与后端 Invitation.role 契约一致:owner 经显式 owner-transfer,不走邀请。
+        require(cleanRole == LEDGER_ROLE_MEMBER || cleanRole == LEDGER_ROLE_VIEWER) {
+            "邀请角色只能是成员或只读。"
+        }
+        api().createInvitation(
+            ledgerId = targetLedgerId,
+            request = InvitationCreateRequestDto(role = cleanRole),
+        ).toFamilyInvitationCreated()
     }
 
     suspend fun disableFamilyMember(
@@ -435,6 +459,13 @@ private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPrevie
     role = role,
     expiresAt = expiresAt,
 )
+
+private fun InvitationCreateResponseDto.toFamilyInvitationCreated(): FamilyInvitationCreated =
+    FamilyInvitationCreated(
+        inviteToken = inviteToken,
+        role = invitation.role,
+        expiresAt = invitation.expiresAt,
+    )
 
 private fun OwnerTransferResponseDto.toOwnerTransferResult(): OwnerTransferResult = OwnerTransferResult(
     previousOwner = previousOwner.toFamilyMember(),
