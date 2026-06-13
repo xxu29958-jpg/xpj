@@ -129,8 +129,10 @@ private fun TaskRow(
         }
         if (task.progressTotal != null && task.progressTotal > 0) {
             LinearProgressIndicator(
-                progress = (task.progressCurrent.toFloat() / task.progressTotal.toFloat())
-                    .coerceIn(0f, 1f),
+                progress = {
+                    (task.progressCurrent.toFloat() / task.progressTotal.toFloat())
+                        .coerceIn(0f, 1f)
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
         }

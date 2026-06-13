@@ -126,14 +126,12 @@ private fun SwipeActionBackground(
     rightAction: SwipeActionConfig?,
     currentOffset: Float,
 ) {
-    val showLeft = currentOffset > 0f && leftAction != null
-    val showRight = currentOffset < 0f && rightAction != null
     when {
-        showLeft && leftAction != null -> Box(
+        currentOffset > 0f && leftAction != null -> Box(
             modifier = Modifier.fillMaxSize().background(leftAction.bg),
             contentAlignment = Alignment.CenterStart,
         ) { ActionLabel(leftAction.icon, leftAction.label, leftAction.fg, alignedStart = true) }
-        showRight && rightAction != null -> Box(
+        currentOffset < 0f && rightAction != null -> Box(
             modifier = Modifier.fillMaxSize().background(rightAction.bg),
             contentAlignment = Alignment.CenterEnd,
         ) { ActionLabel(rightAction.icon, rightAction.label, rightAction.fg, alignedStart = false) }
