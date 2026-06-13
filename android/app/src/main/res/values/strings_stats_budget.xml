@@ -85,6 +85,12 @@
     <!-- ReportsInsightCards：动态图表 + 月度目标 -->
     <string name="stats_reports_chart_title">动态图表</string>
     <string name="stats_reports_chart_subtitle">%1$s · 服务端聚合 · %2$d 笔</string>
+    <!-- 轴3 粒度切换（日/周两档；单月报表内「月」只有一桶无图可画，刻意不给）。 -->
+    <string name="stats_reports_granularity_day">按日</string>
+    <string name="stats_reports_granularity_week">按周</string>
+    <!-- 轴3 双柱对比图例（色点与 grouped chart 的 series 同源）。 -->
+    <string name="stats_reports_legend_current_month">本月</string>
+    <string name="stats_reports_legend_previous_month">上月</string>
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
     <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，数据还太少；多记几笔后这里会显示每日支出柱状趋势。</string>
     <string name="stats_reports_merchant_ranking_title">商家排行</string>

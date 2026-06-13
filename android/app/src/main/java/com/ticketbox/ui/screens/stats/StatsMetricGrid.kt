@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -98,8 +99,6 @@ private fun BudgetProgressCard(
     budget: BudgetProgress,
     currencyDisplay: CurrencyDisplay,
 ) {
-    val visuals = LocalThemeVisuals.current
-    val progress = budget.progress.coerceIn(0f, 1f)
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
             modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -130,32 +129,76 @@ private fun BudgetProgressCard(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.stats_budget_progress_percent, (progress * 100).toInt()),
+                    // 轴3 bullet:百分比改报真实占比(此前 progress 截断在 1,超支永远显示
+                    // 100%——既然条已能表达超出段,数字也要跟上)。
+                    text = stringResource(R.string.stats_budget_progress_percent, budgetSpentPercent(budget)),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = AppTextHierarchy.body.weight,
                 )
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(7.dp)
-                    .clip(RoundedCornerShape(AppRadius.pill))
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .height(7.dp)
-                        .clip(RoundedCornerShape(AppRadius.pill))
-                        .background(if (budget.overBudget) visuals.warningTint else visuals.primary),
-                )
-            }
+            BudgetBulletBar(budget)
             Text(
                 text = stringResource(R.string.stats_budget_progress_hint),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * 轴3 bullet 预算条。未超支=现状语义(轨道上限=预算,实际条到 progress);
+ * 超支=轨道上限改为**实际支出**:先整条铺 warning(超出段),再从左覆盖 primary 到
+ * 预算刻度位([budgetTickFraction]),刻度竖线标出预算所在——一眼读出「超了多少」,
+ * 而非旧版整条变色只报「超了」。纯 Box 叠层,零图表依赖(Vico 无横向条)。
+ */
+@Composable
+private fun BudgetBulletBar(budget: BudgetProgress) {
+    val visuals = LocalThemeVisuals.current
+    val tick = budgetTickFraction(budget)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(7.dp)
+            .clip(RoundedCornerShape(AppRadius.pill))
+            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)),
+    ) {
+        if (tick == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(budget.progress.coerceIn(0f, 1f))
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(AppRadius.pill))
+                    .background(visuals.primary),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(7.dp)
+                    .background(visuals.warningTint),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(tick)
+                    .height(7.dp)
+                    .background(visuals.primary),
+            )
+            Row(modifier = Modifier.fillMaxWidth()) {
+                if (tick > 0f) {
+                    Box(modifier = Modifier.weight(tick))
+                }
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .height(7.dp)
+                        .background(MaterialTheme.colorScheme.onSurface),
+                )
+                if (tick < 1f) {
+                    Box(modifier = Modifier.weight(1f - tick))
+                }
+            }
         }
     }
 }
@@ -230,4 +273,24 @@ private fun StatsMetricCard(
             }
         }
     }
+}
+
+/**
+ * 轴3 bullet:超支时预算刻度在「以实际支出为轨道上限」的条上的位置(budget/spent);
+ * 未超支(或数据不可用)返回 null=走普通进度条。纯函数,单测直测。
+ */
+internal fun budgetTickFraction(budget: BudgetProgress): Float? {
+    if (!budget.overBudget) return null
+    if (budget.budgetCents <= 0L || budget.spentCents <= 0L) return null
+    if (budget.spentCents <= budget.budgetCents) return null
+    return (budget.budgetCents.toFloat() / budget.spentCents.toFloat()).coerceIn(0f, 1f)
+}
+
+/**
+ * 真实支出占预算百分比(spent*100/budget,可 >100)。预算不可用时退回截断版
+ * progress 百分比(与旧行为一致,绝不除零)。
+ */
+internal fun budgetSpentPercent(budget: BudgetProgress): Int {
+    if (budget.budgetCents <= 0L) return (budget.progress.coerceIn(0f, 1f) * 100).toInt()
+    return ((budget.spentCents * 100) / budget.budgetCents).toInt()
 }
