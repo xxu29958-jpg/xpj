@@ -49,7 +49,14 @@ import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import android.os.SystemClock
+import com.ticketbox.data.repository.ServerStatusRepository
 import com.ticketbox.notification.TicketboxNotifier
+import com.ticketbox.notification.backup.BackupStaleEngine
+import com.ticketbox.notification.backup.BackupStaleRuntime
+import com.ticketbox.notification.backup.BackupStaleSource
+import com.ticketbox.notification.backup.NotifierBackupStaleDispatcher
+import com.ticketbox.notification.backup.SharedPrefsBackupStaleStore
+import com.ticketbox.notification.backup.WorkManagerBackupStaleScheduler
 import com.ticketbox.notification.budget.BudgetOverspendChecker
 import com.ticketbox.notification.budget.BudgetOverspendRuntime
 import com.ticketbox.notification.budget.BudgetOverspendSource
@@ -460,6 +467,36 @@ class AppContainer(context: Context) {
         ),
         // 进程级 scope（镜像 NLS serviceScope 哲学）：检测随进程存活，失败由 SupervisorJob 隔离。
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    )
+
+    // 轴 6 主动性 · 备份超龄提醒（五类事件收官）：24h 周期 worker 唤醒 engine
+    // （0046 边界契约——纯运维状态与记账动作无关，不走确认回调）。
+    // TicketboxApplication.onCreate 调 ensurePeriodic()（幂等）注册。
+    val backupStaleScheduler = WorkManagerBackupStaleScheduler()
+
+    // status/private 的窄仓库：server 级端点（只要 app token），不绑 active ledger。
+    private val serverStatusRepository = ServerStatusRepository(
+        apiProvider = apiServiceProvider,
+        settingsStore = settingsStore,
+    )
+
+    val backupStaleEngine = BackupStaleEngine(
+        // 纯透传（stale 判定与 48h 阈值全在服务端 backup_health() 单源）。
+        source = BackupStaleSource { serverStatusRepository.backupHealth() },
+        store = SharedPrefsBackupStaleStore(appContext),
+        dispatcher = NotifierBackupStaleDispatcher(notifier::onBackupStale),
+        runtime = BackupStaleRuntime(
+            // 「备份超龄提醒」开关现读：关 → engine 不拉、不发、不 markSent。
+            backupStaleAlertsEnabled = { settingsStore.notificationPreferences().backupStaleAlerts },
+            // server 级端点：只要 token + server 地址，**不要求 active ledger**
+            // （与 recurring 的 sessionReady 差一项）。
+            sessionReady = {
+                !tokenStore.getToken().isNullOrBlank() &&
+                    !settingsStore.serverUrl().isNullOrBlank()
+            },
+            // 设备本地当天 = 日级 sent-key 锚点（「一天最多一响」按用户的今天算）。
+            today = { LocalDate.now() },
+        ),
     )
 
     init {

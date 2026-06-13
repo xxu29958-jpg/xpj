@@ -71,6 +71,9 @@ class OpenApiContractGateTest {
         // 批 13 拆账发起:成员 API 增 account_id(receiver_account_id 的来源);
         // snapshot regen 后入闸,防该字段被后端静默漂移。
         Pairing(LedgerMemberDto::class, "LedgerMemberResponse"),
+        // 轴6 备份超龄:status/private 的窄投影(HealthResponse 全字段可空,
+        // required 为空,反向检查零压力;正向防备份三字段被后端改名漂移)。
+        Pairing(StatusPrivateDto::class, "HealthResponse"),
     )
 
     // Backend `required` fields a DTO intentionally does NOT model (Android doesn't

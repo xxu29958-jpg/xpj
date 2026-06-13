@@ -143,6 +143,8 @@ internal class FakeApiService(
         return checkAuthResult ?: unsupported()
     }
 
+    override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = unsupported()
+
     override suspend fun pendingExpenses(): List<ExpenseDto> = unsupported()
 
     override suspend fun categories(): CategoriesDto = unsupported()

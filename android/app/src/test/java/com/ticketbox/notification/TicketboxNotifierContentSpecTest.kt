@@ -128,8 +128,25 @@ class TicketboxNotifierContentSpecTest {
     }
 
     @Test
-    fun fourChannelsAreDistinctStableIds() {
-        // channel id 一经发布不可改；四类互不相同，避免分类串台。
+    fun backupSpecSwitchesBodyVariantByDaysAndUsesDeIdentifiedPublicSummary() {
+        // 备份超龄：独立 channel；有天数→带 %1$s 正文，无备份（null）→「还没有任何备份」变体；
+        // 锁屏 public 用备份脱敏摘要（不带天数）；action「去查看」。
+        val aged = backupStaleNotificationContentSpec(daysText = "3")
+        assertEquals("ticketbox.backup", aged.channelId)
+        assertEquals(R.string.notification_backup_stale_title, aged.titleRes)
+        assertEquals(R.string.notification_backup_stale_body, aged.bodyRes)
+        assertEquals(listOf("3"), aged.bodyArgs)
+        assertEquals(R.string.notification_public_backup_summary, aged.publicSummaryRes)
+        assertNotEquals(aged.bodyRes, aged.publicSummaryRes)
+        assertEquals(R.string.notification_action_open, aged.actionLabelRes)
+        val never = backupStaleNotificationContentSpec(daysText = null)
+        assertEquals(R.string.notification_backup_stale_body_never, never.bodyRes)
+        assertEquals(emptyList(), never.bodyArgs)
+    }
+
+    @Test
+    fun fiveChannelsAreDistinctStableIds() {
+        // channel id 一经发布不可改；五类互不相同，避免分类串台。
         val draftChannel = draftNotificationContentSpec(
             DraftNotificationDecision.DRAFT, "a", "¥1.00", null,
         ).channelId
@@ -138,10 +155,14 @@ class TicketboxNotifierContentSpecTest {
         ).channelId
         val recurringChannel = recurringNotificationContentSpec("a").channelId
         val budgetChannel = budgetOverspendNotificationContentSpec("¥1.00").channelId
+        val backupChannel = backupStaleNotificationContentSpec("3").channelId
         assertEquals("ticketbox.drafts", draftChannel)
         assertEquals("ticketbox.alerts", largeChannel)
         assertEquals("ticketbox.recurring", recurringChannel)
         assertEquals("ticketbox.budget", budgetChannel)
-        assertTrue(setOf(draftChannel, largeChannel, recurringChannel, budgetChannel).size == 4)
+        assertEquals("ticketbox.backup", backupChannel)
+        assertTrue(
+            setOf(draftChannel, largeChannel, recurringChannel, budgetChannel, backupChannel).size == 5,
+        )
     }
 }

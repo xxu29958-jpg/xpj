@@ -31,5 +31,9 @@ class TicketboxApplication : Application() {
         // 固定支出是日级窗口（Contract 9），不需要冷启动立即扫一遍；周期 tick 足够，
         // 加速一次性触发留给 Slice 6 的前台同步钩子（本批不做）。
         container.recurringReminderScheduler.ensurePeriodic(this)
+
+        // 轴 6 备份超龄提醒：同形态注册 24h 周期 worker（0046 边界契约，日级
+        // sent-key 去重在 engine 纯层）。stale 阈值 48h 在服务端单源，无需加速触发。
+        container.backupStaleScheduler.ensurePeriodic(this)
     }
 }

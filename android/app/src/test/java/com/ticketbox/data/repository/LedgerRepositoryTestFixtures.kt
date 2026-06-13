@@ -183,6 +183,7 @@ internal class StubApi(
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto = ledgerUnsupported()
     override suspend fun refreshSession(): RefreshSessionResponseDto = ledgerUnsupported()
     override suspend fun checkAuth(): AuthCheckDto = ledgerUnsupported()
+    override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = ledgerUnsupported()
     override suspend fun pendingExpenses(): List<ExpenseDto> = ledgerUnsupported()
     override suspend fun confirmedExpenses(
         page: Int,
