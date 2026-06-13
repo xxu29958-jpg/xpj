@@ -35,11 +35,8 @@ internal fun LedgerRoute(
     val exportSucceededMessage = stringResource(R.string.ledger_msg_export_succeeded)
     val exportFailedMessage = stringResource(R.string.ledger_msg_export_failed)
 
-    LaunchedEffect(shellState.expenseEditCompletionRevision) {
-        if (shellState.expenseEditCompletionRevision > 0) {
-            ledgerViewModel.sync()
-        }
-    }
+    SyncLedgerAfterExpenseEdit(shellState, ledgerViewModel)
+    ApplyPendingLedgerDrill(shellState, ledgerViewModel)
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv"),
@@ -88,6 +85,33 @@ internal fun LedgerRoute(
         onManualCreateSettled = ledgerViewModel::manualCreateSettled,
     )
 }
+
+@Composable
+private fun SyncLedgerAfterExpenseEdit(
+    shellState: MainShellState,
+    ledgerViewModel: LedgerViewModel,
+) {
+    LaunchedEffect(shellState.expenseEditCompletionRevision) {
+        if (shellState.expenseEditCompletionRevision > 0) {
+            ledgerViewModel.sync()
+        }
+    }
+}
+
+@Composable
+private fun ApplyPendingLedgerDrill(
+    shellState: MainShellState,
+    ledgerViewModel: LedgerViewModel,
+) {
+    // §三报表钻取:消费统计页 post 的一次性(月, 分类)请求(取走即清,
+    // tab 过场重组不会重复覆盖用户随后手改的筛选)。
+    LaunchedEffect(shellState.ledgerDrill.pending) {
+        shellState.ledgerDrill.consume()?.let { request ->
+            ledgerViewModel.applyDrillFilter(month = request.month, category = request.category)
+        }
+    }
+}
+
 private fun writeCsvExport(
     context: Context,
     uri: Uri,

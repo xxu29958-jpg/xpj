@@ -48,6 +48,8 @@
     <string name="stats_category_structure_insight">占本月 %1$d%% · %2$d 个分类</string>
     <string name="stats_category_structure_count">%1$d 个分类</string>
     <string name="stats_category_structure_percent">%1$d%%</string>
+    <!-- §三报表钻取的发现性提示（仅分类行可点时渲染）。 -->
+    <string name="stats_category_structure_drill_hint">点分类行可跳到账本看明细。</string>
 
     <!-- TagStatsCard：标签分布 -->
     <string name="stats_tag_distribution_title">标签分布</string>

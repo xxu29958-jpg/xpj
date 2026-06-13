@@ -88,6 +88,33 @@ class LedgerViewModelTest {
     }
 
     @Test
+    fun applyDrillFilterSetsMonthAndCategoryAtomicallyAndClearsTagQuery() = ledgerTest {
+        // §三报表钻取:一次性落位(月, 分类),同时清 tag/query——残留旧搜索词会让
+        // 明细对不上统计数字。
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店"),
+                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
+            ),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+        vm.setTagFilter("旅行")
+        vm.setQuery("地铁")
+        advanceUntilIdle()
+
+        vm.applyDrillFilter(month = FIXTURE_MONTH, category = "餐饮")
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(FIXTURE_MONTH, state.filter.monthFilter)
+        assertEquals("餐饮", state.filter.categoryFilter)
+        assertEquals("", state.filter.tagFilter)
+        assertEquals("", state.filter.query)
+        assertEquals(listOf(1L), state.items.map { it.id })
+    }
+
+    @Test
     fun exposesRecentMerchantsFromFullConfirmedCacheNewestFirst() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(
