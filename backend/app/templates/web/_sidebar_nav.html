@@ -110,8 +110,10 @@
     </a>
   </div>
 
-  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/recurring' in _p or '/data-quality' in _p or '/income-plans' in _p or '/budget-advise' in _p %}open{% endif %}>
-    <summary class="nav-group-title">治理</summary>
+  {# 轴2 IA(owner 拍板 A4): 原「治理」组拆成「规划」+「治理」两组;
+     固定支出归规划(Android 已放 Reports 二级页,三端语义对齐)。 #}
+  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/income-plans' in _p or '/budget-advise' in _p or '/recurring' in _p %}open{% endif %}>
+    <summary class="nav-group-title">规划</summary>
     <a class="nav-item {% if '/budgets' in _p %}active{% endif %}" href="/web/budgets{{ q }}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
@@ -154,6 +156,21 @@
       </span>
       <span>AI 预算建议</span>
     </a>
+    <a class="nav-item {% if '/recurring' in _p %}active{% endif %}" href="/web/recurring{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+      </span>
+      <span>固定支出</span>
+    </a>
+  </details>
+
+  {# 原 open 条件漏了 /tags(标签页时组不展开)——拆组顺手修上。 #}
+  <details class="nav-group nav-group-collapsible" {% if '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/tags' in _p or '/data-quality' in _p %}open{% endif %}>
+    <summary class="nav-group-title">治理</summary>
     <a class="nav-item {% if '/categories' in _p %}active{% endif %}" href="/web/categories{{ q }}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
@@ -192,16 +209,6 @@
         </svg>
       </span>
       <span>标签</span>
-    </a>
-    <a class="nav-item {% if '/recurring' in _p %}active{% endif %}" href="/web/recurring{{ q }}">
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-        </svg>
-      </span>
-      <span>固定支出</span>
     </a>
     <a class="nav-item {% if '/data-quality' in _p %}active{% endif %}" href="/web/data-quality{{ q }}">
       <span class="nav-icon">
