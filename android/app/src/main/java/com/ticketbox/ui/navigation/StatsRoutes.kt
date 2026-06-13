@@ -123,5 +123,13 @@ internal fun StatsRoute(
         },
         onOpenBudget = shellState::openBudget,
         onOpenRecurring = shellState::openRecurring,
+        // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
+        // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
+        onDrillToLedger = { category ->
+            shellState.ledgerDrill.post(
+                LedgerDrillRequest(month = monthlyState.month, category = category),
+            )
+            shellState.selectBottomTab(BottomTab.Ledger.key)
+        },
     )
 }

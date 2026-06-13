@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.stats
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,8 @@ internal fun CategoryStructureCard(
     categories: List<CategoryStats>,
     totalAmountCents: Long,
     insight: CategoryInsight?,
+    // §三报表钻取:分类行点击 → 账本带筛选打开。null=行不可点(预览/无宿主场景原样)。
+    onCategoryClick: ((String) -> Unit)? = null,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     val topCategories = categories.sortedByDescending { it.amountCents }.take(5)
@@ -103,8 +106,16 @@ internal fun CategoryStructureCard(
                         totalAmountCents = totalAmountCents,
                         index = index,
                         currencyDisplay = currencyDisplay,
+                        onClick = onCategoryClick?.let { handler -> { handler(category.category) } },
                     )
                 }
+            }
+            if (onCategoryClick != null) {
+                Text(
+                    text = stringResource(R.string.stats_category_structure_drill_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                )
             }
         }
     }
@@ -116,6 +127,7 @@ private fun CategoryStructureBarRow(
     totalAmountCents: Long,
     index: Int,
     currencyDisplay: CurrencyDisplay,
+    onClick: (() -> Unit)? = null,
 ) {
     val colors = statsCategoryColors()
     val percent = if (totalAmountCents > 0L) {
@@ -128,7 +140,10 @@ private fun CategoryStructureBarRow(
     } else {
         0f
     }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),

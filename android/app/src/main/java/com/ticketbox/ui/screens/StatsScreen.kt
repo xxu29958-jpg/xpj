@@ -73,6 +73,8 @@ fun StatsScreen(
     onRefresh: () -> Unit,
     onOpenBudget: () -> Unit,
     onOpenRecurring: () -> Unit,
+    // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
+    onDrillToLedger: (String) -> Unit = {},
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var selectedStatsTab by rememberSaveable { mutableStateOf(StatsTab.Overview) }
@@ -198,6 +200,7 @@ fun StatsScreen(
                                     categories = visibleCategories,
                                     totalAmountCents = stats.totalAmountCents,
                                     insight = state.categoryInsight,
+                                    onCategoryClick = onDrillToLedger,
                                 )
                             }
                         }

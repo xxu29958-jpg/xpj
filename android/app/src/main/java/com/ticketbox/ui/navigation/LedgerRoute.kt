@@ -41,6 +41,14 @@ internal fun LedgerRoute(
         }
     }
 
+    // §三报表钻取:消费统计页 post 的一次性(月, 分类)请求(取走即清,
+    // tab 过场重组不会重复覆盖用户随后手改的筛选)。
+    LaunchedEffect(shellState.ledgerDrill.pending) {
+        shellState.ledgerDrill.consume()?.let { request ->
+            ledgerViewModel.applyDrillFilter(month = request.month, category = request.category)
+        }
+    }
+
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv"),
     ) { uri ->

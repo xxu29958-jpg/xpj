@@ -61,6 +61,9 @@ internal class MainShellState {
     // MainShellState 已贴着 detekt 每文件函数上限，把那两个 post/consume 方法外置避免触顶。
     val launchAction = LaunchActionState()
 
+    // §三报表钻取：统计分类行 → 账本带筛选打开的一次性请求（同上外置成类）。
+    val ledgerDrill = LedgerDrillState()
+
     fun selectBottomTab(key: String) {
         BottomTab.entries.firstOrNull { it.key == key }?.let { selectedTab = it }
     }

@@ -198,6 +198,24 @@ class LedgerViewModel(
         }
     }
 
+    /**
+     * §三报表钻取:统计分类行点击带来的(月, 分类)一次性落位。原子置两个筛选并
+     * 单次重过滤(连调 [setMonthFilter]+[setCategoryFilter] 会发两帧中间态);
+     * 同时清掉 tag/query——钻取语义是「看这个月这个分类的全部明细」,残留的
+     * 旧搜索词会让结果对不上统计数字。
+     */
+    fun applyDrillFilter(month: String, category: String) {
+        _uiState.update { state ->
+            val next = state.copy(
+                monthFilter = month,
+                categoryFilter = category,
+                tagFilter = "",
+                query = "",
+            )
+            next.copy(items = filterItems(allConfirmed, next))
+        }
+    }
+
     fun setTagFilter(value: String) {
         _uiState.update { state ->
             state.copy(tagFilter = value, items = filterItems(allConfirmed, state.copy(tagFilter = value)))
