@@ -12,24 +12,24 @@
     当前值：
     {% if settings_view.public_base_url_configured %}
       <code>{{ settings_view.public_base_url }}</code>
-      <span class="badge badge-ok" style="margin-left:8px">已配置</span>
+      <span class="badge badge-ok ml-3">已配置</span>
     {% else %}
       <span class="badge badge-off">未配置</span>
     {% endif %}
   </p>
 
-  <form method="post" action="/owner/settings/public-base-url" style="margin-top:16px">
-    <div class="form-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <label for="public_base_url" style="min-width:120px;color:var(--text-default)">公网域名</label>
+  <form method="post" action="/owner/settings/public-base-url" class="mt-5">
+    <div class="form-row form-row--wrap">
+      <label for="public_base_url" class="label-fixed">公网域名</label>
       <input type="text" id="public_base_url" name="public_base_url"
              value="{{ settings_view.public_base_url }}"
              placeholder="https://api.example.com"
-             class="inline-input inline-input--mono" style="flex:1;min-width:280px;margin-left:0"
+             class="inline-input inline-input--mono input-grow"
              pattern="https?://.+"
              title="必须以 http:// 或 https:// 开头">
       <button type="submit" class="btn btn-primary">保存</button>
     </div>
-    <p class="help-text" style="font-size:var(--type-meta-size);margin-top:var(--space-3)">
+    <p class="help-text fs-meta mt-3">
       留空可清除该配置（清除后 Owner Console 将重新提示「未配置」）。
       末尾斜杠会自动去掉；保存到 <code>{{ settings_view.env_path }}</code>，
       下一次创建上传链接即生效，无需重启后端。

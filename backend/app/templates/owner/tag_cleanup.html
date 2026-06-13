@@ -8,11 +8,11 @@
 </details>
 
 {% if flash_message %}
-<div class="alert alert-info" style="margin-bottom:16px">{{ flash_message }}</div>
+<div class="alert alert-info mb-5">{{ flash_message }}</div>
 {% endif %}
 
 <div class="card">
-  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+  <div class="card-head-row">
     <div>
       <h2>孤儿标签（使用次数为 0）</h2>
       <p class="text-meta">
@@ -25,7 +25,7 @@
   </div>
 
   {% if orphans %}
-  <div class="table-scroll" style="margin-top:12px">
+  <div class="table-scroll mt-4">
     <table>
       <thead>
         <tr>
@@ -53,7 +53,7 @@
     </table>
   </div>
   {% else %}
-    <p class="empty-note" style="margin-top:12px">当前没有孤儿标签。重命名 / 合并 / 删除等管理操作请到网页端「标签管理」。</p>
+    <p class="empty-note mt-4">当前没有孤儿标签。重命名 / 合并 / 删除等管理操作请到网页端「标签管理」。</p>
   {% endif %}
 </div>
 {% endblock %}

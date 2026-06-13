@@ -27,7 +27,7 @@
   {% if latest %}
   <div class="kv-grid">
     <span class="kv-key">文件名</span>
-    <span class="kv-val" style="font-family:monospace">{{ latest.file_name }}</span>
+    <span class="kv-val mono">{{ latest.file_name }}</span>
     <span class="kv-key">备份时间</span>
     <span class="kv-val">{{ latest.created_at }}</span>
     <span class="kv-key">大小</span>
@@ -41,7 +41,7 @@
   <form method="post" action="/owner/backups" class="form-row" data-show-loading="正在备份数据库,请稍候…">
     <button type="submit" class="btn btn-primary">立即备份一次</button>
   </form>
-  <p class="secret-note" style="margin-top:8px">
+  <p class="secret-note mt-3">
     备份文件保存在 <code>{{ backup_dir }}</code>，与计划任务每日自动备份共用同一目录。<br>
     恢复请使用 <code>pg_restore</code>（见 PostgreSQL 运维手册），本页不提供网页恢复，避免误操作。
   </p>
@@ -53,18 +53,18 @@
   <table>
     <thead>
       <tr>
-        <th style="white-space:nowrap">备份时间</th>
-        <th style="white-space:nowrap">类型</th>
-        <th style="white-space:nowrap">大小</th>
+        <th class="nowrap">备份时间</th>
+        <th class="nowrap">类型</th>
+        <th class="nowrap">大小</th>
         <th>文件名</th>
       </tr>
     </thead>
     <tbody>
     {% for entry in backups %}
       <tr>
-        <td style="white-space:nowrap">{{ entry.created_at }}</td>
+        <td class="nowrap">{{ entry.created_at }}</td>
         <td><span class="badge badge-ok">{{ entry.kind }}</span></td>
-        <td style="white-space:nowrap">{{ entry.size_text }}</td>
+        <td class="nowrap">{{ entry.size_text }}</td>
         <td class="path-mono">{{ entry.file_name }}</td>
       </tr>
     {% endfor %}

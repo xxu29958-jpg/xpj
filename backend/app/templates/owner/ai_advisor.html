@@ -8,7 +8,7 @@
 </details>
 
 <div class="card">
-  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+  <div class="card-head-row">
     <div>
       <h2>Provider 状态</h2>
       <p class="text-meta">当前账本：<code>{{ tenant_id }}</code></p>
@@ -21,7 +21,7 @@
       <span class="badge badge-off">本地 / 空 Provider</span>
     {% endif %}
   </div>
-  <div class="table-scroll" style="margin-top:12px">
+  <div class="table-scroll mt-4">
     <table>
       <tbody>
         <tr><th>Provider</th><td><code>{{ status.provider }}</code></td></tr>
@@ -41,12 +41,12 @@
       </tbody>
     </table>
   </div>
-  <form method="post" action="/owner/ai-advisor/confirmation" style="margin-top:16px">
-    <label style="display:flex;gap:8px;align-items:center">
+  <form method="post" action="/owner/ai-advisor/confirmation" class="mt-5">
+    <label class="label-check-row">
       <input type="checkbox" name="confirmed" value="on" {% if status.owner_confirmed %}checked{% endif %}>
       <span>我确认允许当前配置的 AI Provider 接收已脱敏的预算顾问请求</span>
     </label>
-    <div style="margin-top:12px">
+    <div class="mt-4">
       <button type="submit" class="btn btn-primary">保存确认状态</button>
     </div>
   </form>

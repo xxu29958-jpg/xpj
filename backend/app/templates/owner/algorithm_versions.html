@@ -8,7 +8,7 @@
 </details>
 
 <div class="card">
-  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+  <div class="card-head-row">
     <div>
       <h2>Version Inventory</h2>
       <p class="text-meta">当前账本：<code>{{ tenant_id }}</code></p>
@@ -17,7 +17,7 @@
   </div>
 
   {% if versions %}
-  <div class="table-scroll" style="margin-top:12px">
+  <div class="table-scroll mt-4">
     <table>
       <thead>
         <tr>

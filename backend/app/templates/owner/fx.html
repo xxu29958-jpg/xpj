@@ -43,7 +43,7 @@
   <form method="post" action="/owner/fx/refresh" class="form-row" data-show-loading="正在拉取最新汇率，请稍候…">
     <button type="submit" class="btn btn-primary">立即拉取一次</button>
   </form>
-  <p class="text-meta" style="margin-top:8px">
+  <p class="text-meta mt-3">
     汇率取欧央行每日参考中间价（经 Frankfurter 转发）。周末 / 节假日无新价时，记账会自动沿用最近一个工作日的价格，不再卡成「待汇率」。
   </p>
 </div>
@@ -54,21 +54,21 @@
   <table>
     <thead>
       <tr>
-        <th style="white-space:nowrap">币种</th>
+        <th class="nowrap">币种</th>
         <th class="num">1 外币 = ? {{ home_currency_code }}</th>
-        <th style="white-space:nowrap">价格日期</th>
-        <th style="white-space:nowrap">来源</th>
-        <th style="white-space:nowrap">拉取时间</th>
+        <th class="nowrap">价格日期</th>
+        <th class="nowrap">来源</th>
+        <th class="nowrap">拉取时间</th>
       </tr>
     </thead>
     <tbody>
     {% for row in fx_rows %}
       <tr>
-        <td style="white-space:nowrap">{{ row.currency }}</td>
+        <td class="nowrap">{{ row.currency }}</td>
         <td class="num">{{ row.rate }}</td>
-        <td style="white-space:nowrap">{{ row.rate_date }}</td>
-        <td style="white-space:nowrap">{{ row.source }}</td>
-        <td style="white-space:nowrap">{{ row.fetched_at | owner_datetime }}</td>
+        <td class="nowrap">{{ row.rate_date }}</td>
+        <td class="nowrap">{{ row.source }}</td>
+        <td class="nowrap">{{ row.fetched_at | owner_datetime }}</td>
       </tr>
     {% endfor %}
     </tbody>

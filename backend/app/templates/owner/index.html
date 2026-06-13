@@ -111,7 +111,7 @@
       <div class="label">最久未处理</div>
     </div>
   </div>
-  <div class="quick-links" style="margin-top:12px">
+  <div class="quick-links mt-4">
     <a href="/web/data-quality?ledger_id={{ primary_tenant_id }}" target="_blank">🩺 数据体检</a>
     <a href="/web/duplicates?ledger_id={{ primary_tenant_id }}" target="_blank">🧬 重复整理</a>
     <a href="/web/categories/uncategorized?ledger_id={{ primary_tenant_id }}" target="_blank">🏷️ 未分类</a>
@@ -148,7 +148,7 @@
       <div class="label">分类超支</div>
     </div>
   </div>
-  <div class="quick-links" style="margin-top:12px">
+  <div class="quick-links mt-4">
     <span>{{ budget_status.month }}</span>
     <a href="/web/budgets?ledger_id={{ budget_status.ledger_id }}&amp;month={{ budget_status.month }}" target="_blank">打开预算</a>
   </div>
@@ -185,7 +185,7 @@
       <div class="label">草稿缺字段</div>
     </div>
   </div>
-  <div class="quick-links" style="margin-top:12px">
+  <div class="quick-links mt-4">
     <span>近 24 小时通知草稿：{{ recurring_ops.notification_recent_24h_count }}</span>
     <span>已归档固定支出：{{ recurring_ops.archived_count }}</span>
     <a href="/web/recurring?ledger_id={{ primary_tenant_id }}" target="_blank">查看固定支出</a>
@@ -208,8 +208,8 @@
         <th>账本</th>
         <th>批次</th>
         <th>状态</th>
-        <th style="text-align:right">扫描</th>
-        <th style="text-align:right">变更</th>
+        <th class="text-end">扫描</th>
+        <th class="text-end">变更</th>
         <th>创建时间</th>
       </tr>
     </thead>
@@ -226,8 +226,8 @@
           {% elif batch.status == 'applied' %}<span class="status-chip status-success">已应用待确认</span>
           {% else %}<span class="status-chip status-muted">{{ batch.status }}</span>{% endif %}
         </td>
-        <td style="text-align:right">{{ batch.pending_scanned }}</td>
-        <td style="text-align:right">{{ batch.changed_count }}</td>
+        <td class="text-end">{{ batch.pending_scanned }}</td>
+        <td class="text-end">{{ batch.changed_count }}</td>
         <td>{{ batch.created_at|owner_datetime }}</td>
       </tr>
       {% endfor %}
@@ -235,7 +235,7 @@
   </table>
   </div>
   {% endif %}
-  <div class="quick-links" style="margin-top:12px">
+  <div class="quick-links mt-4">
     <a href="/owner/rule-applications?ledger_id={{ rule_audit.selected_ledger_id }}">查看全部批次</a>
   </div>
 </div>
@@ -288,12 +288,12 @@
     <thead>
       <tr>
         <th>账本</th>
-        <th style="text-align:right">待确认</th>
-        <th style="text-align:right">可入账</th>
-        <th style="text-align:right">疑似重复</th>
-        <th style="text-align:right">缺商家</th>
-        <th style="text-align:right">未分类</th>
-        <th style="text-align:right">最久</th>
+        <th class="text-end">待确认</th>
+        <th class="text-end">可入账</th>
+        <th class="text-end">疑似重复</th>
+        <th class="text-end">缺商家</th>
+        <th class="text-end">未分类</th>
+        <th class="text-end">最久</th>
         <th>操作</th>
       </tr>
     </thead>
@@ -304,16 +304,16 @@
           {{ row.name }}
           {% if row.is_default %}<span class="badge badge-ok">默认</span>{% endif %}
         </td>
-        <td style="text-align:right">{{ row.pending }}</td>
-        <td style="text-align:right">{{ row.ready_to_confirm }}</td>
-        <td style="text-align:right">
+        <td class="text-end">{{ row.pending }}</td>
+        <td class="text-end">{{ row.ready_to_confirm }}</td>
+        <td class="text-end">
           {% if row.suspected_duplicates > 0 %}
             <span class="badge badge-warn">{{ row.suspected_duplicates }}</span>
           {% else %}0{% endif %}
         </td>
-        <td style="text-align:right">{{ row.missing_merchant }}</td>
-        <td style="text-align:right">{{ row.missing_category }}</td>
-        <td style="text-align:right">
+        <td class="text-end">{{ row.missing_merchant }}</td>
+        <td class="text-end">{{ row.missing_category }}</td>
+        <td class="text-end">
           {% if row.oldest_pending_age_days is none %}—{% else %}{{ row.oldest_pending_age_days }}d{% endif %}
         </td>
         <td>
