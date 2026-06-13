@@ -35,6 +35,7 @@ internal fun LedgerToolsSheet(
     onClearFilters: () -> Unit,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
+    onOpenBillSplit: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val hasUserFilters = state.categoryFilter.isNotBlank() || state.tagFilter.isNotBlank() || state.query.isNotBlank()
@@ -97,6 +98,13 @@ internal fun LedgerToolsSheet(
                 onClick = onSync,
             )
         }
+        // A3 IA: 账本动作区进入「拆账中心」(收发箱)。设置树里仍保留同一入口, 二者独立。
+        LedgerInlineButton(
+            text = stringResource(R.string.ledger_tools_bill_split),
+            modifier = Modifier.fillMaxWidth(),
+            enabled = true,
+            onClick = onOpenBillSplit,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             if (hasUserFilters) {
                 QuietOutlinedButton(

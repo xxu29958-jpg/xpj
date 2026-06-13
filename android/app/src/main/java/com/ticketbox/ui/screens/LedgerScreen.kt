@@ -50,6 +50,8 @@ fun LedgerScreen(
     onClearFilters: () -> Unit,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
+    // A3 IA: 从账本工具表进入「拆账中心」二级页。默认 no-op 保旧调用方/预览。
+    onOpenBillSplit: () -> Unit = {},
     onManualCreate: (ExpenseDraft) -> Unit,
     onViewModeChange: (LedgerViewMode) -> Unit,
     onEdit: (Expense) -> Unit,
@@ -127,6 +129,11 @@ fun LedgerScreen(
                 onClearFilters = onClearFilters,
                 onSync = onSync,
                 onExportCsv = onExportCsv,
+                // 先收起工具表(否则二级页 overlay 会被 ModalBottomSheet 盖住), 再切到拆账中心。
+                onOpenBillSplit = {
+                    showLedgerTools = false
+                    onOpenBillSplit()
+                },
                 onDismiss = { showLedgerTools = false },
             )
         }

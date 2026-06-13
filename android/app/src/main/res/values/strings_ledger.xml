@@ -130,6 +130,7 @@
     <string name="ledger_tools_export">导出表格</string>
     <string name="ledger_tools_syncing">更新中</string>
     <string name="ledger_tools_update_ledger">更新账本</string>
+    <string name="ledger_tools_bill_split">拆账中心</string>
     <string name="ledger_tools_clear_filters">清除筛选</string>
     <string name="ledger_tools_done">完成</string>
     <string name="ledger_tools_no_export">当前没有可导出的已确认账单。</string>

@@ -151,6 +151,12 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
+            // A3 IA: 账本动作区「拆账中心」入口 → 全屏二级页(返回回到账本)。
+            StatsSecondaryPage.BillSplits -> BillSplitRoute(
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+            )
+
             null -> MainTabRoute(
                 navController = navController,
                 shellState = shellState,
