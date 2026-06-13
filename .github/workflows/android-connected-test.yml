@@ -1,0 +1,114 @@
+name: Android Connected Test
+
+# Path-filtered emulator gate for Compose UI contract tests
+# (connectedGrayDebugAndroidTest). Restored from the pre-Gitea original —
+# the codex "android-connected-cloud" rewrite dropped the Enable KVM step
+# (without hardware accel the emulator boot is glacial / times out) and the
+# failure-report artifact upload. Triggered only when Android sources change
+# so backend / docs / config PRs don't pay the emulator boot cost.
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "perf/**"
+      - "refactor/**"
+    paths:
+      - "android/app/src/**"
+      - "android/gradle/**"
+      - "android/app/build.gradle.kts"
+      - "android/build.gradle.kts"
+      - "android/gradle.properties"
+      - "android/gradlew"
+      - "android/gradlew.bat"
+      - "android/settings.gradle.kts"
+      - ".github/workflows/android-connected-test.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "android/app/src/**"
+      - "android/gradle/**"
+      - "android/app/build.gradle.kts"
+      - "android/build.gradle.kts"
+      - "android/gradle.properties"
+      - "android/gradlew"
+      - "android/gradlew.bat"
+      - "android/settings.gradle.kts"
+      - ".github/workflows/android-connected-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-connected-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  connected:
+    name: Connected (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      # Same canonical owner URL the regular android job injects, so
+      # BuildConfig.DEFAULT_SERVER_URL is populated.
+      TICKETBOX_SERVER_URL: https://api.zen70.cn
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Enable KVM
+        # ubuntu runners gate /dev/kvm behind a udev rule; without this the
+        # x86_64 emulator falls back to no hardware accel and the boot times out.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run connected test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: >-
+            -no-window
+            -gpu swiftshader_indirect
+            -noaudio
+            -no-boot-anim
+            -camera-back none
+          disable-animations: true
+          working-directory: android
+          script: |
+            echo "sdk.dir=$ANDROID_HOME" > local.properties
+            echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
+            ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+
+      - name: Upload androidTest reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: connected-test-reports
+          path: |
+            android/app/build/reports/androidTests/**
+            android/app/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
+          retention-days: 7
