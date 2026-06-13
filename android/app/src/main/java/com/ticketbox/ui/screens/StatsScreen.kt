@@ -32,6 +32,7 @@ import com.ticketbox.domain.model.DASHBOARD_CARD_RECENT_UPLOADS
 import com.ticketbox.domain.model.DASHBOARD_CARD_RECURRING
 import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
 import com.ticketbox.domain.model.DashboardCard
+import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
@@ -75,6 +76,8 @@ fun StatsScreen(
     onOpenRecurring: () -> Unit,
     // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
     onDrillToLedger: (String) -> Unit = {},
+    // 轴3 粒度切换:动态图表卡的日/周档切换,交给 StatsReportsViewModel 重拉。
+    onGranularityChange: (ReportGranularity) -> Unit = {},
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var selectedStatsTab by rememberSaveable { mutableStateOf(StatsTab.Overview) }
@@ -217,7 +220,12 @@ fun StatsScreen(
                         item { RecentTrendCard(state.dailyTrend) }
                         if (state.selectedTag.isBlank()) {
                             state.reportsOverview?.let { overview ->
-                                item { ReportsInsightCard(overview) }
+                                item {
+                                    ReportsInsightCard(
+                                        overview = overview,
+                                        onGranularityChange = onGranularityChange,
+                                    )
+                                }
                             }
                         }
                     }

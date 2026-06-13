@@ -131,5 +131,7 @@ internal fun StatsRoute(
             )
             shellState.selectBottomTab(BottomTab.Ledger.key)
         },
+        // 轴3 粒度切换:VM 持粒度并重拉,UI selected 用服务端回显。
+        onGranularityChange = reportsViewModel::setGranularity,
     )
 }

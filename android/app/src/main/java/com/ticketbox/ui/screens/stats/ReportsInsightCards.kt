@@ -46,11 +46,14 @@ import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.ReportCategoryComparison
+import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppSpacing
@@ -71,6 +74,9 @@ private object ReportsInsightLayout {
 internal fun ReportsInsightCard(
     overview: ReportsOverview,
     modifier: Modifier = Modifier,
+    // 轴3 粒度切换:selected 用服务端回显(overview.granularity),切换交给 VM 重拉。
+    // 默认 no-op 保旧调用方/预览。
+    onGranularityChange: (ReportGranularity) -> Unit = {},
 ) {
     val chartPoints = remember(overview.trend) { reportTrendChartPoints(overview.trend) }
 
@@ -108,6 +114,19 @@ internal fun ReportsInsightCard(
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
             }
+            // 轴3 粒度切换:日/周两档。单月报表内 Month 粒度只有一桶,无图可画,刻意不给。
+            AppSegmentedControl(
+                options = listOf(
+                    AppSegmentedItem(ReportGranularity.Day, stringResource(R.string.stats_reports_granularity_day)),
+                    AppSegmentedItem(ReportGranularity.Week, stringResource(R.string.stats_reports_granularity_week)),
+                ),
+                selectedValue = if (overview.granularity == ReportGranularity.Week) {
+                    ReportGranularity.Week
+                } else {
+                    ReportGranularity.Day
+                },
+                onValueChange = onGranularityChange,
+            )
             val nonZeroDays = chartPoints.count { it.amountCents > 0L }
             when {
                 nonZeroDays == 0 -> Text(
@@ -115,7 +134,8 @@ internal fun ReportsInsightCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                // 稀疏态：1–2 天有支出时柱状信息量太低，降级成文案而非画误导图（区分 空态/稀疏态/正常态）。
+                // 稀疏态：1–2 桶有支出时柱状信息量太低，降级成文案而非画误导图（区分 空态/稀疏态/正常态）。
+                // 周粒度天然只有 4-5 桶,2 桶以下同样按稀疏降级,口径一致。
                 nonZeroDays <= 2 -> Text(
                     text = stringResource(R.string.stats_reports_chart_sparse, nonZeroDays),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -242,6 +262,13 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.body.weight,
         )
+        // 轴3 双柱对比:本月 vs 上月 grouped columns 给「形状」,下面的行制保留精确值。
+        // 两月皆零的行画不出对比,纯函数已过滤;全被滤光时只剩行制(不画空图)。
+        val chartRows = remember(rows) { categoryComparisonChartRows(rows) }
+        if (chartRows.size >= 2) {
+            CategoryComparisonGroupedChart(rows = chartRows)
+            ComparisonLegend()
+        }
         rows.forEach { row ->
             val deltaText = when {
                 row.deltaAmountCents > 0L -> stringResource(R.string.stats_reports_category_delta_more, formatAmount(row.deltaAmountCents))
@@ -256,6 +283,87 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
                 trailingText = deltaText,
             )
         }
+    }
+}
+
+/**
+ * 轴3 双柱对比:本月/上月两 series 的 grouped column chart(Vico 多 series 列层默认分组)。
+ * x=分类索引,bottom 轴标分类名;series 色取 chart tokens 前两槽(与图例同源)。
+ */
+@Composable
+private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow>) {
+    val chartTokens = LocalChartTokens.current
+    val modelProducer = remember { CartesianChartModelProducer() }
+    val labels = remember(rows) { rows.map { it.category } }
+    val bottomAxisValueFormatter = CartesianValueFormatter { _, value, _ ->
+        labels.getOrNull(value.toInt()).orEmpty()
+    }
+    val startAxisValueFormatter = CartesianValueFormatter { _, value, _ ->
+        compactAmountCentsLabel(value.toLong())
+    }
+    val currentColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
+    val previousColor = chartTokens.series.getOrElse(1) { MaterialTheme.colorScheme.secondary }
+
+    LaunchedEffect(rows) {
+        modelProducer.runTransaction {
+            columnSeries {
+                series(x = rows.indices.map { it }, y = rows.map { it.currentAmountCents })
+                series(x = rows.indices.map { it }, y = rows.map { it.previousAmountCents })
+            }
+        }
+    }
+
+    CartesianChartHost(
+        chart = rememberCartesianChart(
+            rememberColumnCartesianLayer(
+                columnProvider = ColumnCartesianLayer.ColumnProvider.series(
+                    rememberLineComponent(fill = Fill(currentColor), thickness = 8.dp),
+                    rememberLineComponent(fill = Fill(previousColor), thickness = 8.dp),
+                ),
+            ),
+            startAxis = VerticalAxis.rememberStart(valueFormatter = startAxisValueFormatter),
+            bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = bottomAxisValueFormatter),
+        ),
+        modelProducer = modelProducer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(160.dp),
+        scrollState = rememberVicoScrollState(scrollEnabled = false),
+    )
+}
+
+/** 图例:两色点+「本月/上月」,与 grouped chart 的 series 色同源(chart tokens 前两槽)。 */
+@Composable
+private fun ComparisonLegend() {
+    val chartTokens = LocalChartTokens.current
+    val currentColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
+    val previousColor = chartTokens.series.getOrElse(1) { MaterialTheme.colorScheme.secondary }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LegendDot(color = currentColor, label = stringResource(R.string.stats_reports_legend_current_month))
+        LegendDot(color = previousColor, label = stringResource(R.string.stats_reports_legend_previous_month))
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(color),
+        )
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
@@ -440,6 +548,31 @@ internal fun reportTrendChartPoints(trend: List<ReportTrendPoint>): List<ReportT
             count = point.count.coerceAtLeast(0),
         )
     }
+
+internal data class CategoryComparisonChartRow(
+    val category: String,
+    val currentAmountCents: Long,
+    val previousAmountCents: Long,
+)
+
+/**
+ * 轴3 双柱对比的图数据(纯函数,单测直测):负值钳零(图不画负柱),
+ * **两月皆零的行剔除**(画不出对比还占一组 x 位);保序取前 5(与行制 take(5) 同窗口)。
+ */
+internal fun categoryComparisonChartRows(
+    rows: List<ReportCategoryComparison>,
+): List<CategoryComparisonChartRow> =
+    rows.asSequence()
+        .map { row ->
+            CategoryComparisonChartRow(
+                category = row.category,
+                currentAmountCents = row.amountCents.coerceAtLeast(0L),
+                previousAmountCents = row.previousAmountCents.coerceAtLeast(0L),
+            )
+        }
+        .filter { it.currentAmountCents > 0L || it.previousAmountCents > 0L }
+        .take(5)
+        .toList()
 
 internal fun compactAmountCentsLabel(amountCents: Long): String {
     val sign = if (amountCents < 0L) "-" else ""
