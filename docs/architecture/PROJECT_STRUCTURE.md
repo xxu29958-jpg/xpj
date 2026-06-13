@@ -14,10 +14,14 @@ E:\projects\xiaopiaojia\
     maintenance_ticketbox.ps1    # 备份等计划任务入口
     start_backend.ps1 …          # 启停 / 诊断 / 安装任务 / 验收等同级脚本
     verify_project.ps1           # 本地全套验证入口
+  .github\
+    workflows\
+      cloud-ci.yml               # GitHub 云端主 CI
+      android-connected-cloud.yml # GitHub 云端模拟器 lane
   .gitea\
     workflows\
-      windows-ci.yml             # 四 job 主 CI
-      android-connected.yml      # path-filtered 模拟器 lane
+      windows-ci.yml             # 本地降级四 job CI
+      android-connected.yml      # 本地降级 path-filtered 模拟器 lane
   .editorconfig
   .gitattributes
   .gitignore
@@ -267,4 +271,4 @@ docs\
 
 后端已经包含稳定闭环和灰度版增量 API：账本隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、v0.9 Reports、Goals、Dashboard 卡片配置、生活化统计和窄维护清理接口，并有 pytest API 契约测试、v0.9 集成测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、自定义背景与沉浸模式、受保护图片预览、重复保留、OCR retry、生活化统计、报表图表、Goals 摘要、Dashboard 卡片管理、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。
 
-v0.9 之后的主线增量（至 2026-06，决策记录在 [docs/DECISIONS/](../DECISIONS/)）：数据库切换为 PostgreSQL-only（ADR-0041，SQLite 退役）；新增 `/web` 浏览器端（Cloudflare Access + session cookie，ADR-0028）与桌面后端管理器（`desktop/`）；多币种汇率与家庭拆账（ADR-0029）、收入计划、请求幂等键（ADR-0042）、标签管理（ADR-0043）、Android string-resourcing（ADR-0044）、per-install CSRF 签名密钥（ADR-0045）；CI 迁至自托管 Gitea（两 workflow、五 job，含备份恢复演练与 instrumented 模拟器 lane，见 [docs/runbook/CI.md](../runbook/CI.md)）。
+v0.9 之后的主线增量（至 2026-06，决策记录在 [docs/DECISIONS/](../DECISIONS/)）：数据库切换为 PostgreSQL-only（ADR-0041，SQLite 退役）；新增 `/web` 浏览器端（Cloudflare Access + session cookie，ADR-0028）与桌面后端管理器（`desktop/`）；多币种汇率与家庭拆账（ADR-0029）、收入计划、请求幂等键（ADR-0042）、标签管理（ADR-0043）、Android string-resourcing（ADR-0044）、per-install CSRF 签名密钥（ADR-0045）；CI 现以 GitHub Actions 云端为主、自托管 Gitea 为本地降级（含备份恢复演练与 instrumented 模拟器 lane，见 [docs/runbook/CI.md](../runbook/CI.md)）。

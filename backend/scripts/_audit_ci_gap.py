@@ -1,8 +1,7 @@
 """Read-only audit: CI invokes every gradle task / pytest lane we expect.
 
-This lane scans actual Gitea Actions ``run:`` command bodies (the live CI,
-``.gitea/workflows/``) instead of global workflow text. Comments and prose
-cannot satisfy the gate.
+This lane scans actual Actions ``run:`` command bodies instead of global
+workflow text. Comments and prose cannot satisfy the gate.
 """
 
 from __future__ import annotations
@@ -112,15 +111,20 @@ REQUIRED_CI_INVOCATIONS = [
 ]
 
 
-def _locate_workflow_dir() -> pathlib.Path | None:
+def _locate_workflow_dirs() -> list[pathlib.Path]:
     candidates = [
+        pathlib.Path("../.github/workflows"),
         pathlib.Path("../.gitea/workflows"),
+        pathlib.Path(".github/workflows"),
         pathlib.Path(".gitea/workflows"),
     ]
+    found: list[pathlib.Path] = []
     for candidate in candidates:
         if candidate.is_dir():
-            return candidate
-    return None
+            resolved = candidate.resolve()
+            if resolved not in found:
+                found.append(resolved)
+    return found
 
 
 def _line_indent(line: str) -> int:
@@ -184,47 +188,51 @@ def _strip_comment_lines(text: str) -> str:
     return "\n".join(kept)
 
 
-def _iter_workflow_run_commands(workflow_dir: pathlib.Path) -> list[WorkflowCommand]:
+def _iter_workflow_run_commands(workflow_dirs: list[pathlib.Path]) -> list[WorkflowCommand]:
     commands: list[WorkflowCommand] = []
-    for path in sorted(workflow_dir.glob("*.yml")):
-        lines = path.read_text(encoding="utf-8").splitlines()
-        index = 0
-        disabled_parent_indents: list[int] = []
-        while index < len(lines):
-            line = lines[index]
-            indent = _line_indent(line)
-            # Blank lines have indent 0 but carry no structure — letting them
-            # pop the stack would un-mute an ``if: false`` step whose ``run:``
-            # sits after a blank line, so a disabled step could satisfy pins.
-            if line.strip():
-                while disabled_parent_indents and indent <= disabled_parent_indents[-1]:
-                    disabled_parent_indents.pop()
-            disabled_parent_indent = _false_if_block_parent_indent(line)
-            if disabled_parent_indent is not None:
-                disabled_parent_indents.append(disabled_parent_indent)
-                index += 1
-                continue
-            stripped = line.lstrip()
-            key = _command_key(stripped)
-            if key is None:
-                index += 1
-                continue
-            if disabled_parent_indents:
-                index += 1
-                continue
+    for workflow_dir in workflow_dirs:
+        for path in sorted(workflow_dir.glob("*.yml")):
+            lines = path.read_text(encoding="utf-8").splitlines()
+            index = 0
+            disabled_parent_indents: list[int] = []
+            while index < len(lines):
+                line = lines[index]
+                indent = _line_indent(line)
+                # Blank lines have indent 0 but carry no structure — letting them
+                # pop the stack would un-mute an ``if: false`` step whose ``run:``
+                # sits after a blank line, so a disabled step could satisfy pins.
+                if line.strip():
+                    while (
+                        disabled_parent_indents
+                        and indent <= disabled_parent_indents[-1]
+                    ):
+                        disabled_parent_indents.pop()
+                disabled_parent_indent = _false_if_block_parent_indent(line)
+                if disabled_parent_indent is not None:
+                    disabled_parent_indents.append(disabled_parent_indent)
+                    index += 1
+                    continue
+                stripped = line.lstrip()
+                key = _command_key(stripped)
+                if key is None:
+                    index += 1
+                    continue
+                if disabled_parent_indents:
+                    index += 1
+                    continue
 
-            value = _command_value(stripped, key)
-            if value in {"|", ">"}:
-                text, index = _read_yaml_command_block(
-                    lines,
-                    start_index=index + 1,
-                    parent_indent=indent,
-                )
-                commands.append(WorkflowCommand(path, _strip_comment_lines(text)))
-                continue
+                value = _command_value(stripped, key)
+                if value in {"|", ">"}:
+                    text, index = _read_yaml_command_block(
+                        lines,
+                        start_index=index + 1,
+                        parent_indent=indent,
+                    )
+                    commands.append(WorkflowCommand(path, _strip_comment_lines(text)))
+                    continue
 
-            commands.append(WorkflowCommand(path, _strip_comment_lines(value)))
-            index += 1
+                commands.append(WorkflowCommand(path, _strip_comment_lines(value)))
+                index += 1
     return commands
 
 
@@ -252,12 +260,17 @@ def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
 
 
 def main() -> int:
-    workflow_dir = _locate_workflow_dir()
-    if workflow_dir is None:
-        print("CI gap audit: FAIL - .gitea/workflows/ directory not found")
+    workflow_dirs = _locate_workflow_dirs()
+    if not workflow_dirs:
+        print("CI gap audit: FAIL - no Actions workflow directory found")
         return 1
 
-    commands = _iter_workflow_run_commands(workflow_dir)
+    workflow_labels = ", ".join(str(path) for path in workflow_dirs)
+    if not any(".github" in path.parts and "workflows" in path.parts for path in workflow_dirs):
+        print("CI gap audit: FAIL - .github/workflows/ directory not found")
+        return 1
+
+    commands = _iter_workflow_run_commands(workflow_dirs)
     missing: list[str] = []
     for task in _missing_gradle_tasks(commands):
         missing.append(f"gradle task: {task}")
@@ -267,13 +280,13 @@ def main() -> int:
     if missing:
         print("=== CI gap audit: FAIL ===")
         for entry in missing:
-            print(f"  missing across .gitea/workflows/*.yml: {entry}")
+            print(f"  missing across Actions workflows: {entry}")
         return 1
 
     print(
         f"=== CI gap audit: OK ({len(REQUIRED_GRADLE_TASKS)} gradle tasks + "
         f"{len(REQUIRED_CI_INVOCATIONS)} backend invocations verified across all "
-        f".gitea/workflows/*.yml) ==="
+        f"Actions workflows: {workflow_labels}) ==="
     )
     return 0
 

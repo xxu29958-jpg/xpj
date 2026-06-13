@@ -1,6 +1,15 @@
 # CI 说明
 
-仓库使用自托管 Gitea Actions（home-server 本机 runner），两个 workflow 文件：
+仓库以 **GitHub Actions 云端 CI 为主兜底**，自托管 Gitea Actions（home-server 本机 runner）降级备用。
+
+云端 workflow 文件：
+
+```text
+.github/workflows/cloud-ci.yml                 # 四个主 job：backend/static、PostgreSQL、desktop、Android unit/build
+.github/workflows/android-connected-cloud.yml  # path-filtered 云端模拟器 lane
+```
+
+本地降级 workflow 文件：
 
 ```text
 .gitea/workflows/windows-ci.yml          # 四个 job，所有 push 都跑
@@ -9,13 +18,13 @@
 
 触发条件：
 
-- push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`
+- GitHub: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`，以及 pull_request 到 `main`
+- local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`
 - 手动 `workflow_dispatch`
-- **没有 pull_request 触发**：建 PR 本身不跑 CI，推分支才跑；分支命名必须落在上面的 glob 里，否则一条 lane 都不会触发。
 
-runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队，勿无谓 re-push。Gitea 与 runner 在 home-server 上人工启动；如果 push 后 run 一直排队不动，先确认它们活着。
+GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队；只作为云端不可用、发布候选本机验收、或宿主特有 emulator/打包问题的降级确认。Gitea 与 runner 在 home-server 上人工启动；如果本地 push 后 run 一直排队不动，先确认它们活着。
 
-历史：GitHub 时代的 `.github/workflows/`（`ci.yml`、`android-connected-test.yml`、`codeql.yml`）随 GitHub→Gitea 迁移死亡，已删除；内容可考 git 历史。随迁移一并消失的 instrumented 模拟器 lane 已于 2026-06-11 在宿主 AVD 上复活（见 android-connected 一节）；pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）仍未恢复。
+历史：GitHub 时代旧 `.github/workflows/`（`ci.yml`、`android-connected-test.yml`、`codeql.yml`）曾随 GitHub→Gitea 迁移删除。2026-06-13 起恢复 GitHub 云端 workflow；本地 `.gitea/workflows/` 保留为降级备用。pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）仍未恢复。
 
 ## Job 清单（windows-ci 四个 + android-connected 一个）
 
@@ -57,13 +66,13 @@ gradlew :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + sh
 # apksigner 校验两个 debug APK = 仓库级稳定 debug 证书（指纹钉自 android/config/debug/README.md）
 ```
 
-Android SDK 用仓库本地 `.toolchains\android-sdk`（workflow 写 `local.properties` 指过去）。job 有 `timeout-minutes: 40` 上限（单 runner 串行，一次 wedge 不能阻塞全部 CI）。
+GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装 `platforms;android-36` / `build-tools;36.0.0`。local-Gitea Android job 使用仓库本地 `.toolchains\android-sdk`（workflow 写 `local.properties` 指过去）。job 有 `timeout-minutes: 40` 上限（本地单 runner 串行，一次 wedge 不能阻塞全部本地队列）。
 
 ### android-connected（模拟器，path-filtered）
 
-第二个 workflow 文件 `.gitea/workflows/android-connected.yml`：只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。这是 GitHub 时代 `android-connected-test.yml` 的 Gitea 复活版。
+云端 connected workflow `.github/workflows/android-connected-cloud.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。
 
-`release_audit.py` 的 ci-gap lane 静态扫 `.gitea/workflows/*.yml`（两个文件都扫），钉住 11 个 gradle task（上述清单 + ksp regen + detekt 两变体 + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），防止 lane 静默丢失。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单**，否则该 lane 立刻红。
+`release_audit.py` 的 ci-gap lane 静态扫 `.github/workflows/*.yml` 和 `.gitea/workflows/*.yml`，钉住 11 个 gradle task（上述清单 + ksp regen + detekt 两变体 + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），防止 lane 静默丢失。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单**，否则该 lane 立刻红。
 
 ## 安全边界
 
@@ -79,4 +88,4 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 ## CI 是合并底线
 
-任何后端、Android、release 脚本变更都不能绕过当前 push 触发的全部 job 绿灯（windows-ci 四 job；Android 源变更还会触发 android-connected，按改动面数 run 再判全绿）；merge 前必须等当前 push 的 run 全绿。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
+任何后端、Android、release 脚本变更都不能绕过当前 GitHub push/PR 触发的云端 job 绿灯；Android 源变更还会触发 connected lane。local-Gitea CI 是降级备用和本机验收，不再作为主路径排队瓶颈。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
