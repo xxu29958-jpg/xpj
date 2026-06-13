@@ -26,7 +26,7 @@
         {% endfor %}
       </select>
     </label>
-    <button type="submit" class="btn btn-secondary" style="margin-left:8px">切换</button>
+    <button type="submit" class="btn btn-secondary ml-3">切换</button>
   </form>
   {% endif %}
 </div>
@@ -43,8 +43,8 @@
         <th>创建时间</th>
         <th>批次</th>
         <th>状态</th>
-        <th style="text-align:right">扫描账单</th>
-        <th style="text-align:right">变更账单</th>
+        <th class="text-end">扫描账单</th>
+        <th class="text-end">变更账单</th>
         <th>回滚时间</th>
       </tr>
     </thead>
@@ -61,8 +61,8 @@
           {% elif batch.status == 'applied' %}<span class="status-chip status-success">已应用待确认</span>
           {% else %}<span class="status-chip status-muted">{{ batch.status }}</span>{% endif %}
         </td>
-        <td style="text-align:right">{{ batch.pending_scanned }}</td>
-        <td style="text-align:right">{{ batch.changed_count }}</td>
+        <td class="text-end">{{ batch.pending_scanned }}</td>
+        <td class="text-end">{{ batch.changed_count }}</td>
         <td>{{ batch.rolled_back_at|owner_datetime }}</td>
       </tr>
       {% endfor %}

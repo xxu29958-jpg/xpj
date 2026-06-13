@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}成员管理 — {{ ledger_name or '账本' }} — 小票夹{% endblock %}
 {% block content %}
-<h1>成员管理 <span class="ledger-title text-break" class="text-meta" style="font-weight:normal">/ {{ ledger_name or ledger_id }}</span></h1>
+<h1>成员管理 <span class="ledger-title text-break fw-normal">/ {{ ledger_name or ledger_id }}</span></h1>
 <details class="page-help">
   <summary>这是什么</summary>
   <p>给这本账本邀请家人、调整谁能记账谁只能看。发邀请生成一串邀请明文（只显示一次），私下发给家人，家人在自己手机上粘贴即可入伙。别把绑定码发给家人——那会把对方配成你的账号。</p>
 </details>
 
-<p class="text-meta" style="margin-top:-8px;margin-bottom:var(--space-6)">
+<p class="text-meta members-lede">
   <a class="text-link" href="/owner/ledgers">← 返回账本列表</a>
 </p>
 
@@ -25,10 +25,10 @@
 
 {% if new_invitation_token %}
 <div class="card alert-success">
-  <h2 style="margin-top:0;color:var(--state-success-fg)">邀请已生成（仅显示一次）</h2>
-  <p style="color:var(--state-success-fg);margin-bottom:var(--space-2)">把下面这串邀请明文发给家庭成员。关闭页面或刷新后无法再次查看。</p>
+  <h2 class="invite-reveal-title">邀请已生成（仅显示一次）</h2>
+  <p class="invite-reveal-note">把下面这串邀请明文发给家庭成员。关闭页面或刷新后无法再次查看。</p>
   <pre class="one-time-secret" data-upload-handoff-url>{{ new_invitation_token }}</pre>
-  <div style="margin-top:var(--space-3);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <div class="invite-reveal-row">
     <button type="button" class="btn btn-primary" data-copy-upload-url
             data-copy-toast="邀请明文已复制，私下发给家人"
             data-copy-fail-toast="复制失败，请手动全选上面的邀请明文">复制邀请明文</button>
@@ -56,16 +56,16 @@
     <tbody>
       {% for m in members %}
       <tr>
-        <td class="text-break">{{ m.account_name }}{% if m.is_self %} <span class="text-link" style="font-size:var(--type-meta-size)">（本人）</span>{% endif %}</td>
+        <td class="text-break">{{ m.account_name }}{% if m.is_self %} <span class="text-link fs-meta">（本人）</span>{% endif %}</td>
         <td>
           <span class="role-chip {% if m.role == 'owner' %}role-owner{% elif m.role == 'member' %}role-member{% elif m.role == 'viewer' %}role-viewer{% else %}role-unknown{% endif %}">{% if m.role == 'owner' %}拥有者{% elif m.role == 'member' %}成员{% elif m.role == 'viewer' %}只读{% else %}{{ m.role }}{% endif %}</span>
           {% if can_manage_members and not m.disabled_at and m.role != 'owner' and not m.is_self %}
           <form class="member-role-form" method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/role" data-confirm="确定调整 {{ m.account_name }} 的角色吗？">
-            <select name="role" class="inline-input inline-input--narrow" style="margin-left:0">
+            <select name="role" class="inline-input inline-input--narrow ml-0">
               <option value="member" {% if m.role == 'member' %}selected{% endif %}>成员</option>
               <option value="viewer" {% if m.role == 'viewer' %}selected{% endif %}>只读</option>
             </select>
-            <button type="submit" class="btn btn-secondary" style="padding:var(--space-1) var(--space-3);font-size:var(--type-meta-size)">调整</button>
+            <button type="submit" class="btn btn-secondary btn--xs">调整</button>
           </form>
           {% endif %}
         </td>
@@ -74,11 +74,11 @@
         <td>
           {% if can_manage_members and not m.disabled_at and m.role != 'owner' %}
           <div class="member-actions">
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/transfer-owner" style="display:inline" data-confirm="确定把 {{ ledger_name or ledger_id }} 的拥有者转让给 {{ m.account_name }} 吗？当前拥有者会降为成员。">
-            <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">转让拥有者</button>
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/transfer-owner" class="inline-form" data-confirm="确定把 {{ ledger_name or ledger_id }} 的拥有者转让给 {{ m.account_name }} 吗？当前拥有者会降为成员。">
+            <button type="submit" class="btn btn-secondary btn--compact">转让拥有者</button>
           </form>
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" style="display:inline" data-confirm="确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。">
-            <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">停用</button>
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" class="inline-form" data-confirm="确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。">
+            <button type="submit" class="btn btn-secondary btn--compact">停用</button>
           </form>
           </div>
           {% else %}<span class="text-faint">—</span>{% endif %}
@@ -107,11 +107,11 @@
       </label>
       <label>备注：
         <input type="text" name="note" maxlength="80" placeholder="例：妈妈"
-               class="inline-input" style="width:200px">
+               class="inline-input w-200">
       </label>
       <label>有效期（天）：
         <input type="number" name="ttl_days" min="1" max="30" value="7"
-               class="inline-input" style="width:80px">
+               class="inline-input w-80">
       </label>
       <button type="submit" class="btn btn-primary">生成邀请明文</button>
     </div>
@@ -152,8 +152,8 @@
         </td>
         <td>
           {% if not inv.used_at and not inv.revoked_at %}
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" style="display:inline" data-confirm="确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。">
-            <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">撤销</button>
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" class="inline-form" data-confirm="确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。">
+            <button type="submit" class="btn btn-secondary btn--compact">撤销</button>
           </form>
           {% else %}<span class="text-faint">—</span>{% endif %}
         </td>
@@ -185,7 +185,7 @@
     <tbody>
       {% for item in audit_logs %}
       <tr>
-        <td style="white-space:nowrap">{{ item.created_at | owner_datetime }}</td>
+        <td class="nowrap">{{ item.created_at | owner_datetime }}</td>
         <td>
           {% if item.action == 'invitation_created' %}创建邀请
           {% elif item.action == 'invitation_accepted' %}接受邀请

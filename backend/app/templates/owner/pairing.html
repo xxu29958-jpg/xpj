@@ -15,11 +15,11 @@
 <div class="card">
   <div class="alert alert-success">绑定码已生成，请在有效期内完成绑定。</div>
   <div class="code-big">{{ pairing_result.pairing_code }}</div>
-  <div class="meta" style="text-align:center">
+  <div class="meta text-center">
     账本：{{ pairing_result.ledger_name }} &nbsp;·&nbsp;
     有效期至：{{ pairing_result.expires_at|owner_datetime }}
   </div>
-  <p class="text-meta" style="text-align:center;margin-top:var(--space-5)">
+  <p class="text-meta text-center mt-5">
     在 Android 小票夹 App 中点击"绑定账本"，输入上方 8 位码完成绑定。<br>
     绑定码为一次性使用，过期后自动失效。
   </p>
@@ -28,7 +28,7 @@
 
 <div class="card">
   <h2>生成新绑定码</h2>
-  <p class="text-meta" style="margin-bottom:var(--space-5)">
+  <p class="text-meta mb-5">
     绑定码用于把 Android 设备配成所选账本<strong>拥有者</strong>的账号，过期自动失效；
     同一账号再次绑定会把旧设备踢下线。家庭成员入伙请改用「成员管理」里的邀请，不要把绑定码发给成员。
   </p>
@@ -38,7 +38,7 @@
   </div>
   {% else %}
   <form method="post" action="/owner/pairing">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="flex-row-wrap">
       <label>绑定到账本：
         <select name="ledger_id"
                 class="inline-input">

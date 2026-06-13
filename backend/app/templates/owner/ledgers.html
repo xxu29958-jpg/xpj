@@ -47,12 +47,12 @@
         <td>{{ row.confirmed_count }}</td>
         <td>{{ row.active_device_count }}</td>
         <td>
-          <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">打开账本</a>
-          <a href="/owner/ledgers/{{ row.ledger_id }}/members" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size);margin-left:var(--space-2)">成员/邀请</a>
+          <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary btn--compact">打开账本</a>
+          <a href="/owner/ledgers/{{ row.ledger_id }}/members" class="btn btn-secondary btn--compact ml-2">成员/邀请</a>
           {% if row.role == 'owner' and not row.is_default %}
           {% set archive_confirm = '归档账本「' ~ row.name ~ '」？该账本将从所有活跃界面（账本列表、登录、配对、邀请）隐藏，已绑定设备的会话随即失效。数据完整保留，可在下方「已归档账本」中恢复。' %}
-          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/archive" style="display:inline" onsubmit='return confirm({{ archive_confirm | tojson }});'>
-            <button type="submit" class="btn btn-danger" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size);margin-left:var(--space-2)">归档</button>
+          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/archive" class="inline-form" onsubmit='return confirm({{ archive_confirm | tojson }});'>
+            <button type="submit" class="btn btn-danger btn--compact ml-2">归档</button>
           </form>
           {% endif %}
         </td>
@@ -70,7 +70,7 @@
     新建后，使用绑定码页面把 Android 绑定到这个账本。每个账本的待确认/已确认/上传链接都互相隔离。
   </p>
   <form method="post" action="/owner/ledgers">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="flex-row-wrap">
       <label>账本名称：
         <input type="text" name="name" maxlength="60" required
                value="{{ submitted_name|default('') }}"
@@ -106,8 +106,8 @@
         <td>{{ row.confirmed_count }}</td>
         <td>
           {% set unarchive_confirm = '恢复账本「' ~ row.name ~ '」？它将重新出现在「当前账本」列表中。' %}
-          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/unarchive" style="display:inline" onsubmit='return confirm({{ unarchive_confirm | tojson }});'>
-            <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">恢复</button>
+          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/unarchive" class="inline-form" onsubmit='return confirm({{ unarchive_confirm | tojson }});'>
+            <button type="submit" class="btn btn-secondary btn--compact">恢复</button>
           </form>
         </td>
       </tr>

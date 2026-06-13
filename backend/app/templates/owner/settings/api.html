@@ -10,11 +10,11 @@
 
   {% for group in route_groups %}
     {% if group.rows %}
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-5">
       <span class="surface-pill {{ group.css_class }}">{{ group.label }} · {{ group.rows|length }}</span>
-      <p class="help-text" style="font-size:var(--type-meta-size);margin:0 0 var(--space-3)">{{ group.description }}</p>
+      <p class="help-text help-text--meta">{{ group.description }}</p>
       <table class="route-table">
-        <thead><tr><th style="width:160px">方法</th><th>路径</th><th>名称</th></tr></thead>
+        <thead><tr><th class="w-160">方法</th><th>路径</th><th>名称</th></tr></thead>
         <tbody>
         {% for row in group.rows %}
           <tr>

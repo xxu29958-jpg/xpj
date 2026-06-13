@@ -8,7 +8,7 @@
 </details>
 
 <div class="card">
-  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+  <div class="card-head-row">
     <div>
       <h2>表体量与过期候选</h2>
       <p class="text-meta">
@@ -19,7 +19,7 @@
     <span class="badge badge-off">运维</span>
   </div>
 
-  <div class="table-scroll" style="margin-top:12px">
+  <div class="table-scroll mt-4">
     <table>
       <thead>
         <tr>
@@ -48,7 +48,7 @@
     </table>
   </div>
 
-  <div class="stat-grid" style="margin-top:16px">
+  <div class="stat-grid mt-5">
     <div class="stat">
       <div class="num">{{ overview.active_decisions }}</div>
       <div class="label">Active 建议</div>
@@ -75,13 +75,13 @@
     {% endif %}
   </div>
 
-  <form method="post" action="/owner/learning-maintenance/run" style="margin-top:16px" data-confirm="立即跑学习层 cleanup？将 sweep stale active + prune 过期行 + 写入 last_run。">
+  <form method="post" action="/owner/learning-maintenance/run" class="mt-5" data-confirm="立即跑学习层 cleanup？将 sweep stale active + prune 过期行 + 写入 last_run。">
     <button type="submit" class="btn btn-primary">立即清理</button>
   </form>
 </div>
 
-<div class="card" style="margin-top:16px">
-  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+<div class="card mt-5">
+  <div class="card-head-row">
     <div>
       <h2>当前 active 决策（最近 {{ active_decisions|length }} 条）</h2>
       <p class="text-meta">
@@ -92,7 +92,7 @@
   </div>
 
   {% if active_decisions %}
-  <div class="table-scroll" style="margin-top:12px">
+  <div class="table-scroll mt-4">
     <table>
       <thead>
         <tr>
@@ -116,7 +116,7 @@
             {% if decision.subject_id %}#{{ decision.subject_id }}{% endif %}
           </td>
           <td>{% if decision.score is not none %}{{ "%.2f"|format(decision.score) }}{% else %}—{% endif %}</td>
-          <td><code style="font-size:0.85em">{{ decision.output_payload[:80] }}{% if decision.output_payload and decision.output_payload|length > 80 %}…{% endif %}</code></td>
+          <td><code class="code-sm">{{ decision.output_payload[:80] }}{% if decision.output_payload and decision.output_payload|length > 80 %}…{% endif %}</code></td>
           <td>
             <form method="post" action="/owner/learning-maintenance/dismiss-decision" class="inline" data-confirm="将这条建议 dismiss？UI 不会再展示，账本不受影响。">
               <input type="hidden" name="decision_public_id" value="{{ decision.public_id }}">
@@ -129,14 +129,14 @@
     </table>
   </div>
   {% else %}
-    <p class="empty-note" style="margin-top:12px">当前没有 active 建议。</p>
+    <p class="empty-note mt-4">当前没有 active 建议。</p>
   {% endif %}
 </div>
 
-<div class="card" style="margin-top:16px">
+<div class="card mt-5">
   <h2>算法类型登记表</h2>
   <p class="text-meta">下面字符串来自 <code>learning_service._algorithm_registry</code>；新增算法需要先加这里一条。</p>
-  <div class="table-scroll" style="margin-top:12px">
+  <div class="table-scroll mt-4">
     <table>
       <thead>
         <tr>
