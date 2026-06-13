@@ -130,6 +130,10 @@
     <string name="ledger_tools_export">导出表格</string>
     <string name="ledger_tools_syncing">更新中</string>
     <string name="ledger_tools_update_ledger">更新账本</string>
+    <!-- 工具表入口刻意用 hub 式「拆账中心」而非短词「拆账」(屏页头 bill_split_topbar_title /
+         设置入口 settings_root_entry_bill_splits_title / web 侧栏 base 用「拆账」):本入口夹在
+         导出/更新等动作按钮之间,「拆账」会被读成动作(去拆一笔),「中心」点明它是收发箱目的地。
+         有意的语境化文案,非三端漂移。 -->
     <string name="ledger_tools_bill_split">拆账中心</string>
     <string name="ledger_tools_clear_filters">清除筛选</string>
     <string name="ledger_tools_done">完成</string>
