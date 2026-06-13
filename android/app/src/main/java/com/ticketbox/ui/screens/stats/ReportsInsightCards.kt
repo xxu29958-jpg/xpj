@@ -400,7 +400,7 @@ private fun AmountBarRow(
             Text(
                 text = trailingText,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.tabularNum(),
             )
         }
         Box(
@@ -475,7 +475,7 @@ private fun GoalProgressRow(goal: Goal) {
                     formatAmount(goal.remainingAmountCents),
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.tabularNum(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -403,7 +403,7 @@ private fun CandidateRow(
                     candidate.confidence,
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.tabularNum(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

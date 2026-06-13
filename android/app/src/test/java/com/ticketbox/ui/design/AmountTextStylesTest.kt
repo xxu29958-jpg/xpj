@@ -6,6 +6,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 
 /**
  * 金额排版制度单源 [asAmount] / [AppAmountRole] 的回归钉。各屏焦点金额迁到这套
@@ -45,7 +46,7 @@ class AmountTextStylesTest {
     fun rolesReuseAppTypographyAnchorsWithoutDuplicatingLiterals() {
         // 角色的字号 / 字重直接取 AppTypography 的 amountLarge / amountMedium，不另写
         // 第二份字面量——钉住"同源"，防两处字号各自漂移。
-        assertEquals(AppTypography.amountLarge, AppAmountRole.Hero.role)
-        assertEquals(AppTypography.amountMedium, AppAmountRole.Medium.role)
+        assertSame(AppTypography.amountLarge, AppAmountRole.Hero.role)
+        assertSame(AppTypography.amountMedium, AppAmountRole.Medium.role)
     }
 }
