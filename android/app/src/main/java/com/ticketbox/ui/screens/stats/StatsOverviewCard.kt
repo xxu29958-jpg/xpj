@@ -26,7 +26,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DailySpend
@@ -34,12 +33,13 @@ import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.StatsSource
 
@@ -94,12 +94,7 @@ internal fun StatsOverviewCard(
                 modifier = Modifier.weight(1f),
                 text = formatDisplayAmount(stats.totalAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = AppTypography.amountLarge.size,
-                    lineHeight = 38.sp,
-                    letterSpacing = 0.sp,
-                    fontWeight = AppTypography.amountLarge.weight,
-                ).tabularNum(),
+                style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -150,7 +150,7 @@ internal fun LedgerExpenseCard(
                 Text(
                     text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
                     color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.tabularNum(),
                     fontWeight = AppTypography.amountMedium.weight,
                     maxLines = 1,
                 )
@@ -222,7 +222,7 @@ internal fun LedgerExpenseListRow(
                 Text(
                     text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
                     color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.tabularNum(),
                     fontWeight = AppTypography.amountMedium.weight,
                     maxLines = 1,
                 )
@@ -301,7 +301,7 @@ internal fun LedgerExpenseTableRow(
                 text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
                 modifier = Modifier.weight(LedgerItemLayout.TableAmountWeight),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelLarge.tabularNum(),
                 fontWeight = AppTypography.amountMedium.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

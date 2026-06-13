@@ -45,15 +45,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.AppDensity
+import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.design.asAmount
 
 enum class ExpensePreviewMode {
     Compact,
@@ -79,9 +80,12 @@ fun ExpenseCard(
     val currencyDisplay = LocalCurrencyDisplay.current
     var showRejectDialog by remember(expense.id) { mutableStateOf(false) }
     val isCompact = previewMode == ExpensePreviewMode.Compact
-    val cardPadding = if (isCompact) 10.dp else 14.dp
-    val contentGap = if (isCompact) 8.dp else 12.dp
-    val rowGap = if (isCompact) 10.dp else 12.dp
+    val rowMetrics = AppDensity.rowMetrics(
+        if (isCompact) AppListDensity.Compact else AppListDensity.Comfortable,
+    )
+    val cardPadding = rowMetrics.rowPadding
+    val contentGap = rowMetrics.contentGap
+    val rowGap = rowMetrics.itemSpacing
     val imageSize = if (isCompact) DpSize(width = 82.dp, height = 110.dp) else DpSize(width = 96.dp, height = 128.dp)
     val exchangeMeta = formatExpenseExchangeMeta(expense)
 
@@ -138,7 +142,7 @@ fun ExpenseCard(
                 }
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(rowMetrics.labelGap),
                 ) {
                     Text(
                         text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.components_expense_card_merchant_placeholder),
@@ -163,13 +167,8 @@ fun ExpenseCard(
                     )
                     Text(
                         text = if (expense.amountCents == null) stringResource(R.string.components_expense_card_amount_placeholder) else formatExpensePrimaryAmount(expense, currencyDisplay),
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = AppTypography.amountMedium.size,
-                            lineHeight = 28.sp,
-                            letterSpacing = 0.sp,
-                        ).tabularNum(),
+                        style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Medium),
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = AppTypography.amountMedium.weight,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
