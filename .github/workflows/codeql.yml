@@ -1,0 +1,100 @@
+name: CodeQL
+
+# GitHub-native SAST. Restored from the pre-Gitea original (deleted in d92c926d,
+# NOT brought back by the codex "cloud-ci" rewrite). This is the one capability
+# the local-Gitea CI structurally cannot provide — results land in the repo's
+# Security tab. Scans four scripted languages plus the Android Kotlin app.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "37 3 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-scripted:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - actions
+          - javascript-typescript
+          - python
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  analyze-android:
+    name: Analyze (java-kotlin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      TICKETBOX_SERVER_URL: https://api.zen70.cn
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Point Gradle at cloud Android SDK
+        working-directory: android
+        run: |
+          sdk_dir="${ANDROID_HOME//\\/\\\\}"
+          echo "sdk.dir=$sdk_dir" > local.properties
+          echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          build-mode: manual
+
+      - name: Build Android for CodeQL
+        working-directory: android
+        run: ./gradlew --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:java-kotlin"
