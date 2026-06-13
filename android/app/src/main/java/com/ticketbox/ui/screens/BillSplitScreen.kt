@@ -18,6 +18,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -53,6 +54,7 @@ import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.BillSplitTargetLedger
 import com.ticketbox.viewmodel.BillSplitViewModel
 import com.valentinilk.shimmer.shimmer
@@ -240,7 +242,7 @@ private fun InboxRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(row.senderDisplayName, fontWeight = FontWeight.SemiBold)
-            Text(formatAmount(row.amountCents))
+            Text(formatAmount(row.amountCents), style = LocalTextStyle.current.tabularNum())
         }
         InboxMetaLine(row = row, locallyExpired = locallyExpired)
         if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
@@ -304,7 +306,7 @@ private fun SentRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(row.receiverDisplayNameSnapshot ?: "—", fontWeight = FontWeight.SemiBold)
-            Text(formatAmount(row.amountCents))
+            Text(formatAmount(row.amountCents), style = LocalTextStyle.current.tabularNum())
         }
         Text(
             text = "${row.merchantSnapshot ?: "—"} · ${billSplitStatusLabel(row.status)}",

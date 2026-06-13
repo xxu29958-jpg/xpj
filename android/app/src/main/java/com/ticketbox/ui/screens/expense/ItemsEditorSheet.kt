@@ -40,6 +40,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.EditableItem
 import kotlin.math.abs
 
@@ -213,7 +214,7 @@ private fun ReconciliationFooter(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(stringResource(R.string.expense_edit_items_footer_total_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(formatDisplayAmount(total), style = MaterialTheme.typography.bodyMedium)
+            Text(formatDisplayAmount(total), style = MaterialTheme.typography.bodyMedium.tabularNum())
         }
         if (parentAmountCents != null) {
             Spacer(Modifier.height(4.dp))
@@ -222,7 +223,7 @@ private fun ReconciliationFooter(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(stringResource(R.string.expense_edit_items_footer_face_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatDisplayAmount(parentAmountCents), style = MaterialTheme.typography.bodyMedium)
+                Text(formatDisplayAmount(parentAmountCents), style = MaterialTheme.typography.bodyMedium.tabularNum())
             }
         }
         if (diff != null && diff != 0L) {
@@ -234,7 +235,7 @@ private fun ReconciliationFooter(
                 Text(stringResource(R.string.expense_edit_items_footer_diff_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 Text(
                     formatDisplayAmount(diff),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.tabularNum(),
                     color = MaterialTheme.colorScheme.error,
                 )
             }

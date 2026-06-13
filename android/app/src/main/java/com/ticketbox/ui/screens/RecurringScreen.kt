@@ -54,6 +54,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.RecurringUiState
 import com.valentinilk.shimmer.shimmer
 
@@ -276,7 +277,7 @@ private fun RecurringItemRow(
             }
             Text(
                 text = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
             )
         }

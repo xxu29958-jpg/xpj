@@ -28,6 +28,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
@@ -135,7 +136,7 @@ private fun RecurringItemSummaryRow(
             )
             Text(
                 text = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
             )
         }
@@ -182,7 +183,7 @@ private fun RecurringCandidateRow(
             )
             Text(
                 text = formatDisplayAmount(candidate.amountCents, currencyDisplay),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
             )
         }

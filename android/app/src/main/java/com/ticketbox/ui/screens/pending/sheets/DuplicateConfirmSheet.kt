@@ -20,6 +20,7 @@ import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.tabularNum
 
 /**
  * DuplicateConfirmSheet — slice 3 M6。
@@ -69,7 +70,7 @@ internal fun DuplicateConfirmSheetContent(
                 )
                 Text(
                     text = formatDisplayAmount(expense.amountCents, currencyDisplay),
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyLarge.tabularNum(),
                     fontWeight = AppTextHierarchy.body.weight,
                 )
                 expense.duplicateReason?.takeIf { it.isNotBlank() }?.let {

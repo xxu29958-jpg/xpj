@@ -37,6 +37,7 @@ import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun EditDraftPreviewCard(
@@ -87,7 +88,7 @@ internal fun EditDraftPreviewCard(
                 )
                 Text(
                     text = formatExpensePrimaryAmount(expense, currencyDisplay),
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineMedium.tabularNum(),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 formatExpenseExchangeMeta(expense)?.let { meta ->

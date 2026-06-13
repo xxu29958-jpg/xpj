@@ -41,6 +41,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.LedgerUiState
 
 @Composable
@@ -191,7 +192,7 @@ private fun LedgerKpiCell(
         Text(
             text = value,
             color = MaterialTheme.colorScheme.onSurface,
-            style = if (emphasized) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+            style = (if (emphasized) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium).tabularNum(),
             fontWeight = AppTextHierarchy.heading.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

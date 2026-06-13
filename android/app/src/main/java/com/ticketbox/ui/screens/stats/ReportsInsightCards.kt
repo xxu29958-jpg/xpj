@@ -59,6 +59,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.tabularNum
 import kotlin.math.abs
 
 private object ReportsInsightLayout {
@@ -107,7 +108,7 @@ internal fun ReportsInsightCard(
                 Text(
                     text = formatAmount(overview.totalAmountCents),
                     color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.tabularNum(),
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
             }
@@ -393,7 +394,7 @@ private fun AmountBarRow(
             )
             Text(
                 text = formatAmount(amountCents),
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelLarge.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
@@ -462,7 +463,7 @@ private fun GoalProgressRow(goal: Goal) {
                 Text(
                     text = formatAmount(goal.targetAmountCents),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelLarge.tabularNum(),
                     fontWeight = AppTextHierarchy.body.weight,
                 )
             }
