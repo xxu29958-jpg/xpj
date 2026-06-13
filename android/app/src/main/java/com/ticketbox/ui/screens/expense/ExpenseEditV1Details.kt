@@ -37,6 +37,7 @@ import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun ExpenseEditV1DetailsSection(
@@ -394,7 +395,7 @@ private fun BillSplitSentRow(
         Text(
             text = formatDisplayAmount(row.amountCents, currencyDisplay),
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyLarge.tabularNum(),
             fontWeight = AppTextHierarchy.body.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -444,7 +445,7 @@ private fun DetailHeader(
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.tabularNum(),
                 fontWeight = AppTextHierarchy.heading.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -481,7 +482,7 @@ private fun TotalReconcileLine(
                 formatDisplayAmount(detailTotalAmountCents, currencyDisplay),
             ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodySmall.tabularNum(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -521,7 +522,7 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
             Text(
                 text = formatDisplayAmount(item.amountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -563,7 +564,7 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
             Text(
                 text = formatDisplayAmount(split.amountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

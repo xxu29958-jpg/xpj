@@ -29,6 +29,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun TagStatsCard(
@@ -117,7 +118,7 @@ private fun TagStatsRow(
             )
             Text(
                 text = formatDisplayAmount(tag.amountCents, currencyDisplay),
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelLarge.tabularNum(),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = AppTextHierarchy.body.weight,
             )

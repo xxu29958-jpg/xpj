@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.EditableSplit
 
 /**
@@ -211,7 +212,7 @@ private fun SplitsReconciliationFooter(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(stringResource(R.string.expense_edit_splits_footer_total_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(formatDisplayAmount(total), style = MaterialTheme.typography.bodyMedium)
+            Text(formatDisplayAmount(total), style = MaterialTheme.typography.bodyMedium.tabularNum())
         }
         if (parentAmountCents != null) {
             Spacer(Modifier.height(4.dp))
@@ -220,7 +221,7 @@ private fun SplitsReconciliationFooter(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(stringResource(R.string.expense_edit_splits_footer_face_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatDisplayAmount(parentAmountCents), style = MaterialTheme.typography.bodyMedium)
+                Text(formatDisplayAmount(parentAmountCents), style = MaterialTheme.typography.bodyMedium.tabularNum())
             }
         }
         if (diff != null && diff != 0L) {
@@ -240,7 +241,7 @@ private fun SplitsReconciliationFooter(
                 }
                 Text(
                     formatDisplayAmount(diff),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.tabularNum(),
                     color = MaterialTheme.colorScheme.error,
                 )
             }

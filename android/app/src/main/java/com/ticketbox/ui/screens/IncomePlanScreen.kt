@@ -60,6 +60,7 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import kotlinx.coroutines.delay
@@ -258,7 +259,7 @@ private fun IncomeTotalCard(totalCents: Long, currency: CurrencyDisplay) {
             Spacer(Modifier.size(AppSpacing.miniGap))
             Text(
                 formatDisplayAmount(totalCents, currency),
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.displaySmall.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.size(AppSpacing.miniGap))
@@ -319,7 +320,7 @@ private fun IncomePlanCard(
             }
             Text(
                 formatDisplayAmount(plan.amountCents, currency),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleLarge.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
                 color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.onSurface,

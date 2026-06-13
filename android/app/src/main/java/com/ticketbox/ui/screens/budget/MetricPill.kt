@@ -16,6 +16,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun MetricPill(
@@ -38,7 +39,7 @@ internal fun MetricPill(
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleSmall.tabularNum(),
             fontWeight = AppTextHierarchy.body.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

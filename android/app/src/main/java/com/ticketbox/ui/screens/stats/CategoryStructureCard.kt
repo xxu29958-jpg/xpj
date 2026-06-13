@@ -35,6 +35,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun CategoryStructureCard(
@@ -165,7 +166,7 @@ private fun CategoryStructureBarRow(
             )
             Text(
                 text = formatDisplayAmount(category.amountCents, currencyDisplay),
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelLarge.tabularNum(),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = AppTextHierarchy.body.weight,
             )

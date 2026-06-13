@@ -34,6 +34,7 @@ import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.tabularNum
 
 /**
  * UI/UX 第三波 批 13：跨账本拆账发起 sheet（ADR-0029）。从一笔已确认账单向**本账本
@@ -141,7 +142,7 @@ private fun BillSplitInviteAmountField(
         Spacer(Modifier.height(4.dp))
         Text(
             stringResource(R.string.expense_edit_bill_split_sheet_remaining, formatDisplayAmount(it)),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodySmall.tabularNum(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
