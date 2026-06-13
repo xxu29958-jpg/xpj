@@ -151,6 +151,11 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
+            StatsSecondaryPage.IncomePlans -> IncomePlanRoute(
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+            )
+
             null -> MainTabRoute(
                 navController = navController,
                 shellState = shellState,

@@ -5,15 +5,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.BudgetScreen
+import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.viewmodel.BudgetViewModel
+import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.StatsBudgetViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.budgetViewModelFactory
+import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
@@ -59,6 +63,21 @@ internal fun RecurringRoute(
         onPause = recurringViewModel::pause,
         onResume = recurringViewModel::resume,
         onArchive = recurringViewModel::archive,
+        onBack = onBack,
+    )
+}
+
+@Composable
+internal fun IncomePlanRoute(
+    screenFactory: MainScreenFactory,
+    onBack: () -> Unit,
+) {
+    val incomePlanViewModel: IncomePlanViewModel = viewModel(
+        factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository),
+    )
+    IncomePlanScreen(
+        viewModel = incomePlanViewModel,
+        currency = LocalCurrencyDisplay.current,
         onBack = onBack,
     )
 }
@@ -123,6 +142,7 @@ internal fun StatsRoute(
         },
         onOpenBudget = shellState::openBudget,
         onOpenRecurring = shellState::openRecurring,
+        onOpenIncomePlans = shellState::openIncomePlans,
         // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
         // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
         onDrillToLedger = { category ->

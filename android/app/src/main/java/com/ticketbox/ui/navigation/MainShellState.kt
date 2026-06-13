@@ -42,6 +42,7 @@ internal enum class BottomTab(
 internal enum class StatsSecondaryPage {
     Budget,
     Recurring,
+    IncomePlans,
 }
 
 internal class MainShellState {
@@ -74,6 +75,10 @@ internal class MainShellState {
 
     fun openRecurring() {
         statsSecondaryPage = StatsSecondaryPage.Recurring
+    }
+
+    fun openIncomePlans() {
+        statsSecondaryPage = StatsSecondaryPage.IncomePlans
     }
 
     fun closeStatsSecondaryPage() {

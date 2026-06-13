@@ -11,8 +11,10 @@
     <string name="stats_all_cards_hidden_title">首页卡片已全部隐藏</string>
     <string name="stats_all_cards_hidden_body">可以在设置 > 首页卡片中恢复默认卡片。</string>
     <string name="stats_header_title">统计</string>
-    <string name="stats_header_open_budget">预算 →</string>
-    <string name="stats_header_open_recurring">固定支出 →</string>
+    <string name="stats_header_planning">规划</string>
+    <string name="stats_header_open_budget">预算</string>
+    <string name="stats_header_open_recurring">固定支出</string>
+    <string name="stats_header_open_income_plans">收入计划</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
