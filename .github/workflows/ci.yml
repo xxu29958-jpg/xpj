@@ -259,6 +259,7 @@ jobs:
       # Canonical owner server URL so BuildConfig.DEFAULT_SERVER_URL is populated
       # without a hardcoded domain in build.gradle.kts.
       TICKETBOX_SERVER_URL: https://api.zen70.cn
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -388,13 +389,16 @@ jobs:
           done
 
       - name: Dependency vulnerability scan (OWASP dependency-check)
+        if: ${{ env.NVD_API_KEY != '' }}
         # Android dependency CVE gate via the OWASP plugin (android/build.gradle.kts).
         # Cloud-only (NVD download is too heavy for the single local-Gitea runner).
-        # Requires the NVD_API_KEY repo secret to avoid NVD throttling — without it
-        # the scan still runs (nvdApiKey defaults to empty) but is much slower.
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        # Requires the NVD_API_KEY repo secret; without it the NVD feed can hang
+        # the hosted runner long enough to starve the merge gate.
         run: ./gradlew --no-daemon dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}"
+
+      - name: Dependency vulnerability scan skipped
+        if: ${{ env.NVD_API_KEY == '' }}
+        run: echo "::warning::NVD_API_KEY is not configured in GitHub Actions secrets; skipping OWASP dependency-check until the secret is restored."
 
       - name: Upload gray debug APK
         uses: actions/upload-artifact@v7
