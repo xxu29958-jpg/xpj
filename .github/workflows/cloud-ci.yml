@@ -258,6 +258,15 @@ jobs:
           echo "sdk.dir=$sdk_dir" > local.properties
           echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
 
+      - name: Tune Gradle for cloud runner
+        run: |
+          {
+            echo ""
+            echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
+            echo "org.gradle.workers.max=2"
+            echo "kotlin.daemon.jvmargs=-Xmx1536m"
+          } >> gradle.properties
+
       - name: Gradle / JVM versions
         run: ./gradlew --no-daemon --version
 
@@ -269,10 +278,10 @@ jobs:
             echo "Deleting $latest.json to force KSP regeneration"
             rm -f "$schema_dir/$latest.json"
           fi
-          ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
+          ./gradlew --no-daemon --max-workers=2 :app:kspGrayDebugKotlin --rerun-tasks
 
       - name: Compile and unit tests
-        run: ./gradlew --no-daemon :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
+        run: ./gradlew --no-daemon --max-workers=2 :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
 
       - name: Verify Room schema snapshots are committed
         working-directory: ${{ github.workspace }}
@@ -286,8 +295,14 @@ jobs:
           fi
           echo "Room schema snapshots match the committed files"
 
-      - name: Android verification and APK builds
-        run: ./gradlew --no-daemon :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease
+      - name: Android verification
+        run: ./gradlew --no-daemon --max-workers=2 :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
+
+      - name: Android debug APK builds
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug
+
+      - name: Android release APK builds
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
 
       - name: Verify debug APK signing certificate
         run: |
