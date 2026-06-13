@@ -145,6 +145,11 @@ internal class FakeApiService(
 
     override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = unsupported()
 
+    override suspend fun createInvitation(
+        ledgerId: String,
+        request: com.ticketbox.data.remote.dto.InvitationCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.InvitationCreateResponseDto = unsupported()
+
     override suspend fun pendingExpenses(): List<ExpenseDto> = unsupported()
 
     override suspend fun categories(): CategoriesDto = unsupported()

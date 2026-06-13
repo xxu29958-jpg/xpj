@@ -47,6 +47,19 @@
     <!-- FamilyMembersScreen：审计行角色变更（ADR-0044 wave 2 尾巴，非 @Composable helper 改 @Composable） -->
     <string name="family_members_audit_role_change">角色：%1$s → %2$s</string>
     <string name="family_members_audit_role_set">角色：%1$s</string>
+    <!-- FamilyMembersScreen：轴7 发邀请区（owner-only；此前发邀请唯一入口在 /owner 控制台）。
+         结果卡标题 %1$s=角色标签。明文只显示一次，复制反馈依赖系统剪贴板浮窗（Android 13+）。 -->
+    <string name="family_members_section_invite">邀请家人</string>
+    <string name="family_members_invite_intro">生成邀请发给家人，对方在绑定页粘贴接受后加入当前账本。</string>
+    <string name="family_members_invite_as_member">邀请为成员</string>
+    <string name="family_members_invite_as_viewer">邀请为只读</string>
+    <string name="family_members_invite_creating">生成中…</string>
+    <string name="family_members_invite_created_title">邀请已生成（%1$s）</string>
+    <string name="family_members_invite_expires_at">有效期至：%1$s</string>
+    <string name="family_members_invite_once_hint">邀请明文只显示这一次，复制后发给家人。</string>
+    <string name="family_members_invite_copy">复制邀请</string>
+    <string name="family_members_invite_dismiss">收起</string>
+    <string name="family_members_message_invite_failed">邀请没有生成，请稍后再试。</string>
 
     <!-- JoinFamilyLedgerScreen：设置→加入家庭账本 屏 -->
     <string name="join_family_ledger_page_title">加入家庭账本</string>

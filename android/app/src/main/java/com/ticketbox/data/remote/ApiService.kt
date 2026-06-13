@@ -26,6 +26,8 @@ import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
+import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
+import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
@@ -636,6 +638,13 @@ interface ApiService {
         @Path("ledgerId") ledgerId: String,
         @Path("memberId") memberId: Long,
     ): OwnerTransferResponseDto
+
+    /** 轴7 发邀请(owner 级):invite_token 明文只在本响应出现一次。 */
+    @POST("api/ledgers/{ledgerId}/invitations")
+    suspend fun createInvitation(
+        @Path("ledgerId") ledgerId: String,
+        @Body request: InvitationCreateRequestDto,
+    ): InvitationCreateResponseDto
 
     @POST("api/invitations/preview")
     suspend fun previewInvitation(
