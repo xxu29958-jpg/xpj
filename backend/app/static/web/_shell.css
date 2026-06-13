@@ -221,6 +221,8 @@
     font-weight: 600;
     font-family: var(--font-serif);
 }
+/* 轴5 收口批1: 下拉项内的小号头像(原 style="width:24px;height:24px") */
+.ledger-avatar--sm { width: 24px; height: 24px; }
 .ledger-name { font-size: 13px; font-weight: 500; }
 .ledger-meta { font-size: 11px; color: var(--text-meta); margin-left: 2px; }
 .role-badge {

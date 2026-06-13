@@ -108,6 +108,21 @@
 .field--amount { flex: 2; }
 .field--currency { flex: 1; max-width: 130px; }
 
+/* ───── 轴5 内联 style 收口批1 (v0.11): 跨页重复模式 ───── */
+/* card-head 内副标题与标题的贴边间距(原 style="margin-top:4px" ×多页) */
+.card-sub--gap       { margin-top: var(--space-2); }
+/* 独立段落型 card-sub(原 style="margin-top:8px") */
+.card-sub--gap-loose { margin-top: var(--space-3); }
+/* 节级 dash-grid 间距(原 style="margin-top:18px";18px 为既有手写值非 space scale,
+   渲染零变化原则保字面,排版精修轮归 scale 时再统一) */
+.dash-grid--gap { margin-top: 18px; }
+/* 金额/计数单位的小号注记(原 style="font-size:12px" on .yuan) */
+.yuan--caption { font-size: var(--type-caption-size); }
+/* 通用去 margin(dialog 内 form 等;镜像 .page-eyebrow--flat 的 flat 系) */
+.m-0 { margin: 0; }
+/* 卡内动作 form 与上文的间距(原 style="margin-top:12px") */
+.form--gap { margin-top: var(--space-4); }
+
 /* readonly callout —— 用 state token 而非 inline style */
 .callout-info {
     background: var(--state-info-bg);

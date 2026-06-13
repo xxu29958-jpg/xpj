@@ -88,3 +88,16 @@
     align-items: center;
 }
 .drawer-foot .spacer { flex: 1; }
+
+/* ───── 轴5 内联 style 收口批1: 表头列宽工具(替代 <th style="width:..px">) ─────
+ * 宽度是各页手写的既有值,渲染零变化原则按字面收口;列宽语义留在模板(类名即宽度)。 */
+.dt-table .th-w-60  { width: 60px; }
+.dt-table .th-w-80  { width: 80px; }
+.dt-table .th-w-90  { width: 90px; }
+.dt-table .th-w-100 { width: 100px; }
+.dt-table .th-w-110 { width: 110px; }
+.dt-table .th-w-120 { width: 120px; }
+.dt-table .th-w-150 { width: 150px; }
+.dt-table .th-w-180 { width: 180px; }
+.dt-table .th-w-190 { width: 190px; }
+.dt-table .th-w-30p { width: 30%; }

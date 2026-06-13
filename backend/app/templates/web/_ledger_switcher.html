@@ -20,7 +20,7 @@
     {% set _opt_role = opt.role or 'owner' %}
     <a class="row {% if opt.ledger_id == selected_ledger_id %}on{% endif %}"
        href="{{ request.url.path }}?ledger_id={{ opt.ledger_id }}{% for k, v in request.query_params.multi_items() %}{% if k != 'ledger_id' %}&{{ k }}={{ v }}{% endif %}{% endfor %}">
-      <div class="ledger-avatar" style="width:24px;height:24px">{{ opt.name[:1] if opt.name else '夹' }}</div>
+      <div class="ledger-avatar ledger-avatar--sm">{{ opt.name[:1] if opt.name else '夹' }}</div>
       <div class="meta">
         <div class="name">{{ opt.name }}{% if opt.is_default %} · 默认{% endif %}</div>
         <div class="sub">{{ opt.ledger_id }}</div>
