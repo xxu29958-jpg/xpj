@@ -197,9 +197,17 @@ def _prune_disabled_stack(disabled_parent_indents: list[int], line: str) -> None
         disabled_parent_indents.pop()
 
 
-def _iter_workflow_run_commands(workflow_dirs: list[pathlib.Path]) -> list[WorkflowCommand]:
+def _workflow_dir_list(workflow_dirs: pathlib.Path | list[pathlib.Path]) -> list[pathlib.Path]:
+    if isinstance(workflow_dirs, pathlib.Path):
+        return [workflow_dirs]
+    return workflow_dirs
+
+
+def _iter_workflow_run_commands(
+    workflow_dirs: pathlib.Path | list[pathlib.Path],
+) -> list[WorkflowCommand]:
     commands: list[WorkflowCommand] = []
-    for workflow_dir in workflow_dirs:
+    for workflow_dir in _workflow_dir_list(workflow_dirs):
         for path in sorted(workflow_dir.glob("*.yml")):
             lines = path.read_text(encoding="utf-8").splitlines()
             index = 0
