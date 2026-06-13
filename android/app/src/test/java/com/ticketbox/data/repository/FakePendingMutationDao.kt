@@ -296,7 +296,7 @@ class FakePendingMutationDao : PendingMutationDao {
             it.serverUrl == serverUrl &&
                 it.ledgerId == ledgerId &&
                 it.status == inFlightStatus &&
-                (it.attemptedAt == null || it.attemptedAt!! < staleCutoffIso)
+                (it.attemptedAt == null || it.attemptedAt < staleCutoffIso)
         }
         for (row in victims) {
             rows[row.id] = row.copy(status = pendingStatus, lastError = recoveryMessage)
@@ -374,7 +374,7 @@ class FakePendingMutationDao : PendingMutationDao {
         val victims = rows.values.filter {
             it.status == doneStatus &&
                 it.completedAt != null &&
-                it.completedAt!! < cutoffIso
+                it.completedAt < cutoffIso
         }.map { it.id }
         victims.forEach { rows.remove(it) }
         refreshObservables()

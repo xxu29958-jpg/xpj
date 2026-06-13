@@ -45,7 +45,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
 
         val sheet = vm.uiState.value.activeSheet
         assertTrue(sheet is PendingSheet.QuickMerchant, "存完应推进到下一条快补 sheet，而非关闭")
-        assertEquals(2L, (sheet as PendingSheet.QuickMerchant).expense.id)
+        assertEquals(2L, sheet.expense.id)
         assertEquals(2, vm.uiState.value.reviewRemaining)
         // 推进时清掉成功提示，sheet 内状态行只在失败时留守。
         assertEquals(null, vm.uiState.value.message)
@@ -67,7 +67,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
 
         val sheet = vm.uiState.value.activeSheet
         assertTrue(sheet is PendingSheet.QuickMerchant)
-        assertEquals(2L, (sheet as PendingSheet.QuickMerchant).expense.id)
+        assertEquals(2L, sheet.expense.id)
         // 跳过把 A 排除出本轮 → 还剩 B、C 两条。
         assertEquals(2, vm.uiState.value.reviewRemaining)
         // 跳过不调用任何 repository 写操作，A 仍留在 pending 列表。
@@ -132,7 +132,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
         // 失败不跳转：仍停在 A 的 sheet，错误反馈进 message（sheet 内可见），计数不变。
         val sheet = vm.uiState.value.activeSheet
         assertTrue(sheet is PendingSheet.QuickMerchant)
-        assertEquals(1L, (sheet as PendingSheet.QuickMerchant).expense.id)
+        assertEquals(1L, sheet.expense.id)
         assertEquals(UiText.raw("网络忙"), vm.uiState.value.message)
         assertEquals(3, vm.uiState.value.reviewRemaining)
         assertTrue(vm.uiState.value.actionInProgressIds.isEmpty())

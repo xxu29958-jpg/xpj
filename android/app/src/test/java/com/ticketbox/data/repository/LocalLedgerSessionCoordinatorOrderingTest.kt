@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -138,6 +139,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         assertEquals("https://new.example.com", serverUrlAtBoundary)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun inFlightDispatchBlocksSessionTransitionUntilDone() = runTest(UnconfinedTestDispatcher()) {
         // [codex round-11 P1] dispatch lease test.
