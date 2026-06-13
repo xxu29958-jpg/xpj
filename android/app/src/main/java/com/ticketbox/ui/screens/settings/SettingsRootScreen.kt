@@ -157,66 +157,16 @@ fun SettingsRootScreen(
                 lastUploadAt = state.lastUploadAt,
                 lastSyncAt = state.lastConfirmedSyncAt,
             )
-            // 16 入口按功能域分 5 组（高频靠前、罕用靠后），用已有 SettingsSection 做分组标题。
-            SettingsSection(title = stringResource(R.string.settings_root_section_ledger_sync), icon = Icons.Filled.CloudDone) {
-                SettingsEntryRow(
-                    title = connectionTitle,
-                    subtitle = connectionSubtitle,
-                    icon = Icons.Filled.CloudDone,
-                    onClick = onOpenServer,
-                )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_offline_sync_title),
-                    subtitle = stringResource(R.string.settings_root_entry_offline_sync_subtitle),
-                    icon = Icons.Filled.Sync,
-                    onClick = onOpenSyncStatus,
-                )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_background_tasks_title),
-                    subtitle = stringResource(R.string.settings_root_entry_background_tasks_subtitle),
-                    icon = Icons.Filled.Tune,
-                    onClick = onOpenBackgroundTasks,
-                )
+            // 轴2 IA(owner 拍板 A1):17 入口由旧 5 组(账本与同步/记账设置/家庭协作/
+            // 外观与数据/安全与关于)重排为贴三域的 4 组,排序=家庭日常 → 记账配置 →
+            // 个性化 → 系统,频率递减。入口不增不减,纯重排+组重命名。
+            SettingsSection(title = stringResource(R.string.settings_root_section_ledger_family), icon = Icons.Filled.Group) {
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_ledgers_title),
                     subtitle = stringResource(R.string.settings_root_entry_ledgers_subtitle),
                     icon = Icons.Filled.FolderShared,
                     onClick = onOpenLedgers,
                 )
-            }
-            SettingsSection(title = stringResource(R.string.settings_root_section_bookkeeping), icon = Icons.Filled.Category) {
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_category_rules_title),
-                    subtitle = stringResource(R.string.settings_root_entry_category_rules_subtitle),
-                    icon = Icons.Filled.Category,
-                    onClick = onOpenCategoryRules,
-                )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_merchant_aliases_title),
-                    subtitle = stringResource(R.string.settings_root_entry_merchant_aliases_subtitle),
-                    icon = Icons.Filled.Tune,
-                    onClick = onOpenMerchantAliases,
-                )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_tag_management_title),
-                    subtitle = stringResource(R.string.settings_root_entry_tag_management_subtitle),
-                    icon = Icons.AutoMirrored.Filled.Label,
-                    onClick = onOpenTagManagement,
-                )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_notifications_title),
-                    subtitle = stringResource(R.string.settings_root_entry_notifications_subtitle),
-                    icon = Icons.Filled.Notifications,
-                    onClick = onOpenNotifications,
-                )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_income_plans_title),
-                    subtitle = stringResource(R.string.settings_root_entry_income_plans_subtitle),
-                    icon = Icons.Filled.AccountBalanceWallet,
-                    onClick = onOpenIncomePlans,
-                )
-            }
-            SettingsSection(title = stringResource(R.string.settings_root_section_family), icon = Icons.Filled.Group) {
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_family_members_title),
                     subtitle = stringResource(R.string.settings_root_entry_family_members_subtitle),
@@ -236,12 +186,24 @@ fun SettingsRootScreen(
                     onClick = onOpenBillSplits,
                 )
             }
-            SettingsSection(title = stringResource(R.string.settings_root_section_appearance_data), icon = Icons.Filled.Palette) {
+            SettingsSection(title = stringResource(R.string.settings_root_section_bookkeeping_data), icon = Icons.Filled.Category) {
                 SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_appearance_title),
-                    subtitle = stringResource(R.string.settings_root_entry_appearance_subtitle),
-                    icon = Icons.Filled.Palette,
-                    onClick = onOpenAppearance,
+                    title = stringResource(R.string.settings_root_entry_category_rules_title),
+                    subtitle = stringResource(R.string.settings_root_entry_category_rules_subtitle),
+                    icon = Icons.Filled.Category,
+                    onClick = onOpenCategoryRules,
+                )
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_merchant_aliases_title),
+                    subtitle = stringResource(R.string.settings_root_entry_merchant_aliases_subtitle),
+                    icon = Icons.Filled.Tune,
+                    onClick = onOpenMerchantAliases,
+                )
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_tag_management_title),
+                    subtitle = stringResource(R.string.settings_root_entry_tag_management_subtitle),
+                    icon = Icons.AutoMirrored.Filled.Label,
+                    onClick = onOpenTagManagement,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_dashboard_cards_title),
@@ -255,8 +217,46 @@ fun SettingsRootScreen(
                     icon = Icons.Filled.FileDownload,
                     onClick = onOpenDataExport,
                 )
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_income_plans_title),
+                    subtitle = stringResource(R.string.settings_root_entry_income_plans_subtitle),
+                    icon = Icons.Filled.AccountBalanceWallet,
+                    onClick = onOpenIncomePlans,
+                )
             }
-            SettingsSection(title = stringResource(R.string.settings_root_section_security_about), icon = Icons.Filled.Security) {
+            SettingsSection(title = stringResource(R.string.settings_root_section_alerts_appearance), icon = Icons.Filled.Palette) {
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_notifications_title),
+                    subtitle = stringResource(R.string.settings_root_entry_notifications_subtitle),
+                    icon = Icons.Filled.Notifications,
+                    onClick = onOpenNotifications,
+                )
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_appearance_title),
+                    subtitle = stringResource(R.string.settings_root_entry_appearance_subtitle),
+                    icon = Icons.Filled.Palette,
+                    onClick = onOpenAppearance,
+                )
+            }
+            SettingsSection(title = stringResource(R.string.settings_root_section_connection_system), icon = Icons.Filled.Security) {
+                SettingsEntryRow(
+                    title = connectionTitle,
+                    subtitle = connectionSubtitle,
+                    icon = Icons.Filled.CloudDone,
+                    onClick = onOpenServer,
+                )
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_offline_sync_title),
+                    subtitle = stringResource(R.string.settings_root_entry_offline_sync_subtitle),
+                    icon = Icons.Filled.Sync,
+                    onClick = onOpenSyncStatus,
+                )
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_background_tasks_title),
+                    subtitle = stringResource(R.string.settings_root_entry_background_tasks_subtitle),
+                    icon = Icons.Filled.Tune,
+                    onClick = onOpenBackgroundTasks,
+                )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_security_title),
                     subtitle = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
