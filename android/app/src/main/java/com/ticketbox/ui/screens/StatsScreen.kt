@@ -1,13 +1,17 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +21,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -74,6 +79,7 @@ fun StatsScreen(
     onRefresh: () -> Unit,
     onOpenBudget: () -> Unit,
     onOpenRecurring: () -> Unit,
+    onOpenIncomePlans: () -> Unit = {},
     // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
     onDrillToLedger: (String) -> Unit = {},
     // 轴3 粒度切换:动态图表卡的日/周档切换,交给 StatsReportsViewModel 重拉。
@@ -116,6 +122,7 @@ fun StatsScreen(
                 onTabChange = { selectedStatsTab = it },
                 onOpenBudget = onOpenBudget,
                 onOpenRecurring = onOpenRecurring,
+                onOpenIncomePlans = onOpenIncomePlans,
             )
         }
         state.message?.let {
@@ -290,16 +297,42 @@ private fun StatsTopPanel(
     onTabChange: (StatsTab) -> Unit,
     onOpenBudget: () -> Unit,
     onOpenRecurring: () -> Unit,
+    onOpenIncomePlans: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
         AppPageHeader(
             title = stringResource(R.string.stats_header_title),
             action = {
-                TextButton(onClick = onOpenBudget) {
-                    Text(text = stringResource(R.string.stats_header_open_budget), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                }
-                TextButton(onClick = onOpenRecurring) {
-                    Text(text = stringResource(R.string.stats_header_open_recurring), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                var planningMenuOpen by remember { mutableStateOf(false) }
+                Box {
+                    TextButton(onClick = { planningMenuOpen = true }) {
+                        Text(
+                            text = stringResource(R.string.stats_header_planning),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = planningMenuOpen,
+                        onDismissRequest = { planningMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.stats_header_open_budget)) },
+                            onClick = { planningMenuOpen = false; onOpenBudget() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.stats_header_open_recurring)) },
+                            onClick = { planningMenuOpen = false; onOpenRecurring() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
+                            onClick = { planningMenuOpen = false; onOpenIncomePlans() },
+                        )
+                    }
                 }
             },
         )
