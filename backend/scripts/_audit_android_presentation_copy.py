@@ -207,7 +207,7 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: yyyy年M月d日 HH:mm": "static formatter: date-time pattern",
     "android/app/src/main/java/com/ticketbox/ui/components/MonthPicker.kt :: ${}年${}月": "static formatter: year-month label",
     "android/app/src/main/java/com/ticketbox/ui/screens/LedgerGrouping.kt :: M月d日 E": "static formatter: date-group pattern",
-    "android/app/src/main/java/com/ticketbox/ui/screens/stats/ReportsInsightCards.kt :: ${}¥${}万": "static formatter: amount 万 (ten-thousand) unit",
+    "android/app/src/main/java/com/ticketbox/ui/screens/stats/ReportsInsightChartModels.kt :: ${}¥${}万": "static formatter: amount 万 (ten-thousand) unit",
     "android/app/src/main/java/com/ticketbox/ui/screens/stats/StatsMetricGrid.kt :: AI订阅": "internal domain-category match (DefaultCategories value)",
     "android/app/src/main/java/com/ticketbox/ui/screens/stats/StatsMetricGrid.kt :: AI 订阅": "internal domain-category match (spaced legacy variant)",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelItemsEditor.kt :: 未命名": "static fallback-default item name value",

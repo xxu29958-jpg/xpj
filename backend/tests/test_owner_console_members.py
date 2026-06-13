@@ -83,7 +83,7 @@ def test_members_page_uses_consistent_chips_and_breakable_text(local_client: Tes
     assert resp.status_code == 200
     assert long_name in resp.text
     assert long_note in resp.text
-    assert 'class="ledger-title text-break"' in resp.text
+    assert 'class="ledger-title text-break fw-normal"' in resp.text
     assert 'class="one-time-secret"' in resp.text
     assert 'class="table-scroll"' in resp.text
     assert 'class="text-break"' in resp.text
