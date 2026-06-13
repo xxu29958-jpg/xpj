@@ -16,6 +16,7 @@ on:
       - "fix/**"
       - "perf/**"
       - "refactor/**"
+      - "codex/**"
   pull_request:
     branches:
       - main

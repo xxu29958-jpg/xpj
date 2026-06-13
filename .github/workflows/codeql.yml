@@ -2,13 +2,14 @@ name: CodeQL
 
 # GitHub-native SAST. Restored from the pre-Gitea original (deleted in d92c926d,
 # NOT brought back by the codex "cloud-ci" rewrite). This is the one capability
-# the local-Gitea CI structurally cannot provide — results land in the repo's
+# the local-Gitea CI structurally cannot provide: results land in the repo's
 # Security tab. Scans four scripted languages plus the Android Kotlin app.
 
 on:
   push:
     branches:
       - main
+      - "codex/**"
   pull_request:
     branches:
       - main

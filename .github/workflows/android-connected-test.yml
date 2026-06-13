@@ -1,8 +1,8 @@
 name: Android Connected Test
 
 # Path-filtered emulator gate for Compose UI contract tests
-# (connectedGrayDebugAndroidTest). Restored from the pre-Gitea original —
-# the codex "android-connected-cloud" rewrite dropped the Enable KVM step
+# (connectedGrayDebugAndroidTest). Restored from the pre-Gitea original; the
+# codex "android-connected-cloud" rewrite dropped the Enable KVM step
 # (without hardware accel the emulator boot is glacial / times out) and the
 # failure-report artifact upload. Triggered only when Android sources change
 # so backend / docs / config PRs don't pay the emulator boot cost.
@@ -15,6 +15,7 @@ on:
       - "fix/**"
       - "perf/**"
       - "refactor/**"
+      - "codex/**"
     paths:
       - "android/app/src/**"
       - "android/gradle/**"
