@@ -28,24 +28,6 @@ import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSolidCard
 
 @Composable
-internal fun ExpenseEditAmountField(
-    amountText: String,
-    onAmountChange: (String) -> Unit,
-    enabled: Boolean = true,
-) {
-    OutlinedTextField(
-        value = amountText,
-        onValueChange = onAmountChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.expense_edit_amount_field_label)) },
-        placeholder = { Text("36.80") },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        singleLine = true,
-        enabled = enabled,
-    )
-}
-
-@Composable
 internal fun ExpenseCurrencyFields(
     currency: CurrencyCode,
     onCurrencyChange: (CurrencyCode) -> Unit,
