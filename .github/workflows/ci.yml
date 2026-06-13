@@ -151,8 +151,14 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
-      - name: Install PostgreSQL client
+      - name: Install PostgreSQL 17 client
+        # ubuntu-latest's default apt has no postgresql-client-17 (PG17 lives in
+        # PGDG); pg_dump/pg_restore in the backup drill must match the PG17
+        # service-container server. (codex first hit this on the live cloud run.)
         run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
 
@@ -266,7 +272,7 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platform-tools" \
             "platforms;android-36" \
