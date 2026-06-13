@@ -201,12 +201,14 @@ private fun ReportsTrendColumnChart(points: List<ReportTrendChartPoint>) {
     }
     val columnColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
 
-    // WCAG 1.1.1:Vico 柱图对 TalkBack 是不透明画布,给图表节点补文本替代——逐档朗读「标签 金额」,
-    // 金额走与可见行同源的 formatAmount。
-    val trendA11yBody = remember(points) {
-        points.joinToString("，") { "${it.label} ${formatAmount(it.amountCents)}" }
+    // WCAG 1.1.1:Vico 柱图对 TalkBack 是不透明画布,给图表节点补文本替代(逐档「标签 金额」)。
+    // 零额档不逐日朗读,汇总成「其余 N 档无支出」,避免日粒度下读出 ~30 个 ¥0.00(纯函数见 trendChartA11y)。
+    val trendA11yData = remember(points) { trendChartA11y(points) }
+    val trendA11y = if (trendA11yData.zeroBuckets > 0) {
+        stringResource(R.string.stats_reports_chart_a11y_with_zeros, trendA11yData.listed, trendA11yData.zeroBuckets)
+    } else {
+        stringResource(R.string.stats_reports_chart_a11y, trendA11yData.listed)
     }
-    val trendA11y = stringResource(R.string.stats_reports_chart_a11y, trendA11yBody)
 
     LaunchedEffect(points) {
         modelProducer.runTransaction {
@@ -317,9 +319,7 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
     val thisMonthLabel = stringResource(R.string.stats_reports_legend_current_month)
     val lastMonthLabel = stringResource(R.string.stats_reports_legend_previous_month)
     val comparisonA11yBody = remember(rows, thisMonthLabel, lastMonthLabel) {
-        rows.joinToString("；") {
-            "${it.category} $thisMonthLabel ${formatAmount(it.currentAmountCents)} $lastMonthLabel ${formatAmount(it.previousAmountCents)}"
-        }
+        comparisonChartA11yBody(rows, thisMonthLabel, lastMonthLabel)
     }
     val comparisonA11y = stringResource(R.string.stats_reports_comparison_a11y, comparisonA11yBody)
 

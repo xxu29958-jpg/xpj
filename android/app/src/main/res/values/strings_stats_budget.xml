@@ -96,8 +96,10 @@
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
     <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，数据还太少；多记几笔后这里会显示每日支出柱状趋势。</string>
     <!-- WCAG 1.1.1 图表文本替代（screen reader / TalkBack 用）：Vico 柱图是不透明画布，给图表节点
-         补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y」逐档拼接。 -->
+         补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y」逐档拼接；
+         _with_zeros 变体把零额档汇总成「其余 N 档无支出」，避免日粒度下逐日朗读 ¥0.00。 -->
     <string name="stats_reports_chart_a11y">支出趋势，各档金额：%1$s</string>
+    <string name="stats_reports_chart_a11y_with_zeros">支出趋势，各档金额：%1$s；其余 %2$d 档无支出</string>
     <string name="stats_reports_comparison_a11y">分类环比：%1$s</string>
     <string name="stats_reports_merchant_ranking_title">商家排行</string>
     <string name="stats_reports_merchant_fallback">未填写商家</string>

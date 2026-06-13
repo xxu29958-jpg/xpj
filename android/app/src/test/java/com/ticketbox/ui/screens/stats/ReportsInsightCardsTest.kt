@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.stats
 
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportTrendPoint
+import com.ticketbox.ui.components.formatAmount
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -72,6 +73,50 @@ class ReportsInsightCardsTest {
         )
         assertEquals(5, rows.size)
         assertEquals(listOf("分类1", "分类2", "分类3", "分类4", "分类5"), rows.map { it.category })
+    }
+
+    @Test
+    fun trendA11yListsOnlyNonZeroBucketsJoinedByFullwidthComma() {
+        // WCAG 1.1.1 文本替代:只朗读有支出的档,「，」相接;金额走 formatAmount 与可见行一致。
+        val a11y = trendChartA11y(
+            listOf(
+                ReportTrendChartPoint(x = 0, label = "05-01", amountCents = 1_250L, count = 1),
+                ReportTrendChartPoint(x = 1, label = "05-02", amountCents = 0L, count = 0),
+                ReportTrendChartPoint(x = 2, label = "05-03", amountCents = 800L, count = 1),
+            ),
+        )
+        assertEquals("05-01 ${formatAmount(1_250L)}，05-03 ${formatAmount(800L)}", a11y.listed)
+    }
+
+    @Test
+    fun trendA11yCountsZeroAmountBucketsForSummaryClause() {
+        // 零额档汇总成「其余 N 档无支出」,避免逐日朗读 ¥0.00(复审 P3)。
+        val a11y = trendChartA11y(
+            listOf(
+                ReportTrendChartPoint(x = 0, label = "05-01", amountCents = 1_250L, count = 1),
+                ReportTrendChartPoint(x = 1, label = "05-02", amountCents = 0L, count = 0),
+                ReportTrendChartPoint(x = 2, label = "05-03", amountCents = 0L, count = 0),
+                ReportTrendChartPoint(x = 3, label = "05-04", amountCents = 800L, count = 1),
+            ),
+        )
+        assertEquals(2, a11y.zeroBuckets)
+    }
+
+    @Test
+    fun comparisonA11yBodyInterleavesLabelsJoinedByFullwidthSemicolon() {
+        val body = comparisonChartA11yBody(
+            listOf(
+                CategoryComparisonChartRow("餐饮", 1_200L, 900L),
+                CategoryComparisonChartRow("交通", 0L, 800L),
+            ),
+            currentMonthLabel = "本月",
+            previousMonthLabel = "上月",
+        )
+        assertEquals(
+            "餐饮 本月 ${formatAmount(1_200L)} 上月 ${formatAmount(900L)}；" +
+                "交通 本月 ${formatAmount(0L)} 上月 ${formatAmount(800L)}",
+            body,
+        )
     }
 
     private fun comparisonRow(
