@@ -130,6 +130,12 @@ jobs:
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
+          sudo apt-get install -y ca-certificates curl
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
           sudo apt-get install -y postgresql-client-17
 
       - name: Install backend dependencies
@@ -224,11 +230,19 @@ jobs:
 
       - name: Setup Android SDK packages
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then
+            sdkmanager="$(command -v sdkmanager)"
+          fi
+          "$sdkmanager" --version
+          yes | "$sdkmanager" --licenses >/dev/null || true
+          "$sdkmanager" \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
+
+      - name: Prepare Gradle wrapper
+        run: chmod +x ./gradlew
 
       - name: Point Gradle at cloud Android SDK
         run: |

@@ -64,6 +64,7 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot-save
           working-directory: android
           script: |
+            chmod +x ./gradlew
             echo "sdk.dir=$ANDROID_HOME" > local.properties
             echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
             ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest

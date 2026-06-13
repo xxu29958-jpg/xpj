@@ -188,6 +188,15 @@ def _strip_comment_lines(text: str) -> str:
     return "\n".join(kept)
 
 
+def _prune_disabled_stack(disabled_parent_indents: list[int], line: str) -> None:
+    # Blank lines carry no YAML structure; they must not un-mute an if:false step.
+    if not line.strip():
+        return
+    indent = _line_indent(line)
+    while disabled_parent_indents and indent <= disabled_parent_indents[-1]:
+        disabled_parent_indents.pop()
+
+
 def _iter_workflow_run_commands(workflow_dirs: list[pathlib.Path]) -> list[WorkflowCommand]:
     commands: list[WorkflowCommand] = []
     for workflow_dir in workflow_dirs:
@@ -201,12 +210,7 @@ def _iter_workflow_run_commands(workflow_dirs: list[pathlib.Path]) -> list[Workf
                 # Blank lines have indent 0 but carry no structure — letting them
                 # pop the stack would un-mute an ``if: false`` step whose ``run:``
                 # sits after a blank line, so a disabled step could satisfy pins.
-                if line.strip():
-                    while (
-                        disabled_parent_indents
-                        and indent <= disabled_parent_indents[-1]
-                    ):
-                        disabled_parent_indents.pop()
+                _prune_disabled_stack(disabled_parent_indents, line)
                 disabled_parent_indent = _false_if_block_parent_indent(line)
                 if disabled_parent_indent is not None:
                     disabled_parent_indents.append(disabled_parent_indent)
