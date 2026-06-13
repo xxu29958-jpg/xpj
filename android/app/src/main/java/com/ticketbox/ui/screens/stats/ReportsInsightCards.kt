@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -199,6 +201,13 @@ private fun ReportsTrendColumnChart(points: List<ReportTrendChartPoint>) {
     }
     val columnColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
 
+    // WCAG 1.1.1:Vico 柱图对 TalkBack 是不透明画布,给图表节点补文本替代——逐档朗读「标签 金额」,
+    // 金额走与可见行同源的 formatAmount。
+    val trendA11yBody = remember(points) {
+        points.joinToString("，") { "${it.label} ${formatAmount(it.amountCents)}" }
+    }
+    val trendA11y = stringResource(R.string.stats_reports_chart_a11y, trendA11yBody)
+
     LaunchedEffect(points) {
         modelProducer.runTransaction {
             // 按天支出是离散事件：用柱状强调每天的量级，不用折线（平滑折线会暗示天与天之间连续变化）。
@@ -227,7 +236,8 @@ private fun ReportsTrendColumnChart(points: List<ReportTrendChartPoint>) {
         modelProducer = modelProducer,
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp),
+            .height(180.dp)
+            .semantics { contentDescription = trendA11y },
         scrollState = rememberVicoScrollState(scrollEnabled = false),
     )
 }
@@ -302,6 +312,17 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
     val currentColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
     val previousColor = chartTokens.series.getOrElse(1) { MaterialTheme.colorScheme.secondary }
 
+    // WCAG 1.1.1:同趋势图,给双柱对比补文本替代——逐分类朗读「分类 本月X 上月Y」,
+    // 「本月/上月」复用图例同源串,金额走 formatAmount。
+    val thisMonthLabel = stringResource(R.string.stats_reports_legend_current_month)
+    val lastMonthLabel = stringResource(R.string.stats_reports_legend_previous_month)
+    val comparisonA11yBody = remember(rows, thisMonthLabel, lastMonthLabel) {
+        rows.joinToString("；") {
+            "${it.category} $thisMonthLabel ${formatAmount(it.currentAmountCents)} $lastMonthLabel ${formatAmount(it.previousAmountCents)}"
+        }
+    }
+    val comparisonA11y = stringResource(R.string.stats_reports_comparison_a11y, comparisonA11yBody)
+
     LaunchedEffect(rows) {
         modelProducer.runTransaction {
             columnSeries {
@@ -325,7 +346,8 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
         modelProducer = modelProducer,
         modifier = Modifier
             .fillMaxWidth()
-            .height(160.dp),
+            .height(160.dp)
+            .semantics { contentDescription = comparisonA11y },
         scrollState = rememberVicoScrollState(scrollEnabled = false),
     )
 }
