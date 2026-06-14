@@ -111,6 +111,14 @@ def _proposal_target_id(public_id: str, proposal_public_id: str) -> str:
     return sha256(f"{public_id}:{proposal_public_id}".encode()).hexdigest()
 
 
+def _actor_scoped_fingerprint_body(
+    body: dict[str, object], *, actor_account_id: int
+) -> dict[str, object]:
+    # ADR-0049 §3.6 scopes Debt idempotency fingerprints by actor. This matters
+    # because a HIT returns before debtor/creditor service guards re-run.
+    return {**body, "actor_account_id": actor_account_id}
+
+
 def _proposal_create_fingerprint_body(
     payload: MemberRepaymentProposalCreateRequest,
 ) -> dict[str, object]:
@@ -191,7 +199,10 @@ def post_debt(
     fingerprint = fingerprint_request(
         operation=_CREATE_OPERATION,
         target_id=idempotency_key,
-        body=payload.model_dump(mode="json", exclude_unset=True),
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(mode="json", exclude_unset=True),
+            actor_account_id=auth.account_id,
+        ),
         expected_row_version=None,
     )
     outcome = claim_idempotency_key(
@@ -246,8 +257,11 @@ def post_repayment(
         operation=_REPAYMENT_OPERATION,
         target_id=public_id,
         target_type=_DEBT_TARGET_TYPE,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            actor_account_id=auth.account_id,
         ),
         expected_row_version=payload.expected_row_version,
     )
@@ -305,8 +319,11 @@ def post_adjustment(
         operation=_ADJUSTMENT_OPERATION,
         target_id=public_id,
         target_type=_DEBT_TARGET_TYPE,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            actor_account_id=auth.account_id,
         ),
         expected_row_version=payload.expected_row_version,
     )
@@ -352,8 +369,11 @@ def post_repayment_void(
         operation=_REPAYMENT_VOID_OPERATION,
         target_id=public_id,
         target_type=_DEBT_TARGET_TYPE,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            actor_account_id=auth.account_id,
         ),
         expected_row_version=payload.expected_row_version,
     )
@@ -395,8 +415,11 @@ def post_debt_void(
         operation=_DEBT_VOID_OPERATION,
         target_id=public_id,
         target_type=_DEBT_TARGET_TYPE,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            actor_account_id=auth.account_id,
         ),
         expected_row_version=payload.expected_row_version,
     )
@@ -451,7 +474,10 @@ def post_repayment_proposal(
     fingerprint = fingerprint_request(
         operation=_PROPOSAL_CREATE_OPERATION,
         target_id=public_id,
-        body=_proposal_create_fingerprint_body(payload),
+        body=_actor_scoped_fingerprint_body(
+            _proposal_create_fingerprint_body(payload),
+            actor_account_id=auth.account_id,
+        ),
         expected_row_version=None,
     )
     outcome = claim_idempotency_key(
@@ -516,7 +542,10 @@ def post_repayment_proposal_withdraw(
         operation=_PROPOSAL_WITHDRAW_OPERATION,
         target_id=_proposal_target_id(public_id, proposal_public_id),
         target_type=_PROPOSAL_TARGET_TYPE,
-        body=payload.model_dump(mode="json", exclude_unset=True),
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(mode="json", exclude_unset=True),
+            actor_account_id=auth.account_id,
+        ),
         expected_row_version=None,
     )
     if claim is None:  # replay: re-serialise the proposal's canonical state.
@@ -569,7 +598,10 @@ def post_repayment_proposal_confirm(
         operation=_PROPOSAL_CONFIRM_OPERATION,
         target_id=_proposal_target_id(public_id, proposal_public_id),
         target_type=_PROPOSAL_TARGET_TYPE,
-        body=_proposal_confirm_fingerprint_body(payload),
+        body=_actor_scoped_fingerprint_body(
+            _proposal_confirm_fingerprint_body(payload),
+            actor_account_id=auth.account_id,
+        ),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §2.1 replay: re-serialise the fold, do NOT bump again.
@@ -616,7 +648,10 @@ def post_repayment_proposal_reject(
         operation=_PROPOSAL_REJECT_OPERATION,
         target_id=_proposal_target_id(public_id, proposal_public_id),
         target_type=_PROPOSAL_TARGET_TYPE,
-        body=payload.model_dump(mode="json", exclude_unset=True),
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(mode="json", exclude_unset=True),
+            actor_account_id=auth.account_id,
+        ),
         expected_row_version=None,
     )
     if claim is None:  # replay: re-serialise the proposal's canonical state.

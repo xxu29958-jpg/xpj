@@ -391,3 +391,49 @@ def test_create_proposal_same_key_different_debt_is_reused(
         json=body,
     )
     assert second.status_code == 422, second.json()
+
+
+def test_proposal_idempotency_fingerprint_is_actor_scoped(
+    client: TestClient, *, identity
+) -> None:
+    # ADR-0049 §3.6 includes actor_account_id in Debt fingerprints. Proposal HIT
+    # paths return before debtor/creditor guards re-run, so a different same-ledger
+    # actor reusing a successful key must be a fingerprint mismatch.
+    for operation in ("create", "withdraw", "confirm", "reject"):
+        member_id, member_token = _mint_member_actor()
+        member_headers = _member_headers(member_token)
+        debt = _create_member_debt(
+            client,
+            identity.app_headers,
+            direction="owed_to_me",
+            member_account_id=member_id,
+        )
+        key = str(uuid4())
+
+        if operation == "create":
+            url = f"/api/debts/{debt['public_id']}/repayment-proposals"
+            body = {"proposed_amount_cents": 20000}
+            first_headers = {**member_headers, "Idempotency-Key": key}
+            replay_headers = {**identity.app_headers, "Idempotency-Key": key}
+        else:
+            proposal = _propose(
+                client, member_headers, debt["public_id"], proposed_amount_cents=20000
+            ).json()
+            url = (
+                f"/api/debts/{debt['public_id']}/repayment-proposals/"
+                f"{proposal['public_id']}/{operation}"
+            )
+            body = {"expected_row_version": debt["row_version"]} if operation == "confirm" else {}
+            if operation == "withdraw":
+                first_headers = {**member_headers, "Idempotency-Key": key}
+                replay_headers = {**identity.app_headers, "Idempotency-Key": key}
+            else:
+                first_headers = {**identity.app_headers, "Idempotency-Key": key}
+                replay_headers = {**member_headers, "Idempotency-Key": key}
+
+        first = client.post(url, headers=first_headers, json=body)
+        assert first.status_code == 201, (operation, first.json())
+
+        replay = client.post(url, headers=replay_headers, json=body)
+        assert replay.status_code == 422, (operation, replay.json())
+        assert replay.json()["error"] == "idempotency_key_reused"
