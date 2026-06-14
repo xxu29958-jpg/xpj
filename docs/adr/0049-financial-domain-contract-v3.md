@@ -171,7 +171,7 @@ No direct storage allowed.
 
 ---
 
-## 5. Mascot Contract (Non-financial layer)
+# 5. Mascot Contract (Non-financial layer)
 
 ## 5.1 Allowed Events
 
@@ -237,6 +237,62 @@ This system guarantees:
 > Member debt = frozen snapshots + settlements
 > Liability = independent stateful accounts
 > Goals = derived constraints only
+
+---
+
+# 10. Implementation Constraints
+
+## 10.1 Snapshot Storage Boundary
+
+- `AcceptedSplitSnapshot` is allowed append-only storage
+- It is NOT a debt table or balance table
+- Forbidden:
+  - mutable debt tables
+  - aggregated balance tables
+
+Only immutable financial snapshots are permitted as event sources.
+
+---
+
+## 10.2 Settlement & Reversal Contract
+
+- `MemberSettlement` MUST be idempotent via settlement_id
+- `MemberSettlementReversal` MUST:
+  - reference original settlement_id
+  - be idempotent itself
+  - NOT allow double-reversal (1:1 rule)
+
+Reversal restores previous derived net state deterministically.
+
+---
+
+## 10.3 Migration Constraint (Additive Only)
+
+- All new structures are append-only additions
+- Existing expense ledger MUST NOT be modified
+- No backfill into legacy tables
+- No dual-write rollback requirement
+
+---
+
+## 10.4 Derivation Correctness Contract
+
+A-domain correctness MUST satisfy:
+
+fold(all snapshots, all settlements) == expected net(A,B)
+
+- deterministic
+- order-independent except settlement_id tie-break
+
+---
+
+## 10.5 Read Cost Acceptance (Explicit)
+
+- Net balance is recomputed via full fold in v1
+- Complexity O(events per pair)
+- Acceptable for household scale
+
+Future optimization (cache/balance table) is explicitly deferred and NOT part of contract
 
 ---
 
