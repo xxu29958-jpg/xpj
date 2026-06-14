@@ -86,6 +86,7 @@ def _create_member_debt(
     *,
     direction: str,
     member_account_id: int,
+    ledger_id: str = "owner",
     principal_amount_cents: int = 50000,
 ) -> dict:
     """Seed a committed member Debt directly.
@@ -101,10 +102,14 @@ def _create_member_debt(
     del client, headers
     with SessionLocal() as db:
         owner_account_id = db.scalar(
-            select(Account.id).order_by(Account.id.asc()).limit(1)
+            select(LedgerMember.account_id)
+            .where(LedgerMember.ledger_id == ledger_id)
+            .order_by(LedgerMember.id.asc())
+            .limit(1)
         )
+        assert owner_account_id is not None
         debt = Debt(
-            tenant_id="owner",
+            tenant_id=ledger_id,
             owner_account_id=owner_account_id,
             created_by_account_id=owner_account_id,
             direction=direction,

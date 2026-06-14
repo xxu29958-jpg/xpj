@@ -344,6 +344,8 @@ Fingerprints MUST NOT include:
 
 Same key + same fingerprint returns the canonical committed result. Same key + different fingerprint returns `idempotency_key_reused`.
 
+Fact tables may store the request `idempotency_key` for audit/provenance, but MUST NOT enforce it as a global unique key. Uniqueness belongs to [[0042]]'s tenant-scoped `(tenant_id, idempotency_key)` claim table so two ledgers can legitimately use the same client-generated key.
+
 ---
 
 # 4. Bill Split Linkage

@@ -143,7 +143,6 @@ class Repayment(Base):
     __tablename__ = "repayments"
     __table_args__ = (
         CheckConstraint("amount_cents > 0", name="ck_repayments_amount_positive"),
-        UniqueConstraint("idempotency_key", name="uq_repayments_idempotency_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -179,9 +178,6 @@ class DebtAdjustment(Base):
     """
 
     __tablename__ = "debt_adjustments"
-    __table_args__ = (
-        UniqueConstraint("idempotency_key", name="uq_debt_adjustments_idempotency_key"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
@@ -212,7 +208,6 @@ class RepaymentVoid(Base):
     __tablename__ = "repayment_voids"
     __table_args__ = (
         UniqueConstraint("repayment_id", name="uq_repayment_voids_repayment"),
-        UniqueConstraint("idempotency_key", name="uq_repayment_voids_idempotency_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -240,7 +235,6 @@ class DebtVoid(Base):
     __tablename__ = "debt_voids"
     __table_args__ = (
         UniqueConstraint("debt_id", name="uq_debt_voids_debt"),
-        UniqueConstraint("idempotency_key", name="uq_debt_voids_idempotency_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
