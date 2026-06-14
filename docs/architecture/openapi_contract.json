@@ -7379,6 +7379,307 @@
         "title": "MaintenanceOrphanCleanupResponse",
         "type": "object"
       },
+      "MemberRepaymentProposalConfirmRequest": {
+        "additionalProperties": false,
+        "description": "Creditor confirms a member repayment proposal (ADR-0049 §3.2).\n\n``confirmed_amount_cents`` is the home amount actually accepted; ``None``\nconfirms the full proposed amount. A partial confirm (``< proposed``) commits\na partial ``Repayment`` and latches the proposal ``partially_confirmed``.\nConfirm is fold-changing, so ``expected_row_version`` is the §2.1 stale-intent\ntoken + §3.6 fingerprint component (REQUIRED).",
+        "properties": {
+          "confirmed_amount_cents": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Amount Cents"
+          },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "MemberRepaymentProposalConfirmRequest",
+        "type": "object"
+      },
+      "MemberRepaymentProposalCreateRequest": {
+        "additionalProperties": false,
+        "description": "Debtor \"I paid\" proposal for a member Debt (ADR-0049 §3.2).\n\nHome-currency proposal submits ``proposed_amount_cents``. A foreign-currency\nproposal submits ``original_currency_code`` + ``original_amount`` (a\nmajor-units Decimal, exactly like ``DebtCreateRequest`` / ``RepaymentCreateRequest``)\n(+ optional ``paid_at``); the backend freezes the home ``proposed_amount_cents``\nfrom the [[0027]] snapshot for ``paid_at`` and rejects when the rate is\npending (§2.2). Creating a proposal does NOT change the fold (it is a pending\nintent, not a fact), so there is no ``expected_row_version`` — the parent CAS\nhappens only on confirm. To replace an existing pending proposal, the client\nmust name the pending proposal it saw via ``supersedes_proposal_public_id``;\notherwise a delayed request could overwrite a newer unseen proposal.",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "original_amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount"
+          },
+          "original_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency Code"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "proposed_amount_cents": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Amount Cents"
+          },
+          "supersedes_proposal_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Proposal Public Id"
+          }
+        },
+        "title": "MemberRepaymentProposalCreateRequest",
+        "type": "object"
+      },
+      "MemberRepaymentProposalListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRepaymentProposalResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MemberRepaymentProposalListResponse",
+        "type": "object"
+      },
+      "MemberRepaymentProposalRejectRequest": {
+        "additionalProperties": false,
+        "description": "Creditor rejects a member repayment proposal (ADR-0049 §3.2).\n\nRejecting does not change the fold (no repayment is committed), so there is\nno ``expected_row_version``.",
+        "properties": {},
+        "title": "MemberRepaymentProposalRejectRequest",
+        "type": "object"
+      },
+      "MemberRepaymentProposalResponse": {
+        "properties": {
+          "committed_repayment_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Repayment Public Id"
+          },
+          "confirmed_amount_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Amount Cents"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "debt_public_id": {
+            "title": "Debt Public Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency Code"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "proposed_amount_cents": {
+            "title": "Proposed Amount Cents",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supersedes_proposal_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Proposal Public Id"
+          }
+        },
+        "required": [
+          "public_id",
+          "debt_public_id",
+          "status",
+          "proposed_amount_cents",
+          "home_currency_code",
+          "paid_at",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "MemberRepaymentProposalResponse",
+        "type": "object"
+      },
+      "MemberRepaymentProposalWithdrawRequest": {
+        "additionalProperties": false,
+        "description": "Debtor withdraws their own pending proposal (ADR-0049 §3.2).\n\nA no-op body: withdraw targets the proposal by path id and only succeeds\nwhile it is still ``pending``. It does not change the fold.",
+        "properties": {},
+        "title": "MemberRepaymentProposalWithdrawRequest",
+        "type": "object"
+      },
       "MerchantAliasCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -11954,6 +12255,475 @@
           }
         },
         "summary": "Post Adjustment",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/repayment-proposals": {
+      "get": {
+        "operationId": "get_repayment_proposals_api_debts__public_id__repayment_proposals_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRepaymentProposalListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Repayment Proposals",
+        "tags": [
+          "debts"
+        ]
+      },
+      "post": {
+        "operationId": "post_repayment_proposal_api_debts__public_id__repayment_proposals_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRepaymentProposalCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRepaymentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Repayment Proposal",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm": {
+      "post": {
+        "operationId": "post_repayment_proposal_confirm_api_debts__public_id__repayment_proposals__proposal_public_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRepaymentProposalConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Repayment Proposal Confirm",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject": {
+      "post": {
+        "operationId": "post_repayment_proposal_reject_api_debts__public_id__repayment_proposals__proposal_public_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRepaymentProposalRejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRepaymentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Repayment Proposal Reject",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw": {
+      "post": {
+        "operationId": "post_repayment_proposal_withdraw_api_debts__public_id__repayment_proposals__proposal_public_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRepaymentProposalWithdrawRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRepaymentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Repayment Proposal Withdraw",
         "tags": [
           "debts"
         ]

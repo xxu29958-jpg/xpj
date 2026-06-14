@@ -92,6 +92,18 @@ ERROR_MESSAGES = {
     "repayment_not_found": "还款记录不存在。",
     "repayment_already_voided": "这笔还款已被作废。",
     "debt_already_voided": "这笔欠款已作废，无法继续操作。",
+    # ADR-0049 Debt domain (slice 3: member repayment proposal §3.2). A stale
+    # ``expected_row_version`` on confirm reuses the generic ``state_conflict``;
+    # an overpay reuses ``debt_overpay_rejected``; a pending FX rate reuses
+    # ``exchange_rate_pending``. These cover the proposal-specific cases.
+    "repayment_proposal_requires_member_debt": "只有家庭成员之间的欠款才能发起还款确认。",
+    "repayment_proposal_debtor_only": "只有欠款一方可以发起或撤回还款申请。",
+    "repayment_proposal_creditor_only": "只有收款一方可以确认或拒绝还款申请。",
+    "repayment_proposal_not_found": "还款申请不存在或已被处理。",
+    "repayment_proposal_not_pending": "这条还款申请已被处理，无法再操作。",
+    "repayment_proposal_expired": "还款申请已过期，请重新发起。",
+    "repayment_proposal_amount_invalid": "请填写正确的还款金额。",
+    "repayment_proposal_already_pending": "已有一条待处理的还款申请。",
     "notification_source_invalid": "通知来源暂不支持。",
     "merchant_alias_not_found": "商家别名不存在。",
     "merchant_alias_conflict": "商家别名已指向其他商家。",

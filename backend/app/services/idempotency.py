@@ -63,6 +63,7 @@ __all__ = [
     "claim_idempotent_request",
     "fingerprint_request",
     "mark_idempotency_succeeded",
+    "reject_idempotency_target_mismatch",
 ]
 
 IDEMPOTENCY_STATUS_IN_PROGRESS = "in_progress"
@@ -234,6 +235,38 @@ def mark_idempotency_succeeded(
     row.resource_id = resource_id if resource_id is not None else row.target_id
     row.completed_at = now_utc()
     db.flush()
+
+
+def reject_idempotency_target_mismatch(
+    db: Session,
+    *,
+    tenant_id: str,
+    idempotency_key: str,
+    operation: str,
+    target_id: str,
+    target_type: str,
+) -> None:
+    """Reject an existing key before route-local canonicalization reads.
+
+    Most routes can build the full fingerprint without loading business state.
+    Proposal confirm needs the proposal's amount to collapse explicit-full and
+    omitted-full bodies into one fingerprint. This preflight preserves the
+    shared claim helper's target-mismatch behavior before that lookup runs.
+    """
+    existing = db.execute(
+        select(ApiIdempotencyKey)
+        .where(ApiIdempotencyKey.tenant_id == tenant_id)
+        .where(ApiIdempotencyKey.idempotency_key == idempotency_key)
+        .limit(1)
+    ).scalar_one_or_none()
+    if existing is None:
+        return
+    if (
+        existing.operation != operation
+        or existing.target_type != target_type
+        or existing.target_id != target_id
+    ):
+        raise AppError("idempotency_key_reused", status_code=422)
 
 
 def claim_idempotent_request(

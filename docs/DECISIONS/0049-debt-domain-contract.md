@@ -232,9 +232,9 @@ Rules:
 - The default expiry is 30 days from `created_at`; expired proposals cannot be confirmed.
 - Each Debt may have at most one `pending` repayment proposal at a time.
 - The database MUST enforce that invariant with a partial unique index equivalent to `UNIQUE(debt_id) WHERE status='pending'`.
-- Service-level supersede logic is a workflow convenience, not a substitute for the unique index. Replacement creation marks the old pending proposal `superseded` and inserts the new pending proposal in one transaction; the partial unique index remains the concurrency backstop.
+- Service-level supersede logic is a workflow convenience, not a substitute for the unique index. Replacement creation must name the currently pending proposal the client saw; only that exact pending proposal may be marked `superseded` while the new pending proposal is inserted in one transaction. A replacement request with no supersede target, or with a stale target after another device already created a newer pending proposal, is rejected and the partial unique index remains the concurrency backstop.
 - A debtor may withdraw their own pending proposal.
-- A debtor may change amount/date only by creating a new proposal that supersedes the old pending proposal; proposal amounts are not edited in place.
+- A debtor may change amount/date only by creating a new proposal that explicitly supersedes the old pending proposal; proposal amounts are not edited in place.
 - A creditor may confirm the full proposal amount.
 - A creditor may partially confirm a lower positive amount. Partial confirmation commits one `Repayment` for `confirmed_amount_cents`, closes the proposal as `partially_confirmed`, and does not leave the rejected remainder pending.
 - A creditor may reject the proposal without committing any repayment.
@@ -329,7 +329,7 @@ Idempotency retry rule:
 Operation-specific payload fields:
 
 - repayment commit: amount or original payment input, `paid_at`, optional `proposal_id`
-- repayment proposal create: proposed amount or original payment input, `paid_at`, debtor, creditor, explicit expiry when supplied, superseded proposal id when present
+- repayment proposal create: proposed amount or original payment input, `paid_at`, debtor, creditor, explicit expiry when supplied, superseded proposal public id when replacing a pending proposal
 - proposal resolve: `proposal_id`, resolution operation, optional `confirmed_amount_cents`
 - adjustment: signed amount, reason
 - repayment void: `repayment_id`, reason
@@ -343,6 +343,8 @@ Fingerprints MUST NOT include:
 - presentation-only copy or labels that do not affect the business fact
 
 Same key + same fingerprint returns the canonical committed result. Same key + different fingerprint returns `idempotency_key_reused`.
+
+Fact tables may store the request `idempotency_key` for audit/provenance, but MUST NOT enforce it as a global unique key. Uniqueness belongs to [[0042]]'s tenant-scoped `(tenant_id, idempotency_key)` claim table so two ledgers can legitimately use the same client-generated key.
 
 ---
 
@@ -610,7 +612,8 @@ Required checks before exposing Debt features:
 - creditor cannot unilaterally create committed member Debt
 - debtor repayment proposal has explicit fields, expiry, and terminal lifecycle states
 - database partial unique index prevents more than one pending repayment proposal for the same Debt
-- creating a replacement proposal supersedes the previous pending proposal instead of leaving both confirmable
+- creating a replacement proposal supersedes the explicitly named current pending proposal instead of leaving both confirmable
+- stale replacement creates cannot supersede a newer pending proposal the client has not seen
 - two concurrent proposal creates for the same Debt cannot leave two pending proposals
 - debtor can withdraw a pending proposal without changing remaining
 - changing a pending proposal amount creates a superseding proposal rather than editing in place
