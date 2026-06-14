@@ -60,11 +60,15 @@ Money-changing operations MUST derive actor identity and tenant scope from the a
 - Split invitation accept: only `receiver_account_id` may accept, and the receiver must choose a target ledger where they have write role.
 - Split invitation reject: only `receiver_account_id` may reject.
 - Split invitation cancel: only `sender_account_id` may cancel before acceptance.
-- Member settlement create/reverse/void: only a participant in that account pair may perform the operation.
-- Liability create/update/payment/adjustment: only an actor with write permission on the liability's owning scope may perform the operation.
+- Member settlement proposal: only payer or payee may submit it, but a committed settlement that reduces payer debt requires payee/creditor confirmation unless the payee is the actor recording receipt.
+- Settlement reversal: only payer or payee may submit it, but a committed reversal that worsens another party's settled position requires that harmed party's confirmation or an explicit dispute workflow.
+- Accepted split void: only debtor or creditor may submit it, but a committed void that removes creditor receivable requires creditor confirmation or both-party agreement. A debtor-benefiting void MUST NOT be unilateral.
+- Liability create/update/payment/adjustment: only the owning account may perform the operation. Shared-liability write scope is out of this ADR; ledger membership alone grants no permission to mutate another account's liability.
 - Goal create/update/archive: only an actor with write permission on the goal's owning scope may perform the operation.
 
 Third-party account C MUST NOT be able to create, reverse, void, or otherwise affect financial facts between accounts A and B.
+
+Participant authorization is necessary but not sufficient. Member-debt operations involve adverse interests: the party who benefits from reducing their debt, increasing their own receivable, or worsening another party's settled position cannot unilaterally commit that fact. Beneficiary-only submissions remain pending proposals, notifications, or disputes until the affected value holder confirms under the product workflow.
 
 APIs SHOULD avoid confirming whether a nonparticipant-guessed financial id exists. Prefer `not_found` or an equivalent non-enumerating error shape for unauthorized nonparticipants.
 
@@ -148,11 +152,14 @@ If an accepted split is wrong, the correction path is an append-only void/disput
 - reference exactly one accepted split snapshot
 - be idempotent via its request idempotency key and `void_id`
 - include actor, reason, and timestamp
-- be authorized to a participant in the accepted split
+- require creditor confirmation or both-party agreement when the void removes a receivable
+- be admitted under the same per-account-pair guard used by accept, settlement, and reversal
 - not mutate the original snapshot
 - not allow double void for the same snapshot
 
 A voided snapshot no longer contributes to member-debt net balance, but remains visible in audit history.
+
+A void MUST NOT cause existing committed settlements to exceed the remaining debt for the pair. If voiding a snapshot would make the current settlement set overpay or flip direction, the void is rejected or atomically paired with explicit correction/reversal events under the same pair guard.
 
 ---
 
@@ -203,9 +210,11 @@ A settlement is:
 - have explicit `payer_account_id` and `payee_account_id`
 - reduce the payer's existing net debt to the payee
 - be admitted under a per-account-pair serialization or compare-and-append guard
+- satisfy `amount_cents <= current net debt from payer to payee` while holding that guard
 - never modify past snapshots
 
 ### Settlement MUST NOT:
+- commit when current net is zero or already opposite direction
 - create a new opposite-direction debt by overpaying
 - touch liability accounts
 - rewrite or delete prior settlements
@@ -214,6 +223,8 @@ A settlement is:
 - be reversed via explicit reversal event
 
 Overpay prevention MUST be checked against the authoritative fold/current pair state while holding the pair admission guard. Rebuildable projections or caches MUST NOT be used for admission. If pair-level admission cannot be implemented, settlement creation MUST NOT be exposed.
+
+A payer/debtor-submitted settlement is only a pending payment proposal until the payee/creditor confirms receipt. A payee/creditor may record receipt directly because that reduces their own receivable.
 
 ---
 
@@ -259,6 +270,8 @@ All liability mutations are money-changing operations and MUST follow the securi
 - liability is NOT part of member graph
 - liability is NOT derived
 - liability balance is authoritative state
+- liability is personal/account-owned in this ADR
+- shared liabilities require a future ADR before use
 - liability payment may be represented as an expense only for spending reports, not as member-debt settlement
 
 ---
@@ -335,12 +348,18 @@ planned_savings = scoped income_plan amount - scoped confirmed spending
 
 Forecast inflow is the sum of active `income_plan` snapshots for the same scope and period. It is not realized income.
 
-Achievement is evaluable only when:
+At period close, the evaluator MUST freeze the income-plan input used for that period: plan ids, plan versions or update timestamps, and `amount_cents` values. Later edits to `income_plan` affect future planning, not a closed-period `savings_target` result.
+
+Evaluation is possible only when:
 
 - the configured period is closed
 - an active income plan exists for the same scope and period
 - scoped confirmed spending is available for that period
-- `planned_savings >= target_amount_cents`
+
+Closed-period result:
+
+- `achieved` when `planned_savings >= target_amount_cents`
+- `missed` when `planned_savings < target_amount_cents`
 
 No realized-income transaction ledger is defined by this ADR. If future product work adds actual income transactions, switching `savings_target` from forecast-based to realized-flow-based semantics requires a new ADR.
 
@@ -352,6 +371,8 @@ Allowed scope examples:
 No cross-ledger or cross-account aggregation is allowed unless that scope is explicitly configured and authorized.
 
 Goal target/configuration may be stored. Goal progress and achieved state MUST NOT be stored as independent truth.
+
+The frozen period evaluation input is a closed-period fact used to keep derivation stable; it is not a mutable progress cache.
 
 If no active income plan exists for the configured scope and period, `savings_target` is `not_evaluable`, not failed and not achieved.
 
@@ -412,7 +433,7 @@ Member debt may connect accounts, but it MUST NOT expose either party's private 
 
 ## I7 - Write Authorization
 
-Every money-changing operation requires an authenticated actor with explicit participant or owner-scope write permission.
+Every money-changing operation requires an authenticated actor with explicit participant/owner permission and, for adverse-interest member-debt writes, confirmation from the party whose receivable or settled position is reduced.
 
 ## I8 - Money Mutation Idempotency
 
@@ -468,7 +489,11 @@ Every money-changing operation has an explicit idempotency contract. Append/stat
 
 ## F12: Projection loss
 
--> recompute from snapshots, voids, settlements, reversals, liability state/audit, and scoped goal inputs
+-> recompute member-debt projections from snapshots, voids, settlements, and reversals; read authoritative liability balances and use audit for verification/explanation; recompute goal projections from scoped and frozen goal inputs
+
+## F13: Void races settlement
+
+-> serialized by the same pair guard; void cannot commit if it would make existing settlements overpay unless paired with explicit correction/reversal under that guard
 
 ---
 
@@ -524,11 +549,13 @@ If a reversal or void changes facts for a period already consumed by goals, repo
 
 ---
 
-## 11.3 Closed Period and Admission Contract
+## 11.3 Closed Period and Net Admission Contract
 
-- Settlement admission is order-sensitive even though fold is order-independent.
-- Admission MUST use pair-level serialization or an equivalent conditional compare-and-append guard.
-- Admission MUST read authoritative fold/current state, not disposable cache.
+- Net-affecting admission is order-sensitive even though fold is order-independent.
+- Accept, void, settlement, and settlement reversal MUST use the same pair-level serialization or equivalent conditional compare-and-append guard.
+- Admission MUST read authoritative fold/current state under that guard, not disposable cache.
+- Settlement admission MUST reject zero-net, opposite-direction, or overpay attempts.
+- Void admission MUST reject or atomically correct writes that would make committed settlements overpay remaining debt.
 - Closed-period corrections are explicit correction events, not invisible history rewrites.
 
 ---
@@ -551,7 +578,7 @@ fold(all non-voided snapshots, all settlements, all reversals) == expected net(A
 ```
 
 - deterministic
-- order-independent except stable id tie-break
+- order-independent
 - independent of expense edits after acceptance
 
 ---
@@ -571,6 +598,9 @@ Future optimization with a cache or projection table is explicitly deferred and 
 Required implementation checks:
 
 - third-party account cannot accept, settle, reverse, void, or adjust money facts for other participants
+- payer-only settlement submission cannot clear debt until payee/creditor confirms receipt
+- debtor-benefiting accepted-split void cannot commit without creditor confirmation or both-party agreement
+- reversal that worsens another party's settled position cannot commit without that party's confirmation or an explicit dispute workflow
 - all financial writes are tenant/account scoped from `AuthContext`
 - editing sender original expense does not change member debt
 - editing receiver local expense does not change member debt
@@ -579,12 +609,16 @@ Required implementation checks:
 - accept creates receiver expense and accepted snapshot atomically
 - accepted snapshot fields are immutable
 - accepted snapshot void removes it from net fold without mutating it
+- accept, void, settlement, and reversal share the same per-pair admission guard
 - settlement replay with the same request idempotency key and fingerprint returns the canonical settlement result
 - `settlement_id` uniqueness is a domain guard, not the only idempotency mechanism
 - settlement request idempotency key cannot be reused with a different fingerprint
 - settlement cannot overpay into opposite-direction debt
+- settlement at zero net or opposite-direction net is rejected
 - concurrent settlements for the same pair cannot both pass stale net checks
+- void racing settlement cannot make the pair overpaid or flipped
 - settlement reversal references original settlement and cannot be applied twice
+- liability is personal/account-owned unless a future ADR defines shared liability semantics
 - liability payment replay changes balance only once
 - liability adjustment is append-only, reasoned, and immutable
 - liability mutation cannot make balance negative
@@ -594,6 +628,9 @@ Required implementation checks:
 - debt repayment linked-liability changes create a new goal version
 - spending limit achievement fires only after period close and only if not exceeded
 - savings target progress is derived from authorized scope-bound income plans minus scoped confirmed spending
+- savings target freezes income-plan input at period close
+- savings target reaches terminal `missed` when the period is closed, inputs are present, and planned savings is below target
+- later income-plan edits do not rewrite closed-period savings target results
 - savings target with no active income plan is not evaluable
 - member-debt clear transition can produce a deduped `MemberDebtCleared` mascot event
 - `DebtCleared` and `GoalAchieved` mascot events fire once per committed transition
