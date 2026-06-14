@@ -81,6 +81,7 @@ from app.services.idempotency import (
     fingerprint_request,
     mark_idempotency_succeeded,
 )
+from app.services.time_service import to_iso
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -108,6 +109,27 @@ def _proposal_target_id(public_id: str, proposal_public_id: str) -> str:
     # api_idempotency_keys.target_id is VARCHAR(64); hash the parent+proposal
     # tuple so both ids shape the fingerprint without widening the shared table.
     return sha256(f"{public_id}:{proposal_public_id}".encode()).hexdigest()
+
+
+def _proposal_create_fingerprint_body(
+    payload: MemberRepaymentProposalCreateRequest,
+) -> dict[str, object]:
+    body = payload.model_dump(mode="json", exclude_unset=True)
+    if payload.note is not None:
+        note = payload.note.strip()
+        if note:
+            body["note"] = note
+        else:
+            body.pop("note", None)
+    if payload.paid_at is not None:
+        body["paid_at"] = to_iso(payload.paid_at)
+    if payload.expires_at is not None:
+        body["expires_at"] = to_iso(payload.expires_at)
+    if payload.original_currency_code is not None:
+        body["original_currency_code"] = payload.original_currency_code.strip().upper()
+    if payload.original_amount is not None:
+        body["original_amount"] = format(payload.original_amount.normalize(), "f")
+    return body
 
 
 def _repayment_create_response(
@@ -418,7 +440,7 @@ def post_repayment_proposal(
     fingerprint = fingerprint_request(
         operation=_PROPOSAL_CREATE_OPERATION,
         target_id=public_id,
-        body=payload.model_dump(mode="json", exclude_unset=True),
+        body=_proposal_create_fingerprint_body(payload),
         expected_row_version=None,
     )
     outcome = claim_idempotency_key(

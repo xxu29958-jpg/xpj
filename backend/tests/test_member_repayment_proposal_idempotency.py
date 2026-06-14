@@ -51,6 +51,43 @@ def test_create_proposal_idempotent_replay_applies_once(client: TestClient, *, i
     assert proposals[0]["supersedes_proposal_public_id"] is None
 
 
+def test_create_proposal_replay_normalizes_note_and_datetimes(
+    client: TestClient, *, identity
+) -> None:
+    member_id, member_token = _mint_member_actor()
+    debt = _create_member_debt(
+        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
+    )
+    key = str(uuid4())
+    headers = {**_member_headers(member_token), "Idempotency-Key": key}
+
+    first = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals",
+        headers=headers,
+        json={
+            "proposed_amount_cents": 20000,
+            "note": " paid ",
+            "paid_at": "2026-05-10T08:00:00+08:00",
+            "expires_at": "2026-06-10T00:00:00+08:00",
+        },
+    )
+    assert first.status_code == 201, first.json()
+
+    replay = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals",
+        headers=headers,
+        json={
+            "proposed_amount_cents": 20000,
+            "note": "paid",
+            "paid_at": "2026-05-10T00:00:00Z",
+            "expires_at": "2026-06-09T16:00:00Z",
+        },
+    )
+    assert replay.status_code == 201, replay.json()
+    assert replay.json()["public_id"] == first.json()["public_id"]
+    assert replay.json()["note"] == "paid"
+
+
 def test_create_proposal_reused_key_different_fingerprint_is_422(
     client: TestClient, *, identity
 ) -> None:
