@@ -177,6 +177,37 @@ def _latch_proposal_resolution(
     db.expire(proposal)
 
 
+def _resolve_superseded_pending(
+    db: Session,
+    *,
+    debt_id: int,
+    expected_public_id: str | None,
+    actor_account_id: int,
+    resolved_at: datetime,
+) -> int | None:
+    """Return the pending proposal id explicitly superseded by this create."""
+    superseded = _current_pending(db, debt_id=debt_id)
+    if superseded is None:
+        if expected_public_id is not None:
+            raise AppError("repayment_proposal_not_pending", status_code=409)
+        return None
+    if expected_public_id != superseded.public_id:
+        raise AppError("repayment_proposal_already_pending", status_code=409)
+    flipped = db.execute(
+        update(MemberRepaymentProposal)
+        .where(MemberRepaymentProposal.id == superseded.id)
+        .where(MemberRepaymentProposal.status == "pending")
+        .values(
+            status="superseded",
+            resolved_at=resolved_at,
+            resolved_by_account_id=actor_account_id,
+        )
+    )
+    if not flipped.rowcount:
+        raise AppError("repayment_proposal_not_pending", status_code=409)
+    return superseded.id
+
+
 def create_repayment_proposal(
     db: Session,
     *,
@@ -187,7 +218,7 @@ def create_repayment_proposal(
     idempotency_key: str,
     commit: bool = True,
 ) -> MemberRepaymentProposalResponse:
-    """Create a pending member repayment proposal; supersede any existing pending.
+    """Create a pending member repayment proposal, or explicitly supersede one.
 
     Does NOT touch the §2 fold — a pending proposal is an intent, not a fact.
     ``commit=False`` lets the route commit the insert together with the [[0042]]
@@ -204,27 +235,16 @@ def create_repayment_proposal(
     money = _freeze_proposal_money(db, tenant_id=tenant_id, payload=payload, paid_at=paid_at)
     proposed_amount_cents = money.pop("amount_cents")
 
-    # §3.2 supersede: an existing pending proposal is marked superseded in the
-    # same transaction so the new one can take the single pending slot. The
-    # partial UNIQUE index is the hard backstop against a concurrent create that
-    # races this read-then-insert.
+    # Replacement must name the pending proposal the client saw; the partial
+    # unique index remains the backstop for concurrent first creates.
     now = now_utc()
-    superseded = _current_pending(db, debt_id=debt.id)
-    supersedes_proposal_id: int | None = None
-    if superseded is not None:
-        # Guarded flip (DB predicate + rowcount): if a creditor confirm/reject
-        # resolved this pending proposal concurrently, the UPDATE matches 0 rows
-        # — don't link supersedes and don't clobber that resolution; the partial
-        # UNIQUE index still backstops the new insert.
-        flipped = db.execute(
-            update(MemberRepaymentProposal)
-            .where(MemberRepaymentProposal.id == superseded.id)
-            .where(MemberRepaymentProposal.status == "pending")
-            .values(status="superseded", resolved_at=now, resolved_by_account_id=actor_account_id)
-        )
-        if flipped.rowcount:
-            supersedes_proposal_id = superseded.id
-
+    supersedes_proposal_id = _resolve_superseded_pending(
+        db,
+        debt_id=debt.id,
+        expected_public_id=payload.supersedes_proposal_public_id,
+        actor_account_id=actor_account_id,
+        resolved_at=now,
+    )
     proposal = MemberRepaymentProposal(
         debt_id=debt.id,
         debtor_account_id=actor_account_id,

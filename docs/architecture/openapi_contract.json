@@ -7408,7 +7408,7 @@
       },
       "MemberRepaymentProposalCreateRequest": {
         "additionalProperties": false,
-        "description": "Debtor \"I paid\" proposal for a member Debt (ADR-0049 §3.2).\n\nHome-currency proposal submits ``proposed_amount_cents``. A foreign-currency\nproposal submits ``original_currency_code`` + ``original_amount`` (a\nmajor-units Decimal, exactly like ``DebtCreateRequest`` / ``RepaymentCreateRequest``)\n(+ optional ``paid_at``); the backend freezes the home ``proposed_amount_cents``\nfrom the [[0027]] snapshot for ``paid_at`` and rejects when the rate is\npending (§2.2). Creating a proposal does NOT change the fold (it is a pending\nintent, not a fact), so there is no ``expected_row_version`` — the parent CAS\nhappens only on confirm.",
+        "description": "Debtor \"I paid\" proposal for a member Debt (ADR-0049 §3.2).\n\nHome-currency proposal submits ``proposed_amount_cents``. A foreign-currency\nproposal submits ``original_currency_code`` + ``original_amount`` (a\nmajor-units Decimal, exactly like ``DebtCreateRequest`` / ``RepaymentCreateRequest``)\n(+ optional ``paid_at``); the backend freezes the home ``proposed_amount_cents``\nfrom the [[0027]] snapshot for ``paid_at`` and rejects when the rate is\npending (§2.2). Creating a proposal does NOT change the fold (it is a pending\nintent, not a fact), so there is no ``expected_row_version`` — the parent CAS\nhappens only on confirm. To replace an existing pending proposal, the client\nmust name the pending proposal it saw via ``supersedes_proposal_public_id``;\notherwise a delayed request could overwrite a newer unseen proposal.",
         "properties": {
           "expires_at": {
             "anyOf": [
@@ -7486,6 +7486,19 @@
               }
             ],
             "title": "Proposed Amount Cents"
+          },
+          "supersedes_proposal_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Proposal Public Id"
           }
         },
         "title": "MemberRepaymentProposalCreateRequest",

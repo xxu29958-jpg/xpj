@@ -200,7 +200,11 @@ def test_replacement_create_supersedes_previous_pending(client: TestClient, *, i
         client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
     ).json()
     second = _propose(
-        client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=25000
+        client,
+        _member_headers(member_token),
+        debt["public_id"],
+        proposed_amount_cents=25000,
+        supersedes_proposal_public_id=first["public_id"],
     ).json()
 
     # New one links back to the one it superseded.
@@ -230,7 +234,11 @@ def test_changing_amount_creates_superseding_proposal_not_inplace_edit(
         client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
     ).json()
     second = _propose(
-        client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=30000
+        client,
+        _member_headers(member_token),
+        debt["public_id"],
+        proposed_amount_cents=30000,
+        supersedes_proposal_public_id=first["public_id"],
     ).json()
 
     assert second["public_id"] != first["public_id"]  # new row, not in-place
@@ -295,7 +303,11 @@ def test_superseded_proposal_cannot_be_confirmed(client: TestClient, *, identity
         client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
     ).json()
     _propose(
-        client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=25000
+        client,
+        _member_headers(member_token),
+        debt["public_id"],
+        proposed_amount_cents=25000,
+        supersedes_proposal_public_id=first["public_id"],
     )  # supersedes `first`
 
     confirm = client.post(

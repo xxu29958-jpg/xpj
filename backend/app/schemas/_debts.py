@@ -175,7 +175,9 @@ class MemberRepaymentProposalCreateRequest(BaseModel):
     from the [[0027]] snapshot for ``paid_at`` and rejects when the rate is
     pending (§2.2). Creating a proposal does NOT change the fold (it is a pending
     intent, not a fact), so there is no ``expected_row_version`` — the parent CAS
-    happens only on confirm.
+    happens only on confirm. To replace an existing pending proposal, the client
+    must name the pending proposal it saw via ``supersedes_proposal_public_id``;
+    otherwise a delayed request could overwrite a newer unseen proposal.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -186,6 +188,7 @@ class MemberRepaymentProposalCreateRequest(BaseModel):
     paid_at: datetime | None = None
     note: str | None = Field(default=None, max_length=500)
     expires_at: datetime | None = None
+    supersedes_proposal_public_id: str | None = Field(default=None, min_length=1, max_length=36)
 
 
 class MemberRepaymentProposalConfirmRequest(BaseModel):
