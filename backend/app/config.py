@@ -136,6 +136,11 @@ class Settings:
     fx_rate_source: str
     fx_rate_ecb_url: str
     fx_rate_frankfurter_url: str
+    # ADR-0049 §4 bill-split → Debt linkage rollout gate. OFF by default: the
+    # Debt domain is a target contract still being built out (ADR §0.1 runtime
+    # subset), so accepting a bill split creates a Debt only once the rollout is
+    # deliberately switched on. Flipping it on is forward-only per §4.
+    debt_rollout_enabled: bool
 
     @property
     def max_upload_size_bytes(self) -> int:
@@ -411,4 +416,5 @@ def get_settings() -> Settings:
             ).strip()
             or "https://api.frankfurter.dev/v1/latest?base=EUR"
         ),
+        debt_rollout_enabled=_bool_env("DEBT_ROLLOUT_ENABLED", False),
     )

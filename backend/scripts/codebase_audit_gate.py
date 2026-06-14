@@ -220,7 +220,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # update both baseline files. Android count is NOT listed here.
 }
 
-STRICT_EQUALITY_BASELINE["backend_pytest_count"] = 1814  # +1 ADR-0049 slice 3 paid_at FX-date fingerprint regression
+STRICT_EQUALITY_BASELINE["backend_pytest_count"] = 1818  # +1 ADR-0049 slice 3 paid_at FX-date fingerprint regression; +4 ADR-0049 slice 4 bill_split→Debt linkage (test_bill_split_debt_linkage: accept-creates-member-Debt rollout-on / no-Debt rollout-off / re-accept-no-duplicate / reject-no-Debt)
 
 
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep

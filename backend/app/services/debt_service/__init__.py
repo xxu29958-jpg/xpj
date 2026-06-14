@@ -19,7 +19,7 @@ is fold-changing and goes through the same §2.1 serialization.
 from __future__ import annotations
 
 from app.services.debt_service._adjustment import record_adjustment
-from app.services.debt_service._create import create_debt
+from app.services.debt_service._create import create_bill_split_debt, create_debt
 from app.services.debt_service._fold import (
     compute_paid,
     compute_remaining,
@@ -49,6 +49,7 @@ __all__ = [
     "compute_paid",
     "compute_remaining",
     "confirm_repayment_proposal",
+    "create_bill_split_debt",
     "create_debt",
     "create_repayment_proposal",
     "debt_response",
