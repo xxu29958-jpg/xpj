@@ -22,7 +22,7 @@ reject only mutate the proposal row's own lifecycle and never enter the fold.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -96,7 +96,11 @@ def _current_pending(db: Session, *, debt_id: int) -> MemberRepaymentProposal | 
 
 
 def _freeze_proposal_money(
-    db: Session, *, tenant_id: str, payload: MemberRepaymentProposalCreateRequest
+    db: Session,
+    *,
+    tenant_id: str,
+    payload: MemberRepaymentProposalCreateRequest,
+    paid_at: datetime,
 ) -> dict:
     """Freeze the home ``proposed_amount_cents`` + original-currency provenance.
 
@@ -123,7 +127,11 @@ def _freeze_proposal_money(
         amount_cents=payload.proposed_amount_cents,
         original_currency=payload.original_currency_code,
         original_amount=payload.original_amount,
-        event_time=payload.paid_at,
+        # Freeze at the SAME paid_at the proposal row stores (payload.paid_at or
+        # now_utc()), not the raw payload value — otherwise a paid_at-omitted
+        # foreign proposal could freeze on a different FX date than it records,
+        # diverging the home cents from the stored payment instant at a date edge.
+        event_time=paid_at,
         amount_error="repayment_proposal_amount_invalid",
     )
 
@@ -193,7 +201,7 @@ def create_repayment_proposal(
     _, creditor_account_id = proposal_debtor_creditor(debt)
 
     paid_at = payload.paid_at or now_utc()
-    money = _freeze_proposal_money(db, tenant_id=tenant_id, payload=payload)
+    money = _freeze_proposal_money(db, tenant_id=tenant_id, payload=payload, paid_at=paid_at)
     proposed_amount_cents = money.pop("amount_cents")
 
     # §3.2 supersede: an existing pending proposal is marked superseded in the

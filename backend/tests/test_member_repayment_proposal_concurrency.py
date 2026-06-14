@@ -33,7 +33,6 @@ from app.database import SessionLocal, engine
 from app.errors import AppError
 from app.models import Account, Debt, LedgerMember, MemberRepaymentProposal, Repayment
 from app.schemas import (
-    DebtCreateRequest,
     MemberRepaymentProposalConfirmRequest,
     MemberRepaymentProposalCreateRequest,
 )
@@ -68,19 +67,24 @@ def _seed_member_debt(*, principal_amount_cents: int) -> tuple[str, int, int]:
     owner = _owner_account_id()
     member_id = _seed_member_account()
     with SessionLocal() as db:
-        debt = debt_service.create_debt(
-            db,
+        # Public create + the create_debt service reject committed member Debt now
+        # (ADR-0049 §5.2 → confirmation flow / bill_split accept); seed the row
+        # directly so the proposal concurrency paths have a member Debt to act on.
+        debt = Debt(
             tenant_id="owner",
-            created_by_account_id=owner,
             owner_account_id=owner,
-            payload=DebtCreateRequest(
-                direction="owed_to_me",
-                counterparty_type="member",
-                counterparty_account_id=member_id,
-                principal_amount_cents=principal_amount_cents,
-            ),
-            commit=True,
+            created_by_account_id=owner,
+            direction="owed_to_me",
+            counterparty_type="member",
+            counterparty_account_id=member_id,
+            principal_amount_cents=principal_amount_cents,
+            home_currency_code="CNY",
+            status="open",
+            source_type="bill_split",
+            source_id=str(uuid4()),
         )
+        db.add(debt)
+        db.commit()
         return debt.public_id, debt.row_version, member_id
 
 

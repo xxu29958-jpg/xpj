@@ -398,15 +398,18 @@ def post_repayment_proposal(
     db: Session = Depends(get_db),
 ) -> MemberRepaymentProposalResponse:
     # Create has no proposal id yet, so — like ``post_debt`` — it uses the
-    # low-level [[0042]] helpers directly: the key itself anchors the fingerprint
-    # and the recorded ``resource_id`` (the new proposal public_id) locates the
-    # proposal on a HIT. Creating a proposal is NOT fold-changing, so there is no
+    # low-level [[0042]] helpers directly; the recorded ``resource_id`` (the new
+    # proposal public_id) locates the proposal on a HIT. The fingerprint target is
+    # the PARENT debt ``public_id`` (§3.6: the narrowest available target), so the
+    # same key + same body against a DIFFERENT debt is ``idempotency_key_reused``,
+    # not a cross-debt HIT that would serialise debt A's proposal under debt B.
+    # Creating a proposal is NOT fold-changing, so there is no
     # ``expected_row_version`` (the parent CAS happens only on confirm).
     if not idempotency_key:
         raise AppError("idempotency_key_required", status_code=422)
     fingerprint = fingerprint_request(
         operation=_PROPOSAL_CREATE_OPERATION,
-        target_id=idempotency_key,
+        target_id=public_id,
         body=payload.model_dump(mode="json", exclude_unset=True),
         expected_row_version=None,
     )

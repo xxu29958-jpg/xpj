@@ -113,23 +113,37 @@ def _create_member_debt(
     member_account_id: int,
     principal_amount_cents: int = 50000,
 ) -> dict:
-    """Create a member Debt (creator is whoever owns ``headers`` — always the owner).
+    """Seed a committed member Debt directly.
 
-    ``direction='owed_to_me'`` → debtor=member, creditor=owner (the member proposes,
-    the owner confirms). ``direction='i_owe'`` → debtor=owner, creditor=member.
+    Public ``POST /api/debts`` only creates external Debt now (ADR-0049 §5.2: a
+    member obligation needs the affected party's confirmation before it is
+    committed — it arrives via bill_split accept in slice 4, or this direct seed
+    in tests). ``direction='owed_to_me'`` → debtor=member, creditor=owner (the
+    member proposes, the owner confirms); ``direction='i_owe'`` → the mirror.
+    ``client`` / ``headers`` are kept for call-site symmetry with the external
+    helper but unused (the seed writes the row directly).
     """
-    response = client.post(
-        "/api/debts",
-        headers=_idem(headers),
-        json={
-            "direction": direction,
-            "counterparty_type": "member",
-            "counterparty_account_id": member_account_id,
-            "principal_amount_cents": principal_amount_cents,
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
+    del client, headers
+    with SessionLocal() as db:
+        owner_account_id = db.scalar(
+            select(Account.id).order_by(Account.id.asc()).limit(1)
+        )
+        debt = Debt(
+            tenant_id="owner",
+            owner_account_id=owner_account_id,
+            created_by_account_id=owner_account_id,
+            direction=direction,
+            counterparty_type="member",
+            counterparty_account_id=member_account_id,
+            principal_amount_cents=principal_amount_cents,
+            home_currency_code="CNY",
+            status="open",
+            source_type="bill_split",
+            source_id=str(uuid4()),
+        )
+        db.add(debt)
+        db.commit()
+        return {"public_id": debt.public_id, "row_version": debt.row_version}
 
 
 def _create_external_debt(
@@ -1258,3 +1272,34 @@ def test_reject_after_confirm_is_rejected_not_pending(
     ).json()["items"]
     assert len(items) == 1
     assert items[0]["status"] == "confirmed"
+
+
+def test_create_proposal_same_key_different_debt_is_reused(
+    client: TestClient, *, identity
+) -> None:
+    # §3.6: the create fingerprint targets the PARENT debt public_id, so the same
+    # Idempotency-Key + same body against a DIFFERENT member debt is rejected
+    # idempotency_key_reused — not a cross-debt HIT that would try to serialise
+    # debt A's proposal under debt B.
+    member_id, member_token = _mint_member_actor()
+    debt_a = _create_member_debt(
+        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
+    )
+    debt_b = _create_member_debt(
+        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
+    )
+    key = str(uuid4())
+    body = {"proposed_amount_cents": 20000}
+    first = client.post(
+        f"/api/debts/{debt_a['public_id']}/repayment-proposals",
+        headers={**_member_headers(member_token), "Idempotency-Key": key},
+        json=body,
+    )
+    assert first.status_code == 201, first.json()
+    second = client.post(
+        f"/api/debts/{debt_b['public_id']}/repayment-proposals",
+        headers={**_member_headers(member_token), "Idempotency-Key": key},
+        json=body,
+    )
+    assert second.status_code == 422, second.json()
+    assert second.json()["error"] == "idempotency_key_reused"
