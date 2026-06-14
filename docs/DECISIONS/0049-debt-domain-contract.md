@@ -3,7 +3,7 @@
 Status: Accepted (Target Contract; Runtime Subset)
 Date: 2026-06-14
 Type: Domain Contract
-Lineage: replaces the earlier `financial-domain-contract` wording and consolidates the retired early drafts `0049-debt-and-liability-tracking` and `0050-event-store-schema-and-migration`.
+Lineage: replaces the earlier financial-domain wording and consolidates the retired early drafts `0049-debt-and-liability-tracking` and `0050-event-store-schema-and-migration`.
 
 ---
 
@@ -124,6 +124,51 @@ Debt is cleared when `remaining == 0`.
 
 Debt overpayment is rejected in v1. No Debt operation may silently clamp, create credit balance, or flip direction. Live revolving credit-card balances, interest accrual, credit balances, and full balance-sheet semantics are out of scope for this ADR.
 
+## 2.1 Fold Serialization
+
+`remaining` is derived, but the parent `Debt` row is still the serialization point for every fold-changing write.
+
+The following operations MUST serialize on the parent `Debt` row in the same database transaction as the child fact insert:
+
+- committed `Repayment`
+- committed `DebtAdjustment`
+- `RepaymentVoid`
+- `DebtVoid`
+- the `open -> cleared` or `cleared -> open` status latch that follows from those facts
+
+Allowed implementations:
+
+- take a row lock on `debts(debt_id)` such as `SELECT ... FOR UPDATE`, then recompute/check the fold and insert the child fact
+- or issue an atomic parent CAS bump, for example `UPDATE debts SET row_version = row_version + 1, updated_at = now() WHERE debt_id = :id AND row_version = :expected`
+
+Rules:
+
+- The overpayment check (`remaining < 0`) MUST be evaluated inside this serialized section from authoritative facts.
+- Inserting a repayment/adjustment/void child row without locking or CAS-bumping the parent `Debt.row_version` is forbidden.
+- The parent `row_version` bump is a concurrency token only; it is not financial truth and does not make `remaining` a stored balance.
+- Request idempotency still follows [[0042]]: a replay of the same committed operation returns the canonical result and MUST NOT bump the parent row again.
+- Different idempotency keys for different repayment attempts are not deduplicated; they are protected only by the parent Debt serialization point.
+
+This is the contract that makes F8 true under concurrency. Two distinct repayments that each saw `remaining=100` cannot both commit `60` unless the second writer rechecks after the first serialized write.
+
+## 2.2 Currency and FX Semantics
+
+All Debt fold arithmetic is in `home_currency_code` minor units.
+
+Rules:
+
+- `principal_amount_cents`, `Repayment.amount_cents`, and `DebtAdjustment.amount_cents` are home-currency amounts.
+- Original-currency fields are provenance/display only and MUST NOT be aggregated across currencies.
+- Backend-authoritative FX snapshots from [[0027]] are the only allowed source for foreign-to-home conversion.
+- Clients submit original currency, original amount, and event time; they MUST NOT submit exchange rates or calculate home amounts.
+- A foreign-currency Debt cannot become committed until the backend can freeze a home-currency principal snapshot, or the user records it as a home-currency Debt.
+- Foreign-currency repayments are resolved using the backend FX snapshot for `paid_at`, then frozen as home-currency `amount_cents`.
+- Existing Debt facts do not drift when later FX rates refresh.
+
+External Debt v1 is home-currency authoritative fixed-principal/installment/IOU bookkeeping. If the real-world obligation is denominated in a foreign currency, the Debt still carries a frozen home principal and optional original-currency provenance. It is not a live FX liability engine.
+
+Foreign close-out drift is expected. If paying the exact remaining original-currency amount would not sum to zero in home currency because exchange rates moved, the user must record an explicit `DebtAdjustment(reason=fx_closeout)` before or with the final repayment. The system MUST NOT silently clamp, auto-revalue principal, or treat original-currency equality as financial clearance.
+
 ---
 
 # 3. Repayment and Correction Facts
@@ -139,8 +184,10 @@ Required fields:
 - `repayment_id` / `public_id`
 - `debt_id`
 - `amount_cents`
+- optional original-currency provenance fields for the payment
 - `paid_at`
 - `actor_account_id`
+- optional `proposal_id` when committed from a member repayment proposal
 - `idempotency_key`
 - `created_at`
 
@@ -151,8 +198,48 @@ Rules:
 - replays with mismatched fingerprint return `idempotency_key_reused`
 - a repayment that would make `remaining < 0` is rejected
 - repayment never mutates the Debt principal
+- committing a repayment MUST serialize on the parent Debt row per §2.1
 
-## 3.2 DebtAdjustment
+## 3.2 MemberRepaymentProposal
+
+`MemberRepaymentProposal` is workflow state for adverse-interest member Debt. It is not a repayment fact and never enters the `remaining` fold by itself.
+
+Required fields:
+
+- `proposal_id` / `public_id`
+- `debt_id`
+- `debtor_account_id`
+- `creditor_account_id`
+- `proposed_by_account_id`
+- `proposed_amount_cents`
+- optional original-currency provenance fields for the proposed payment
+- `paid_at`
+- optional note/evidence reference
+- `status`: `pending` / `confirmed` / `partially_confirmed` / `rejected` / `withdrawn` / `expired` / `superseded`
+- optional `confirmed_amount_cents`
+- optional `committed_repayment_id`
+- optional `supersedes_proposal_id`
+- `idempotency_key`
+- `created_at`
+- `expires_at`
+- optional `resolved_at`
+- optional `resolved_by_account_id`
+
+Rules:
+
+- `proposed_amount_cents > 0`.
+- The default expiry is 30 days from `created_at`; expired proposals cannot be confirmed.
+- A debtor may withdraw their own pending proposal.
+- A debtor may change amount/date only by creating a new proposal and marking the old pending proposal `superseded`; proposal amounts are not edited in place.
+- A creditor may confirm the full proposal amount.
+- A creditor may partially confirm a lower positive amount. Partial confirmation commits one `Repayment` for `confirmed_amount_cents`, closes the proposal as `partially_confirmed`, and does not leave the rejected remainder pending.
+- A creditor may reject the proposal without committing any repayment.
+- Confirmation, partial confirmation, and rejection are terminal workflow transitions.
+- Confirming any amount MUST serialize on the parent Debt row per §2.1 and MUST reject overpayment after rechecking current `remaining`.
+- The committed `Repayment` created from a proposal MUST link back through `proposal_id`.
+- Pending, withdrawn, rejected, expired, and superseded proposals do not reduce `remaining`.
+
+## 3.3 DebtAdjustment
 
 `DebtAdjustment` is append-only and is the only way to correct principal-like mistakes after Debt creation.
 
@@ -172,8 +259,9 @@ Rules:
 - adjustment MUST NOT make `remaining < 0`
 - adjustment that increases another member's burden requires affected-party confirmation
 - incorrect adjustments are corrected by another adjustment, never by rewriting history
+- committing an adjustment MUST serialize on the parent Debt row per §2.1
 
-## 3.3 RepaymentVoid
+## 3.4 RepaymentVoid
 
 `RepaymentVoid` is append-only and is the only way to undo a mistaken repayment.
 
@@ -191,16 +279,60 @@ Rules:
 - one repayment may be voided at most once
 - voiding a repayment reopens Debt if derived `remaining > 0`
 - voiding a repayment MUST NOT delete the original repayment row
+- voiding a repayment MUST serialize on the parent Debt row per §2.1
 
-## 3.4 Debt Void
+## 3.5 Debt Void
 
 Voiding an entire Debt is allowed only through an append-only correction fact.
+
+Required fields:
+
+- `debt_void_id` / `public_id`
+- `debt_id`
+- reason
+- `actor_account_id`
+- `idempotency_key`
+- `created_at`
 
 Rules:
 
 - bill-split-sourced Debt voiding requires the same adverse-interest confirmation rules as member Debt adjustment
 - voided Debt no longer contributes to open debt totals or goals
 - voided Debt remains visible in audit/history
+- voiding a Debt MUST serialize on the parent Debt row per §2.1
+
+## 3.6 Idempotency Fingerprints
+
+Debt uses the request idempotency table from [[0042]]. It does not define a second idempotency mechanism.
+
+Each idempotency fingerprint is a hash of canonical JSON. Field order is stable, timestamps are normalized to UTC ISO 8601, amounts are integer minor units, and insignificant display-only whitespace is normalized before hashing.
+
+Fingerprints MUST include:
+
+- `operation`
+- `ledger_id`
+- `debt_id` or the narrower target id (`proposal_id`, `repayment_id`) when applicable
+- `actor_account_id`
+- `expected_debt_row_version` for fold-changing writes that use parent CAS
+- the business payload fields that affect the committed fact or workflow transition
+
+Operation-specific payload fields:
+
+- repayment commit: amount or original payment input, `paid_at`, optional `proposal_id`
+- repayment proposal create: proposed amount or original payment input, `paid_at`, debtor, creditor, explicit expiry when supplied, superseded proposal id when present
+- proposal resolve: `proposal_id`, resolution operation, optional `confirmed_amount_cents`
+- adjustment: signed amount, reason
+- repayment void: `repayment_id`, reason
+- Debt void: `debt_id`, reason
+
+Fingerprints MUST NOT include:
+
+- server-generated ids for newly created facts
+- `created_at` / `updated_at`
+- post-mutation `row_version`
+- presentation-only copy or labels that do not affect the business fact
+
+Same key + same fingerprint returns the canonical committed result. Same key + different fingerprint returns `idempotency_key_reused`.
 
 ---
 
@@ -271,6 +403,8 @@ Repayment rules:
 
 - debtor saying "I paid" creates a pending repayment proposal
 - creditor confirmation commits that repayment
+- creditor partial confirmation commits only the confirmed amount and closes the proposal
+- debtor withdrawal or proposal expiry commits no repayment
 - creditor may directly record "I received payment" because it reduces the creditor's own receivable
 - pending repayment proposals do not reduce `remaining`
 
@@ -312,6 +446,8 @@ Rules:
 - unlinking an open Debt MUST NOT retroactively achieve an older version
 - achievement is latched per goal version
 - voided linked Debt requires explicit goal-version policy before exposure; default is to make the current version `not_evaluable` until user reviews links
+- `not_evaluable` MUST NOT be silent: the UI/API must surface that a linked Debt was voided and offer a review action such as "remove this Debt from the goal" or "keep it for audit"
+- if every non-voided linked Debt is cleared and the only blocker is a voided linked Debt, the user review action creates a new goal version; the old version remains historically not evaluable unless explicitly resolved by that version policy
 
 Implementation note:
 
@@ -335,6 +471,9 @@ Rules:
 - bill-split-sourced day-to-day Debt creation is silent by default
 - Debt-created reactions must be de-moralized; no shame/punishment/dejected semantics
 - clear celebrations trigger only on committed transition from open to cleared
+- `AllDebtsCleared` is scoped to one `(ledger_id, owner_account_id, direction)` tuple and fires only when that tuple has no remaining non-voided open Debt after an `open -> cleared` transition
+- `AllDebtsCleared` MUST NOT mix `i_owe` with `owed_to_me`, aggregate all family members, or cross ledgers
+- a separate goal-scoped celebration may fire when one `debt_repayment` goal version's linked set is achieved; it is not the global `AllDebtsCleared` event
 - transition dedupe marker is required before replay/sync/rebuild can feed mascot events
 - dedupe marker is presentation metadata, not financial truth
 
@@ -378,7 +517,7 @@ External Debt v1 is fixed-principal / installment / IOU only.
 
 ## F5: Debtor records "I paid" for member Debt
 
--> pending repayment proposal; `remaining` unchanged until creditor confirms
+-> pending repayment proposal; `remaining` unchanged until creditor confirms; expiry/withdrawal/rejection commits no repayment
 
 ## F6: Creditor records "I received"
 
@@ -390,7 +529,9 @@ External Debt v1 is fixed-principal / installment / IOU only.
 
 ## F8: Repayment exceeds remaining
 
--> rejected; no silent clamp, no direction flip
+-> rejected inside the parent Debt serialized section; no silent clamp, no direction flip
+
+Concurrent case: if two distinct repayment intents each read `remaining=100` and each tries to commit `60`, only the first serialized writer can commit. The second must recheck current facts, see `remaining=40`, and reject or require a new user intent.
 
 ## F9: Wrong principal
 
@@ -404,6 +545,14 @@ External Debt v1 is fixed-principal / installment / IOU only.
 
 -> recompute Debt views from Debt + DebtAdjustment + Repayment + RepaymentVoid + DebtVoid facts
 
+## F12: Foreign-currency close-out drift
+
+-> Debt arithmetic remains home-currency authoritative; use explicit `DebtAdjustment(reason=fx_closeout)` rather than auto-revaluing or silently clamping
+
+## F13: Linked Debt is voided while attached to a repayment goal
+
+-> current goal version becomes `not_evaluable` with a required user review prompt; it must not silently freeze forever
+
 ---
 
 # 10. Implementation Constraints
@@ -414,7 +563,9 @@ Minimum new structures:
 - `repayments`
 - `debt_adjustments`
 - `repayment_voids`
-- member repayment/adjustment proposal workflow records if member Debt write flows are exposed
+- `debt_voids`
+- `member_repayment_proposals`
+- member adjustment proposal workflow records if member Debt adjustment flows are exposed
 - `debt_goal_links` or equivalent versioned goal-link table
 - debt mascot transition dedupe markers if mascot integration is exposed
 
@@ -428,7 +579,9 @@ Hard constraints:
 - all money-changing writes are tenant/account scoped from `AuthContext`
 - all outbox-routed writes carry `Idempotency-Key`
 - all mutable config/state rows use `row_version`
+- every fold-changing child fact commit serializes on and bumps/locks the parent `Debt` row
 - member adverse-interest writes require affected-party confirmation before becoming committed
+- all Debt fold math uses home-currency minor units; original-currency fields are provenance only
 
 ---
 
@@ -444,6 +597,11 @@ Required checks before exposing Debt features:
 - external Debt can be repaid/adjusted by authorized writer only
 - viewer cannot create, repay, adjust, void, or link Debt
 - creditor cannot unilaterally create committed member Debt
+- debtor repayment proposal has explicit fields, expiry, and terminal lifecycle states
+- debtor can withdraw a pending proposal without changing remaining
+- changing a pending proposal amount creates a superseding proposal rather than editing in place
+- creditor partial confirmation commits only the confirmed amount and closes the proposal
+- expired/rejected/withdrawn/superseded proposals do not reduce remaining
 - debtor-only repayment proposal does not reduce remaining
 - creditor confirmation commits a debtor repayment proposal exactly once
 - creditor-recorded receipt commits repayment exactly once
@@ -451,15 +609,23 @@ Required checks before exposing Debt features:
 - adjustment reducing a creditor's receivable requires creditor confirmation
 - repayment replay with same idempotency key/fingerprint changes remaining once
 - idempotency key reused with different fingerprint is rejected
+- idempotency fingerprint fields are canonicalized and stable for repayment, adjustment, void, and proposal flows
 - repayment exceeding remaining is rejected
+- two concurrent distinct repayments against the same Debt cannot both pass an over-remaining fold check
+- repayment, adjustment, repayment void, and Debt void commits bump or lock the parent Debt row in the same transaction
+- foreign-currency Debt principal is frozen as home-currency authoritative amount using [[0027]]
+- foreign-currency repayment uses the `paid_at` FX snapshot and freezes home-currency amount
+- FX close-out drift is resolved only by explicit adjustment, not silent clamp or automatic principal revaluation
 - `remaining` recomputes from append-only facts
 - Debt clears only on open -> cleared transition
 - wrong repayment is corrected by `RepaymentVoid`, not deletion
 - wrong principal is corrected by `DebtAdjustment`, not mutation
 - `debt_repayment` goal achievement requires all linked debts cleared
 - `debt_repayment` linked Debt set is frozen per goal version
+- voided linked Debt makes a goal version not evaluable with a visible review action
 - bill-split-sourced DebtCreated is silent by default for mascot
 - DebtCleared and AllDebtsCleared mascot events are transition-deduped
+- AllDebtsCleared is scoped by ledger, owner account, and direction
 - Debt-created mascot reaction is concerned/attentive, never shame/punishment/dejected
 
 ---
