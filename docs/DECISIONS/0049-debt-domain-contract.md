@@ -145,6 +145,7 @@ Rules:
 
 - The overpayment check (`remaining < 0`) MUST be evaluated inside this serialized section from authoritative facts.
 - Inserting a repayment/adjustment/void child row without locking or CAS-bumping the parent `Debt.row_version` is forbidden.
+- A CAS conflict is not a blind retry signal. The service MUST reread authoritative facts, recompute `remaining`, and revalidate the operation before any retry with a newer parent `row_version`.
 - The parent `row_version` bump is a concurrency token only; it is not financial truth and does not make `remaining` a stored balance.
 - Request idempotency still follows [[0042]]: a replay of the same committed operation returns the canonical result and MUST NOT bump the parent row again.
 - Different idempotency keys for different repayment attempts are not deduplicated; they are protected only by the parent Debt serialization point.
@@ -229,12 +230,15 @@ Rules:
 
 - `proposed_amount_cents > 0`.
 - The default expiry is 30 days from `created_at`; expired proposals cannot be confirmed.
+- Each Debt may have at most one `pending` repayment proposal at a time.
+- The database MUST enforce that invariant with a partial unique index equivalent to `UNIQUE(debt_id) WHERE status='pending'`, or the service MUST create a replacement proposal by marking the old pending proposal `superseded` and inserting the new pending proposal in one serialized transaction.
 - A debtor may withdraw their own pending proposal.
-- A debtor may change amount/date only by creating a new proposal and marking the old pending proposal `superseded`; proposal amounts are not edited in place.
+- A debtor may change amount/date only by creating a new proposal that supersedes the old pending proposal; proposal amounts are not edited in place.
 - A creditor may confirm the full proposal amount.
 - A creditor may partially confirm a lower positive amount. Partial confirmation commits one `Repayment` for `confirmed_amount_cents`, closes the proposal as `partially_confirmed`, and does not leave the rejected remainder pending.
 - A creditor may reject the proposal without committing any repayment.
 - Confirmation, partial confirmation, and rejection are terminal workflow transitions.
+- A proposal can be confirmed or partially confirmed only while it is the current pending proposal for that Debt.
 - Confirming any amount MUST serialize on the parent Debt row per §2.1 and MUST reject overpayment after rechecking current `remaining`.
 - The committed `Repayment` created from a proposal MUST link back through `proposal_id`.
 - Pending, withdrawn, rejected, expired, and superseded proposals do not reduce `remaining`.
@@ -315,6 +319,11 @@ Fingerprints MUST include:
 - `actor_account_id`
 - `expected_debt_row_version` for fold-changing writes that use parent CAS
 - the business payload fields that affect the committed fact or workflow transition
+
+Idempotency retry rule:
+
+- A client MUST reuse the same `expected_debt_row_version` with the same `Idempotency-Key`; a normal retry must not recompute that field.
+- Recomputing `expected_debt_row_version` after seeing newer Debt state is a new user intent and MUST use a new `Idempotency-Key`.
 
 Operation-specific payload fields:
 
@@ -565,7 +574,7 @@ Minimum new structures:
 - `repayment_voids`
 - `debt_voids`
 - `member_repayment_proposals`
-- member adjustment proposal workflow records if member Debt adjustment flows are exposed
+- member adjustment proposal workflow records if member Debt adjustment flows are exposed; they must mirror §3.2's explicit fields, terminal lifecycle, and one-pending-per-Debt invariant
 - `debt_goal_links` or equivalent versioned goal-link table
 - debt mascot transition dedupe markers if mascot integration is exposed
 
@@ -580,6 +589,7 @@ Hard constraints:
 - all outbox-routed writes carry `Idempotency-Key`
 - all mutable config/state rows use `row_version`
 - every fold-changing child fact commit serializes on and bumps/locks the parent `Debt` row
+- each Debt has at most one pending member repayment proposal; replacement uses explicit supersede or a partial unique index
 - member adverse-interest writes require affected-party confirmation before becoming committed
 - all Debt fold math uses home-currency minor units; original-currency fields are provenance only
 
@@ -598,8 +608,12 @@ Required checks before exposing Debt features:
 - viewer cannot create, repay, adjust, void, or link Debt
 - creditor cannot unilaterally create committed member Debt
 - debtor repayment proposal has explicit fields, expiry, and terminal lifecycle states
+- database/service invariant prevents more than one pending repayment proposal for the same Debt
+- creating a replacement proposal supersedes the previous pending proposal instead of leaving both confirmable
+- two concurrent proposal creates for the same Debt cannot leave two pending proposals
 - debtor can withdraw a pending proposal without changing remaining
 - changing a pending proposal amount creates a superseding proposal rather than editing in place
+- superseded proposals cannot be confirmed
 - creditor partial confirmation commits only the confirmed amount and closes the proposal
 - expired/rejected/withdrawn/superseded proposals do not reduce remaining
 - debtor-only repayment proposal does not reduce remaining
@@ -610,6 +624,7 @@ Required checks before exposing Debt features:
 - repayment replay with same idempotency key/fingerprint changes remaining once
 - idempotency key reused with different fingerprint is rejected
 - idempotency fingerprint fields are canonicalized and stable for repayment, adjustment, void, and proposal flows
+- retries with the same idempotency key reuse the same `expected_debt_row_version`; refreshing the expected version requires a new key
 - repayment exceeding remaining is rejected
 - two concurrent distinct repayments against the same Debt cannot both pass an over-remaining fold check
 - repayment, adjustment, repayment void, and Debt void commits bump or lock the parent Debt row in the same transaction
