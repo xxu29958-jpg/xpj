@@ -85,6 +85,11 @@ from app.schemas._dashboard import (
     DashboardCardsUpdateRequest,
     DashboardCardUpdateRequest,
 )
+from app.schemas._debts import (
+    DebtCreateRequest,
+    DebtListResponse,
+    DebtResponse,
+)
 from app.schemas._exchange import (
     ExchangeRateListResponse,
     ExchangeRateRequest,
@@ -268,6 +273,9 @@ __all__ = [
     "DashboardCardsResponse",
     "DashboardCardsUpdateRequest",
     "DataQualitySummaryResponse",
+    "DebtCreateRequest",
+    "DebtListResponse",
+    "DebtResponse",
     "DiscretionaryResponse",
     "ErrorResponse",
     "ExchangeRateListResponse",

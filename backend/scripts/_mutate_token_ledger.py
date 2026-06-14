@@ -63,6 +63,7 @@ OWNERS: frozenset[str] = frozenset(
         "rules",
         "recurring",
         "goals",
+        "debts",
         "budget",
         "bill_split",
         "learning",
@@ -142,6 +143,7 @@ _INCOME_PLAN = ("monthly_income_plans",)
 _RECURRING = ("recurring_items",)
 _BILL_SPLIT = ("bill_split_invitations",)
 _DASHBOARD = ("dashboard_card_preferences",)
+_DEBTS = ("debts",)
 
 
 # Key format: ``"METHOD PATH"`` exactly as FastAPI registers it.
@@ -152,6 +154,10 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/app/upload-screenshot": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/bootstrap/owner": Exempt("session_rotation", "identity", _BOOTSTRAP_IDENTITY, "medium"),
     "POST /api/bootstrap/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
+    # ADR-0049 slice 1: external/manual Debt create. No prior row to version;
+    # safe replay rests on the [[0042]] Idempotency-Key the route requires, not
+    # an expected_row_version token.
+    "POST /api/debts": Exempt("create_row", "debts", _DEBTS),
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),

@@ -78,6 +78,11 @@ ERROR_MESSAGES = {
     "recurring_status_invalid": "固定支出状态无效。",
     "recurring_item_archived": "固定支出已归档，不能继续修改。",
     "goal_not_found": "目标不存在。",
+    # ADR-0049 Debt domain (slice 1: external/manual Debt create/list/get).
+    "debt_not_found": "这笔欠款不存在。",
+    "debt_counterparty_invalid": "欠款对象信息不完整。",
+    "debt_amount_invalid": "请填写大于 0 的欠款金额。",
+    "debt_direction_invalid": "欠款方向不正确。",
     "notification_source_invalid": "通知来源暂不支持。",
     "merchant_alias_not_found": "商家别名不存在。",
     "merchant_alias_conflict": "商家别名已指向其他商家。",

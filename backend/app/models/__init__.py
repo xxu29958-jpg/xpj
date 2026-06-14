@@ -40,6 +40,13 @@ from app.models.classification import (
     RuleApplicationBatch,
     RuleApplicationChange,
 )
+from app.models.debt import (
+    Debt,
+    DebtAdjustment,
+    DebtVoid,
+    Repayment,
+    RepaymentVoid,
+)
 from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.financial_planning import MonthlyIncomePlan
@@ -78,6 +85,9 @@ __all__ = [
     "CsvImportBatch",
     "CsvImportRow",
     "DashboardCardPreference",
+    "Debt",
+    "DebtAdjustment",
+    "DebtVoid",
     "Device",
     "DuplicateIgnore",
     "Expense",
@@ -98,6 +108,8 @@ __all__ = [
     "PairingAttemptFailure",
     "PairingCode",
     "RecurringItem",
+    "Repayment",
+    "RepaymentVoid",
     "RuleApplicationBatch",
     "RuleApplicationChange",
     "SchemaMigration",

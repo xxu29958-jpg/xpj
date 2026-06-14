@@ -1,0 +1,248 @@
+"""ADR-0049 Debt domain: one frozen obligation plus append-only facts.
+
+Slice 1 (backend groundwork) models the parent ``Debt`` row and the four
+append-only fact tables (``Repayment`` / ``DebtAdjustment`` / ``RepaymentVoid``
+/ ``DebtVoid``). The fact tables are CREATED empty here — slice 1 only reads
+them for the ``remaining`` / ``paid`` fold (§2); the repayment / adjustment /
+void *writes* (and the §2.1 parent-row serialization they require) land in
+slice 2.
+
+Money is home-currency minor units (``principal_amount_cents`` and every fact
+``amount_cents``; §2.2). A foreign-currency Debt freezes a backend-authoritative
+home principal at creation via [[0027]] and keeps the original-currency fields
+as provenance/display only. ``remaining`` / ``paid`` are derived, never stored
+as truth (§2 / §10). ``row_version`` is the [[0041]] OCC token that slice 2's
+fold-changing writes serialize on; a brand-new Debt inserts at ``1`` and is not
+hand-bumped ([[0041]]).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import uuid4
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+from app.services.time_service import now_utc
+
+
+class Debt(Base):
+    """One obligation. Principal is frozen at creation; see ADR-0049 §2."""
+
+    __tablename__ = "debts"
+    __table_args__ = (
+        CheckConstraint(
+            "direction IN ('i_owe', 'owed_to_me')",
+            name="ck_debts_direction_valid",
+        ),
+        CheckConstraint(
+            "counterparty_type IN ('member', 'external')",
+            name="ck_debts_counterparty_type_valid",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'cleared', 'voided')",
+            name="ck_debts_status_valid",
+        ),
+        CheckConstraint(
+            "source_type IN ('manual', 'bill_split')",
+            name="ck_debts_source_type_valid",
+        ),
+        CheckConstraint("principal_amount_cents > 0", name="ck_debts_principal_positive"),
+        CheckConstraint("length(home_currency_code) = 3", name="ck_debts_home_currency_format"),
+        # §10 hard constraint: a bill-split-sourced Debt is unique per
+        # (source_type, source_id) so re-accepting an invitation cannot create
+        # a second Debt (§4). source_id is NULL for manual Debt — a composite
+        # UNIQUE treats NULLs as distinct on PostgreSQL, so manual rows never
+        # collide here.
+        UniqueConstraint("source_type", "source_id", name="uq_debts_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_debts_tenant_ledger"),
+        nullable=False,
+        index=True,
+    )
+    owner_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_debts_owner_account"), nullable=False, index=True
+    )
+    created_by_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_debts_created_by_account"), nullable=False
+    )
+
+    # --- counterparty (one of member account / external label) ---------------
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    counterparty_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    counterparty_account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_debts_counterparty_account"), nullable=True
+    )
+    counterparty_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # --- money: frozen home principal + original-currency provenance ---------
+    principal_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
+    exchange_rate_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # --- lifecycle + source --------------------------------------------------
+    status: Mapped[str] = mapped_column(
+        String(16), default="open", server_default="open", nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
+    source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    # ADR-0041 OCC token; ADR-0049 §2.1 fold serialization point (slice 2 writes).
+    row_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+
+
+Index("ix_debts_tenant_status", Debt.tenant_id, Debt.status)
+Index("ix_debts_tenant_owner_direction", Debt.tenant_id, Debt.owner_account_id, Debt.direction)
+Index("ix_debts_tenant_public_id", Debt.tenant_id, Debt.public_id)
+
+
+class Repayment(Base):
+    """Append-only committed repayment fact; see ADR-0049 §3.1.
+
+    Slice 1 creates this table empty for the fold to read. Inserts (and the
+    §2.1 parent-Debt serialization + overpayment check) land in slice 2.
+    """
+
+    __tablename__ = "repayments"
+    __table_args__ = (
+        CheckConstraint("amount_cents > 0", name="ck_repayments_amount_positive"),
+        UniqueConstraint("idempotency_key", name="uq_repayments_idempotency_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    debt_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("debts.id", name="fk_repayments_debt"), nullable=False, index=True
+    )
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
+    exchange_rate_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actor_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_repayments_actor_account"), nullable=False
+    )
+    proposal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_repayments_debt_created", Repayment.debt_id, Repayment.created_at)
+
+
+class DebtAdjustment(Base):
+    """Append-only signed principal-like correction fact; see ADR-0049 §3.3.
+
+    Slice 1 creates this table empty for the fold to read. Inserts land in
+    slice 2 (signed ``amount_cents`` can raise or lower ``remaining``).
+    """
+
+    __tablename__ = "debt_adjustments"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_debt_adjustments_idempotency_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    debt_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("debts.id", name="fk_debt_adjustments_debt"), nullable=False, index=True
+    )
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_debt_adjustments_actor_account"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_debt_adjustments_debt_created", DebtAdjustment.debt_id, DebtAdjustment.created_at)
+
+
+class RepaymentVoid(Base):
+    """Append-only undo of a mistaken repayment; see ADR-0049 §3.4.
+
+    Slice 1 creates this table empty for the fold to read. A repayment may be
+    voided at most once (``repayment_id`` UNIQUE). Inserts land in slice 2.
+    """
+
+    __tablename__ = "repayment_voids"
+    __table_args__ = (
+        UniqueConstraint("repayment_id", name="uq_repayment_voids_repayment"),
+        UniqueConstraint("idempotency_key", name="uq_repayment_voids_idempotency_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    repayment_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("repayments.id", name="fk_repayment_voids_repayment"), nullable=False, index=True
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_repayment_voids_actor_account"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class DebtVoid(Base):
+    """Append-only void of an entire Debt; see ADR-0049 §3.5.
+
+    Slice 1 creates this table empty for the fold to read. Inserts (and the
+    §2.1 parent-Debt serialization) land in slice 2.
+    """
+
+    __tablename__ = "debt_voids"
+    __table_args__ = (
+        UniqueConstraint("debt_id", name="uq_debt_voids_debt"),
+        UniqueConstraint("idempotency_key", name="uq_debt_voids_idempotency_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    debt_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("debts.id", name="fk_debt_voids_debt"), nullable=False, index=True
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_debt_voids_actor_account"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
