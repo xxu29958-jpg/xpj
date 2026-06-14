@@ -92,32 +92,33 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
     assert "stderr detail" in captured.err
 
 
-def test_pr_delta_accepts_debt_create_one_time_down_ratchet(monkeypatch) -> None:
+def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 110
+    baseline["mutate_token_exempted"] = 113
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 109}
+        {"mutate_token_exempted": 110}
     )
 
     assert violations == []
 
 
-def test_pr_delta_debt_create_exception_does_not_allow_future_growth(monkeypatch) -> None:
+def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
-    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 114
-    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
-    _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 113}
-    )
+    for base_count, current_count in ((112, 113), (113, 114)):
+        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+        baseline["mutate_token_exempted"] = current_count
+        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+        _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
+            {"mutate_token_exempted": base_count}
+        )
 
-    assert len(violations) == 1
-    assert "113" in violations[0]
-    assert "114" in violations[0]
+        assert len(violations) == 1
+        assert str(base_count) in violations[0]
+        assert str(current_count) in violations[0]
 
 
 def test_mutate_token_ledger_is_consistent_with_live_tables() -> None:

@@ -195,7 +195,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # archive/restore ×(api+web) = 4 more (atomic UPDATE WHERE + token); +4
     # ADR-0043 slice B /api/tags ×4; +5 slice C /web/tags ×4 + /owner tag-cleanup delete (OCC via Form).
     "mutate_token_carriers": 54,  # +4 ADR-0049 slice 2 fold-changing facts carry expected_row_version: POST /api/debts/{id}/repayments|adjustments|repayment-voids|void (§2.1 stale-intent fence + §3.6 fingerprint); +1 ADR-0049 slice 3 CONFIRM proposal carries expected_row_version (fold-changing) — auto-detected carrier
-    "mutate_token_exempted": 113,  # −2 PG-only slice 5 (retired /owner/migration-readiness cut-over + pre-v1-backup exemptions); +1 ADR-0049 slice 1 POST /api/debts create; +3 ADR-0049 slice 3 proposal create + withdraw + reject (NOT fold-changing → no expected_row_version; the DOWN-ratchet ``adr_0049_exempt`` exception in _compute_ratchet_findings allows the debt domain's exempted count up to 113)
+    "mutate_token_exempted": 113,  # −2 PG-only slice 5 (retired /owner/migration-readiness cut-over + pre-v1-backup exemptions); +1 ADR-0049 slice 1 POST /api/debts create; +3 ADR-0049 slice 3 proposal create + withdraw + reject (NOT fold-changing → no expected_row_version; the DOWN-ratchet ``adr_0049_exempt`` exception is exact: base 110 -> current 113 only)
     "mutate_token_reason_admin_single_writer": 9,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
@@ -221,23 +221,18 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 }
 
 
-# Subset of STRICT_EQUALITY_BASELINE keys whose baseline value can ONLY grow
-# vs base — decreasing = letting actual silently drop (lost token routes someone
-# paid for). ``backend_pytest_count`` was REMOVED here for the PG-only slimming
-# campaign (slices 2-5 delete already-PG-skipped SQLite tests); strict equality
-# still forces its every change to be declared in this file's diff.
+# UP-only keys cannot drop vs base; strict equality alone could miss lockstep
+# baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
     "mutate_token_carriers",
 })
 
-# Subset of STRICT_EQUALITY_BASELINE keys whose baseline value can ONLY
-# shrink vs base. Exemptions in mutate-token ALLOWLIST should drain as
-# routes graduate to carrying ``expected_row_version``, never grow back.
-# Adding a route to ALLOWLIST requires an explicit ADR pointer per the
-# v1.3 PR-2 ledger contract — this ratchet enforces that contract here.
+# DOWN-only keys may shrink as routes graduate; they must not grow back.
+# New ALLOWLIST routes need explicit ADR pointers per v1.3 PR-2.
 BASELINE_RATCHET_DOWN: frozenset[str] = frozenset({
     "mutate_token_exempted",
 })
+_ADR_0049_EXEMPTED_GRANDFATHER = (110, 113)
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -336,7 +331,9 @@ def _compute_ratchet_findings(
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        adr_0049_exempt = key == "mutate_token_exempted" and base_val >= 109 and current_val <= 113
+        adr_0049_exempt = key == "mutate_token_exempted" and (
+            base_val, current_val
+        ) == _ADR_0049_EXEMPTED_GRANDFATHER
         if key in BASELINE_RATCHET_UP and current_val < base_val:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
