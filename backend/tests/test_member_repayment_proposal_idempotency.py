@@ -168,6 +168,36 @@ def test_confirm_idempotent_replay_changes_remaining_once(client: TestClient, *,
         assert len(repayments) == 1
 
 
+def test_full_confirm_replay_normalizes_null_confirmed_amount(
+    client: TestClient, *, identity
+) -> None:
+    member_id, member_token = _mint_member_actor()
+    debt = _create_member_debt(
+        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
+    )
+    proposal = _propose(
+        client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
+    ).json()
+    key = str(uuid4())
+    headers = {**identity.app_headers, "Idempotency-Key": key}
+
+    first = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/confirm",
+        headers=headers,
+        json={"expected_row_version": debt["row_version"]},
+    )
+    assert first.status_code == 201, first.json()
+
+    replay = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/confirm",
+        headers=headers,
+        json={"confirmed_amount_cents": None, "expected_row_version": debt["row_version"]},
+    )
+    assert replay.status_code == 201, replay.json()
+    assert replay.json()["row_version"] == first.json()["row_version"]
+    assert replay.json()["remaining_amount_cents"] == 30000
+
+
 def test_confirm_replay_under_different_debt_is_422(
     client: TestClient, *, identity
 ) -> None:

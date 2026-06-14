@@ -132,6 +132,17 @@ def _proposal_create_fingerprint_body(
     return body
 
 
+def _proposal_confirm_fingerprint_body(
+    payload: MemberRepaymentProposalConfirmRequest,
+) -> dict[str, object]:
+    body = payload.model_dump(
+        mode="json", exclude_unset=True, exclude={"expected_row_version"}
+    )
+    if payload.confirmed_amount_cents is None:
+        body.pop("confirmed_amount_cents", None)
+    return body
+
+
 def _repayment_create_response(
     db: Session,
     *,
@@ -558,9 +569,7 @@ def post_repayment_proposal_confirm(
         operation=_PROPOSAL_CONFIRM_OPERATION,
         target_id=_proposal_target_id(public_id, proposal_public_id),
         target_type=_PROPOSAL_TARGET_TYPE,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=_proposal_confirm_fingerprint_body(payload),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §2.1 replay: re-serialise the fold, do NOT bump again.

@@ -93,9 +93,6 @@ def _create_member_repayment_proposals() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("public_id"),
-        sa.UniqueConstraint(
-            "idempotency_key", name="uq_member_repayment_proposals_idempotency_key"
-        ),
     )
     with op.batch_alter_table("member_repayment_proposals", schema=None) as batch_op:
         # The two plain-column indexes use the ORM ``index=True`` auto-generated

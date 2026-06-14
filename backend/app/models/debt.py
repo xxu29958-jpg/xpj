@@ -289,9 +289,6 @@ class MemberRepaymentProposal(Base):
             name="ck_member_repayment_proposals_status_valid",
         ),
         CheckConstraint("length(home_currency_code) = 3", name="ck_mrp_home_currency_format"),
-        UniqueConstraint(
-            "idempotency_key", name="uq_member_repayment_proposals_idempotency_key"
-        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
