@@ -231,7 +231,8 @@ Rules:
 - `proposed_amount_cents > 0`.
 - The default expiry is 30 days from `created_at`; expired proposals cannot be confirmed.
 - Each Debt may have at most one `pending` repayment proposal at a time.
-- The database MUST enforce that invariant with a partial unique index equivalent to `UNIQUE(debt_id) WHERE status='pending'`, or the service MUST create a replacement proposal by marking the old pending proposal `superseded` and inserting the new pending proposal in one serialized transaction.
+- The database MUST enforce that invariant with a partial unique index equivalent to `UNIQUE(debt_id) WHERE status='pending'`.
+- Service-level supersede logic is a workflow convenience, not a substitute for the unique index. Replacement creation marks the old pending proposal `superseded` and inserts the new pending proposal in one transaction; the partial unique index remains the concurrency backstop.
 - A debtor may withdraw their own pending proposal.
 - A debtor may change amount/date only by creating a new proposal that supersedes the old pending proposal; proposal amounts are not edited in place.
 - A creditor may confirm the full proposal amount.
@@ -589,7 +590,7 @@ Hard constraints:
 - all outbox-routed writes carry `Idempotency-Key`
 - all mutable config/state rows use `row_version`
 - every fold-changing child fact commit serializes on and bumps/locks the parent `Debt` row
-- each Debt has at most one pending member repayment proposal; replacement uses explicit supersede or a partial unique index
+- `member_repayment_proposals` has a partial unique index enforcing at most one pending repayment proposal per Debt
 - member adverse-interest writes require affected-party confirmation before becoming committed
 - all Debt fold math uses home-currency minor units; original-currency fields are provenance only
 
@@ -608,7 +609,7 @@ Required checks before exposing Debt features:
 - viewer cannot create, repay, adjust, void, or link Debt
 - creditor cannot unilaterally create committed member Debt
 - debtor repayment proposal has explicit fields, expiry, and terminal lifecycle states
-- database/service invariant prevents more than one pending repayment proposal for the same Debt
+- database partial unique index prevents more than one pending repayment proposal for the same Debt
 - creating a replacement proposal supersedes the previous pending proposal instead of leaving both confirmable
 - two concurrent proposal creates for the same Debt cannot leave two pending proposals
 - debtor can withdraw a pending proposal without changing remaining
