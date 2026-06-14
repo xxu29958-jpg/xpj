@@ -1,8 +1,9 @@
-# ADR 0049 (v3): Financial Domain Contract
+# ADR 0049: Financial Domain Contract
 
 Status: Accepted (Contract Spec)
 Date: 2026-06-14
 Type: Domain Contract (0042-style)
+Lineage: consolidates and replaces the retired early drafts `0049-debt-and-liability-tracking` and `0050-event-store-schema-and-migration`.
 
 ---
 
@@ -122,6 +123,8 @@ net(A,B) =
 
 Positive `net(A,B)` means A owes B.
 
+All sums use home-currency `amount_cents` frozen at acceptance or settlement time. `currency_code` is provenance only and MUST NOT change the fold currency.
+
 ---
 
 ## 2.6 Settlement Contract
@@ -222,7 +225,24 @@ Achieved when:
 
 ### savings_target
 
-Derived ONLY from scope-bound net flow.
+Current contract: `savings_target` is a forecast-based KPI, not a realized cash ledger.
+
+It is derived ONLY from:
+
+```text
+planned_savings = scoped income_plan amount - scoped confirmed spending
+```
+
+Forecast inflow is the sum of active `income_plan` snapshots for the same scope and period. It is not realized income.
+
+Achievement is evaluable only when:
+
+- the configured period is closed
+- an active income plan exists for the same scope and period
+- scoped confirmed spending is available for that period
+- `planned_savings >= target_amount_cents`
+
+No realized-income transaction ledger is defined by this ADR. If future product work adds actual income transactions, switching `savings_target` from forecast-based to realized-flow-based semantics requires a new ADR.
 
 Allowed scope examples:
 
@@ -416,7 +436,7 @@ Required implementation checks:
 - liability balance never enters member debt graph
 - debt repayment goal is achieved only when linked liabilities are all cleared
 - spending limit achievement fires only after period close and only if not exceeded
-- savings target progress is derived from authorized scope-bound net flow
+- savings target progress is derived from authorized scope-bound income plans minus scoped confirmed spending
 - `DebtCleared` and `GoalAchieved` mascot events fire once per committed transition
 - debt increase, spending increase, or borrowing never triggers a negative mascot state
 
