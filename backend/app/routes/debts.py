@@ -10,6 +10,14 @@ schema. No business logic, no SQL, no raw-exception leakage.
 - ``POST /api/debts/{public_id}/adjustments`` — record a signed adjustment (§3.3).
 - ``POST /api/debts/{public_id}/repayment-voids`` — void one repayment (§3.4).
 - ``POST /api/debts/{public_id}/void`` — void the whole Debt (§3.5).
+- ``POST /api/debts/{public_id}/repayment-proposals`` — debtor proposes "I paid" (§3.2).
+- ``POST /api/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw``
+  — debtor withdraws their pending proposal (§3.2).
+- ``POST /api/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm``
+  — creditor confirms (full/partial), committing a repayment (§3.2, fold-changing).
+- ``POST /api/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject``
+  — creditor rejects the proposal (§3.2).
+- ``GET /api/debts/{public_id}/repayment-proposals`` — list a Debt's proposals.
 
 All writes are writers-only (``get_current_writer_context`` → viewer 403,
 §5/§11), carry an ``Idempotency-Key`` ([[0042]]), and take ``expected_row_version``
@@ -38,19 +46,31 @@ from app.schemas import (
     DebtListResponse,
     DebtResponse,
     DebtVoidCreateRequest,
+    MemberRepaymentProposalConfirmRequest,
+    MemberRepaymentProposalCreateRequest,
+    MemberRepaymentProposalListResponse,
+    MemberRepaymentProposalRejectRequest,
+    MemberRepaymentProposalResponse,
+    MemberRepaymentProposalWithdrawRequest,
     RepaymentCreateRequest,
     RepaymentCreateResponse,
     RepaymentVoidCreateRequest,
 )
 from app.services.debt_service import (
+    confirm_repayment_proposal,
     create_debt,
+    create_repayment_proposal,
     get_debt_response,
+    get_repayment_proposal_response,
     get_repayment_public_id_for_idempotency,
     list_debts,
+    list_repayment_proposals,
     record_adjustment,
     record_repayment,
+    reject_repayment_proposal,
     void_debt,
     void_repayment,
+    withdraw_repayment_proposal,
 )
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
@@ -72,6 +92,14 @@ _REPAYMENT_OPERATION = "record_repayment"
 _ADJUSTMENT_OPERATION = "record_adjustment"
 _REPAYMENT_VOID_OPERATION = "void_repayment"
 _DEBT_VOID_OPERATION = "void_debt"
+# ADR-0049 slice 3: member repayment proposal (§3.2). The proposal-targeted ops
+# (withdraw / confirm / reject) anchor their [[0042]] fingerprint on the proposal
+# public_id; create anchors on the parent Debt public_id.
+_PROPOSAL_TARGET_TYPE = "debt_repayment_proposal"
+_PROPOSAL_CREATE_OPERATION = "debt.repayment_proposal.create"
+_PROPOSAL_WITHDRAW_OPERATION = "debt.repayment_proposal.withdraw"
+_PROPOSAL_CONFIRM_OPERATION = "debt.repayment_proposal.confirm"
+_PROPOSAL_REJECT_OPERATION = "debt.repayment_proposal.reject"
 
 
 def _repayment_create_response(
@@ -352,3 +380,237 @@ def post_debt_void(
     # goal_service.update_goal's post-CAS expire_all).
     db.expire_all()
     return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+
+
+# ── ADR-0049 slice 3: member repayment proposals (§3.2) ──────────────────────
+
+
+@router.post(
+    "/{public_id}/repayment-proposals",
+    response_model=MemberRepaymentProposalResponse,
+    status_code=201,
+)
+def post_repayment_proposal(
+    public_id: str,
+    payload: MemberRepaymentProposalCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MemberRepaymentProposalResponse:
+    # Create has no proposal id yet, so — like ``post_debt`` — it uses the
+    # low-level [[0042]] helpers directly: the key itself anchors the fingerprint
+    # and the recorded ``resource_id`` (the new proposal public_id) locates the
+    # proposal on a HIT. Creating a proposal is NOT fold-changing, so there is no
+    # ``expected_row_version`` (the parent CAS happens only on confirm).
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
+    fingerprint = fingerprint_request(
+        operation=_PROPOSAL_CREATE_OPERATION,
+        target_id=idempotency_key,
+        body=payload.model_dump(mode="json", exclude_unset=True),
+        expected_row_version=None,
+    )
+    outcome = claim_idempotency_key(
+        db,
+        tenant_id=auth.tenant_id,
+        idempotency_key=idempotency_key,
+        operation=_PROPOSAL_CREATE_OPERATION,
+        request_fingerprint=fingerprint,
+        target_type=_PROPOSAL_TARGET_TYPE,
+        target_id=public_id,
+    )
+    if outcome.kind is IdempotencyOutcomeKind.HIT:  # §4.6 — re-serialise the proposal
+        return get_repayment_proposal_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            proposal_public_id=outcome.row.resource_id,
+        )
+    if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+
+    response = create_repayment_proposal(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        public_id=public_id,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db,
+        outcome.row,
+        resource_type=_PROPOSAL_TARGET_TYPE,
+        resource_id=response.public_id,
+    )
+    db.commit()
+    return response
+
+
+@router.post(
+    "/{public_id}/repayment-proposals/{proposal_public_id}/withdraw",
+    response_model=MemberRepaymentProposalResponse,
+    status_code=201,
+)
+def post_repayment_proposal_withdraw(
+    public_id: str,
+    proposal_public_id: str,
+    payload: MemberRepaymentProposalWithdrawRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MemberRepaymentProposalResponse:
+    # Proposal-targeted op: anchor the [[0042]] fingerprint on the proposal id.
+    # Withdraw is NOT fold-changing, so ``expected_row_version`` is None.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_PROPOSAL_WITHDRAW_OPERATION,
+        target_id=proposal_public_id,
+        target_type=_PROPOSAL_TARGET_TYPE,
+        body=payload.model_dump(mode="json", exclude_unset=True),
+        expected_row_version=None,
+    )
+    if claim is None:  # replay: re-serialise the proposal's canonical state.
+        return get_repayment_proposal_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            proposal_public_id=proposal_public_id,
+        )
+    response = withdraw_repayment_proposal(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        public_id=public_id,
+        proposal_public_id=proposal_public_id,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db,
+        claim,
+        resource_type=_PROPOSAL_TARGET_TYPE,
+        resource_id=response.public_id,
+    )
+    db.commit()
+    return response
+
+
+@router.post(
+    "/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
+    response_model=DebtResponse,
+    status_code=201,
+)
+def post_repayment_proposal_confirm(
+    public_id: str,
+    proposal_public_id: str,
+    payload: MemberRepaymentProposalConfirmRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> DebtResponse:
+    # Confirm commits a Repayment → fold-changing, so it carries
+    # ``expected_row_version`` (§2.1 stale-intent fence + §3.6 fingerprint) and
+    # replies with the fold-after DebtResponse. A HIT re-serialises the Debt
+    # WITHOUT re-entering the §2.1 serialized section (no second bump / repayment).
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_PROPOSAL_CONFIRM_OPERATION,
+        target_id=proposal_public_id,
+        target_type=_PROPOSAL_TARGET_TYPE,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # §2.1 replay: re-serialise the fold, do NOT bump again.
+        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    confirm_repayment_proposal(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        public_id=public_id,
+        proposal_public_id=proposal_public_id,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=public_id
+    )
+    db.commit()
+    # bump_row_version emits a SQL ``row_version + 1`` expression; expire before
+    # re-reading the fold for the response (mirrors the slice-2 fact routes).
+    db.expire_all()
+    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+
+
+@router.post(
+    "/{public_id}/repayment-proposals/{proposal_public_id}/reject",
+    response_model=MemberRepaymentProposalResponse,
+    status_code=201,
+)
+def post_repayment_proposal_reject(
+    public_id: str,
+    proposal_public_id: str,
+    payload: MemberRepaymentProposalRejectRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MemberRepaymentProposalResponse:
+    # Reject is NOT fold-changing (no repayment committed), so no
+    # ``expected_row_version``.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_PROPOSAL_REJECT_OPERATION,
+        target_id=proposal_public_id,
+        target_type=_PROPOSAL_TARGET_TYPE,
+        body=payload.model_dump(mode="json", exclude_unset=True),
+        expected_row_version=None,
+    )
+    if claim is None:  # replay: re-serialise the proposal's canonical state.
+        return get_repayment_proposal_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            proposal_public_id=proposal_public_id,
+        )
+    response = reject_repayment_proposal(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        public_id=public_id,
+        proposal_public_id=proposal_public_id,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db,
+        claim,
+        resource_type=_PROPOSAL_TARGET_TYPE,
+        resource_id=response.public_id,
+    )
+    db.commit()
+    return response
+
+
+@router.get(
+    "/{public_id}/repayment-proposals",
+    response_model=MemberRepaymentProposalListResponse,
+)
+def get_repayment_proposals(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> MemberRepaymentProposalListResponse:
+    return list_repayment_proposals(db, tenant_id=auth.tenant_id, public_id=public_id)

@@ -44,6 +44,7 @@ from app.models.debt import (
     Debt,
     DebtAdjustment,
     DebtVoid,
+    MemberRepaymentProposal,
     Repayment,
     RepaymentVoid,
 )
@@ -102,6 +103,7 @@ __all__ = [
     "LedgerAuditLog",
     "LedgerLearningEvent",
     "LedgerMember",
+    "MemberRepaymentProposal",
     "MerchantAlias",
     "MonthlyIncomePlan",
     "OcrFact",

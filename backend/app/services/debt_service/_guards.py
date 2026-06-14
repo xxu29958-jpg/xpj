@@ -36,3 +36,42 @@ def guard_direct_fact_writable(debt: Debt) -> None:
     """
     if debt.counterparty_type != "external" or debt.source_type != "manual":
         raise AppError("state_conflict", status_code=409)
+
+
+def proposal_debtor_creditor(debt: Debt) -> tuple[int | None, int | None]:
+    """Resolve (debtor_account_id, creditor_account_id) from the Debt direction.
+
+    ``direction='i_owe'`` → the ledger owner owes the counterparty, so the owner
+    is the debtor and the counterparty is the creditor. ``direction='owed_to_me'``
+    is the mirror. Either side may be ``None`` for a non-member counterparty —
+    :func:`guard_member_debt` is what restricts this flow to member Debt, so the
+    proposal services only call this after that guard passes.
+    """
+    if debt.direction == "i_owe":
+        return debt.owner_account_id, debt.counterparty_account_id
+    return debt.counterparty_account_id, debt.owner_account_id
+
+
+def guard_member_debt(debt: Debt) -> None:
+    """The repayment-proposal flow (§3.2) is member-Debt only.
+
+    A proposal models the debtor↔creditor adverse-interest handshake between two
+    ledger accounts; an external (label-only) Debt has no member counterparty to
+    confirm, so it stays on slice 2's direct owner-side bookkeeping.
+    """
+    if debt.counterparty_type != "member":
+        raise AppError("repayment_proposal_requires_member_debt", status_code=409)
+
+
+def guard_actor_is_debtor(debt: Debt, actor_account_id: int) -> None:
+    """Only the debtor may propose or withdraw a repayment proposal (§3.2 / §5.2)."""
+    debtor_account_id, _ = proposal_debtor_creditor(debt)
+    if actor_account_id != debtor_account_id:
+        raise AppError("repayment_proposal_debtor_only", status_code=403)
+
+
+def guard_actor_is_creditor(debt: Debt, actor_account_id: int) -> None:
+    """Only the creditor may confirm or reject a repayment proposal (§3.2 / §5.2)."""
+    _, creditor_account_id = proposal_debtor_creditor(debt)
+    if actor_account_id != creditor_account_id:
+        raise AppError("repayment_proposal_creditor_only", status_code=403)

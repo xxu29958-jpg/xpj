@@ -108,16 +108,16 @@ def test_pr_delta_accepts_debt_create_one_time_down_ratchet(monkeypatch) -> None
 def test_pr_delta_debt_create_exception_does_not_allow_future_growth(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 111
+    baseline["mutate_token_exempted"] = 114
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 110}
+        {"mutate_token_exempted": 113}
     )
 
     assert len(violations) == 1
-    assert "110" in violations[0]
-    assert "111" in violations[0]
+    assert "113" in violations[0]
+    assert "114" in violations[0]
 
 
 def test_mutate_token_ledger_is_consistent_with_live_tables() -> None:

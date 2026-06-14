@@ -14,6 +14,15 @@ as provenance/display only. ``remaining`` / ``paid`` are derived, never stored
 as truth (§2 / §10). ``row_version`` is the [[0041]] OCC token that slice 2's
 fold-changing writes serialize on; a brand-new Debt inserts at ``1`` and is not
 hand-bumped ([[0041]]).
+
+Slice 3 (member repayment proposal) adds ``MemberRepaymentProposal`` — the
+debtor-side "I paid" pending intent for a ``counterparty_type='member'`` Debt
+(§3.2 / §5.2 / F5). A proposal is NOT a fact: it never enters the §2 fold while
+``pending``. The creditor confirms (full or partial) to commit one ``Repayment``
+linked via ``proposal_id``, rejects, or the debtor withdraws; a new proposal
+supersedes the existing pending one. The ``uq_mrp_one_pending_per_debt`` partial
+UNIQUE index (``WHERE status = 'pending'``) is the §3.2 one-pending-per-Debt
+concurrency backstop — service-level supersede is only a workflow convenience.
 """
 
 from __future__ import annotations
@@ -31,6 +40,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -246,3 +256,111 @@ class DebtVoid(Base):
     )
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class MemberRepaymentProposal(Base):
+    """Debtor-side "I paid" pending intent for a member Debt; see ADR-0049 §3.2.
+
+    A proposal is NOT an append-only fact — while ``pending`` it never enters the
+    §2 fold (``remaining`` / ``paid`` ignore it). The creditor confirms it (full
+    or partial) to commit one ``Repayment`` linked back via ``proposal_id``, or
+    rejects it; the debtor may withdraw a still-pending proposal; creating a new
+    proposal supersedes the existing pending one in the same transaction. The
+    frozen ``proposed_amount_cents`` (home minor units, §2.2) plus the optional
+    original-currency provenance mirror ``Repayment`` so a full confirmation can
+    copy the provenance onto the committed repayment.
+
+    ``uq_mrp_one_pending_per_debt`` (partial UNIQUE ``WHERE status = 'pending'``)
+    is the §3.2 hard backstop: at most one ``pending`` proposal per Debt, so two
+    concurrent creates cannot leave two pending rows for the debtor to double-fill
+    and the creditor to double-confirm. The service supersede is a workflow
+    convenience layered on top of — never a substitute for — this index.
+    """
+
+    __tablename__ = "member_repayment_proposals"
+    __table_args__ = (
+        CheckConstraint(
+            "proposed_amount_cents > 0",
+            name="ck_member_repayment_proposals_amount_positive",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'confirmed', 'partially_confirmed', "
+            "'rejected', 'withdrawn', 'expired', 'superseded')",
+            name="ck_member_repayment_proposals_status_valid",
+        ),
+        CheckConstraint("length(home_currency_code) = 3", name="ck_mrp_home_currency_format"),
+        UniqueConstraint(
+            "idempotency_key", name="uq_member_repayment_proposals_idempotency_key"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    debt_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("debts.id", name="fk_member_repayment_proposals_debt"),
+        nullable=False,
+        index=True,
+    )
+    # --- adverse-interest parties (debtor proposes, creditor confirms) --------
+    debtor_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_mrp_debtor_account"), nullable=False
+    )
+    creditor_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_mrp_creditor_account"), nullable=False
+    )
+    proposed_by_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_mrp_proposed_by_account"), nullable=False
+    )
+
+    # --- money: frozen home amount + original-currency provenance (§2.2) ------
+    proposed_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
+    exchange_rate_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- lifecycle -----------------------------------------------------------
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default="pending", nullable=False
+    )
+    confirmed_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Plain int (no FK) — mirrors Repayment.proposal_id's loose back-link style.
+    committed_repayment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supersedes_proposal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    # §3.2: a pending proposal expires after 30 days if neither side acts.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by_account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("accounts.id", name="fk_mrp_resolved_by_account"), nullable=True
+    )
+
+
+Index(
+    "ix_mrp_debt_status",
+    MemberRepaymentProposal.debt_id,
+    MemberRepaymentProposal.status,
+)
+# §3.2 one-pending-per-Debt backstop: a partial UNIQUE on debt_id restricted to
+# pending rows so at most one proposal per Debt is ``pending`` at a time. By manual
+# convention the ``postgresql_where`` predicate text is kept byte-identical to the
+# migration's ``sa.text("status = 'pending'")``. Note the ``_audit_partial_index_pg_where``
+# lane only flags a partial Index that declares ``sqlite_where`` WITHOUT a
+# ``postgresql_where`` (which would silently degrade to a whole-table UNIQUE on
+# PostgreSQL); it does NOT compare the predicate text between ORM and migration —
+# that match stays a reviewer-enforced convention.
+Index(
+    "uq_mrp_one_pending_per_debt",
+    MemberRepaymentProposal.debt_id,
+    unique=True,
+    postgresql_where=text("status = 'pending'"),
+)
