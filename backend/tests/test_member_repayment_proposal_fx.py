@@ -192,3 +192,39 @@ def test_create_proposal_foreign_amount_idempotent_across_minor_unit_rounding(
     assert len(proposals) == 1  # the replay HIT, no second proposal created
 
 
+def test_create_proposal_foreign_paid_at_fingerprint_includes_rate_date(
+    client: TestClient, *, identity
+) -> None:
+    # Same UTC instant can carry different FX date semantics: non-UTC offsets use
+    # their local calendar date, while UTC instants are mapped to the accounting
+    # timezone. The create fingerprint must not HIT when the freeze date differs.
+    member_id, member_token = _mint_member_actor()
+    debt = _create_member_debt(
+        client,
+        identity.app_headers,
+        direction="owed_to_me",
+        member_account_id=member_id,
+        principal_amount_cents=100000,
+    )
+    _seed_usd_rate(tenant_id="owner", rate_date=date(2026, 5, 10), rate_to_cny="7.20000000")
+    key = str(uuid4())
+    headers = {**_member_headers(member_token), "Idempotency-Key": key}
+    body = {
+        "original_currency_code": "USD",
+        "original_amount": "10.00",
+        "paid_at": "2026-05-10T00:30:00+14:00",
+    }
+
+    first = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals", headers=headers, json=body
+    )
+    assert first.status_code == 201, first.json()
+
+    replay = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals",
+        headers=headers,
+        json={**body, "paid_at": "2026-05-09T10:30:00Z"},
+    )
+    assert replay.status_code == 422
+    assert replay.json()["error"] == "idempotency_key_reused"
+

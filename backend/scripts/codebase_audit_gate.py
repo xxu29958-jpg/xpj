@@ -220,6 +220,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # update both baseline files. Android count is NOT listed here.
 }
 
+STRICT_EQUALITY_BASELINE["backend_pytest_count"] = 1814  # +1 ADR-0049 slice 3 paid_at FX-date fingerprint regression
+
 
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.

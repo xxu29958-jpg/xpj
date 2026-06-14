@@ -75,7 +75,7 @@ from app.services.debt_service import (
     void_repayment,
     withdraw_repayment_proposal,
 )
-from app.services.exchange_rate_service import amount_major_to_minor
+from app.services.exchange_rate_service import amount_major_to_minor, default_rate_date
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
     claim_idempotency_key,
@@ -138,6 +138,10 @@ def _proposal_create_fingerprint_body(
             body.pop("note", None)
     if payload.paid_at is not None:
         body["paid_at"] = to_iso(payload.paid_at)
+        # ``to_iso`` canonicalizes equal instants, but FX freeze preserves
+        # offset/naive rate-date semantics via default_rate_date(). Include that
+        # date so a replay that would freeze a different home amount cannot HIT.
+        body["paid_at_rate_date"] = default_rate_date(payload.paid_at).isoformat()
     if payload.expires_at is not None:
         body["expires_at"] = to_iso(payload.expires_at)
     if payload.original_currency_code is not None:
