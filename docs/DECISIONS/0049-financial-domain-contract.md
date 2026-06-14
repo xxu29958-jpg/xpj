@@ -1,640 +1,466 @@
-# ADR 0049: Financial Domain Contract
+# ADR 0049: Debt Domain Contract
 
-Status: Accepted (Contract Spec)
+Status: Accepted (Target Contract; Runtime Subset)
 Date: 2026-06-14
-Type: Domain Contract (0042-style)
-Lineage: consolidates and replaces the retired early drafts `0049-debt-and-liability-tracking` and `0050-event-store-schema-and-migration`.
+Type: Domain Contract
+Lineage: replaces the earlier `financial-domain-contract` wording and consolidates the retired early drafts `0049-debt-and-liability-tracking` and `0050-event-store-schema-and-migration`.
 
 ---
 
 # 0. Scope
 
-This ADR defines **financial truth rules only**.
+This ADR defines one new financial domain:
 
-It does NOT define:
-- storage implementation
-- event sourcing architecture
-- caching strategy
-- migration plan
+> Debt = a frozen obligation plus append-only repayment/correction facts
 
-It defines:
+The prior A/B split is intentionally removed:
 
-> what is financially true, not how it is stored
+- "family member owes family member" is `Debt(counterparty_type=member, source_type=bill_split|manual)`
+- "I owe a credit card / loan / outside person" is `Debt(counterparty_type=external, source_type=manual)`
 
----
+They are the same domain. Only counterparty and source differ.
 
-# 1. Core Domains
+This ADR does NOT re-define foundations already owned elsewhere:
 
-System contains three financial domains:
+- money uses integer minor units: [[0001]]
+- family ledger roles and account privacy: [[0022]]
+- backend-authoritative FX snapshots: [[0027]]
+- bill split invitation privacy and accept snapshot: [[0029]]
+- optimistic concurrency and undo/correction discipline: [[0038]]
+- PostgreSQL + `row_version` CAS: [[0041]]
+- request idempotency keys for outbox-routed mutations: [[0042]]
+- mascot is presentation, not business truth: [[0048]]
 
-## A. Member Debt (Splitwise Model)
+This ADR only defines the new Debt obligation layer, how bill split acceptance can create Debt, and how debt repayment goals and mascot transitions read Debt state.
 
-Peer-to-peer net balance between accounts.
+## 0.1 Current Runtime Boundary
 
-This is account-scoped, not ledger-scoped. It preserves the privacy boundary from ADR-0029: personal ledgers remain invisible across accounts.
+Current runtime already has:
 
-## B. Liability (Monarch Model)
+- `BillSplitInvitation` accept/reject/cancel/expire from [[0029]]
+- accepted receiver-side expense creation
+- `income_plan` as budget/advisor input
+- `spending_limit` goals
+- mascot UI state machine
 
-External or personal debt accounts.
+Current runtime does NOT yet expose:
 
-## C. Goals (KPI Layer)
+- `Debt`
+- `Repayment`
+- `DebtAdjustment`
+- `RepaymentVoid`
+- `debt_repayment` goal evaluator
+- Debt transition mascot dedupe markers
 
-Non-transactional financial objectives.
-
-Goal configuration may be stored. Goal progress and achievement are derived from domain facts.
-
----
-
-# 2. Security and Authorization Contract
-
-Money-changing operations MUST derive actor identity and tenant scope from the authenticated server-side `AuthContext`. They MUST NOT trust caller-supplied account, ledger, or tenant ids as authority.
-
-## 2.1 Tenant Isolation
-
-- No member-debt, liability, goal, or mascot derivation may cross tenant/account scope unless an explicit product configuration authorizes that scope.
-- All financial writes MUST be scoped by tenant/account on the server side.
-- Cross-tenant derivation is forbidden.
-
-## 2.2 Participant Authorization
-
-- Split invitation accept: only `receiver_account_id` may accept, and the receiver must choose a target ledger where they have write role.
-- Split invitation reject: only `receiver_account_id` may reject.
-- Split invitation cancel: only `sender_account_id` may cancel before acceptance.
-- Member settlement proposal: only payer or payee may submit it, but a committed settlement that reduces payer debt requires payee/creditor confirmation unless the payee is the actor recording receipt.
-- Settlement reversal: only payer or payee may submit it, but a committed reversal that worsens another party's settled position requires that harmed party's confirmation or an explicit dispute workflow.
-- Accepted split void: only debtor or creditor may submit it, but a committed void that removes creditor receivable requires creditor confirmation or both-party agreement. A debtor-benefiting void MUST NOT be unilateral.
-- Liability create/update/payment/adjustment: only the owning account may perform the operation. Shared-liability write scope is out of this ADR; ledger membership alone grants no permission to mutate another account's liability.
-- Goal create/update/archive: only an actor with write permission on the goal's owning scope may perform the operation.
-
-Third-party account C MUST NOT be able to create, reverse, void, or otherwise affect financial facts between accounts A and B.
-
-Participant authorization is necessary but not sufficient. Member-debt operations involve adverse interests: the party who benefits from reducing their debt, increasing their own receivable, or worsening another party's settled position cannot unilaterally commit that fact. Beneficiary-only submissions remain pending proposals, notifications, or disputes until the affected value holder confirms under the product workflow.
-
-APIs SHOULD avoid confirming whether a nonparticipant-guessed financial id exists. Prefer `not_found` or an equivalent non-enumerating error shape for unauthorized nonparticipants.
-
-## 2.3 Idempotency Baseline
-
-All money-changing operations MUST have an explicit idempotency contract.
-
-- Operations with a natural domain key may use domain uniqueness as the primary guard. Example: one invitation may create at most one accepted split snapshot.
-- Append/state mutations without a natural single-result key MUST use a request idempotency key. This includes settlements, settlement reversals, snapshot voids, liability mutations, and goal writes.
-- The request idempotency key is generated at user-intent time.
-- The server persists a fingerprint under `(tenant_id, actor_account_id, operation, target_type, idempotency_key)`.
-- A replay with the same key and same fingerprint returns the canonical success result.
-- A replay with the same key and different fingerprint returns `idempotency_key_reused`.
-- Resource ids such as `settlement_id` or `liability_mutation_id` MUST NOT be the only idempotency guard.
-
-Domain uniqueness still applies in addition to request idempotency where relevant. For example, one invitation may create at most one accepted split snapshot, and one settlement may be reversed at most once.
+Therefore this ADR is a target contract. Confirmation checks are required before exposing the corresponding Debt features; they are not claims that the current runtime already implements them.
 
 ---
 
-# 3. A - Member Debt Contract
+# 1. Existing Foundation Reuse
 
-## 3.1 Source of Truth
+Debt implementation MUST reuse existing project foundations instead of inventing parallel mechanisms.
 
-Member debt is derived ONLY from:
+- Authorization uses `AuthContext` plus existing `LedgerMember` roles (`owner` / `member` / `viewer`).
+- Tenant isolation uses existing ledger/account scoping.
+- Mutation concurrency uses `row_version` CAS from [[0041]].
+- Outbox-routed writes use `Idempotency-Key` from [[0042]].
+- Bill split source data uses `BillSplitInvitation` frozen fields from [[0029]].
+- FX and home-currency amounts use backend-authoritative snapshots from [[0027]].
+- Audit/correction behavior follows append-only correction discipline from [[0038]].
 
-- `AcceptedSplitSnapshot`
-- `AcceptedSplitVoid`
-- `MemberSettlement`
-- `MemberSettlementReversal`
+0049 MUST NOT introduce:
 
-No other source is valid.
+- a second idempotency system
+- a second role/relationship model
+- a second FX authority
+- a second settlement/netting subsystem
+- mutable "already paid" or "remaining" columns as financial truth
 
 ---
 
-## 3.2 Accepted Split Rule (Critical)
+# 2. Debt Model
 
-When a split invitation is accepted:
+`Debt` represents one obligation.
 
-> The system MUST freeze a snapshot amount at acceptance time.
+Required fields:
 
-### Frozen fields:
-- `snapshot_id` or `public_id`
+- `debt_id` / `public_id`
+- `ledger_id`
+- `owner_account_id`
+- `direction`: `i_owe` / `owed_to_me` from `owner_account_id`'s perspective
+- `counterparty_type`: `member` / `external`
+- `counterparty_account_id` when `counterparty_type=member`
+- `counterparty_label` when `counterparty_type=external`
+- `principal_amount_cents`
+- `home_currency_code`
+- optional original-currency provenance fields
+- `status`: `open` / `cleared` / `voided`
+- `source_type`: `manual` / `bill_split`
+- `source_id`
+- `created_by_account_id`
+- `created_at`
+- `updated_at`
+- `row_version`
+
+Rules:
+
+- Principal is frozen at creation.
+- Principal MUST NOT be edited in place.
+- `remaining_amount_cents` is derived, not stored as truth.
+- `paid_amount_cents` is derived, not stored as truth.
+- `status=cleared` is a lifecycle latch reached by transition, not an independently editable balance.
+- `status=voided` requires an append-only void/correction fact; direct row mutation is forbidden.
+
+For a debt:
+
+```text
+remaining =
+  principal_amount_cents
++ sum(non-voided DebtAdjustment.amount_cents)
+- sum(non-voided Repayment.amount_cents)
+```
+
+Debt is cleared when `remaining == 0`.
+
+Debt overpayment is rejected in v1. No Debt operation may silently clamp, create credit balance, or flip direction. Live revolving credit-card balances, interest accrual, credit balances, and full balance-sheet semantics are out of scope for this ADR.
+
+---
+
+# 3. Repayment and Correction Facts
+
+## 3.1 Repayment
+
+`Repayment` is append-only.
+
+`Repayment` means a committed repayment fact. A pending "I paid" proposal for member Debt is workflow state and MUST NOT enter the repayment fold until confirmed.
+
+Required fields:
+
+- `repayment_id` / `public_id`
+- `debt_id`
 - `amount_cents`
-- `currency_code`
-- `debtor_account_id`
-- `creditor_account_id`
-- `invitation_id`
-- `accepted_at`
+- `paid_at`
+- `actor_account_id`
+- `idempotency_key`
+- `created_at`
 
-The amount is the backend-authoritative home-currency amount at acceptance time. Later FX-rate changes MUST NOT reprice an accepted snapshot.
+Rules:
 
-This snapshot is immutable.
+- `amount_cents > 0`
+- replays with the same idempotency key and fingerprint return the same committed repayment
+- replays with mismatched fingerprint return `idempotency_key_reused`
+- a repayment that would make `remaining < 0` is rejected
+- repayment never mutates the Debt principal
 
----
+## 3.2 DebtAdjustment
 
-## 3.3 Accept Atomicity
+`DebtAdjustment` is append-only and is the only way to correct principal-like mistakes after Debt creation.
 
-Accepting a split invitation MUST be atomic:
+Required fields:
 
-- create the receiver-side expense snapshot if the product flow requires one
-- create the accepted split snapshot
-- mark the invitation as accepted
+- `adjustment_id` / `public_id`
+- `debt_id`
+- signed `amount_cents`
+- reason
+- `actor_account_id`
+- `idempotency_key`
+- `created_at`
 
-These changes MUST commit together or not commit at all.
+Rules:
 
-Accept is idempotent. Replaying the same accept intent MUST return the existing accepted result and MUST NOT create another debt snapshot.
+- reason is required
+- adjustment MUST NOT make `remaining < 0`
+- adjustment that increases another member's burden requires affected-party confirmation
+- incorrect adjustments are corrected by another adjustment, never by rewriting history
 
-Domain uniqueness:
+## 3.3 RepaymentVoid
 
-- `invitation_id` MUST be unique among accepted split snapshots.
-- A second accept attempt for the same invitation MUST return the existing accepted result or a state conflict, never another snapshot.
+`RepaymentVoid` is append-only and is the only way to undo a mistaken repayment.
 
----
+Required fields:
 
-## 3.4 Snapshot Void Contract
+- `repayment_void_id` / `public_id`
+- `repayment_id`
+- reason
+- `actor_account_id`
+- `idempotency_key`
+- `created_at`
 
-If an accepted split is wrong, the correction path is an append-only void/dispute event, not fake settlement.
+Rules:
 
-`AcceptedSplitVoid` MUST:
+- one repayment may be voided at most once
+- voiding a repayment reopens Debt if derived `remaining > 0`
+- voiding a repayment MUST NOT delete the original repayment row
 
-- reference exactly one accepted split snapshot
-- be idempotent via its request idempotency key and `void_id`
-- include actor, reason, and timestamp
-- require creditor confirmation or both-party agreement when the void removes a receivable
-- be admitted under the same per-account-pair guard used by accept, settlement, and reversal
-- not mutate the original snapshot
-- not allow double void for the same snapshot
+## 3.4 Debt Void
 
-A voided snapshot no longer contributes to member-debt net balance, but remains visible in audit history.
+Voiding an entire Debt is allowed only through an append-only correction fact.
 
-A void MUST NOT cause existing committed settlements to exceed the remaining debt for the pair. If voiding a snapshot would make the current settlement set overpay or flip direction, the void is rejected or atomically paired with explicit correction/reversal events under the same pair guard.
+Rules:
 
----
-
-## 3.5 Non-Rule (Explicit Decoupling)
-
-After acceptance:
-
-- modifying original expense MUST NOT affect debt
-- modifying sender ledger MUST NOT affect debt
-- receiver created expense MUST NOT affect debt
-- deleting or archiving either visible ledger record MUST NOT mutate accepted debt
-
-Debt is bound ONLY to snapshots, voids, settlements, and settlement reversals.
-
----
-
-## 3.6 Net Balance Rule
-
-For an unordered account pair `(A, B)`:
-
-```text
-net(A,B) =
-  sum(non-voided snapshot A owes B)
-- sum(non-voided snapshot B owes A)
-- sum(settlement A pays B)
-+ sum(settlement B pays A)
-- sum(reversal of settlement B pays A)
-+ sum(reversal of settlement A pays B)
-```
-
-Positive `net(A,B)` means A owes B.
-
-All sums use home-currency `amount_cents` frozen at acceptance or settlement time. `currency_code` is provenance only and MUST NOT change the fold currency.
+- bill-split-sourced Debt voiding requires the same adverse-interest confirmation rules as member Debt adjustment
+- voided Debt no longer contributes to open debt totals or goals
+- voided Debt remains visible in audit/history
 
 ---
 
-## 3.7 Settlement Contract
+# 4. Bill Split Linkage
 
-A settlement is:
+Bill split acceptance is the default source for member Debt.
 
-- append-only financial correction between two accounts
-- uniquely identified by `settlement_id`
-- request-idempotent via section 2.3
+When Debt rollout is enabled, accepting a `BillSplitInvitation` MUST also insert one `Debt` in the existing accept transaction:
 
-### Settlement MUST:
-- have `amount_cents > 0`
-- use a server-scoped unique `settlement_id`
-- have explicit `payer_account_id` and `payee_account_id`
-- reduce the payer's existing net debt to the payee
-- be admitted under a per-account-pair serialization or compare-and-append guard
-- satisfy `amount_cents <= current net debt from payer to payee` while holding that guard
-- never modify past snapshots
+- `source_type = bill_split`
+- `source_id = invitation.public_id`
+- `direction = i_owe` from the receiver's perspective
+- `counterparty_type = member`
+- `counterparty_account_id = invitation.sender_account_id`
+- `principal_amount_cents = invitation.amount_cents`
+- currency/provenance copied from the frozen invitation snapshot
+- `ledger_id = target_ledger_id`
+- `owner_account_id = receiver_account_id`
 
-### Settlement MUST NOT:
-- commit when current net is zero or already opposite direction
-- create a new opposite-direction debt by overpaying
-- touch liability accounts
-- rewrite or delete prior settlements
+This insertion MUST be in the same transaction as:
 
-### Settlement MAY:
-- be reversed via explicit reversal event
+- receiver-side expense creation
+- invitation `invited -> accepted` claim
+- invitation accepted-state binding
 
-Overpay prevention MUST be checked against the authoritative fold/current pair state while holding the pair admission guard. Rebuildable projections or caches MUST NOT be used for admission. If pair-level admission cannot be implemented, settlement creation MUST NOT be exposed.
+All three outcomes commit together or none commit.
 
-A payer/debtor-submitted settlement is only a pending payment proposal until the payee/creditor confirms receipt. A payee/creditor may record receipt directly because that reduces their own receivable.
+Uniqueness:
 
----
+- one accepted invitation creates at most one receiver expense
+- one accepted invitation creates at most one `Debt(source_type=bill_split, source_id=invitation.public_id)`
+- re-accept returns the existing accepted result and MUST NOT create another Debt
 
-## 3.8 Account Lifecycle
+Rejected, cancelled, or expired invitations create no Debt.
 
-Member-debt participant accounts require durable identity.
+Existing accepted invitations from before Debt rollout are not automatically backfilled by this ADR. Backfill, if needed, requires an explicit migration plan and reconciliation check.
 
-- An account with nonzero member debt MUST NOT be hard-deleted.
-- Account closure requires settling or voiding all open member debt first. Write-off/forgiveness semantics require a future ADR before use.
-- If product policy permits account merge, the merge MUST preserve audit identity via an append-only mapping or tombstone. Existing snapshots MUST NOT be mutated in place.
-- If legal deletion is required, a non-identifying tombstone id must remain sufficient to preserve financial audit and fold correctness.
+Bill-split linkage is default-on for accepted invitations after rollout. Opt-out requires a future product decision and ADR update.
 
 ---
 
-## 3.9 Forbidden Operations
+# 5. Authorization
 
-- No authoritative debt table
-- No authoritative balance table
-- No mutation of snapshots
+Debt uses existing ledger roles:
 
-Rebuildable read projections or caches MAY exist in the future, but they are not financial truth and MUST be disposable.
+- `viewer`: read only
+- `member` / `owner`: may write within the owning ledger subject to the rules below
 
----
+## 5.1 External Debt
 
-# 4. B - Liability Contract
+External debt has no in-app adverse counterparty.
 
-## 4.1 Definition
+- A writer on the owning ledger may create external Debt.
+- A writer on the owning ledger may record repayment or adjustment.
+- External labels are user-entered provenance, not account identity.
 
-Liability is a stateful external account.
+## 5.2 Member Debt
 
-Allowed mutations:
+Member debt has adverse interests.
 
-- increase balance (debt creation)
-- decrease balance (payment)
-- explicit adjustment with audit reason
+Creation rules:
 
-All liability mutations are money-changing operations and MUST follow the security and idempotency contract in section 2.
+- bill-split-sourced member Debt is valid only because the debtor accepted the split invitation
+- a creditor cannot unilaterally create member Debt against another account
+- manual member Debt that increases another party's burden requires that affected party's confirmation before becoming committed
 
----
+Repayment rules:
 
-## 4.2 Rules
+- debtor saying "I paid" creates a pending repayment proposal
+- creditor confirmation commits that repayment
+- creditor may directly record "I received payment" because it reduces the creditor's own receivable
+- pending repayment proposals do not reduce `remaining`
 
-- liability is NOT part of member graph
-- liability is NOT derived
-- liability balance is authoritative state
-- liability is personal/account-owned in this ADR
-- shared liabilities require a future ADR before use
-- liability payment may be represented as an expense only for spending reports, not as member-debt settlement
+Adjustment rules:
 
----
+- an adjustment that increases a member's burden requires that member's confirmation
+- an adjustment that reduces a creditor's receivable requires creditor confirmation
+- beneficiary-only adjustment remains pending and non-authoritative
 
-## 4.3 Mutation and Audit Contract
-
-Every liability balance mutation MUST:
-
-- have an idempotency key and immutable `liability_mutation_id`
-- append an immutable audit event in the same transaction as the state update
-- include actor, mutation type, amount, reason code, timestamp, and previous/new balance
-- reject replays with mismatched fingerprints
-- reject mutations that would make balance negative
-
-`explicit adjustment` is not a loophole. It MUST use a signed amount, require a non-empty reason, and remain append-only. Incorrect adjustments are corrected by another explicit adjustment, never by rewriting history.
-
-## 4.4 Completion Rule
-
-```text
-balance == 0 -> cleared
-```
-
-`DebtCleared` is emitted only on transition from positive balance to zero. Refreshing or rereading a zero-balance liability MUST NOT emit another cleared event.
-
-Liability overpayment is not part of this contract. A payment larger than the current balance MUST be rejected unless a future ADR introduces credit-balance or asset semantics.
+Participant confirmation must not expose private ledger internals across accounts. It may expose only the Debt shell facts required to confirm or dispute the obligation.
 
 ---
 
-# 5. C - Goal Contract
+# 6. Goals
 
-## 5.1 Goal Types
+The goal system may support multiple goal types:
 
 - `spending_limit`
 - `savings_target`
 - `debt_repayment`
 
-Current runtime implementation supports only `spending_limit`. `savings_target` and `debt_repayment` are contract-level reserved goal types and MUST NOT be exposed through product/API surfaces until their storage, evaluator, authorization, and Confirmation checks are implemented.
+This ADR defines only the Debt-backed `debt_repayment` semantics.
 
----
+`debt_repayment` goal configuration:
 
-## 5.2 Achievement Rules
+- links to explicit Debt ids
+- freezes the linked Debt set per goal version
+- stores target period/scope as goal configuration
 
-### spending_limit
-
-`spending_limit` is a guardrail, not a mid-period achievement.
-
-Achieved only when:
-
-- the configured period is closed
-- scoped confirmed spending is below or equal to target
-- the goal was active for that period
-
-Crossing 80% or 100% during the period is warning state, not achievement.
-
-### debt_repayment
-
-Achieved when:
-
-- all linked liabilities are cleared
-
-The linked liability set is frozen for a goal version. Adding or removing linked liabilities creates a new goal version and MUST NOT retroactively achieve or un-achieve the previous version.
-
-Achievement is latched per goal version. Later borrowing against a previously cleared liability may start a new repayment goal/version, but it does not rewrite the historical achievement event.
-
-### savings_target
-
-Current contract: `savings_target` is a forecast-based KPI, not a realized cash ledger.
-
-It is derived ONLY from:
+Achievement:
 
 ```text
-planned_savings = scoped income_plan amount - scoped confirmed spending
+achieved when every linked Debt has status=cleared
 ```
 
-Forecast inflow is the sum of active `income_plan` snapshots for the same scope and period. It is not realized income.
+Rules:
 
-At period close, the evaluator MUST freeze the income-plan input used for that period: plan ids, plan versions or update timestamps, and `amount_cents` values. Later edits to `income_plan` affect future planning, not a closed-period `savings_target` result.
+- adding or removing linked Debt creates a new goal version
+- unlinking an open Debt MUST NOT retroactively achieve an older version
+- achievement is latched per goal version
+- voided linked Debt requires explicit goal-version policy before exposure; default is to make the current version `not_evaluable` until user reviews links
 
-Evaluation is possible only when:
+Implementation note:
 
-- the configured period is closed
-- an active income plan exists for the same scope and period
-- scoped confirmed spending is available for that period
-
-Closed-period result:
-
-- `achieved` when `planned_savings >= target_amount_cents`
-- `missed` when `planned_savings < target_amount_cents`
-
-No realized-income transaction ledger is defined by this ADR. If future product work adds actual income transactions, switching `savings_target` from forecast-based to realized-flow-based semantics requires a new ADR.
-
-Allowed scope examples:
-
-- current ledger
-- explicit account group defined by product configuration
-
-No cross-ledger or cross-account aggregation is allowed unless that scope is explicitly configured and authorized.
-
-Goal target/configuration may be stored. Goal progress and achieved state MUST NOT be stored as independent truth.
-
-The frozen period evaluation input is a closed-period fact used to keep derivation stable; it is not a mutable progress cache.
-
-If no active income plan exists for the configured scope and period, `savings_target` is `not_evaluable`, not failed and not achieved.
+- the current DB/API check that only permits `spending_limit` must be widened before exposing this feature
+- evaluator and tests must land in the same implementation slice
 
 ---
 
-# 6. Mascot Contract (Non-financial Layer)
+# 7. Mascot Events
 
-## 6.1 Allowed Events
+Debt events may feed the mascot, but mascot state is presentation-only.
 
-- `MemberDebtCleared` -> Celebrating
-- `DebtCleared` -> Celebrating
-- `GoalAchieved` -> Celebrating
+Allowed debt-derived events:
 
-These are presentation events derived from committed financial transitions. They are not financial state.
+- `DebtCreated` -> concerned / attentive
+- `DebtCleared` -> celebrating
+- `AllDebtsCleared` -> larger celebration
 
-## 6.2 Trigger Rules
+Rules:
 
-- each member-debt account pair may trigger clear celebration once per transition from nonzero net to zero net
-- each liability clear transition may trigger celebration once
-- each goal period achievement may trigger celebration once
-- page refresh, sync replay, or projection rebuild MUST NOT retrigger celebration
-
-Trigger-once requires a persistent dedupe marker keyed by event type, scope, and source transition. The marker is presentation metadata, not financial truth.
-
-## 6.3 Forbidden Semantics
-
-- No moral interpretation of debt increase
-- No Dejected state tied to financial activity
-- No shame, punishment, or negative character reaction for spending or borrowing
+- bill-split-sourced day-to-day Debt creation is silent by default
+- Debt-created reactions must be de-moralized; no shame/punishment/dejected semantics
+- clear celebrations trigger only on committed transition from open to cleared
+- transition dedupe marker is required before replay/sync/rebuild can feed mascot events
+- dedupe marker is presentation metadata, not financial truth
 
 ---
 
-# 7. System Invariants
+# 8. Non-Goals
 
-## I1 - Snapshot Immutability
+This ADR does not implement:
 
-Accepted splits MUST NEVER change after creation.
+- Splitwise-style pair netting or settlement graph
+- a separate Liability domain
+- live revolving credit-card balances
+- interest accrual
+- credit-balance / asset semantics
+- external bank/card integrations
+- realized-income ledger
+- cross-ledger shared expense visibility
+- automatic backfill of old accepted bill splits
 
-## I2 - Debt Isolation
-
-Member debt MUST NOT depend on liability accounts.
-
-## I3 - Liability Isolation
-
-Liability MUST NOT enter member graph.
-
-## I4 - No Dual Truth
-
-Each financial fact has exactly one source of truth.
-
-## I5 - Projection Disposability
-
-Any cache, projection, or dashboard summary MUST be rebuildable from its source of truth and MUST NOT become a second authority.
-
-## I6 - Ledger Privacy
-
-Member debt may connect accounts, but it MUST NOT expose either party's private ledger internals.
-
-## I7 - Write Authorization
-
-Every money-changing operation requires an authenticated actor with explicit participant/owner permission and, for adverse-interest member-debt writes, confirmation from the party whose receivable or settled position is reduced.
-
-## I8 - Money Mutation Idempotency
-
-Every money-changing operation has an explicit idempotency contract. Append/state mutations use a request idempotency key plus domain uniqueness constraints where applicable.
+External Debt v1 is fixed-principal / installment / IOU only.
 
 ---
 
-# 8. Failure Model
+# 9. Failure Model
 
-## F1: Sender edits original expense
+## F1: Sender edits original expense after bill split accept
 
--> NO EFFECT on debt
+-> no effect on bill-split-sourced Debt
 
-## F2: Receiver modifies local expense
+## F2: Receiver edits received expense
 
--> NO EFFECT on debt
+-> no effect on Debt principal
 
 ## F3: Duplicate accept
 
--> returns existing accepted result, creates no new snapshot
+-> returns existing accepted result; creates no duplicate receiver expense and no duplicate Debt
 
-## F4: Unauthorized third party attempts member-debt write
+## F4: Creditor tries to create manual member Debt unilaterally
 
--> rejected before any financial state changes
+-> remains pending or rejected; no committed Debt
 
-## F5: Duplicate settlement
+## F5: Debtor records "I paid" for member Debt
 
--> returns the canonical settlement result via idempotency; balance changes once
+-> pending repayment proposal; `remaining` unchanged until creditor confirms
 
-## F6: Concurrent settlements for same pair
+## F6: Creditor records "I received"
 
--> serialized or compare-and-append guarded so overpay cannot flip direction
+-> committed repayment; `remaining` decreases once
 
-## F7: Settlement reversal
+## F7: Duplicate repayment submit
 
--> restores previous net state through append-only reversal
+-> idempotency returns canonical result; balance changes once
 
-## F8: Duplicate reversal
+## F8: Repayment exceeds remaining
 
--> rejected or returned as the existing reversal result; never applied twice
+-> rejected; no silent clamp, no direction flip
 
-## F9: Accepted snapshot is wrong
+## F9: Wrong principal
 
--> append `AcceptedSplitVoid`, never mutate the snapshot or fake a settlement
+-> append `DebtAdjustment`; do not mutate principal
 
-## F10: Duplicate liability payment
+## F10: Wrong repayment
 
--> returns canonical success for the original mutation, balance changes once
+-> append `RepaymentVoid`; do not delete repayment
 
-## F11: Liability payment exceeds balance
+## F11: Projection loss
 
--> rejected; no negative liability balance
-
-## F12: Projection loss
-
--> recompute member-debt projections from snapshots, voids, settlements, and reversals; read authoritative liability balances and use audit for verification/explanation; recompute goal projections from scoped and frozen goal inputs
-
-## F13: Void races settlement
-
--> serialized by the same pair guard; void cannot commit if it would make existing settlements overpay unless paired with explicit correction/reversal under that guard
+-> recompute Debt views from Debt + DebtAdjustment + Repayment + RepaymentVoid + DebtVoid facts
 
 ---
 
-# 9. Non-Goals
+# 10. Implementation Constraints
 
-- No event sourcing requirement
-- No global financial event store
-- No caching or projection design
-- No full balance sheet model
-- No cross-ledger shared expense visibility
-- No realized-income transaction ledger
+Minimum new structures:
 
----
+- `debts`
+- `repayments`
+- `debt_adjustments`
+- `repayment_voids`
+- member repayment/adjustment proposal workflow records if member Debt write flows are exposed
+- `debt_goal_links` or equivalent versioned goal-link table
+- debt mascot transition dedupe markers if mascot integration is exposed
 
-# 10. Contract Summary
+Hard constraints:
 
-This system guarantees:
-
-```text
-Member debt = frozen non-voided snapshots + settlements + settlement reversals
-Liability = independent stateful accounts + idempotent append-only mutation audit
-Goals = derived constraints over explicit scopes and goal versions
-Mascot = presentation-only reaction to committed, deduped transitions
-```
-
----
-
-# 11. Implementation Constraints
-
-## 11.1 Snapshot Storage Boundary
-
-- `AcceptedSplitSnapshot` is allowed append-only storage
-- It is NOT a debt table or balance table
-- Forbidden:
-  - mutable debt tables
-  - authoritative aggregated balance tables
-
-Only immutable financial snapshots are permitted as member-debt event sources.
+- `remaining` is derived
+- `paid` is derived
+- `principal_amount_cents` is immutable after creation
+- bill-split Debt source has a unique `(source_type, source_id)`
+- repayments, adjustments, and voids are append-only
+- all money-changing writes are tenant/account scoped from `AuthContext`
+- all outbox-routed writes carry `Idempotency-Key`
+- all mutable config/state rows use `row_version`
+- member adverse-interest writes require affected-party confirmation before becoming committed
 
 ---
 
-## 11.2 Settlement & Reversal Contract
+# 11. Confirmation
 
-- `MemberSettlement` MUST have a unique `settlement_id` and request idempotency
-- `MemberSettlementReversal` MUST:
-  - reference original `settlement_id`
-  - be idempotent itself
-  - NOT allow double-reversal (1:1 rule)
+Required checks before exposing Debt features:
 
-Reversal restores previous derived net state deterministically.
-
-If a reversal or void changes facts for a period already consumed by goals, reports, or mascot events, it creates a correction record. It MUST NOT silently rewrite previously emitted achievement or celebration events. Full restatement semantics require a future ADR.
-
----
-
-## 11.3 Closed Period and Net Admission Contract
-
-- Net-affecting admission is order-sensitive even though fold is order-independent.
-- Accept, void, settlement, and settlement reversal MUST use the same pair-level serialization or equivalent conditional compare-and-append guard.
-- Admission MUST read authoritative fold/current state under that guard, not disposable cache.
-- Settlement admission MUST reject zero-net, opposite-direction, or overpay attempts.
-- Void admission MUST reject or atomically correct writes that would make committed settlements overpay remaining debt.
-- Closed-period corrections are explicit correction events, not invisible history rewrites.
-
----
-
-## 11.4 Migration Constraint (Additive Only)
-
-- All new structures are append-only additions
-- Existing expense ledger MUST NOT be modified
-- No backfill into legacy tables
-- No dual-write rollback requirement
-
----
-
-## 11.5 Derivation Correctness Contract
-
-A-domain correctness MUST satisfy:
-
-```text
-fold(all non-voided snapshots, all settlements, all reversals) == expected net(A,B)
-```
-
-- deterministic
-- order-independent
-- independent of expense edits after acceptance
-
----
-
-## 11.6 Read Cost Acceptance (Explicit)
-
-- Net balance is recomputed via full fold in v1
-- Complexity O(events per pair)
-- Acceptable for household scale
-
-Future optimization with a cache or projection table is explicitly deferred and NOT part of this contract. If introduced, it must remain rebuildable and non-authoritative.
-
----
-
-# 12. Confirmation
-
-Required implementation checks:
-
-- third-party account cannot accept, settle, reverse, void, or adjust money facts for other participants
-- payer-only settlement submission cannot clear debt until payee/creditor confirms receipt
-- debtor-benefiting accepted-split void cannot commit without creditor confirmation or both-party agreement
-- reversal that worsens another party's settled position cannot commit without that party's confirmation or an explicit dispute workflow
-- all financial writes are tenant/account scoped from `AuthContext`
-- editing sender original expense does not change member debt
-- editing receiver local expense does not change member debt
-- duplicate accept returns same accepted snapshot/result
-- a different accept key for the same invitation cannot create a second snapshot
-- accept creates receiver expense and accepted snapshot atomically
-- accepted snapshot fields are immutable
-- accepted snapshot void removes it from net fold without mutating it
-- accept, void, settlement, and reversal share the same per-pair admission guard
-- settlement replay with the same request idempotency key and fingerprint returns the canonical settlement result
-- `settlement_id` uniqueness is a domain guard, not the only idempotency mechanism
-- settlement request idempotency key cannot be reused with a different fingerprint
-- settlement cannot overpay into opposite-direction debt
-- settlement at zero net or opposite-direction net is rejected
-- concurrent settlements for the same pair cannot both pass stale net checks
-- void racing settlement cannot make the pair overpaid or flipped
-- settlement reversal references original settlement and cannot be applied twice
-- liability is personal/account-owned unless a future ADR defines shared liability semantics
-- liability payment replay changes balance only once
-- liability adjustment is append-only, reasoned, and immutable
-- liability mutation cannot make balance negative
-- fold order does not change final net balance
-- liability balance never enters member debt graph
-- debt repayment goal is achieved only when linked liabilities are all cleared
-- debt repayment linked-liability changes create a new goal version
-- spending limit achievement fires only after period close and only if not exceeded
-- savings target progress is derived from authorized scope-bound income plans minus scoped confirmed spending
-- savings target freezes income-plan input at period close
-- savings target reaches terminal `missed` when the period is closed, inputs are present, and planned savings is below target
-- later income-plan edits do not rewrite closed-period savings target results
-- savings target with no active income plan is not evaluable
-- member-debt clear transition can produce a deduped `MemberDebtCleared` mascot event
-- `DebtCleared` and `GoalAchieved` mascot events fire once per committed transition
-- debt increase, spending increase, or borrowing never triggers a negative mascot state
+- bill split accept creates receiver expense and bill-split Debt in one transaction
+- duplicate accept creates no duplicate Debt
+- bill-split Debt uses frozen invitation amount/currency/provenance
+- sender editing original expense does not change Debt
+- receiver editing received expense does not change Debt
+- external Debt can be repaid/adjusted by authorized writer only
+- viewer cannot create, repay, adjust, void, or link Debt
+- creditor cannot unilaterally create committed member Debt
+- debtor-only repayment proposal does not reduce remaining
+- creditor confirmation commits a debtor repayment proposal exactly once
+- creditor-recorded receipt commits repayment exactly once
+- adjustment increasing a member's burden requires that member's confirmation
+- adjustment reducing a creditor's receivable requires creditor confirmation
+- repayment replay with same idempotency key/fingerprint changes remaining once
+- idempotency key reused with different fingerprint is rejected
+- repayment exceeding remaining is rejected
+- `remaining` recomputes from append-only facts
+- Debt clears only on open -> cleared transition
+- wrong repayment is corrected by `RepaymentVoid`, not deletion
+- wrong principal is corrected by `DebtAdjustment`, not mutation
+- `debt_repayment` goal achievement requires all linked debts cleared
+- `debt_repayment` linked Debt set is frozen per goal version
+- bill-split-sourced DebtCreated is silent by default for mascot
+- DebtCleared and AllDebtsCleared mascot events are transition-deduped
+- Debt-created mascot reaction is concerned/attentive, never shame/punishment/dejected
 
 ---
 
