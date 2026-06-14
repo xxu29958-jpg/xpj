@@ -43,6 +43,20 @@ def test_create_proposal_idempotent_replay_applies_once(client: TestClient, *, i
     assert replay.status_code == 201, replay.json()
     assert replay.json()["public_id"] == proposal_public_id  # same row, not a 2nd
 
+    null_replay = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals",
+        headers=headers,
+        json={
+            "proposed_amount_cents": 20000,
+            "note": None,
+            "paid_at": None,
+            "expires_at": None,
+            "supersedes_proposal_public_id": None,
+        },
+    )
+    assert null_replay.status_code == 201, null_replay.json()
+    assert null_replay.json()["public_id"] == proposal_public_id
+
     # Exactly one proposal exists (no second pending created, no supersede chain).
     proposals = client.get(
         f"/api/debts/{debt['public_id']}/repayment-proposals", headers=identity.app_headers

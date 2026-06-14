@@ -123,7 +123,11 @@ def _actor_scoped_fingerprint_body(
 def _proposal_create_fingerprint_body(
     payload: MemberRepaymentProposalCreateRequest,
 ) -> dict[str, object]:
-    body = payload.model_dump(mode="json", exclude_unset=True)
+    body = {
+        key: value
+        for key, value in payload.model_dump(mode="json", exclude_unset=True).items()
+        if value is not None
+    }
     if payload.note is not None:
         note = payload.note.strip()
         if note:
