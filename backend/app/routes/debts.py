@@ -1,19 +1,27 @@
-"""ADR-0049 Debt domain routes (slice 1: list / get / create).
+"""ADR-0049 Debt domain routes (slice 1: list / get / create; slice 2: facts).
 
 Thin route layer (§1): parse + auth + delegate to ``debt_service`` + return a
 schema. No business logic, no SQL, no raw-exception leakage.
 
 - ``GET /api/debts`` — ledger-scoped list with derived ``remaining`` / ``paid``.
 - ``GET /api/debts/{public_id}`` — one Debt; 404 ``debt_not_found``.
-- ``POST /api/debts`` — create one external/manual Debt. Writers only
-  (``get_current_writer_context`` → viewer 403, §5/§11). Carries an
-  ``Idempotency-Key`` ([[0042]]); a replay returns the same Debt instead of
-  creating a second one.
+- ``POST /api/debts`` — create one external/manual Debt.
+- ``POST /api/debts/{public_id}/repayments`` — record a committed repayment (§3.1).
+- ``POST /api/debts/{public_id}/adjustments`` — record a signed adjustment (§3.3).
+- ``POST /api/debts/{public_id}/repayment-voids`` — void one repayment (§3.4).
+- ``POST /api/debts/{public_id}/void`` — void the whole Debt (§3.5).
 
-The create idempotency uses the low-level [[0042]] helpers directly (same
-``api_idempotency_keys`` table, no second mechanism) because a create has no path
-id to re-serialise from on a HIT — the recorded ``resource_id`` locates the Debt
-the original request committed.
+All writes are writers-only (``get_current_writer_context`` → viewer 403,
+§5/§11), carry an ``Idempotency-Key`` ([[0042]]), and take ``expected_row_version``
+in the body (§3.6 fingerprint + §2.1 stale-intent fence). Each replies with the
+fold-after ``DebtResponse`` so the client has the fresh ``row_version``.
+
+Create uses the low-level [[0042]] helpers directly (no path id to re-serialise
+from on a HIT — the recorded ``resource_id`` locates the Debt). The fact writes
+have a path id (the Debt ``public_id``) so they use the high-level
+``claim_idempotent_request`` handshake: a HIT re-serialises the Debt's canonical
+current fold WITHOUT re-entering the §2.1 serialized section (no second parent
+bump, no second fact insert — §2.1 "replay does not bump").
 """
 
 from __future__ import annotations
@@ -24,11 +32,28 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError
-from app.schemas import DebtCreateRequest, DebtListResponse, DebtResponse
-from app.services.debt_service import create_debt, get_debt_response, list_debts
+from app.schemas import (
+    DebtAdjustmentCreateRequest,
+    DebtCreateRequest,
+    DebtListResponse,
+    DebtResponse,
+    DebtVoidCreateRequest,
+    RepaymentCreateRequest,
+    RepaymentVoidCreateRequest,
+)
+from app.services.debt_service import (
+    create_debt,
+    get_debt_response,
+    list_debts,
+    record_adjustment,
+    record_repayment,
+    void_debt,
+    void_repayment,
+)
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
     claim_idempotency_key,
+    claim_idempotent_request,
     fingerprint_request,
     mark_idempotency_succeeded,
 )
@@ -41,6 +66,10 @@ router = APIRouter(
 
 _CREATE_OPERATION = "create_debt"
 _DEBT_TARGET_TYPE = "debt"
+_REPAYMENT_OPERATION = "record_repayment"
+_ADJUSTMENT_OPERATION = "record_adjustment"
+_REPAYMENT_VOID_OPERATION = "void_repayment"
+_DEBT_VOID_OPERATION = "void_debt"
 
 
 @router.get("", response_model=DebtListResponse)
@@ -111,3 +140,179 @@ def post_debt(
     )
     db.commit()
     return get_debt_response(db, tenant_id=auth.tenant_id, public_id=debt.public_id)
+
+
+@router.post("/{public_id}/repayments", response_model=DebtResponse, status_code=201)
+def post_repayment(
+    public_id: str,
+    payload: RepaymentCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> DebtResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_REPAYMENT_OPERATION,
+        target_id=public_id,
+        target_type=_DEBT_TARGET_TYPE,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # §2.1 replay: re-serialise the fold, do NOT bump again.
+        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    debt = record_repayment(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        actor_account_id=auth.account_id,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=debt.public_id
+    )
+    db.commit()
+    # bump_row_version emits a SQL ``row_version + 1`` expression; with
+    # ``expire_on_commit=False`` the in-session Debt still holds that expression,
+    # so expire before re-reading the fold for the response (mirrors
+    # goal_service.update_goal's post-CAS expire_all).
+    db.expire_all()
+    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+
+
+@router.post("/{public_id}/adjustments", response_model=DebtResponse, status_code=201)
+def post_adjustment(
+    public_id: str,
+    payload: DebtAdjustmentCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> DebtResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_ADJUSTMENT_OPERATION,
+        target_id=public_id,
+        target_type=_DEBT_TARGET_TYPE,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:
+        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    debt = record_adjustment(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        actor_account_id=auth.account_id,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=debt.public_id
+    )
+    db.commit()
+    # bump_row_version emits a SQL ``row_version + 1`` expression; with
+    # ``expire_on_commit=False`` the in-session Debt still holds that expression,
+    # so expire before re-reading the fold for the response (mirrors
+    # goal_service.update_goal's post-CAS expire_all).
+    db.expire_all()
+    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+
+
+@router.post(
+    "/{public_id}/repayment-voids", response_model=DebtResponse, status_code=201
+)
+def post_repayment_void(
+    public_id: str,
+    payload: RepaymentVoidCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> DebtResponse:
+    # The §2.1 serialization anchor is the parent Debt ``public_id``; the target
+    # repayment id rides in the body + fingerprint.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_REPAYMENT_VOID_OPERATION,
+        target_id=public_id,
+        target_type=_DEBT_TARGET_TYPE,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:
+        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    debt = void_repayment(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        payload=payload,
+        actor_account_id=auth.account_id,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=debt.public_id
+    )
+    db.commit()
+    # bump_row_version emits a SQL ``row_version + 1`` expression; with
+    # ``expire_on_commit=False`` the in-session Debt still holds that expression,
+    # so expire before re-reading the fold for the response (mirrors
+    # goal_service.update_goal's post-CAS expire_all).
+    db.expire_all()
+    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+
+
+@router.post("/{public_id}/void", response_model=DebtResponse, status_code=201)
+def post_debt_void(
+    public_id: str,
+    payload: DebtVoidCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> DebtResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_DEBT_VOID_OPERATION,
+        target_id=public_id,
+        target_type=_DEBT_TARGET_TYPE,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:
+        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    debt = void_debt(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        payload=payload,
+        actor_account_id=auth.account_id,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=debt.public_id
+    )
+    db.commit()
+    # bump_row_version emits a SQL ``row_version + 1`` expression; with
+    # ``expire_on_commit=False`` the in-session Debt still holds that expression,
+    # so expire before re-reading the fold for the response (mirrors
+    # goal_service.update_goal's post-CAS expire_all).
+    db.expire_all()
+    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
