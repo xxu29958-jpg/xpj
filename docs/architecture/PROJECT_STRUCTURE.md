@@ -263,7 +263,7 @@ docs\
     AUDIT_BASELINE_v1.2.0.md
     V0_9_DESIGN_FUNCTION_TABLE.md
     V0_9_DESIGN_TOKEN_REFERENCE.md
-  DECISIONS\                 # ADR（编号 0001-0045，0018 撤回）
+  DECISIONS\                 # ADR（编号 0001-0049，0018 撤回）
   design_reference\          # 设计稿真值（图片与说明）
 ```
 
@@ -271,4 +271,4 @@ docs\
 
 后端已经包含稳定闭环和灰度版增量 API：账本隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、v0.9 Reports、Goals、Dashboard 卡片配置、生活化统计和窄维护清理接口，并有 pytest API 契约测试、v0.9 集成测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、自定义背景与沉浸模式、受保护图片预览、重复保留、OCR retry、生活化统计、报表图表、Goals 摘要、Dashboard 卡片管理、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。
 
-v0.9 之后的主线增量（至 2026-06，决策记录在 [docs/DECISIONS/](../DECISIONS/)）：数据库切换为 PostgreSQL-only（ADR-0041，SQLite 退役）；新增 `/web` 浏览器端（Cloudflare Access + session cookie，ADR-0028）与桌面后端管理器（`desktop/`）；多币种汇率与家庭拆账（ADR-0029）、收入计划、请求幂等键（ADR-0042）、标签管理（ADR-0043）、Android string-resourcing（ADR-0044）、per-install CSRF 签名密钥（ADR-0045）；CI 现以 GitHub Actions 云端为主、自托管 Gitea 为本地降级（含备份恢复演练与 instrumented 模拟器 lane，见 [docs/runbook/CI.md](../runbook/CI.md)）。
+v0.9 之后的主线增量（至 2026-06，决策记录在 [docs/DECISIONS/](../DECISIONS/)）：数据库切换为 PostgreSQL-only（ADR-0041，SQLite 退役）；新增 `/web` 浏览器端（Cloudflare Access + session cookie，ADR-0028）与桌面后端管理器（`desktop/`）；多币种汇率与家庭拆账（ADR-0029）、收入计划、请求幂等键（ADR-0042）、标签管理（ADR-0043）、Android string-resourcing（ADR-0044）、per-install CSRF 签名密钥（ADR-0045）、Android 固定支出提醒边界（ADR-0046）、捆绑安装器方向（ADR-0047）、Rive 吉祥物运行时（ADR-0048）、财务领域真相契约（ADR-0049）；CI 现以 GitHub Actions 云端为主、自托管 Gitea 为本地降级（含备份恢复演练与 instrumented 模拟器 lane，见 [docs/runbook/CI.md](../runbook/CI.md)）。

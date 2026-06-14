@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0048（0018 已撤回；0032–0034 未使用，编号跳过）。
+**编号范围**：0001–0049（0018 已撤回；0032–0034 未使用，编号跳过）。
 
 ## 索引
 
@@ -53,10 +53,11 @@
 | [0046](0046-android-recurring-reminder-detection-source.md) | Android 固定支出提醒检测源 | WorkManager 仅作 Scheduler；Engine/Policy/Store/Dispatcher 四层契约；本地 sent-key 去重；不触 §13 MAJOR | accepted；recurring 通知出口见 notif-loop PR-2 |
 | [0047](0047-bundled-installer-portable-postgres.md) | 分发形态：捆绑安装器 + portable PG | EDB 官方 zip 捆绑 PG 17（major 钉死，升级另 ADR）；管理器双进程监督；局域网默认；应用角色直建堵 owner 陷阱 | **proposed**（owner 已口头定调「发给别人用」） |
 | [0048](0048-rive-mascot-animation.md) | 吉祥物「夹夹」动画技术栈 = Rive | MIT runtime；`.riv` 本地加载零联网；只用稳定 View API（beta Compose API 不进主线）；一套 artboard 喂三端 + 运行时绑 token 色；纯表现层不写业务 | **proposed**（角色 brief = docs/roadmap/MASCOT_BRIEF.md，原画 v3 已定稿） |
+| [0049](0049-financial-domain-contract-v3.md) | Financial Domain Contract v3 | 成员债务=冻结拆账快照+settlement；liability 独立状态账户；goals 只做 scope-bound KPI；吉祥物只响应已提交达成事件 | accepted contract spec；[[0029]]/[[0042]]/[[0048]] |
 
 ## 编写新 ADR
 
-下一编号 `0049`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0050`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

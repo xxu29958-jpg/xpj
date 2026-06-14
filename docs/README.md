@@ -9,7 +9,7 @@
 | 部署 / 备份 / 排障 / 升级 | [runbook/](runbook/) |
 | 看产品路线、设计参考、未来能力 | [roadmap/](roadmap/) |
 | 查当前版本（v1.2）的设计资产和收口报告 | [current/](current/) |
-| 看某个具体技术选型为什么这么定 | [DECISIONS/](DECISIONS/)（0001–0045，0018 已撤回，索引见 [DECISIONS/README.md](DECISIONS/README.md)）|
+| 看某个具体技术选型为什么这么定 | [DECISIONS/](DECISIONS/)（0001–0049，0018 已撤回，索引见 [DECISIONS/README.md](DECISIONS/README.md)）|
 | 拿设计稿原图与色板预览 | [design_reference/](design_reference/) |
 
 ## 必读顺序（与 [AGENTS.md](../AGENTS.md) 一致）
