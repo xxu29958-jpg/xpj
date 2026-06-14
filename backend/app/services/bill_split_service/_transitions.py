@@ -156,7 +156,17 @@ def accept_invitation(
     # cannot create a second Debt; uq_debts_source backstops any race. The
     # receiver owes the home-currency share ``inv.amount_cents``; pass
     # ``target_ledger_id`` (the claim just bound receiver_ledger_id, which the
-    # in-session ``inv`` may not reflect yet).
+    # in-session ``inv`` may not reflect yet) and the invitation's frozen
+    # ``home_currency_code``.
+    #
+    # KNOWN GAP (gated off until a later slice): when the sender (creditor) is
+    # NOT a member of ``target_ledger_id`` (e.g. the receiver's personal ledger),
+    # slice-3's repayment confirm/reject — ledger-scoped via
+    # ``get_current_writer_context`` + ``_load_debt(tenant_id=auth.tenant_id)`` —
+    # cannot reach this Debt, so the creditor cannot confirm/reject and the
+    # member-debt repayment flow stalls. ADR §429 mandates ACCOUNT-scoped
+    # cross-account confirmation; building that is the next Debt slice. This is
+    # why the rollout flag stays OFF until that lands.
     if get_settings().debt_rollout_enabled:
         create_bill_split_debt(
             db,
@@ -164,6 +174,7 @@ def accept_invitation(
             receiver_account_id=inv.receiver_account_id,
             sender_account_id=inv.sender_account_id,
             amount_cents=inv.amount_cents,
+            home_currency_code=inv.home_currency_code,
             source_invitation_public_id=inv.public_id,
             event_time=inv.expense_time_snapshot,
         )
