@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -142,5 +143,52 @@ def test_foreign_currency_proposal_pending_rate_is_409(client: TestClient, *, id
         f"/api/debts/{debt['public_id']}/repayment-proposals", headers=identity.app_headers
     ).json()["items"]
     assert proposals == []
+
+
+def test_create_proposal_foreign_amount_idempotent_across_minor_unit_rounding(
+    client: TestClient, *, identity
+) -> None:
+    # §3.6: the create fingerprint hashes the *stored* minor-unit amount, so a
+    # lost-response retry whose serializer emits a finer USD decimal (10.004,
+    # which rounds HALF_UP to the same 1000 minor units as 10.00) still HITs the
+    # same proposal instead of 422 idempotency_key_reused.
+    member_id, member_token = _mint_member_actor()
+    debt = _create_member_debt(
+        client,
+        identity.app_headers,
+        direction="owed_to_me",
+        member_account_id=member_id,
+        principal_amount_cents=100000,
+    )
+    _seed_usd_rate(tenant_id="owner", rate_date=date(2026, 5, 10), rate_to_cny="7.20000000")
+    key = str(uuid4())
+    headers = {**_member_headers(member_token), "Idempotency-Key": key}
+    body = {
+        "original_currency_code": "USD",
+        "original_amount": "10.00",
+        "paid_at": "2026-05-10T04:00:00Z",
+    }
+
+    first = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals", headers=headers, json=body
+    )
+    assert first.status_code == 201, first.json()
+    assert first.json()["original_amount_minor"] == 1000  # 10.00 USD → 1000 minor units
+    proposal_public_id = first.json()["public_id"]
+
+    # Same key, business-identical amount, finer decimal representation that
+    # rounds to the same stored minor units → canonical HIT, not key_reused.
+    replay = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals",
+        headers=headers,
+        json={**body, "original_amount": "10.004"},
+    )
+    assert replay.status_code == 201, replay.json()
+    assert replay.json()["public_id"] == proposal_public_id
+
+    proposals = client.get(
+        f"/api/debts/{debt['public_id']}/repayment-proposals", headers=identity.app_headers
+    ).json()["items"]
+    assert len(proposals) == 1  # the replay HIT, no second proposal created
 
 

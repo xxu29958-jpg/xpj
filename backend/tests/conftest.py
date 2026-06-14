@@ -122,6 +122,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_ocr_facts_backfill_step3.py::",  # _backfill_legacy_raw_text via engine.begin
     "tests/test_app_meta_service.py::",  # reset_db_state (fresh-DB schema-version seeding)
     "tests/test_alembic_tag_migration.py::",  # alembic up/down round-trip via engine.begin DDL
+    "tests/test_alembic_debt_idempotency_unique_migration.py::",  # alembic up/down round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",

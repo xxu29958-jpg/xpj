@@ -120,6 +120,7 @@ def _create_repayments() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("public_id"),
+        sa.UniqueConstraint("idempotency_key", name="uq_repayments_idempotency_key"),
     )
     with op.batch_alter_table("repayments", schema=None) as batch_op:
         batch_op.create_index("ix_repayments_public_id", ["public_id"], unique=True)
@@ -146,6 +147,7 @@ def _create_debt_adjustments() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("public_id"),
+        sa.UniqueConstraint("idempotency_key", name="uq_debt_adjustments_idempotency_key"),
     )
     with op.batch_alter_table("debt_adjustments", schema=None) as batch_op:
         batch_op.create_index("ix_debt_adjustments_public_id", ["public_id"], unique=True)
@@ -174,6 +176,7 @@ def _create_repayment_voids() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("public_id"),
         sa.UniqueConstraint("repayment_id", name="uq_repayment_voids_repayment"),
+        sa.UniqueConstraint("idempotency_key", name="uq_repayment_voids_idempotency_key"),
     )
     with op.batch_alter_table("repayment_voids", schema=None) as batch_op:
         batch_op.create_index("ix_repayment_voids_public_id", ["public_id"], unique=True)
@@ -197,6 +200,7 @@ def _create_debt_voids() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("public_id"),
         sa.UniqueConstraint("debt_id", name="uq_debt_voids_debt"),
+        sa.UniqueConstraint("idempotency_key", name="uq_debt_voids_idempotency_key"),
     )
     with op.batch_alter_table("debt_voids", schema=None) as batch_op:
         batch_op.create_index("ix_debt_voids_public_id", ["public_id"], unique=True)

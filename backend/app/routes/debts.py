@@ -58,6 +58,7 @@ from app.schemas import (
     RepaymentCreateResponse,
     RepaymentVoidCreateRequest,
 )
+from app.services.currency_common import normalize_currency_code
 from app.services.debt_service import (
     confirm_repayment_proposal,
     create_debt,
@@ -74,6 +75,7 @@ from app.services.debt_service import (
     void_repayment,
     withdraw_repayment_proposal,
 )
+from app.services.exchange_rate_service import amount_major_to_minor
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
     claim_idempotency_key,
@@ -141,7 +143,16 @@ def _proposal_create_fingerprint_body(
     if payload.original_currency_code is not None:
         body["original_currency_code"] = payload.original_currency_code.strip().upper()
     if payload.original_amount is not None:
-        body["original_amount"] = format(payload.original_amount.normalize(), "f")
+        # §3.6: hash the *stored* minor-unit amount (currency-aware HALF_UP
+        # rounding, mirroring _freeze_foreign_amount's
+        # amount_major_to_minor(normalize_currency_code(...))), not the raw
+        # major-unit Decimal. Otherwise a lost-response retry whose serializer
+        # emits a finer decimal (e.g. USD "10.004" vs "10.00", both → stored
+        # original_amount_minor 1000) would differ in the fingerprint and
+        # falsely return idempotency_key_reused instead of the canonical HIT.
+        body["original_amount"] = amount_major_to_minor(
+            payload.original_amount, normalize_currency_code(payload.original_currency_code)
+        )
     return body
 
 
