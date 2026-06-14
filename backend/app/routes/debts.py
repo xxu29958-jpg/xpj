@@ -80,6 +80,7 @@ from app.services.idempotency import (
     claim_idempotent_request,
     fingerprint_request,
     mark_idempotency_succeeded,
+    reject_idempotency_target_mismatch,
 )
 from app.services.time_service import to_iso
 from app.tenants import AuthContext
@@ -141,12 +142,15 @@ def _proposal_create_fingerprint_body(
 
 
 def _proposal_confirm_fingerprint_body(
-    payload: MemberRepaymentProposalConfirmRequest,
+    payload: MemberRepaymentProposalConfirmRequest, *, proposed_amount_cents: int
 ) -> dict[str, object]:
     body = payload.model_dump(
         mode="json", exclude_unset=True, exclude={"expected_row_version"}
     )
-    if payload.confirmed_amount_cents is None:
+    if (
+        payload.confirmed_amount_cents is None
+        or payload.confirmed_amount_cents == proposed_amount_cents
+    ):
         body.pop("confirmed_amount_cents", None)
     return body
 
@@ -587,6 +591,23 @@ def post_repayment_proposal_confirm(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> DebtResponse:
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
+    target_id = _proposal_target_id(public_id, proposal_public_id)
+    reject_idempotency_target_mismatch(
+        db,
+        tenant_id=auth.tenant_id,
+        idempotency_key=idempotency_key,
+        operation=_PROPOSAL_CONFIRM_OPERATION,
+        target_id=target_id,
+        target_type=_PROPOSAL_TARGET_TYPE,
+    )
+    proposal = get_repayment_proposal_response(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        proposal_public_id=proposal_public_id,
+    )
     # Confirm commits a Repayment → fold-changing, so it carries
     # ``expected_row_version`` (§2.1 stale-intent fence + §3.6 fingerprint) and
     # replies with the fold-after DebtResponse. A HIT re-serialises the Debt
@@ -596,10 +617,12 @@ def post_repayment_proposal_confirm(
         idempotency_key=idempotency_key,
         tenant_id=auth.tenant_id,
         operation=_PROPOSAL_CONFIRM_OPERATION,
-        target_id=_proposal_target_id(public_id, proposal_public_id),
+        target_id=target_id,
         target_type=_PROPOSAL_TARGET_TYPE,
         body=_actor_scoped_fingerprint_body(
-            _proposal_confirm_fingerprint_body(payload),
+            _proposal_confirm_fingerprint_body(
+                payload, proposed_amount_cents=proposal.proposed_amount_cents
+            ),
             actor_account_id=auth.account_id,
         ),
         expected_row_version=payload.expected_row_version,
