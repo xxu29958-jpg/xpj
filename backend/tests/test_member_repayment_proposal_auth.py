@@ -93,6 +93,28 @@ def test_debtor_cannot_reject_proposal_creditor_only(client: TestClient, *, iden
 # ── viewer 403 / unauth 401 on every write route ────────────────────────────
 
 
+def test_reject_note_is_rejected_not_silently_dropped(
+    client: TestClient, *, identity
+) -> None:
+    member_id, member_token = _mint_member_actor()
+    debt = _create_member_debt(
+        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
+    )
+    proposal = _propose(
+        client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
+    ).json()
+    response = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/reject",
+        headers=_idem(identity.app_headers),
+        json={"note": "I did not receive this payment"},
+    )
+    assert response.status_code == 422
+    items = client.get(
+        f"/api/debts/{debt['public_id']}/repayment-proposals", headers=identity.app_headers
+    ).json()["items"]
+    assert items[0]["status"] == "pending"
+
+
 def test_viewer_cannot_create_proposal(client: TestClient, *, identity) -> None:
     # §11: viewer cannot create/repay/adjust/void/link Debt — proposal create too.
     member_id, member_token = _mint_member_actor()

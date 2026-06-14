@@ -208,12 +208,10 @@ class MemberRepaymentProposalRejectRequest(BaseModel):
     """Creditor rejects a member repayment proposal (ADR-0049 §3.2).
 
     Rejecting does not change the fold (no repayment is committed), so there is
-    no ``expected_row_version``. ``note`` is an optional reason.
+    no ``expected_row_version``.
     """
 
     model_config = ConfigDict(extra="forbid")
-
-    note: str | None = Field(default=None, max_length=500)
 
 
 class MemberRepaymentProposalWithdrawRequest(BaseModel):

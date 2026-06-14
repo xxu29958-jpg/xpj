@@ -34,6 +34,8 @@ bump, no second fact insert — §2.1 "replay does not bump").
 
 from __future__ import annotations
 
+from hashlib import sha256
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
@@ -92,14 +94,20 @@ _REPAYMENT_OPERATION = "record_repayment"
 _ADJUSTMENT_OPERATION = "record_adjustment"
 _REPAYMENT_VOID_OPERATION = "void_repayment"
 _DEBT_VOID_OPERATION = "void_debt"
-# ADR-0049 slice 3: member repayment proposal (§3.2). The proposal-targeted ops
-# (withdraw / confirm / reject) anchor their [[0042]] fingerprint on the proposal
-# public_id; create anchors on the parent Debt public_id.
+# ADR-0049 slice 3: member repayment proposal (§3.2). Create anchors on the
+# parent Debt public_id; proposal-targeted ops also include the parent Debt so a
+# cross-debt path replay cannot HIT on the proposal id alone.
 _PROPOSAL_TARGET_TYPE = "debt_repayment_proposal"
 _PROPOSAL_CREATE_OPERATION = "debt.repayment_proposal.create"
 _PROPOSAL_WITHDRAW_OPERATION = "debt.repayment_proposal.withdraw"
 _PROPOSAL_CONFIRM_OPERATION = "debt.repayment_proposal.confirm"
 _PROPOSAL_REJECT_OPERATION = "debt.repayment_proposal.reject"
+
+
+def _proposal_target_id(public_id: str, proposal_public_id: str) -> str:
+    # api_idempotency_keys.target_id is VARCHAR(64); hash the parent+proposal
+    # tuple so both ids shape the fingerprint without widening the shared table.
+    return sha256(f"{public_id}:{proposal_public_id}".encode()).hexdigest()
 
 
 def _repayment_create_response(
@@ -466,14 +474,14 @@ def post_repayment_proposal_withdraw(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MemberRepaymentProposalResponse:
-    # Proposal-targeted op: anchor the [[0042]] fingerprint on the proposal id.
+    # Proposal-targeted op: anchor the [[0042]] fingerprint on the parent+proposal pair.
     # Withdraw is NOT fold-changing, so ``expected_row_version`` is None.
     claim = claim_idempotent_request(
         db,
         idempotency_key=idempotency_key,
         tenant_id=auth.tenant_id,
         operation=_PROPOSAL_WITHDRAW_OPERATION,
-        target_id=proposal_public_id,
+        target_id=_proposal_target_id(public_id, proposal_public_id),
         target_type=_PROPOSAL_TARGET_TYPE,
         body=payload.model_dump(mode="json", exclude_unset=True),
         expected_row_version=None,
@@ -526,7 +534,7 @@ def post_repayment_proposal_confirm(
         idempotency_key=idempotency_key,
         tenant_id=auth.tenant_id,
         operation=_PROPOSAL_CONFIRM_OPERATION,
-        target_id=proposal_public_id,
+        target_id=_proposal_target_id(public_id, proposal_public_id),
         target_type=_PROPOSAL_TARGET_TYPE,
         body=payload.model_dump(
             mode="json", exclude_unset=True, exclude={"expected_row_version"}
@@ -575,7 +583,7 @@ def post_repayment_proposal_reject(
         idempotency_key=idempotency_key,
         tenant_id=auth.tenant_id,
         operation=_PROPOSAL_REJECT_OPERATION,
-        target_id=proposal_public_id,
+        target_id=_proposal_target_id(public_id, proposal_public_id),
         target_type=_PROPOSAL_TARGET_TYPE,
         body=payload.model_dump(mode="json", exclude_unset=True),
         expected_row_version=None,

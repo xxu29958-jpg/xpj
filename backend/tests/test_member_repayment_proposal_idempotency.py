@@ -131,6 +131,39 @@ def test_confirm_idempotent_replay_changes_remaining_once(client: TestClient, *,
         assert len(repayments) == 1
 
 
+def test_confirm_replay_under_different_debt_is_422(
+    client: TestClient, *, identity
+) -> None:
+    member_id, member_token = _mint_member_actor()
+    debt_a = _create_member_debt(
+        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
+    )
+    debt_b = _create_member_debt(
+        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
+    )
+    proposal = _propose(
+        client, _member_headers(member_token), debt_a["public_id"], proposed_amount_cents=20000
+    ).json()
+    key = str(uuid4())
+    headers = {**identity.app_headers, "Idempotency-Key": key}
+    payload = {"expected_row_version": debt_a["row_version"]}
+
+    first = client.post(
+        f"/api/debts/{debt_a['public_id']}/repayment-proposals/{proposal['public_id']}/confirm",
+        headers=headers,
+        json=payload,
+    )
+    assert first.status_code == 201, first.json()
+
+    mismatch = client.post(
+        f"/api/debts/{debt_b['public_id']}/repayment-proposals/{proposal['public_id']}/confirm",
+        headers=headers,
+        json=payload,
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["error"] == "idempotency_key_reused"
+
+
 def test_confirm_missing_idempotency_key_is_422(client: TestClient, *, identity) -> None:
     member_id, member_token = _mint_member_actor()
     debt = _create_member_debt(

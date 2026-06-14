@@ -347,7 +347,7 @@ def test_rejected_proposal_cannot_be_confirmed_and_remaining_unchanged(
     reject = client.post(
         f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/reject",
         headers=_idem(identity.app_headers),
-        json={"note": "金额对不上"},
+        json={},
     )
     assert reject.status_code == 201, reject.json()
     assert reject.json()["status"] == "rejected"
