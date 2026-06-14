@@ -7509,21 +7509,8 @@
       },
       "MemberRepaymentProposalRejectRequest": {
         "additionalProperties": false,
-        "description": "Creditor rejects a member repayment proposal (ADR-0049 §3.2).\n\nRejecting does not change the fold (no repayment is committed), so there is\nno ``expected_row_version``. ``note`` is an optional reason.",
-        "properties": {
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          }
-        },
+        "description": "Creditor rejects a member repayment proposal (ADR-0049 §3.2).\n\nRejecting does not change the fold (no repayment is committed), so there is\nno ``expected_row_version``.",
+        "properties": {},
         "title": "MemberRepaymentProposalRejectRequest",
         "type": "object"
       },
