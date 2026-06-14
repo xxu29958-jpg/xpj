@@ -329,7 +329,7 @@ class MemberRepaymentProposal(Base):
 
     # --- lifecycle -----------------------------------------------------------
     status: Mapped[str] = mapped_column(
-        String(16), default="pending", server_default="pending", nullable=False
+        String(32), default="pending", server_default="pending", nullable=False
     )
     confirmed_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Plain int (no FK) — mirrors Repayment.proposal_id's loose back-link style.

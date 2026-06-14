@@ -55,7 +55,7 @@ def _create_member_repayment_proposals() -> None:
         sa.Column("exchange_rate_source", sa.String(length=32), nullable=True),
         sa.Column("paid_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("note", sa.Text(), nullable=True),
-        sa.Column("status", sa.String(length=16), server_default="pending", nullable=False),
+        sa.Column("status", sa.String(length=32), server_default="pending", nullable=False),
         sa.Column("confirmed_amount_cents", sa.Integer(), nullable=True),
         sa.Column("committed_repayment_id", sa.Integer(), nullable=True),
         sa.Column("supersedes_proposal_id", sa.Integer(), nullable=True),

@@ -361,7 +361,7 @@ def confirm_repayment_proposal(
     payload: MemberRepaymentProposalConfirmRequest,
     idempotency_key: str,
     commit: bool = True,
-) -> DebtResponse:
+) -> DebtResponse | None:
     """Creditor confirms a proposal — commits one ``Repayment`` (fold-changing).
 
     The §2.1 parent-Debt serialization (FOR UPDATE + bump) and the F8 overpay
@@ -403,9 +403,10 @@ def confirm_repayment_proposal(
     # ``expire_all`` + re-serialise (it commits the [[0042]] success record in the
     # same transaction first), so this service must NOT ``expire_all`` early — that
     # would force a premature reload that diverges from the slice-2 fact services.
-    if commit:
-        db.commit()
-        db.expire_all()
+    if not commit:
+        return None
+    db.commit()
+    db.expire_all()
     return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
 
 
