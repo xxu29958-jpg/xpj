@@ -1,8 +1,8 @@
 """ADR-0049 §2 / §5.1 Debt creation: validate, freeze principal, insert.
 
-Handles external/manual Debt creation only (slice 1). Member-Debt adverse-
-interest creation rules (§5.2), bill-split linkage (§4), and any fold-changing
-write live in later slices.
+Handles public external/manual Debt creation only (slice 1). Member-Debt
+adverse-interest creation rules (§5.2), bill-split linkage (§4), and any
+fold-changing write live in later slices.
 
 Currency (§2.2): a home-currency Debt stores ``principal_amount_cents`` directly.
 A foreign-currency Debt freezes a backend-authoritative home principal from the
@@ -17,21 +17,12 @@ Request idempotency ([[0042]]) is handled by the route via
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.fx_constants import FX_STATUS_PENDING
 from app.models import Debt
 from app.schemas import DebtCreateRequest
-from app.services.currency_common import home_currency_code, normalize_currency_code
-from app.services.exchange_rate_service import (
-    amount_major_to_minor,
-    calculate_cny_cents,
-    default_rate_date,
-    resolve_payload_rate,
-)
+from app.services.debt_service._money import freeze_home_amount
 from app.services.time_service import now_utc
 
 VALID_DIRECTIONS = frozenset({"i_owe", "owed_to_me"})
@@ -49,6 +40,10 @@ def _clean_direction(value: str) -> str:
 def _clean_counterparty_type(value: str) -> str:
     cleaned = (value or "").strip()
     if cleaned not in VALID_COUNTERPARTY_TYPES:
+        raise AppError("debt_counterparty_invalid", status_code=422)
+    # Public create cannot commit manual member Debt yet: ADR-0049 §5.2 requires
+    # affected-party confirmation before a member obligation becomes committed.
+    if cleaned != "external":
         raise AppError("debt_counterparty_invalid", status_code=422)
     return cleaned
 
@@ -82,88 +77,28 @@ def _clean_counterparty(
     return None, cleaned_label
 
 
-def _clean_principal(value: int | None) -> int:
-    if value is None:
-        raise AppError("debt_amount_invalid", status_code=422)
-    amount = int(value)
-    if amount <= 0:
-        raise AppError("debt_amount_invalid", status_code=422)
-    return amount
-
-
 def _freeze_money(db: Session, *, tenant_id: str, payload: DebtCreateRequest) -> dict:
     """Resolve the frozen home principal + optional original-currency provenance.
 
-    Home-currency Debt: ``principal_amount_cents`` is the home amount, provenance
-    fields stay NULL. Foreign-currency Debt: convert ``original_amount`` in
-    ``original_currency`` to home cents via the [[0027]] snapshot for the event
-    date and reject if the rate is pending (§2.2). The two inputs are mutually
-    exclusive — a request that mixes an explicit home principal with original-
-    currency fields is rejected as ambiguous.
+    Delegates the home-vs-foreign-currency freeze to the shared
+    :func:`~app.services.debt_service._money.freeze_home_amount` (the single
+    §2.2 definition slice 2's repayment freeze also uses) and renames the
+    home-amount key to the Debt principal column. Behaviour is identical to the
+    slice-1 inline version: home-currency principal stored directly; foreign
+    converted from the [[0027]] snapshot for the event date and rejected with
+    ``exchange_rate_pending`` (409) when pending; mixing an explicit home
+    principal with original-currency fields is ``invalid_request``.
     """
-    home = home_currency_code()
-    has_original = payload.original_currency is not None or payload.original_amount is not None
-
-    if not has_original:
-        principal = _clean_principal(payload.principal_amount_cents)
-        return {
-            "principal_amount_cents": principal,
-            "home_currency_code": home,
-            "original_currency_code": None,
-            "original_amount_minor": None,
-            "exchange_rate_to_cny": None,
-            "exchange_rate_date": None,
-            "exchange_rate_source": None,
-        }
-
-    # Foreign-currency path: both original fields required, no client-supplied
-    # home principal (the backend computes it).
-    if payload.original_currency is None or payload.original_amount is None:
-        raise AppError("debt_amount_invalid", status_code=422)
-    if payload.principal_amount_cents is not None:
-        raise AppError("invalid_request", status_code=422)
-
-    code = normalize_currency_code(payload.original_currency)
-    original_amount_minor = amount_major_to_minor(payload.original_amount, code)
-    if original_amount_minor is None or original_amount_minor <= 0:
-        raise AppError("debt_amount_invalid", status_code=422)
-    rate_date = default_rate_date(payload.event_time)
-
-    if code == home:
-        # Original currency IS home — no FX, store as a home principal but keep
-        # the provenance the client asked for.
-        rate: Decimal | None = Decimal("1")
-        source: str | None = "base"
-        fx_status = "ready"
-        effective_date = rate_date
-    else:
-        rate, source, fx_status, effective_date = resolve_payload_rate(
-            db,
-            tenant_id=tenant_id,
-            currency_code=code,
-            rate_date=rate_date,
-        )
-    if fx_status == FX_STATUS_PENDING:
-        # §2.2: cannot freeze a home principal yet — reject rather than commit an
-        # un-foldable Debt.
-        raise AppError("exchange_rate_pending", status_code=409)
-
-    principal = calculate_cny_cents(
-        original_currency_code=code,
-        original_amount_minor=original_amount_minor,
-        exchange_rate_to_cny=rate,
+    money = freeze_home_amount(
+        db,
+        tenant_id=tenant_id,
+        amount_cents=payload.principal_amount_cents,
+        original_currency=payload.original_currency,
+        original_amount=payload.original_amount,
+        event_time=payload.event_time,
+        amount_error="debt_amount_invalid",
     )
-    if principal is None or principal <= 0:
-        raise AppError("debt_amount_invalid", status_code=422)
-    return {
-        "principal_amount_cents": principal,
-        "home_currency_code": home,
-        "original_currency_code": code,
-        "original_amount_minor": original_amount_minor,
-        "exchange_rate_to_cny": rate,
-        "exchange_rate_date": effective_date,
-        "exchange_rate_source": source,
-    }
+    return {"principal_amount_cents": money.pop("amount_cents"), **money}
 
 
 def create_debt(

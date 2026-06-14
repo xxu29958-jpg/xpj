@@ -86,9 +86,14 @@ from app.schemas._dashboard import (
     DashboardCardUpdateRequest,
 )
 from app.schemas._debts import (
+    DebtAdjustmentCreateRequest,
     DebtCreateRequest,
     DebtListResponse,
     DebtResponse,
+    DebtVoidCreateRequest,
+    RepaymentCreateRequest,
+    RepaymentCreateResponse,
+    RepaymentVoidCreateRequest,
 )
 from app.schemas._exchange import (
     ExchangeRateListResponse,
@@ -273,9 +278,11 @@ __all__ = [
     "DashboardCardsResponse",
     "DashboardCardsUpdateRequest",
     "DataQualitySummaryResponse",
+    "DebtAdjustmentCreateRequest",
     "DebtCreateRequest",
     "DebtListResponse",
     "DebtResponse",
+    "DebtVoidCreateRequest",
     "DiscretionaryResponse",
     "ErrorResponse",
     "ExchangeRateListResponse",
@@ -363,6 +370,9 @@ __all__ = [
     "ReportMerchantRankingResponse",
     "ReportTrendPointResponse",
     "ReportsOverviewResponse",
+    "RepaymentCreateRequest",
+    "RepaymentCreateResponse",
+    "RepaymentVoidCreateRequest",
     "RuleApplicationBatchResponse",
     "RuleApplicationListResponse",
     "RuleApplicationRollbackResponse",

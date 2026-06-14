@@ -87,9 +87,11 @@ def test_create_external_debt_freezes_home_principal(client: TestClient, *, iden
     assert body["public_id"]
 
 
-def test_create_member_debt_requires_account_id(client: TestClient, *, identity) -> None:
+def test_create_member_debt_is_deferred_to_confirmation_flow(
+    client: TestClient, *, identity
+) -> None:
     member_account_id = _seed_member_account()
-    ok = client.post(
+    response = client.post(
         "/api/debts",
         headers=_idem_headers(identity.app_headers),
         json={
@@ -99,14 +101,11 @@ def test_create_member_debt_requires_account_id(client: TestClient, *, identity)
             "principal_amount_cents": 12000,
         },
     )
-    assert ok.status_code == 201, ok.json()
-    body = ok.json()
-    assert body["counterparty_type"] == "member"
-    assert body["counterparty_account_id"] == member_account_id
-    assert body["counterparty_label"] is None
-    assert body["remaining_amount_cents"] == 12000
+    assert response.status_code == 422, response.json()
+    assert response.json()["error"] == "debt_counterparty_invalid"
 
-    # Member Debt without an account id is incomplete.
+    # Member Debt without an account id is still incomplete, and the public
+    # committed-create path remains closed until the confirmation flow lands.
     missing = client.post(
         "/api/debts",
         headers=_idem_headers(identity.app_headers),

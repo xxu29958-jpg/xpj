@@ -83,6 +83,15 @@ ERROR_MESSAGES = {
     "debt_counterparty_invalid": "欠款对象信息不完整。",
     "debt_amount_invalid": "请填写大于 0 的欠款金额。",
     "debt_direction_invalid": "欠款方向不正确。",
+    # ADR-0049 Debt domain (slice 2: repayment / adjustment / void facts). A
+    # stale ``expected_row_version`` and writing on a voided Debt reuse the
+    # generic ``state_conflict`` below.
+    "debt_overpay_rejected": "还款金额超过剩余欠款。",
+    "debt_adjustment_negative_remaining": "调整后欠款金额不能为负。",
+    "debt_reason_required": "请填写原因。",
+    "repayment_not_found": "还款记录不存在。",
+    "repayment_already_voided": "这笔还款已被作废。",
+    "debt_already_voided": "这笔欠款已作废，无法继续操作。",
     "notification_source_invalid": "通知来源暂不支持。",
     "merchant_alias_not_found": "商家别名不存在。",
     "merchant_alias_conflict": "商家别名已指向其他商家。",
