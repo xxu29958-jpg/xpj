@@ -92,6 +92,34 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
     assert "stderr detail" in captured.err
 
 
+def test_pr_delta_accepts_debt_create_one_time_down_ratchet(monkeypatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+    baseline["mutate_token_exempted"] = 110
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+
+    _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
+        {"mutate_token_exempted": 109}
+    )
+
+    assert violations == []
+
+
+def test_pr_delta_debt_create_exception_does_not_allow_future_growth(monkeypatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+    baseline["mutate_token_exempted"] = 111
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+
+    _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
+        {"mutate_token_exempted": 110}
+    )
+
+    assert len(violations) == 1
+    assert "110" in violations[0]
+    assert "111" in violations[0]
+
+
 def test_mutate_token_ledger_is_consistent_with_live_tables() -> None:
     import app.main  # noqa: F401 — importing the app registers every model on Base.metadata
     from app.database import Base
