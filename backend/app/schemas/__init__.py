@@ -92,6 +92,7 @@ from app.schemas._debts import (
     DebtResponse,
     DebtVoidCreateRequest,
     RepaymentCreateRequest,
+    RepaymentCreateResponse,
     RepaymentVoidCreateRequest,
 )
 from app.schemas._exchange import (
@@ -370,6 +371,7 @@ __all__ = [
     "ReportTrendPointResponse",
     "ReportsOverviewResponse",
     "RepaymentCreateRequest",
+    "RepaymentCreateResponse",
     "RepaymentVoidCreateRequest",
     "RuleApplicationBatchResponse",
     "RuleApplicationListResponse",

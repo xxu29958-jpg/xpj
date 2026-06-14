@@ -26,7 +26,10 @@ from app.services.debt_service._query import (
     get_debt_response,
     list_debts,
 )
-from app.services.debt_service._repayment import record_repayment
+from app.services.debt_service._repayment import (
+    get_repayment_public_id_for_idempotency,
+    record_repayment,
+)
 from app.services.debt_service._void import void_debt, void_repayment
 
 __all__ = [
@@ -37,6 +40,7 @@ __all__ = [
     "derive_status",
     "get_debt",
     "get_debt_response",
+    "get_repayment_public_id_for_idempotency",
     "list_debts",
     "record_adjustment",
     "record_repayment",

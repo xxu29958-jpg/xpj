@@ -23,6 +23,7 @@ __all__ = [
     "DebtResponse",
     "DebtVoidCreateRequest",
     "RepaymentCreateRequest",
+    "RepaymentCreateResponse",
     "RepaymentVoidCreateRequest",
 ]
 
@@ -81,6 +82,12 @@ class DebtResponse(BaseModel):
 
 class DebtListResponse(BaseModel):
     items: list[DebtResponse]
+
+
+class RepaymentCreateResponse(DebtResponse):
+    """Fold-after Debt response plus the committed repayment id for void flows."""
+
+    repayment_public_id: str
 
 
 class RepaymentCreateRequest(BaseModel):

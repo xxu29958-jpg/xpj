@@ -8461,6 +8461,188 @@
         "title": "RepaymentCreateRequest",
         "type": "object"
       },
+      "RepaymentCreateResponse": {
+        "description": "Fold-after Debt response plus the committed repayment id for void flows.",
+        "properties": {
+          "counterparty_account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Account Id"
+          },
+          "counterparty_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Label"
+          },
+          "counterparty_type": {
+            "title": "Counterparty Type",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "exchange_rate_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Date"
+          },
+          "exchange_rate_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Source"
+          },
+          "exchange_rate_to_cny": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate To Cny"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency Code"
+          },
+          "paid_amount_cents": {
+            "title": "Paid Amount Cents",
+            "type": "integer"
+          },
+          "principal_amount_cents": {
+            "title": "Principal Amount Cents",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "remaining_amount_cents": {
+            "title": "Remaining Amount Cents",
+            "type": "integer"
+          },
+          "repayment_public_id": {
+            "title": "Repayment Public Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "public_id",
+          "ledger_id",
+          "direction",
+          "counterparty_type",
+          "principal_amount_cents",
+          "remaining_amount_cents",
+          "paid_amount_cents",
+          "status",
+          "source_type",
+          "home_currency_code",
+          "created_at",
+          "updated_at",
+          "row_version",
+          "repayment_public_id"
+        ],
+        "title": "RepaymentCreateResponse",
+        "type": "object"
+      },
       "RepaymentVoidCreateRequest": {
         "additionalProperties": false,
         "description": "Void one mistaken repayment (ADR-0049 §3.4).\n\n``repayment_public_id`` identifies the repayment to void; it must belong to\nthis Debt. ``reason`` is required. The original repayment row is never\ndeleted (the void is append-only and excludes it from the fold).",
@@ -11932,7 +12114,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/DebtResponse"
+                  "$ref": "#/components/schemas/RepaymentCreateResponse"
                 }
               }
             },

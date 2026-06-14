@@ -18,7 +18,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import LedgerMember
+from app.models import Account, Debt, LedgerMember
+from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -50,6 +51,40 @@ def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 
     )
     assert response.status_code == 201, response.json()
     return response.json()
+
+
+def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
+    with SessionLocal() as db:
+        owner = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
+        assert owner is not None
+        counterparty = Account(display_name="member-counterparty")
+        db.add(counterparty)
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id="owner",
+                account_id=counterparty.id,
+                role="member",
+            )
+        )
+        now = now_utc()
+        debt = Debt(
+            tenant_id="owner",
+            owner_account_id=owner.id,
+            created_by_account_id=owner.id,
+            direction="owed_to_me",
+            counterparty_type="member",
+            counterparty_account_id=counterparty.id,
+            principal_amount_cents=principal_amount_cents,
+            home_currency_code="CNY",
+            status="open",
+            source_type="manual",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(debt)
+        db.commit()
+        return {"public_id": debt.public_id, "row_version": debt.row_version}
 
 
 def test_positive_adjustment_raises_remaining(client: TestClient, *, identity) -> None:
@@ -135,6 +170,23 @@ def test_adjustment_idempotent_replay_applies_once(client: TestClient, *, identi
     assert replay.status_code == 201, replay.json()
     assert replay.json()["remaining_amount_cents"] == 53000
     assert replay.json()["row_version"] == bumped_version
+
+
+def test_manual_member_adjustment_requires_confirmation_flow(
+    client: TestClient, *, identity
+) -> None:
+    debt = _seed_manual_member_debt(principal_amount_cents=10000)
+    response = client.post(
+        f"/api/debts/{debt['public_id']}/adjustments",
+        headers=_idem(identity.app_headers),
+        json={
+            "amount_cents": 1000,
+            "reason": "member-confirmation-required",
+            "expected_row_version": debt["row_version"],
+        },
+    )
+    assert response.status_code == 409, response.json()
+    assert response.json()["error"] == "state_conflict"
 
 
 def test_viewer_cannot_record_adjustment(client: TestClient, *, identity) -> None:

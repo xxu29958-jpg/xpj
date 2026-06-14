@@ -110,7 +110,7 @@ def test_two_sessions_repayment_serializes_then_second_rechecks(*, identity) -> 
 
     # Session A: commit a 60 repayment.
     with SessionLocal() as session_a:
-        debt_a = debt_service.record_repayment(
+        repayment_a = debt_service.record_repayment(
             session_a,
             tenant_id="owner",
             public_id=public_id,
@@ -119,7 +119,7 @@ def test_two_sessions_repayment_serializes_then_second_rechecks(*, identity) -> 
             idempotency_key=str(uuid4()),
             commit=True,
         )
-        assert debt_a.row_version == version + 1
+        assert repayment_a.debt.row_version == version + 1
 
     # Session B: the same 60 must now be rejected from authoritative facts.
     from app.errors import AppError

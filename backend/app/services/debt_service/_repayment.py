@@ -18,6 +18,9 @@ lock.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -29,6 +32,33 @@ from app.services.debt_service._serialize import lock_and_fold
 from app.services.time_service import now_utc
 
 
+@dataclass
+class RecordedRepayment:
+    debt: Debt
+    repayment_public_id: str
+
+
+def get_repayment_public_id_for_idempotency(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    idempotency_key: str,
+) -> str:
+    """Return the committed repayment id for a successful replay."""
+    repayment_public_id = db.scalar(
+        select(Repayment.public_id)
+        .join(Debt, Repayment.debt_id == Debt.id)
+        .where(Debt.tenant_id == tenant_id)
+        .where(Debt.public_id == public_id)
+        .where(Repayment.idempotency_key == idempotency_key)
+        .limit(1)
+    )
+    if repayment_public_id is None:
+        raise AppError("repayment_not_found", status_code=404)
+    return repayment_public_id
+
+
 def record_repayment(
     db: Session,
     *,
@@ -38,7 +68,7 @@ def record_repayment(
     payload: RepaymentCreateRequest,
     idempotency_key: str,
     commit: bool = False,
-) -> Debt:
+) -> RecordedRepayment:
     """Record one committed repayment and return the fold-updated parent Debt.
 
     ``commit=False`` lets the route commit the Repayment insert + parent bump +
@@ -59,28 +89,28 @@ def record_repayment(
     money.pop("home_currency_code", None)
     amount_cents = money.pop("amount_cents")
 
-    def _mutate(debt: Debt, remaining_before: int) -> None:
+    def _mutate(debt: Debt, remaining_before: int) -> Repayment:
         # §5.2 / §3.5 adverse-interest guard: slice 2 only records committed
-        # repayments directly for manual/external Debt (owner-side bookkeeping).
-        # Member-Debt debtor "I paid" is a slice-3 proposal.
+        # repayments directly for external/manual Debt (owner-side bookkeeping).
+        # Member-Debt repayment stays behind the slice-3 confirmation flow.
         guard_direct_fact_writable(debt)
         # §3.1 / F8: a repayment that would push remaining below 0 is rejected
         # inside the serialized section, never silently clamped.
         if amount_cents > remaining_before:
             raise AppError("debt_overpay_rejected", status_code=422)
-        db.add(
-            Repayment(
-                debt_id=debt.id,
-                amount_cents=amount_cents,
-                paid_at=paid_at,
-                actor_account_id=actor_account_id,
-                proposal_id=None,
-                idempotency_key=idempotency_key,
-                **money,
-            )
+        repayment = Repayment(
+            debt_id=debt.id,
+            amount_cents=amount_cents,
+            paid_at=paid_at,
+            actor_account_id=actor_account_id,
+            proposal_id=None,
+            idempotency_key=idempotency_key,
+            **money,
         )
+        db.add(repayment)
+        return repayment
 
-    debt, _ = lock_and_fold(
+    debt, repayment = lock_and_fold(
         db,
         tenant_id=tenant_id,
         public_id=public_id,
@@ -90,4 +120,4 @@ def record_repayment(
     if commit:
         db.commit()
         db.refresh(debt)
-    return debt
+    return RecordedRepayment(debt=debt, repayment_public_id=repayment.public_id)

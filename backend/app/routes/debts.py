@@ -39,11 +39,13 @@ from app.schemas import (
     DebtResponse,
     DebtVoidCreateRequest,
     RepaymentCreateRequest,
+    RepaymentCreateResponse,
     RepaymentVoidCreateRequest,
 )
 from app.services.debt_service import (
     create_debt,
     get_debt_response,
+    get_repayment_public_id_for_idempotency,
     list_debts,
     record_adjustment,
     record_repayment,
@@ -70,6 +72,20 @@ _REPAYMENT_OPERATION = "record_repayment"
 _ADJUSTMENT_OPERATION = "record_adjustment"
 _REPAYMENT_VOID_OPERATION = "void_repayment"
 _DEBT_VOID_OPERATION = "void_debt"
+
+
+def _repayment_create_response(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    repayment_public_id: str,
+) -> RepaymentCreateResponse:
+    debt = get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+    return RepaymentCreateResponse(
+        **debt.model_dump(),
+        repayment_public_id=repayment_public_id,
+    )
 
 
 @router.get("", response_model=DebtListResponse)
@@ -142,14 +158,18 @@ def post_debt(
     return get_debt_response(db, tenant_id=auth.tenant_id, public_id=debt.public_id)
 
 
-@router.post("/{public_id}/repayments", response_model=DebtResponse, status_code=201)
+@router.post(
+    "/{public_id}/repayments",
+    response_model=RepaymentCreateResponse,
+    status_code=201,
+)
 def post_repayment(
     public_id: str,
     payload: RepaymentCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
-) -> DebtResponse:
+) -> RepaymentCreateResponse:
     claim = claim_idempotent_request(
         db,
         idempotency_key=idempotency_key,
@@ -163,8 +183,19 @@ def post_repayment(
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §2.1 replay: re-serialise the fold, do NOT bump again.
-        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
-    debt = record_repayment(
+        repayment_public_id = get_repayment_public_id_for_idempotency(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            idempotency_key=idempotency_key,
+        )
+        return _repayment_create_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            repayment_public_id=repayment_public_id,
+        )
+    result = record_repayment(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
@@ -174,7 +205,7 @@ def post_repayment(
         commit=False,
     )
     mark_idempotency_succeeded(
-        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=debt.public_id
+        db, claim, resource_type="repayment", resource_id=result.repayment_public_id
     )
     db.commit()
     # bump_row_version emits a SQL ``row_version + 1`` expression; with
@@ -182,7 +213,12 @@ def post_repayment(
     # so expire before re-reading the fold for the response (mirrors
     # goal_service.update_goal's post-CAS expire_all).
     db.expire_all()
-    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    return _repayment_create_response(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        repayment_public_id=result.repayment_public_id,
+    )
 
 
 @router.post("/{public_id}/adjustments", response_model=DebtResponse, status_code=201)

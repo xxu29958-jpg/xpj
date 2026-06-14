@@ -74,7 +74,7 @@ def test_void_repayment_reopens_debt_and_keeps_row(client: TestClient, *, identi
     debt = _create_debt(client, identity, principal_amount_cents=10000)
     repaid = _record_repayment(client, identity, debt["public_id"], 10000, debt["row_version"])
     assert repaid["status"] == "cleared"
-    repayment_public_id = _repayment_public_ids(debt["public_id"])[0]
+    repayment_public_id = repaid["repayment_public_id"]
 
     voided = client.post(
         f"/api/debts/{debt['public_id']}/repayment-voids",
@@ -101,7 +101,7 @@ def test_void_repayment_reopens_debt_and_keeps_row(client: TestClient, *, identi
 def test_void_repayment_twice_is_already_voided(client: TestClient, *, identity) -> None:
     debt = _create_debt(client, identity, principal_amount_cents=10000)
     repaid = _record_repayment(client, identity, debt["public_id"], 5000, debt["row_version"])
-    repayment_public_id = _repayment_public_ids(debt["public_id"])[0]
+    repayment_public_id = repaid["repayment_public_id"]
 
     first = client.post(
         f"/api/debts/{debt['public_id']}/repayment-voids",
@@ -136,8 +136,10 @@ def test_void_unknown_repayment_is_404(client: TestClient, *, identity) -> None:
 def test_void_repayment_belonging_to_other_debt_is_404(client: TestClient, *, identity) -> None:
     debt_a = _create_debt(client, identity, principal_amount_cents=10000)
     debt_b = _create_debt(client, identity, principal_amount_cents=10000)
-    _record_repayment(client, identity, debt_b["public_id"], 5000, debt_b["row_version"])
-    other_repayment_public_id = _repayment_public_ids(debt_b["public_id"])[0]
+    repaid_b = _record_repayment(
+        client, identity, debt_b["public_id"], 5000, debt_b["row_version"]
+    )
+    other_repayment_public_id = repaid_b["repayment_public_id"]
 
     # Try to void debt_b's repayment via debt_a's path → not found (it does not
     # belong to debt_a).

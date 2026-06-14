@@ -23,7 +23,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import ExchangeRate, LedgerMember
+from app.models import Account, Debt, ExchangeRate, LedgerMember
+from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -71,6 +72,40 @@ def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 
     return response.json()
 
 
+def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
+    with SessionLocal() as db:
+        owner = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
+        assert owner is not None
+        counterparty = Account(display_name="member-counterparty")
+        db.add(counterparty)
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id="owner",
+                account_id=counterparty.id,
+                role="member",
+            )
+        )
+        now = now_utc()
+        debt = Debt(
+            tenant_id="owner",
+            owner_account_id=owner.id,
+            created_by_account_id=owner.id,
+            direction="owed_to_me",
+            counterparty_type="member",
+            counterparty_account_id=counterparty.id,
+            principal_amount_cents=principal_amount_cents,
+            home_currency_code="CNY",
+            status="open",
+            source_type="manual",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(debt)
+        db.commit()
+        return {"public_id": debt.public_id, "row_version": debt.row_version}
+
+
 def test_record_repayment_reduces_remaining_once(client: TestClient, *, identity) -> None:
     debt = _create_debt(client, identity, principal_amount_cents=50000)
     response = client.post(
@@ -83,6 +118,7 @@ def test_record_repayment_reduces_remaining_once(client: TestClient, *, identity
     assert body["remaining_amount_cents"] == 30000  # 50000 - 20000
     assert body["paid_amount_cents"] == 20000
     assert body["status"] == "open"
+    assert body["repayment_public_id"]
     # The parent Debt row_version bumped once (§2.1).
     assert body["row_version"] == debt["row_version"] + 1
 
@@ -118,6 +154,7 @@ def test_repayment_idempotent_replay_applies_once(client: TestClient, *, identit
     assert replay.status_code == 201, replay.json()
     assert replay.json()["remaining_amount_cents"] == 35000
     assert replay.json()["row_version"] == bumped_version
+    assert replay.json()["repayment_public_id"] == first.json()["repayment_public_id"]
 
     detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
     assert detail.json()["remaining_amount_cents"] == 35000
@@ -141,6 +178,19 @@ def test_repayment_distinct_keys_are_not_deduped(client: TestClient, *, identity
     )
     assert second.status_code == 201, second.json()
     assert second.json()["remaining_amount_cents"] == 30000  # 50000 - 10000 - 10000
+
+
+def test_manual_member_repayment_requires_confirmation_flow(
+    client: TestClient, *, identity
+) -> None:
+    debt = _seed_manual_member_debt(principal_amount_cents=10000)
+    response = client.post(
+        f"/api/debts/{debt['public_id']}/repayments",
+        headers=_idem(identity.app_headers),
+        json={"amount_cents": 1000, "expected_row_version": debt["row_version"]},
+    )
+    assert response.status_code == 409, response.json()
+    assert response.json()["error"] == "state_conflict"
 
 
 def test_repayment_same_key_different_fingerprint_is_reused(client: TestClient, *, identity) -> None:
