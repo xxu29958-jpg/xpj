@@ -54,6 +54,8 @@ Current runtime does NOT yet expose:
 
 Therefore this ADR is a target contract. Confirmation checks are required before exposing the corresponding Debt features; they are not claims that the current runtime already implements them.
 
+Slice 4 wires bill-split → Debt creation (§4) behind the `DEBT_ROLLOUT_ENABLED` flag, default OFF. **Hard boundary: this flag MUST NOT be enabled until account-scoped participant confirm/reject (§5.2) is implemented.** A bill-split member Debt is owned by the receiver's ledger with the sender as creditor; today's repayment confirm/reject is ledger-scoped (the actor must be a writer in the Debt's own ledger), so a creditor who is not a member of the receiver's ledger cannot confirm or clear it. Turning the flag on before account-scoped confirmation lands would create Debts that cannot be repaid through the API.
+
 ---
 
 # 1. Existing Foundation Reuse
@@ -359,8 +361,9 @@ When Debt rollout is enabled, accepting a `BillSplitInvitation` MUST also insert
 - `direction = i_owe` from the receiver's perspective
 - `counterparty_type = member`
 - `counterparty_account_id = invitation.sender_account_id`
-- `principal_amount_cents = invitation.amount_cents`
-- currency/provenance copied from the frozen invitation snapshot
+- `principal_amount_cents = invitation.amount_cents` (the agreed HOME-currency share)
+- `home_currency_code = invitation.home_currency_code` (frozen from the snapshot, not the live setting)
+- the Debt is strict home-shape: original-currency provenance fields (`original_currency_code` / `original_amount_minor` / `exchange_rate_*`) are NULL. The receiver owes a home-currency share, not a foreign principal. The invitation's frozen original-currency snapshot is the PARENT expense's full original amount, not this share, so copying it onto a share-sized principal would misstate the obligation as the full foreign amount and break the `principal ≈ original × rate` relationship. The foreign origin stays auditable via `source_type` / `source_id` → the invitation, which retains the full snapshot.
 - `ledger_id = target_ledger_id`
 - `owner_account_id = receiver_account_id`
 
@@ -604,7 +607,7 @@ Required checks before exposing Debt features:
 
 - bill split accept creates receiver expense and bill-split Debt in one transaction
 - duplicate accept creates no duplicate Debt
-- bill-split Debt uses frozen invitation amount/currency/provenance
+- bill-split Debt freezes the invitation's home-currency share + home currency; original-currency provenance is NOT copied onto the Debt (it stays auditable via source_id → the invitation)
 - sender editing original expense does not change Debt
 - receiver editing received expense does not change Debt
 - external Debt can be repaid/adjusted by authorized writer only

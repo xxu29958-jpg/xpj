@@ -132,6 +132,7 @@ _PG_REAL_DB_NODES = (
     # single nodeid pattern catches them across all *_optimistic_concurrency.py.
     "::test_two_sessions",
     "tests/test_bill_split_hardening.py::test_create_invitation_row_locks_parent_expense",
+    "tests/test_bill_split_debt_linkage.py::test_debt_failure_rolls_back_whole_accept",  # real rollback across the accept transaction
     "tests/test_background_task_claim.py::",  # claim atomicity across sessions
     "tests/test_background_tasks.py::",  # real background-task handler execution
     # Stale-OCC-token tests stage the conflict with a second concurrent session
