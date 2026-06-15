@@ -147,6 +147,12 @@ class Goal(Base):
     )
     achieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     achieved_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ADR-0049 §6/F13 integrity review: the goal_version for which the user
+    # explicitly acknowledged ("keep for audit") an achieved version that carries a
+    # debt-voided linked Debt. While `integrity_reviewed_version == goal_version` the
+    # integrity-review `needs_review` flag is cleared for that version; a later link
+    # change bumps goal_version so a still-voided new version must be re-acknowledged.
+    integrity_reviewed_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 Index("ix_goals_tenant_month_status", Goal.tenant_id, Goal.month, Goal.status)

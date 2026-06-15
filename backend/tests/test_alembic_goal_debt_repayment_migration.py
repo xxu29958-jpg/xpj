@@ -20,7 +20,12 @@ from sqlalchemy import inspect, text
 
 from app.database import Base, engine
 
-_NEW_GOAL_COLUMNS = ("goal_version", "achieved_at", "achieved_version")
+_NEW_GOAL_COLUMNS = (
+    "goal_version",
+    "achieved_at",
+    "achieved_version",
+    "integrity_reviewed_version",
+)
 
 
 def _goals_columns() -> dict[str, dict]:

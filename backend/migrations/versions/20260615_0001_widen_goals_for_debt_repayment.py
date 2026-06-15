@@ -158,6 +158,9 @@ def upgrade() -> None:
     if not _has_column(bind, "goals", "achieved_version"):
         with op.batch_alter_table("goals") as batch_op:
             batch_op.add_column(sa.Column("achieved_version", sa.Integer(), nullable=True))
+    if not _has_column(bind, "goals", "integrity_reviewed_version"):
+        with op.batch_alter_table("goals") as batch_op:
+            batch_op.add_column(sa.Column("integrity_reviewed_version", sa.Integer(), nullable=True))
 
     # goals: scope indexes gain the goal_type='spending_limit' predicate.
     _recreate_scope_indexes(
@@ -180,6 +183,9 @@ def downgrade() -> None:
         total_where=_LEGACY_TOTAL_SCOPE_WHERE, category_where=_LEGACY_CATEGORY_SCOPE_WHERE
     )
 
+    if _has_column(bind, "goals", "integrity_reviewed_version"):
+        with op.batch_alter_table("goals") as batch_op:
+            batch_op.drop_column("integrity_reviewed_version")
     if _has_column(bind, "goals", "achieved_version"):
         with op.batch_alter_table("goals") as batch_op:
             batch_op.drop_column("achieved_version")

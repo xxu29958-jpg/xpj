@@ -37,6 +37,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, DebtGoalLink, Goal
 from app.schemas import (
+    DebtGoalIntegrityReviewRequest,
     DebtGoalLinksReplaceRequest,
     DebtGoalLinkView,
     DebtRepaymentEvaluation,
@@ -152,7 +153,7 @@ def _evaluate_and_maybe_latch(
 
     already_latched = goal.achieved_version == goal.goal_version
     if already_latched:
-        state = "achieved"
+        state = "achieved"  # §6 sticky: never reverted (reopen OR debt-void)
     elif any_voided:
         state = "not_evaluable"
     elif all_cleared:
@@ -166,10 +167,18 @@ def _evaluate_and_maybe_latch(
         goal.achieved_version = goal.goal_version
         latched = True
 
+    # §6/F13 integrity review: a debt-VOIDED linked Debt (fold status ``voided``,
+    # captured by ``any_voided``) is an unresolved integrity issue that forces a
+    # review — both on a not_evaluable version AND on a sticky-achieved one — UNLESS
+    # an achieved version was explicitly acknowledged for THIS goal_version. A reopen
+    # (status ``open``, not ``voided``) never sets ``any_voided`` so raises no review.
+    integrity_acknowledged = goal.integrity_reviewed_version == goal.goal_version
+    needs_review = any_voided and not (state == "achieved" and integrity_acknowledged)
+
     evaluation = DebtRepaymentEvaluation(
         goal_version=goal.goal_version,
         evaluation_state=state,
-        needs_review=state == "not_evaluable",
+        needs_review=needs_review,
         achieved_at=goal.achieved_at,
         achieved_version=goal.achieved_version,
         linked_debts=link_views,
@@ -317,6 +326,58 @@ def replace_debt_repayment_goal_links(
                 goal_id=goal.id, goal_version=new_version, debt_id=debt.id, created_at=now
             )
         )
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+
+
+def acknowledge_integrity_review(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    payload: DebtGoalIntegrityReviewRequest,
+    commit: bool = True,
+) -> None:
+    """ADR-0049 §6/F13: acknowledge ("keep for audit") an achieved version's debt-void.
+
+    Records the acknowledgement against the CURRENT ``goal_version`` so the integrity
+    ``needs_review`` flag clears for that version. Only valid for an ALREADY-achieved
+    version that carries a debt-voided linked Debt — a not-yet-achieved version's
+    voided Debt is resolved by replacing links (the other exit). OCC-gated like the
+    link-replace route; ``commit=False`` lets the route commit it with the idempotency
+    success record.
+    """
+    goal = _require_debt_repayment_goal(db, tenant_id=tenant_id, public_id=public_id)
+    if goal.status == "archived":
+        raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
+    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=False)
+    if evaluation.evaluation_state != "achieved" or not evaluation.voided_debt_public_ids:
+        raise AppError(
+            "invalid_request",
+            "没有待确认的债务作废复核（目标须已达成且有被作废的关联欠款）。",
+            status_code=422,
+        )
+    if goal.integrity_reviewed_version == goal.goal_version:
+        return  # already acknowledged for this version — idempotent no-op
+    now = now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        Goal,
+        pk_id=goal.id,
+        tenant_id=tenant_id,
+        expected_row_version=payload.expected_row_version,
+        set_values={"integrity_reviewed_version": goal.goal_version, "updated_at": now},
+        extra_where=(Goal.status == "active",),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = _require_debt_repayment_goal(db, tenant_id=tenant_id, public_id=public_id)
+        if current.status != "active":
+            raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
+        raise AppError("state_conflict", status_code=409)
     if commit:
         db.commit()
     else:

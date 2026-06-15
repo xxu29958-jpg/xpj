@@ -119,6 +119,21 @@ def _replace_links(
     )
 
 
+def _acknowledge_review(
+    client: TestClient,
+    headers: dict[str, str],
+    public_id: str,
+    *,
+    expected_row_version: int,
+    idempotency_key: str | None = None,
+):
+    return client.post(
+        f"/api/goals/{public_id}/integrity-review/acknowledge",
+        headers={**headers, "Idempotency-Key": idempotency_key or str(uuid4())},
+        json={"expected_row_version": expected_row_version},
+    )
+
+
 def _goal_latch_state(goal_public_id: str) -> tuple:
     """(achieved_at, achieved_version) read straight from the Goal row.
 

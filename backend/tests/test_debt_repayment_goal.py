@@ -17,6 +17,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from tests.debt_repayment_goal_helpers import (
+    _acknowledge_review,
     _adjust_debt,
     _clear_debt,
     _create_debt_goal,
@@ -184,15 +185,19 @@ def test_achieved_then_reopened_debt_stays_achieved(client: TestClient, *, ident
     block = detail.json()["debt_repayment"]
     assert block["evaluation_state"] == "achieved"  # latched per version, sticky
     assert block["achieved_version"] == 1
+    # A reopen (status back to open, NOT voided) is decoupled from a debt-void: it
+    # raises NO integrity review (§6/F13 ratification, latch-wins-no-review).
+    assert block["needs_review"] is False
     assert {link["status"] for link in block["linked_debts"]} == {"open"}
 
 
-def test_achieved_version_stays_achieved_after_linked_debt_voided(client: TestClient, *, identity) -> None:
-    # ADR-0049 §6/F13 (ratified 2026-06-15, latch wins): a void of an
-    # already-cleared linked Debt on an ALREADY-achieved version does NOT
-    # un-achieve it. The void is surfaced (voided_debt_public_ids) but the version
-    # stays achieved with needs_review=False — only NOT-yet-achieved versions go
-    # not_evaluable on a void.
+def test_debt_void_after_achievement_stays_achieved_but_forces_review(
+    client: TestClient, *, identity
+) -> None:
+    # ADR-0049 §6/F13 (ratified 2026-06-15): a DEBT-VOID of an already-cleared linked
+    # Debt on an ALREADY-achieved version does NOT un-achieve it (latch sticky), but
+    # DOES force a one-time integrity review (needs_review=True) — distinct from a
+    # mere reopen, which raises no review.
     a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
     goal = _create_debt_goal(
         client, identity.app_headers, name="达成后作废", debt_public_ids=[a["public_id"]]
@@ -201,17 +206,86 @@ def test_achieved_version_stays_achieved_after_linked_debt_voided(client: TestCl
 
     achieved = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
     assert achieved.json()["debt_repayment"]["evaluation_state"] == "achieved"
-    assert achieved.json()["debt_repayment"]["achieved_version"] == 1
+    assert achieved.json()["debt_repayment"]["needs_review"] is False
 
-    _void_debt(client, identity.app_headers, cleared)  # void the cleared linked Debt
+    _void_debt(client, identity.app_headers, cleared)  # debt-void the cleared linked Debt
 
     detail = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
     block = detail.json()["debt_repayment"]
-    assert block["evaluation_state"] == "achieved"  # sticky — latch wins over the void
-    assert block["needs_review"] is False
+    assert block["evaluation_state"] == "achieved"  # sticky — latch not reverted
+    assert block["needs_review"] is True  # but the integrity review fires
     assert block["achieved_version"] == 1
-    assert block["voided_debt_public_ids"] == [a["public_id"]]  # but the void stays visible
+    assert block["voided_debt_public_ids"] == [a["public_id"]]
     assert {link["status"] for link in block["linked_debts"]} == {"voided"}
+
+
+def test_acknowledge_integrity_review_clears_review_flag(client: TestClient, *, identity) -> None:
+    # §6/F13 "keep for audit" exit: acknowledging an achieved version's debt-void
+    # clears needs_review for that version without un-achieving it; the void stays
+    # surfaced.
+    a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="保留存档", debt_public_ids=[a["public_id"]]
+    ).json()
+    cleared = _clear_debt(client, identity.app_headers, a)
+    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # latch
+    _void_debt(client, identity.app_headers, cleared)
+
+    pending = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
+    assert pending.json()["debt_repayment"]["needs_review"] is True
+
+    acked = _acknowledge_review(
+        client, identity.app_headers, goal["public_id"], expected_row_version=goal["row_version"]
+    )
+    assert acked.status_code == 200, acked.json()
+    block = acked.json()["debt_repayment"]
+    assert block["evaluation_state"] == "achieved"
+    assert block["needs_review"] is False  # acknowledged → flag cleared
+    assert block["voided_debt_public_ids"] == [a["public_id"]]  # void still surfaced
+
+    # Sticky: a re-read stays achieved + acknowledged.
+    again = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
+    assert again.json()["debt_repayment"]["needs_review"] is False
+
+
+def test_acknowledgement_does_not_carry_across_a_version_bump(client: TestClient, *, identity) -> None:
+    # The acknowledgement is scoped to ONE goal_version (integrity_reviewed_version
+    # is an INT, not a bool): after a link change bumps the version, a NEW debt-void
+    # on the new version RE-RAISES the integrity review — the old ack does not carry.
+    # (This is the one test that distinguishes the INT design from a one-shot bool.)
+    a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    b = _create_external_debt(client, identity.app_headers, principal_amount_cents=20000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="按版本作用域", debt_public_ids=[a["public_id"]]
+    ).json()
+    cleared_a = _clear_debt(client, identity.app_headers, a)
+    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # latch v1
+    _void_debt(client, identity.app_headers, cleared_a)
+    acked = _acknowledge_review(
+        client, identity.app_headers, goal["public_id"], expected_row_version=goal["row_version"]
+    ).json()
+    assert acked["debt_repayment"]["needs_review"] is False  # acknowledged at v1
+
+    # Move to a NEW version linking a freshly-cleared Debt b → v2 achieves clean.
+    cleared_b = _clear_debt(client, identity.app_headers, b)
+    replaced = _replace_links(
+        client,
+        identity.app_headers,
+        goal["public_id"],
+        expected_row_version=acked["row_version"],
+        debt_public_ids=[b["public_id"]],
+    ).json()
+    assert replaced["debt_repayment"]["goal_version"] == 2
+    assert replaced["debt_repayment"]["evaluation_state"] == "achieved"
+    assert replaced["debt_repayment"]["needs_review"] is False  # no void on v2 yet
+
+    # Debt-void b on the NEW version → the integrity review RE-FIRES (the v1 ack does
+    # not silence v2).
+    _void_debt(client, identity.app_headers, cleared_b)
+    detail = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers).json()
+    assert detail["debt_repayment"]["evaluation_state"] == "achieved"  # v2 sticky
+    assert detail["debt_repayment"]["needs_review"] is True  # re-raised for v2
+    assert detail["debt_repayment"]["voided_debt_public_ids"] == [b["public_id"]]
 
 
 def test_viewer_read_computes_achieved_without_latching(client: TestClient, *, identity) -> None:

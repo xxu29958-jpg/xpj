@@ -3963,6 +3963,21 @@
         "title": "DebtCreateRequest",
         "type": "object"
       },
+      "DebtGoalIntegrityReviewRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0049 §6/F13: acknowledge (\"keep for audit\") an achieved goal version\nwhose linked set carries a debt-voided Debt.\n\nOCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier).\nRecords the acknowledgement against the goal's CURRENT version, clearing the\nintegrity ``needs_review`` flag for that version. The other exit — removing the\nvoided Debt — goes through the link-replace route (a new version), not here.",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "DebtGoalIntegrityReviewRequest",
+        "type": "object"
+      },
       "DebtGoalLinkView": {
         "description": "One linked Debt's shell for a debt_repayment goal's evaluation block.\n\nThe Debt is in the goal's own ledger (the service rejects cross-tenant links),\nso this is the owner's own obligation shell — no cross-account redaction needed.",
         "properties": {
@@ -4059,7 +4074,7 @@
         "type": "object"
       },
       "DebtRepaymentEvaluation": {
-        "description": "ADR-0049 §6 debt_repayment evaluation for the goal's CURRENT version.\n\n``evaluation_state``: ``in_progress`` / ``achieved`` / ``not_evaluable``. A\nvoided linked Debt makes the version ``not_evaluable`` (``needs_review``) and\nthe UI must offer a review action (replace the link set → new version, §6 /\nF13 \"must not silently freeze\"). ``achieved`` is latched per version: once all\nof a version's linked Debts clear, ``achieved_at`` / ``achieved_version`` are\nstamped and stay sticky even if a linked Debt later reopens.",
+        "description": "ADR-0049 §6 debt_repayment evaluation for the goal's CURRENT version.\n\n``evaluation_state``: ``in_progress`` / ``achieved`` / ``not_evaluable``.\n``achieved`` is latched per version and sticky — a later reopen (fold status\nback to ``open``) does NOT revert it and raises no review.\n\n``needs_review`` (§6/F13) is true when a linked Debt is *debt-voided* (status\n``voided``) and that void is unresolved: a NOT-yet-achieved version is\n``not_evaluable`` + ``needs_review``; an already-achieved version stays\n``achieved`` + ``needs_review`` (the integrity-review case). Both exits go\nthrough version machinery — replace the link set (→ new version) to remove the\nvoided Debt, or acknowledge (\"keep for audit\") to clear the flag for the\ncurrent version. A reopen (no ``voided`` Debt) never sets ``needs_review``.",
         "properties": {
           "achieved_at": {
             "anyOf": [
@@ -16250,6 +16265,100 @@
           }
         },
         "summary": "Post Goal Debt Links",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/goals/{public_id}/integrity-review/acknowledge": {
+      "post": {
+        "operationId": "post_goal_integrity_review_acknowledge_api_goals__public_id__integrity_review_acknowledge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtGoalIntegrityReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Goal Integrity Review Acknowledge",
         "tags": [
           "goals"
         ]

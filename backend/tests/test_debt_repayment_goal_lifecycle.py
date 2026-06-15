@@ -16,11 +16,14 @@ from fastapi.testclient import TestClient
 
 from tests.debt_repayment_goal_helpers import (
     VIEWER_WRITE_MESSAGE,
+    _acknowledge_review,
+    _clear_debt,
     _create_debt_goal,
     _create_external_debt,
     _links_count_for_version,
     _replace_links,
     _set_owner_ledger_role,
+    _void_debt,
 )
 
 
@@ -268,6 +271,117 @@ def test_replace_links_rejects_spending_goal(client: TestClient, *, identity) ->
         spending["public_id"],
         expected_row_version=spending["row_version"],
         debt_public_ids=[a["public_id"]],
+    )
+    assert response.status_code == 422, response.json()
+    assert response.json()["error"] == "invalid_request"
+
+
+def _seed_achieved_then_voided_goal(client: TestClient, identity, *, name: str) -> dict:
+    """Create a debt goal, latch its achievement, then debt-void the linked Debt.
+
+    Returns the goal create response. The intervening writer GET latches achievement
+    BEFORE the void, so the version is sticky-achieved with a pending integrity review
+    (the void after the latch does not un-achieve it).
+    """
+    a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name=name, debt_public_ids=[a["public_id"]]
+    ).json()
+    cleared = _clear_debt(client, identity.app_headers, a)
+    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # latch
+    _void_debt(client, identity.app_headers, cleared)
+    return goal
+
+
+def test_acknowledge_integrity_review_requires_auth(client: TestClient, *, identity) -> None:
+    # coverage: auth-401 — the integrity-review carrier rejects an unauthenticated call.
+    a = _create_external_debt(client, identity.app_headers)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="复核未鉴权", debt_public_ids=[a["public_id"]]
+    ).json()
+    response = client.post(
+        f"/api/goals/{goal['public_id']}/integrity-review/acknowledge",
+        json={"expected_row_version": goal["row_version"]},
+    )
+    assert response.status_code == 401, response.json()
+
+
+def test_acknowledge_integrity_review_requires_idempotency_key(client: TestClient, *, identity) -> None:
+    a = _create_external_debt(client, identity.app_headers)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="复核缺幂等键", debt_public_ids=[a["public_id"]]
+    ).json()
+    response = client.post(
+        f"/api/goals/{goal['public_id']}/integrity-review/acknowledge",
+        headers=identity.app_headers,
+        json={"expected_row_version": goal["row_version"]},
+    )
+    assert response.status_code == 422, response.json()
+
+
+def test_acknowledge_integrity_review_stale_version_conflict(client: TestClient, *, identity) -> None:
+    goal = _seed_achieved_then_voided_goal(client, identity, name="复核陈旧版本")
+    response = _acknowledge_review(
+        client, identity.app_headers, goal["public_id"], expected_row_version=goal["row_version"] + 5
+    )
+    assert response.status_code == 409, response.json()
+    assert response.json()["error"] == "state_conflict"
+
+
+def test_acknowledge_integrity_review_rejects_not_yet_achieved(client: TestClient, *, identity) -> None:
+    # A NOT-yet-achieved version with a voided Debt is not_evaluable — its exit is
+    # link-replace (remove the Debt), not the keep-for-audit acknowledge.
+    a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    b = _create_external_debt(client, identity.app_headers, principal_amount_cents=20000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="未达成不能确认", debt_public_ids=[a["public_id"], b["public_id"]]
+    ).json()
+    _clear_debt(client, identity.app_headers, a)
+    _void_debt(client, identity.app_headers, b)  # b never cleared → version never achieved
+    response = _acknowledge_review(
+        client, identity.app_headers, goal["public_id"], expected_row_version=goal["row_version"]
+    )
+    assert response.status_code == 422, response.json()
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_acknowledge_integrity_review_idempotent_replay(client: TestClient, *, identity) -> None:
+    # ADR-0042 claim-before-OCC: an outbox replay of an ack (same Idempotency-Key +
+    # the now-stale expected_row_version) HITs the idempotency table and re-serialises
+    # the canonical result — no false-409 on the bumped row_version, no double-apply.
+    goal = _seed_achieved_then_voided_goal(client, identity, name="复核幂等重放")
+    key = str(uuid4())
+    first = _acknowledge_review(
+        client,
+        identity.app_headers,
+        goal["public_id"],
+        expected_row_version=goal["row_version"],
+        idempotency_key=key,
+    )
+    assert first.status_code == 200, first.json()
+    assert first.json()["debt_repayment"]["needs_review"] is False
+
+    replay = _acknowledge_review(
+        client,
+        identity.app_headers,
+        goal["public_id"],
+        expected_row_version=goal["row_version"],  # now stale, but the HIT short-circuits the OCC
+        idempotency_key=key,
+    )
+    assert replay.status_code == 200, replay.json()
+    assert replay.json()["debt_repayment"]["needs_review"] is False
+
+
+def test_acknowledge_integrity_review_no_pending_review(client: TestClient, *, identity) -> None:
+    # A clean achieved goal (no debt-void) has nothing to acknowledge.
+    a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="无待复核", debt_public_ids=[a["public_id"]]
+    ).json()
+    _clear_debt(client, identity.app_headers, a)
+    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # latch achieved
+    response = _acknowledge_review(
+        client, identity.app_headers, goal["public_id"], expected_row_version=goal["row_version"]
     )
     assert response.status_code == 422, response.json()
     assert response.json()["error"] == "invalid_request"

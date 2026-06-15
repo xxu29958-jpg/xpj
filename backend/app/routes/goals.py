@@ -7,6 +7,7 @@ from app.auth import get_current_app_context, get_current_writer_context
 from app.config import get_settings
 from app.database import get_db
 from app.schemas import (
+    DebtGoalIntegrityReviewRequest,
     DebtGoalLinksReplaceRequest,
     GoalCreateRequest,
     GoalListResponse,
@@ -14,6 +15,7 @@ from app.schemas import (
     GoalUpdateRequest,
 )
 from app.services.goal_debt_repayment_service import (
+    acknowledge_integrity_review,
     list_debt_repayment_goals,
     replace_debt_repayment_goal_links,
 )
@@ -205,6 +207,54 @@ def post_goal_debt_links(
     db.commit()
     # The OCC claim used synchronize_session=False; drop the stale identity map so
     # the response re-reads the new goal_version + freshly written links.
+    db.expire_all()
+    return get_goal_response(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        persist_achievement=True,
+    )
+
+
+@router.post("/{public_id}/integrity-review/acknowledge", response_model=GoalResponse)
+def post_goal_integrity_review_acknowledge(
+    public_id: str,
+    payload: DebtGoalIntegrityReviewRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> GoalResponse:
+    # ADR-0049 §6/F13: acknowledge ("keep for audit") an achieved debt_repayment
+    # goal version whose linked set carries a debt-voided Debt — clears the integrity
+    # needs_review for that version. OCC carrier + idempotency, same shape as the
+    # link-replace route.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="acknowledge_debt_goal_integrity_review",
+        target_id=public_id,
+        body={},
+        expected_row_version=payload.expected_row_version,
+        target_type="goal",
+    )
+    if claim is None:  # idempotent replay — re-serialise the current goal
+        return get_goal_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            persist_achievement=True,
+        )
+
+    acknowledge_integrity_review(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        payload=payload,
+        commit=False,
+    )
+    mark_idempotency_succeeded(db, claim, resource_type="goal", resource_id=public_id)
+    db.commit()
     db.expire_all()
     return get_goal_response(
         db,

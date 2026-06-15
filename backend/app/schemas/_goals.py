@@ -85,6 +85,21 @@ class DebtGoalLinksReplaceRequest(BaseModel):
     debt_public_ids: list[str] = Field(min_length=1)
 
 
+class DebtGoalIntegrityReviewRequest(BaseModel):
+    """ADR-0049 §6/F13: acknowledge ("keep for audit") an achieved goal version
+    whose linked set carries a debt-voided Debt.
+
+    OCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier).
+    Records the acknowledgement against the goal's CURRENT version, clearing the
+    integrity ``needs_review`` flag for that version. The other exit — removing the
+    voided Debt — goes through the link-replace route (a new version), not here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+
+
 class DebtGoalLinkView(BaseModel):
     """One linked Debt's shell for a debt_repayment goal's evaluation block.
 
@@ -105,12 +120,17 @@ class DebtGoalLinkView(BaseModel):
 class DebtRepaymentEvaluation(BaseModel):
     """ADR-0049 §6 debt_repayment evaluation for the goal's CURRENT version.
 
-    ``evaluation_state``: ``in_progress`` / ``achieved`` / ``not_evaluable``. A
-    voided linked Debt makes the version ``not_evaluable`` (``needs_review``) and
-    the UI must offer a review action (replace the link set → new version, §6 /
-    F13 "must not silently freeze"). ``achieved`` is latched per version: once all
-    of a version's linked Debts clear, ``achieved_at`` / ``achieved_version`` are
-    stamped and stay sticky even if a linked Debt later reopens.
+    ``evaluation_state``: ``in_progress`` / ``achieved`` / ``not_evaluable``.
+    ``achieved`` is latched per version and sticky — a later reopen (fold status
+    back to ``open``) does NOT revert it and raises no review.
+
+    ``needs_review`` (§6/F13) is true when a linked Debt is *debt-voided* (status
+    ``voided``) and that void is unresolved: a NOT-yet-achieved version is
+    ``not_evaluable`` + ``needs_review``; an already-achieved version stays
+    ``achieved`` + ``needs_review`` (the integrity-review case). Both exits go
+    through version machinery — replace the link set (→ new version) to remove the
+    voided Debt, or acknowledge ("keep for audit") to clear the flag for the
+    current version. A reopen (no ``voided`` Debt) never sets ``needs_review``.
     """
 
     goal_version: int
