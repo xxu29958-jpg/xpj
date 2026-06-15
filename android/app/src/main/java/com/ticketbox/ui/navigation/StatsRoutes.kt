@@ -8,11 +8,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.DebtGoalScreen
+import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.viewmodel.BudgetViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
+import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
@@ -20,12 +22,14 @@ import com.ticketbox.viewmodel.StatsBudgetViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.budgetViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
+import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
 internal const val IncomePlanViewModelKey = "income-plans"
 internal const val DebtGoalViewModelKey = "debt-goals"
+internal const val DebtListViewModelKey = "debts"
 
 @Composable
 internal fun BudgetRoute(
@@ -110,6 +114,25 @@ internal fun DebtGoalRoute(
 }
 
 @Composable
+internal fun DebtRoute(
+    screenFactory: MainScreenFactory,
+    onBack: () -> Unit,
+) {
+    val debtListViewModel: DebtListViewModel = viewModel(
+        key = DebtListViewModelKey,
+        factory = debtViewModelFactory(screenFactory.debtRepository),
+    )
+    // overlay 复用缓存 VM 且跨账本切换存活;每次(重新)进入都 reload(先清旧账本的欠款再拉),
+    // 避免在新账本下短暂看到上一账本的欠款(账本隔离;与 DebtGoalRoute 同构)。
+    LaunchedEffect(Unit) { debtListViewModel.reload() }
+    DebtListScreen(
+        viewModel = debtListViewModel,
+        currency = LocalCurrencyDisplay.current,
+        onBack = onBack,
+    )
+}
+
+@Composable
 internal fun StatsRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
@@ -171,6 +194,7 @@ internal fun StatsRoute(
         onOpenRecurring = shellState::openRecurring,
         onOpenIncomePlans = shellState::openIncomePlans,
         onOpenDebtGoals = shellState::openDebtGoals,
+        onOpenDebts = shellState::openDebts,
         // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
         // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
         onDrillToLedger = { category ->

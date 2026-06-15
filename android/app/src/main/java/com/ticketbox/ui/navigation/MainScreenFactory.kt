@@ -2,6 +2,7 @@ package com.ticketbox.ui.navigation
 
 import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.repository.BudgetRepository
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
@@ -18,6 +19,7 @@ internal class MainScreenFactory(
     val budgetRepository: BudgetRepository,
     val reportsRepository: ReportsActions,
     val incomePlanRepository: IncomePlanActions,
+    val debtRepository: DebtActions,
     val outboxRepository: OutboxRepository,
     val tagRepository: TagRepository,
     val settingsViewModelFactory: ViewModelProvider.Factory,

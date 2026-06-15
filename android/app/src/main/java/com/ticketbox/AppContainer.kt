@@ -19,6 +19,7 @@ import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
+import com.ticketbox.data.repository.DebtRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.LedgerRepository
@@ -370,6 +371,14 @@ class AppContainer(context: Context) {
         // ADR-0042 Slice F: outbox + adapter for updateAllowingOffline.
         outbox = outboxRepository,
         incomePlanUpdateAdapter = incomePlanUpdateAdapter,
+    )
+
+    // ADR-0049 §2 (slice 8): Debt entity repository. Direct-only online (no outbox surface).
+    val debtRepository = DebtRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
     )
 
     val reportsRepository = ReportsRepository(

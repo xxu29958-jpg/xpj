@@ -8,8 +8,11 @@ import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
+import com.ticketbox.data.remote.dto.DebtCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
+import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
@@ -517,6 +520,19 @@ interface ApiService {
         @Header("Idempotency-Key") idempotencyKey: String?,
         @Query("timezone") timezone: String? = null,
     ): GoalDto
+
+    // ADR-0049 §2 (slice 8): Debt entity surface. The list is ledger-scoped via the session
+    // token (no query params); create accepts an external/manual Debt and carries the
+    // ADR-0042 intent-time idempotency key (nullable for Retrofit ergonomics — the repository
+    // always supplies a UUID). Both routes return the server-derived fold shape.
+    @GET("api/debts")
+    suspend fun debts(): DebtListResponseDto
+
+    @POST("api/debts")
+    suspend fun createDebt(
+        @Body request: DebtCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): DebtDto
 
     @GET("api/dashboard/cards")
     suspend fun dashboardCards(

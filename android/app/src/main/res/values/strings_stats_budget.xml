@@ -16,6 +16,7 @@
     <string name="stats_header_open_recurring">固定支出</string>
     <string name="stats_header_open_income_plans">收入计划</string>
     <string name="stats_header_open_debt_goals">还债目标</string>
+    <string name="stats_header_open_debts">债务管理</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
@@ -152,6 +153,26 @@
     <string name="debt_goal_links_updated">已更新关联的欠款。</string>
     <string name="debt_goal_review_acknowledged">已确认保留存档。</string>
     <string name="debt_goal_remove_voided_needs_one">至少需要保留一笔有效欠款。</string>
+
+    <!-- ADR-0049 §2 (slice 8) 债务管理：欠款列表 + 新建外部欠款。方向/状态标签复用上面 §6 的
+         debt_direction_* / debt_link_status_* / debt_goal_counterparty_external。 -->
+    <string name="debt_list_topbar_back">返回</string>
+    <string name="debt_list_topbar_title">债务管理</string>
+    <string name="debt_list_intro_body">记录与外部对象之间的欠款，跟踪每笔的清偿进度。</string>
+    <string name="debt_list_add">记一笔欠款</string>
+    <string name="debt_list_empty_title">还没有欠款记录</string>
+    <string name="debt_list_empty_body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</string>
+    <string name="debt_list_card_principal">本金 %1$s</string>
+    <string name="debt_list_load_failed">欠款加载失败，请稍后再试。</string>
+    <string name="debt_create_sheet_title">记一笔欠款</string>
+    <string name="debt_create_label_direction">方向</string>
+    <string name="debt_create_label_counterparty">欠款对象</string>
+    <string name="debt_create_label_amount">金额（元）</string>
+    <string name="debt_create_save">保存</string>
+    <string name="debt_create_submitting">保存中…</string>
+    <string name="debt_create_validation_error">请填写欠款对象和大于 0 的金额。</string>
+    <string name="debt_create_added">已记录欠款。</string>
+    <string name="debt_create_failed">保存失败，请稍后再试。</string>
 
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>

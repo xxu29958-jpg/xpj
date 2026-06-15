@@ -565,6 +565,11 @@ internal class FakeApiService(
         idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = unsupported()
+    override suspend fun debts(): com.ticketbox.data.remote.dto.DebtListResponseDto = unsupported()
+    override suspend fun createDebt(
+        request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = unsupported()
     override suspend fun updateDashboardCards(
         request: DashboardCardsUpdateRequestDto,
