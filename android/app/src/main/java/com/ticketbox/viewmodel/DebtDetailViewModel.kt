@@ -1,0 +1,206 @@
+package com.ticketbox.viewmodel
+
+import androidx.annotation.StringRes
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * ADR-0049 §3 (slice 8c) 欠款详情 + 记账管理 —— 进入欠款详情后记还款（§3.1）/ 调整本金（§3.3）/
+ * 作废欠款（§3.5）。三类写都是直接提交事实（external/manual 欠款；成员/拆账欠款走 slice8d 的对方
+ * 确认流程，后端 [guard_direct_fact_writable] 对其返回 409），均带 §2.1 OCC 载体
+ * （[DebtDetailUiState.debt] 的 `rowVersion`）。提交成功后用服务端折叠后的 [Debt] 原子替换本地态，
+ * 故下一次写自动用新的 `rowVersion`。
+ *
+ * 一个统一的动作面板（[activeAction]）承载三类写：还款只填金额、调整填金额+原因、作废只填原因，
+ * 让详情屏保持纯渲染。详情自身的数据由进入时的 [refresh] 拉取（账本隔离 + 始终最新），写返回的
+ * 折叠态直接覆盖本地 [debt]，无需再次拉取。
+ */
+data class DebtDetailUiState(
+    val isLoading: Boolean = false,
+    val debt: Debt? = null,
+    val canModify: Boolean = true,
+    val error: UiText? = null,
+    val activeAction: DebtAction? = null,
+    val amountInput: String = "",
+    val reasonInput: String = "",
+    // Adjustment is a signed delta, but the decimal keyboard exposes no minus key, so the amount
+    // field is a positive magnitude and this toggle carries the sign (true = raise `remaining`).
+    val adjustmentIncrease: Boolean = true,
+    val validationError: UiText? = null,
+    val isSubmitting: Boolean = false,
+    val flashMessage: UiText? = null,
+)
+
+/** The three direct fact writes a detail action panel can submit (ADR-0049 §3.1 / §3.3 / §3.5). */
+enum class DebtAction { Repayment, Adjustment, Void }
+
+class DebtDetailViewModel(
+    private val repository: DebtActions,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(DebtDetailUiState(canModify = repository.canModifyLedger()))
+    val state: StateFlow<DebtDetailUiState> = _state.asStateFlow()
+
+    // The reusable detail VM (one instance, keyed by a constant in DebtRoute) is told which Debt to
+    // show by [loadDebt] on each (re)entry, so reopening always re-fetches rather than showing a
+    // retained stale fold; [refresh] (pull-to-refresh) re-reads the same id.
+    private var loadedPublicId: String? = null
+
+    fun loadDebt(publicId: String) {
+        loadedPublicId = publicId
+        refresh()
+    }
+
+    fun refresh() {
+        val publicId = loadedPublicId ?: return
+        _state.update { it.copy(isLoading = true, error = null) }
+        viewModelScope.launch {
+            repository.getDebt(publicId).fold(
+                onSuccess = { debt ->
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            debt = debt,
+                            canModify = repository.canModifyLedger(),
+                            error = null,
+                        )
+                    }
+                },
+                onFailure = { err ->
+                    _state.update {
+                        it.copy(isLoading = false, error = err.toUiText(R.string.debt_detail_load_failed))
+                    }
+                },
+            )
+        }
+    }
+
+    fun openAction(action: DebtAction) {
+        _state.update {
+            it.copy(
+                activeAction = action,
+                amountInput = "",
+                reasonInput = "",
+                adjustmentIncrease = true,
+                validationError = null,
+            )
+        }
+    }
+
+    fun updateAmount(value: String) {
+        _state.update { it.copy(amountInput = value, validationError = null) }
+    }
+
+    fun updateReason(value: String) {
+        _state.update { it.copy(reasonInput = value, validationError = null) }
+    }
+
+    fun setAdjustmentSign(increase: Boolean) {
+        _state.update { it.copy(adjustmentIncrease = increase, validationError = null) }
+    }
+
+    fun dismissAction() {
+        _state.update {
+            it.copy(
+                activeAction = null,
+                amountInput = "",
+                reasonInput = "",
+                validationError = null,
+                isSubmitting = false,
+            )
+        }
+    }
+
+    fun submit() {
+        val current = _state.value
+        val debt = current.debt ?: return
+        val action = current.activeAction ?: return
+        val amountCents = parseDebtAmountCents(current.amountInput)
+        val reason = current.reasonInput.trim()
+        validateDebtAction(action, amountCents, reason)?.let { errorRes ->
+            _state.update { it.copy(validationError = UiText.res(errorRes)) }
+            return
+        }
+        _state.update { it.copy(isSubmitting = true) }
+        val magnitude = amountCents ?: 0L
+        viewModelScope.launch {
+            val result = when (action) {
+                DebtAction.Repayment ->
+                    repository.recordRepayment(debt.publicId, debt.rowVersion, magnitude)
+                DebtAction.Adjustment ->
+                    repository.recordAdjustment(
+                        debt.publicId,
+                        debt.rowVersion,
+                        if (current.adjustmentIncrease) magnitude else -magnitude,
+                        reason,
+                    )
+                DebtAction.Void ->
+                    repository.voidDebt(debt.publicId, debt.rowVersion, reason)
+            }
+            result.fold(
+                onSuccess = { updated ->
+                    _state.update {
+                        it.copy(
+                            debt = updated,
+                            activeAction = null,
+                            amountInput = "",
+                            reasonInput = "",
+                            isSubmitting = false,
+                            validationError = null,
+                            flashMessage = UiText.res(debtActionDoneRes(action)),
+                        )
+                    }
+                },
+                onFailure = { err ->
+                    _state.update {
+                        it.copy(isSubmitting = false, validationError = err.toUiText(R.string.debt_action_failed))
+                    }
+                },
+            )
+        }
+    }
+
+    fun dismissFlash() {
+        _state.update { it.copy(flashMessage = null) }
+    }
+}
+
+/** Parse a yuan input (signed — adjustments may be negative) into home-currency cents, or null. */
+private fun parseDebtAmountCents(input: String): Long? {
+    val raw = input.trim()
+    if (raw.isEmpty()) return null
+    val yuan = raw.toDoubleOrNull() ?: return null
+    return Math.round(yuan * 100)
+}
+
+/** The validation copy for an invalid action input, or null when the inputs are acceptable. */
+@StringRes
+private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: String): Int? = when (action) {
+    DebtAction.Repayment ->
+        if (amountCents == null || amountCents <= 0L) R.string.debt_action_repayment_validation else null
+    // The amount field is a positive magnitude (the sign comes from adjustmentIncrease), so an
+    // empty/zero/negative magnitude or a blank reason is invalid.
+    DebtAction.Adjustment ->
+        if (amountCents == null || amountCents <= 0L || reason.isEmpty()) {
+            R.string.debt_action_adjustment_validation
+        } else {
+            null
+        }
+    DebtAction.Void -> if (reason.isEmpty()) R.string.debt_action_void_validation else null
+}
+
+@StringRes
+private fun debtActionDoneRes(action: DebtAction): Int = when (action) {
+    DebtAction.Repayment -> R.string.debt_action_repayment_done
+    DebtAction.Adjustment -> R.string.debt_action_adjustment_done
+    DebtAction.Void -> R.string.debt_action_void_done
+}

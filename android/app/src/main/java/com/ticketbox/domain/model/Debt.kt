@@ -39,4 +39,12 @@ data class Debt(
     val isVoided: Boolean get() = status == DebtLinkStatuses.VOIDED
     val isExternal: Boolean get() = counterpartyType == DebtCounterpartyTypes.EXTERNAL
     val isBillSplit: Boolean get() = sourceType == DebtSourceTypes.BILL_SPLIT
+
+    /**
+     * Whether direct fact writes (repayment / adjustment / void, ADR-0049 §3) are accepted on this
+     * Debt. Mirrors the backend `guard_direct_fact_writable` (external + manual only); member /
+     * bill_split obligations route through the affected-party proposal flow (§5.2, slice 8d), so the
+     * detail screen hides the direct-write actions for them rather than showing a button that 409s.
+     */
+    val isDirectWritable: Boolean get() = isExternal && sourceType == DebtSourceTypes.MANUAL
 }

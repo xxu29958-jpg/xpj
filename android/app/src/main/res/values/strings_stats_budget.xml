@@ -190,6 +190,35 @@
     <string name="debt_goal_create_failed">创建失败，请稍后再试。</string>
     <string name="debt_goal_create_load_failed">欠款加载失败，请稍后再试。</string>
 
+    <!-- ADR-0049 §3 (slice 8c) 欠款详情 + 记还款 / 调整 / 作废管理。 -->
+    <string name="debt_detail_back">返回</string>
+    <string name="debt_detail_title">欠款详情</string>
+    <string name="debt_detail_remaining">剩余</string>
+    <string name="debt_detail_principal">本金</string>
+    <string name="debt_detail_paid">已偿还</string>
+    <string name="debt_detail_status">状态</string>
+    <string name="debt_detail_member_note">成员之间的欠款需要对方确认才能记账，这里暂不支持直接操作。</string>
+    <string name="debt_detail_closed_note">这笔欠款已结清或作废，无需再记账。</string>
+    <string name="debt_detail_load_failed">欠款详情加载失败，请稍后再试。</string>
+    <string name="debt_action_repayment_title">记还款</string>
+    <string name="debt_action_adjustment_title">调整本金</string>
+    <string name="debt_action_void_title">作废欠款</string>
+    <string name="debt_action_amount_label">金额（元）</string>
+    <string name="debt_action_adjustment_amount_label">调整金额（元）</string>
+    <string name="debt_action_adjustment_increase">增加欠款</string>
+    <string name="debt_action_adjustment_decrease">减少欠款</string>
+    <string name="debt_action_reason_label">原因</string>
+    <string name="debt_action_void_warning">作废后这笔欠款不再计入未结清统计，但会保留在历史里。</string>
+    <string name="debt_action_submit">保存</string>
+    <string name="debt_action_submitting">保存中…</string>
+    <string name="debt_action_repayment_validation">请输入大于 0 的还款金额。</string>
+    <string name="debt_action_adjustment_validation">请输入大于 0 的调整金额并填写原因。</string>
+    <string name="debt_action_void_validation">请填写作废原因。</string>
+    <string name="debt_action_repayment_done">已记一笔还款。</string>
+    <string name="debt_action_adjustment_done">已记录调整。</string>
+    <string name="debt_action_void_done">已作废这笔欠款。</string>
+    <string name="debt_action_failed">操作失败，请稍后再试。</string>
+
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>
     <string name="stats_recurring_candidates_count">%1$d 项</string>

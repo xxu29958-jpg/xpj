@@ -2,9 +2,12 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
+import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
@@ -125,6 +128,152 @@ class DebtRepositoryTest {
         assertTrue(result.isFailure)
     }
 
+    @Test
+    fun getDebtMapsDomainModel() = runTest {
+        val handler = DebtApiHandler().apply { debtResult = debtDto(publicId = "d9", remaining = 1_200L) }
+
+        val debt = repository(handler).getDebt("d9").getOrThrow()
+
+        assertEquals("d9", debt.publicId)
+        assertEquals(1_200L, debt.remainingAmountCents)
+    }
+
+    @Test
+    fun recordRepaymentSendsAmountVersionKeyAndRefolds() = runTest {
+        val handler = DebtApiHandler().apply { writeResult = debtDto(publicId = "d1", remaining = 40_000L) }
+
+        val updated = repository(handler).recordRepayment(
+            publicId = "d1",
+            expectedRowVersion = 3L,
+            amountCents = 10_000L,
+        ).getOrThrow()
+
+        val call = handler.repaymentCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals(10_000L, call.request.amountCents)
+        assertEquals(3L, call.request.expectedRowVersion)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        // The fold-after Debt from the response is swapped in (remaining dropped to 40_000).
+        assertEquals(40_000L, updated.remainingAmountCents)
+    }
+
+    @Test
+    fun recordRepaymentRejectsNonPositiveAmountBeforeApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler).recordRepayment("d1", expectedRowVersion = 1L, amountCents = 0L)
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.repaymentCalls.isEmpty())
+    }
+
+    @Test
+    fun recordRepaymentViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .recordRepayment("d1", expectedRowVersion = 1L, amountCents = 10_000L)
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(handler.repaymentCalls.isEmpty())
+    }
+
+    @Test
+    fun recordRepaymentMintsFreshKeyPerCall() = runTest {
+        val handler = DebtApiHandler()
+        val repository = repository(handler)
+
+        repository.recordRepayment("d1", expectedRowVersion = 1L, amountCents = 10_000L).getOrThrow()
+        repository.recordRepayment("d1", expectedRowVersion = 2L, amountCents = 10_000L).getOrThrow()
+
+        val keys = handler.repaymentCalls.mapNotNull { it.idempotencyKey }
+        assertEquals(2, keys.size)
+        assertEquals(2, keys.toSet().size)
+    }
+
+    @Test
+    fun recordAdjustmentSendsSignedAmountTrimmedReasonAndVersion() = runTest {
+        val handler = DebtApiHandler()
+
+        repository(handler).recordAdjustment(
+            publicId = "d1",
+            expectedRowVersion = 2L,
+            amountCents = -5_000L,
+            reason = "  减免部分  ",
+        ).getOrThrow()
+
+        val call = handler.adjustmentCalls.single()
+        assertEquals(-5_000L, call.request.amountCents)
+        // The repository trims the reason before the request leaves the client.
+        assertEquals("减免部分", call.request.reason)
+        assertEquals(2L, call.request.expectedRowVersion)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+    }
+
+    @Test
+    fun recordAdjustmentRejectsZeroAmountBeforeApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler).recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 0L, reason = "x")
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.adjustmentCalls.isEmpty())
+    }
+
+    @Test
+    fun recordAdjustmentRejectsBlankReasonBeforeApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler).recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 100L, reason = "   ")
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.adjustmentCalls.isEmpty())
+    }
+
+    @Test
+    fun recordAdjustmentViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 100L, reason = "x")
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.adjustmentCalls.isEmpty())
+    }
+
+    @Test
+    fun voidDebtSendsTrimmedReasonVersionAndKey() = runTest {
+        val handler = DebtApiHandler()
+
+        repository(handler).voidDebt(publicId = "d1", expectedRowVersion = 4L, reason = "  记错了  ").getOrThrow()
+
+        val call = handler.voidCalls.single()
+        assertEquals("记错了", call.request.reason)
+        assertEquals(4L, call.request.expectedRowVersion)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+    }
+
+    @Test
+    fun voidDebtRejectsBlankReasonBeforeApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler).voidDebt("d1", expectedRowVersion = 1L, reason = "   ")
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.voidCalls.isEmpty())
+    }
+
+    @Test
+    fun voidDebtViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore()).voidDebt("d1", expectedRowVersion = 1L, reason = "x")
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.voidCalls.isEmpty())
+    }
+
     private fun repository(
         handler: DebtApiHandler,
         settings: FakeTicketboxSettingsStore = boundSettingsStore(),
@@ -175,11 +324,20 @@ private class DebtApiFactory(private val handler: DebtApiHandler) : ApiServiceFa
 }
 
 private data class CreateDebtCall(val request: DebtCreateRequestDto, val idempotencyKey: String?)
+private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
+private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
+private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
 
 private class DebtApiHandler : InvocationHandler {
     val createCalls = mutableListOf<CreateDebtCall>()
+    val repaymentCalls = mutableListOf<RepaymentCall>()
+    val adjustmentCalls = mutableListOf<AdjustmentCall>()
+    val voidCalls = mutableListOf<VoidCall>()
     var debtsResult: DebtListResponseDto? = null
     var debtsError: Throwable? = null
+    // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
+    var debtResult: DebtDto? = null
+    var writeResult: DebtDto? = null
 
     fun service(): ApiService = Proxy.newProxyInstance(
         ApiService::class.java.classLoader,
@@ -203,12 +361,37 @@ private class DebtApiHandler : InvocationHandler {
                 debtsError?.let { throw it }
                 debtsResult ?: DebtListResponseDto(items = listOf(debtDto()))
             }
+            "debt" -> debtResult ?: debtDto(publicId = values[0] as String)
             "createDebt" -> {
                 createCalls += CreateDebtCall(
                     request = values[0] as DebtCreateRequestDto,
                     idempotencyKey = values[1] as String?,
                 )
                 debtDto(publicId = "created")
+            }
+            "recordDebtRepayment" -> {
+                repaymentCalls += RepaymentCall(
+                    publicId = values[0] as String,
+                    request = values[1] as RepaymentCreateRequestDto,
+                    idempotencyKey = values[2] as String?,
+                )
+                writeResult ?: debtDto(publicId = values[0] as String)
+            }
+            "recordDebtAdjustment" -> {
+                adjustmentCalls += AdjustmentCall(
+                    publicId = values[0] as String,
+                    request = values[1] as DebtAdjustmentCreateRequestDto,
+                    idempotencyKey = values[2] as String?,
+                )
+                writeResult ?: debtDto(publicId = values[0] as String)
+            }
+            "voidDebt" -> {
+                voidCalls += VoidCall(
+                    publicId = values[0] as String,
+                    request = values[1] as DebtVoidCreateRequestDto,
+                    idempotencyKey = values[2] as String?,
+                )
+                writeResult ?: debtDto(publicId = values[0] as String)
             }
             else -> error("unexpected ApiService call: ${method.name}")
         }

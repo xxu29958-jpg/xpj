@@ -2,6 +2,7 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
+    <ID>CyclomaticComplexMethod:DebtRepositoryTest.kt:DebtApiHandler$override fun invoke: Any?</ID>
     <ID>CyclomaticComplexMethod:OpenApiContractGateTest.kt:OpenApiContractGateTest$@Suppress("UNCHECKED_CAST") private fun synthesizeValue: Any?</ID>
     <ID>CyclomaticComplexMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
     <ID>LargeClass:FakeApiService.kt:FakeApiService : ApiService</ID>
@@ -22,8 +23,10 @@
     <ID>TooManyFunctions:BudgetRepositoryTest.kt:BudgetFakeSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:CreateDebtGoalViewModelTest.kt:CreateDebtGoalViewModelTest</ID>
     <ID>TooManyFunctions:CreateDebtGoalViewModelTest.kt:FakeCreateReportsActions : ReportsActions</ID>
+    <ID>TooManyFunctions:DebtDetailViewModelTest.kt:DebtDetailViewModelTest</ID>
     <ID>TooManyFunctions:DebtGoalViewModelTest.kt:DebtGoalViewModelTest</ID>
     <ID>TooManyFunctions:DebtGoalViewModelTest.kt:FakeReportsActions : ReportsActions</ID>
+    <ID>TooManyFunctions:DebtRepositoryTest.kt:DebtRepositoryTest</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:ExpenseDaoContractTest</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:FakeExpenseDao : ExpenseDao</ID>
     <ID>TooManyFunctions:ExpenseEditViewModelTest.kt:ExpenseEditViewModelTest</ID>
