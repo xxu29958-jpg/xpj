@@ -2,6 +2,7 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
+    <ID>CyclomaticComplexMethod:DebtRepositoryTest.kt:DebtApiHandler$override fun invoke: Any?</ID>
     <ID>CyclomaticComplexMethod:OpenApiContractGateTest.kt:OpenApiContractGateTest$@Suppress("UNCHECKED_CAST") private fun synthesizeValue: Any?</ID>
     <ID>CyclomaticComplexMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
     <ID>LargeClass:FakeApiService.kt:FakeApiService : ApiService</ID>
