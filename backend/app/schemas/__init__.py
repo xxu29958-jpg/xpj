@@ -135,6 +135,9 @@ from app.schemas._expense import (
     UploadResponse,
 )
 from app.schemas._goals import (
+    DebtGoalLinksReplaceRequest,
+    DebtGoalLinkView,
+    DebtRepaymentEvaluation,
     GoalCreateRequest,
     GoalListResponse,
     GoalResponse,
@@ -286,7 +289,10 @@ __all__ = [
     "DataQualitySummaryResponse",
     "DebtAdjustmentCreateRequest",
     "DebtCreateRequest",
+    "DebtGoalLinkView",
+    "DebtGoalLinksReplaceRequest",
     "DebtListResponse",
+    "DebtRepaymentEvaluation",
     "DebtResponse",
     "DebtVoidCreateRequest",
     "DiscretionaryResponse",
