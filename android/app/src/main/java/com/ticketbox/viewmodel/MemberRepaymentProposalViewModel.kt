@@ -17,9 +17,9 @@ import kotlinx.coroutines.launch
  * ADR-0049 §3.2 (slice 8d) 成员欠款 repayment proposal 收发箱 —— 详情屏对**成员**欠款渲染的
  * proposal 收发箱所用 ViewModel（与处理 external/manual 直接写的 [DebtDetailViewModel] 互斥）。
  *
- * 角色由 [com.ticketbox.domain.model.Debt.viewerIsDebtor] 从 `ledgerId` + `direction` 推导（客户端不
- * 知自己的 account_id，§5.2 跨账本方=counterparty）：**债务人**发起「我已还款」/ 撤回（§3.2），
- * **债权人**确认（全额或部分）/ 拒绝。只有 confirm 改变折叠（带 §2.1 OCC 载体=宿主 [Debt] 的
+ * 角色由**服务端权威字段** [com.ticketbox.domain.model.Debt.viewerIsDebtor] 给出（客户端不推导——它不
+ * 知自己的 account_id，且成员债的同账本 owner 与同账本成员 counterparty 后端都返回 ledgerId 非空，§5.2）：
+ * **债务人**发起「我已还款」/ 撤回（§3.2），**债权人**确认（全额或部分）/ 拒绝。只有 confirm 改变折叠（带 §2.1 OCC 载体=宿主 [Debt] 的
  * `rowVersion`，由详情屏在 [submit] 时传入），成功后 [MemberProposalUiState.foldChangedAt] 自增让宿主详
  * 情屏刷新欠款摘要；propose/withdraw/reject 不动折叠。所有写直接在线提交（无 outbox）；viewer 角色由
  * repository 在网络前短路。

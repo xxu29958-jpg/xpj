@@ -43,8 +43,8 @@ import com.ticketbox.viewmodel.ProposalForm
 
 /**
  * ADR-0049 §3.2 (slice 8d) 成员欠款 repayment proposal 收发箱 —— [DebtDetailScreen] 对**成员**欠款渲染的
- * 动作面板（替换 slice8c 留的「走对方确认流程」占位提示）。角色由 [Debt.viewerIsDebtor] 推导
- * （[Debt] 的 KDoc 解释为何用 `ledgerId`+`direction` 而非 account_id）：债务人发起「我已还款」/ 撤回，
+ * 动作面板（替换 slice8c 留的「走对方确认流程」占位提示）。角色由**服务端权威字段** [Debt.viewerIsDebtor]
+ * 给出（客户端不推导——详见 [Debt] 的 KDoc）：债务人发起「我已还款」/ 撤回，
  * 债权人确认（全额/部分）/ 拒绝。已结清/作废/只读各显示对应说明；下方始终显示 proposal 历史（如有）。
  * 这些 composable 独立成文件而非堆进 DebtDetailScreen.kt，避免顶破后者的文件级 TooManyFunctions 门
  * （[[project_android_compose_detekt_limits]]）。复用 DebtDetailScreen 的 internal [DebtNoteCard] /
