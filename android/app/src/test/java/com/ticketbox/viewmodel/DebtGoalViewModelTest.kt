@@ -13,10 +13,12 @@ import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -168,6 +170,35 @@ class DebtGoalViewModelTest {
     }
 
     @Test
+    fun staleRefreshDoesNotRevertACommittedReview() = runTest(dispatcher) {
+        val acked = debtGoal(needsReview = false)
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(debtGoal(needsReview = true))),
+            goalResult = Result.success(debtGoal(needsReview = true)),
+            acknowledgeResult = Result.success(acked),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(debtGoal(needsReview = true))
+        advanceUntilIdle()
+
+        // a slow refresh starts and stalls inside debtGoals()...
+        val gate = CompletableDeferred<Unit>()
+        repo.debtGoalsGate = gate
+        viewModel.refresh()
+        runCurrent()
+        // ...then the user acknowledges (commits) while that refresh is still in flight.
+        repo.debtGoalsGate = null
+        viewModel.acknowledge()
+        advanceUntilIdle()
+        // release the now-stale refresh; its older snapshot must NOT revert the commit.
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.selectedGoal?.debtRepayment?.needsReview)
+    }
+
+    @Test
     fun reloadClearsSelectionAndReloadsGoals() = runTest(dispatcher) {
         val goal = debtGoal()
         val repo = FakeReportsActions(
@@ -286,10 +317,14 @@ private class FakeReportsActions(
     val acknowledgeCalls = mutableListOf<Pair<String, Long>>()
     var debtGoalsCalls = 0
 
+    /** When set, debtGoals() stalls until completed — used to interleave a slow load. */
+    var debtGoalsGate: CompletableDeferred<Unit>? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> {
         debtGoalsCalls += 1
+        debtGoalsGate?.await()
         return debtGoalsResult
     }
 

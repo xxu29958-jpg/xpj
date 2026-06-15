@@ -42,6 +42,12 @@ class DebtGoalViewModel(
     private val _state = MutableStateFlow(DebtGoalUiState(canModify = repository.canModifyLedger()))
     val state: StateFlow<DebtGoalUiState> = _state.asStateFlow()
 
+    // Monotonic load token (mirrors StatsReportsViewModel): a load applies its result
+    // only if it is still the latest. Overlapping loads (init + reload() on entry,
+    // pull-to-refresh) and committed mutations bump it, so a slow earlier load can't
+    // revert a just-applied review to a stale row_version (→ a 409 on the next action).
+    private var loadGeneration = 0L
+
     init {
         refresh()
     }
@@ -61,9 +67,13 @@ class DebtGoalViewModel(
     }
 
     fun refresh() {
+        val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            repository.debtGoals().fold(
+            val result = repository.debtGoals()
+            // Drop a load superseded by a newer load or a committed mutation.
+            if (gen != loadGeneration) return@launch
+            result.fold(
                 onSuccess = { goals ->
                     _state.update { current ->
                         current.copy(
@@ -93,15 +103,17 @@ class DebtGoalViewModel(
      * opening the detail is the trigger. A failed re-fetch keeps the list copy.
      */
     fun openDetail(goal: Goal) {
+        val gen = ++loadGeneration
         _state.update { it.copy(selectedGoal = goal) }
         viewModelScope.launch {
-            repository.goal(goal.publicId).onSuccess { fresh ->
-                _state.update { current ->
-                    if (current.selectedGoal?.publicId == fresh.publicId) {
-                        current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))
-                    } else {
-                        current
-                    }
+            val fresh = repository.goal(goal.publicId).getOrNull() ?: return@launch
+            // A newer load/mutation superseded this detail fetch — don't clobber it.
+            if (gen != loadGeneration) return@launch
+            _state.update { current ->
+                if (current.selectedGoal?.publicId == fresh.publicId) {
+                    current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))
+                } else {
+                    current
                 }
             }
         }
@@ -145,6 +157,8 @@ class DebtGoalViewModel(
     private fun applyMutation(result: Result<Goal>, successRes: Int) {
         result.fold(
             onSuccess = { updated ->
+                // Supersede any in-flight load so it can't revert this committed change.
+                loadGeneration++
                 _state.update { current ->
                     current.copy(
                         isSubmitting = false,

@@ -4,6 +4,7 @@
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:OpenApiContractGateTest.kt:OpenApiContractGateTest$@Suppress("UNCHECKED_CAST") private fun synthesizeValue: Any?</ID>
     <ID>CyclomaticComplexMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
+    <ID>LargeClass:FakeApiService.kt:FakeApiService : ApiService</ID>
     <ID>LongMethod:ExpenseRepositoryAuthCheckTest.kt:ExpenseRepositoryAuthCheckTest$@Test fun authCheckLedgerCorrectionClearsTargetCacheBeforeIdentitySwitch</ID>
     <ID>LongMethod:LedgerRepositoryInvitationTest.kt:LedgerRepositoryInvitationTest$@Test fun acceptInvitationSlowResponseDoesNotOverwriteBindingChangedDuringRequest</ID>
     <ID>LongMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
