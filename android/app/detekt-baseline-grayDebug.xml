@@ -228,6 +228,7 @@
     <ID>TooManyFunctions:PendingReviewActions.kt:PendingReviewActions</ID>
     <ID>TooManyFunctions:PendingViewModel.kt:PendingViewModel : ViewModel</ID>
     <ID>TooManyFunctions:PendingViewModelReviewActions.kt:com.ticketbox.viewmodel.PendingViewModelReviewActions.kt</ID>
+    <ID>TooManyFunctions:ReportsRepository.kt:ReportsActions</ID>
     <ID>TooManyFunctions:ReportsRepository.kt:ReportsRepository : ReportsActions</ID>
     <ID>TooManyFunctions:RuleRepository.kt:RuleRepository</ID>
     <ID>TooManyFunctions:ScreenshotUploadPreprocessor.kt:com.ticketbox.upload.ScreenshotUploadPreprocessor.kt</ID>

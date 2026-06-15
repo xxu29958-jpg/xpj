@@ -46,6 +46,20 @@ class DebtGoalViewModel(
         refresh()
     }
 
+    /**
+     * Clear any prior ledger's debt goals, then reload. Called whenever the overlay
+     * (re-)opens (the VM is cached across the overlay's open/close and survives a
+     * ledger switch in Settings), so the previous ledger's debt links — which carry
+     * counterparties and amounts — never linger under a new ledger (ledger-isolation
+     * boundary). Clearing up front avoids briefly showing stale cross-ledger data.
+     */
+    fun reload() {
+        _state.update {
+            it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null)
+        }
+        refresh()
+    }
+
     fun refresh() {
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {

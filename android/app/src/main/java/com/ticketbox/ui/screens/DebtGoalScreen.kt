@@ -279,16 +279,36 @@ private fun DebtGoalIntegrityReviewCard(
             )
             if (canModify) {
                 Spacer(Modifier.size(AppSpacing.compactGap))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onAcknowledge, enabled = !isSubmitting) {
-                        Text(stringResource(R.string.debt_goal_review_action_keep))
-                    }
-                    Spacer(Modifier.width(AppSpacing.smallGap))
-                    Button(onClick = onRemoveVoided, enabled = !isSubmitting) {
-                        Text(stringResource(R.string.debt_goal_review_action_remove))
-                    }
-                }
+                DebtGoalIntegrityActions(
+                    achieved = achieved,
+                    isSubmitting = isSubmitting,
+                    onRemoveVoided = onRemoveVoided,
+                    onAcknowledge = onAcknowledge,
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun DebtGoalIntegrityActions(
+    achieved: Boolean,
+    isSubmitting: Boolean,
+    onRemoveVoided: () -> Unit,
+    onAcknowledge: () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        // §6/F13: "keep for audit" (acknowledge) only applies to an ALREADY achieved
+        // version — the backend 422s it for a not-yet-achieved (not_evaluable) version,
+        // whose only valid exit is link-replace.
+        if (achieved) {
+            OutlinedButton(onClick = onAcknowledge, enabled = !isSubmitting) {
+                Text(stringResource(R.string.debt_goal_review_action_keep))
+            }
+            Spacer(Modifier.width(AppSpacing.smallGap))
+        }
+        Button(onClick = onRemoveVoided, enabled = !isSubmitting) {
+            Text(stringResource(R.string.debt_goal_review_action_remove))
         }
     }
 }

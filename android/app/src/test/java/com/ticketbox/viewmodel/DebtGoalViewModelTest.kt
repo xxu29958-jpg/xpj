@@ -168,6 +168,28 @@ class DebtGoalViewModelTest {
     }
 
     @Test
+    fun reloadClearsSelectionAndReloadsGoals() = runTest(dispatcher) {
+        val goal = debtGoal()
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(goal)),
+            goalResult = Result.success(goal),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(goal)
+        advanceUntilIdle()
+        val callsBeforeReload = repo.debtGoalsCalls
+
+        // ledger-isolation: a (re-)open clears any prior ledger's data, then reloads.
+        viewModel.reload()
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.selectedGoal)
+        assertTrue(repo.debtGoalsCalls > callsBeforeReload)
+        assertEquals(1, viewModel.state.value.goals.size)
+    }
+
+    @Test
     fun mutationFailureSetsErrorAndClearsSubmitting() = runTest(dispatcher) {
         val goal = debtGoal(needsReview = true)
         val repo = FakeReportsActions(
@@ -262,10 +284,14 @@ private class FakeReportsActions(
     val goalCalls = mutableListOf<String>()
     val replaceCalls = mutableListOf<ReplaceCall>()
     val acknowledgeCalls = mutableListOf<Pair<String, Long>>()
+    var debtGoalsCalls = 0
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> = debtGoalsResult
+    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> {
+        debtGoalsCalls += 1
+        return debtGoalsResult
+    }
 
     override suspend fun goal(publicId: String): Result<Goal> {
         goalCalls += publicId

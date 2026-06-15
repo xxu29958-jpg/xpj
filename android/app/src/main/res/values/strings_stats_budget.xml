@@ -128,7 +128,7 @@
     <string name="debt_goal_link_meta">%1$s · 剩余 %2$s · 本金 %3$s</string>
     <string name="debt_goal_review_title">需要复核</string>
     <string name="debt_goal_review_body_achieved">目标已达成，但有关联欠款被判作废。请确认如何处理。</string>
-    <string name="debt_goal_review_body_not_evaluable">有关联欠款被判作废，目标暂时无法评估。请移除它或保留存档。</string>
+    <string name="debt_goal_review_body_not_evaluable">有关联欠款被判作废，目标暂时无法评估。请移除该作废欠款后继续。</string>
     <string name="debt_goal_review_action_remove">移除作废欠款</string>
     <string name="debt_goal_review_action_keep">保留存档</string>
     <string name="debt_goal_state_in_progress">进行中</string>

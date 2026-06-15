@@ -98,6 +98,9 @@ internal fun DebtGoalRoute(
         key = DebtGoalViewModelKey,
         factory = debtGoalViewModelFactory(screenFactory.reportsRepository),
     )
+    // overlay 在 open/close 间复用缓存 VM 且跨账本切换存活;每次(重新)进入都 reload
+    // (先清旧账本的债务再拉),避免在新账本下短暂看到上一账本的欠款(账本隔离)。
+    LaunchedEffect(Unit) { debtGoalViewModel.reload() }
     // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
     DebtGoalScreen(
         viewModel = debtGoalViewModel,
