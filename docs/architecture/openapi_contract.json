@@ -4298,6 +4298,17 @@
               }
             ],
             "title": "Updated At"
+          },
+          "viewer_is_debtor": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Is Debtor"
           }
         },
         "required": [
@@ -9158,6 +9169,17 @@
               }
             ],
             "title": "Updated At"
+          },
+          "viewer_is_debtor": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Is Debtor"
           }
         },
         "required": [

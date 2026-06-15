@@ -271,6 +271,10 @@ def test_member_creditor_in_shared_ledger_settles_debt(
     detail = client.get(f"/api/debts/{debt_public_id}", headers=_headers(owner_shared_token))
     assert detail.status_code == 200, detail.json()
     assert detail.json()["ledger_id"] == "shared_m"  # member branch keeps the ledger id
+    # §3.2: the SAME-LEDGER creditor — viewer_is_debtor is False even though ledger_id is non-null.
+    # A client must not derive the role from ledger membership: this member-of-the-Debt's-ledger
+    # account is the counterparty (creditor), not the owner/debtor.
+    assert detail.json()["viewer_is_debtor"] is False
     row_version = detail.json()["row_version"]
 
     confirm = client.post(
@@ -284,6 +288,33 @@ def test_member_creditor_in_shared_ledger_settles_debt(
     assert body["remaining_amount_cents"] == 0
     assert body["status"] == "cleared"
     assert body["row_version"] == row_version + 1
+
+
+# ── §3.2 server-authoritative viewer role ────────────────────────────────────
+
+
+def test_viewer_is_debtor_role_for_both_parties(
+    client: TestClient, *, identity, debt_rollout_on
+) -> None:
+    # The server is the authority for the debtor/creditor role the client renders (the client can't
+    # derive it). The bill-split Debt is owned by the receiver (debtor, direction i_owe) with the
+    # sender (identity) as the creditor.
+    receiver_id = _seed_personal_ledger(name="B-role", ledger_id="receiver_role")
+    public_id = _invite(client, identity, receiver_id, amount_cents=2500)
+    _accept_into(public_id, receiver_id, "receiver_role")
+    debt_public_id = _debt_public_id_for(public_id)
+
+    # Debtor (receiver, owner of the Debt's ledger) → viewer_is_debtor True.
+    receiver_token = _mint_app_token(account_id=receiver_id, ledger_id="receiver_role")
+    debtor_view = client.get(f"/api/debts/{debt_public_id}", headers=_headers(receiver_token))
+    assert debtor_view.status_code == 200, debtor_view.json()
+    assert debtor_view.json()["viewer_is_debtor"] is True
+
+    # Creditor (sender, identity) reading cross-ledger → viewer_is_debtor False (and shell-redacted).
+    creditor_view = client.get(f"/api/debts/{debt_public_id}", headers=identity.app_headers)
+    assert creditor_view.status_code == 200, creditor_view.json()
+    assert creditor_view.json()["viewer_is_debtor"] is False
+    assert creditor_view.json()["ledger_id"] is None
 
 
 # ── non-participant existence hiding ─────────────────────────────────────────

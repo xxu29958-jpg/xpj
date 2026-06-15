@@ -107,6 +107,18 @@ class OpenApiContractGateTest {
         Pairing(RepaymentCreateRequestDto::class, "RepaymentCreateRequest"),
         Pairing(DebtAdjustmentCreateRequestDto::class, "DebtAdjustmentCreateRequest"),
         Pairing(DebtVoidCreateRequestDto::class, "DebtVoidCreateRequest"),
+        // ADR-0049 §3.2 (slice 8d) member repayment-proposal surface. The response models all 15
+        // MemberRepaymentProposalResponse properties (reverse check needs every required field); the
+        // request bodies are additionalProperties=false → the forward check is the forbid protection,
+        // and the home-currency-only create DTO intentionally omits the optional foreign-currency
+        // fields (a subset of the schema). Reject/Withdraw are no-field bodies (the backend requires
+        // an empty {} object) — registered so a schema rename reddens the gate.
+        Pairing(MemberRepaymentProposalDto::class, "MemberRepaymentProposalResponse"),
+        Pairing(MemberRepaymentProposalListResponseDto::class, "MemberRepaymentProposalListResponse"),
+        Pairing(MemberRepaymentProposalCreateRequestDto::class, "MemberRepaymentProposalCreateRequest"),
+        Pairing(MemberRepaymentProposalConfirmRequestDto::class, "MemberRepaymentProposalConfirmRequest"),
+        Pairing(MemberRepaymentProposalRejectRequestDto::class, "MemberRepaymentProposalRejectRequest"),
+        Pairing(MemberRepaymentProposalWithdrawRequestDto::class, "MemberRepaymentProposalWithdrawRequest"),
     )
 
     // Backend `required` fields a DTO intentionally does NOT model (Android doesn't

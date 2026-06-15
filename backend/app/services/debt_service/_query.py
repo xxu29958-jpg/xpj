@@ -22,6 +22,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Debt
 from app.schemas import DebtListResponse, DebtResponse
 from app.services.debt_service._fold import compute_paid, compute_remaining, derive_status
+from app.services.debt_service._guards import proposal_debtor_creditor
 
 
 def participant_can_access(
@@ -106,9 +107,30 @@ def get_participant_debt_response(
         db, public_id=public_id, ledger_id=ledger_id, account_id=account_id
     )
     response = _debt_response_with_fold(db, debt)
-    if is_ledger_member:
-        return response
-    return response.model_copy(update={"ledger_id": None})
+    # §3.2: the server is the authority for the viewer's debtor/creditor role (the client can't
+    # derive it — see DebtResponse.viewer_is_debtor). Cross-ledger reads additionally redact the
+    # counterparty's ledger id (§5.2).
+    update: dict = {"viewer_is_debtor": _viewer_is_debtor(debt, account_id)}
+    if not is_ledger_member:
+        update["ledger_id"] = None
+    return response.model_copy(update=update)
+
+
+def _viewer_is_debtor(debt: Debt, account_id: int) -> bool | None:
+    """The viewer's role on a member Debt: True=debtor, False=creditor, None=not a party.
+
+    ``None`` for an external Debt (no member counterparty) and for a same-ledger member who is
+    neither the owner nor the counterparty (a third member viewing the obligation). The per-role
+    guards (§3.2) still enforce who may actually act; this only drives which actions the UI offers.
+    """
+    if debt.counterparty_type != "member":
+        return None
+    debtor_account_id, creditor_account_id = proposal_debtor_creditor(debt)
+    if account_id == debtor_account_id:
+        return True
+    if account_id == creditor_account_id:
+        return False
+    return None
 
 
 def _debt_by_public_id(db: Session, *, tenant_id: str, public_id: str) -> Debt | None:

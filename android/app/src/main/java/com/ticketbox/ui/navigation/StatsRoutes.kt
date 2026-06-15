@@ -23,6 +23,7 @@ import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
+import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.StatsBudgetViewModel
@@ -33,6 +34,7 @@ import com.ticketbox.viewmodel.debtDetailViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
+import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
@@ -41,6 +43,7 @@ internal const val DebtGoalViewModelKey = "debt-goals"
 internal const val CreateDebtGoalViewModelKey = "create-debt-goal"
 internal const val DebtListViewModelKey = "debts"
 internal const val DebtDetailViewModelKey = "debt-detail"
+internal const val MemberRepaymentProposalViewModelKey = "member-repayment-proposal"
 
 @Composable
 internal fun BudgetRoute(
@@ -162,6 +165,12 @@ internal fun DebtRoute(
         key = DebtDetailViewModelKey,
         factory = debtDetailViewModelFactory(screenFactory.debtRepository),
     )
+    // ADR-0049 §3.2 (slice 8d): 成员欠款的 proposal 收发箱 VM,与详情 VM 同为 overlay 内单例(常量 key),
+    // 详情屏在加载到成员欠款时用 loadProposals 拉取(见 DebtDetailScreen 内 LaunchedEffect)。
+    val proposalViewModel: MemberRepaymentProposalViewModel = viewModel(
+        key = MemberRepaymentProposalViewModelKey,
+        factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
+    )
     // overlay 复用缓存 VM 且跨账本切换存活;每次(重新)进入都 reload(先清旧账本的欠款再拉),
     // 避免在新账本下短暂看到上一账本的欠款(账本隔离;与 DebtGoalRoute 同构)。
     LaunchedEffect(Unit) { debtListViewModel.reload() }
@@ -175,6 +184,7 @@ internal fun DebtRoute(
         LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
         DebtDetailScreen(
             viewModel = detailViewModel,
+            proposalViewModel = proposalViewModel,
             currency = currency,
             onBack = {
                 detailDebtId = null

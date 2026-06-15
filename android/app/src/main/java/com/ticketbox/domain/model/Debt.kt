@@ -33,11 +33,25 @@ data class Debt(
     val createdAt: String,
     val updatedAt: String,
     val rowVersion: Long,
+    /**
+     * The SERVER-authoritative debtor/creditor role for the viewer of a member Debt (§3.2): `true` =
+     * viewer is the debtor (may propose / withdraw), `false` = creditor (may confirm / reject),
+     * `null` = external Debt / not a party / a path without participant context (list & fact routes).
+     *
+     * The client must NOT derive this: it does not know its own account id, and ledger membership
+     * does not distinguish a member Debt's same-ledger owner from a same-ledger member counterparty
+     * (the backend grants both a full, ledger-id-present response). The detail fetch
+     * (`GET /api/debts/{id}` → `get_participant_debt_response`) is the only path that populates it.
+     * Defaults to `null` (unknown) so non-member-debt construction sites need not name it; the one
+     * real mapper ([com.ticketbox.data.repository.toDomain]) always carries the server value through.
+     */
+    val viewerIsDebtor: Boolean? = null,
 ) {
     val isOpen: Boolean get() = status == DebtLinkStatuses.OPEN
     val isCleared: Boolean get() = status == DebtLinkStatuses.CLEARED
     val isVoided: Boolean get() = status == DebtLinkStatuses.VOIDED
     val isExternal: Boolean get() = counterpartyType == DebtCounterpartyTypes.EXTERNAL
+    val isMember: Boolean get() = counterpartyType == DebtCounterpartyTypes.MEMBER
     val isBillSplit: Boolean get() = sourceType == DebtSourceTypes.BILL_SPLIT
 
     /**
@@ -47,4 +61,7 @@ data class Debt(
      * detail screen hides the direct-write actions for them rather than showing a button that 409s.
      */
     val isDirectWritable: Boolean get() = isExternal && sourceType == DebtSourceTypes.MANUAL
+
+    /** The complement of [viewerIsDebtor] for a member Debt (may confirm / reject, §3.2); null when role is unknown. */
+    val viewerIsCreditor: Boolean? get() = viewerIsDebtor?.let { !it }
 }
