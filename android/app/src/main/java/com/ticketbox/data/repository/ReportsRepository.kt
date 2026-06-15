@@ -6,6 +6,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
+import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -178,10 +179,16 @@ class ReportsRepository(
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                // No Idempotency-Key: POST /api/goals declares none (in-line create,
-                // not an outbox replay surface).
+                // No Idempotency-Key: POST /api/goals declares none (in-line create, not an
+                // outbox replay surface). Debt-goal shape = name + goal_type + debt_public_ids;
+                // month/target/category omitted (Moshi drops nulls — the backend 422s a debt
+                // goal carrying them). Built inline like replaceDebtLinks' request DTO.
                 api.createGoal(
-                    request = debtGoalCreateRequest(cleanName, cleanIds),
+                    request = GoalCreateRequestDto(
+                        name = cleanName,
+                        goalType = DEBT_REPAYMENT_GOAL_TYPE,
+                        debtPublicIds = cleanIds,
+                    ),
                     timezone = currentTimezoneId(),
                 ).toDomain()
             }

@@ -100,19 +100,6 @@ fun GoalDraft.toRequest(): GoalCreateRequestDto = GoalCreateRequestDto(
     category = category.cleanCategoryOrNull(),
 )
 
-/**
- * ADR-0049 §6 (slice 8b): the create body for a debt_repayment goal — [goalType] =
- * [DEBT_REPAYMENT_GOAL_TYPE] linking explicit Debt ids. month / target / category
- * stay null (omitted by Moshi) so the wire body matches the backend's debt-goal
- * shape (it 422s a debt goal that carries month/category/target).
- */
-fun debtGoalCreateRequest(name: String, debtPublicIds: List<String>): GoalCreateRequestDto =
-    GoalCreateRequestDto(
-        name = name.trim(),
-        goalType = DEBT_REPAYMENT_GOAL_TYPE,
-        debtPublicIds = debtPublicIds,
-    )
-
 fun GoalUpdate.toRequest(): GoalUpdateRequestDto = GoalUpdateRequestDto(
     expectedRowVersion = expectedRowVersion,
     name = name?.trim()?.takeIf { it.isNotBlank() },

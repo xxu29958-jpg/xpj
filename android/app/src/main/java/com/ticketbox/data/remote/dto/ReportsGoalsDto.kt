@@ -63,8 +63,8 @@ data class ReportsOverviewDto(
  * "debt_repayment" + [debtPublicIds] and leaves the spend-shape fields null —
  * Moshi omits nulls, so the wire body carries only the fields that goal type
  * needs (the backend 422s a debt goal that carries month/category/target, and a
- * spending goal that carries debt_public_ids). See [GoalDraft.toRequest] (spending)
- * and [debtGoalCreateRequest] (debt).
+ * spending goal that carries debt_public_ids). Built by GoalDraft.toRequest (spending)
+ * and inline in ReportsRepository.createDebtGoal (debt).
  */
 data class GoalCreateRequestDto(
     val name: String,
