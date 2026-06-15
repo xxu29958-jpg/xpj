@@ -199,6 +199,32 @@ class DebtGoalViewModelTest {
     }
 
     @Test
+    fun supersededRefreshStillClearsLoadingFlag() = runTest(dispatcher) {
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(debtGoal())),
+            goalResult = Result.success(debtGoal()),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+
+        // a slow refresh stalls in debtGoals()...
+        val gate = CompletableDeferred<Unit>()
+        repo.debtGoalsGate = gate
+        viewModel.refresh()
+        runCurrent()
+        assertTrue(viewModel.state.value.isLoading)
+        // ...superseded by a non-refresh action (opening a detail) before it returns.
+        repo.debtGoalsGate = null
+        viewModel.openDetail(debtGoal())
+        advanceUntilIdle()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        // the dropped refresh must not leave the screen stuck refreshing.
+        assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @Test
     fun reloadClearsSelectionAndReloadsGoals() = runTest(dispatcher) {
         val goal = debtGoal()
         val repo = FakeReportsActions(

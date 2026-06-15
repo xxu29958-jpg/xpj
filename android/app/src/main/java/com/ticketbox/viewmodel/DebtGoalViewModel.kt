@@ -48,6 +48,11 @@ class DebtGoalViewModel(
     // revert a just-applied review to a stale row_version (→ a 409 on the next action).
     private var loadGeneration = 0L
 
+    // The latest refresh's token. The loading flag is owned by the latest refresh, so a
+    // superseded refresh clears it only when no newer refresh has taken over (i.e. it was
+    // superseded by openDetail/a mutation) — otherwise the screen could stick "refreshing".
+    private var latestRefreshGeneration = 0L
+
     init {
         refresh()
     }
@@ -68,11 +73,20 @@ class DebtGoalViewModel(
 
     fun refresh() {
         val gen = ++loadGeneration
+        latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val result = repository.debtGoals()
             // Drop a load superseded by a newer load or a committed mutation.
-            if (gen != loadGeneration) return@launch
+            if (gen != loadGeneration) {
+                // Clear our loading flag unless a newer refresh now owns it (else a
+                // non-refresh superseder — openDetail / a mutation — would leave the
+                // screen stuck refreshing).
+                if (gen == latestRefreshGeneration) {
+                    _state.update { it.copy(isLoading = false) }
+                }
+                return@launch
+            }
             result.fold(
                 onSuccess = { goals ->
                     _state.update { current ->
