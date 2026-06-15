@@ -1,8 +1,10 @@
 """ADR-0049 §2 / §5.1 Debt creation: validate, freeze principal, insert.
 
-Handles public external/manual Debt creation only (slice 1). Member-Debt
-adverse-interest creation rules (§5.2), bill-split linkage (§4), and any
-fold-changing write live in later slices.
+Handles public external/manual Debt creation (slice 1, ``create_debt``) plus the
+server-only bill-split linkage (§4, slice 4, ``create_bill_split_debt``) — the
+internal entry that bypasses the public-create member/bill_split guards because
+the debtor accepted the split invitation (§5.2). Member-Debt adverse-interest
+manual-creation rules (§5.2) and fold-changing writes live in other slices.
 
 Currency (§2.2): a home-currency Debt stores ``principal_amount_cents`` directly.
 A foreign-currency Debt freezes a backend-authoritative home principal from the

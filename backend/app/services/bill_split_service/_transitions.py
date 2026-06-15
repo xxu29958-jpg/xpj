@@ -164,7 +164,7 @@ def accept_invitation(
     # slice-3's repayment confirm/reject — ledger-scoped via
     # ``get_current_writer_context`` + ``_load_debt(tenant_id=auth.tenant_id)`` —
     # cannot reach this Debt, so the creditor cannot confirm/reject and the
-    # member-debt repayment flow stalls. ADR §429 mandates ACCOUNT-scoped
+    # member-debt repayment flow stalls. ADR §5.2 mandates ACCOUNT-scoped
     # cross-account confirmation; building that is the next Debt slice. This is
     # why the rollout flag stays OFF until that lands.
     if get_settings().debt_rollout_enabled:
