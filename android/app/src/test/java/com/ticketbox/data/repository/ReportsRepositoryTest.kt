@@ -6,6 +6,8 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DashboardCardDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
+import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
+import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
@@ -194,6 +196,114 @@ class ReportsRepositoryTest {
         assertTrue(api.updateDashboardCardCalls.isEmpty())
     }
 
+    @Test
+    fun debtGoalsListWithDebtTypeAndMapEvaluationBlock() = withReportsTimezone("UTC") {
+        runTest {
+            val api = ReportsApiHandler()
+            val repository = repository(api)
+
+            val goals = repository.debtGoals(includeArchived = true).getOrThrow()
+
+            assertEquals("debt_repayment", api.goalsCalls.single().goalType)
+            assertEquals(true, api.goalsCalls.single().includeArchived)
+            assertEquals("UTC", api.goalsCalls.single().timezone)
+            val goal = goals.single()
+            assertTrue(goal.isDebtRepayment)
+            val evaluation = goal.debtRepayment
+            assertEquals("in_progress", evaluation?.evaluationState)
+            assertEquals(2, evaluation?.linkedDebts?.size)
+            assertEquals(listOf("debt-b"), evaluation?.voidedDebtPublicIds)
+            assertEquals("i_owe", evaluation?.linkedDebts?.first()?.direction)
+            assertEquals(listOf("debt-a"), evaluation?.nonVoidedDebtPublicIds)
+        }
+    }
+
+    @Test
+    fun replaceDebtLinksPassesOccTokenIdempotencyKeyAndCleanIds() = withReportsTimezone("UTC") {
+        runTest {
+            val api = ReportsApiHandler()
+            val repository = repository(api)
+
+            val updated = repository.replaceDebtLinks(
+                publicId = " debt-goal-1 ",
+                expectedRowVersion = 3L,
+                debtPublicIds = listOf(" debt-a ", "", "debt-c"),
+            ).getOrThrow()
+
+            val call = api.replaceDebtLinksCalls.single()
+            assertEquals("debt-goal-1", call.publicId)
+            assertEquals(3L, call.request.expectedRowVersion)
+            // blanks trimmed/dropped before the request leaves the repository.
+            assertEquals(listOf("debt-a", "debt-c"), call.request.debtPublicIds)
+            assertTrue(!call.idempotencyKey.isNullOrBlank())
+            assertEquals("UTC", call.timezone)
+            assertTrue(updated.isDebtRepayment)
+        }
+    }
+
+    @Test
+    fun acknowledgeIntegrityReviewPassesOccTokenAndIdempotencyKey() = runTest {
+        val api = ReportsApiHandler()
+        val repository = repository(api)
+
+        val updated = repository.acknowledgeDebtIntegrityReview(
+            publicId = " debt-goal-1 ",
+            expectedRowVersion = 4L,
+        ).getOrThrow()
+
+        val call = api.acknowledgeIntegrityCalls.single()
+        assertEquals("debt-goal-1", call.publicId)
+        assertEquals(4L, call.request.expectedRowVersion)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        assertEquals(false, updated.debtRepayment?.needsReview)
+    }
+
+    @Test
+    fun viewerDebtMutationsShortCircuitWithoutApiCall() = runTest {
+        val api = ReportsApiHandler()
+        val repository = repository(api, role = "viewer")
+
+        val replaceResult = repository.replaceDebtLinks("debt-goal-1", 1L, listOf("debt-a"))
+        val ackResult = repository.acknowledgeDebtIntegrityReview("debt-goal-1", 1L)
+
+        assertTrue(replaceResult.isFailure)
+        assertTrue(ackResult.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", replaceResult.exceptionOrNull()?.message)
+        assertEquals("当前角色为只读，无法修改账本。", ackResult.exceptionOrNull()?.message)
+        assertTrue(api.replaceDebtLinksCalls.isEmpty())
+        assertTrue(api.acknowledgeIntegrityCalls.isEmpty())
+    }
+
+    @Test
+    fun replaceDebtLinksRejectsEmptyIdSetBeforeApiCall() = runTest {
+        val api = ReportsApiHandler()
+        val repository = repository(api)
+
+        val result = repository.replaceDebtLinks("debt-goal-1", 1L, listOf("   ", ""))
+
+        assertTrue(result.isFailure)
+        assertEquals("请至少关联一笔欠款。", result.exceptionOrNull()?.message)
+        assertTrue(api.replaceDebtLinksCalls.isEmpty())
+    }
+
+    @Test
+    fun debtLinkStateConflictSurfacesAsFailure() = runTest {
+        val api = ReportsApiHandler().apply {
+            replaceDebtLinksError = HttpException(
+                Response.error<GoalDto>(
+                    409,
+                    """{"error":"state_conflict","message":"目标已被其他设备修改。"}"""
+                        .toResponseBody("application/json".toMediaType()),
+                ),
+            )
+        }
+        val repository = repository(api)
+
+        val result = repository.replaceDebtLinks("debt-goal-1", 1L, listOf("debt-a"))
+
+        assertTrue(result.isFailure)
+    }
+
     private fun repository(
         handler: ReportsApiHandler,
         role: String = "owner",
@@ -222,6 +332,21 @@ private data class ReportsOverviewCall(
 private data class GoalsCall(
     val month: String?,
     val includeArchived: Boolean,
+    val goalType: String?,
+    val timezone: String?,
+)
+
+private data class ReplaceDebtLinksCall(
+    val publicId: String,
+    val request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
+    val idempotencyKey: String?,
+    val timezone: String?,
+)
+
+private data class AcknowledgeIntegrityCall(
+    val publicId: String,
+    val request: com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto,
+    val idempotencyKey: String?,
     val timezone: String?,
 )
 
@@ -260,9 +385,14 @@ private class ReportsApiHandler : InvocationHandler {
     val createGoalCalls = mutableListOf<CreateGoalCall>()
     val updateGoalCalls = mutableListOf<UpdateGoalCall>()
     val archiveGoalCalls = mutableListOf<Pair<String, String?>>()
+    val replaceDebtLinksCalls = mutableListOf<ReplaceDebtLinksCall>()
+    val acknowledgeIntegrityCalls = mutableListOf<AcknowledgeIntegrityCall>()
     val dashboardCardCalls = mutableListOf<String>()
     val updateDashboardCardCalls = mutableListOf<UpdateDashboardCardsCall>()
     var createGoalError: Throwable? = null
+    var debtGoalsResult: GoalListResponseDto? = null
+    var replaceDebtLinksError: Throwable? = null
+    var acknowledgeIntegrityError: Throwable? = null
 
     fun service(): ApiService {
         return Proxy.newProxyInstance(
@@ -296,12 +426,40 @@ private class ReportsApiHandler : InvocationHandler {
             }
             "reportsOverviewCsv" -> Response.success("csv".toResponseBody("text/csv".toMediaType()))
             "goals" -> {
+                // ADR-0049 §6 (slice 7): arg order is now
+                // [month, includeArchived, goalType, timezone].
+                val goalType = values[2] as String?
                 goalsCalls += GoalsCall(
                     month = values[0] as String?,
                     includeArchived = values[1] as Boolean,
-                    timezone = values[2] as String?,
+                    goalType = goalType,
+                    timezone = values[3] as String?,
                 )
-                GoalListResponseDto(items = listOf(goalDto()))
+                if (goalType == "debt_repayment") {
+                    debtGoalsResult ?: GoalListResponseDto(items = listOf(debtGoalDto()))
+                } else {
+                    GoalListResponseDto(items = listOf(goalDto()))
+                }
+            }
+            "replaceGoalDebtLinks" -> {
+                replaceDebtLinksError?.let { throw it }
+                replaceDebtLinksCalls += ReplaceDebtLinksCall(
+                    publicId = values[0] as String,
+                    request = values[1] as com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
+                    idempotencyKey = values[2] as String?,
+                    timezone = values[3] as String?,
+                )
+                debtGoalDto()
+            }
+            "acknowledgeGoalIntegrityReview" -> {
+                acknowledgeIntegrityError?.let { throw it }
+                acknowledgeIntegrityCalls += AcknowledgeIntegrityCall(
+                    publicId = values[0] as String,
+                    request = values[1] as com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto,
+                    idempotencyKey = values[2] as String?,
+                    timezone = values[3] as String?,
+                )
+                debtGoalDto(needsReview = false)
             }
             "createGoal" -> {
                 createGoalError?.let { throw it }
@@ -395,6 +553,62 @@ private fun goalDto(
     updatedAt = "2026-05-13T00:00:00Z",
     rowVersion = 1L,
     archivedAt = archivedAt,
+)
+
+private fun debtGoalDto(
+    publicId: String = "debt-goal-1",
+    evaluationState: String = "in_progress",
+    needsReview: Boolean = false,
+    rowVersion: Long = 3L,
+): GoalDto = GoalDto(
+    publicId = publicId,
+    ledgerId = "owner",
+    name = "还清欠款",
+    goalType = "debt_repayment",
+    period = "monthly",
+    // ADR-0049 §6: the spending-shape fields are null for a debt goal.
+    month = null,
+    category = null,
+    targetAmountCents = null,
+    spentAmountCents = null,
+    remainingAmountCents = null,
+    progressPercent = null,
+    progressState = evaluationState,
+    status = "active",
+    createdAt = "2026-06-13T00:00:00Z",
+    updatedAt = "2026-06-15T00:00:00Z",
+    rowVersion = rowVersion,
+    archivedAt = null,
+    debtRepayment = DebtRepaymentEvaluationDto(
+        goalVersion = 2,
+        evaluationState = evaluationState,
+        needsReview = needsReview,
+        achievedAt = null,
+        achievedVersion = null,
+        linkedDebts = listOf(
+            DebtGoalLinkViewDto(
+                debtPublicId = "debt-a",
+                status = "open",
+                direction = "i_owe",
+                counterpartyType = "external",
+                counterpartyLabel = "招商信用卡",
+                principalAmountCents = 100000,
+                remainingAmountCents = 40000,
+                homeCurrencyCode = "CNY",
+            ),
+            DebtGoalLinkViewDto(
+                debtPublicId = "debt-b",
+                status = "voided",
+                direction = "owed_to_me",
+                counterpartyType = "member",
+                counterpartyLabel = "家人",
+                principalAmountCents = 50000,
+                remainingAmountCents = 50000,
+                homeCurrencyCode = "CNY",
+            ),
+        ),
+        voidedDebtPublicIds = listOf("debt-b"),
+    ),
 )
 
 private fun dashboardCardsDto(surface: String = "android"): DashboardCardsResponseDto = DashboardCardsResponseDto(

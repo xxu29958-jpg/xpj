@@ -353,6 +353,7 @@ internal class StubApi(
     override suspend fun goals(
         month: String?,
         includeArchived: Boolean,
+        goalType: String?,
         timezone: String?,
     ): GoalListResponseDto = ledgerUnsupported()
     override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?): GoalDto = ledgerUnsupported()
@@ -364,6 +365,18 @@ internal class StubApi(
         timezone: String?,
     ): GoalDto = ledgerUnsupported()
     override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto = ledgerUnsupported()
+    override suspend fun replaceGoalDebtLinks(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
+        idempotencyKey: String?,
+        timezone: String?,
+    ): GoalDto = ledgerUnsupported()
+    override suspend fun acknowledgeGoalIntegrityReview(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto,
+        idempotencyKey: String?,
+        timezone: String?,
+    ): GoalDto = ledgerUnsupported()
     override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = ledgerUnsupported()
     override suspend fun updateDashboardCards(
         request: DashboardCardsUpdateRequestDto,

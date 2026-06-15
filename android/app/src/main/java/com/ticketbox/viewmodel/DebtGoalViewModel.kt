@@ -1,0 +1,251 @@
+package com.ticketbox.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
+import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * ADR-0049 §6 (slice 7) debt_repayment goal screen state + actions.
+ *
+ * Reuses the goal repository ([ReportsActions]) — a debt_repayment goal is a goal
+ * (same table / DTO). The screen is a list → detail flow inside one overlay; the
+ * detail surfaces the §6/F13 integrity review with its two exits:
+ *  - remove the debt-voided link(s) via [removeVoidedDebts] (link-replace → new version)
+ *  - keep it for audit via [acknowledge] (clears needs_review for the current version)
+ *
+ * This slice is view + integrity-review only; creating a debt goal (which needs a
+ * Debt picker) lands with the broader debt-management UI in a later slice.
+ */
+data class DebtGoalUiState(
+    val isLoading: Boolean = false,
+    val canModify: Boolean = true,
+    val goals: List<Goal> = emptyList(),
+    /** Non-null = the detail page for this goal is open; null = the list. */
+    val selectedGoal: Goal? = null,
+    val isSubmitting: Boolean = false,
+    val error: UiText? = null,
+    val flashMessage: UiText? = null,
+)
+
+class DebtGoalViewModel(
+    private val repository: ReportsActions,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(DebtGoalUiState(canModify = repository.canModifyLedger()))
+    val state: StateFlow<DebtGoalUiState> = _state.asStateFlow()
+
+    // Monotonic load token (mirrors StatsReportsViewModel): a load applies its result
+    // only if it is still the latest. Overlapping loads (init + reload() on entry,
+    // pull-to-refresh) and committed mutations bump it, so a slow earlier load can't
+    // revert a just-applied review to a stale row_version (→ a 409 on the next action).
+    private var loadGeneration = 0L
+
+    // The latest refresh's token. The loading flag is owned by the latest refresh, so a
+    // superseded refresh clears it only when no newer refresh has taken over (i.e. it was
+    // superseded by openDetail/a mutation) — otherwise the screen could stick "refreshing".
+    private var latestRefreshGeneration = 0L
+
+    init {
+        refresh()
+    }
+
+    /**
+     * Clear any prior ledger's debt goals, then reload. Called whenever the overlay
+     * (re-)opens (the VM is cached across the overlay's open/close and survives a
+     * ledger switch in Settings), so the previous ledger's debt links — which carry
+     * counterparties and amounts — never linger under a new ledger (ledger-isolation
+     * boundary). Clearing up front avoids briefly showing stale cross-ledger data.
+     */
+    fun reload() {
+        _state.update {
+            it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null)
+        }
+        refresh()
+    }
+
+    fun refresh() {
+        val gen = ++loadGeneration
+        latestRefreshGeneration = gen
+        _state.update { it.copy(isLoading = true, error = null) }
+        viewModelScope.launch {
+            val result = repository.debtGoals()
+            // Drop a load superseded by a newer load or a committed mutation.
+            if (gen != loadGeneration) {
+                // Clear our loading flag unless a newer refresh now owns it (else a
+                // non-refresh superseder — openDetail / a mutation — would leave the
+                // screen stuck refreshing).
+                if (gen == latestRefreshGeneration) {
+                    _state.update { it.copy(isLoading = false) }
+                }
+                return@launch
+            }
+            result.fold(
+                onSuccess = { goals ->
+                    // Do NOT derive selectedGoal from the list: the list path is read-only
+                    // (it never latches an all-cleared debt goal — only GET /api/goals/{id}
+                    // does), so re-latch the open detail via the detail endpoint below.
+                    _state.update { current ->
+                        current.copy(
+                            isLoading = false,
+                            canModify = repository.canModifyLedger(),
+                            goals = goals,
+                            error = null,
+                        )
+                    }
+                    latchSelectedDetail(gen)
+                },
+                onFailure = { err ->
+                    _state.update {
+                        it.copy(isLoading = false, error = err.toUiText(R.string.debt_goal_load_failed))
+                    }
+                },
+            )
+        }
+    }
+
+    /**
+     * Re-fetch the open detail through the latching detail endpoint after a list load.
+     * The list path does not persist achievement (ADR-0049 §6: writer-gated latch lives
+     * only on GET /api/goals/{id}), so syncing an achieved detail from the list would show
+     * an unlatched "achieved" — a later reopen/void would then never have recorded
+     * achieved_version, breaking sticky achievement. Generation-guarded like the others.
+     */
+    private suspend fun latchSelectedDetail(gen: Long) {
+        val selected = _state.value.selectedGoal ?: return
+        val fresh = repository.goal(selected.publicId).getOrNull() ?: return
+        if (gen != loadGeneration) return
+        _state.update { current ->
+            if (current.selectedGoal?.publicId == fresh.publicId) {
+                current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))
+            } else {
+                current
+            }
+        }
+    }
+
+    /**
+     * Open the detail page. Selects optimistically from the list copy, then re-fetches
+     * the single goal: a writer GET latches achievement server-side (ADR-0049 §6), so
+     * opening the detail is the trigger. A failed re-fetch keeps the list copy.
+     */
+    fun openDetail(goal: Goal) {
+        val gen = ++loadGeneration
+        _state.update { it.copy(selectedGoal = goal) }
+        viewModelScope.launch {
+            val fresh = repository.goal(goal.publicId).getOrNull() ?: return@launch
+            // A newer load/mutation superseded this detail fetch — don't clobber it.
+            if (gen != loadGeneration) return@launch
+            _state.update { current ->
+                if (current.selectedGoal?.publicId == fresh.publicId) {
+                    current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))
+                } else {
+                    current
+                }
+            }
+        }
+    }
+
+    fun closeDetail() {
+        _state.update { it.copy(selectedGoal = null, error = null) }
+    }
+
+    /** §6/F13 exit (a): drop the debt-voided link(s) → a new goal version. */
+    fun removeVoidedDebts() {
+        val goal = _state.value.selectedGoal ?: return
+        val evaluation = goal.debtRepayment ?: return
+        val keep = evaluation.nonVoidedDebtPublicIds
+        if (keep.isEmpty()) {
+            // A debt goal must keep ≥1 link; every link voided has no clean replacement.
+            _state.update { it.copy(error = UiText.res(R.string.debt_goal_remove_voided_needs_one)) }
+            return
+        }
+        _state.update { it.copy(isSubmitting = true, error = null) }
+        viewModelScope.launch {
+            val result = repository.replaceDebtLinks(goal.publicId, goal.rowVersion, keep)
+            applyMutation(result, R.string.debt_goal_links_updated)
+        }
+    }
+
+    /** §6/F13 exit (b): acknowledge ("keep for audit") → clears needs_review. */
+    fun acknowledge() {
+        val goal = _state.value.selectedGoal ?: return
+        _state.update { it.copy(isSubmitting = true, error = null) }
+        viewModelScope.launch {
+            val result = repository.acknowledgeDebtIntegrityReview(goal.publicId, goal.rowVersion)
+            applyMutation(result, R.string.debt_goal_review_acknowledged)
+        }
+    }
+
+    /**
+     * Archive the open goal. The only clean exit when a not-yet-achieved goal's whole
+     * link set is voided (§6/F13): "remove voided" has no non-voided replacement and
+     * acknowledge is achieved-only, so without a Debt picker (a later slice) archiving
+     * is how the user clears the dead-end review.
+     */
+    fun archiveSelected() {
+        val goal = _state.value.selectedGoal ?: return
+        if (!_state.value.canModify) return
+        _state.update { it.copy(isSubmitting = true, error = null) }
+        viewModelScope.launch {
+            repository.archiveGoal(goal.publicId).fold(
+                onSuccess = {
+                    // Supersede in-flight loads, drop the detail, and reload the list
+                    // (the archived goal falls out of the default list).
+                    loadGeneration++
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            selectedGoal = null,
+                            flashMessage = UiText.res(R.string.debt_goal_archived),
+                            error = null,
+                        )
+                    }
+                    refresh()
+                },
+                onFailure = { err ->
+                    _state.update {
+                        it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_goal_update_failed))
+                    }
+                },
+            )
+        }
+    }
+
+    fun dismissFlash() {
+        _state.update { it.copy(flashMessage = null) }
+    }
+
+    private fun applyMutation(result: Result<Goal>, successRes: Int) {
+        result.fold(
+            onSuccess = { updated ->
+                // Supersede any in-flight load so it can't revert this committed change.
+                loadGeneration++
+                _state.update { current ->
+                    current.copy(
+                        isSubmitting = false,
+                        selectedGoal = updated,
+                        goals = current.goals.replaceGoal(updated),
+                        flashMessage = UiText.res(successRes),
+                        error = null,
+                    )
+                }
+            },
+            onFailure = { err ->
+                _state.update {
+                    it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_goal_update_failed))
+                }
+            },
+        )
+    }
+}
+
+private fun List<Goal>.replaceGoal(updated: Goal): List<Goal> =
+    map { if (it.publicId == updated.publicId) updated else it }

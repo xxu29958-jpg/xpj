@@ -78,41 +78,57 @@ class StatsReportsViewModelGranularityTest {
 
         assertEquals(1, repo.overviewQueries.size)
     }
+}
 
-    private class RecordingReportsActions : ReportsActions {
-        val overviewQueries = mutableListOf<ReportsOverviewQuery>()
+// Top-level (not nested) so the detekt TooManyFunctions baseline entry matches —
+// it must implement the full ReportsActions surface (13 functions) for the VM under test.
+private class RecordingReportsActions : ReportsActions {
+    val overviewQueries = mutableListOf<ReportsOverviewQuery>()
 
-        override fun canModifyLedger(): Boolean = true
+    override fun canModifyLedger(): Boolean = true
 
-        override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
-            overviewQueries += query
-            return Result.failure(RuntimeException("overview unavailable in this fake"))
-        }
-
-        override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> =
-            Result.failure(UnsupportedOperationException())
-
-        override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
-            Result.success(emptyList())
-
-        override suspend fun createGoal(draft: GoalDraft): Result<Goal> =
-            Result.failure(UnsupportedOperationException())
-
-        override suspend fun goal(publicId: String): Result<Goal> =
-            Result.failure(UnsupportedOperationException())
-
-        override suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal> =
-            Result.failure(UnsupportedOperationException())
-
-        override suspend fun archiveGoal(publicId: String): Result<Goal> =
-            Result.failure(UnsupportedOperationException())
-
-        override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
-            Result.success(DashboardCards(surface = surface, items = emptyList()))
-
-        override suspend fun updateDashboardCards(
-            updates: List<DashboardCardUpdate>,
-            surface: DashboardSurface,
-        ): Result<DashboardCards> = Result.failure(UnsupportedOperationException())
+    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
+        overviewQueries += query
+        return Result.failure(RuntimeException("overview unavailable in this fake"))
     }
+
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> =
+        Result.failure(UnsupportedOperationException())
+
+    override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
+        Result.success(emptyList())
+
+    override suspend fun createGoal(draft: GoalDraft): Result<Goal> =
+        Result.failure(UnsupportedOperationException())
+
+    override suspend fun goal(publicId: String): Result<Goal> =
+        Result.failure(UnsupportedOperationException())
+
+    override suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal> =
+        Result.failure(UnsupportedOperationException())
+
+    override suspend fun archiveGoal(publicId: String): Result<Goal> =
+        Result.failure(UnsupportedOperationException())
+
+    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> =
+        Result.success(emptyList())
+
+    override suspend fun replaceDebtLinks(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtPublicIds: List<String>,
+    ): Result<Goal> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun acknowledgeDebtIntegrityReview(
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<Goal> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
+        Result.success(DashboardCards(surface = surface, items = emptyList()))
+
+    override suspend fun updateDashboardCards(
+        updates: List<DashboardCardUpdate>,
+        surface: DashboardSurface,
+    ): Result<DashboardCards> = Result.failure(UnsupportedOperationException())
 }

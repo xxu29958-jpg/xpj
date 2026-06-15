@@ -1,0 +1,79 @@
+package com.ticketbox.data.remote.dto
+
+import com.squareup.moshi.Json
+
+/**
+ * ADR-0049 §6 (slice 7) — Android contract for the `debt_repayment` goal surface.
+ *
+ * A debt_repayment goal links explicit Debt ids and is "achieved" once all linked
+ * Debts are cleared. The numeric spending-shape fields on [GoalDto] are `null` for a
+ * debt goal; instead [GoalDto.debtRepayment] carries this evaluation block. Field
+ * names mirror `DebtRepaymentEvaluation` / `DebtGoalLinkView` in the backend OpenAPI
+ * snapshot (gated by `OpenApiContractGateTest`).
+ */
+data class DebtRepaymentEvaluationDto(
+    @param:Json(name = "goal_version")
+    val goalVersion: Int,
+    // in_progress / achieved / not_evaluable (see DebtGoalEvaluationStates).
+    @param:Json(name = "evaluation_state")
+    val evaluationState: String,
+    // §6/F13: a debt-voided linked Debt that is still unresolved (acknowledge or
+    // remove it). True on both the not_evaluable and the achieved+integrity cases.
+    @param:Json(name = "needs_review")
+    val needsReview: Boolean,
+    @param:Json(name = "achieved_at")
+    val achievedAt: String? = null,
+    @param:Json(name = "achieved_version")
+    val achievedVersion: Int? = null,
+    @param:Json(name = "linked_debts")
+    val linkedDebts: List<DebtGoalLinkViewDto>,
+    @param:Json(name = "voided_debt_public_ids")
+    val voidedDebtPublicIds: List<String>,
+)
+
+/** One linked Debt's shell inside a debt_repayment goal's evaluation block. */
+data class DebtGoalLinkViewDto(
+    @param:Json(name = "debt_public_id")
+    val debtPublicId: String,
+    // open / cleared / voided (derived fold, ADR-0049 §2).
+    val status: String,
+    // i_owe / owed_to_me (from the owner account's perspective).
+    val direction: String,
+    // member / external.
+    @param:Json(name = "counterparty_type")
+    val counterpartyType: String,
+    @param:Json(name = "counterparty_label")
+    val counterpartyLabel: String? = null,
+    @param:Json(name = "principal_amount_cents")
+    val principalAmountCents: Long,
+    @param:Json(name = "remaining_amount_cents")
+    val remainingAmountCents: Long,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
+)
+
+/**
+ * Body for `POST /api/goals/{publicId}/debt-links` — replace a debt_repayment goal's
+ * linked Debt set (the backend bumps `row_version` + `goal_version`). `debtPublicIds`
+ * is the FULL new set (replace, not delta) and must be non-empty.
+ *
+ * `expectedRowVersion` is the client's last-seen OCC token; server returns 409
+ * `state_conflict` on a stale snapshot.
+ */
+data class DebtGoalLinksReplaceRequestDto(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+    @param:Json(name = "debt_public_ids")
+    val debtPublicIds: List<String>,
+)
+
+/**
+ * Body for `POST /api/goals/{publicId}/integrity-review/acknowledge` (§6/F13) —
+ * "keep for audit": acknowledge an achieved goal version whose linked set carries a
+ * debt-voided Debt, clearing `needs_review` for the current version. The other exit
+ * (remove the voided Debt) goes through the link-replace route.
+ */
+data class DebtGoalIntegrityReviewRequestDto(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+)

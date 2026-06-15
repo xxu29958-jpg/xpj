@@ -4,6 +4,8 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
+import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -32,6 +34,31 @@ interface ReportsActions {
     suspend fun goal(publicId: String): Result<Goal>
     suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal>
     suspend fun archiveGoal(publicId: String): Result<Goal>
+
+    // ── ADR-0049 §6 (slice 7) debt_repayment goal surface ────────────────────
+    /** List the (month-less) debt_repayment goals; [goal] reuses for the detail. */
+    suspend fun debtGoals(includeArchived: Boolean = false): Result<List<Goal>>
+
+    /**
+     * Replace a debt_repayment goal's linked Debt set (→ a new goal version). One of
+     * the §6/F13 integrity-review exits: submit the non-voided link ids to take a
+     * debt-voided Debt out of the goal. [expectedRowVersion] is the OCC token.
+     */
+    suspend fun replaceDebtLinks(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtPublicIds: List<String>,
+    ): Result<Goal>
+
+    /**
+     * Acknowledge ("keep for audit") an achieved debt goal version whose linked set
+     * carries a debt-voided Debt (§6/F13) — clears needs_review for the current
+     * version. [expectedRowVersion] is the OCC token.
+     */
+    suspend fun acknowledgeDebtIntegrityReview(
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<Goal>
     suspend fun dashboardCards(surface: DashboardSurface = DashboardSurface.Android): Result<DashboardCards>
     suspend fun updateDashboardCards(
         updates: List<DashboardCardUpdate>,
@@ -301,6 +328,66 @@ class ReportsRepository(
         }
     }
 
+    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.goals(
+                    goalType = DEBT_REPAYMENT_GOAL_TYPE,
+                    includeArchived = includeArchived,
+                    timezone = currentTimezoneId(),
+                ).items.map { it.toDomain() }
+            }
+        }
+
+    override suspend fun replaceDebtLinks(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtPublicIds: List<String>,
+    ): Result<Goal> {
+        if (!canModifyLedger()) {
+            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
+        }
+        val cleanPublicId = publicId.cleanPublicId()
+            .getOrElse { return Result.failure(it) }
+        val cleanIds = debtPublicIds.cleanDebtPublicIds()
+            .getOrElse { return Result.failure(it) }
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.replaceGoalDebtLinks(
+                    publicId = cleanPublicId,
+                    request = DebtGoalLinksReplaceRequestDto(
+                        expectedRowVersion = expectedRowVersion,
+                        debtPublicIds = cleanIds,
+                    ),
+                    // ADR-0042: single-use key — direct-only path, no offline replay.
+                    idempotencyKey = UUID.randomUUID().toString(),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
+        }
+    }
+
+    override suspend fun acknowledgeDebtIntegrityReview(
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<Goal> {
+        if (!canModifyLedger()) {
+            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
+        }
+        val cleanPublicId = publicId.cleanPublicId()
+            .getOrElse { return Result.failure(it) }
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.acknowledgeGoalIntegrityReview(
+                    publicId = cleanPublicId,
+                    request = DebtGoalIntegrityReviewRequestDto(expectedRowVersion),
+                    idempotencyKey = UUID.randomUUID().toString(),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
+        }
+    }
+
     override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
@@ -360,7 +447,17 @@ sealed interface GoalSaveOutcome {
     data class Queued(override val goal: Goal) : GoalSaveOutcome
 }
 
+private const val DEBT_REPAYMENT_GOAL_TYPE = "debt_repayment"
+
 private val REPORTS_MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
+
+private fun List<String>.cleanDebtPublicIds(): Result<List<String>> {
+    return runCatching {
+        val clean = map { it.trim() }.filter { it.isNotBlank() }
+        require(clean.isNotEmpty()) { "请至少关联一笔欠款。" }
+        clean
+    }.mapError()
+}
 
 private fun ReportsOverviewQuery.validated(): Result<ReportsOverviewQuery> {
     return runCatching {

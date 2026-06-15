@@ -162,6 +162,13 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
+            // ADR-0049 §6 (slice 7): 还债目标(规划)二级页。返回先关详情、再关 overlay
+            // 由 DebtGoalRoute 自带的 BackHandler 处理。
+            StatsSecondaryPage.DebtGoals -> DebtGoalRoute(
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+            )
+
             null -> MainTabRoute(
                 navController = navController,
                 shellState = shellState,

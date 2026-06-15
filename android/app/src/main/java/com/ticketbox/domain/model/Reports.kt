@@ -99,10 +99,15 @@ data class Goal(
     val updatedAt: String,
     val rowVersion: Long,
     val archivedAt: String?,
+    // ADR-0049 §6 (slice 7): populated only for goalType == "debt_repayment".
+    // The spending-shape numeric fields above are coalesced to 0 for a debt goal
+    // (the debt-goal UI reads this evaluation block, not the spend fields).
+    val debtRepayment: DebtRepaymentEvaluation? = null,
 ) {
     val progress: Float = (progressPercent / 100f).coerceIn(0f, 1f)
     val isArchived: Boolean = status == "archived" || archivedAt != null
     val isOverLimit: Boolean = progressState == GoalProgressState.OverLimit
+    val isDebtRepayment: Boolean = goalType == "debt_repayment"
 }
 
 data class GoalDraft(

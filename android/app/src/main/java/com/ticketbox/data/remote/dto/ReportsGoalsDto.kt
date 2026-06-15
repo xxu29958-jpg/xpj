@@ -91,16 +91,21 @@ data class GoalDto(
     @param:Json(name = "goal_type")
     val goalType: String,
     val period: String,
-    val month: String,
+    // ADR-0049 §6 (slice 7): the spending-shape numeric fields are null for a
+    // debt_repayment goal (it has no monthly spend target). The month-scoped
+    // GET /api/goals never returns debt goals, so a spending-only response keeps
+    // these populated; only the debt-goal surface (GET ?goal_type=debt_repayment /
+    // GET /api/goals/{id} for a debt goal) sends nulls + the [debtRepayment] block.
+    val month: String?,
     val category: String?,
     @param:Json(name = "target_amount_cents")
-    val targetAmountCents: Long,
+    val targetAmountCents: Long?,
     @param:Json(name = "spent_amount_cents")
-    val spentAmountCents: Long,
+    val spentAmountCents: Long?,
     @param:Json(name = "remaining_amount_cents")
-    val remainingAmountCents: Long,
+    val remainingAmountCents: Long?,
     @param:Json(name = "progress_percent")
-    val progressPercent: Int,
+    val progressPercent: Int?,
     @param:Json(name = "progress_state")
     val progressState: String,
     val status: String,
@@ -112,6 +117,9 @@ data class GoalDto(
     val rowVersion: Long,
     @param:Json(name = "archived_at")
     val archivedAt: String?,
+    // Populated only for debt_repayment goals (ADR-0049 §6).
+    @param:Json(name = "debt_repayment")
+    val debtRepayment: DebtRepaymentEvaluationDto? = null,
 )
 
 data class GoalListResponseDto(

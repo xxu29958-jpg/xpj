@@ -4,6 +4,7 @@
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:OpenApiContractGateTest.kt:OpenApiContractGateTest$@Suppress("UNCHECKED_CAST") private fun synthesizeValue: Any?</ID>
     <ID>CyclomaticComplexMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
+    <ID>LargeClass:FakeApiService.kt:FakeApiService : ApiService</ID>
     <ID>LongMethod:ExpenseRepositoryAuthCheckTest.kt:ExpenseRepositoryAuthCheckTest$@Test fun authCheckLedgerCorrectionClearsTargetCacheBeforeIdentitySwitch</ID>
     <ID>LongMethod:LedgerRepositoryInvitationTest.kt:LedgerRepositoryInvitationTest$@Test fun acceptInvitationSlowResponseDoesNotOverwriteBindingChangedDuringRequest</ID>
     <ID>LongMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
@@ -19,6 +20,8 @@
     <ID>TooManyFunctions:ApiServiceProviderTest.kt:ProviderSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:AppViewModelBindingTest.kt:FakeAppSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:BudgetRepositoryTest.kt:BudgetFakeSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:DebtGoalViewModelTest.kt:DebtGoalViewModelTest</ID>
+    <ID>TooManyFunctions:DebtGoalViewModelTest.kt:FakeReportsActions : ReportsActions</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:ExpenseDaoContractTest</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:FakeExpenseDao : ExpenseDao</ID>
     <ID>TooManyFunctions:ExpenseEditViewModelTest.kt:ExpenseEditViewModelTest</ID>
@@ -45,7 +48,9 @@
     <ID>TooManyFunctions:PendingViewModelReviewSheetAndStateTest.kt:PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewTestBase</ID>
     <ID>TooManyFunctions:PendingViewModelReviewTestSupport.kt:FakeReviewActions : PendingReviewActions</ID>
     <ID>TooManyFunctions:ReportsRepositoryTest.kt:ReportsFakeSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:ReportsRepositoryTest.kt:ReportsRepositoryTest</ID>
     <ID>TooManyFunctions:RuleRepositoryOutboxFallbackTest.kt:RuleRepositoryOutboxFallbackTest</ID>
+    <ID>TooManyFunctions:StatsReportsViewModelGranularityTest.kt:RecordingReportsActions : ReportsActions</ID>
     <ID>TooManyFunctions:TagManagementViewModelTest.kt:TagManagementViewModelTest</ID>
   </CurrentIssues>
 </SmellBaseline>
