@@ -4061,8 +4061,15 @@
             "type": "string"
           },
           "ledger_id": {
-            "title": "Ledger Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
           },
           "original_amount_minor": {
             "anyOf": [
@@ -4139,7 +4146,6 @@
         },
         "required": [
           "public_id",
-          "ledger_id",
           "direction",
           "counterparty_type",
           "principal_amount_cents",
@@ -8845,8 +8851,15 @@
             "type": "string"
           },
           "ledger_id": {
-            "title": "Ledger Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
           },
           "original_amount_minor": {
             "anyOf": [
@@ -8927,7 +8940,6 @@
         },
         "required": [
           "public_id",
-          "ledger_id",
           "direction",
           "counterparty_type",
           "principal_amount_cents",

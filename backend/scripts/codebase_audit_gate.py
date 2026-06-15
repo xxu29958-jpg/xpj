@@ -220,7 +220,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # update both baseline files. Android count is NOT listed here.
 }
 
-STRICT_EQUALITY_BASELINE["backend_pytest_count"] = 1820  # +1 ADR-0049 slice 3 paid_at FX-date fingerprint regression; +6 ADR-0049 slice 4 bill_split→Debt linkage (test_bill_split_debt_linkage: accept-creates-member-Debt rollout-on / no-Debt rollout-off / re-accept-no-duplicate / reject-no-Debt / foreign-parent-stays-home-shape / debt-failure-rolls-back-whole-accept[real_db])
+STRICT_EQUALITY_BASELINE["backend_pytest_count"] = 1828  # +1 ADR-0049 slice 3 paid_at FX-date fingerprint regression; +6 ADR-0049 slice 4 bill_split→Debt linkage (test_bill_split_debt_linkage: accept-creates-member-Debt rollout-on / no-Debt rollout-off / re-accept-no-duplicate / reject-no-Debt / foreign-parent-stays-home-shape / debt-failure-rolls-back-whole-accept[real_db]); +8 ADR-0049 slice 5 account-scoped cross-ledger participant confirm/reject §5.2 (test_member_repayment_proposal_cross_ledger ×6: non-member creditor confirms+clears with shell-redacted ledger_id / non-member creditor rejects / non-member creditor lists pending proposal / member creditor in shared ledger settles keeping ledger_id / non-participant existence-hiding 404 on read+list+confirm / cross-ledger confirm idempotent replay; test_bill_split_debt_linkage ×2: two-sessions concurrent accept creates single Debt[real_db] / duplicate uq_debts_source rejected)
 
 
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep

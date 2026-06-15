@@ -14,6 +14,15 @@ member ``MemberRepaymentProposal`` workflow — ``create_repayment_proposal`` /
 ``withdraw_repayment_proposal`` / ``confirm_repayment_proposal`` /
 ``reject_repayment_proposal`` / ``list_repayment_proposals`` (§3.2); only confirm
 is fold-changing and goes through the same §2.1 serialization.
+
+Slice 5 makes the proposal workflow ACCOUNT-scoped (§5.2): a member Debt's two
+parties can live in different ledgers (a bill_split Debt is owned by the
+receiver's ledger with the sender as the cross-ledger creditor), so the proposal
+ops + the participant Debt read resolve by participant identity (debtor OR
+creditor account) unioned with ledger membership, not by ledger scope alone.
+``get_participant_debt_response`` redacts the counterparty's ledger id for a
+participant-but-not-member view (the Debt shell only). This is the prerequisite
+for enabling ``DEBT_ROLLOUT_ENABLED`` (ADR §0.1).
 """
 
 from __future__ import annotations
@@ -37,6 +46,7 @@ from app.services.debt_service._query import (
     debt_response,
     get_debt,
     get_debt_response,
+    get_participant_debt_response,
     list_debts,
 )
 from app.services.debt_service._repayment import (
@@ -56,6 +66,7 @@ __all__ = [
     "derive_status",
     "get_debt",
     "get_debt_response",
+    "get_participant_debt_response",
     "get_repayment_proposal_response",
     "get_repayment_public_id_for_idempotency",
     "list_debts",

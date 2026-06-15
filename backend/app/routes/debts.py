@@ -64,6 +64,7 @@ from app.services.debt_service import (
     create_debt,
     create_repayment_proposal,
     get_debt_response,
+    get_participant_debt_response,
     get_repayment_proposal_response,
     get_repayment_public_id_for_idempotency,
     list_debts,
@@ -202,7 +203,14 @@ def get_debt_detail(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DebtResponse:
-    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    # ADR-0049 §5.2: a member Debt's two parties can live in different ledgers
+    # (a bill_split Debt is owned by the receiver's ledger with the sender as the
+    # cross-ledger creditor). Resolve by participant union so the creditor can read
+    # the obligation they must confirm; a non-member participant gets the Debt
+    # shell only (ledger id redacted), and a non-participant gets debt_not_found.
+    return get_participant_debt_response(
+        db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id
+    )
 
 
 @router.post("", response_model=DebtResponse, status_code=201)
@@ -516,6 +524,7 @@ def post_repayment_proposal(
         return get_repayment_proposal_response(
             db,
             tenant_id=auth.tenant_id,
+            actor_account_id=auth.account_id,
             public_id=public_id,
             proposal_public_id=outcome.row.resource_id,
         )
@@ -575,6 +584,7 @@ def post_repayment_proposal_withdraw(
         return get_repayment_proposal_response(
             db,
             tenant_id=auth.tenant_id,
+            actor_account_id=auth.account_id,
             public_id=public_id,
             proposal_public_id=proposal_public_id,
         )
@@ -624,6 +634,7 @@ def post_repayment_proposal_confirm(
     proposal = get_repayment_proposal_response(
         db,
         tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
         public_id=public_id,
         proposal_public_id=proposal_public_id,
     )
@@ -647,7 +658,10 @@ def post_repayment_proposal_confirm(
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §2.1 replay: re-serialise the fold, do NOT bump again.
-        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+        # §5.2: participant-scoped + shell-redacted for a cross-ledger creditor.
+        return get_participant_debt_response(
+            db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id
+        )
     confirm_repayment_proposal(
         db,
         tenant_id=auth.tenant_id,
@@ -665,7 +679,10 @@ def post_repayment_proposal_confirm(
     # bump_row_version emits a SQL ``row_version + 1`` expression; expire before
     # re-reading the fold for the response (mirrors the slice-2 fact routes).
     db.expire_all()
-    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    # §5.2: a cross-ledger creditor gets the Debt shell (ledger id redacted).
+    return get_participant_debt_response(
+        db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id
+    )
 
 
 @router.post(
@@ -700,6 +717,7 @@ def post_repayment_proposal_reject(
         return get_repayment_proposal_response(
             db,
             tenant_id=auth.tenant_id,
+            actor_account_id=auth.account_id,
             public_id=public_id,
             proposal_public_id=proposal_public_id,
         )
@@ -732,4 +750,8 @@ def get_repayment_proposals(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> MemberRepaymentProposalListResponse:
-    return list_repayment_proposals(db, tenant_id=auth.tenant_id, public_id=public_id)
+    # §5.2 participant-scoped: the cross-ledger creditor must see the pending
+    # proposal awaiting their confirmation.
+    return list_repayment_proposals(
+        db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, public_id=public_id
+    )

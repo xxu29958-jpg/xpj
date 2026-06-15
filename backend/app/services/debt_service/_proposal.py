@@ -29,7 +29,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, MemberRepaymentProposal, Repayment
 from app.schemas import (
     DebtResponse,
@@ -46,7 +45,10 @@ from app.services.debt_service._guards import (
     proposal_debtor_creditor,
 )
 from app.services.debt_service._money import freeze_home_amount
-from app.services.debt_service._query import get_debt_response
+from app.services.debt_service._query import (
+    get_participant_debt_response,
+    resolve_debt_for_participant,
+)
 from app.services.debt_service._serialize import lock_and_fold
 from app.services.time_service import now_utc
 
@@ -63,12 +65,24 @@ from app.services.time_service import now_utc
 PROPOSAL_TTL = timedelta(days=30)
 
 
-def _load_debt(db: Session, *, tenant_id: str, public_id: str) -> Debt:
-    debt = db.scalar(
-        ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id).limit(1)
+def _load_participant_debt(
+    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
+) -> Debt:
+    """Load the member Debt for a proposal op, scoped by §5.2 participation.
+
+    The repayment-proposal flow is a two-party (debtor↔creditor) workflow whose
+    parties can live in different ledgers (a bill_split Debt is owned by the
+    receiver's ledger with the sender as the cross-ledger creditor), so it is NOT
+    ledger-scoped: ``resolve_debt_for_participant`` admits the actor when they are
+    a member of the Debt's ledger OR the Debt's member counterparty (the only
+    cross-ledger party — the owner is always a member of the Debt's own ledger).
+    Anyone else gets ``debt_not_found`` (cross-ledger existence hiding).
+    ``tenant_id`` is the ACTOR's authenticated ledger (= the membership side of
+    the union); the per-role debtor/creditor guard runs after this resolve.
+    """
+    debt, _ = resolve_debt_for_participant(
+        db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id
     )
-    if debt is None:
-        raise AppError("debt_not_found", status_code=404)
     return debt
 
 
@@ -224,7 +238,9 @@ def create_repayment_proposal(
     ``commit=False`` lets the route commit the insert together with the [[0042]]
     idempotency-success record in one transaction.
     """
-    debt = _load_debt(db, tenant_id=tenant_id, public_id=public_id)
+    debt = _load_participant_debt(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     if debt.status == "voided":
         raise AppError("debt_already_voided", status_code=409)
     guard_member_debt(debt)
@@ -288,7 +304,9 @@ def withdraw_repayment_proposal(
     commit: bool = True,
 ) -> MemberRepaymentProposalResponse:
     """Debtor withdraws their own still-pending proposal (does NOT touch the fold)."""
-    debt = _load_debt(db, tenant_id=tenant_id, public_id=public_id)
+    debt = _load_participant_debt(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     proposal = _load_proposal(db, debt_id=debt.id, proposal_public_id=proposal_public_id)
     guard_actor_is_debtor(debt, actor_account_id)
     _latch_proposal_resolution(
@@ -387,8 +405,16 @@ def confirm_repayment_proposal(
     The §2.1 parent-Debt serialization (FOR UPDATE + bump) and the F8 overpay
     check run inside :func:`lock_and_fold`; the proposal is re-fetched under the
     lock so its pending/expiry checks see authoritative state.
+
+    §5.2: the creditor may be a member of ANOTHER ledger (a bill_split Debt is
+    owned by the receiver's ledger), so the Debt is resolved and locked by
+    participant identity, not by ``tenant_id`` ledger scope. The creditor guard
+    runs before the lock; ``lock_and_fold(account_id=...)`` re-admits the same
+    participant under the row lock.
     """
-    debt = _load_debt(db, tenant_id=tenant_id, public_id=public_id)
+    debt = _load_participant_debt(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     guard_actor_is_creditor(debt, actor_account_id)
 
     def _mutate(locked_debt: Debt, remaining_before: int) -> None:
@@ -415,6 +441,7 @@ def confirm_repayment_proposal(
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
         mutate=_mutate,
+        account_id=actor_account_id,  # §5.2 cross-ledger creditor admission
     )
     # Mirror slice-2 ``record_repayment``'s commit boundary exactly: only the
     # ``commit=True`` direct-caller path commits + expires here. ``lock_and_fold``
@@ -427,7 +454,10 @@ def confirm_repayment_proposal(
         return None
     db.commit()
     db.expire_all()
-    return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+    # §5.2: a cross-ledger creditor gets the Debt shell (ledger id redacted).
+    return get_participant_debt_response(
+        db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id
+    )
 
 
 def reject_repayment_proposal(
@@ -442,7 +472,9 @@ def reject_repayment_proposal(
     commit: bool = True,
 ) -> MemberRepaymentProposalResponse:
     """Creditor rejects a still-pending proposal (does NOT touch the fold)."""
-    debt = _load_debt(db, tenant_id=tenant_id, public_id=public_id)
+    debt = _load_participant_debt(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     proposal = _load_proposal(db, debt_id=debt.id, proposal_public_id=proposal_public_id)
     guard_actor_is_creditor(debt, actor_account_id)
     _latch_proposal_resolution(
@@ -454,24 +486,35 @@ def reject_repayment_proposal(
 
 
 def get_repayment_proposal_response(
-    db: Session, *, tenant_id: str, public_id: str, proposal_public_id: str
+    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str, proposal_public_id: str
 ) -> MemberRepaymentProposalResponse:
     """Re-serialise one proposal's canonical state (used by [[0042]] HIT replay).
 
-    Ledger-scoped via the parent Debt, then the proposal must belong to that Debt
-    (existence is hidden as not-found otherwise), so a HIT/replay cannot leak a
-    cross-ledger proposal.
+    Participant-scoped via the parent Debt (§5.2 — the creditor confirming may be
+    in another ledger), then the proposal must belong to that Debt (existence is
+    hidden as not-found otherwise), so a HIT/replay cannot leak a proposal the
+    actor is not a party to. The proposal response carries no ledger id, so there
+    is no cross-ledger shell to redact here.
     """
-    debt = _load_debt(db, tenant_id=tenant_id, public_id=public_id)
+    debt = _load_participant_debt(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     proposal = _load_proposal(db, debt_id=debt.id, proposal_public_id=proposal_public_id)
     return proposal_response(db, proposal)
 
 
 def list_repayment_proposals(
-    db: Session, *, tenant_id: str, public_id: str
+    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
 ) -> MemberRepaymentProposalListResponse:
-    """List a member Debt's repayment proposals (read; newest first)."""
-    debt = _load_debt(db, tenant_id=tenant_id, public_id=public_id)
+    """List a member Debt's repayment proposals (read; newest first).
+
+    Participant-scoped (§5.2): the cross-ledger creditor must be able to see the
+    pending proposal awaiting their confirmation, so visibility follows the
+    debtor/creditor participation union, not ledger scope alone.
+    """
+    debt = _load_participant_debt(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     proposals = list(
         db.scalars(
             select(MemberRepaymentProposal)

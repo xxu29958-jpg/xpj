@@ -54,7 +54,9 @@ Current runtime does NOT yet expose:
 
 Therefore this ADR is a target contract. Confirmation checks are required before exposing the corresponding Debt features; they are not claims that the current runtime already implements them.
 
-Slice 4 wires bill-split → Debt creation (§4) behind the `DEBT_ROLLOUT_ENABLED` flag, default OFF. **Hard boundary: this flag MUST NOT be enabled until account-scoped participant confirm/reject (§5.2) is implemented.** A bill-split member Debt is owned by the receiver's ledger with the sender as creditor; today's repayment confirm/reject is ledger-scoped (the actor must be a writer in the Debt's own ledger), so a creditor who is not a member of the receiver's ledger cannot confirm or clear it. Turning the flag on before account-scoped confirmation lands would create Debts that cannot be repaid through the API.
+Slice 4 wires bill-split → Debt creation (§4) behind the `DEBT_ROLLOUT_ENABLED` flag, default OFF. A bill-split member Debt is owned by the receiver's ledger with the sender as creditor. Slice 4's hard boundary was: this flag MUST NOT be enabled until account-scoped participant confirm/reject (§5.2) is implemented, because ledger-scoped confirm/reject left a creditor who is not a member of the receiver's ledger unable to confirm or clear it.
+
+Slice 5 implements that account-scoped participant confirm/reject (§5.2): the repayment-proposal flow now resolves a Debt by participant identity (debtor OR creditor account) unioned with ledger membership, so the cross-ledger creditor can confirm/reject/clear the obligation, and a participant-but-not-member view is redacted to the Debt shell only (no counterparty ledger internals). **The §0.1 hard-boundary prerequisite is therefore met.** The flag still defaults OFF as a deliberate rollout stage — creditor-side discovery UX (listing cross-ledger debts/incoming proposals) and pre-rollout backfill (§4) remain product decisions, not correctness blockers — but enabling it no longer creates un-repayable Debts.
 
 ---
 
@@ -625,6 +627,9 @@ Required checks before exposing Debt features:
 - expired/rejected/withdrawn/superseded proposals do not reduce remaining
 - debtor-only repayment proposal does not reduce remaining
 - creditor confirmation commits a debtor repayment proposal exactly once
+- a member Debt's creditor who is NOT a member of the debtor's ledger can confirm/reject/clear it (account-scoped participant resolution, §5.2 / §0.1)
+- a participant who is not a member of the Debt's ledger sees only the Debt shell, with the counterparty's ledger id redacted (§5.2)
+- a non-participant gets `debt_not_found` for cross-ledger read/list/confirm (existence hiding, no enumeration leak)
 - creditor-recorded receipt commits repayment exactly once
 - adjustment increasing a member's burden requires that member's confirmation
 - adjustment reducing a creditor's receivable requires creditor confirmation

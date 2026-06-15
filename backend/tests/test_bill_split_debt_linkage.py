@@ -11,10 +11,12 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -28,6 +30,7 @@ from app.models import (
     LedgerMember,
 )
 from app.services import bill_split_service as bsplit
+from app.services.debt_service import create_bill_split_debt
 from app.services.time_service import now_utc
 
 
@@ -290,3 +293,102 @@ def test_debt_failure_rolls_back_whole_accept(
         assert accepted_audit is None  # the audit row rolled back
     assert _received_expense(public_id) is None  # the receiver expense rolled back
     assert _debts_for(public_id) == []  # no Debt
+
+
+def test_two_sessions_accept_race_creates_single_debt(
+    client: TestClient, *, identity, debt_rollout_on
+) -> None:
+    # §4 / P3: two sessions hold the SAME pre-accept ('invited') read of one
+    # invitation with the Debt rollout ON (the true interleaving, mirroring
+    # test_bill_split_hardening.test_two_sessions_accept_race_creates_single_received_expense).
+    # session_a accepts (commits the received expense + member Debt + the
+    # invited→accepted claim); session_b THEN runs its STALE-'invited' accept —
+    # its received-expense INSERT trips uq_expenses_split_origin_invitation →
+    # IntegrityError → rollback → _resolve_lost_accept re-reads the now-'accepted'
+    # invitation and returns session_a's expense WITHOUT reaching
+    # create_bill_split_debt. That lost-claim branch is the dangerous path where a
+    # second Debt could be attempted; uq_debts_source is its structural backstop.
+    # Net: exactly ONE Debt and ONE received expense. real_db (the
+    # ``test_two_sessions`` naming auto-marks it) so each session is a real
+    # committed transaction; expire_on_commit=False keeps session_b's stale
+    # 'invited' read, exercising the lost-claim recovery branch (not the settled
+    # fast path).
+    receiver_id = _seed_receiver(name="B-acc-race", ledger_id="receiver_accrace")
+    public_id = _invite(client, identity, receiver_id, amount_cents=2500)
+
+    session_a = SessionLocal()
+    session_b = SessionLocal()
+    try:
+        # Both sessions take a pre-accept 'invited' read FIRST (the race setup).
+        row_a = session_a.scalar(
+            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+        )
+        row_b = session_b.scalar(
+            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+        )
+        assert row_a is not None and row_b is not None
+        assert row_a.status == "invited" and row_b.status == "invited"
+
+        # Session A wins the claim and commits the Debt + received expense.
+        bsplit.accept_invitation(
+            session_a,
+            public_id=public_id,
+            accepting_account_id=receiver_id,
+            target_ledger_id="receiver_accrace",
+        )
+        # Session B's stale-'invited' accept loses the claim (its expense INSERT
+        # trips the unique backstop) and must NOT create a second Debt.
+        inv_b, expense_b = bsplit.accept_invitation(
+            session_b,
+            public_id=public_id,
+            accepting_account_id=receiver_id,
+            target_ledger_id="receiver_accrace",
+        )
+        assert inv_b.status == "accepted"
+        assert expense_b.split_origin_invitation_id == public_id
+    finally:
+        session_a.close()
+        session_b.close()
+
+    # Exactly one Debt and one received expense — uq_debts_source +
+    # uq_expenses_split_origin_invitation backstop the lost-claim branch.
+    assert len(_debts_for(public_id)) == 1
+    with SessionLocal() as db:
+        received = list(
+            db.scalars(select(Expense).where(Expense.split_origin_invitation_id == public_id))
+        )
+        assert len(received) == 1
+
+
+def test_duplicate_bill_split_debt_source_is_rejected(client: TestClient, *, identity) -> None:
+    # §10 hard constraint: ``uq_debts_source`` (source_type, source_id) is the
+    # structural backstop that makes one accepted invitation map to at most one
+    # bill-split Debt even if a path ever reached the insert twice. A second
+    # create_bill_split_debt for the same invitation public_id raises an
+    # IntegrityError (contained in a SAVEPOINT so the outer transaction survives).
+    owner_id = _owner_account_id()
+    receiver_id = _seed_receiver(name="B-dup", ledger_id="receiver_dup")
+    source_invitation_public_id = str(uuid4())
+
+    with SessionLocal() as db:
+        create_bill_split_debt(
+            db,
+            ledger_id="receiver_dup",
+            receiver_account_id=receiver_id,
+            sender_account_id=owner_id,
+            amount_cents=2500,
+            home_currency_code="CNY",
+            source_invitation_public_id=source_invitation_public_id,
+            event_time=None,
+        )
+        with pytest.raises(IntegrityError), db.begin_nested():
+            create_bill_split_debt(
+                db,
+                ledger_id="receiver_dup",
+                receiver_account_id=receiver_id,
+                sender_account_id=owner_id,
+                amount_cents=2500,
+                home_currency_code="CNY",
+                source_invitation_public_id=source_invitation_public_id,
+                event_time=None,
+            )
