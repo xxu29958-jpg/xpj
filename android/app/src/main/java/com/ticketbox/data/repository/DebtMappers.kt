@@ -2,9 +2,11 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtSourceTypes
+import com.ticketbox.domain.model.MemberRepaymentProposal
 
 fun DebtDto.toDomain(): Debt = Debt(
     publicId = publicId,
@@ -25,6 +27,7 @@ fun DebtDto.toDomain(): Debt = Debt(
     createdAt = createdAt,
     updatedAt = updatedAt,
     rowVersion = rowVersion,
+    viewerIsDebtor = viewerIsDebtor,
 )
 
 /**
@@ -44,4 +47,23 @@ fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
     counterpartyLabel = counterpartyLabel.trim(),
     principalAmountCents = principalAmountCents,
     sourceType = DebtSourceTypes.MANUAL,
+)
+
+/** ADR-0049 §3.2 (slice 8d) — map a member repayment proposal DTO to its domain model. */
+fun MemberRepaymentProposalDto.toDomain(): MemberRepaymentProposal = MemberRepaymentProposal(
+    publicId = publicId,
+    debtPublicId = debtPublicId,
+    status = status,
+    proposedAmountCents = proposedAmountCents,
+    confirmedAmountCents = confirmedAmountCents,
+    homeCurrencyCode = homeCurrencyCode,
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
+    paidAt = paidAt,
+    note = note,
+    expiresAt = expiresAt,
+    createdAt = createdAt,
+    resolvedAt = resolvedAt,
+    supersedesProposalPublicId = supersedesProposalPublicId,
+    committedRepaymentPublicId = committedRepaymentPublicId,
 )

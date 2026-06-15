@@ -7,11 +7,16 @@ import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
+import com.ticketbox.domain.model.MemberProposalStatuses
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -22,6 +27,7 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DebtRepositoryTest {
@@ -274,6 +280,188 @@ class DebtRepositoryTest {
         assertTrue(handler.voidCalls.isEmpty())
     }
 
+    // ── ADR-0049 §3.2 (slice 8d) member repayment proposals ─────────────────
+
+    @Test
+    fun listRepaymentProposalsMapsDomainModels() = runTest {
+        val handler = DebtApiHandler().apply {
+            proposalsResult = MemberRepaymentProposalListResponseDto(
+                items = listOf(proposalDto(publicId = "p1", proposed = 4_200L)),
+            )
+        }
+
+        val proposals = repository(handler).proposals.listRepaymentProposals("d1").getOrThrow()
+
+        assertEquals(1, proposals.size)
+        assertEquals("p1", proposals.single().publicId)
+        assertEquals(4_200L, proposals.single().proposedAmountCents)
+        assertTrue(proposals.single().isPending)
+    }
+
+    @Test
+    fun proposeSendsTrimmedAmountNoteKeyAndOmitsSupersedes() = runTest {
+        val handler = DebtApiHandler()
+
+        repository(handler).proposals.proposeRepayment(
+            debtPublicId = "d1",
+            proposedAmountCents = 15_000L,
+            note = "  微信转账  ",
+            supersedesProposalPublicId = null,
+        ).getOrThrow()
+
+        val call = handler.proposeCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals(15_000L, call.request.proposedAmountCents)
+        // The repository trims the note and omits a null supersedes target.
+        assertEquals("微信转账", call.request.note)
+        assertNull(call.request.supersedesProposalPublicId)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+    }
+
+    @Test
+    fun proposeViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .proposals.proposeRepayment("d1", 15_000L, note = null, supersedesProposalPublicId = null)
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.proposeCalls.isEmpty())
+    }
+
+    @Test
+    fun proposeRejectsNonPositiveAmountBeforeApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler).proposals.proposeRepayment("d1", 0L, note = null, supersedesProposalPublicId = null)
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.proposeCalls.isEmpty())
+    }
+
+    @Test
+    fun withdrawSendsKeyAndMapsProposal() = runTest {
+        val handler = DebtApiHandler()
+
+        val withdrawn = repository(handler).proposals.withdrawRepaymentProposal("d1", "p1").getOrThrow()
+
+        val call = handler.withdrawProposalCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals("p1", call.proposalPublicId)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        assertEquals("p1", withdrawn.publicId)
+    }
+
+    @Test
+    fun confirmFullSendsRowVersionKeyAndReturnsFoldAfterDebt() = runTest {
+        val handler = DebtApiHandler().apply { confirmResult = debtDto(publicId = "d1", remaining = 40_000L) }
+
+        val updated = repository(handler).proposals.confirmRepaymentProposal(
+            debtPublicId = "d1",
+            proposalPublicId = "p1",
+            expectedRowVersion = 5L,
+            confirmedAmountCents = null,
+        ).getOrThrow()
+
+        val call = handler.confirmProposalCalls.single()
+        assertEquals("p1", call.proposalPublicId)
+        assertEquals(5L, call.request.expectedRowVersion)
+        // A full confirm carries no explicit amount.
+        assertNull(call.request.confirmedAmountCents)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        // Confirm replies with the fold-after Debt (remaining dropped to 40_000).
+        assertEquals(40_000L, updated.remainingAmountCents)
+    }
+
+    @Test
+    fun confirmPartialSendsConfirmedAmount() = runTest {
+        val handler = DebtApiHandler()
+
+        repository(handler).proposals.confirmRepaymentProposal(
+            debtPublicId = "d1",
+            proposalPublicId = "p1",
+            expectedRowVersion = 5L,
+            confirmedAmountCents = 15_000L,
+        ).getOrThrow()
+
+        assertEquals(15_000L, handler.confirmProposalCalls.single().request.confirmedAmountCents)
+    }
+
+    @Test
+    fun confirmRejectsNonPositiveConfirmedAmountBeforeApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler).proposals.confirmRepaymentProposal("d1", "p1", expectedRowVersion = 5L, confirmedAmountCents = 0L)
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.confirmProposalCalls.isEmpty())
+    }
+
+    @Test
+    fun confirmViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .proposals.confirmRepaymentProposal("d1", "p1", expectedRowVersion = 5L, confirmedAmountCents = null)
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.confirmProposalCalls.isEmpty())
+    }
+
+    @Test
+    fun rejectSendsKeyAndMapsProposal() = runTest {
+        val handler = DebtApiHandler()
+
+        repository(handler).proposals.rejectRepaymentProposal("d1", "p1").getOrThrow()
+
+        val call = handler.rejectProposalCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals("p1", call.proposalPublicId)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+    }
+
+    @Test
+    fun withdrawViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore()).proposals.withdrawRepaymentProposal("d1", "p1")
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(handler.withdrawProposalCalls.isEmpty())
+    }
+
+    @Test
+    fun rejectViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore()).proposals.rejectRepaymentProposal("d1", "p1")
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(handler.rejectProposalCalls.isEmpty())
+    }
+
+    @Test
+    fun proposalWritesMintFreshKeyPerCall() = runTest {
+        val handler = DebtApiHandler()
+        val repository = repository(handler)
+
+        // ADR-0042: every proposal write (propose/confirm/withdraw/reject) is a distinct single-use
+        // intent — each call must mint a fresh, non-repeating key.
+        repeat(2) {
+            repository.proposals.proposeRepayment("d1", 10_000L, note = null, supersedesProposalPublicId = null).getOrThrow()
+            repository.proposals.confirmRepaymentProposal("d1", "p1", expectedRowVersion = 1L, confirmedAmountCents = null).getOrThrow()
+            repository.proposals.withdrawRepaymentProposal("d1", "p1").getOrThrow()
+            repository.proposals.rejectRepaymentProposal("d1", "p1").getOrThrow()
+        }
+
+        assertEquals(2, handler.proposeCalls.mapNotNull { it.idempotencyKey }.toSet().size)
+        assertEquals(2, handler.confirmProposalCalls.mapNotNull { it.idempotencyKey }.toSet().size)
+        assertEquals(2, handler.withdrawProposalCalls.mapNotNull { it.idempotencyKey }.toSet().size)
+        assertEquals(2, handler.rejectProposalCalls.mapNotNull { it.idempotencyKey }.toSet().size)
+    }
+
     private fun repository(
         handler: DebtApiHandler,
         settings: FakeTicketboxSettingsStore = boundSettingsStore(),
@@ -327,17 +515,51 @@ private data class CreateDebtCall(val request: DebtCreateRequestDto, val idempot
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
 private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
+private data class ProposeProposalCall(
+    val publicId: String,
+    val request: MemberRepaymentProposalCreateRequestDto,
+    val idempotencyKey: String?,
+)
+private data class WithdrawProposalCall(val publicId: String, val proposalPublicId: String, val idempotencyKey: String?)
+private data class ConfirmProposalCall(
+    val publicId: String,
+    val proposalPublicId: String,
+    val request: MemberRepaymentProposalConfirmRequestDto,
+    val idempotencyKey: String?,
+)
+private data class RejectProposalCall(val publicId: String, val proposalPublicId: String, val idempotencyKey: String?)
+
+private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): MemberRepaymentProposalDto =
+    MemberRepaymentProposalDto(
+        publicId = publicId,
+        debtPublicId = "d1",
+        status = MemberProposalStatuses.PENDING,
+        proposedAmountCents = proposed,
+        homeCurrencyCode = "CNY",
+        paidAt = "2026-06-16T00:00:00Z",
+        expiresAt = "2026-07-16T00:00:00Z",
+        createdAt = "2026-06-16T00:00:00Z",
+    )
 
 private class DebtApiHandler : InvocationHandler {
     val createCalls = mutableListOf<CreateDebtCall>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
     val adjustmentCalls = mutableListOf<AdjustmentCall>()
     val voidCalls = mutableListOf<VoidCall>()
+    // ADR-0049 §3.2 (slice 8d) proposal-route recordings.
+    val proposeCalls = mutableListOf<ProposeProposalCall>()
+    val withdrawProposalCalls = mutableListOf<WithdrawProposalCall>()
+    val confirmProposalCalls = mutableListOf<ConfirmProposalCall>()
+    val rejectProposalCalls = mutableListOf<RejectProposalCall>()
     var debtsResult: DebtListResponseDto? = null
     var debtsError: Throwable? = null
     // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
     var debtResult: DebtDto? = null
     var writeResult: DebtDto? = null
+    var proposalsResult: MemberRepaymentProposalListResponseDto? = null
+    var proposalResult: MemberRepaymentProposalDto? = null
+    // Fold-after Debt returned by the confirm route (a DebtResponse, like the slice-2 fact writes).
+    var confirmResult: DebtDto? = null
 
     fun service(): ApiService = Proxy.newProxyInstance(
         ApiService::class.java.classLoader,
@@ -393,7 +615,48 @@ private class DebtApiHandler : InvocationHandler {
                 )
                 writeResult ?: debtDto(publicId = values[0] as String)
             }
-            else -> error("unexpected ApiService call: ${method.name}")
+            // ADR-0049 §3.2 (slice 8d) proposal routes are dispatched in a helper so invoke stays
+            // under the LongMethod gate (the slice-2 fact arms already fill it).
+            else -> proposalCall(method.name, values)
         }
+    }
+
+    private fun proposalCall(name: String, values: Array<out Any?>): Any? = when (name) {
+        "repaymentProposals" ->
+            proposalsResult ?: MemberRepaymentProposalListResponseDto(items = listOf(proposalDto()))
+        "createRepaymentProposal" -> {
+            proposeCalls += ProposeProposalCall(
+                publicId = values[0] as String,
+                request = values[1] as MemberRepaymentProposalCreateRequestDto,
+                idempotencyKey = values[2] as String?,
+            )
+            proposalResult ?: proposalDto()
+        }
+        "withdrawRepaymentProposal" -> {
+            withdrawProposalCalls += WithdrawProposalCall(
+                publicId = values[0] as String,
+                proposalPublicId = values[1] as String,
+                idempotencyKey = values[3] as String?,
+            )
+            proposalResult ?: proposalDto(publicId = values[1] as String)
+        }
+        "confirmRepaymentProposal" -> {
+            confirmProposalCalls += ConfirmProposalCall(
+                publicId = values[0] as String,
+                proposalPublicId = values[1] as String,
+                request = values[2] as MemberRepaymentProposalConfirmRequestDto,
+                idempotencyKey = values[3] as String?,
+            )
+            confirmResult ?: debtDto(publicId = values[0] as String)
+        }
+        "rejectRepaymentProposal" -> {
+            rejectProposalCalls += RejectProposalCall(
+                publicId = values[0] as String,
+                proposalPublicId = values[1] as String,
+                idempotencyKey = values[3] as String?,
+            )
+            proposalResult ?: proposalDto(publicId = values[1] as String)
+        }
+        else -> error("unexpected ApiService call: $name")
     }
 }

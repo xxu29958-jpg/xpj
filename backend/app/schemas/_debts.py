@@ -94,6 +94,13 @@ class DebtResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     row_version: int
+    # ADR-0049 §3.2 / §5.2 (slice 8d): the SERVER-authoritative debtor/creditor role for the
+    # viewer of a member Debt — the client cannot derive it (it does not know its own account id,
+    # and ledger membership does not distinguish the same-ledger owner from a same-ledger member
+    # counterparty). ``True`` = viewer is the debtor (may propose / withdraw); ``False`` = creditor
+    # (may confirm / reject); ``None`` for an external Debt, a non-participant member, or any path
+    # without participant context (list / fact routes). Only ``get_participant_debt_response`` sets it.
+    viewer_is_debtor: bool | None = None
 
     @field_serializer("created_at", "updated_at", "exchange_rate_date")
     def serialize_debt_datetime(self, value: datetime | None) -> str | None:

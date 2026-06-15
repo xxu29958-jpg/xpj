@@ -51,6 +51,8 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.DebtDetailViewModel
+import com.ticketbox.viewmodel.MemberProposalUiState
+import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import kotlinx.coroutines.delay
 
 /** 操作成功提示的展示时长，到点自动收起，与 [DebtListScreen] 同一惯例。 */
@@ -68,37 +70,94 @@ private const val DebtDetailFlashDismissMillis = 4000L
 @Composable
 fun DebtDetailScreen(
     viewModel: DebtDetailViewModel,
+    proposalViewModel: MemberRepaymentProposalViewModel,
     currency: CurrencyDisplay,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
+    val proposalState by proposalViewModel.state.collectAsState()
+    val debt = state.debt
 
-    LaunchedEffect(state.flashMessage) {
-        if (state.flashMessage == null) return@LaunchedEffect
-        delay(DebtDetailFlashDismissMillis)
-        viewModel.dismissFlash()
-    }
+    DebtDetailEffects(
+        state = state,
+        proposalState = proposalState,
+        viewModel = viewModel,
+        proposalViewModel = proposalViewModel,
+    )
 
     BackHandler(onBack = onBack)
 
     AppScrollableContent(
         role = AppPageRole.Stats,
         isRefreshing = state.isLoading,
-        onRefresh = viewModel::refresh,
+        onRefresh = {
+            viewModel.refresh()
+            if (debt?.isMember == true) proposalViewModel.refresh()
+        },
         hasBottomBar = false,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
-        item { DebtDetailHeader(debt = state.debt, onBack = onBack) }
+        item { DebtDetailHeader(debt = debt, onBack = onBack) }
         state.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
+        proposalState.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
         state.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
-        state.debt?.let { debt ->
-            item { DebtSummaryCard(debt = debt, currency = currency) }
-            item { DebtActionPanel(debt = debt, canModify = state.canModify, onAction = viewModel::openAction) }
+        proposalState.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
+        debt?.let { loaded ->
+            item { DebtSummaryCard(debt = loaded, currency = currency) }
+            if (loaded.isMember) {
+                item {
+                    MemberProposalSection(
+                        debt = loaded,
+                        state = proposalState,
+                        viewModel = proposalViewModel,
+                        currency = currency,
+                    )
+                }
+            } else {
+                item { DebtActionPanel(debt = loaded, canModify = state.canModify, onAction = viewModel::openAction) }
+            }
         }
     }
 
     if (state.activeAction != null) {
         DebtActionSheet(state = state, viewModel = viewModel, onClose = viewModel::dismissAction)
+    }
+    if (debt != null && proposalState.activeForm != null) {
+        ProposalFormSheet(
+            state = proposalState,
+            viewModel = proposalViewModel,
+            expectedRowVersion = debt.rowVersion,
+            onClose = proposalViewModel::dismissForm,
+        )
+    }
+}
+
+// ADR-0049 §3.2 (slice 8d): the detail screen's side-effects, extracted so the screen composable
+// stays under the LongMethod gate. Loads the member proposal收发箱 on entry, refreshes the Debt
+// summary after a fold-changing confirm, and auto-dismisses both VMs' success flashes.
+@Composable
+private fun DebtDetailEffects(
+    state: DebtDetailUiState,
+    proposalState: MemberProposalUiState,
+    viewModel: DebtDetailViewModel,
+    proposalViewModel: MemberRepaymentProposalViewModel,
+) {
+    val debt = state.debt
+    LaunchedEffect(debt?.publicId, debt?.isMember) {
+        if (debt != null && debt.isMember) proposalViewModel.load(debt.publicId)
+    }
+    LaunchedEffect(proposalState.foldChangedAt) {
+        if (proposalState.foldChangedAt > 0) viewModel.refresh()
+    }
+    LaunchedEffect(state.flashMessage) {
+        if (state.flashMessage == null) return@LaunchedEffect
+        delay(DebtDetailFlashDismissMillis)
+        viewModel.dismissFlash()
+    }
+    LaunchedEffect(proposalState.flashMessage) {
+        if (proposalState.flashMessage == null) return@LaunchedEffect
+        delay(DebtDetailFlashDismissMillis)
+        proposalViewModel.dismissFlash()
     }
 }
 
@@ -184,10 +243,12 @@ private fun DebtSummaryRow(label: String, value: String) {
     }
 }
 
+// Only rendered for non-member (external/manual) debts; member debts route to MemberProposalSection
+// (§5.2 / slice8d). External debts are always direct-writable (guard_direct_fact_writable: external
+// + manual), so there is no member-note branch here.
 @Composable
 private fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtAction) -> Unit) {
     when {
-        !debt.isDirectWritable -> DebtNoteCard(stringResource(R.string.debt_detail_member_note))
         !debt.isOpen -> DebtNoteCard(stringResource(R.string.debt_detail_closed_note))
         !canModify -> Unit
         else -> Column(
@@ -208,7 +269,7 @@ private fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActio
 }
 
 @Composable
-private fun DebtNoteCard(text: String) {
+internal fun DebtNoteCard(text: String) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Text(
             text,
@@ -309,7 +370,7 @@ private fun DebtAdjustmentSignChips(increase: Boolean, onSelect: (Boolean) -> Un
 }
 
 @Composable
-private fun DebtActionFormButtons(isSubmitting: Boolean, onSubmit: () -> Unit, onCancel: () -> Unit) {
+internal fun DebtActionFormButtons(isSubmitting: Boolean, onSubmit: () -> Unit, onCancel: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
         Spacer(Modifier.width(AppSpacing.smallGap))

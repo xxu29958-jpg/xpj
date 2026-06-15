@@ -60,6 +60,12 @@ data class DebtDto(
     val updatedAt: String,
     @param:Json(name = "row_version")
     val rowVersion: Long,
+    // ADR-0049 §3.2 (slice 8d): server-authoritative viewer role for a member Debt (true=debtor /
+    // false=creditor / null=external·not-a-party·non-participant path). The client must NOT derive
+    // it — see domain Debt.viewerIsDebtor. Only the detail fetch (get_participant_debt_response)
+    // populates it; the list/fact responses leave it null.
+    @param:Json(name = "viewer_is_debtor")
+    val viewerIsDebtor: Boolean? = null,
 )
 
 data class DebtListResponseDto(

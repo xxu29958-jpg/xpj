@@ -44,6 +44,7 @@
     <ID>TooManyFunctions:LedgerRepositoryTestFixtures.kt:LedgerFakeSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:LedgerRepositoryTestFixtures.kt:StubApi : ApiService</ID>
     <ID>TooManyFunctions:LedgerViewModelTest.kt:LedgerViewModelTest</ID>
+    <ID>TooManyFunctions:MemberRepaymentProposalViewModelTest.kt:MemberRepaymentProposalViewModelTest</ID>
     <ID>TooManyFunctions:MerchantRepositoryOutboxFallbackTest.kt:MerchantRepositoryOutboxFallbackTest</ID>
     <ID>TooManyFunctions:NetworkErrorMapperTest.kt:NetworkErrorMapperTest</ID>
     <ID>TooManyFunctions:OutboxDrainEngineTest.kt:OutboxDrainEngineTest</ID>

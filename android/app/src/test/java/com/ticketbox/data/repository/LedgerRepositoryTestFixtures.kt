@@ -398,6 +398,32 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    override suspend fun repaymentProposals(
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto = ledgerUnsupported()
+    override suspend fun createRepaymentProposal(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = ledgerUnsupported()
+    override suspend fun withdrawRepaymentProposal(
+        publicId: String,
+        proposalPublicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = ledgerUnsupported()
+    override suspend fun confirmRepaymentProposal(
+        publicId: String,
+        proposalPublicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    override suspend fun rejectRepaymentProposal(
+        publicId: String,
+        proposalPublicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = ledgerUnsupported()
     override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = ledgerUnsupported()
     override suspend fun updateDashboardCards(
         request: DashboardCardsUpdateRequestDto,

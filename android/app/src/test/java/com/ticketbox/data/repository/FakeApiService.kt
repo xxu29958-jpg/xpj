@@ -586,6 +586,32 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
+    override suspend fun repaymentProposals(
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto = unsupported()
+    override suspend fun createRepaymentProposal(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = unsupported()
+    override suspend fun withdrawRepaymentProposal(
+        publicId: String,
+        proposalPublicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = unsupported()
+    override suspend fun confirmRepaymentProposal(
+        publicId: String,
+        proposalPublicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
+    override suspend fun rejectRepaymentProposal(
+        publicId: String,
+        proposalPublicId: String,
+        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = unsupported()
     override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = unsupported()
     override suspend fun updateDashboardCards(
         request: DashboardCardsUpdateRequestDto,

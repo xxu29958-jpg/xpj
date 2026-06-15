@@ -197,7 +197,6 @@
     <string name="debt_detail_principal">本金</string>
     <string name="debt_detail_paid">已偿还</string>
     <string name="debt_detail_status">状态</string>
-    <string name="debt_detail_member_note">成员之间的欠款需要对方确认才能记账，这里暂不支持直接操作。</string>
     <string name="debt_detail_closed_note">这笔欠款已结清或作废，无需再记账。</string>
     <string name="debt_detail_load_failed">欠款详情加载失败，请稍后再试。</string>
     <string name="debt_action_repayment_title">记还款</string>
@@ -218,6 +217,41 @@
     <string name="debt_action_adjustment_done">已记录调整。</string>
     <string name="debt_action_void_done">已作废这笔欠款。</string>
     <string name="debt_action_failed">操作失败，请稍后再试。</string>
+
+    <!-- ADR-0049 §3.2 (slice 8d) 成员欠款 repayment proposal 收发箱：债务人发起/撤回、债权人确认/拒绝。 -->
+    <string name="debt_proposal_debtor_title">还款给对方</string>
+    <string name="debt_proposal_debtor_hint">这笔欠款由对方记账，记一笔还款后需对方确认才生效。</string>
+    <string name="debt_proposal_debtor_pending_hint">已提交一笔还款，正在等待对方确认。</string>
+    <string name="debt_proposal_propose_action">记一笔还款（待对方确认）</string>
+    <string name="debt_proposal_withdraw_action">撤回这笔还款</string>
+    <string name="debt_proposal_creditor_title">对方的还款</string>
+    <string name="debt_proposal_creditor_waiting">等待对方发起还款。</string>
+    <string name="debt_proposal_creditor_pending">对方提交了一笔 %1$s 的还款，请确认是否收到。</string>
+    <string name="debt_proposal_confirm_action">确认收款</string>
+    <string name="debt_proposal_reject_action">拒绝</string>
+    <string name="debt_proposal_history_title">还款记录</string>
+    <string name="debt_proposal_note_label">备注（可选）</string>
+    <string name="debt_proposal_propose_title">记一笔还款</string>
+    <string name="debt_proposal_confirm_title">确认收款</string>
+    <string name="debt_proposal_voided_note">这笔欠款已作废，无需再处理还款。</string>
+    <string name="debt_proposal_cleared_note">这笔欠款已结清，无需再确认还款。</string>
+    <string name="debt_proposal_readonly_note">当前角色为只读，无法发起或确认还款。</string>
+    <string name="debt_proposal_not_party_note">你不是这笔欠款的当事方，无法发起或确认还款。</string>
+    <string name="debt_proposal_amount_validation">请输入大于 0 的金额。</string>
+    <string name="debt_proposal_confirm_over">确认金额不能超过对方提出的金额。</string>
+    <string name="debt_proposal_propose_done">已提交还款，等待对方确认。</string>
+    <string name="debt_proposal_confirm_done">已确认收款。</string>
+    <string name="debt_proposal_withdraw_done">已撤回这笔还款。</string>
+    <string name="debt_proposal_reject_done">已拒绝这笔还款。</string>
+    <string name="debt_proposal_action_failed">操作失败，请稍后再试。</string>
+    <string name="debt_proposal_load_failed">还款记录加载失败，请稍后再试。</string>
+    <string name="debt_proposal_status_pending">待确认</string>
+    <string name="debt_proposal_status_confirmed">已确认</string>
+    <string name="debt_proposal_status_partially_confirmed">部分确认</string>
+    <string name="debt_proposal_status_rejected">已拒绝</string>
+    <string name="debt_proposal_status_withdrawn">已撤回</string>
+    <string name="debt_proposal_status_expired">已过期</string>
+    <string name="debt_proposal_status_superseded">已替换</string>
 
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>

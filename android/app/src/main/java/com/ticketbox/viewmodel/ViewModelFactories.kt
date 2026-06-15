@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
@@ -98,6 +99,15 @@ fun debtDetailViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtDetailViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun memberRepaymentProposalViewModelFactory(
+    repository: DebtProposalActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return MemberRepaymentProposalViewModel(repository) as T
     }
 }
 
