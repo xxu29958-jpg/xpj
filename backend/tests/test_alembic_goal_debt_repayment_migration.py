@@ -61,6 +61,17 @@ def _scope_index_defs() -> dict[str, str]:
     return dict(rows)
 
 
+def _scope_index_wheres() -> dict[str, str]:
+    """The partial WHERE predicate per scope index — NOT the whole def.
+
+    ``goal_type`` is also an INDEXED COLUMN (the index is ON ``(tenant_id, month,
+    goal_type, period)``), so a whole-``indexdef`` substring check can't tell legacy
+    from widened — only the WHERE clause carries the ``goal_type = 'spending_limit'``
+    filter that item ④ adds. Split on `` WHERE `` and inspect the predicate.
+    """
+    return {name: indexdef.partition(" WHERE ")[2] for name, indexdef in _scope_index_defs().items()}
+
+
 def _assert_widened_shape() -> None:
     cols = _goals_columns()
     for name in _NEW_GOAL_COLUMNS:
@@ -69,11 +80,11 @@ def _assert_widened_shape() -> None:
     assert cols["target_amount_cents"]["nullable"] is True
     assert "debt_goal_links" in _table_names()
     assert "debt_repayment" in _type_check_sqltext()
-    # item ④: the two scope indexes must be filtered to spending_limit so they
+    # item ④: the two scope indexes' WHERE must be filtered to spending_limit so they
     # don't over-constrain debt goals.
-    defs = _scope_index_defs()
+    wheres = _scope_index_wheres()
     for name in _SCOPE_INDEXES:
-        assert "goal_type" in defs[name], f"{name} not scoped to goal_type: {defs.get(name)}"
+        assert "goal_type" in wheres[name], f"{name} WHERE not scoped to goal_type: {wheres.get(name)}"
 
 
 def _assert_legacy_shape() -> None:
@@ -84,10 +95,10 @@ def _assert_legacy_shape() -> None:
     assert cols["target_amount_cents"]["nullable"] is False
     assert "debt_goal_links" not in _table_names()
     assert "debt_repayment" not in _type_check_sqltext()
-    # Legacy scope indexes are unscoped (no goal_type filter).
-    defs = _scope_index_defs()
+    # Legacy scope indexes' WHERE is unscoped (no goal_type filter).
+    wheres = _scope_index_wheres()
     for name in _SCOPE_INDEXES:
-        assert "goal_type" not in defs[name], f"{name} unexpectedly scoped: {defs.get(name)}"
+        assert "goal_type" not in wheres[name], f"{name} WHERE unexpectedly scoped: {wheres.get(name)}"
 
 
 def _reset_empty_database() -> None:
