@@ -93,6 +93,16 @@ fun debtViewModelFactory(
 }
 
 @Suppress("UNCHECKED_CAST")
+fun createDebtGoalViewModelFactory(
+    reportsRepository: ReportsActions,
+    debtRepository: DebtActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return CreateDebtGoalViewModel(reportsRepository, debtRepository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 fun settingsViewModelFactory(
     repository: ExpenseRepository,
     settingsStore: LocalSettingsStore,

@@ -86,6 +86,11 @@ class OpenApiContractGateTest {
         // (additionalProperties=false → the forward check is the forbid protection).
         Pairing(GoalDto::class, "GoalResponse"),
         Pairing(GoalListResponseDto::class, "GoalListResponse"),
+        // ADR-0049 §6 (slice 8b) create body — one DTO for both goal types. The schema is
+        // additionalProperties=false (forward check = forbid protection: a debt-shape field
+        // the backend doesn't declare would 422), and the debt fields (goal_type /
+        // debt_public_ids) must exist in the schema for the debt-goal create to deserialize.
+        Pairing(GoalCreateRequestDto::class, "GoalCreateRequest"),
         Pairing(DebtRepaymentEvaluationDto::class, "DebtRepaymentEvaluation"),
         Pairing(DebtGoalLinkViewDto::class, "DebtGoalLinkView"),
         Pairing(DebtGoalLinksReplaceRequestDto::class, "DebtGoalLinksReplaceRequest"),

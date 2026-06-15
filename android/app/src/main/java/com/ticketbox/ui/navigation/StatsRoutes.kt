@@ -3,16 +3,21 @@ package com.ticketbox.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.BudgetScreen
+import com.ticketbox.ui.screens.CreateDebtGoalScreen
 import com.ticketbox.ui.screens.DebtGoalScreen
 import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.viewmodel.BudgetViewModel
+import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
@@ -21,6 +26,7 @@ import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.StatsBudgetViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.budgetViewModelFactory
+import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
@@ -29,6 +35,7 @@ import com.ticketbox.viewmodel.recurringViewModelFactory
 
 internal const val IncomePlanViewModelKey = "income-plans"
 internal const val DebtGoalViewModelKey = "debt-goals"
+internal const val CreateDebtGoalViewModelKey = "create-debt-goal"
 internal const val DebtListViewModelKey = "debts"
 
 @Composable
@@ -102,15 +109,40 @@ internal fun DebtGoalRoute(
         key = DebtGoalViewModelKey,
         factory = debtGoalViewModelFactory(screenFactory.reportsRepository),
     )
+    val createViewModel: CreateDebtGoalViewModel = viewModel(
+        key = CreateDebtGoalViewModelKey,
+        factory = createDebtGoalViewModelFactory(
+            screenFactory.reportsRepository,
+            screenFactory.debtRepository,
+        ),
+    )
     // overlay 在 open/close 间复用缓存 VM 且跨账本切换存活;每次(重新)进入都 reload
     // (先清旧账本的债务再拉),避免在新账本下短暂看到上一账本的欠款(账本隔离)。
     LaunchedEffect(Unit) { debtGoalViewModel.reload() }
-    // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
-    DebtGoalScreen(
-        viewModel = debtGoalViewModel,
-        currency = LocalCurrencyDisplay.current,
-        onBack = onBack,
-    )
+    val currency = LocalCurrencyDisplay.current
+    // 新建还债目标是 overlay 内的子页（与列表/详情互斥渲染）：showCreate 切换,各屏自带
+    // BackHandler（互斥 if/else 故同一时刻只有一个生效）。返回回到目标列表,创建成功后
+    // 关闭子页并让目标列表重拉。
+    var showCreate by rememberSaveable { mutableStateOf(false) }
+    if (showCreate) {
+        CreateDebtGoalScreen(
+            viewModel = createViewModel,
+            currency = currency,
+            onBack = { showCreate = false },
+            onCreated = {
+                showCreate = false
+                debtGoalViewModel.reload()
+            },
+        )
+    } else {
+        // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
+        DebtGoalScreen(
+            viewModel = debtGoalViewModel,
+            currency = currency,
+            onBack = onBack,
+            onCreate = { showCreate = true },
+        )
+    }
 }
 
 @Composable
