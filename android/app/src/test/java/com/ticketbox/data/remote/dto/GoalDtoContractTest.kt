@@ -49,16 +49,6 @@ class GoalDtoContractTest {
                 targetAmountCents = 80000,
             ),
         )
-        // ADR-0049 §6 (slice 8b): the debt-goal create shape — goal_type=debt_repayment +
-        // debt_public_ids, with month/target/category omitted (the backend 422s a debt goal
-        // carrying them). Locks the wire body the create-debt-goal flow sends.
-        val debtCreateJson = moshi.adapter(GoalCreateRequestDto::class.java).toJson(
-            GoalCreateRequestDto(
-                name = "还清欠款",
-                goalType = "debt_repayment",
-                debtPublicIds = listOf("debt-a", "debt-b"),
-            ),
-        )
         val updateJson = moshi.adapter(GoalUpdateRequestDto::class.java).toJson(
             GoalUpdateRequestDto(
                 expectedRowVersion = 1L,
@@ -76,12 +66,26 @@ class GoalDtoContractTest {
             createJson,
         )
         assertEquals(
-            """{"name":"还清欠款","goal_type":"debt_repayment","period":"monthly","debt_public_ids":["debt-a","debt-b"]}""",
-            debtCreateJson,
-        )
-        assertEquals(
             """{"expected_row_version":1,"target_amount_cents":90000}""",
             updateJson,
+        )
+    }
+
+    @Test
+    fun debtGoalCreateRequestSerializesDebtShape() {
+        // ADR-0049 §6 (slice 8b): the debt-goal create wire body — goal_type=debt_repayment +
+        // debt_public_ids, with month/target/category omitted (the backend 422s a debt goal
+        // carrying them). Moshi serializes in constructor order and drops nulls.
+        val debtCreateJson = moshi.adapter(GoalCreateRequestDto::class.java).toJson(
+            GoalCreateRequestDto(
+                name = "还清欠款",
+                goalType = "debt_repayment",
+                debtPublicIds = listOf("debt-a", "debt-b"),
+            ),
+        )
+        assertEquals(
+            """{"name":"还清欠款","goal_type":"debt_repayment","period":"monthly","debt_public_ids":["debt-a","debt-b"]}""",
+            debtCreateJson,
         )
     }
 }
