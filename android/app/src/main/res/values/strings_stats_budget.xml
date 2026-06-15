@@ -129,8 +129,11 @@
     <string name="debt_goal_review_title">需要复核</string>
     <string name="debt_goal_review_body_achieved">目标已达成，但有关联欠款被判作废。请确认如何处理。</string>
     <string name="debt_goal_review_body_not_evaluable">有关联欠款被判作废，目标暂时无法评估。请移除该作废欠款后继续。</string>
+    <string name="debt_goal_review_body_all_voided">全部关联欠款已被作废，该目标无法继续评估。可归档此目标。</string>
     <string name="debt_goal_review_action_remove">移除作废欠款</string>
     <string name="debt_goal_review_action_keep">保留存档</string>
+    <string name="debt_goal_review_action_archive">归档目标</string>
+    <string name="debt_goal_archived">已归档目标。</string>
     <string name="debt_goal_state_in_progress">进行中</string>
     <string name="debt_goal_state_achieved">已达成</string>
     <string name="debt_goal_state_not_evaluable">待复核</string>

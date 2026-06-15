@@ -199,6 +199,50 @@ class DebtGoalViewModelTest {
     }
 
     @Test
+    fun refreshRelatchesOpenDetailViaDetailEndpoint() = runTest(dispatcher) {
+        // the list path is read-only; an open detail must be re-latched via goal().
+        val listSnapshot = debtGoal(evaluationState = "in_progress")
+        val latchedDetail = debtGoal(evaluationState = "achieved")
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(listSnapshot)),
+            goalResult = Result.success(latchedDetail),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(listSnapshot)
+        advanceUntilIdle()
+        val goalCallsBefore = repo.goalCalls.size
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertTrue(repo.goalCalls.size > goalCallsBefore)
+        // selectedGoal came from the latching detail endpoint, not the in_progress list.
+        assertEquals("achieved", viewModel.state.value.selectedGoal?.debtRepayment?.evaluationState)
+    }
+
+    @Test
+    fun archiveSelectedClearsDetailAndReloads() = runTest(dispatcher) {
+        val goal = debtGoal(needsReview = true)
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(goal)),
+            goalResult = Result.success(goal),
+            archiveResult = Result.success(debtGoal(needsReview = true)),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(goal)
+        advanceUntilIdle()
+
+        viewModel.archiveSelected()
+        advanceUntilIdle()
+
+        assertEquals(listOf("debt-goal-1"), repo.archiveCalls)
+        assertNull(viewModel.state.value.selectedGoal)
+        assertTrue(viewModel.state.value.flashMessage != null)
+    }
+
+    @Test
     fun supersededRefreshStillClearsLoadingFlag() = runTest(dispatcher) {
         val repo = FakeReportsActions(
             debtGoalsResult = Result.success(listOf(debtGoal())),
@@ -337,10 +381,12 @@ private class FakeReportsActions(
     private val goalResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val replaceResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val acknowledgeResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
+    private val archiveResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
 ) : ReportsActions {
     val goalCalls = mutableListOf<String>()
     val replaceCalls = mutableListOf<ReplaceCall>()
     val acknowledgeCalls = mutableListOf<Pair<String, Long>>()
+    val archiveCalls = mutableListOf<String>()
     var debtGoalsCalls = 0
 
     /** When set, debtGoals() stalls until completed — used to interleave a slow load. */
@@ -392,8 +438,10 @@ private class FakeReportsActions(
     override suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun archiveGoal(publicId: String): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
+    override suspend fun archiveGoal(publicId: String): Result<Goal> {
+        archiveCalls += publicId
+        return archiveResult
+    }
 
     override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
         Result.failure(UnsupportedOperationException())

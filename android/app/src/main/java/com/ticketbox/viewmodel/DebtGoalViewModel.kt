@@ -89,18 +89,18 @@ class DebtGoalViewModel(
             }
             result.fold(
                 onSuccess = { goals ->
+                    // Do NOT derive selectedGoal from the list: the list path is read-only
+                    // (it never latches an all-cleared debt goal — only GET /api/goals/{id}
+                    // does), so re-latch the open detail via the detail endpoint below.
                     _state.update { current ->
                         current.copy(
                             isLoading = false,
                             canModify = repository.canModifyLedger(),
                             goals = goals,
-                            // Keep an open detail in sync with the refreshed list.
-                            selectedGoal = current.selectedGoal?.let { sel ->
-                                goals.firstOrNull { it.publicId == sel.publicId } ?: sel
-                            },
                             error = null,
                         )
                     }
+                    latchSelectedDetail(gen)
                 },
                 onFailure = { err ->
                     _state.update {
@@ -108,6 +108,26 @@ class DebtGoalViewModel(
                     }
                 },
             )
+        }
+    }
+
+    /**
+     * Re-fetch the open detail through the latching detail endpoint after a list load.
+     * The list path does not persist achievement (ADR-0049 §6: writer-gated latch lives
+     * only on GET /api/goals/{id}), so syncing an achieved detail from the list would show
+     * an unlatched "achieved" — a later reopen/void would then never have recorded
+     * achieved_version, breaking sticky achievement. Generation-guarded like the others.
+     */
+    private suspend fun latchSelectedDetail(gen: Long) {
+        val selected = _state.value.selectedGoal ?: return
+        val fresh = repository.goal(selected.publicId).getOrNull() ?: return
+        if (gen != loadGeneration) return
+        _state.update { current ->
+            if (current.selectedGoal?.publicId == fresh.publicId) {
+                current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))
+            } else {
+                current
+            }
         }
     }
 
@@ -161,6 +181,41 @@ class DebtGoalViewModel(
         viewModelScope.launch {
             val result = repository.acknowledgeDebtIntegrityReview(goal.publicId, goal.rowVersion)
             applyMutation(result, R.string.debt_goal_review_acknowledged)
+        }
+    }
+
+    /**
+     * Archive the open goal. The only clean exit when a not-yet-achieved goal's whole
+     * link set is voided (§6/F13): "remove voided" has no non-voided replacement and
+     * acknowledge is achieved-only, so without a Debt picker (a later slice) archiving
+     * is how the user clears the dead-end review.
+     */
+    fun archiveSelected() {
+        val goal = _state.value.selectedGoal ?: return
+        if (!_state.value.canModify) return
+        _state.update { it.copy(isSubmitting = true, error = null) }
+        viewModelScope.launch {
+            repository.archiveGoal(goal.publicId).fold(
+                onSuccess = {
+                    // Supersede in-flight loads, drop the detail, and reload the list
+                    // (the archived goal falls out of the default list).
+                    loadGeneration++
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            selectedGoal = null,
+                            flashMessage = UiText.res(R.string.debt_goal_archived),
+                            error = null,
+                        )
+                    }
+                    refresh()
+                },
+                onFailure = { err ->
+                    _state.update {
+                        it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_goal_update_failed))
+                    }
+                },
+            )
         }
     }
 

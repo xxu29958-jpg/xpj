@@ -218,10 +218,16 @@ private fun LazyListScope.debtGoalDetailSection(
         item {
             DebtGoalIntegrityReviewCard(
                 achieved = evaluation.isAchieved,
+                canRemoveVoided = evaluation.nonVoidedDebtPublicIds.isNotEmpty(),
                 canModify = state.canModify,
                 isSubmitting = state.isSubmitting,
-                onRemoveVoided = viewModel::removeVoidedDebts,
-                onAcknowledge = viewModel::acknowledge,
+                onAction = { action ->
+                    when (action) {
+                        DebtIntegrityAction.Acknowledge -> viewModel.acknowledge()
+                        DebtIntegrityAction.RemoveVoided -> viewModel.removeVoidedDebts()
+                        DebtIntegrityAction.Archive -> viewModel.archiveSelected()
+                    }
+                },
             )
         }
     }
@@ -252,13 +258,16 @@ private fun DebtGoalSummaryCard(goal: Goal) {
     }
 }
 
+/** The §6/F13 integrity-review exits the UI can offer (mapped to VM actions). */
+internal enum class DebtIntegrityAction { Acknowledge, RemoveVoided, Archive }
+
 @Composable
 private fun DebtGoalIntegrityReviewCard(
     achieved: Boolean,
+    canRemoveVoided: Boolean,
     canModify: Boolean,
     isSubmitting: Boolean,
-    onRemoveVoided: () -> Unit,
-    onAcknowledge: () -> Unit,
+    onAction: (DebtIntegrityAction) -> Unit,
 ) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
@@ -271,8 +280,11 @@ private fun DebtGoalIntegrityReviewCard(
             Spacer(Modifier.size(AppSpacing.miniGap))
             Text(
                 stringResource(
-                    if (achieved) R.string.debt_goal_review_body_achieved
-                    else R.string.debt_goal_review_body_not_evaluable,
+                    when {
+                        achieved -> R.string.debt_goal_review_body_achieved
+                        canRemoveVoided -> R.string.debt_goal_review_body_not_evaluable
+                        else -> R.string.debt_goal_review_body_all_voided
+                    },
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -281,9 +293,9 @@ private fun DebtGoalIntegrityReviewCard(
                 Spacer(Modifier.size(AppSpacing.compactGap))
                 DebtGoalIntegrityActions(
                     achieved = achieved,
+                    canRemoveVoided = canRemoveVoided,
                     isSubmitting = isSubmitting,
-                    onRemoveVoided = onRemoveVoided,
-                    onAcknowledge = onAcknowledge,
+                    onAction = onAction,
                 )
             }
         }
@@ -293,22 +305,33 @@ private fun DebtGoalIntegrityReviewCard(
 @Composable
 private fun DebtGoalIntegrityActions(
     achieved: Boolean,
+    canRemoveVoided: Boolean,
     isSubmitting: Boolean,
-    onRemoveVoided: () -> Unit,
-    onAcknowledge: () -> Unit,
+    onAction: (DebtIntegrityAction) -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        // §6/F13: "keep for audit" (acknowledge) only applies to an ALREADY achieved
-        // version — the backend 422s it for a not-yet-achieved (not_evaluable) version,
-        // whose only valid exit is link-replace.
-        if (achieved) {
-            OutlinedButton(onClick = onAcknowledge, enabled = !isSubmitting) {
-                Text(stringResource(R.string.debt_goal_review_action_keep))
+        when {
+            // §6/F13: "keep for audit" (acknowledge) only applies to an ALREADY achieved
+            // version (the backend 422s it otherwise) — pair it with link-replace.
+            achieved -> {
+                OutlinedButton(onClick = { onAction(DebtIntegrityAction.Acknowledge) }, enabled = !isSubmitting) {
+                    Text(stringResource(R.string.debt_goal_review_action_keep))
+                }
+                Spacer(Modifier.width(AppSpacing.smallGap))
+                Button(onClick = { onAction(DebtIntegrityAction.RemoveVoided) }, enabled = !isSubmitting) {
+                    Text(stringResource(R.string.debt_goal_review_action_remove))
+                }
             }
-            Spacer(Modifier.width(AppSpacing.smallGap))
-        }
-        Button(onClick = onRemoveVoided, enabled = !isSubmitting) {
-            Text(stringResource(R.string.debt_goal_review_action_remove))
+            // not_evaluable with a non-voided link to keep: link-replace removes the voided one.
+            canRemoveVoided ->
+                Button(onClick = { onAction(DebtIntegrityAction.RemoveVoided) }, enabled = !isSubmitting) {
+                    Text(stringResource(R.string.debt_goal_review_action_remove))
+                }
+            // every link voided: no valid replacement set + no Debt picker this slice → archive.
+            else ->
+                Button(onClick = { onAction(DebtIntegrityAction.Archive) }, enabled = !isSubmitting) {
+                    Text(stringResource(R.string.debt_goal_review_action_archive))
+                }
         }
     }
 }
