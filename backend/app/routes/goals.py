@@ -6,7 +6,19 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context, get_current_writer_context
 from app.config import get_settings
 from app.database import get_db
-from app.schemas import GoalCreateRequest, GoalListResponse, GoalResponse, GoalUpdateRequest
+from app.schemas import (
+    DebtGoalIntegrityReviewRequest,
+    DebtGoalLinksReplaceRequest,
+    GoalCreateRequest,
+    GoalListResponse,
+    GoalResponse,
+    GoalUpdateRequest,
+)
+from app.services.goal_debt_repayment_service import (
+    acknowledge_integrity_review,
+    list_debt_repayment_goals,
+    replace_debt_repayment_goal_links,
+)
 from app.services.goal_service import archive_goal, create_goal, get_goal_response, list_goals, update_goal
 from app.services.idempotency import (
     claim_idempotent_request,
@@ -25,10 +37,21 @@ router = APIRouter(
 def get_goals(
     month: str | None = None,
     include_archived: bool = False,
+    goal_type: str | None = None,
     timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> GoalListResponse:
+    # ADR-0049 §6: ``goal_type=debt_repayment`` lists the (month-less) debt goals;
+    # the default month-scoped path lists spending_limit goals only.
+    if goal_type == "debt_repayment":
+        return GoalListResponse(
+            items=list_debt_repayment_goals(
+                db,
+                tenant_id=auth.tenant_id,
+                include_archived=include_archived,
+            )
+        )
     timezone_name = timezone or get_settings().ocr_default_timezone
     target_month = month or current_month(timezone_name)
     return GoalListResponse(
@@ -50,11 +73,14 @@ def get_goal_detail(
     db: Session = Depends(get_db),
 ) -> GoalResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
+    # ADR-0049 §6: a writer's read of an all-cleared debt goal latches its
+    # achievement (sticky); a viewer's read computes the state but never writes.
     return get_goal_response(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
         timezone_name=timezone_name,
+        persist_achievement=auth.role != "viewer",
     )
 
 
@@ -106,6 +132,7 @@ def patch_goal(
             tenant_id=auth.tenant_id,
             public_id=public_id,
             timezone_name=timezone_name,
+            persist_achievement=True,
         )
 
     result = update_goal(
@@ -136,4 +163,102 @@ def post_goal_archive(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         timezone_name=timezone_name,
+    )
+
+
+@router.post("/{public_id}/debt-links", response_model=GoalResponse)
+def post_goal_debt_links(
+    public_id: str,
+    payload: DebtGoalLinksReplaceRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> GoalResponse:
+    # ADR-0049 §6: replace a debt_repayment goal's linked Debt set → a new goal
+    # version. Fold-changing OCC carrier (``expected_row_version`` bumps both the
+    # goal's row_version and goal_version); idempotency follows the same shape as
+    # PATCH (claim the key before the OCC claim, replay re-serialises the goal).
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="replace_debt_goal_links",
+        target_id=public_id,
+        body={"debt_public_ids": payload.debt_public_ids},
+        expected_row_version=payload.expected_row_version,
+        target_type="goal",
+    )
+    if claim is None:  # idempotent replay — re-serialise the current goal
+        return get_goal_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            persist_achievement=True,
+        )
+
+    replace_debt_repayment_goal_links(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        payload=payload,
+        commit=False,
+    )
+    mark_idempotency_succeeded(db, claim, resource_type="goal", resource_id=public_id)
+    db.commit()
+    # The OCC claim used synchronize_session=False; drop the stale identity map so
+    # the response re-reads the new goal_version + freshly written links.
+    db.expire_all()
+    return get_goal_response(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        persist_achievement=True,
+    )
+
+
+@router.post("/{public_id}/integrity-review/acknowledge", response_model=GoalResponse)
+def post_goal_integrity_review_acknowledge(
+    public_id: str,
+    payload: DebtGoalIntegrityReviewRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> GoalResponse:
+    # ADR-0049 §6/F13: acknowledge ("keep for audit") an achieved debt_repayment
+    # goal version whose linked set carries a debt-voided Debt — clears the integrity
+    # needs_review for that version. OCC carrier + idempotency, same shape as the
+    # link-replace route.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="acknowledge_debt_goal_integrity_review",
+        target_id=public_id,
+        body={},
+        expected_row_version=payload.expected_row_version,
+        target_type="goal",
+    )
+    if claim is None:  # idempotent replay — re-serialise the current goal
+        return get_goal_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            persist_achievement=True,
+        )
+
+    acknowledge_integrity_review(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        payload=payload,
+        commit=False,
+    )
+    mark_idempotency_succeeded(db, claim, resource_type="goal", resource_id=public_id)
+    db.commit()
+    db.expire_all()
+    return get_goal_response(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        persist_achievement=True,
     )

@@ -3963,6 +3963,100 @@
         "title": "DebtCreateRequest",
         "type": "object"
       },
+      "DebtGoalIntegrityReviewRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0049 §6/F13: acknowledge (\"keep for audit\") an achieved goal version\nwhose linked set carries a debt-voided Debt.\n\nOCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier).\nRecords the acknowledgement against the goal's CURRENT version, clearing the\nintegrity ``needs_review`` flag for that version. The other exit — removing the\nvoided Debt — goes through the link-replace route (a new version), not here.",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "DebtGoalIntegrityReviewRequest",
+        "type": "object"
+      },
+      "DebtGoalLinkView": {
+        "description": "One linked Debt's shell for a debt_repayment goal's evaluation block.\n\nThe Debt is in the goal's own ledger (the service rejects cross-tenant links),\nso this is the owner's own obligation shell — no cross-account redaction needed.",
+        "properties": {
+          "counterparty_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Label"
+          },
+          "counterparty_type": {
+            "title": "Counterparty Type",
+            "type": "string"
+          },
+          "debt_public_id": {
+            "title": "Debt Public Id",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "principal_amount_cents": {
+            "title": "Principal Amount Cents",
+            "type": "integer"
+          },
+          "remaining_amount_cents": {
+            "title": "Remaining Amount Cents",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "debt_public_id",
+          "status",
+          "direction",
+          "counterparty_type",
+          "principal_amount_cents",
+          "remaining_amount_cents",
+          "home_currency_code"
+        ],
+        "title": "DebtGoalLinkView",
+        "type": "object"
+      },
+      "DebtGoalLinksReplaceRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0049 §6: replace a debt_repayment goal's linked Debt set (new version).\n\nCarries ``expected_row_version`` so the audit's mutate-token coverage lane\nclassifies the route as a fold-changing OCC carrier (the link change bumps the\ngoal's ``row_version`` + ``goal_version``). ``debt_public_ids`` is the FULL new\nset (replace semantics, not add/remove deltas) and must be non-empty — a debt\ngoal always tracks at least one Debt.",
+        "properties": {
+          "debt_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Debt Public Ids",
+            "type": "array"
+          },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "debt_public_ids"
+        ],
+        "title": "DebtGoalLinksReplaceRequest",
+        "type": "object"
+      },
       "DebtListResponse": {
         "properties": {
           "items": {
@@ -3977,6 +4071,68 @@
           "items"
         ],
         "title": "DebtListResponse",
+        "type": "object"
+      },
+      "DebtRepaymentEvaluation": {
+        "description": "ADR-0049 §6 debt_repayment evaluation for the goal's CURRENT version.\n\n``evaluation_state``: ``in_progress`` / ``achieved`` / ``not_evaluable``.\n``achieved`` is latched per version and sticky — a later reopen (fold status\nback to ``open``) does NOT revert it and raises no review.\n\n``needs_review`` (§6/F13) is true when a linked Debt is *debt-voided* (status\n``voided``) and that void is unresolved: a NOT-yet-achieved version is\n``not_evaluable`` + ``needs_review``; an already-achieved version stays\n``achieved`` + ``needs_review`` (the integrity-review case). Both exits go\nthrough version machinery — replace the link set (→ new version) to remove the\nvoided Debt, or acknowledge (\"keep for audit\") to clear the flag for the\ncurrent version. A reopen (no ``voided`` Debt) never sets ``needs_review``.",
+        "properties": {
+          "achieved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Achieved At"
+          },
+          "achieved_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Achieved Version"
+          },
+          "evaluation_state": {
+            "title": "Evaluation State",
+            "type": "string"
+          },
+          "goal_version": {
+            "title": "Goal Version",
+            "type": "integer"
+          },
+          "linked_debts": {
+            "items": {
+              "$ref": "#/components/schemas/DebtGoalLinkView"
+            },
+            "title": "Linked Debts",
+            "type": "array"
+          },
+          "needs_review": {
+            "title": "Needs Review",
+            "type": "boolean"
+          },
+          "voided_debt_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Voided Debt Public Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "goal_version",
+          "evaluation_state",
+          "needs_review",
+          "linked_debts",
+          "voided_debt_public_ids"
+        ],
+        "title": "DebtRepaymentEvaluation",
         "type": "object"
       },
       "DebtResponse": {
@@ -5823,16 +5979,37 @@
             ],
             "title": "Category"
           },
+          "debt_public_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Public Ids"
+          },
           "goal_type": {
             "default": "spending_limit",
             "title": "Goal Type",
             "type": "string"
           },
           "month": {
-            "maxLength": 7,
-            "minLength": 7,
-            "title": "Month",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 7,
+                "minLength": 7,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
           },
           "name": {
             "maxLength": 80,
@@ -5846,15 +6023,20 @@
             "type": "string"
           },
           "target_amount_cents": {
-            "exclusiveMinimum": 0.0,
-            "title": "Target Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Amount Cents"
           }
         },
         "required": [
-          "name",
-          "month",
-          "target_amount_cents"
+          "name"
         ],
         "title": "GoalCreateRequest",
         "type": "object"
@@ -5910,6 +6092,16 @@
             ],
             "title": "Created At"
           },
+          "debt_repayment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtRepaymentEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "goal_type": {
             "title": "Goal Type",
             "type": "string"
@@ -5919,8 +6111,15 @@
             "type": "string"
           },
           "month": {
-            "title": "Month",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
           },
           "name": {
             "title": "Name",
@@ -5931,8 +6130,15 @@
             "type": "string"
           },
           "progress_percent": {
-            "title": "Progress Percent",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Percent"
           },
           "progress_state": {
             "title": "Progress State",
@@ -5943,24 +6149,45 @@
             "type": "string"
           },
           "remaining_amount_cents": {
-            "title": "Remaining Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Amount Cents"
           },
           "row_version": {
             "title": "Row Version",
             "type": "integer"
           },
           "spent_amount_cents": {
-            "title": "Spent Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent Amount Cents"
           },
           "status": {
             "title": "Status",
             "type": "string"
           },
           "target_amount_cents": {
-            "title": "Target Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Amount Cents"
           },
           "updated_at": {
             "anyOf": [
@@ -5980,11 +6207,6 @@
           "name",
           "goal_type",
           "period",
-          "month",
-          "target_amount_cents",
-          "spent_amount_cents",
-          "remaining_amount_cents",
-          "progress_percent",
           "progress_state",
           "status",
           "created_at",
@@ -5996,7 +6218,7 @@
       },
       "GoalUpdateRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2j: ``PATCH /api/goals/{public_id}`` body.\n\n``expected_row_version`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, updated_at = expected`` and returns 409 ``state_conflict``\non stale snapshot. Same shape as the rest of the v1.3 PATCH surface.",
+        "description": "ADR-0038 PR-2j: ``PATCH /api/goals/{public_id}`` body (spending_limit edits).\n\n``expected_row_version`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, updated_at = expected`` and returns 409 ``state_conflict``\non stale snapshot. Debt_repayment goals do NOT change month/category/\ntarget through this body — their linked Debt set changes via\n``POST /api/goals/{public_id}/debt-links`` (a new goal version).",
         "properties": {
           "category": {
             "anyOf": [
@@ -15510,6 +15732,22 @@
           },
           {
             "in": "query",
+            "name": "goal_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal Type"
+            }
+          },
+          {
+            "in": "query",
             "name": "timezone",
             "required": false,
             "schema": {
@@ -15933,6 +16171,194 @@
           }
         },
         "summary": "Post Goal Archive",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/goals/{public_id}/debt-links": {
+      "post": {
+        "operationId": "post_goal_debt_links_api_goals__public_id__debt_links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtGoalLinksReplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Goal Debt Links",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/goals/{public_id}/integrity-review/acknowledge": {
+      "post": {
+        "operationId": "post_goal_integrity_review_acknowledge_api_goals__public_id__integrity_review_acknowledge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtGoalIntegrityReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Goal Integrity Review Acknowledge",
         "tags": [
           "goals"
         ]

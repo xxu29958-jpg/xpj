@@ -462,7 +462,11 @@ Rules:
 - adding or removing linked Debt creates a new goal version
 - unlinking an open Debt MUST NOT retroactively achieve an older version
 - achievement is latched per goal version
-- voided linked Debt requires explicit goal-version policy before exposure; default is to make the current version `not_evaluable` until user reviews links
+- achievement is sticky once latched: a version with `achieved_version == goal_version` stays `achieved` and is NEVER reverted to `in_progress` / `not_evaluable`. A correction to an already-cleared linked Debt does not retroactively un-achieve a completed version. Two correction events are distinguished (ratified 2026-06-15, refining the initial resolution):
+  - **reopen** (a linked Debt's repayment is voided, or a positive adjustment pushes `remaining > 0`, so its fold status returns to `open`): the achieved version stays `achieved` with NO review prompt — a routine balance change on an already-completed goal is informational only.
+  - **debt-void** (a linked Debt is itself voided via `DebtVoid`, fold status `voided` — "this obligation never validly existed"): the achieved version stays `achieved` (the latch is not reverted) BUT the API/UI MUST raise a one-time **integrity review** (`needs_review = true`) forcing the user to acknowledge. This is the heavier "the basis of this achievement was ruled invalid" event and gets its own channel rather than passing silently.
+- a voided linked Debt makes a NOT-yet-achieved version `not_evaluable` + `needs_review` (F13); the default policy is `not_evaluable` until the user reviews links. (An already-achieved version is the integrity-review case above — `achieved` + `needs_review`, not `not_evaluable`.)
+- the integrity review (achieved + debt-void) has exactly two exits, both via existing version machinery — it never silently clears: (a) **remove the voided Debt** by replacing the link set → a new goal version that re-evaluates clean; or (b) **keep it for audit** via an explicit acknowledge action that records the acknowledgement against the current goal version, clearing `needs_review` for that version. The acknowledgement is goal-version-scoped: a later link change creates a new version whose integrity (if it still carries a voided Debt) must be re-acknowledged.
 - `not_evaluable` MUST NOT be silent: the UI/API must surface that a linked Debt was voided and offer a review action such as "remove this Debt from the goal" or "keep it for audit"
 - if every non-voided linked Debt is cleared and the only blocker is a voided linked Debt, the user review action creates a new goal version; the old version remains historically not evaluable unless explicitly resolved by that version policy
 
@@ -568,7 +572,7 @@ Concurrent case: if two distinct repayment intents each read `remaining=100` and
 
 ## F13: Linked Debt is voided while attached to a repayment goal
 
--> current goal version becomes `not_evaluable` with a required user review prompt; it must not silently freeze forever
+-> if the goal version has NOT yet latched achievement, it becomes `not_evaluable` with a required user review prompt; it must not silently freeze forever. An already-achieved (latched) version stays `achieved` (sticky, §6) but raises a one-time integrity review (`needs_review`) — the achievement is not reverted, yet the user is forced to acknowledge (keep-for-audit) or remove the voided Debt (→ new version). A mere reopen (repayment void / positive adjustment, fold status back to `open`) on an achieved version raises NO review — only `DebtVoid` does.
 
 ---
 

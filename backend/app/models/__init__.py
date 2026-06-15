@@ -26,7 +26,13 @@ from app.models.auth import (
 )
 from app.models.background_task import BackgroundTask
 from app.models.bill_split import BillSplitInvitation
-from app.models.budget import Budget, BudgetCategory, DashboardCardPreference, Goal
+from app.models.budget import (
+    Budget,
+    BudgetCategory,
+    DashboardCardPreference,
+    DebtGoalLink,
+    Goal,
+)
 from app.models.catalog import (
     DuplicateIgnore,
     ExpenseTag,
@@ -88,6 +94,7 @@ __all__ = [
     "DashboardCardPreference",
     "Debt",
     "DebtAdjustment",
+    "DebtGoalLink",
     "DebtVoid",
     "Device",
     "DuplicateIgnore",

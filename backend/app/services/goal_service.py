@@ -8,12 +8,17 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Goal
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
+from app.services import goal_debt_repayment_service
 from app.services.category_service import normalize_category
 from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
 from app.services.spending_contract_service import clean_month, confirmed_amount_query
 from app.services.time_service import now_utc
 
-VALID_GOAL_TYPES = {"spending_limit"}
+# ADR-0049 §6 slice 6 adds ``debt_repayment``; this module stays the facade — the
+# debt-only create/build logic lives in ``goal_debt_repayment_service`` and the
+# create/get dispatch below routes to it. ``spending_limit`` keeps every existing
+# code path unchanged.
+VALID_GOAL_TYPES = {"spending_limit", "debt_repayment"}
 VALID_PERIODS = {"monthly"}
 
 
@@ -190,7 +195,15 @@ def list_goals(
     include_archived: bool = False,
 ) -> list[GoalResponse]:
     month = _clean_month(month)
-    statement = ledger_scoped_select(Goal, tenant_id).where(Goal.month == month)
+    # spending_limit only: debt_repayment goals have a NULL month (excluded by the
+    # month filter anyway) and a different response shape — they list via
+    # ``goal_debt_repayment_service.list_debt_repayment_goals``. The explicit
+    # goal_type filter keeps this list (and /web/goals) provably debt-goal-free.
+    statement = (
+        ledger_scoped_select(Goal, tenant_id)
+        .where(Goal.month == month)
+        .where(Goal.goal_type == "spending_limit")
+    )
     if not include_archived:
         statement = statement.where(Goal.status != "archived")
     # nulls_first(): the total goal (category IS NULL) must sort before the
@@ -219,8 +232,15 @@ def get_goal_response(
     tenant_id: str,
     public_id: str,
     timezone_name: str | None = None,
+    persist_achievement: bool = False,
 ) -> GoalResponse:
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    if goal.goal_type == "debt_repayment":
+        # ADR-0049 §6: debt goals carry no monthly spend total; the evaluator
+        # builds the response (and latches a fresh achievement on writer reads).
+        return goal_debt_repayment_service.build_debt_repayment_goal_response(
+            db, goal, persist_achievement=persist_achievement
+        )
     totals = _month_spend_totals(
         db,
         tenant_id=tenant_id,
@@ -237,8 +257,21 @@ def create_goal(
     payload: GoalCreateRequest,
     timezone_name: str | None = None,
 ) -> GoalResponse:
-    now = now_utc()
     goal_type = _clean_goal_type(payload.goal_type)
+    if goal_type == "debt_repayment":
+        # ADR-0049 §6: debt goals link explicit Debt ids — no month/category/target
+        # and a versioned link table — so the whole create lives in the debt module.
+        return goal_debt_repayment_service.create_debt_repayment_goal(
+            db, tenant_id=tenant_id, payload=payload
+        )
+    # spending_limit: month + target are required; debt-only fields are rejected.
+    if payload.debt_public_ids is not None:
+        raise AppError(
+            "invalid_request", "支出上限目标不接受关联欠款。", status_code=422
+        )
+    if payload.month is None or payload.target_amount_cents is None:
+        raise AppError("invalid_request", status_code=422)
+    now = now_utc()
     period = _clean_period(payload.period)
     month = _clean_month(payload.month)
     category = _clean_category(payload.category)
@@ -306,6 +339,12 @@ def update_goal(
     regardless of ``commit``.
     """
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    if goal.goal_type == "debt_repayment":
+        # ADR-0049 §6: a debt goal has no month/category/target to PATCH and its
+        # linked Debt set changes only via the link-replace route (a new version).
+        raise AppError(
+            "invalid_request", "还债目标请通过关联欠款接口修改。", status_code=422
+        )
     if goal.status == "archived":
         raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
 
@@ -396,6 +435,14 @@ def archive_goal(
         bump_row_version(goal)
         db.commit()
         db.refresh(goal)
+    if goal.goal_type == "debt_repayment":
+        # ADR-0049 §6: a debt goal has a NULL target — the spending response
+        # builder would crash on int(None). The archive flip above is goal-type
+        # agnostic; only the response build differs. persist_achievement=False:
+        # archiving is not an achievement-evaluation read.
+        return goal_debt_repayment_service.build_debt_repayment_goal_response(
+            db, goal, persist_achievement=False
+        )
     totals = _month_spend_totals(
         db,
         tenant_id=tenant_id,
