@@ -48,6 +48,8 @@ internal enum class StatsSecondaryPage {
     BillSplits,
     // ADR-0049 §6 (slice 7): 还债目标(规划面, 与预算/收入计划同 overlay)。
     DebtGoals,
+    // ADR-0049 §2 (slice 8): 债务管理(欠款列表+新建外部欠款, 与还债目标同规划 overlay)。
+    Debts,
 }
 
 internal class MainShellState {
@@ -92,6 +94,10 @@ internal class MainShellState {
 
     fun openDebtGoals() {
         statsSecondaryPage = StatsSecondaryPage.DebtGoals
+    }
+
+    fun openDebts() {
+        statsSecondaryPage = StatsSecondaryPage.Debts
     }
 
     fun closeStatsSecondaryPage() {

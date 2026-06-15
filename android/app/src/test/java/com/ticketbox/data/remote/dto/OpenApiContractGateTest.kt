@@ -90,6 +90,12 @@ class OpenApiContractGateTest {
         Pairing(DebtGoalLinkViewDto::class, "DebtGoalLinkView"),
         Pairing(DebtGoalLinksReplaceRequestDto::class, "DebtGoalLinksReplaceRequest"),
         Pairing(DebtGoalIntegrityReviewRequestDto::class, "DebtGoalIntegrityReviewRequest"),
+        // ADR-0049 §2 (slice 8) Debt entity surface. DebtDto models all 21 DebtResponse
+        // properties (reverse check needs every required field); the create body is
+        // additionalProperties=false → the forward check is the forbid protection.
+        Pairing(DebtDto::class, "DebtResponse"),
+        Pairing(DebtListResponseDto::class, "DebtListResponse"),
+        Pairing(DebtCreateRequestDto::class, "DebtCreateRequest"),
     )
 
     // Backend `required` fields a DTO intentionally does NOT model (Android doesn't

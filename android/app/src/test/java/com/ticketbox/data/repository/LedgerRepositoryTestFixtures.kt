@@ -377,6 +377,11 @@ internal class StubApi(
         idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = ledgerUnsupported()
+    override suspend fun debts(): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
+    override suspend fun createDebt(
+        request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
     override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = ledgerUnsupported()
     override suspend fun updateDashboardCards(
         request: DashboardCardsUpdateRequestDto,

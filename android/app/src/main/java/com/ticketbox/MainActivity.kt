@@ -45,6 +45,7 @@ class MainActivity : FragmentActivity() {
                 budgetRepository = container.budgetRepository,
                 reportsRepository = container.reportsRepository,
                 incomePlanRepository = container.incomePlanRepository,
+                debtRepository = container.debtRepository,
                 outboxRepository = container.outboxRepository,
                 tagRepository = container.tagRepository,
                 appViewModelFactory = appViewModelFactory(

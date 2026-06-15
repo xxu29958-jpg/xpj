@@ -169,6 +169,12 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
+            // ADR-0049 §2 (slice 8): 债务管理(欠款列表+新建)规划二级页。
+            StatsSecondaryPage.Debts -> DebtRoute(
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+            )
+
             null -> MainTabRoute(
                 navController = navController,
                 shellState = shellState,
