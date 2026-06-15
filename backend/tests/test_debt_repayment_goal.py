@@ -187,6 +187,33 @@ def test_achieved_then_reopened_debt_stays_achieved(client: TestClient, *, ident
     assert {link["status"] for link in block["linked_debts"]} == {"open"}
 
 
+def test_achieved_version_stays_achieved_after_linked_debt_voided(client: TestClient, *, identity) -> None:
+    # ADR-0049 §6/F13 (ratified 2026-06-15, latch wins): a void of an
+    # already-cleared linked Debt on an ALREADY-achieved version does NOT
+    # un-achieve it. The void is surfaced (voided_debt_public_ids) but the version
+    # stays achieved with needs_review=False — only NOT-yet-achieved versions go
+    # not_evaluable on a void.
+    a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="达成后作废", debt_public_ids=[a["public_id"]]
+    ).json()
+    cleared = _clear_debt(client, identity.app_headers, a)
+
+    achieved = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
+    assert achieved.json()["debt_repayment"]["evaluation_state"] == "achieved"
+    assert achieved.json()["debt_repayment"]["achieved_version"] == 1
+
+    _void_debt(client, identity.app_headers, cleared)  # void the cleared linked Debt
+
+    detail = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
+    block = detail.json()["debt_repayment"]
+    assert block["evaluation_state"] == "achieved"  # sticky — latch wins over the void
+    assert block["needs_review"] is False
+    assert block["achieved_version"] == 1
+    assert block["voided_debt_public_ids"] == [a["public_id"]]  # but the void stays visible
+    assert {link["status"] for link in block["linked_debts"]} == {"voided"}
+
+
 def test_viewer_read_computes_achieved_without_latching(client: TestClient, *, identity) -> None:
     # Writer creates + clears the linked Debt but does NOT read the goal, so the
     # latch is not yet stamped. A viewer's read must COMPUTE 'achieved' but never

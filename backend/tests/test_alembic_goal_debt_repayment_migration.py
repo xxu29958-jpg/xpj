@@ -119,6 +119,8 @@ def test_widen_goals_for_debt_repayment_round_trips_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         # create_all builds the current (slice-6) models directly.
         _assert_widened_shape()
+        # Capture the scope-index definitions the ORM model builds (model predicate).
+        model_scope_defs = {n: _scope_index_defs()[n] for n in _SCOPE_INDEXES}
 
         _run_alembic(command.stamp, "20260615_0001")
         # Downgrade past 20260615_0001 → restores the spending_limit-only shape.
@@ -128,6 +130,18 @@ def test_widen_goals_for_debt_repayment_round_trips_on_postgres() -> None:
         # Upgrade back to head → re-widens via the guarded ALTER path.
         _run_alembic(command.upgrade, "head")
         _assert_widened_shape()
+        # Seam closer: the migration unconditionally DROP+CREATEs the scope indexes,
+        # so its predicate is what actually lands at runtime and the model's
+        # postgresql_where is only transient on the fresh path. The audit lane only
+        # checks postgresql_where PRESENCE, not text — so cross-check that the
+        # migration's recreated indexes are byte-identical (Postgres-normalized
+        # ``pg_get_indexdef``) to what the ORM model builds via create_all. A
+        # predicate-text drift between model and migration fails HERE, not silently.
+        migration_scope_defs = {n: _scope_index_defs()[n] for n in _SCOPE_INDEXES}
+        assert migration_scope_defs == model_scope_defs, (
+            f"model vs migration scope-index predicate drift:\n"
+            f"  model={model_scope_defs}\n  migration={migration_scope_defs}"
+        )
     finally:
         _reset_empty_database()
         _drop_alembic_version()

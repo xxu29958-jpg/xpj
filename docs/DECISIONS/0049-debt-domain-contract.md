@@ -462,7 +462,8 @@ Rules:
 - adding or removing linked Debt creates a new goal version
 - unlinking an open Debt MUST NOT retroactively achieve an older version
 - achievement is latched per goal version
-- voided linked Debt requires explicit goal-version policy before exposure; default is to make the current version `not_evaluable` until user reviews links
+- achievement is sticky once latched: a version with `achieved_version == goal_version` stays `achieved` even if a linked Debt later reopens (repayment void) OR is itself voided. A correction to an ALREADY-cleared linked Debt does not retroactively un-achieve a completed version. The reopened/voided Debt is still surfaced (e.g. `voided_debt_public_ids` + per-Debt status) so the correction stays visible/auditable, but it does NOT force `not_evaluable` or `needs_review` on an already-achieved version. (Resolves the §6-vs-F13 ambiguity for the void-after-achievement case in favor of the latch; ratified 2026-06-15.)
+- a voided linked Debt makes the current version `not_evaluable` ONLY while that version has not yet latched achievement; the default policy is `not_evaluable` until the user reviews links
 - `not_evaluable` MUST NOT be silent: the UI/API must surface that a linked Debt was voided and offer a review action such as "remove this Debt from the goal" or "keep it for audit"
 - if every non-voided linked Debt is cleared and the only blocker is a voided linked Debt, the user review action creates a new goal version; the old version remains historically not evaluable unless explicitly resolved by that version policy
 
@@ -568,7 +569,7 @@ Concurrent case: if two distinct repayment intents each read `remaining=100` and
 
 ## F13: Linked Debt is voided while attached to a repayment goal
 
--> current goal version becomes `not_evaluable` with a required user review prompt; it must not silently freeze forever
+-> if the goal version has NOT yet latched achievement, it becomes `not_evaluable` with a required user review prompt; it must not silently freeze forever. An already-achieved (latched) version stays `achieved` (sticky, §6) — the void is surfaced for audit but does not un-achieve a completed version.
 
 ---
 

@@ -98,6 +98,24 @@ def test_replace_links_requires_idempotency_key(client: TestClient, *, identity)
     assert response.status_code == 422, response.json()
 
 
+def test_replace_links_rejects_empty_set(client: TestClient, *, identity) -> None:
+    # A debt goal always tracks >=1 Debt — replacing the link set with [] is a
+    # schema 422 (DebtGoalLinksReplaceRequest.debt_public_ids min_length=1), with
+    # the service _resolve_linked_debts guard as defense-in-depth.
+    a = _create_external_debt(client, identity.app_headers)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="不能清空", debt_public_ids=[a["public_id"]]
+    ).json()
+    response = _replace_links(
+        client,
+        identity.app_headers,
+        goal["public_id"],
+        expected_row_version=goal["row_version"],
+        debt_public_ids=[],
+    )
+    assert response.status_code == 422, response.json()
+
+
 def test_replace_links_unknown_debt_404(client: TestClient, *, identity) -> None:
     a = _create_external_debt(client, identity.app_headers)
     goal = _create_debt_goal(
