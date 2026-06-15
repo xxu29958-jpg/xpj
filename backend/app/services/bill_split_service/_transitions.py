@@ -159,14 +159,15 @@ def accept_invitation(
     # in-session ``inv`` may not reflect yet) and the invitation's frozen
     # ``home_currency_code``.
     #
-    # KNOWN GAP (gated off until a later slice): when the sender (creditor) is
-    # NOT a member of ``target_ledger_id`` (e.g. the receiver's personal ledger),
-    # slice-3's repayment confirm/reject — ledger-scoped via
-    # ``get_current_writer_context`` + ``_load_debt(tenant_id=auth.tenant_id)`` —
-    # cannot reach this Debt, so the creditor cannot confirm/reject and the
-    # member-debt repayment flow stalls. ADR §5.2 mandates ACCOUNT-scoped
-    # cross-account confirmation; building that is the next Debt slice. This is
-    # why the rollout flag stays OFF until that lands.
+    # ADR-0049 §5.2 / slice 5: when the sender (creditor) is NOT a member of
+    # ``target_ledger_id`` (e.g. the receiver's personal ledger), the repayment
+    # confirm/reject path is now ACCOUNT-scoped — it resolves the Debt by
+    # participant identity (debtor OR creditor account) unioned with ledger
+    # membership, so the cross-ledger creditor can confirm/reject and clear this
+    # Debt (debt_service ``_load_participant_debt`` / ``lock_and_fold(account_id=)``).
+    # That closes the §0.1 hard-boundary prerequisite for ``DEBT_ROLLOUT_ENABLED``;
+    # the flag still defaults OFF as a deliberate rollout stage (creditor discovery
+    # UX + pre-rollout backfill remain product decisions, ADR §4 / §0.1).
     if get_settings().debt_rollout_enabled:
         create_bill_split_debt(
             db,

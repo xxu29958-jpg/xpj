@@ -31,16 +31,53 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeVar
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt
 from app.services.debt_service._fold import compute_remaining, derive_status
+from app.services.debt_service._query import participant_can_access
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.time_service import now_utc
 
 T = TypeVar("T")
+
+
+def _lock_debt(
+    db: Session, *, tenant_id: str, public_id: str, account_id: int | None
+) -> Debt:
+    """``SELECT Debt ... FOR UPDATE`` with the right §2.1/§5.2 scope.
+
+    ``account_id is None`` (slice-2 external/manual fact writes) keeps the
+    ledger-scoped lock: a Debt in another ledger is invisible (``debt_not_found``).
+    ``account_id`` supplied (slice-5 member proposal confirm) locks by public id,
+    then admits the actor when they are a ledger member OR the cross-ledger member
+    counterparty (§5.2 creditor) — anyone else still gets ``debt_not_found`` with
+    the same existence hiding. The row lock is held either way.
+    """
+    if account_id is None:
+        debt = db.scalar(
+            ledger_scoped_select(Debt, tenant_id)
+            .where(Debt.public_id == public_id)
+            .with_for_update()
+            .limit(1)
+        )
+        if debt is None:
+            raise AppError("debt_not_found", status_code=404)
+        return debt
+    debt = db.scalar(
+        select(Debt).where(Debt.public_id == public_id).with_for_update().limit(1)
+    )
+    if debt is None:
+        raise AppError("debt_not_found", status_code=404)
+    is_ledger_member, is_counterparty = participant_can_access(
+        debt, ledger_id=tenant_id, account_id=account_id
+    )
+    if not (is_ledger_member or is_counterparty):
+        raise AppError("debt_not_found", status_code=404)
+    return debt
 
 
 def lock_and_fold(
@@ -50,10 +87,12 @@ def lock_and_fold(
     public_id: str,
     expected_row_version: int | None,
     mutate: Callable[[Debt, int], T],
+    account_id: int | None = None,
 ) -> tuple[Debt, T]:
     """Serialize one fold-changing write on the parent Debt row (§2.1).
 
-    1. ``SELECT Debt ... FOR UPDATE`` (ledger-scoped; missing → ``debt_not_found``
+    1. ``SELECT Debt ... FOR UPDATE`` (ledger-scoped, or — when ``account_id`` is
+       given — participant-scoped per §5.2; missing/forbidden → ``debt_not_found``
        404 with cross-ledger existence hiding).
     2. A voided Debt is terminal — no further facts (``debt_already_voided``).
     3. Stale-intent fence: if ``expected_row_version`` is supplied and the locked
@@ -70,18 +109,17 @@ def lock_and_fold(
        DebtVoid mutate set ``status='voided'`` itself and ``derive_status``
        latches it).
 
+    ``account_id`` is the §5.2 participant admission: ``None`` (slice-2 facts)
+    keeps the pure ledger-scoped lock; supplied (slice-5 member repayment confirm)
+    admits a cross-ledger participant. Serial correctness (F8) is unaffected — the
+    row lock physically serializes every fold-changing writer on this Debt
+    regardless of which scope admitted them.
+
     Returns the locked Debt plus the ``mutate`` result. The route commits the
     child fact + parent bump + [[0042]] idempotency-success record in one
     transaction.
     """
-    debt = db.scalar(
-        ledger_scoped_select(Debt, tenant_id)
-        .where(Debt.public_id == public_id)
-        .with_for_update()
-        .limit(1)
-    )
-    if debt is None:
-        raise AppError("debt_not_found", status_code=404)
+    debt = _lock_debt(db, tenant_id=tenant_id, public_id=public_id, account_id=account_id)
     if debt.status == "voided":
         raise AppError("debt_already_voided", status_code=409)
     if expected_row_version is not None and debt.row_version != expected_row_version:

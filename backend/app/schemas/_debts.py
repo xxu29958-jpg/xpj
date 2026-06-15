@@ -68,7 +68,13 @@ class DebtCreateRequest(BaseModel):
 
 class DebtResponse(BaseModel):
     public_id: str
-    ledger_id: str
+    # ADR-0049 §5.2: optional so a cross-ledger participant view can redact it.
+    # A member Debt's two parties may live in different ledgers (a bill_split Debt
+    # is owned by the receiver's ledger with the sender as the cross-ledger
+    # creditor). When the viewer is a participant but NOT a member of the Debt's
+    # ledger, the response is the Debt shell only and ``ledger_id`` is ``None`` —
+    # the counterparty's ledger id is a private internal. Same-ledger reads keep it.
+    ledger_id: str | None = None
     direction: str
     counterparty_type: str
     counterparty_account_id: int | None = None

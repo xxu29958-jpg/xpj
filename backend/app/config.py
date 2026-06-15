@@ -139,12 +139,13 @@ class Settings:
     # ADR-0049 §4 bill-split → Debt linkage rollout gate. OFF by default: the
     # Debt domain is a target contract still being built out (ADR §0.1 runtime
     # subset), so accepting a bill split creates a Debt only once the rollout is
-    # deliberately switched on. HARD BOUNDARY: do NOT enable this until
-    # account-scoped participant confirm/reject (§5.2) lands — a bill-split
-    # member Debt is owned by the receiver's ledger with the sender as creditor,
-    # and today's ledger-scoped confirm/reject leaves the creditor unable to
-    # confirm/clear it, so enabling early would create un-repayable Debts.
-    # Flipping it on is forward-only per §4.
+    # deliberately switched on. The §0.1 HARD BOUNDARY (a bill-split member Debt
+    # is owned by the receiver's ledger with the sender as cross-ledger creditor)
+    # is now CLEARED: slice 5 made repayment confirm/reject account-scoped (§5.2),
+    # so the creditor can confirm/clear it even across ledgers. The flag still
+    # defaults OFF as a deliberate rollout stage (creditor discovery UX +
+    # pre-rollout backfill are product decisions). Flipping it on is forward-only
+    # per §4.
     debt_rollout_enabled: bool
 
     @property
