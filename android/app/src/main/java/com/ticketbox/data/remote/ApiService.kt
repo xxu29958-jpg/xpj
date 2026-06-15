@@ -8,11 +8,13 @@ import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
+import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
+import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
@@ -54,6 +56,7 @@ import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
+import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
@@ -531,6 +534,38 @@ interface ApiService {
     @POST("api/debts")
     suspend fun createDebt(
         @Body request: DebtCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): DebtDto
+
+    // ADR-0049 §2 (slice 8c): one Debt's server-derived fold (for the detail screen). 404
+    // debt_not_found; a cross-ledger participant gets the redacted shell (ledger_id null, §5.2).
+    @GET("api/debts/{publicId}")
+    suspend fun debt(@Path("publicId") publicId: String): DebtDto
+
+    // ADR-0049 §3 (slice 8c) direct fact writes for external/manual Debt (member/bill_split go
+    // through the slice-3 proposal flow, §5.2 → 409 here). Each carries expected_row_version in the
+    // body (§2.1 stale-intent fence + §3.6 fingerprint) and an ADR-0042 intent-time idempotency key
+    // in the header (nullable for Retrofit ergonomics — the repository always supplies a UUID). The
+    // repayment route returns RepaymentCreateResponse (a DebtResponse superset); Moshi keeps the
+    // shared fold fields and drops the unused repayment_public_id, so DebtDto is the right shape.
+    @POST("api/debts/{publicId}/repayments")
+    suspend fun recordDebtRepayment(
+        @Path("publicId") publicId: String,
+        @Body request: RepaymentCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): DebtDto
+
+    @POST("api/debts/{publicId}/adjustments")
+    suspend fun recordDebtAdjustment(
+        @Path("publicId") publicId: String,
+        @Body request: DebtAdjustmentCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): DebtDto
+
+    @POST("api/debts/{publicId}/void")
+    suspend fun voidDebt(
+        @Path("publicId") publicId: String,
+        @Body request: DebtVoidCreateRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
 

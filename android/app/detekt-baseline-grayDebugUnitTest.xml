@@ -22,8 +22,10 @@
     <ID>TooManyFunctions:BudgetRepositoryTest.kt:BudgetFakeSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:CreateDebtGoalViewModelTest.kt:CreateDebtGoalViewModelTest</ID>
     <ID>TooManyFunctions:CreateDebtGoalViewModelTest.kt:FakeCreateReportsActions : ReportsActions</ID>
+    <ID>TooManyFunctions:DebtDetailViewModelTest.kt:DebtDetailViewModelTest</ID>
     <ID>TooManyFunctions:DebtGoalViewModelTest.kt:DebtGoalViewModelTest</ID>
     <ID>TooManyFunctions:DebtGoalViewModelTest.kt:FakeReportsActions : ReportsActions</ID>
+    <ID>TooManyFunctions:DebtRepositoryTest.kt:DebtRepositoryTest</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:ExpenseDaoContractTest</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:FakeExpenseDao : ExpenseDao</ID>
     <ID>TooManyFunctions:ExpenseEditViewModelTest.kt:ExpenseEditViewModelTest</ID>

@@ -101,6 +101,12 @@ class OpenApiContractGateTest {
         Pairing(DebtDto::class, "DebtResponse"),
         Pairing(DebtListResponseDto::class, "DebtListResponse"),
         Pairing(DebtCreateRequestDto::class, "DebtCreateRequest"),
+        // ADR-0049 §3 (slice 8c) direct fact-write bodies. Each is additionalProperties=false →
+        // the forward check is the forbid protection; the home-currency-only DTOs intentionally omit
+        // the optional foreign-currency fields (a subset of the schema, so the forward check passes).
+        Pairing(RepaymentCreateRequestDto::class, "RepaymentCreateRequest"),
+        Pairing(DebtAdjustmentCreateRequestDto::class, "DebtAdjustmentCreateRequest"),
+        Pairing(DebtVoidCreateRequestDto::class, "DebtVoidCreateRequest"),
     )
 
     // Backend `required` fields a DTO intentionally does NOT model (Android doesn't

@@ -253,8 +253,30 @@ private class FakeCreateDebtActions(
 ) : DebtActions {
     override fun canModifyLedger(): Boolean = canModify
     override suspend fun listDebts(): Result<List<Debt>> = listResult
+    override suspend fun getDebt(publicId: String): Result<Debt> =
+        Result.failure(UnsupportedOperationException())
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> =
         Result.failure(UnsupportedOperationException())
+
+    // slice 8c widened DebtActions; the create-debt-goal flow only reads listDebts for the picker.
+    override suspend fun recordRepayment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun recordAdjustment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun voidDebt(
+        publicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 }
 
 private class FakeCreateReportsActions(

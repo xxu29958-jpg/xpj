@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -77,6 +78,7 @@ fun DebtListScreen(
     viewModel: DebtListViewModel,
     currency: CurrencyDisplay,
     onBack: () -> Unit,
+    onOpenDebt: (Debt) -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
@@ -110,7 +112,7 @@ fun DebtListScreen(
         state.error?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
-        debtListSection(state = state, currency = currency)
+        debtListSection(state = state, currency = currency, onOpenDebt = onOpenDebt)
     }
 
     if (showAddSheet) {
@@ -157,23 +159,24 @@ private fun DebtListHeader(
 private fun LazyListScope.debtListSection(
     state: DebtListUiState,
     currency: CurrencyDisplay,
+    onOpenDebt: (Debt) -> Unit,
 ) {
     if (state.debts.isEmpty() && !state.isLoading) {
         item { DebtEmptyStateCard() }
     } else {
         items(state.debts, key = { it.publicId }) { debt ->
-            DebtRow(debt = debt, currency = currency)
+            DebtRow(debt = debt, currency = currency, onClick = { onOpenDebt(debt) })
         }
     }
 }
 
 @Composable
-private fun DebtRow(debt: Debt, currency: CurrencyDisplay) {
+private fun DebtRow(debt: Debt, currency: CurrencyDisplay, onClick: () -> Unit) {
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(AppSpacing.cardPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {

@@ -188,10 +188,31 @@ private class FakeDebtActions(
         return listResult
     }
 
+    override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
+
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
         createDrafts += draft
         return createResult
     }
+
+    override suspend fun recordRepayment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun recordAdjustment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+        reason: String,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun voidDebt(
+        publicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
 }
 
 private fun sampleDebt(publicId: String = "debt-1"): Debt = Debt(

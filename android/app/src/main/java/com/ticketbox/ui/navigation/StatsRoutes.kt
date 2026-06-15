@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.CreateDebtGoalScreen
+import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.DebtGoalScreen
 import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.IncomePlanScreen
@@ -18,6 +19,7 @@ import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.viewmodel.BudgetViewModel
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
+import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
@@ -27,6 +29,7 @@ import com.ticketbox.viewmodel.StatsBudgetViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.budgetViewModelFactory
 import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
+import com.ticketbox.viewmodel.debtDetailViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
@@ -37,6 +40,7 @@ internal const val IncomePlanViewModelKey = "income-plans"
 internal const val DebtGoalViewModelKey = "debt-goals"
 internal const val CreateDebtGoalViewModelKey = "create-debt-goal"
 internal const val DebtListViewModelKey = "debts"
+internal const val DebtDetailViewModelKey = "debt-detail"
 
 @Composable
 internal fun BudgetRoute(
@@ -154,14 +158,37 @@ internal fun DebtRoute(
         key = DebtListViewModelKey,
         factory = debtViewModelFactory(screenFactory.debtRepository),
     )
+    val detailViewModel: DebtDetailViewModel = viewModel(
+        key = DebtDetailViewModelKey,
+        factory = debtDetailViewModelFactory(screenFactory.debtRepository),
+    )
     // overlay 复用缓存 VM 且跨账本切换存活;每次(重新)进入都 reload(先清旧账本的欠款再拉),
     // 避免在新账本下短暂看到上一账本的欠款(账本隔离;与 DebtGoalRoute 同构)。
     LaunchedEffect(Unit) { debtListViewModel.reload() }
-    DebtListScreen(
-        viewModel = debtListViewModel,
-        currency = LocalCurrencyDisplay.current,
-        onBack = onBack,
-    )
+    val currency = LocalCurrencyDisplay.current
+    // 欠款详情是 overlay 内的子页(与列表互斥渲染,各屏自带 BackHandler):点击列表行进入详情,
+    // 返回回到列表(顺手让列表重拉以反映详情里记的账)。详情 VM 是单例(常量 key),每次进入用
+    // loadDebt 重拉而非复用陈旧折叠(与 DebtGoalRoute 的 reload 同构)。
+    var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
+    val openDebtId = detailDebtId
+    if (openDebtId != null) {
+        LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
+        DebtDetailScreen(
+            viewModel = detailViewModel,
+            currency = currency,
+            onBack = {
+                detailDebtId = null
+                debtListViewModel.refresh()
+            },
+        )
+    } else {
+        DebtListScreen(
+            viewModel = debtListViewModel,
+            currency = currency,
+            onBack = onBack,
+            onOpenDebt = { detailDebtId = it.publicId },
+        )
+    }
 }
 
 @Composable

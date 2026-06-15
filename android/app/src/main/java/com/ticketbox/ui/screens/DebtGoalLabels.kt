@@ -19,6 +19,7 @@ import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
+import com.ticketbox.viewmodel.DebtAction
 
 /**
  * ADR-0049 §6 (slice 7): backend debt string values → localized labels + state tones.
@@ -53,6 +54,21 @@ internal fun debtDirectionLabelRes(direction: String): Int = when (direction) {
 internal fun debtCounterpartyFallbackRes(counterpartyType: String): Int = when (counterpartyType) {
     DebtCounterpartyTypes.MEMBER -> R.string.debt_goal_counterparty_member
     else -> R.string.debt_goal_counterparty_external
+}
+
+/** ADR-0049 §3 (slice 8c) detail action panel/sheet title for a [DebtAction]. */
+@StringRes
+internal fun debtActionTitleRes(action: DebtAction): Int = when (action) {
+    DebtAction.Repayment -> R.string.debt_action_repayment_title
+    DebtAction.Adjustment -> R.string.debt_action_adjustment_title
+    DebtAction.Void -> R.string.debt_action_void_title
+}
+
+/** Amount-field label for a [DebtAction] (adjustment is a signed delta, hence its own copy). */
+@StringRes
+internal fun debtActionAmountLabelRes(action: DebtAction): Int = when (action) {
+    DebtAction.Adjustment -> R.string.debt_action_adjustment_amount_label
+    else -> R.string.debt_action_amount_label
 }
 
 @Composable
