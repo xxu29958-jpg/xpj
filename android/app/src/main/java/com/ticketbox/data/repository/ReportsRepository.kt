@@ -31,6 +31,15 @@ interface ReportsActions {
     suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<CsvExport>
     suspend fun goals(month: String? = null, includeArchived: Boolean = false): Result<List<Goal>>
     suspend fun createGoal(draft: GoalDraft): Result<Goal>
+
+    /**
+     * ADR-0049 §6 (slice 8b): create a debt_repayment goal linking [debtPublicIds].
+     * Direct-only online (no outbox, no Idempotency-Key — the create route has none);
+     * viewer role short-circuits before the network. Server enforces the per-type
+     * rules (≥1 debt id, no month/target/category) — the repository validates the
+     * shape it can (non-blank name, ≥1 id) so a bad form fails fast without a call.
+     */
+    suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal>
     suspend fun goal(publicId: String): Result<Goal>
     suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal>
     suspend fun archiveGoal(publicId: String): Result<Goal>
@@ -153,6 +162,26 @@ class ReportsRepository(
             ledgerRequestGuard.guardedCall { api ->
                 api.createGoal(
                     request = cleanDraft.toRequest(),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
+        }
+    }
+
+    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal> {
+        if (!canModifyLedger()) {
+            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
+        }
+        val cleanName = name.cleanGoalName()
+            .getOrElse { return Result.failure(it) }
+        val cleanIds = debtPublicIds.cleanDebtPublicIds()
+            .getOrElse { return Result.failure(it) }
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                // No Idempotency-Key: POST /api/goals declares none (in-line create,
+                // not an outbox replay surface).
+                api.createGoal(
+                    request = debtGoalCreateRequest(cleanName, cleanIds),
                     timezone = currentTimezoneId(),
                 ).toDomain()
             }
@@ -447,14 +476,25 @@ sealed interface GoalSaveOutcome {
     data class Queued(override val goal: Goal) : GoalSaveOutcome
 }
 
-private const val DEBT_REPAYMENT_GOAL_TYPE = "debt_repayment"
-
 private val REPORTS_MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
+
+private const val GOAL_NAME_MAX = 80
 
 private fun List<String>.cleanDebtPublicIds(): Result<List<String>> {
     return runCatching {
-        val clean = map { it.trim() }.filter { it.isNotBlank() }
+        // Order-preserving dedupe (mirrors the backend resolver) so a doubly-tapped
+        // Debt isn't sent twice; the server also dedupes, but a clean request is tidier.
+        val clean = map { it.trim() }.filter { it.isNotBlank() }.distinct()
         require(clean.isNotEmpty()) { "请至少关联一笔欠款。" }
+        clean
+    }.mapError()
+}
+
+private fun String.cleanGoalName(): Result<String> {
+    return runCatching {
+        val clean = trim()
+        require(clean.isNotBlank()) { "请输入目标名称。" }
+        require(clean.length <= GOAL_NAME_MAX) { "目标名称太长。" }
         clean
     }.mapError()
 }

@@ -101,6 +101,9 @@ private class RecordingReportsActions : ReportsActions {
     override suspend fun createGoal(draft: GoalDraft): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
+    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal> =
+        Result.failure(UnsupportedOperationException())
+
     override suspend fun goal(publicId: String): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 

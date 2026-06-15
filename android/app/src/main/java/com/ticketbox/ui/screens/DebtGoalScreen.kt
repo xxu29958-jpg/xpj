@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,7 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.DebtGoalUiState
@@ -63,6 +65,7 @@ fun DebtGoalScreen(
     viewModel: DebtGoalViewModel,
     currency: CurrencyDisplay,
     onBack: () -> Unit,
+    onCreate: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val handleBack = {
@@ -90,6 +93,8 @@ fun DebtGoalScreen(
                 title = selected?.name ?: stringResource(R.string.debt_goal_topbar_title),
                 subtitle = if (selected == null) stringResource(R.string.debt_goal_intro_body) else null,
                 onBack = handleBack,
+                // CTA 仅在列表态（非详情）且可写时出现；创建走 onCreate（overlay 内子页）。
+                onCreate = if (selected == null && state.canModify) onCreate else null,
             )
         }
         state.flashMessage?.let { msg ->
@@ -107,7 +112,12 @@ fun DebtGoalScreen(
 }
 
 @Composable
-private fun DebtGoalHeader(title: String, subtitle: String?, onBack: () -> Unit) {
+private fun DebtGoalHeader(
+    title: String,
+    subtitle: String?,
+    onBack: () -> Unit,
+    onCreate: (() -> Unit)?,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         TextButton(onClick = onBack) {
             Icon(
@@ -118,7 +128,15 @@ private fun DebtGoalHeader(title: String, subtitle: String?, onBack: () -> Unit)
             Spacer(Modifier.width(4.dp))
             Text(stringResource(R.string.debt_goal_topbar_back))
         }
-        AppPageHeader(title = title, subtitle = subtitle)
+        AppPageHeader(title = title, subtitle = subtitle) {
+            if (onCreate != null) {
+                PrimaryCtaButton(
+                    text = stringResource(R.string.debt_goal_create_cta),
+                    icon = Icons.Default.Add,
+                    onClick = onCreate,
+                )
+            }
+        }
     }
 }
 

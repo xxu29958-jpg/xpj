@@ -174,6 +174,22 @@
     <string name="debt_create_added">已记录欠款。</string>
     <string name="debt_create_failed">保存失败，请稍后再试。</string>
 
+    <!-- ADR-0049 §6 (slice 8b) 新建还债目标：目标名称 + 未结清欠款多选选择器。 -->
+    <string name="debt_goal_create_cta">新建目标</string>
+    <string name="debt_goal_create_back">返回</string>
+    <string name="debt_goal_create_title">新建还债目标</string>
+    <string name="debt_goal_create_intro">选择想跟踪的未结清欠款，全部还清即达成目标。</string>
+    <string name="debt_goal_create_name_label">目标名称</string>
+    <string name="debt_goal_create_picker_title">关联欠款</string>
+    <string name="debt_goal_create_picker_empty_title">没有可关联的欠款</string>
+    <string name="debt_goal_create_picker_empty_body">先在债务管理里记一笔未结清的欠款，再回来创建目标。</string>
+    <string name="debt_goal_create_selected_count">已选 %1$d 笔</string>
+    <string name="debt_goal_create_save">创建目标</string>
+    <string name="debt_goal_create_submitting">创建中…</string>
+    <string name="debt_goal_create_validation">请输入目标名称并至少选择一笔欠款。</string>
+    <string name="debt_goal_create_failed">创建失败，请稍后再试。</string>
+    <string name="debt_goal_create_load_failed">欠款加载失败，请稍后再试。</string>
+
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>
     <string name="stats_recurring_candidates_count">%1$d 项</string>

@@ -56,15 +56,27 @@ data class ReportsOverviewDto(
     val categoryComparison: List<ReportCategoryComparisonDto>,
 )
 
+/**
+ * POST /api/goals body. One DTO serves both goal types (the backend has a single
+ * GoalCreateRequest schema with additionalProperties=false). spending_limit sends
+ * [month] + [targetAmountCents]; ADR-0049 §6 debt_repayment sends [goalType] =
+ * "debt_repayment" + [debtPublicIds] and leaves the spend-shape fields null —
+ * Moshi omits nulls, so the wire body carries only the fields that goal type
+ * needs (the backend 422s a debt goal that carries month/category/target, and a
+ * spending goal that carries debt_public_ids). See [GoalDraft.toRequest] (spending)
+ * and [debtGoalCreateRequest] (debt).
+ */
 data class GoalCreateRequestDto(
     val name: String,
-    val month: String,
-    @param:Json(name = "target_amount_cents")
-    val targetAmountCents: Long,
-    val category: String? = null,
     @param:Json(name = "goal_type")
     val goalType: String = "spending_limit",
     val period: String = "monthly",
+    val month: String? = null,
+    @param:Json(name = "target_amount_cents")
+    val targetAmountCents: Long? = null,
+    val category: String? = null,
+    @param:Json(name = "debt_public_ids")
+    val debtPublicIds: List<String>? = null,
 )
 
 /**

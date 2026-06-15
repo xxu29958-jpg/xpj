@@ -38,6 +38,7 @@ import java.lang.reflect.Proxy
 import java.util.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ReportsRepositoryTest {
@@ -116,6 +117,67 @@ class ReportsRepositoryTest {
             assertEquals("reports", savedCards.items[1].key)
             assertEquals(DashboardSurface.Android, cards.surface)
         }
+    }
+
+    @Test
+    fun createDebtGoalSendsDebtShapeRequestAndMapsDomain() = withReportsTimezone("UTC") {
+        runTest {
+            val api = ReportsApiHandler()
+            val repository = repository(api)
+
+            val created = repository.createDebtGoal(
+                name = " 还清欠款 ",
+                debtPublicIds = listOf(" debt-a ", "", "debt-b", "debt-a"),
+            ).getOrThrow()
+
+            val call = api.createGoalCalls.single()
+            assertEquals("还清欠款", call.request.name)
+            assertEquals("debt_repayment", call.request.goalType)
+            // trimmed + blanks dropped + de-duped, order preserved.
+            assertEquals(listOf("debt-a", "debt-b"), call.request.debtPublicIds)
+            // debt-goal shape: the spend fields are omitted (null on the wire).
+            assertNull(call.request.month)
+            assertNull(call.request.targetAmountCents)
+            assertNull(call.request.category)
+            assertEquals("UTC", call.timezone)
+            assertTrue(created.isDebtRepayment)
+        }
+    }
+
+    @Test
+    fun createDebtGoalRejectedForViewerWithoutApiCall() = runTest {
+        val api = ReportsApiHandler()
+        val repository = repository(api, role = "viewer")
+
+        val result = repository.createDebtGoal("还清欠款", listOf("debt-a"))
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(api.createGoalCalls.isEmpty())
+    }
+
+    @Test
+    fun createDebtGoalRejectsEmptyIdsBeforeApiCall() = runTest {
+        val api = ReportsApiHandler()
+        val repository = repository(api)
+
+        val result = repository.createDebtGoal("还清欠款", listOf("  ", ""))
+
+        assertTrue(result.isFailure)
+        assertEquals("请至少关联一笔欠款。", result.exceptionOrNull()?.message)
+        assertTrue(api.createGoalCalls.isEmpty())
+    }
+
+    @Test
+    fun createDebtGoalRejectsBlankNameBeforeApiCall() = runTest {
+        val api = ReportsApiHandler()
+        val repository = repository(api)
+
+        val result = repository.createDebtGoal("   ", listOf("debt-a"))
+
+        assertTrue(result.isFailure)
+        assertEquals("请输入目标名称。", result.exceptionOrNull()?.message)
+        assertTrue(api.createGoalCalls.isEmpty())
     }
 
     @Test
@@ -463,11 +525,13 @@ private class ReportsApiHandler : InvocationHandler {
             }
             "createGoal" -> {
                 createGoalError?.let { throw it }
+                val request = values[0] as GoalCreateRequestDto
                 createGoalCalls += CreateGoalCall(
-                    request = values[0] as GoalCreateRequestDto,
+                    request = request,
                     timezone = values[1] as String?,
                 )
-                goalDto(category = (values[0] as GoalCreateRequestDto).category)
+                // ADR-0049 §6 (slice 8b): a debt_repayment create returns a debt goal shape.
+                if (request.goalType == "debt_repayment") debtGoalDto() else goalDto(category = request.category)
             }
             "goal" -> goalDto()
             "updateGoal" -> {
