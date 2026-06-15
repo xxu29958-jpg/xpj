@@ -1,8 +1,10 @@
 """ADR-0049 §2 / §5.1 Debt creation: validate, freeze principal, insert.
 
-Handles public external/manual Debt creation only (slice 1). Member-Debt
-adverse-interest creation rules (§5.2), bill-split linkage (§4), and any
-fold-changing write live in later slices.
+Handles public external/manual Debt creation (slice 1, ``create_debt``) plus the
+server-only bill-split linkage (§4, slice 4, ``create_bill_split_debt``) — the
+internal entry that bypasses the public-create member/bill_split guards because
+the debtor accepted the split invitation (§5.2). Member-Debt adverse-interest
+manual-creation rules (§5.2) and fold-changing writes live in other slices.
 
 Currency (§2.2): a home-currency Debt stores ``principal_amount_cents`` directly.
 A foreign-currency Debt freezes a backend-authoritative home principal from the
@@ -16,6 +18,8 @@ Request idempotency ([[0042]]) is handled by the route via
 """
 
 from __future__ import annotations
+
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -148,4 +152,78 @@ def create_debt(
         db.refresh(debt)
     else:
         db.flush()
+    return debt
+
+
+def create_bill_split_debt(
+    db: Session,
+    *,
+    ledger_id: str,
+    receiver_account_id: int,
+    sender_account_id: int,
+    amount_cents: int,
+    home_currency_code: str,
+    source_invitation_public_id: str,
+    event_time: datetime | None,
+) -> Debt:
+    """ADR-0049 §4: insert the receiver-side member Debt for an accepted bill split.
+
+    Called from inside ``bill_split_service.accept_invitation``'s transaction so
+    the Debt commits together with the receiver expense and the invited→accepted
+    claim — §4 "all three outcomes commit together or none commit". This is the
+    ONLY path allowed to create a ``member`` + ``bill_split`` Debt: it bypasses
+    the public-create guards (``_clean_counterparty_type`` / ``_clean_source_type``
+    reject ``member`` / ``bill_split``) because §5.2 makes it valid — the debtor
+    (the receiver) just accepted the invitation.
+
+    The receiver owes ``amount_cents`` — the agreed HOME-currency share, not the
+    parent's original-currency total — so the principal freezes as a plain
+    home-currency amount (original provenance NULL), mirroring the receiver
+    expense ``accept_invitation`` writes. The invitation's foreign provenance is
+    the PARENT expense's full original snapshot (``original_amount_minor`` is the
+    parent total, not this share); copying it onto a share-sized principal would
+    break the ``principal ≈ original × rate`` relationship and misstate the
+    obligation, so it is intentionally NOT copied — the foreign origin stays
+    auditable via ``source_type``/``source_id`` → the invitation. ``home_currency_code``
+    is frozen from the invitation snapshot (not the live ``home_currency_code()``
+    setting) so a later home-currency change cannot rewrite this Debt's currency.
+    Dedup is the ``uq_debts_source``
+    ``(source_type, source_id)`` constraint plus the caller's re-accept fast
+    path: a re-accept returns the existing result before reaching here, so no
+    second Debt is attempted (§4 "re-accept ... MUST NOT create another Debt").
+    ``row_version`` stays at its insert default of 1 ([[0041]]); ``flush`` (not
+    ``commit``) lets the accept transaction commit everything atomically.
+    """
+    money = freeze_home_amount(
+        db,
+        tenant_id=ledger_id,
+        amount_cents=amount_cents,
+        original_currency=None,
+        original_amount=None,
+        event_time=event_time,
+        amount_error="debt_amount_invalid",
+    )
+    # Freeze the invitation's home currency rather than the live app default the
+    # shared helper fills in, so this Debt records the currency the share was
+    # agreed in (§4 "currency ... from the frozen invitation snapshot").
+    money["home_currency_code"] = home_currency_code
+    now = now_utc()
+    debt = Debt(
+        tenant_id=ledger_id,
+        owner_account_id=receiver_account_id,
+        created_by_account_id=receiver_account_id,
+        direction="i_owe",
+        counterparty_type="member",
+        counterparty_account_id=sender_account_id,
+        counterparty_label=None,
+        status="open",
+        source_type="bill_split",
+        source_id=source_invitation_public_id,
+        principal_amount_cents=money.pop("amount_cents"),
+        created_at=now,
+        updated_at=now,
+        **money,
+    )
+    db.add(debt)
+    db.flush()
     return debt

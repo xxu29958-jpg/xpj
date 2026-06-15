@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import BillSplitInvitation, Expense
@@ -17,6 +18,7 @@ from app.services.bill_split_service._common import (
     _load_writer_member,
 )
 from app.services.bill_split_service._query import get_invitation
+from app.services.debt_service import create_bill_split_debt
 from app.services.exchange_rate_service import default_rate_date
 from app.services.time_service import ensure_utc, now_utc
 
@@ -146,6 +148,36 @@ def accept_invitation(
            actor_account_id=accepting_account_id,
            target_account_id=inv.sender_account_id,
            invitation_public_id=inv.public_id)
+    # ADR-0049 §4: when Debt rollout is on, the accepted split also creates the
+    # receiver's member Debt (i_owe the sender) in THIS transaction, so the
+    # expense, the invited→accepted claim, and the Debt commit together or not
+    # at all. Gated off by default (ADR §0.1 runtime subset). A re-accept never
+    # reaches here (the fast path returned the settled result above), so it
+    # cannot create a second Debt; uq_debts_source backstops any race. The
+    # receiver owes the home-currency share ``inv.amount_cents``; pass
+    # ``target_ledger_id`` (the claim just bound receiver_ledger_id, which the
+    # in-session ``inv`` may not reflect yet) and the invitation's frozen
+    # ``home_currency_code``.
+    #
+    # KNOWN GAP (gated off until a later slice): when the sender (creditor) is
+    # NOT a member of ``target_ledger_id`` (e.g. the receiver's personal ledger),
+    # slice-3's repayment confirm/reject — ledger-scoped via
+    # ``get_current_writer_context`` + ``_load_debt(tenant_id=auth.tenant_id)`` —
+    # cannot reach this Debt, so the creditor cannot confirm/reject and the
+    # member-debt repayment flow stalls. ADR §5.2 mandates ACCOUNT-scoped
+    # cross-account confirmation; building that is the next Debt slice. This is
+    # why the rollout flag stays OFF until that lands.
+    if get_settings().debt_rollout_enabled:
+        create_bill_split_debt(
+            db,
+            ledger_id=target_ledger_id,
+            receiver_account_id=inv.receiver_account_id,
+            sender_account_id=inv.sender_account_id,
+            amount_cents=inv.amount_cents,
+            home_currency_code=inv.home_currency_code,
+            source_invitation_public_id=inv.public_id,
+            event_time=inv.expense_time_snapshot,
+        )
     db.commit()
     db.refresh(inv)
     db.refresh(received)
