@@ -175,11 +175,7 @@ internal fun StatsRoute(
         }
     }
 
-    val state = mergeStatsUiState(
-        monthly = monthlyState,
-        budget = budgetState,
-        reports = reportsState,
-    )
+    val state = mergeStatsUiState(monthly = monthlyState, budget = budgetState, reports = reportsState)
 
     StatsScreen(
         state = state,

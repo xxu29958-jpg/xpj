@@ -249,9 +249,7 @@ private fun DebtAddSheet(
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         DebtDraftForm(
             state = state,
-            onDirection = viewModel::updateDraftDirection,
-            onCounterparty = viewModel::updateDraftCounterparty,
-            onAmount = viewModel::updateDraftAmount,
+            viewModel = viewModel,
             onSubmit = {
                 viewModel.submitDraft()
                 coroutineScope.launch {
@@ -269,9 +267,7 @@ private fun DebtAddSheet(
 @Composable
 private fun DebtDraftForm(
     state: DebtListUiState,
-    onDirection: (String) -> Unit,
-    onCounterparty: (String) -> Unit,
-    onAmount: (String) -> Unit,
+    viewModel: DebtListViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -289,11 +285,11 @@ private fun DebtDraftForm(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
-        DebtDirectionChips(selected = draft.direction, onSelect = onDirection)
+        DebtDirectionChips(selected = draft.direction, onSelect = viewModel::updateDraftDirection)
         Spacer(Modifier.size(AppSpacing.compactGap))
         OutlinedTextField(
             value = draft.counterpartyLabel,
-            onValueChange = onCounterparty,
+            onValueChange = viewModel::updateDraftCounterparty,
             label = { Text(stringResource(R.string.debt_create_label_counterparty)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -301,7 +297,7 @@ private fun DebtDraftForm(
         Spacer(Modifier.size(AppSpacing.compactGap))
         OutlinedTextField(
             value = draft.amountYuanInput,
-            onValueChange = onAmount,
+            onValueChange = viewModel::updateDraftAmount,
             label = { Text(stringResource(R.string.debt_create_label_amount)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
