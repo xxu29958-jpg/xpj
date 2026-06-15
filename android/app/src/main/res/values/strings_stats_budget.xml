@@ -15,6 +15,7 @@
     <string name="stats_header_open_budget">预算</string>
     <string name="stats_header_open_recurring">固定支出</string>
     <string name="stats_header_open_income_plans">收入计划</string>
+    <string name="stats_header_open_debt_goals">还债目标</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
@@ -113,6 +114,38 @@
     <string name="stats_reports_goal_total">总支出</string>
     <string name="stats_reports_goal_progress">%1$s · 已花 %2$s · 剩 %3$s</string>
     <string name="stats_reports_goal_percent">%1$d%%</string>
+
+    <!-- ADR-0049 §6 (slice 7) 还债目标：还债目标列表/详情 + §6/F13 完整性复核 -->
+    <string name="debt_goal_topbar_back">返回</string>
+    <string name="debt_goal_topbar_title">还债目标</string>
+    <string name="debt_goal_intro_body">跟踪关联欠款的清偿，全部还清即达成目标。</string>
+    <string name="debt_goal_empty_title">还没有还债目标</string>
+    <string name="debt_goal_empty_body">把一笔或多笔欠款关联到目标后，这里会显示它们的清偿进度。</string>
+    <string name="debt_goal_card_linked_count">%1$d 笔关联欠款</string>
+    <string name="debt_goal_card_needs_review">需要复核</string>
+    <string name="debt_goal_detail_links_title">关联欠款</string>
+    <string name="debt_goal_detail_achieved_hint">全部关联欠款已结清。</string>
+    <string name="debt_goal_link_meta">%1$s · 剩余 %2$s · 本金 %3$s</string>
+    <string name="debt_goal_review_title">需要复核</string>
+    <string name="debt_goal_review_body_achieved">目标已达成，但有关联欠款被判作废。请确认如何处理。</string>
+    <string name="debt_goal_review_body_not_evaluable">有关联欠款被判作废，目标暂时无法评估。请移除它或保留存档。</string>
+    <string name="debt_goal_review_action_remove">移除作废欠款</string>
+    <string name="debt_goal_review_action_keep">保留存档</string>
+    <string name="debt_goal_state_in_progress">进行中</string>
+    <string name="debt_goal_state_achieved">已达成</string>
+    <string name="debt_goal_state_not_evaluable">待复核</string>
+    <string name="debt_link_status_open">未结清</string>
+    <string name="debt_link_status_cleared">已结清</string>
+    <string name="debt_link_status_voided">已作废</string>
+    <string name="debt_direction_i_owe">我欠</string>
+    <string name="debt_direction_owed_to_me">欠我</string>
+    <string name="debt_goal_counterparty_member">家庭成员</string>
+    <string name="debt_goal_counterparty_external">外部欠款</string>
+    <string name="debt_goal_load_failed">还债目标加载失败，请稍后再试。</string>
+    <string name="debt_goal_update_failed">更新失败，请稍后再试。</string>
+    <string name="debt_goal_links_updated">已更新关联的欠款。</string>
+    <string name="debt_goal_review_acknowledged">已确认保留存档。</string>
+    <string name="debt_goal_remove_voided_needs_one">至少需要保留一笔有效欠款。</string>
 
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>

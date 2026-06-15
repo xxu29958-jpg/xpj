@@ -8,6 +8,8 @@ import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
+import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
+import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
@@ -460,6 +462,9 @@ interface ApiService {
     suspend fun goals(
         @Query("month") month: String? = null,
         @Query("include_archived") includeArchived: Boolean = false,
+        // ADR-0049 §6 (slice 7): "debt_repayment" lists the (month-less) debt goals;
+        // null/omitted keeps the historical spending_limit month-scoped behaviour.
+        @Query("goal_type") goalType: String? = null,
         @Query("timezone") timezone: String? = null,
     ): GoalListResponseDto
 
@@ -488,6 +493,28 @@ interface ApiService {
     @POST("api/goals/{publicId}/archive")
     suspend fun archiveGoal(
         @Path("publicId") publicId: String,
+        @Query("timezone") timezone: String? = null,
+    ): GoalDto
+
+    // ADR-0049 §6 (slice 7): replace a debt_repayment goal's linked Debt set →
+    // a new goal version. OCC token in the body + ADR-0042 intent-time idempotency
+    // key in the header (mirrors updateGoal). Returns the fold-after GoalDto.
+    @POST("api/goals/{publicId}/debt-links")
+    suspend fun replaceGoalDebtLinks(
+        @Path("publicId") publicId: String,
+        @Body request: DebtGoalLinksReplaceRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+        @Query("timezone") timezone: String? = null,
+    ): GoalDto
+
+    // ADR-0049 §6/F13 (slice 7): acknowledge ("keep for audit") an achieved debt
+    // goal version whose linked set carries a debt-voided Debt — clears needs_review
+    // for the current version. OCC token in the body + idempotency key in the header.
+    @POST("api/goals/{publicId}/integrity-review/acknowledge")
+    suspend fun acknowledgeGoalIntegrityReview(
+        @Path("publicId") publicId: String,
+        @Body request: DebtGoalIntegrityReviewRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
         @Query("timezone") timezone: String? = null,
     ): GoalDto
 

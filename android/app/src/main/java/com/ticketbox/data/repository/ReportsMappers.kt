@@ -72,18 +72,22 @@ fun GoalDto.toDomain(): Goal = Goal(
     name = name,
     goalType = goalType,
     period = period,
-    month = month,
+    // ADR-0049 §6 (slice 7): the spending-shape fields are null for a debt_repayment
+    // goal — coalesce so the domain [Goal] stays non-null for the spending-goal UI
+    // (which never receives a debt goal); the debt-goal UI reads [debtRepayment].
+    month = month.orEmpty(),
     category = category?.let(::normalizeExpenseCategory),
-    targetAmountCents = targetAmountCents,
-    spentAmountCents = spentAmountCents,
-    remainingAmountCents = remainingAmountCents,
-    progressPercent = progressPercent,
+    targetAmountCents = targetAmountCents ?: 0L,
+    spentAmountCents = spentAmountCents ?: 0L,
+    remainingAmountCents = remainingAmountCents ?: 0L,
+    progressPercent = progressPercent ?: 0,
     progressState = GoalProgressState.fromApiValue(progressState),
     status = status,
     createdAt = createdAt,
     updatedAt = updatedAt,
     rowVersion = rowVersion,
     archivedAt = archivedAt,
+    debtRepayment = debtRepayment?.toDomain(),
 )
 
 fun GoalDraft.toRequest(): GoalCreateRequestDto = GoalCreateRequestDto(

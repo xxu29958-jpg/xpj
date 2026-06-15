@@ -80,6 +80,8 @@ fun StatsScreen(
     onOpenBudget: () -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenIncomePlans: () -> Unit = {},
+    // ADR-0049 §6 (slice 7): 还债目标二级页。默认 no-op 保旧调用方/预览。
+    onOpenDebtGoals: () -> Unit = {},
     // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
     onDrillToLedger: (String) -> Unit = {},
     // 轴3 粒度切换:动态图表卡的日/周档切换,交给 StatsReportsViewModel 重拉。
@@ -123,6 +125,7 @@ fun StatsScreen(
                 onOpenBudget = onOpenBudget,
                 onOpenRecurring = onOpenRecurring,
                 onOpenIncomePlans = onOpenIncomePlans,
+                onOpenDebtGoals = onOpenDebtGoals,
             )
         }
         state.message?.let {
@@ -298,6 +301,7 @@ private fun StatsTopPanel(
     onOpenBudget: () -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenIncomePlans: () -> Unit,
+    onOpenDebtGoals: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
         AppPageHeader(
@@ -331,6 +335,10 @@ private fun StatsTopPanel(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
                             onClick = { planningMenuOpen = false; onOpenIncomePlans() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
+                            onClick = { planningMenuOpen = false; onOpenDebtGoals() },
                         )
                     }
                 }

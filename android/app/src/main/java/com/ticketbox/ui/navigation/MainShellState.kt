@@ -46,6 +46,8 @@ internal enum class StatsSecondaryPage {
     // A3 IA: 拆账中心从账本动作区提级为全屏二级页, 复用本 overlay 机制(与预算/固定支出同形)。
     // 它是账本域页面而非统计面, 故 surfaceRole 单独归 Ledger(见下方 surfaceRole)。
     BillSplits,
+    // ADR-0049 §6 (slice 7): 还债目标(规划面, 与预算/收入计划同 overlay)。
+    DebtGoals,
 }
 
 internal class MainShellState {
@@ -86,6 +88,10 @@ internal class MainShellState {
 
     fun openBillSplits() {
         statsSecondaryPage = StatsSecondaryPage.BillSplits
+    }
+
+    fun openDebtGoals() {
+        statsSecondaryPage = StatsSecondaryPage.DebtGoals
     }
 
     fun closeStatsSecondaryPage() {

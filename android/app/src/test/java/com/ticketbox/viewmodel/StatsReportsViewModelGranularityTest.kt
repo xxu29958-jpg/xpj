@@ -107,6 +107,20 @@ class StatsReportsViewModelGranularityTest {
         override suspend fun archiveGoal(publicId: String): Result<Goal> =
             Result.failure(UnsupportedOperationException())
 
+        override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> =
+            Result.success(emptyList())
+
+        override suspend fun replaceDebtLinks(
+            publicId: String,
+            expectedRowVersion: Long,
+            debtPublicIds: List<String>,
+        ): Result<Goal> = Result.failure(UnsupportedOperationException())
+
+        override suspend fun acknowledgeDebtIntegrityReview(
+            publicId: String,
+            expectedRowVersion: Long,
+        ): Result<Goal> = Result.failure(UnsupportedOperationException())
+
         override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
             Result.success(DashboardCards(surface = surface, items = emptyList()))
 

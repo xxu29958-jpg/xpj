@@ -541,6 +541,7 @@ internal class FakeApiService(
     override suspend fun goals(
         month: String?,
         includeArchived: Boolean,
+        goalType: String?,
         timezone: String?,
     ): GoalListResponseDto = unsupported()
     override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?): GoalDto = unsupported()
@@ -552,6 +553,18 @@ internal class FakeApiService(
         timezone: String?,
     ): GoalDto = unsupported()
     override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto = unsupported()
+    override suspend fun replaceGoalDebtLinks(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
+        idempotencyKey: String?,
+        timezone: String?,
+    ): GoalDto = unsupported()
+    override suspend fun acknowledgeGoalIntegrityReview(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto,
+        idempotencyKey: String?,
+        timezone: String?,
+    ): GoalDto = unsupported()
     override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = unsupported()
     override suspend fun updateDashboardCards(
         request: DashboardCardsUpdateRequestDto,

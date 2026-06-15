@@ -79,6 +79,17 @@ class OpenApiContractGateTest {
         Pairing(InvitationCreateRequestDto::class, "InvitationCreateRequest"),
         Pairing(InvitationSummaryDto::class, "InvitationSummaryResponse"),
         Pairing(InvitationCreateResponseDto::class, "InvitationCreateResponse"),
+        // ADR-0049 §6 (slice 7) debt_repayment goal surface. GoalDto was previously
+        // ungated — slice 6 widened GoalResponse (the spend fields became nullable +
+        // a nested debt_repayment block) so bring it under the gate now, along with
+        // the nested evaluation/link DTOs and the two debt-link request bodies
+        // (additionalProperties=false → the forward check is the forbid protection).
+        Pairing(GoalDto::class, "GoalResponse"),
+        Pairing(GoalListResponseDto::class, "GoalListResponse"),
+        Pairing(DebtRepaymentEvaluationDto::class, "DebtRepaymentEvaluation"),
+        Pairing(DebtGoalLinkViewDto::class, "DebtGoalLinkView"),
+        Pairing(DebtGoalLinksReplaceRequestDto::class, "DebtGoalLinksReplaceRequest"),
+        Pairing(DebtGoalIntegrityReviewRequestDto::class, "DebtGoalIntegrityReviewRequest"),
     )
 
     // Backend `required` fields a DTO intentionally does NOT model (Android doesn't
