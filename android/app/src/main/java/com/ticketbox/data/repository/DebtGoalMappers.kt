@@ -14,6 +14,8 @@ fun DebtRepaymentEvaluationDto.toDomain(): DebtRepaymentEvaluation = DebtRepayme
     achievedVersion = achievedVersion,
     linkedDebts = linkedDebts.map { it.toDomain() },
     voidedDebtPublicIds = voidedDebtPublicIds,
+    trackingDays = trackingDays,
+    projectedPayoffDate = projectedPayoffDate,
 )
 
 fun DebtGoalLinkViewDto.toDomain(): DebtGoalLink = DebtGoalLink(

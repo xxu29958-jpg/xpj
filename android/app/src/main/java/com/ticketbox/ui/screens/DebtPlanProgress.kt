@@ -74,9 +74,36 @@ internal fun DebtPlanProgressCard(evaluation: DebtRepaymentEvaluation, currency:
                     Spacer(Modifier.size(AppSpacing.smallGap))
                     PlanAmountLine(evaluation, currency)
                 }
+                // 8e-6b：还清日期投影只对**纯外部债**计划呈现（§7.0 红线：成员/混装不做 Market 还债仪表盘；
+                // gate 用 `== External` 不是 `!= Member` 以排除 Mixed）。服务端已 gate，这是冗余第二层防线。
+                if (evaluation.composition == DebtGoalComposition.External) {
+                    Spacer(Modifier.size(AppSpacing.smallGap))
+                    DebtExternalKpiBlock(evaluation)
+                }
             }
         }
     }
+}
+
+/**
+ * 外部债 KPI 行（§7.0 / 8e-6b，纯外部债）：按观察到的还款节奏给「按最近 N 天，预计 YYYY年M月前后还清」，
+ * 数据不足（服务端抑制 → projectedPayoffDate==null，或日期串不可解析）则给中性的「还没有足够数据估算」。
+ * **无三态、无 at_risk、无催促**（那是后续 6c）——这里只是个诚实的节奏估算，不施压（§7.0 去-shame）。
+ */
+@Composable
+private fun DebtExternalKpiBlock(evaluation: DebtRepaymentEvaluation) {
+    val yearMonth = evaluation.projectedPayoffDate?.let { parsePayoffYearMonth(it) }
+    val trackingDays = evaluation.trackingDays
+    val text = if (yearMonth != null && trackingDays != null) {
+        stringResource(R.string.debt_kpi_payoff, trackingDays, yearMonth.first, yearMonth.second)
+    } else {
+        stringResource(R.string.debt_kpi_payoff_unknown)
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** 计划级件数主文案（大字，tabularNum）：成分自适应——成员关系化、外部/混装会计化（§6.2 / §6.7）。 */

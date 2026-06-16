@@ -38,6 +38,7 @@ from app.services.debt_service._create import create_bill_split_debt, create_deb
 from app.services.debt_service._fold import (
     compute_paid,
     compute_remaining,
+    compute_remaining_as_of,
     derive_status,
 )
 from app.services.debt_service._forgive import forgive_debt
@@ -65,6 +66,7 @@ from app.services.debt_service._void import void_debt, void_repayment
 __all__ = [
     "compute_paid",
     "compute_remaining",
+    "compute_remaining_as_of",
     "confirm_repayment_proposal",
     "create_bill_split_debt",
     "create_debt",
