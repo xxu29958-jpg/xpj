@@ -1,19 +1,25 @@
 package com.ticketbox.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.mascot.rememberMascotController
 import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.CreateDebtGoalScreen
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.DebtGoalScreen
 import com.ticketbox.ui.screens.DebtListScreen
+import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.StatsScreen
@@ -182,15 +188,29 @@ internal fun DebtRoute(
     val openDebtId = detailDebtId
     if (openDebtId != null) {
         LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
-        DebtDetailScreen(
-            viewModel = detailViewModel,
-            proposalViewModel = proposalViewModel,
-            currency = currency,
-            onBack = {
-                detailDebtId = null
-                debtListViewModel.refresh()
-            },
-        )
+        // §5（slice 8e-4）两清庆祝：在详情屏之上叠一层浮层（避免顶破 DebtDetailScreen 的 LongMethod，
+        // 且天然覆盖整屏）。mascot controller 是路由层关注点——第一个真实 mascot emit 点（§5.4）。
+        val mascot = rememberMascotController()
+        val celebration by detailViewModel.celebration.collectAsStateWithLifecycle()
+        // 详情屏离开时丢弃未消费的庆祝信号——浮层动画(~3.8s)中途返回会取消其 consume，单例 VM 持有的旧
+        // 信号否则会泄漏到下一笔欠款误撒花;dispose 先于下一笔 compose，无闪烁(对抗审 P2)。
+        DisposableEffect(openDebtId) { onDispose { detailViewModel.consumeCelebration() } }
+        Box(modifier = Modifier.fillMaxSize()) {
+            DebtDetailScreen(
+                viewModel = detailViewModel,
+                proposalViewModel = proposalViewModel,
+                currency = currency,
+                onBack = {
+                    detailDebtId = null
+                    debtListViewModel.refresh()
+                },
+            )
+            DebtSettleCelebrationOverlay(
+                celebration = celebration,
+                mascot = mascot,
+                onConsume = detailViewModel::consumeCelebration,
+            )
+        }
     } else {
         DebtListScreen(
             viewModel = debtListViewModel,
