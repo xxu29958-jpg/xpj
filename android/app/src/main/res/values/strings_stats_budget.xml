@@ -218,40 +218,88 @@
     <string name="debt_action_void_done">已作废这笔欠款。</string>
     <string name="debt_action_failed">操作失败，请稍后再试。</string>
 
-    <!-- ADR-0049 §3.2 (slice 8d) 成员欠款 repayment proposal 收发箱：债务人发起/撤回、债权人确认/拒绝。 -->
-    <string name="debt_proposal_debtor_title">还款给对方</string>
-    <string name="debt_proposal_debtor_hint">这笔欠款由对方记账，记一笔还款后需对方确认才生效。</string>
-    <string name="debt_proposal_debtor_pending_hint">已提交一笔还款，正在等待对方确认。</string>
-    <string name="debt_proposal_propose_action">记一笔还款（待对方确认）</string>
-    <string name="debt_proposal_withdraw_action">撤回这笔还款</string>
-    <string name="debt_proposal_creditor_title">对方的还款</string>
-    <string name="debt_proposal_creditor_waiting">等待对方发起还款。</string>
-    <string name="debt_proposal_creditor_pending">对方提交了一笔 %1$s 的还款，请确认是否收到。</string>
-    <string name="debt_proposal_confirm_action">确认收款</string>
-    <string name="debt_proposal_reject_action">拒绝</string>
-    <string name="debt_proposal_history_title">还款记录</string>
-    <string name="debt_proposal_note_label">备注（可选）</string>
-    <string name="debt_proposal_propose_title">记一笔还款</string>
-    <string name="debt_proposal_confirm_title">确认收款</string>
-    <string name="debt_proposal_voided_note">这笔欠款已作废，无需再处理还款。</string>
-    <string name="debt_proposal_cleared_note">这笔欠款已结清，无需再确认还款。</string>
-    <string name="debt_proposal_readonly_note">当前角色为只读，无法发起或确认还款。</string>
-    <string name="debt_proposal_not_party_note">你不是这笔欠款的当事方，无法发起或确认还款。</string>
-    <string name="debt_proposal_amount_validation">请输入大于 0 的金额。</string>
-    <string name="debt_proposal_confirm_over">确认金额不能超过对方提出的金额。</string>
-    <string name="debt_proposal_propose_done">已提交还款，等待对方确认。</string>
-    <string name="debt_proposal_confirm_done">已确认收款。</string>
-    <string name="debt_proposal_withdraw_done">已撤回这笔还款。</string>
-    <string name="debt_proposal_reject_done">已拒绝这笔还款。</string>
-    <string name="debt_proposal_action_failed">操作失败，请稍后再试。</string>
-    <string name="debt_proposal_load_failed">还款记录加载失败，请稍后再试。</string>
-    <string name="debt_proposal_status_pending">待确认</string>
-    <string name="debt_proposal_status_confirmed">已确认</string>
-    <string name="debt_proposal_status_partially_confirmed">部分确认</string>
-    <string name="debt_proposal_status_rejected">已拒绝</string>
+    <!-- ADR-0049 §3.2 (slice 8d) + §7.0 (slice 8e-2) 成员欠款 repayment 收发箱：① 暖措辞（关系化，
+         去核验/收账味）。成员债 = Communal 不是 Market；仅成员债改，外部债 debt_action_* 不动。 -->
+    <string name="debt_proposal_debtor_title">把我那份补上</string>
+    <string name="debt_proposal_debtor_hint">这件事由 TA 记的账。补上你那份后，TA 确认一下就两清啦。</string>
+    <string name="debt_proposal_debtor_pending_hint">已经发给 TA 啦，等 TA 看到确认一下～</string>
+    <string name="debt_proposal_propose_action">把这份给 TA</string>
+    <string name="debt_proposal_withdraw_action">撤回</string>
+    <string name="debt_proposal_creditor_title">TA 给你的</string>
+    <string name="debt_proposal_creditor_waiting">还没有新消息，有进展会出现在这里～</string>
+    <string name="debt_proposal_creditor_pending">TA 把 %1$s 那份给你啦，收到了就确认一下吧～</string>
+    <string name="debt_proposal_confirm_action">收到啦，谢谢～</string>
+    <string name="debt_proposal_reject_action">金额对不上？</string>
+    <string name="debt_proposal_note_label">想说点什么？（可选）</string>
+    <string name="debt_proposal_propose_title">把我那份给 TA</string>
+    <string name="debt_proposal_confirm_title">收到 TA 的这份</string>
+    <string name="debt_proposal_voided_note">这件事已经不用记啦。</string>
+    <string name="debt_proposal_cleared_note">这件事你们已经两清啦 🌿</string>
+    <string name="debt_proposal_readonly_note">你现在只能查看这件事，不能记账哦。</string>
+    <string name="debt_proposal_not_party_note">这件事不是你们俩之间的，你只能看看。</string>
+    <string name="debt_proposal_amount_validation">请填一个大于 0 的金额～</string>
+    <string name="debt_proposal_confirm_over">收到的不能比 TA 给的那份多哦。</string>
+    <string name="debt_proposal_propose_done">已经发给 TA 啦，等 TA 确认一下～</string>
+    <string name="debt_proposal_confirm_done">收到啦，谢谢 TA～</string>
+    <string name="debt_proposal_withdraw_done">已经撤回啦。</string>
+    <string name="debt_proposal_reject_done">已经回复 TA「金额对不上」啦。</string>
+    <string name="debt_proposal_action_failed">没成功，待会儿再试一下～</string>
+    <string name="debt_proposal_load_failed">往来记录没加载出来，待会儿再看看～</string>
+    <!-- 状态徽章：成员债历史一律 neutral（§3.4）；confirmed→已两清、rejected→在对账（去 shame）。 -->
+    <string name="debt_proposal_status_pending">待 TA 确认</string>
+    <string name="debt_proposal_status_confirmed">已两清</string>
+    <string name="debt_proposal_status_partially_confirmed">收了一部分</string>
+    <string name="debt_proposal_status_rejected">在对账</string>
     <string name="debt_proposal_status_withdrawn">已撤回</string>
-    <string name="debt_proposal_status_expired">已过期</string>
-    <string name="debt_proposal_status_superseded">已替换</string>
+    <string name="debt_proposal_status_expired">这次没对上</string>
+    <string name="debt_proposal_status_superseded">重记过了</string>
+    <!-- ① 债务人 post-reject（§1.4，neutral；描述对方动作 + 邀请重试，不指责债务人） -->
+    <string name="debt_proposal_debtor_after_reject">TA 觉得金额对不上，重新记一笔吧～</string>
+    <!-- ③ 清了沉降历史（§3.7，替代旧 debt_proposal_history_title="还款记录"） -->
+    <string name="debt_proposal_history_past_title">过往</string>
+    <string name="debt_proposal_history_expand">查看全部 %1$d 条过往</string>
+    <string name="debt_proposal_history_collapse">收起过往</string>
+    <string name="debt_proposal_history_resolved_date">%1$s 对上</string>
+    <string name="debt_proposal_history_partial_date">%1$s 收了一部分</string>
+    <string name="debt_proposal_history_closed_date">%1$s</string>
+
+    <!-- ADR-0049 §7.0 (slice 8e-2) ② 成员债关系化重构：「共同的事·各自那份」框架（仅 isMember 分支；
+         外部债走原 DebtSummaryCard / debtDirectionLabelRes 不动）。方向/进度语/明细全用关系语言。 -->
+    <string name="debt_member_direction_i_owe">你帮我垫的</string>
+    <string name="debt_member_direction_owed_to_me">我帮你垫的</string>
+    <string name="debt_member_direction_third_party">TA 们之间的一件事</string>
+    <string name="debt_member_card_eyebrow">一起处理 · %1$s</string>
+    <string name="debt_member_card_eyebrow_third_party">他们的一件事 · %1$s</string>
+    <!-- 关系进度语英雄主句（无金额）：i_owe = viewer 是债务人（别人帮我垫的） -->
+    <string name="debt_member_headline_i_owe_start">你帮我垫了，慢慢还给你</string>
+    <string name="debt_member_headline_i_owe_early">你帮我垫的，正在慢慢对上</string>
+    <string name="debt_member_headline_i_owe_near">你帮我垫的，快两清啦</string>
+    <!-- owed_to_me = viewer 是债权人（我帮你垫的，不着急口吻）。
+         修正设计文档 §2.3 owed 行误用「你帮我垫的」债务人口吻。 -->
+    <string name="debt_member_headline_owed_start">我帮你垫的，不着急</string>
+    <string name="debt_member_headline_owed_early">我帮你垫的，慢慢来</string>
+    <string name="debt_member_headline_owed_near">我帮你垫的，快两清啦</string>
+    <!-- cleared / forgiven（debtor/creditor 视角分） / voided / 第三人称 -->
+    <string name="debt_member_headline_cleared">这件事，我们已经两清啦</string>
+    <string name="debt_member_headline_forgiven_debtor">这份 TA 说不用还啦 ❤️</string>
+    <string name="debt_member_headline_forgiven_creditor">这份不用补了～</string>
+    <string name="debt_member_headline_voided">这件事已经不算了</string>
+    <string name="debt_member_headline_third_party_progress">这件事还在进行中</string>
+    <string name="debt_member_headline_third_party_cleared">这件事，他们已经两清啦</string>
+    <!-- 进度程度语（无百分比 / 无计数器） -->
+    <string name="debt_member_progress_none">还没开始对账</string>
+    <string name="debt_member_progress_some">已经对上一部分</string>
+    <string name="debt_member_progress_most">这件事已对上大半</string>
+    <string name="debt_member_progress_a11y">已经对上 %1$d%%，一起把这件事处理完</string>
+    <!-- 可展开明细（看看账，只两数、无 remaining 欠条行） -->
+    <string name="debt_member_detail_toggle">看看账</string>
+    <string name="debt_member_detail_total">这件事一共</string>
+    <string name="debt_member_detail_paid">已经对上</string>
+    <string name="debt_member_detail_status">当前状态</string>
+    <!-- 成员债状态徽章（外部债 debt_link_status_* 不动） -->
+    <string name="debt_member_status_open">进行中</string>
+    <string name="debt_member_status_cleared">已两清</string>
+    <string name="debt_member_status_voided">已不算</string>
 
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>

@@ -103,8 +103,9 @@ fun DebtDetailScreen(
         state.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
         proposalState.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
         debt?.let { loaded ->
-            item { DebtSummaryCard(debt = loaded, currency = currency) }
+            // ② 成员债换轴：关系卡 + proposal 收发箱；外部债走会计卡 + 直接写动作面板（一字不改）。
             if (loaded.isMember) {
+                item { MemberSharedThingCard(debt = loaded, currency = currency) }
                 item {
                     MemberProposalSection(
                         debt = loaded,
@@ -114,6 +115,7 @@ fun DebtDetailScreen(
                     )
                 }
             } else {
+                item { DebtSummaryCard(debt = loaded, currency = currency) }
                 item { DebtActionPanel(debt = loaded, canModify = state.canModify, onAction = viewModel::openAction) }
             }
         }
@@ -178,13 +180,20 @@ private fun DebtDetailHeader(debt: Debt?, onBack: () -> Unit) {
         }
         AppPageHeader(
             title = title,
-            subtitle = debt?.let { stringResource(debtDirectionLabelRes(it.direction)) },
+            // ② 成员债副标题关系化（你帮我垫的 / 我帮你垫的 / 第三人称）；外部债仍走应付/应收。
+            subtitle = debt?.let { d ->
+                val directionRes =
+                    if (d.isMember) memberDebtDirectionRes(d.viewerIsDebtor) else debtDirectionLabelRes(d.direction)
+                stringResource(directionRes)
+            },
         )
     }
 }
 
+// Member debt routes to MemberSharedThingCard; this businesslike accounting card serves external
+// debt (unchanged) and the member foreign-currency defensive fallback (§2.6) — hence internal.
 @Composable
-private fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
+internal fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
             Text(
@@ -226,8 +235,9 @@ private fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
     }
 }
 
+// Shared by DebtSummaryCard and MemberSharedThingCard's "看看账" expander — hence internal.
 @Composable
-private fun DebtSummaryRow(label: String, value: String) {
+internal fun DebtSummaryRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
             label,

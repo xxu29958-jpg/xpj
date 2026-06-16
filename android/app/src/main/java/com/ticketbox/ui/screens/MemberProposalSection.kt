@@ -20,7 +20,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -28,15 +27,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.StateTone
-import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.ProposalForm
@@ -45,7 +41,8 @@ import com.ticketbox.viewmodel.ProposalForm
  * ADR-0049 §3.2 (slice 8d) 成员欠款 repayment proposal 收发箱 —— [DebtDetailScreen] 对**成员**欠款渲染的
  * 动作面板（替换 slice8c 留的「走对方确认流程」占位提示）。角色由**服务端权威字段** [Debt.viewerIsDebtor]
  * 给出（客户端不推导——详见 [Debt] 的 KDoc）：债务人发起「我已还款」/ 撤回，
- * 债权人确认（全额/部分）/ 拒绝。已结清/作废/只读各显示对应说明；下方始终显示 proposal 历史（如有）。
+ * 债权人确认（全额/部分）/ 拒绝。已结清/作废/只读各显示对应说明。**在途 pending** 由债务人/债权人卡承载，
+ * **已解决** proposal 沉降到 [ResolvedHistoryCard]「过往」(8e ③，§3.2 pending 不进历史避免一件事出现两次)。
  * 这些 composable 独立成文件而非堆进 DebtDetailScreen.kt，避免顶破后者的文件级 TooManyFunctions 门
  * （[[project_android_compose_detekt_limits]]）。复用 DebtDetailScreen 的 internal [DebtNoteCard] /
  * [DebtActionFormButtons] 与 DebtGoalLabels 的 [DebtStatusBadge]。
@@ -68,8 +65,10 @@ internal fun MemberProposalSection(
             debt.viewerIsDebtor == false -> CreditorProposalCard(state = state, viewModel = viewModel, currency = currency)
             else -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
         }
-        if (state.proposals.isNotEmpty()) {
-            ProposalHistoryCard(proposals = state.proposals, currency = currency)
+        // ③ 沉降：只已解决进历史 (空集时整卡不渲染，§3.2/3.6)；在途 pending 在上面的动作卡里。
+        val resolved = state.proposals.filter { !it.isPending }
+        if (resolved.isNotEmpty()) {
+            ResolvedHistoryCard(resolved = resolved, currency = currency)
         }
     }
 }
@@ -99,6 +98,15 @@ private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRe
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.debt_proposal_withdraw_action)) }
             } else {
+                // §1.4 post-reject：对方回了「金额对不上」且当前无在途 → neutral 提示 + 复用下方重发入口
+                // （描述对方动作 + 邀请重试，不指责债务人，绝不 danger）。
+                if (state.showDebtorAfterReject) {
+                    Text(
+                        stringResource(R.string.debt_proposal_debtor_after_reject),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LocalStateTokens.current.neutral.fg,
+                    )
+                }
                 Text(
                     stringResource(R.string.debt_proposal_debtor_hint),
                     style = MaterialTheme.typography.bodyMedium,
@@ -175,43 +183,6 @@ private fun CreditorActionButtons(
     }
 }
 
-@Composable
-private fun ProposalHistoryCard(proposals: List<MemberRepaymentProposal>, currency: CurrencyDisplay) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            Text(
-                stringResource(R.string.debt_proposal_history_title),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            proposals.forEach { proposal -> ProposalHistoryRow(proposal = proposal, currency = currency) }
-        }
-    }
-}
-
-@Composable
-private fun ProposalHistoryRow(proposal: MemberRepaymentProposal, currency: CurrencyDisplay) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                formatDisplayAmount(proposal.proposedAmountCents, currency),
-                style = MaterialTheme.typography.bodyMedium.tabularNum(),
-                fontWeight = FontWeight.Medium,
-            )
-            proposal.note?.takeIf { it.isNotBlank() }?.let { note ->
-                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        DebtStatusBadge(
-            text = stringResource(memberProposalStatusLabelRes(proposal.status)),
-            tone = memberProposalStatusTone(proposal.status),
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ProposalFormSheet(
@@ -280,27 +251,4 @@ private fun ProposalForm(
 private fun proposalFormTitleRes(form: ProposalForm): Int = when (form) {
     ProposalForm.Propose -> R.string.debt_proposal_propose_title
     ProposalForm.Confirm -> R.string.debt_proposal_confirm_title
-}
-
-/** ADR-0049 §3.2 (slice 8d): member repayment-proposal status → localized label. */
-@StringRes
-private fun memberProposalStatusLabelRes(status: String): Int = when (status) {
-    MemberProposalStatuses.PENDING -> R.string.debt_proposal_status_pending
-    MemberProposalStatuses.CONFIRMED -> R.string.debt_proposal_status_confirmed
-    MemberProposalStatuses.PARTIALLY_CONFIRMED -> R.string.debt_proposal_status_partially_confirmed
-    MemberProposalStatuses.REJECTED -> R.string.debt_proposal_status_rejected
-    MemberProposalStatuses.WITHDRAWN -> R.string.debt_proposal_status_withdrawn
-    MemberProposalStatuses.EXPIRED -> R.string.debt_proposal_status_expired
-    MemberProposalStatuses.SUPERSEDED -> R.string.debt_proposal_status_superseded
-    else -> R.string.debt_proposal_status_pending
-}
-
-@Composable
-private fun memberProposalStatusTone(status: String): StateTone {
-    val tokens = LocalStateTokens.current
-    return when (status) {
-        MemberProposalStatuses.CONFIRMED, MemberProposalStatuses.PARTIALLY_CONFIRMED -> tokens.success
-        MemberProposalStatuses.PENDING -> tokens.info
-        else -> tokens.neutral
-    }
 }

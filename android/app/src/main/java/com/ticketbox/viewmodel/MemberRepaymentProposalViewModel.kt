@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
+import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,16 @@ data class MemberProposalUiState(
 ) {
     /** 唯一的待确认 proposal（§3.2 一债一待确认），没有则为 null。 */
     val pendingProposal: MemberRepaymentProposal? get() = proposals.firstOrNull { it.isPending }
+
+    /** 最近一笔已解决的 proposal（proposals 后端按 created_at 倒序返回，故首个非 pending 即最近解决）。 */
+    val latestResolvedProposal: MemberRepaymentProposal? get() = proposals.firstOrNull { !it.isPending }
+
+    /**
+     * 8e §1.4 债务人 post-reject：当前无在途 proposal 且最近一笔已解决是 rejected（「金额对不上」）时，
+     * 债务人卡顶显示一条 neutral 重发提示（描述对方动作 + 邀请重试，不指责债务人填错）。
+     */
+    val showDebtorAfterReject: Boolean
+        get() = pendingProposal == null && latestResolvedProposal?.status == MemberProposalStatuses.REJECTED
 }
 
 /** 详情屏 proposal 收发箱里需要表单输入的两类动作（withdraw/reject 无输入，直接触发）。 */

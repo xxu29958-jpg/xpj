@@ -257,6 +257,44 @@ class MemberRepaymentProposalViewModelTest {
         assertEquals(false, viewModel.state.value.isSubmitting)
         assertEquals(ProposalForm.Confirm, viewModel.state.value.activeForm)
     }
+
+    @Test
+    fun latestResolvedProposalPicksNewestNonPending() {
+        // Backend returns proposals newest-first (created_at desc); the first non-pending is the latest resolved.
+        val state = MemberProposalUiState(
+            proposals = listOf(
+                sampleProposal(publicId = "newPending", status = MemberProposalStatuses.PENDING),
+                sampleProposal(publicId = "rejected", status = MemberProposalStatuses.REJECTED),
+                sampleProposal(publicId = "older", status = MemberProposalStatuses.WITHDRAWN),
+            ),
+        )
+        assertEquals("rejected", state.latestResolvedProposal?.publicId)
+    }
+
+    @Test
+    fun showDebtorAfterRejectOnlyWhenLatestResolvedRejectedAndNoPending() {
+        // §1.4: latest resolved is a rejection and nothing is in flight → show the neutral re-propose hint.
+        val rejectedNoPending = MemberProposalUiState(
+            proposals = listOf(sampleProposal(publicId = "p1", status = MemberProposalStatuses.REJECTED)),
+        )
+        assertTrue(rejectedNoPending.showDebtorAfterReject)
+
+        // A live re-proposal (pending) suppresses the hint even though an older one was rejected.
+        val rejectedThenPending = MemberProposalUiState(
+            proposals = listOf(
+                sampleProposal(publicId = "p2", status = MemberProposalStatuses.PENDING),
+                sampleProposal(publicId = "p1", status = MemberProposalStatuses.REJECTED),
+            ),
+        )
+        assertEquals(false, rejectedThenPending.showDebtorAfterReject)
+
+        // A non-rejected latest resolution (e.g. withdrawn) does not show the hint, nor does an empty list.
+        val withdrawn = MemberProposalUiState(
+            proposals = listOf(sampleProposal(publicId = "p3", status = MemberProposalStatuses.WITHDRAWN)),
+        )
+        assertEquals(false, withdrawn.showDebtorAfterReject)
+        assertEquals(false, MemberProposalUiState().showDebtorAfterReject)
+    }
 }
 
 private data class ProposeArgs(
