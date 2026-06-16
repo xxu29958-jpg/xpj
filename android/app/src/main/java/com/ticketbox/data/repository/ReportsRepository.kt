@@ -6,6 +6,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
+import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CsvExport
@@ -68,6 +69,17 @@ interface ReportsActions {
     suspend fun acknowledgeDebtIntegrityReview(
         publicId: String,
         expectedRowVersion: Long,
+    ): Result<Goal>
+
+    /**
+     * ADR-0049 §7.0 / 8e-6c: set ([targetDate] = ISO `yyyy-MM-dd`) or clear ([targetDate] = null)
+     * a debt_repayment goal's payoff deadline. OCC-gated by [expectedRowVersion] (= the goal's
+     * current `row_version`); the setter bumps `row_version` only, never `goal_version`.
+     */
+    suspend fun setDebtGoalTargetDate(
+        publicId: String,
+        expectedRowVersion: Long,
+        targetDate: String?,
     ): Result<Goal>
     suspend fun dashboardCards(surface: DashboardSurface = DashboardSurface.Android): Result<DashboardCards>
     suspend fun updateDashboardCards(
@@ -417,6 +429,35 @@ class ReportsRepository(
                 api.acknowledgeGoalIntegrityReview(
                     publicId = cleanPublicId,
                     request = DebtGoalIntegrityReviewRequestDto(expectedRowVersion),
+                    idempotencyKey = UUID.randomUUID().toString(),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
+        }
+    }
+
+    override suspend fun setDebtGoalTargetDate(
+        publicId: String,
+        expectedRowVersion: Long,
+        targetDate: String?,
+    ): Result<Goal> {
+        if (!canModifyLedger()) {
+            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
+        }
+        val cleanPublicId = publicId.cleanPublicId()
+            .getOrElse { return Result.failure(it) }
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                // targetDate null → Moshi omits the field → the optional backend setter reads it as
+                // "clear" (a setter: omitted == clear, no partial-update ambiguity). A non-null ISO
+                // date sets the deadline.
+                api.setGoalTargetDate(
+                    publicId = cleanPublicId,
+                    request = DebtGoalTargetDateRequestDto(
+                        expectedRowVersion = expectedRowVersion,
+                        targetDate = targetDate,
+                    ),
+                    // ADR-0042: single-use key — direct-only path, no offline replay.
                     idempotencyKey = UUID.randomUUID().toString(),
                     timezone = currentTimezoneId(),
                 ).toDomain()

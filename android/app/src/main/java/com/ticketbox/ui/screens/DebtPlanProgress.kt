@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,12 +10,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -42,7 +46,12 @@ import com.ticketbox.ui.design.tabularNum
  * 独立成文件（不堆进 [DebtGoalScreen]，后者已在文件级 TooManyFunctions 门附近，[[project_android_compose_detekt_limits]]）。
  */
 @Composable
-internal fun DebtPlanProgressCard(evaluation: DebtRepaymentEvaluation, currency: CurrencyDisplay) {
+internal fun DebtPlanProgressCard(
+    evaluation: DebtRepaymentEvaluation,
+    currency: CurrencyDisplay,
+    canModify: Boolean,
+    onSetTargetDate: () -> Unit,
+) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
             DebtStatusBadge(
@@ -74,11 +83,16 @@ internal fun DebtPlanProgressCard(evaluation: DebtRepaymentEvaluation, currency:
                     Spacer(Modifier.size(AppSpacing.smallGap))
                     PlanAmountLine(evaluation, currency)
                 }
-                // 8e-6b：还清日期投影只对**纯外部债**计划呈现（§7.0 红线：成员/混装不做 Market 还债仪表盘；
-                // gate 用 `== External` 不是 `!= Member` 以排除 Mixed）。服务端已 gate，这是冗余第二层防线。
+                // 8e-6b/6c：还清日期投影 + 三态 + 设/改还清日期只对**纯外部债**计划呈现（§7.0 红线：成员/
+                // 混装不做 Market 还债仪表盘；gate 用 `== External` 不是 `!= Member` 以排除 Mixed）。服务端已
+                // gate，这是冗余第二层防线——也保证「设还清日期」入口永不泄漏到成员/混装计划（picker 红线）。
                 if (evaluation.composition == DebtGoalComposition.External) {
                     Spacer(Modifier.size(AppSpacing.smallGap))
-                    DebtExternalKpiBlock(evaluation)
+                    DebtExternalKpiBlock(
+                        evaluation = evaluation,
+                        canModify = canModify,
+                        onSetTargetDate = onSetTargetDate,
+                    )
                 }
             }
         }
@@ -86,12 +100,45 @@ internal fun DebtPlanProgressCard(evaluation: DebtRepaymentEvaluation, currency:
 }
 
 /**
- * 外部债 KPI 行（§7.0 / 8e-6b，纯外部债）：按观察到的还款节奏给「按最近 N 天，预计 YYYY年M月前后还清」，
- * 数据不足（服务端抑制 → projectedPayoffDate==null，或日期串不可解析）则给中性的「还没有足够数据估算」。
- * **无三态、无 at_risk、无催促**（那是后续 6c）——这里只是个诚实的节奏估算，不施压（§7.0 去-shame）。
+ * 外部债 KPI 块（§7.0 / 8e-6b+6c，**纯外部债**）：三态徽章（只在服务端给出 `three_state` 时显）+ 还清目标
+ * 截止日（月粒度）+ 还清日期投影（节奏估算 / 数据不足中性文案）+ 设/改还清日期入口（可写时）。
+ *
+ * **去-shame 红线（§7.0）**：三态 at_risk = 事实性「晚于计划」，色调走 **warn（琥珀）非 danger/红**
+ * （见 [debtThreeStateTone]），文案非第二人称指责、不催「更快还清」。设还清日期入口只在本块出现，而本块只对
+ * `composition == External` 渲染（调用方 gate），故 picker 永不泄漏到成员/混装计划（设计对抗审红线）。
  */
 @Composable
-private fun DebtExternalKpiBlock(evaluation: DebtRepaymentEvaluation) {
+private fun DebtExternalKpiBlock(
+    evaluation: DebtRepaymentEvaluation,
+    canModify: Boolean,
+    onSetTargetDate: () -> Unit,
+) {
+    val threeState = evaluation.threeState
+    val targetYearMonth = evaluation.targetDate?.let { parsePayoffYearMonth(it) }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        if (threeState != null) {
+            DebtStatusBadge(
+                text = stringResource(debtThreeStateLabelRes(threeState)),
+                tone = debtThreeStateTone(threeState),
+            )
+        }
+        if (targetYearMonth != null) {
+            Text(
+                stringResource(R.string.debt_goal_target_label, targetYearMonth.first, targetYearMonth.second),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DebtPayoffProjectionLine(evaluation)
+        if (canModify) {
+            DebtSetTargetDateButton(hasDeadline = evaluation.targetDate != null, onClick = onSetTargetDate)
+        }
+    }
+}
+
+/** 还清日期投影行（§7.0 / 8e-6b）：节奏估算「按最近 N 天，预计 YYYY年M月前后还清」/ 数据不足中性文案。 */
+@Composable
+private fun DebtPayoffProjectionLine(evaluation: DebtRepaymentEvaluation) {
     val yearMonth = evaluation.projectedPayoffDate?.let { parsePayoffYearMonth(it) }
     val trackingDays = evaluation.trackingDays
     val text = if (yearMonth != null && trackingDays != null) {
@@ -104,6 +151,19 @@ private fun DebtExternalKpiBlock(evaluation: DebtRepaymentEvaluation) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+/** 设/改还清日期入口（低调 TextButton）：有截止日时「修改」、否则「设置」；点击交调用方打开 date picker。 */
+@Composable
+private fun DebtSetTargetDateButton(hasDeadline: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick, contentPadding = PaddingValues(0.dp)) {
+        Text(
+            stringResource(
+                if (hasDeadline) R.string.debt_goal_edit_target_date else R.string.debt_goal_set_target_date,
+            ),
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
 }
 
 /** 计划级件数主文案（大字，tabularNum）：成分自适应——成员关系化、外部/混装会计化（§6.2 / §6.7）。 */

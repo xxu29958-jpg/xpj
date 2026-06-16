@@ -35,6 +35,16 @@ object DebtCounterpartyTypes {
     const val EXTERNAL = "external"
 }
 
+/**
+ * ADR-0049 §7.0 / 8e-6c 外部债还清日期三态（projected-payoff 月 vs 截止月，纯外部债才有，服务端 §4 gate）。
+ * [AT_RISK] 是**事实性**的「晚于计划」态，**不是 shame 触发**——UI 渲染琥珀/warn、绝不红，无「更快还清」催促。
+ */
+object DebtThreeStates {
+    const val ON_TRACK = "on_track"
+    const val AHEAD = "ahead"
+    const val AT_RISK = "at_risk"
+}
+
 data class DebtGoalLink(
     val debtPublicId: String,
     val status: String,
@@ -81,6 +91,10 @@ data class DebtRepaymentEvaluation(
     // 日期串（无 Moshi LocalDate adapter 故 String?，同 [achievedAt]）。两者同时有或同时 null。
     val trackingDays: Int? = null,
     val projectedPayoffDate: String? = null,
+    // ADR-0049 §7.0 / 8e-6c three-state（纯外部债，服务端 §4 gate）。[targetDate] = 还清日期 ISO 串
+    // （未设/非外部恒 null）；[threeState] ∈ {on_track, ahead, at_risk}，仅截止日 + 投影都有时非 null。
+    val targetDate: String? = null,
+    val threeState: String? = null,
 ) {
     val isAchieved: Boolean get() = evaluationState == DebtGoalEvaluationStates.ACHIEVED
     val isInProgress: Boolean get() = evaluationState == DebtGoalEvaluationStates.IN_PROGRESS

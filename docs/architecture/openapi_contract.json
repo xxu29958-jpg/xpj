@@ -4074,7 +4074,7 @@
       },
       "DebtGoalTargetDateRequest": {
         "additionalProperties": false,
-        "description": "ADR-0049 §7.0 / 8e-6c: set or clear a debt_repayment goal's payoff deadline.\n\nOCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier). The\nsetter bumps ``row_version`` only — NOT ``goal_version`` — because the deadline is goal-\nlevel config orthogonal to the frozen linked-Debt set; bumping ``goal_version`` would\ncreate an empty version and silently un-achieve the goal. ``target_date = null`` clears\nthe deadline (the client always sends the field — a date to set, null to clear).",
+        "description": "ADR-0049 §7.0 / 8e-6c: set or clear a debt_repayment goal's payoff deadline.\n\nOCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier). The\nsetter bumps ``row_version`` only — NOT ``goal_version`` — because the deadline is goal-\nlevel config orthogonal to the frozen linked-Debt set; bumping ``goal_version`` would\ncreate an empty version and silently un-achieve the goal.\n\n``target_date`` is OPTIONAL (defaults to clear): this is a SETTER, so an *omitted* field\nunambiguously means \"clear the deadline\" (there is no partial-update ambiguity). Requiring\nit present would make the clear case unsendable from the Android Moshi client, which omits\nnull fields — present-with-value sets the deadline; absent/null clears it.",
         "properties": {
           "expected_row_version": {
             "title": "Expected Row Version",
@@ -4094,8 +4094,7 @@
           }
         },
         "required": [
-          "expected_row_version",
-          "target_date"
+          "expected_row_version"
         ],
         "title": "DebtGoalTargetDateRequest",
         "type": "object"

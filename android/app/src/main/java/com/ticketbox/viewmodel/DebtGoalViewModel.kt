@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * ADR-0049 §6 (slice 7) debt_repayment goal screen state + actions.
@@ -57,9 +59,9 @@ class DebtGoalViewModel(
     val celebration: StateFlow<DebtGoalCelebration?> get() = celebrationController.celebration
 
     // Monotonic load token (mirrors StatsReportsViewModel): a load applies its result
-    // only if it is still the latest. Overlapping loads (init + reload() on entry,
-    // pull-to-refresh) and committed mutations bump it, so a slow earlier load can't
-    // revert a just-applied review to a stale row_version (→ a 409 on the next action).
+    // only if it is still the latest. Overlapping loads (init + refresh(clearStale=true)
+    // on overlay (re-)entry, pull-to-refresh) and committed mutations bump it, so a slow
+    // earlier load can't revert a just-applied review to a stale row_version (→ a 409 next).
     private var loadGeneration = 0L
 
     // The latest refresh's token. The loading flag is owned by the latest refresh, so a
@@ -72,20 +74,19 @@ class DebtGoalViewModel(
     }
 
     /**
-     * Clear any prior ledger's debt goals, then reload. Called whenever the overlay
-     * (re-)opens (the VM is cached across the overlay's open/close and survives a
-     * ledger switch in Settings), so the previous ledger's debt links — which carry
-     * counterparties and amounts — never linger under a new ledger (ledger-isolation
-     * boundary). Clearing up front avoids briefly showing stale cross-ledger data.
+     * Re-fetch the debt goals. [clearStale] = true first clears any prior ledger's debt goals
+     * (the overlay (re-)open path): the VM is cached across the overlay's open/close and survives a
+     * ledger switch in Settings, so the previous ledger's debt links — which carry counterparties
+     * and amounts — must never linger under a new ledger (ledger-isolation boundary); clearing up
+     * front avoids briefly showing stale cross-ledger data. [clearStale] = false is the plain
+     * pull-to-refresh / in-place re-fetch (it keeps the open detail to re-latch it).
      */
-    fun reload() {
-        _state.update {
-            it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null)
+    fun refresh(clearStale: Boolean = false) {
+        if (clearStale) {
+            _state.update {
+                it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null)
+            }
         }
-        refresh()
-    }
-
-    fun refresh() {
         val gen = ++loadGeneration
         latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
@@ -210,6 +211,23 @@ class DebtGoalViewModel(
     }
 
     /**
+     * ADR-0049 §7.0 / 8e-6c: set ([epochMillis] non-null, the Material3 picker's UTC millis) or
+     * clear ([epochMillis] = null) the open debt goal's payoff deadline. Reuses [applyMutation]
+     * (same OCC fold-after shape as the integrity exits) so it never un-achieves the goal — the
+     * server bumps row_version only. Only reachable from the pure-external KPI block (the UI gates
+     * the affordance on composition == External), so a member/mixed plan can never set a deadline.
+     */
+    fun setTargetDate(epochMillis: Long?) {
+        val goal = _state.value.selectedGoal ?: return
+        _state.update { it.copy(isSubmitting = true, error = null) }
+        viewModelScope.launch {
+            val targetDate = epochMillis?.let(::epochMillisToIsoDate)
+            val result = repository.setDebtGoalTargetDate(goal.publicId, goal.rowVersion, targetDate)
+            applyMutation(result, R.string.debt_goal_target_date_updated)
+        }
+    }
+
+    /**
      * Archive the open goal. The only clean exit when a not-yet-achieved goal's whole
      * link set is voided (§6/F13): "remove voided" has no non-voided replacement and
      * acknowledge is achieved-only, so without a Debt picker (a later slice) archiving
@@ -330,3 +348,11 @@ internal class DebtGoalCelebrationController {
 
 private fun List<Goal>.replaceGoal(updated: Goal): List<Goal> =
     map { if (it.publicId == updated.publicId) updated else it }
+
+/**
+ * Material3 date-picker UTC epoch-millis → ISO `yyyy-MM-dd` (the wire shape the backend deadline
+ * expects). UTC throughout (the picker reports the selected day as UTC-midnight millis) so the
+ * calendar day never drifts across a timezone boundary.
+ */
+private fun epochMillisToIsoDate(epochMillis: Long): String =
+    Instant.ofEpochMilli(epochMillis).atZone(ZoneOffset.UTC).toLocalDate().toString()

@@ -21,6 +21,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.util.TimeZone
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -270,7 +273,7 @@ class DebtGoalViewModelTest {
     }
 
     @Test
-    fun reloadClearsSelectionAndReloadsGoals() = runTest(dispatcher) {
+    fun refreshClearStaleClearsSelectionAndReloadsGoals() = runTest(dispatcher) {
         val goal = debtGoal()
         val repo = FakeReportsActions(
             debtGoalsResult = Result.success(listOf(goal)),
@@ -283,7 +286,7 @@ class DebtGoalViewModelTest {
         val callsBeforeReload = repo.debtGoalsCalls
 
         // ledger-isolation: a (re-)open clears any prior ledger's data, then reloads.
-        viewModel.reload()
+        viewModel.refresh(clearStale = true)
         advanceUntilIdle()
 
         assertNull(viewModel.state.value.selectedGoal)
@@ -309,6 +312,65 @@ class DebtGoalViewModelTest {
 
         assertTrue(viewModel.state.value.error != null)
         assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    // ── ADR-0049 §7.0 / 8e-6c 还清日期 setter ──────────────────────────────────
+
+    @Test
+    fun setTargetDateSetsIsoDateWithGoalRowVersionAndFlashes() = runTest(dispatcher) {
+        val goal = debtGoal(rowVersion = 4L)
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(goal)),
+            goalResult = Result.success(goal),
+        )
+        repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(goal)
+        advanceUntilIdle()
+
+        // The Material3 picker reports UTC-midnight millis; the VM renders it to ISO yyyy-MM-dd. Pin a
+        // NEGATIVE-offset default tz around the conversion: epochMillisToIsoDate uses ZoneOffset.UTC, so a
+        // regression to systemDefault() would render 2028-02-29 here and fail (tz off-by-one,
+        // [[feedback_test_month_timezone_alignment]]).
+        val millis = LocalDate.of(2028, 3, 1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val previousTz = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
+        try {
+            viewModel.setTargetDate(millis)
+            advanceUntilIdle()
+        } finally {
+            TimeZone.setDefault(previousTz)
+        }
+
+        val call = repo.targetDateCalls.single()
+        assertEquals("debt-goal-1", call.first)
+        assertEquals(4L, call.second) // OCC carrier = the goal's row_version
+        assertEquals("2028-03-01", call.third) // UTC millis → ISO date, no day-drift
+        assertTrue(viewModel.state.value.flashMessage != null)
+        assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    @Test
+    fun setTargetDateClearPassesNullToTheRepository() = runTest(dispatcher) {
+        val goal = debtGoal(rowVersion = 4L)
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(goal)),
+            goalResult = Result.success(goal),
+        )
+        repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(goal)
+        advanceUntilIdle()
+
+        // null epoch-millis = clear the deadline; the repo (and wire) carry a null target_date.
+        viewModel.setTargetDate(null)
+        advanceUntilIdle()
+
+        val call = repo.targetDateCalls.single()
+        assertEquals(4L, call.second)
+        assertNull(call.third)
     }
 
     // ── ADR-0049 §6.6 计划达成撒花（边沿 / 成分 / 去重，达成只读服务端 evaluation_state）─────────────
@@ -589,6 +651,7 @@ private class FakeReportsActions(
     val replaceCalls = mutableListOf<ReplaceCall>()
     val acknowledgeCalls = mutableListOf<Pair<String, Long>>()
     val archiveCalls = mutableListOf<String>()
+    val targetDateCalls = mutableListOf<Triple<String, Long, String?>>()
     var debtGoalsCalls = 0
 
     /** When set, debtGoals() stalls until completed — used to interleave a slow load. */
@@ -597,6 +660,10 @@ private class FakeReportsActions(
     /** When set, the NEXT (and subsequent) goal() return this instead of [goalResult] —
      * lets a test flip the detail re-fetch result between openDetail and a later refresh. */
     var goalResultOverride: Result<Goal>? = null
+
+    /** The 8e-6c setDebtGoalTargetDate result — a var (not a ctor param) so the constructor stays
+     * within the LongParameterList limit; tests set it before exercising the setter. */
+    var setTargetDateResult: Result<Goal> = Result.failure(UnsupportedOperationException())
 
     override fun canModifyLedger(): Boolean = canModify
 
@@ -626,6 +693,15 @@ private class FakeReportsActions(
     ): Result<Goal> {
         acknowledgeCalls += publicId to expectedRowVersion
         return acknowledgeResult
+    }
+
+    override suspend fun setDebtGoalTargetDate(
+        publicId: String,
+        expectedRowVersion: Long,
+        targetDate: String?,
+    ): Result<Goal> {
+        targetDateCalls += Triple(publicId, expectedRowVersion, targetDate)
+        return setTargetDateResult
     }
 
     // ── unused ReportsActions surface ────────────────────────────────────────

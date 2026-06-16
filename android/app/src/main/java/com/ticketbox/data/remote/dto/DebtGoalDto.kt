@@ -38,6 +38,14 @@ data class DebtRepaymentEvaluationDto(
     val trackingDays: Int? = null,
     @param:Json(name = "projected_payoff_date")
     val projectedPayoffDate: String? = null,
+    // ADR-0049 §7.0 / 8e-6c three-state. `targetDate` echoes the goal's payoff deadline (ISO date
+    // string, null when unset / non-external — server-gated per §4); `threeState` ∈
+    // {on_track, ahead, at_risk} is the projected-payoff month vs the deadline month, populated
+    // ONLY when BOTH a deadline and a projection exist (else null — never editorialise, §7.0 R4).
+    @param:Json(name = "target_date")
+    val targetDate: String? = null,
+    @param:Json(name = "three_state")
+    val threeState: String? = null,
 )
 
 /** One linked Debt's shell inside a debt_repayment goal's evaluation block. */
@@ -85,4 +93,18 @@ data class DebtGoalLinksReplaceRequestDto(
 data class DebtGoalIntegrityReviewRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
+)
+
+/**
+ * Body for `POST /api/goals/{publicId}/target-date` (ADR-0049 §7.0 / 8e-6c) — set or clear a
+ * debt_repayment goal's payoff deadline. `expectedRowVersion` is the OCC token (the setter bumps
+ * `row_version` only, never `goal_version`). `targetDate` is the ISO date to set, or `null` to
+ * clear — the backend field is optional (a setter: omitted/null = clear), so Moshi's null-omission
+ * naturally encodes the clear case (it never reaches the wire as an explicit null).
+ */
+data class DebtGoalTargetDateRequestDto(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+    @param:Json(name = "target_date")
+    val targetDate: String? = null,
 )

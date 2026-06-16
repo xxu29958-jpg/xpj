@@ -95,14 +95,18 @@ class DebtGoalTargetDateRequest(BaseModel):
     OCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier). The
     setter bumps ``row_version`` only — NOT ``goal_version`` — because the deadline is goal-
     level config orthogonal to the frozen linked-Debt set; bumping ``goal_version`` would
-    create an empty version and silently un-achieve the goal. ``target_date = null`` clears
-    the deadline (the client always sends the field — a date to set, null to clear).
+    create an empty version and silently un-achieve the goal.
+
+    ``target_date`` is OPTIONAL (defaults to clear): this is a SETTER, so an *omitted* field
+    unambiguously means "clear the deadline" (there is no partial-update ambiguity). Requiring
+    it present would make the clear case unsendable from the Android Moshi client, which omits
+    null fields — present-with-value sets the deadline; absent/null clears it.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
-    target_date: date | None
+    target_date: date | None = None
 
 
 class DebtGoalIntegrityReviewRequest(BaseModel):

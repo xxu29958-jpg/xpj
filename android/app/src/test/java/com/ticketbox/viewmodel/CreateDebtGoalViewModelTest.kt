@@ -328,6 +328,12 @@ private class FakeCreateReportsActions(
         expectedRowVersion: Long,
     ): Result<Goal> = Result.failure(UnsupportedOperationException())
 
+    override suspend fun setDebtGoalTargetDate(
+        publicId: String,
+        expectedRowVersion: Long,
+        targetDate: String?,
+    ): Result<Goal> = Result.failure(UnsupportedOperationException())
+
     override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
         Result.failure(UnsupportedOperationException())
 
