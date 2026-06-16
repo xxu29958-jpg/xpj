@@ -117,6 +117,24 @@ def test_distinct_notification_keys_with_identical_content_each_create_a_draft(
     assert _draft_count() == 2
 
 
+def test_long_notification_key_is_accepted_not_rejected(
+    client: TestClient, *, identity,
+) -> None:
+    # codex PR#20 P2: notification_key carries the platform notification identity, whose raw form
+    # (app-supplied tag material) can be long. A real payment must never 422 just because its key
+    # is long — the value is hashed into the idempotency material, never stored raw, so the cap is
+    # a DoS bound not a fit constraint. (The real client sends a 64-char hash; this pins tolerance
+    # so a future cap-tightening can't silently break auto-capture.)
+    response = client.post(
+        "/api/expenses/notification-drafts",
+        headers=identity.app_headers,
+        json={**_payload(), "notification_key": "k" * 300},
+    )
+
+    assert response.status_code == 200, response.text
+    assert _draft_count() == 1
+
+
 def test_notification_draft_canonicalizes_currency_ocr_ownership(
     client: TestClient, *, identity,
 ) -> None:

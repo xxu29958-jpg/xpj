@@ -92,12 +92,17 @@ class NotificationDraftCreateRequest(BaseModel):
     merchant: str | None = Field(default=None, max_length=255)
     category: str | None = Field(default=None, max_length=64)
     expense_time: datetime | None = None
-    # ADR-0049-adjacent (codex PR#20 P1): the posting notification's system identity
-    # (Android StatusBarNotification.key). The idempotency key keys on it as the primary
-    # axis so two DISTINCT notifications with identical content (same merchant/amount/minute)
-    # each create a draft, while the SAME notification re-sent dedupes. Absent (legacy /
-    # non-notification source) → falls back to the content+window key.
-    notification_key: str | None = Field(default=None, max_length=255)
+    # ADR-0049-adjacent (codex PR#20 P1/P2): the posting notification's **per-post identity**.
+    # The Android client sends an opaque hash — SHA-256(StatusBarNotification.key | postTime),
+    # 64 hex chars — NOT the raw key. Including postTime means a reused notification slot's new
+    # event (same sbn.key, new postTime) gets a distinct identity instead of collapsing into the
+    # first payment (P2#1); sending a hash keeps the raw key's app-private tag material on-device.
+    # The idempotency key keys on it as the PRIMARY axis: two DISTINCT notifications → two drafts,
+    # the SAME notification re-sent → dedupe. Absent (legacy / non-notification source) → falls
+    # back to the content+window key. The cap is a generous DoS bound, NOT a fit constraint — the
+    # value is hashed into the idempotency material regardless of length, so a long key must never
+    # 422 a real payment into silent auto-capture failure (P2#2).
+    notification_key: str | None = Field(default=None, max_length=512)
 
 
 class ExpenseUpdateRequest(BaseModel):

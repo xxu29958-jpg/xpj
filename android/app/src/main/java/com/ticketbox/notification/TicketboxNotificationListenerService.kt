@@ -30,9 +30,10 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         if (!PaymentNotificationParser.isCandidatePackage(sbn.packageName)) return
 
         val draft = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
-        // 去重按**这条通知的系统身份**（sbn.key）：本地去重器 + 透传到后端幂等键（codex P1，否则后端按内容
-        // 去重仍会吞掉同分钟同金额的第二笔真账）。
-        val notificationKey = sbn.key
+        // 去重按**这条通知的每次投递身份** = hash(sbn.key | sbn.postTime)：含 postTime,故个别 App 复用同一
+        // 通知槽承载第二笔真账(同 sbn.key、新 postTime)时各算一笔(codex P2#1);定长 hash 不触后端长度上限、
+        // 原始 key 不离设备(codex P2#2)。本地去重器 + 透传后端幂等键共用同一身份(否则后端按内容去重仍吞单)。
+        val notificationKey = notificationIdentityKey(sbn.key, sbn.postTime)
         if (!draftDeduper.tryReserve(draft, notificationKey)) return
 
         serviceScope.launch {

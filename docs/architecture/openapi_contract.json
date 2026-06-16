@@ -8310,7 +8310,7 @@
           "notification_key": {
             "anyOf": [
               {
-                "maxLength": 255,
+                "maxLength": 512,
                 "type": "string"
               },
               {

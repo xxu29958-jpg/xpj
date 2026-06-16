@@ -699,7 +699,7 @@ Content-Type: application/json
 - `source` 仅支持 `wechat` / `alipay` / `bank_sms` / `bank_app` / `other`。
 - 请求体禁止 `raw_text` 等原文类字段；校验失败返回 `invalid_request`。
 - 请求体不得包含汇率字段；后端负责计算或标记 `fx_status=pending`。
-- 可选 `notification_key`：发出通知的系统身份（Android `StatusBarNotification.key`）。幂等键**以它为主轴** + 来源/商家/金额/30 分钟时间窗口为次轴：两条**不同**通知（不同 `notification_key`）即便内容相同也各生成一条草稿（两笔真账各记一笔），**同一条**通知重发（同 `notification_key`）返回同一条草稿。`notification_key` 缺省（旧客户端 / 非通知来源）时回退到纯内容 + 时间窗口键（旧行为）。
+- 可选 `notification_key`：这条通知的**每次投递身份**——Android 客户端发送 `SHA-256(StatusBarNotification.key | postTime)` 的 64 位十六进制（**不是原始 key**：含 `postTime` 故个别 App 复用同一通知槽承载的不同事件各算一笔；定长 hash 永远落在长度上限内、原始 key 含 App 私有 tag 串不离开设备）。幂等键**以它为主轴** + 来源/商家/金额/30 分钟时间窗口为次轴：两条**不同投递身份**即便内容相同也各生成一条草稿（两笔真账各记一笔），**同一投递身份**重发返回同一条草稿。缺省（旧客户端 / 非通知来源）时回退到纯内容 + 时间窗口键（旧行为）。后端对该字段只做宽松 DoS 长度上限（512），值无论多长都会被 hash 进幂等材料，故长 key 绝不 422 让自动捕获静默失败。
 - `viewer` 返回 `permission_denied`。
 - 不保存图片路径，不自动确认，不更新固定支出记录。
 

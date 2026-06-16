@@ -32,10 +32,15 @@ internal class NotificationDraftDeduper(
     }
 
     /**
-     * 去重键以**通知身份** [notificationKey]（`StatusBarNotification.key`——同一条通知被重发时不变、两条不同的
-     * 通知必不同）为**主轴**，而非纯内容。否则"同一分钟、同金额同商户的两笔真账"（连买两杯一样的咖啡 / 给同一人
-     * 转两次同样的钱）会撞同一个内容键 → 第二笔被**静默吞掉**（数据丢失）。内容部分（source/amount/merchant/
-     * 分钟）作次轴，防个别 App 复用同一通知槽承载不同事件时漏判（同 key 但不同金额仍各记一笔）。
+     * 去重键以**这条通知的每次投递身份** [notificationKey]（`notificationIdentityKey(sbn.key, sbn.postTime)`
+     * 的 hash——同一次投递被重发时不变、两条不同通知或同槽承载的不同事件〔同 sbn.key 但 postTime 变〕必不同）
+     * 为**主轴**，而非纯内容。否则"同一分钟、同金额同商户的两笔真账"（连买两杯一样的咖啡 / 给同一人转两次同样
+     * 的钱）会撞同一个内容键 → 第二笔被**静默吞掉**（数据丢失）。
+     *
+     * **有意取舍**：含 `postTime` 故同一次投递的良性重渲染（新 `postTime`：连接刷新 / 分组更新 / OEM 通知刷新 /
+     * 再次 `notify()` 终态）会分裂成两条草稿。但 auto-capture 只建**可复核的 pending**（下游"疑似重复"再兜），
+     * "宁可多一条可复核草稿、也绝不吞掉一笔真账"是刻意选的较小恶。内容次轴（source/amount/merchant/分钟）此后
+     * 主要对 legacy 缺省身份（[notificationKey] 为空）承重。
      */
     private fun dedupKey(draft: NotificationDraft, notificationKey: String): String = listOf(
         notificationKey,

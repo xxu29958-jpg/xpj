@@ -210,8 +210,9 @@ data class NotificationDraftRequestDto(
     val category: String?,
     @param:Json(name = "expense_time")
     val expenseTime: String?,
-    // 这条通知的系统身份(StatusBarNotification.key)。后端幂等键以它为主轴去重——两条不同通知(不同 key)
-    // 即便同金额同商户同分钟也各记一笔，同一条重发(同 key)才去重(codex P1)。Moshi 省略 null=旧内容键回退。
+    // 这条通知的**每次投递身份** = notificationIdentityKey(sbn.key, sbn.postTime) 的 hash(不是原始 key)。
+    // 后端幂等键以它为主轴去重——两个不同投递身份即便同金额同商户同分钟也各记一笔,同一投递身份重发才去重
+    // (codex PR#20 P1/P2)。Moshi 省略 null=旧内容键回退(非通知来源)。
     @param:Json(name = "notification_key")
     val notificationKey: String? = null,
 )
