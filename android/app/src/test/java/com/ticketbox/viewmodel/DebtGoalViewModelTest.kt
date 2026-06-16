@@ -25,6 +25,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -310,7 +311,208 @@ class DebtGoalViewModelTest {
         assertEquals(false, viewModel.state.value.isSubmitting)
     }
 
+    // ── ADR-0049 §6.6 计划达成撒花（边沿 / 成分 / 去重，达成只读服务端 evaluation_state）─────────────
+
+    @Test
+    fun memberPlanCompletionEmitsCelebration() = runTest(dispatcher) {
+        // 详情停在 in_progress，再 fetch 到 achieved（纯成员）→ 浮层撒花信号；成员不走 flash。
+        val listed = debtGoal(evaluationState = "in_progress", links = listOf(memberLink("open")), voidedIds = emptyList())
+        val achieved = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(listed)),
+            goalResult = Result.success(achieved),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.openDetail(listed)
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.celebration.value)
+        assertEquals("还清欠款", viewModel.celebration.value?.goalName)
+        assertNull(viewModel.state.value.flashMessage)
+    }
+
+    @Test
+    fun externalPlanCompletionFlashesWithoutMascotCelebration() = runTest(dispatcher) {
+        // 纯外部计划达成 → 轻量 flash，不撒花、不夹夹（§6.7）。
+        val listed = debtGoal(evaluationState = "in_progress", links = listOf(externalLink("open")), voidedIds = emptyList())
+        val achieved = debtGoal(evaluationState = "achieved", links = listOf(externalLink("cleared")), voidedIds = emptyList())
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(listed)),
+            goalResult = Result.success(achieved),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.openDetail(listed)
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+        assertTrue(viewModel.state.value.flashMessage != null)
+    }
+
+    @Test
+    fun mixedPlanCompletionFlashesWithoutMascotCelebration() = runTest(dispatcher) {
+        // 混装（成员 + 外部）→ 中性 flash，不夹夹撒花（避免给信用卡撒花，§6.7）。
+        val listed = debtGoal(
+            evaluationState = "in_progress",
+            links = listOf(memberLink("open"), externalLink("open")),
+            voidedIds = emptyList(),
+        )
+        val achieved = debtGoal(
+            evaluationState = "achieved",
+            links = listOf(memberLink("cleared"), externalLink("cleared")),
+            voidedIds = emptyList(),
+        )
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(listed)),
+            goalResult = Result.success(achieved),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.openDetail(listed)
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+        assertTrue(viewModel.state.value.flashMessage != null)
+    }
+
+    @Test
+    fun openingAnAlreadyAchievedPlanDoesNotCelebrate() = runTest(dispatcher) {
+        // 首次打开一个早已达成的计划（list 拷贝已是 achieved）不撒花——避免历史达成误触（§6.6）。
+        val achieved = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(achieved)),
+            goalResult = Result.success(achieved),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.openDetail(achieved)
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun planCompletionCelebratesOncePerGoalVersion() = runTest(dispatcher) {
+        // 同一 goal_version 的达成只撒一次：消费后重新进入（list 仍 in_progress）不再撒（§6.6 去重）。
+        val listed = debtGoal(evaluationState = "in_progress", links = listOf(memberLink("open")), voidedIds = emptyList())
+        val achieved = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(listed)),
+            goalResult = Result.success(achieved),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.openDetail(listed)
+        advanceUntilIdle()
+        assertNotNull(viewModel.celebration.value)
+        viewModel.consumeCelebration()
+        viewModel.closeDetail()
+
+        viewModel.openDetail(listed)
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun consumeCelebrationClearsTheSignal() = runTest(dispatcher) {
+        val listed = debtGoal(evaluationState = "in_progress", links = listOf(memberLink("open")), voidedIds = emptyList())
+        val achieved = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(listed)),
+            goalResult = Result.success(achieved),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(listed)
+        advanceUntilIdle()
+        assertNotNull(viewModel.celebration.value)
+
+        viewModel.consumeCelebration()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun removeVoidedThatCompletesAMemberPlanCelebrates() = runTest(dispatcher) {
+        // 移除作废欠款后新版本恰好全清（纯成员）→ 用户在该屏目击达成 → 撒花。
+        val needsReview = debtGoal(
+            evaluationState = "not_evaluable",
+            needsReview = true,
+            rowVersion = 5L,
+            links = listOf(memberLink("cleared"), memberLink("voided", id = "m-voided")),
+            voidedIds = listOf("m-voided"),
+        )
+        val completed = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(needsReview)),
+            goalResult = Result.success(needsReview),
+            replaceResult = Result.success(completed),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(needsReview)
+        advanceUntilIdle()
+
+        viewModel.removeVoidedDebts()
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun refreshThatLatchesAnOpenInProgressDetailToAchievedCelebrates() = runTest(dispatcher) {
+        // 设计主路径（§6.6）：详情已打开停在 in_progress（openDetail 不跨边沿），随后一次 refresh 的 detail
+        // 重拉翻成 achieved → latchSelectedDetail 处的撒花调用点跨边沿。直接钉死那条主路径（不经 openDetail）。
+        val inProgress = debtGoal(evaluationState = "in_progress", links = listOf(memberLink("open")), voidedIds = emptyList())
+        val achieved = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(inProgress)),
+            goalResult = Result.success(inProgress),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openDetail(inProgress)
+        advanceUntilIdle()
+        assertNull(viewModel.celebration.value) // openDetail fetched in_progress → no edge yet
+
+        // 详情打开期间最后一笔在别处被清，detail 重拉将翻 achieved。
+        repo.goalResultOverride = Result.success(achieved)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.celebration.value) // latchSelectedDetail in_progress→achieved 边沿撒花
+    }
+
     // ── fixtures ─────────────────────────────────────────────────────────────
+    private fun memberLink(status: String, id: String = "m-$status"): DebtGoalLink = DebtGoalLink(
+        debtPublicId = id,
+        status = status,
+        direction = "i_owe",
+        counterpartyType = "member",
+        counterpartyLabel = "小明",
+        principalAmountCents = 10000,
+        remainingAmountCents = if (status == "cleared") 0 else 10000,
+        homeCurrencyCode = "CNY",
+    )
+
+    private fun externalLink(status: String, id: String = "e-$status"): DebtGoalLink = DebtGoalLink(
+        debtPublicId = id,
+        status = status,
+        direction = "i_owe",
+        counterpartyType = "external",
+        counterpartyLabel = "招商信用卡",
+        principalAmountCents = 10000,
+        remainingAmountCents = if (status == "cleared") 0 else 10000,
+        homeCurrencyCode = "CNY",
+    )
+
     private fun openLink(): DebtGoalLink = DebtGoalLink(
         debtPublicId = "debt-a",
         status = "open",
@@ -392,6 +594,10 @@ private class FakeReportsActions(
     /** When set, debtGoals() stalls until completed — used to interleave a slow load. */
     var debtGoalsGate: CompletableDeferred<Unit>? = null
 
+    /** When set, the NEXT (and subsequent) goal() return this instead of [goalResult] —
+     * lets a test flip the detail re-fetch result between openDetail and a later refresh. */
+    var goalResultOverride: Result<Goal>? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> {
@@ -402,7 +608,7 @@ private class FakeReportsActions(
 
     override suspend fun goal(publicId: String): Result<Goal> {
         goalCalls += publicId
-        return goalResult
+        return goalResultOverride ?: goalResult
     }
 
     override suspend fun replaceDebtLinks(

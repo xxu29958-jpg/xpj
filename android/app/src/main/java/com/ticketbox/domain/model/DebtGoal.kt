@@ -48,7 +48,25 @@ data class DebtGoalLink(
     val isVoided: Boolean get() = status == DebtLinkStatuses.VOIDED
     val isCleared: Boolean get() = status == DebtLinkStatuses.CLEARED
     val isOpen: Boolean get() = status == DebtLinkStatuses.OPEN
+
+    /**
+     * 单笔按金额的清偿比例 = (本金 − 剩余) / 本金，钳到 [0,1]（counting-up 渲染，ADR-0049 §6.2 每笔级）。
+     * cleared 直接取 1（剩余应为 0）；本金 ≤ 0 的退化数据取 0；冻结的本金/剩余，不读活余额（红线⑥）。
+     */
+    val clearedFraction: Float
+        get() = when {
+            isCleared -> 1f
+            principalAmountCents <= 0L -> 0f
+            else -> ((principalAmountCents - remainingAmountCents).toFloat() / principalAmountCents.toFloat())
+                .coerceIn(0f, 1f)
+        }
 }
+
+/**
+ * 还债计划的关联欠款成分（ADR-0049 §6.7）：成员债走关系叙事 + 夹夹撒花；外部债走会计框架；混装降级中性。
+ * 全部作废 = [Empty]（无可计入欠款，§6.2 短路空态）。纯客户端按未作废关联欠款的 `counterpartyType` 判定。
+ */
+enum class DebtGoalComposition { Member, External, Mixed, Empty }
 
 data class DebtRepaymentEvaluation(
     val goalVersion: Int,
@@ -76,4 +94,54 @@ data class DebtRepaymentEvaluation(
      */
     val nonVoidedDebtPublicIds: List<String>
         get() = linkedDebts.filterNot { it.isVoided }.map { it.debtPublicId }
+
+    // ── ADR-0049 §6 (slice 8e-5) 计划级进度（件数为主视觉，纯客户端，零新后端字段，§6.1/§6.2）─────────
+
+    /** 计入进度分母的关联欠款：作废的不计入（§6.2）。 */
+    val countedLinks: List<DebtGoalLink> get() = linkedDebts.filterNot { it.isVoided }
+
+    /** 已「两清」的笔数（含 forgiven——forgive 折叠为 cleared，计入两清，§6.2 P1#3）。 */
+    val clearedCount: Int get() = linkedDebts.count { it.isCleared }
+
+    /** 计入进度的总笔数（作废不计入分母，§6.2）。 */
+    val totalCount: Int get() = countedLinks.size
+
+    /** 还剩的笔数（未作废、未两清）。 */
+    val remainingCount: Int get() = totalCount - clearedCount
+
+    /**
+     * 计划级填充比例 = 两清笔数 / 总笔数（**笔数不是金额**：communal「一起做完几件事」=件数，§6.2）。
+     * 仅驱动进度条渲染——**不**驱动完成撒花边沿（达成只读服务端 latch，§6.6 / backend F8）。
+     */
+    val planFraction: Float
+        get() = if (totalCount == 0) 0f else (clearedCount.toFloat() / totalCount.toFloat()).coerceIn(0f, 1f)
+
+    /**
+     * 计划成分（按未作废关联欠款的对手方类型，§6.7）：全部作废 → [DebtGoalComposition.Empty]；
+     * 同时含成员与外部 → [DebtGoalComposition.Mixed]；否则按唯一类型。驱动语气 / 撒花 / 金额呈现的分叉。
+     */
+    val composition: DebtGoalComposition
+        get() {
+            val links = countedLinks
+            if (links.isEmpty()) return DebtGoalComposition.Empty
+            val anyMember = links.any { it.counterpartyType == DebtCounterpartyTypes.MEMBER }
+            val anyExternal = links.any { it.counterpartyType != DebtCounterpartyTypes.MEMBER }
+            return when {
+                anyMember && anyExternal -> DebtGoalComposition.Mixed
+                anyMember -> DebtGoalComposition.Member
+                else -> DebtGoalComposition.External
+            }
+        }
+
+    /**
+     * 仅当所有未作废关联欠款同一本位币时返回该币种，否则 `null`（混币时金额副文案整条隐藏，§6.2 P2#7）。
+     */
+    val sharedHomeCurrencyCode: String?
+        get() = countedLinks.map { it.homeCurrencyCode }.distinct().singleOrNull()
+
+    /** 未作废关联欠款的本金合计（仅 [sharedHomeCurrencyCode] 非空时有意义）。 */
+    val principalSumCents: Long get() = countedLinks.sumOf { it.principalAmountCents }
+
+    /** 未作废关联欠款的剩余合计（仅 [sharedHomeCurrencyCode] 非空时有意义；**永不带「欠」字**呈现，§6.2）。 */
+    val remainingSumCents: Long get() = countedLinks.sumOf { it.remainingAmountCents }
 }
