@@ -433,9 +433,10 @@ internal class ExpenseDetailRepository(
     suspend fun createNotificationDraft(
         draft: NotificationDraft,
         expectedLedgerId: String? = null,
+        notificationKey: String? = null,
     ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind(expectedLedgerId = expectedLedgerId)
-        val created = bound.call { it.createNotificationDraft(draft.toRequest()) }
+        val created = bound.call { it.createNotificationDraft(draft.toRequest(notificationKey)) }
         created.toDomain()
     }
 

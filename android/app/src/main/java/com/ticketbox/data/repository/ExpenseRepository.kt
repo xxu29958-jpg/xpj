@@ -251,7 +251,8 @@ class ExpenseRepository(
     suspend fun createNotificationDraft(
         draft: NotificationDraft,
         expectedLedgerId: String? = null,
-    ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedLedgerId)
+        notificationKey: String? = null,
+    ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedLedgerId, notificationKey)
 
     override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         pendingRepository.confirmExpense(id, expectedRowVersion)

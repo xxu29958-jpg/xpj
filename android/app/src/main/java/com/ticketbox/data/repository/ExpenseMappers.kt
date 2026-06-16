@@ -255,7 +255,7 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     )
 }
 
-fun NotificationDraft.toRequest(): NotificationDraftRequestDto = NotificationDraftRequestDto(
+fun NotificationDraft.toRequest(notificationKey: String? = null): NotificationDraftRequestDto = NotificationDraftRequestDto(
     source = source.apiValue,
     originalCurrency = FxContract.HomeCurrency.storageKey,
     originalAmount = minorToMajorText(amountCents, FxContract.HomeCurrency),
@@ -263,6 +263,7 @@ fun NotificationDraft.toRequest(): NotificationDraftRequestDto = NotificationDra
     merchant = merchant?.trim()?.takeIf { it.isNotBlank() },
     category = normalizeExpenseCategory(category),
     expenseTime = expenseTime,
+    notificationKey = notificationKey,
 )
 
 fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(

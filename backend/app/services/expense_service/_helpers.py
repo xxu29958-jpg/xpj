@@ -131,11 +131,21 @@ def _notification_draft_key(
     original_amount: object | None,
     expense_time,
     now,
+    notification_key: str | None = None,
 ) -> str:
+    # ``notification_key`` is the posting notification's **per-post identity** — the Android client
+    # sends a hash of (StatusBarNotification.key | postTime), not the raw key — and it is the PRIMARY
+    # dedup axis (codex PR#20 P1/P2). Two distinct posts (incl. a reused slot's new event, distinct
+    # postTime) get different identities (each a real transaction → its own draft); the same post
+    # re-sent gets the same identity → dedupe. When absent (legacy client / non-notification path) it
+    # is "" — the key then reduces to the content+window axes, so content collisions still dedupe.
+    # (Adding the "" slot shifts the hash vs the pre-PR#20 scheme; that re-keying is intra-version
+    # consistent and at worst yields one extra reviewable pending draft across the deploy boundary.)
     merchant_key = _clean_optional_text(merchant) or ""
     material = "|".join(
         [
             "notification",
+            (notification_key or "").strip(),
             source,
             merchant_key.casefold(),
             str(amount_cents) if amount_cents is not None else "",
