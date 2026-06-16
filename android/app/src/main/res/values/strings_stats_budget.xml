@@ -341,6 +341,9 @@
     <string name="debt_plan_celebration_check_desc">全部两清</string>
     <string name="debt_plan_celebration_announce">这几笔全部两清啦，和家人一起把这些都处理好啦</string>
 
+    <!-- 8e-6a 外部债「先清小的」(snowball) 排序：只对纯外部债开放（§7.0 成员/混装红线）；只升序一档（avalanche/「先清大的」均砍）。 -->
+    <string name="debt_plan_sort_smallest_first">先清小的</string>
+
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>
     <string name="stats_recurring_candidates_count">%1$d 项</string>
