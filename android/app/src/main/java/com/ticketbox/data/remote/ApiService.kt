@@ -14,6 +14,7 @@ import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
+import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
@@ -527,6 +528,17 @@ interface ApiService {
     suspend fun acknowledgeGoalIntegrityReview(
         @Path("publicId") publicId: String,
         @Body request: DebtGoalIntegrityReviewRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+        @Query("timezone") timezone: String? = null,
+    ): GoalDto
+
+    // ADR-0049 §7.0 / 8e-6c (slice 8e-6c): set or clear a debt_repayment goal's payoff deadline.
+    // OCC token in the body (bumps row_version only, never goal_version) + idempotency key in the
+    // header (mirrors the link-replace / integrity-review setters). Returns the fold-after GoalDto.
+    @POST("api/goals/{publicId}/target-date")
+    suspend fun setGoalTargetDate(
+        @Path("publicId") publicId: String,
+        @Body request: DebtGoalTargetDateRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
         @Query("timezone") timezone: String? = null,
     ): GoalDto

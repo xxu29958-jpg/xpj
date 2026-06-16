@@ -1,6 +1,9 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
+import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.GoalDto
 import kotlin.test.Test
@@ -109,10 +112,33 @@ class DebtGoalMappersTest {
 
     @Test
     fun evaluationKpiFieldsDefaultNullWhenAbsent() {
-        // member / mixed / thin plans omit the projection (server-gated) → null on the domain.
+        // member / mixed / thin plans omit the projection + three-state (server-gated) → null on the domain.
         val domain = requireNotNull(debtGoalDto().toDomain().debtRepayment)
         assertNull(domain.trackingDays)
         assertNull(domain.projectedPayoffDate)
+        assertNull(domain.targetDate)
+        assertNull(domain.threeState)
+    }
+
+    @Test
+    fun evaluationMapsTargetDateAndThreeStateFields() {
+        // 8e-6c: a pure-external plan with a deadline carries target_date + three_state on the wire.
+        val domain = DebtRepaymentEvaluationDto(
+            goalVersion = 1,
+            evaluationState = "in_progress",
+            needsReview = false,
+            achievedAt = null,
+            achievedVersion = null,
+            linkedDebts = emptyList(),
+            voidedDebtPublicIds = emptyList(),
+            trackingDays = 60,
+            projectedPayoffDate = "2026-09-01",
+            targetDate = "2026-12-01",
+            threeState = "ahead",
+        ).toDomain()
+
+        assertEquals("2026-12-01", domain.targetDate)
+        assertEquals("ahead", domain.threeState)
     }
 
     @Test
@@ -141,6 +167,23 @@ class DebtGoalMappersTest {
         assertNull(domain.debtRepayment)
         assertEquals("2026-06", domain.month)
         assertEquals(80000L, domain.targetAmountCents)
+    }
+
+    @Test
+    fun targetDateRequestOmitsNullTargetDateForTheClearCase() {
+        // The 8e-6c clear-deadline case relies on Moshi OMITTING target_date=null from the wire (the now-
+        // optional backend field reads omitted == clear). Production Moshi (KotlinJsonAdapterFactory, no
+        // serializeNulls — ApiClient) omits nulls; pin it so a future Moshi config change can't silently
+        // break the clear case. (Set case: target_date present.)
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            .adapter(DebtGoalTargetDateRequestDto::class.java)
+
+        val setJson = adapter.toJson(DebtGoalTargetDateRequestDto(expectedRowVersion = 7L, targetDate = "2026-12-01"))
+        assertTrue(setJson.contains("\"target_date\":\"2026-12-01\""))
+
+        val clearJson = adapter.toJson(DebtGoalTargetDateRequestDto(expectedRowVersion = 7L, targetDate = null))
+        assertTrue(clearJson.contains("\"expected_row_version\":7"))
+        assertFalse(clearJson.contains("target_date"))
     }
 
     private fun debtGoalDto(): GoalDto = GoalDto(

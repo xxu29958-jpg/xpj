@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -153,6 +154,12 @@ class Goal(Base):
     # integrity-review `needs_review` flag is cleared for that version; a later link
     # change bumps goal_version so a still-voided new version must be re-acknowledged.
     integrity_reviewed_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ADR-0049 §7.0 / 8e-6c: optional payoff DEADLINE for a pure-external debt_repayment
+    # goal (a calendar day; ``Date`` not ``DateTime`` sidesteps the tz-strip hazards). Drives
+    # the On track / Ahead / At risk three-state (projected payoff month vs this month). NULL =
+    # no deadline set (and always NULL for spending_limit / member / mixed goals). Orthogonal
+    # to the type CHECKs and the two scope indexes, so it is a single-step nullable add.
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 Index("ix_goals_tenant_month_status", Goal.tenant_id, Goal.month, Goal.status)

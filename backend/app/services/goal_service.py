@@ -269,6 +269,10 @@ def create_goal(
         raise AppError(
             "invalid_request", "支出上限目标不接受关联欠款。", status_code=422
         )
+    if payload.target_date is not None:
+        raise AppError(
+            "invalid_request", "支出上限目标不接受还清日期。", status_code=422
+        )
     if payload.month is None or payload.target_amount_cents is None:
         raise AppError("invalid_request", status_code=422)
     now = now_utc()

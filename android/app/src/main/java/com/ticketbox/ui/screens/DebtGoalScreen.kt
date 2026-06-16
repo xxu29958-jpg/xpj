@@ -16,11 +16,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,16 +88,15 @@ fun DebtGoalScreen(
     BackHandler(onBack = handleBack)
 
     val selected = state.selectedGoal
-    // 8e-6a 「先清小的」排序：纯展示派生态，composable-local（无持久化/无 DataStore；VM 已是 11 函数满门，
-    // 加 setter 会顶破 detekt TooManyFunctions——豁免≠把类做胖，[[feedback_baseline_not_complexity_license]]）。
-    // 设计稿 §5b 显式允许走 composable-local。作为**会话级视图偏好**：跨屏内 closeDetail() 保留（选了「先清小的」
-    // 后下一个打开的纯外部债计划沿用——「排序是看法不是数据」），刻意**不** keyed-by-goal 以免每次打开都要重选；
-    // 仅 overlay 关闭 dispose / 进程死亡时回 Default。永不持久化、永不跨成员/混装（gate == External）。
+    // 8e-6a「先清小的」排序 + 8e-6c 还清日期 picker 显隐：详情层 composable-local 视图态（无持久化/无 DataStore；
+    // 排序刻意不 keyed-by-goal=会话级视图偏好，跨 closeDetail 保留）。picker 对话框在 AppScrollableContent **外**渲染。
     var sortMode by rememberSaveable { mutableStateOf(DebtPlanSortMode.Default) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
     AppScrollableContent(
         role = AppPageRole.Stats,
         isRefreshing = state.isLoading,
-        onRefresh = viewModel::refresh,
+        // 不能用 viewModel::refresh：refresh 现带 clearStale 默认参，方法引用解析为 (Boolean)->Unit 不匹配 ()->Unit。
+        onRefresh = { viewModel.refresh() },
         hasBottomBar = false,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
@@ -117,13 +120,22 @@ fun DebtGoalScreen(
                 state = state,
                 currency = currency,
                 viewModel = viewModel,
-                sortMode = sortMode,
-                onSortModeChange = { sortMode = it },
+                callbacks = DebtGoalDetailCallbacks(
+                    sortMode = sortMode,
+                    onSortModeChange = { sortMode = it },
+                    onSetTargetDate = { showDatePicker = true },
+                ),
             )
         } else {
             debtGoalListSection(state = state, viewModel = viewModel)
         }
     }
+    DebtTargetDatePickerDialog(
+        visible = showDatePicker,
+        selected = selected,
+        onSetTargetDate = viewModel::setTargetDate,
+        onDismiss = { showDatePicker = false },
+    )
 }
 
 @Composable
@@ -244,13 +256,19 @@ private fun LazyListScope.debtGoalDetailSection(
     state: DebtGoalUiState,
     currency: CurrencyDisplay,
     viewModel: DebtGoalViewModel,
-    sortMode: DebtPlanSortMode,
-    onSortModeChange: (DebtPlanSortMode) -> Unit,
+    callbacks: DebtGoalDetailCallbacks,
 ) {
     val goal = state.selectedGoal ?: return
     val evaluation = goal.debtRepayment ?: return
-    // §6 hero：件数为主视觉的关系进度卡（含状态徽章 + 达成态），取代旧的纯状态摘要卡。
-    item { DebtPlanProgressCard(evaluation = evaluation, currency = currency) }
+    // §6 hero：件数为主视觉的关系进度卡（含状态徽章 + 达成态 + 8e-6c 纯外部债三态/还清日期/设日期入口）。
+    item {
+        DebtPlanProgressCard(
+            evaluation = evaluation,
+            currency = currency,
+            canModify = state.canModify,
+            onSetTargetDate = callbacks.onSetTargetDate,
+        )
+    }
     if (evaluation.needsReview) {
         item {
             DebtGoalIntegrityReviewCard(
@@ -274,9 +292,10 @@ private fun LazyListScope.debtGoalDetailSection(
     // `items(key = debtPublicId)` 因稳定 key 平滑重组（不改源 list，对抗审 C2）。
     val isPureExternal = evaluation.composition == DebtGoalComposition.External
     if (isPureExternal) {
-        item { DebtPlanSortToggle(mode = sortMode, onModeChange = onSortModeChange) }
+        item { DebtPlanSortToggle(mode = callbacks.sortMode, onModeChange = callbacks.onSortModeChange) }
     }
-    val links = if (isPureExternal) evaluation.linkedDebts.sortedForPlan(sortMode) else evaluation.linkedDebts
+    val links =
+        if (isPureExternal) evaluation.linkedDebts.sortedForPlan(callbacks.sortMode) else evaluation.linkedDebts
     items(links, key = { it.debtPublicId }) { link ->
         DebtGoalLinkRow(link = link, currency = currency)
     }
@@ -369,4 +388,67 @@ private fun SectionEyebrow(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = AppSpacing.smallGap),
     )
+}
+
+/**
+ * 详情屏的交互回调束（8e-6a 排序是会话级视图偏好；8e-6c 还清日期 picker 是屏级对话框，由 [DebtGoalScreen]
+ * hoist）——打包成一个对象，让 [debtGoalDetailSection] 的参数数维持在 detekt LongParameterList 门内（≤5）。
+ */
+internal data class DebtGoalDetailCallbacks(
+    val sortMode: DebtPlanSortMode,
+    val onSortModeChange: (DebtPlanSortMode) -> Unit,
+    val onSetTargetDate: () -> Unit,
+)
+
+/**
+ * 8e-6c 还清日期 picker（Material3 [DatePickerDialog]）。[visible] 为 false 时 no-op（host 逻辑内联于此，避免在
+ * [DebtGoalScreen] 体内占行触 LongMethod）。确定=用选中的 UTC 毫秒设截止日；[selected] 已有截止日时额外给
+ * 「清除日期」（=清空，走 `onSetTargetDate(null)`）。picker 初值回显当前截止日。**不限制过去日期**：过去截止日是
+ * 合法输入（→ at_risk，事实性「晚于计划」，钉死在后端 `test_three_state_at_risk_when_deadline_is_in_the_past`）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DebtTargetDatePickerDialog(
+    visible: Boolean,
+    selected: Goal?,
+    onSetTargetDate: (Long?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // R2 defense-in-depth (§7.0)：还清日期入口本就只从 DebtExternalKpiBlock（composition == External）可达，
+    // 但 render 层再 gate 一道——即便 hoist 的 showDatePicker 跨 goal 切换残留到成员/混装计划，picker 也 no-op。
+    if (!visible || selected?.debtRepayment?.composition != DebtGoalComposition.External) return
+    // `selected` is smart-cast non-null here (the guard returns on null/non-External).
+    val deadlineIso = selected.debtRepayment?.targetDate
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = deadlineIso?.let { isoDateToEpochMillis(it) },
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = { pickerState.selectedDateMillis?.let { onSetTargetDate(it); onDismiss() } },
+                enabled = pickerState.selectedDateMillis != null,
+            ) { Text(stringResource(R.string.common_confirm)) }
+        },
+        dismissButton = {
+            Row {
+                if (deadlineIso != null) {
+                    TextButton(onClick = { onSetTargetDate(null); onDismiss() }) {
+                        Text(stringResource(R.string.debt_goal_target_date_clear))
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            }
+        },
+    ) {
+        DatePicker(
+            state = pickerState,
+            title = {
+                Text(
+                    stringResource(R.string.debt_goal_target_date_picker_title),
+                    modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
+                )
+            },
+        )
+    }
 }

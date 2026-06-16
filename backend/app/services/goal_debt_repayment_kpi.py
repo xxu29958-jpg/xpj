@@ -58,6 +58,27 @@ def project_payoff_days(remaining_now: int, reduction: int, tracking_days: int) 
     return math.ceil(remaining_now / daily_velocity)
 
 
+def payoff_three_state(projected_payoff_date: date | None, target_date: date | None) -> str | None:
+    """ADR-0049 §7.0 / 8e-6c: On track / Ahead / At risk, by the projected-payoff MONTH vs the
+    deadline MONTH (pure function).
+
+    Month-granularity matches the month-granular projection display and avoids day-level
+    flapping (a few days late is still ``on_track``). Returns ``None`` unless BOTH a projection
+    and a deadline exist — never editorialise on missing data (§7.0 R4 / de-shame). ``at_risk``
+    is a FACTUAL "later than planned" state, NOT a shame trigger (the UI renders it amber/warn,
+    never red, with no "pay faster" nudge).
+    """
+    if projected_payoff_date is None or target_date is None:
+        return None
+    projected_month = (projected_payoff_date.year, projected_payoff_date.month)
+    target_month = (target_date.year, target_date.month)
+    if projected_month < target_month:
+        return "ahead"
+    if projected_month > target_month:
+        return "at_risk"
+    return "on_track"
+
+
 def compute_external_kpi(
     db: Session, debts: list[Debt], *, now: datetime
 ) -> tuple[int | None, date | None]:

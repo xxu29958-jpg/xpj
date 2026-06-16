@@ -95,6 +95,10 @@ class OpenApiContractGateTest {
         Pairing(DebtGoalLinkViewDto::class, "DebtGoalLinkView"),
         Pairing(DebtGoalLinksReplaceRequestDto::class, "DebtGoalLinksReplaceRequest"),
         Pairing(DebtGoalIntegrityReviewRequestDto::class, "DebtGoalIntegrityReviewRequest"),
+        // ADR-0049 §7.0 (slice 8e-6c) payoff-deadline setter body. additionalProperties=false →
+        // the forward check is the forbid protection; target_date is optional on the wire (a
+        // setter: omitted == clear), so the reverse check only requires expected_row_version.
+        Pairing(DebtGoalTargetDateRequestDto::class, "DebtGoalTargetDateRequest"),
         // ADR-0049 §2 (slice 8) Debt entity surface. DebtDto models all 22 DebtResponse
         // properties (reverse check needs every required field; +is_forgiven in slice 8e-3); the
         // create body is additionalProperties=false → the forward check is the forbid protection.
