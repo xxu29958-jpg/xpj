@@ -95,9 +95,9 @@ class OpenApiContractGateTest {
         Pairing(DebtGoalLinkViewDto::class, "DebtGoalLinkView"),
         Pairing(DebtGoalLinksReplaceRequestDto::class, "DebtGoalLinksReplaceRequest"),
         Pairing(DebtGoalIntegrityReviewRequestDto::class, "DebtGoalIntegrityReviewRequest"),
-        // ADR-0049 §2 (slice 8) Debt entity surface. DebtDto models all 21 DebtResponse
-        // properties (reverse check needs every required field); the create body is
-        // additionalProperties=false → the forward check is the forbid protection.
+        // ADR-0049 §2 (slice 8) Debt entity surface. DebtDto models all 22 DebtResponse
+        // properties (reverse check needs every required field; +is_forgiven in slice 8e-3); the
+        // create body is additionalProperties=false → the forward check is the forbid protection.
         Pairing(DebtDto::class, "DebtResponse"),
         Pairing(DebtListResponseDto::class, "DebtListResponse"),
         Pairing(DebtCreateRequestDto::class, "DebtCreateRequest"),
@@ -107,6 +107,9 @@ class OpenApiContractGateTest {
         Pairing(RepaymentCreateRequestDto::class, "RepaymentCreateRequest"),
         Pairing(DebtAdjustmentCreateRequestDto::class, "DebtAdjustmentCreateRequest"),
         Pairing(DebtVoidCreateRequestDto::class, "DebtVoidCreateRequest"),
+        // ADR-0049 §3.7 / §4 (slice 8e-3) creditor-forgive body (expected_row_version only),
+        // additionalProperties=false → forward check is the forbid protection.
+        Pairing(DebtForgiveCreateRequestDto::class, "DebtForgiveCreateRequest"),
         // ADR-0049 §3.2 (slice 8d) member repayment-proposal surface. The response models all 15
         // MemberRepaymentProposalResponse properties (reverse check needs every required field); the
         // request bodies are additionalProperties=false → the forward check is the forbid protection,

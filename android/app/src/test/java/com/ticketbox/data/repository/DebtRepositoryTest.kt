@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
+import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
@@ -462,6 +463,50 @@ class DebtRepositoryTest {
         assertEquals(2, handler.rejectProposalCalls.mapNotNull { it.idempotencyKey }.toSet().size)
     }
 
+    @Test
+    fun forgiveSendsRowVersionKeyAndReturnsForgivenFoldAfterDebt() = runTest {
+        val handler = DebtApiHandler().apply {
+            forgiveResult = debtDto(publicId = "d1", remaining = 0L, status = DebtLinkStatuses.CLEARED, isForgiven = true)
+        }
+
+        val updated = repository(handler).proposals.forgiveDebt(debtPublicId = "d1", expectedRowVersion = 7L).getOrThrow()
+
+        val call = handler.forgiveCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals(7L, call.request.expectedRowVersion)
+        // ADR-0042: a fresh single-use intent key per direct call.
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        // Forgive replies with the fold-after Debt (cleared + is_forgiven carried through the mapper).
+        assertTrue(updated.isCleared)
+        assertTrue(updated.isForgiven)
+    }
+
+    @Test
+    fun forgiveViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .proposals.forgiveDebt("d1", expectedRowVersion = 1L)
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(handler.forgiveCalls.isEmpty())
+    }
+
+    @Test
+    fun forgiveMintsFreshKeyPerCall() = runTest {
+        val handler = DebtApiHandler()
+        val repository = repository(handler)
+
+        // ADR-0042: each direct forgive is a distinct single-use intent — keys must NOT be reused.
+        repository.proposals.forgiveDebt("d1", expectedRowVersion = 1L).getOrThrow()
+        repository.proposals.forgiveDebt("d1", expectedRowVersion = 2L).getOrThrow()
+
+        val keys = handler.forgiveCalls.mapNotNull { it.idempotencyKey }
+        assertEquals(2, keys.size)
+        assertEquals(2, keys.toSet().size)
+    }
+
     private fun repository(
         handler: DebtApiHandler,
         settings: FakeTicketboxSettingsStore = boundSettingsStore(),
@@ -488,7 +533,12 @@ class DebtRepositoryTest {
         }
 }
 
-private fun debtDto(publicId: String = "debt-1", remaining: Long = 30_000L): DebtDto = DebtDto(
+private fun debtDto(
+    publicId: String = "debt-1",
+    remaining: Long = 30_000L,
+    status: String = DebtLinkStatuses.OPEN,
+    isForgiven: Boolean = false,
+): DebtDto = DebtDto(
     publicId = publicId,
     ledgerId = "owner",
     direction = DebtDirections.I_OWE,
@@ -498,13 +548,14 @@ private fun debtDto(publicId: String = "debt-1", remaining: Long = 30_000L): Deb
     principalAmountCents = 50_000,
     remainingAmountCents = remaining,
     paidAmountCents = 50_000 - remaining,
-    status = DebtLinkStatuses.OPEN,
+    status = status,
     sourceType = DebtSourceTypes.MANUAL,
     sourceId = null,
     homeCurrencyCode = "CNY",
     createdAt = "2026-06-15T00:00:00Z",
     updatedAt = "2026-06-15T00:00:00Z",
     rowVersion = 1,
+    isForgiven = isForgiven,
 )
 
 private class DebtApiFactory(private val handler: DebtApiHandler) : ApiServiceFactory {
@@ -515,6 +566,7 @@ private data class CreateDebtCall(val request: DebtCreateRequestDto, val idempot
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
 private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
+private data class ForgiveCall(val publicId: String, val request: DebtForgiveCreateRequestDto, val idempotencyKey: String?)
 private data class ProposeProposalCall(
     val publicId: String,
     val request: MemberRepaymentProposalCreateRequestDto,
@@ -551,6 +603,9 @@ private class DebtApiHandler : InvocationHandler {
     val withdrawProposalCalls = mutableListOf<WithdrawProposalCall>()
     val confirmProposalCalls = mutableListOf<ConfirmProposalCall>()
     val rejectProposalCalls = mutableListOf<RejectProposalCall>()
+    // ADR-0049 §3.7 / §4 (slice 8e-3) creditor-forgive route recording.
+    val forgiveCalls = mutableListOf<ForgiveCall>()
+    var forgiveResult: DebtDto? = null
     var debtsResult: DebtListResponseDto? = null
     var debtsError: Throwable? = null
     // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
@@ -656,6 +711,14 @@ private class DebtApiHandler : InvocationHandler {
                 idempotencyKey = values[3] as String?,
             )
             proposalResult ?: proposalDto(publicId = values[1] as String)
+        }
+        "forgiveDebt" -> {
+            forgiveCalls += ForgiveCall(
+                publicId = values[0] as String,
+                request = values[1] as DebtForgiveCreateRequestDto,
+                idempotencyKey = values[2] as String?,
+            )
+            forgiveResult ?: debtDto(publicId = values[0] as String)
         }
         else -> error("unexpected ApiService call: $name")
     }

@@ -21,7 +21,12 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt
 from app.schemas import DebtListResponse, DebtResponse
-from app.services.debt_service._fold import compute_paid, compute_remaining, derive_status
+from app.services.debt_service._fold import (
+    compute_paid,
+    compute_remaining,
+    derive_status,
+    has_forgiveness,
+)
 from app.services.debt_service._guards import proposal_debtor_creditor
 
 
@@ -146,7 +151,9 @@ def get_debt(db: Session, *, tenant_id: str, public_id: str) -> Debt:
     return debt
 
 
-def debt_response(debt: Debt, *, remaining: int, paid: int) -> DebtResponse:
+def debt_response(
+    debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = False
+) -> DebtResponse:
     return DebtResponse(
         public_id=debt.public_id,
         ledger_id=debt.tenant_id,
@@ -169,13 +176,19 @@ def debt_response(debt: Debt, *, remaining: int, paid: int) -> DebtResponse:
         created_at=debt.created_at,
         updated_at=debt.updated_at,
         row_version=debt.row_version,
+        is_forgiven=is_forgiven,
     )
 
 
 def _debt_response_with_fold(db: Session, debt: Debt) -> DebtResponse:
     remaining = compute_remaining(db, debt)
     paid = compute_paid(db, debt)
-    return debt_response(debt, remaining=remaining, paid=paid)
+    # §3.7 / §4: a forgiven Debt is a CLEARED Debt that carries a DebtForgiveness fact —
+    # distinct from a repayment-cleared one. Only check the fact when the fold says cleared
+    # (open/voided are never "forgiven"), so a stray forgiveness on a later-reopened Debt
+    # does not mislabel it.
+    is_forgiven = derive_status(debt, remaining) == "cleared" and has_forgiveness(db, debt.id)
+    return debt_response(debt, remaining=remaining, paid=paid, is_forgiven=is_forgiven)
 
 
 def get_debt_response(db: Session, *, tenant_id: str, public_id: str) -> DebtResponse:

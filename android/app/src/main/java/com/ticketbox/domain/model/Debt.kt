@@ -46,6 +46,14 @@ data class Debt(
      * real mapper ([com.ticketbox.data.repository.toDomain]) always carries the server value through.
      */
     val viewerIsDebtor: Boolean? = null,
+    /**
+     * Whether this cleared Debt was forgiven by the creditor ("算了，不用还了", ADR-0049 §3.7 / §4)
+     * rather than fully repaid. SERVER-authoritative (= status cleared AND a DebtForgiveness fact);
+     * the client never derives it. Drives the "被请客/请客" headline ([com.ticketbox.ui.screens]
+     * `memberDebtHeadlineRes`) and the §5.6 celebration fork. Defaults to `false` (non-forgiven) so
+     * construction sites that don't care need not name it; the mapper carries the server value through.
+     */
+    val isForgiven: Boolean = false,
 ) {
     val isOpen: Boolean get() = status == DebtLinkStatuses.OPEN
     val isCleared: Boolean get() = status == DebtLinkStatuses.CLEARED

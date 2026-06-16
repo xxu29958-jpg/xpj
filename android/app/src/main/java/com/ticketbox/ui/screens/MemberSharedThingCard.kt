@@ -87,7 +87,7 @@ internal fun MemberSharedThingCard(debt: Debt, currency: CurrencyDisplay) {
             )
             Spacer(Modifier.size(AppSpacing.smallGap))
             Text(
-                stringResource(memberDebtHeadlineRes(debt.viewerIsDebtor, debt.status, isForgiven = false, ratio = ratio)),
+                stringResource(memberDebtHeadlineRes(debt.viewerIsDebtor, debt.status, isForgiven = debt.isForgiven, ratio = ratio)),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = headlineColor,

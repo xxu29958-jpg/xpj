@@ -221,6 +221,7 @@
     <ID>TooManyFunctions:LedgerRepository.kt:LedgerRepository</ID>
     <ID>TooManyFunctions:LedgerViewModel.kt:LedgerViewModel : ViewModel</ID>
     <ID>TooManyFunctions:LocalSettingsStore.kt:LocalSettingsStore : TicketboxSettingsStore</ID>
+    <ID>TooManyFunctions:MemberRepaymentProposalViewModel.kt:MemberRepaymentProposalViewModel : ViewModel</ID>
     <ID>TooManyFunctions:MonthlyStatsViewModel.kt:MonthlyStatsViewModel : ViewModel</ID>
     <ID>TooManyFunctions:OutboxRepository.kt:OutboxRepository</ID>
     <ID>TooManyFunctions:PendingMutationDao.kt:PendingMutationDao</ID>

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.UiText
@@ -181,6 +182,31 @@ class MemberRepaymentProposalViewModel(
                 onSuccess = { onActionSucceeded(R.string.debt_proposal_reject_done, foldChanged = false) },
                 onFailure = { err ->
                     _state.update { it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_proposal_action_failed)) }
+                },
+            )
+        }
+    }
+
+    /**
+     * 8e ④ 债权人放弃受偿（「算了，不用还了」，ADR-0049 §3.7/§4）—— 单边、改折叠（清零→cleared(forgiven)）。
+     * [expectedRowVersion] 是宿主欠款当前的 row_version（§2.1 OCC 载体，由详情屏传入）。成功后走
+     * [onActionSucceeded] 暖 toast + 标记折叠已变让详情屏重拉到服务端 cleared+is_forgiven（ShareCard 转
+     * forgiven 暖语 + 创建者卡换成已两清说明）。OCC/已两清冲突后端返回 `state_conflict`，走 neutral 的「有人
+     * 刚记了一笔」提示而非吓人的失败文案（completeness P2#10，errorCode 分支而非本地化 message）。
+     */
+    fun forgive(expectedRowVersion: Long) {
+        val publicId = debtPublicId ?: return
+        _state.update { it.copy(isSubmitting = true) }
+        viewModelScope.launch {
+            repository.forgiveDebt(publicId, expectedRowVersion).fold(
+                onSuccess = { onActionSucceeded(R.string.debt_member_forgive_done, foldChanged = true) },
+                onFailure = { err ->
+                    val message = if ((err as? RepositoryException)?.errorCode == "state_conflict") {
+                        UiText.res(R.string.debt_member_forgive_conflict)
+                    } else {
+                        err.toUiText(R.string.debt_member_forgive_failed)
+                    }
+                    _state.update { it.copy(isSubmitting = false, error = message) }
                 },
             )
         }

@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
@@ -72,6 +73,15 @@ interface DebtProposalActions {
         debtPublicId: String,
         proposalPublicId: String,
     ): Result<MemberRepaymentProposal>
+
+    /**
+     * ADR-0049 §3.7 / §4 (slice 8e-3) — the creditor forgives the member Debt's remaining
+     * ("算了，不用还了"). One-sided (no debtor confirmation) but fold-changing → carries the §2.1 OCC
+     * carrier [Debt.rowVersion] and replies with the fold-after [Debt] (cleared, is_forgiven). The
+     * UI gates this to the creditor (viewerIsDebtor==false) on an open member Debt with no pending
+     * proposal; the server enforces member + creditor (403 / 409 otherwise). Direct-only online.
+     */
+    suspend fun forgiveDebt(debtPublicId: String, expectedRowVersion: Long): Result<Debt>
 }
 
 class DebtRepository(
@@ -294,6 +304,23 @@ class DebtRepository(
                         publicId = debtPublicId,
                         proposalPublicId = proposalPublicId,
                         request = MemberRepaymentProposalRejectRequestDto(),
+                        idempotencyKey = UUID.randomUUID().toString(),
+                    ).toDomain()
+                }
+            }
+        }
+
+        override suspend fun forgiveDebt(
+            debtPublicId: String,
+            expectedRowVersion: Long,
+        ): Result<Debt> {
+            if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
+            return errorHandler.safeCall {
+                ledgerRequestGuard.guardedCall { api ->
+                    api.forgiveDebt(
+                        publicId = debtPublicId,
+                        request = DebtForgiveCreateRequestDto(expectedRowVersion = expectedRowVersion),
+                        // ADR-0042: single-use key — direct-only path, no offline replay.
                         idempotencyKey = UUID.randomUUID().toString(),
                     ).toDomain()
                 }

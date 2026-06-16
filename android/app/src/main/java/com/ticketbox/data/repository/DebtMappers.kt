@@ -28,6 +28,7 @@ fun DebtDto.toDomain(): Debt = Debt(
     updatedAt = updatedAt,
     rowVersion = rowVersion,
     viewerIsDebtor = viewerIsDebtor,
+    isForgiven = isForgiven,
 )
 
 /**

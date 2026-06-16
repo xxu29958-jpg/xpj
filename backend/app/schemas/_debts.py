@@ -27,6 +27,7 @@ from app.services.time_service import to_iso
 __all__ = [
     "DebtAdjustmentCreateRequest",
     "DebtCreateRequest",
+    "DebtForgiveCreateRequest",
     "DebtListResponse",
     "DebtResponse",
     "DebtVoidCreateRequest",
@@ -101,6 +102,12 @@ class DebtResponse(BaseModel):
     # (may confirm / reject); ``None`` for an external Debt, a non-participant member, or any path
     # without participant context (list / fact routes). Only ``get_participant_debt_response`` sets it.
     viewer_is_debtor: bool | None = None
+    # ADR-0049 §3.7 / §4 (slice 8e-3): True when this Debt was CLEARED by a creditor forgiveness
+    # ("算了，不用还了") rather than fully repaid — i.e. status=='cleared' AND a DebtForgiveness fact
+    # exists. The client renders a "被请客/请客" headline instead of the generic "两清" and the §5.6
+    # celebration fork skips the settle confetti for it (it's a gift, not a settle-to-zero). Always
+    # False for open / voided / repayment-cleared Debt; computed in _debt_response_with_fold.
+    is_forgiven: bool = False
 
     @field_serializer("created_at", "updated_at", "exchange_rate_date")
     def serialize_debt_datetime(self, value: datetime | None) -> str | None:
@@ -175,6 +182,21 @@ class DebtVoidCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str = Field(min_length=1, max_length=500)
+    expected_row_version: int
+
+
+class DebtForgiveCreateRequest(BaseModel):
+    """Creditor forgives a member Debt's remaining (ADR-0049 §3.7 / §4, slice 8e-3).
+
+    A one-sided creditor waiver ("算了，不用还了"): no amount and no reason — the
+    forgiven amount is the ``remaining_before`` the backend snapshots under the §2.1
+    lock, and forgiveness needs no justification (it benefits the debtor only).
+    ``expected_row_version`` is the §2.1 stale-intent token + §3.6 fingerprint component
+    (REQUIRED — this is fold-changing).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     expected_row_version: int
 
 

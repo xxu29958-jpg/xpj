@@ -252,6 +252,56 @@ class DebtVoid(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
+class DebtForgiveness(Base):
+    """Append-only creditor waiver of a member Debt's remaining; see ADR-0049 §3.7 / §4.
+
+    Slice 8e-3: the creditor relinquishes their own remaining claim ("算了，不用还了")
+    — a one-sided Communal gift that benefits the debtor only (no adverse interest),
+    so it does NOT require debtor confirmation, unlike a member void / principal-raising
+    adjustment (§3.3 / §3.5 / §5.2). The ``amount_cents`` is the ``remaining_before``
+    snapshotted while serialized on the parent Debt row (§2.1), so a concurrent repayment
+    and forgiveness cannot both read the same pre-state and drive ``remaining < 0``.
+
+    ``compute_remaining`` subtracts the forgiveness total, so a forgiven Debt folds to
+    ``cleared`` (a completion that counts toward §6 "two-clear"), NOT ``voided`` —
+    ``derive_status`` only latches ``voided`` for an explicit ``DebtVoid``. Forgiveness is
+    member-Debt + creditor only and supersedes any pending ``MemberRepaymentProposal`` in
+    the same transaction. Carries ``idempotency_key`` for trace parity with the other fact
+    tables; uniqueness is tenant-scoped in ``api_idempotency_keys`` (§3.6), so — like the
+    slice-1 facts after 20260614_0003 — there is NO global ``UNIQUE(idempotency_key)`` here.
+    """
+
+    __tablename__ = "debt_forgivenesses"
+    __table_args__ = (
+        CheckConstraint(
+            "amount_cents > 0", name="ck_debt_forgivenesses_amount_positive"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    debt_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("debts.id", name="fk_debt_forgivenesses_debt"),
+        nullable=False,
+        index=True,
+    )
+    # = the ``remaining_before`` snapshotted under the §2.1 parent-row lock (§3.7).
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("accounts.id", name="fk_debt_forgivenesses_actor_account"),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_debt_forgivenesses_debt_created", DebtForgiveness.debt_id, DebtForgiveness.created_at)
+
+
 class MemberRepaymentProposal(Base):
     """Debtor-side "I paid" pending intent for a member Debt; see ADR-0049 §3.2.
 

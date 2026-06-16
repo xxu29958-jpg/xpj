@@ -300,6 +300,14 @@
     <string name="debt_member_status_open">进行中</string>
     <string name="debt_member_status_cleared">已两清</string>
     <string name="debt_member_status_voided">已不算</string>
+    <!-- 8e ④ forgive：债权人「算了，不用还了」单边放弃受偿（框成请客/免除，非核销坏账）。 -->
+    <string name="debt_member_forgive_action">算了，不用还了</string>
+    <string name="debt_member_forgive_confirm_title">这份就不用还啦？</string>
+    <string name="debt_member_forgive_confirm_body">TA 不用再补这部分了，这件事就两清。</string>
+    <string name="debt_member_forgive_confirm_action">嗯，这份我请</string>
+    <string name="debt_member_forgive_done">好啦，这份就算了～</string>
+    <string name="debt_member_forgive_failed">没成功，待会儿再试一下～</string>
+    <string name="debt_member_forgive_conflict">有人刚记了一笔，刷新一下再看看～</string>
 
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>

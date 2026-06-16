@@ -3963,6 +3963,21 @@
         "title": "DebtCreateRequest",
         "type": "object"
       },
+      "DebtForgiveCreateRequest": {
+        "additionalProperties": false,
+        "description": "Creditor forgives a member Debt's remaining (ADR-0049 §3.7 / §4, slice 8e-3).\n\nA one-sided creditor waiver (\"算了，不用还了\"): no amount and no reason — the\nforgiven amount is the ``remaining_before`` the backend snapshots under the §2.1\nlock, and forgiveness needs no justification (it benefits the debtor only).\n``expected_row_version`` is the §2.1 stale-intent token + §3.6 fingerprint component\n(REQUIRED — this is fold-changing).",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "DebtForgiveCreateRequest",
+        "type": "object"
+      },
       "DebtGoalIntegrityReviewRequest": {
         "additionalProperties": false,
         "description": "ADR-0049 §6/F13: acknowledge (\"keep for audit\") an achieved goal version\nwhose linked set carries a debt-voided Debt.\n\nOCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier).\nRecords the acknowledgement against the goal's CURRENT version, clearing the\nintegrity ``needs_review`` flag for that version. The other exit — removing the\nvoided Debt — goes through the link-replace route (a new version), not here.",
@@ -4215,6 +4230,11 @@
           "home_currency_code": {
             "title": "Home Currency Code",
             "type": "string"
+          },
+          "is_forgiven": {
+            "default": false,
+            "title": "Is Forgiven",
+            "type": "boolean"
           },
           "ledger_id": {
             "anyOf": [
@@ -9083,6 +9103,11 @@
             "title": "Home Currency Code",
             "type": "string"
           },
+          "is_forgiven": {
+            "default": false,
+            "title": "Is Forgiven",
+            "type": "boolean"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -12511,6 +12536,100 @@
           }
         },
         "summary": "Post Adjustment",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/forgive": {
+      "post": {
+        "operationId": "post_debt_forgive_api_debts__public_id__forgive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtForgiveCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Debt Forgive",
         "tags": [
           "debts"
         ]

@@ -66,6 +66,12 @@ data class DebtDto(
     // populates it; the list/fact responses leave it null.
     @param:Json(name = "viewer_is_debtor")
     val viewerIsDebtor: Boolean? = null,
+    // ADR-0049 §3.7 / §4 (slice 8e-3): true when this CLEARED Debt was forgiven by the creditor
+    // ("算了，不用还了") rather than fully repaid — drives the "被请客/请客" headline (MemberDebtLabels)
+    // and the §5.6 celebration fork. Always false for open / voided / repayment-cleared Debt; only
+    // the server computes it (get_participant_debt_response), the client never derives it.
+    @param:Json(name = "is_forgiven")
+    val isForgiven: Boolean = false,
 )
 
 data class DebtListResponseDto(
@@ -129,6 +135,19 @@ data class DebtAdjustmentCreateRequestDto(
  */
 data class DebtVoidCreateRequestDto(
     val reason: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+)
+
+/**
+ * Body for `POST /api/debts/{id}/forgive` — creditor forgives a member Debt's remaining
+ * (ADR-0049 §3.7 / §4, slice 8e-3). No amount and no reason: the forgiven amount is the
+ * `remaining_before` the backend snapshots under the §2.1 lock, and forgiveness needs no
+ * justification. [expectedRowVersion] is the §2.1 stale-intent token + §3.6 fingerprint component.
+ * The backend marks this body `additionalProperties=false`, so the DTO field set must stay a subset
+ * of the schema (the contract gate's forward check is the forbid protection).
+ */
+data class DebtForgiveCreateRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )

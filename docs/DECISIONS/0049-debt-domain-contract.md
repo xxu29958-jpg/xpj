@@ -350,38 +350,50 @@ Same key + same fingerprint returns the canonical committed result. Same key + d
 
 Fact tables may store the request `idempotency_key` for audit/provenance, but MUST NOT enforce it as a global unique key. Uniqueness belongs to [[0042]]'s tenant-scoped `(tenant_id, idempotency_key)` claim table so two ledgers can legitimately use the same client-generated key.
 
-## 3.7 DebtForgiveness (planned — slice 8e-3)
+## 3.7 DebtForgiveness (landed — slice 8e-3)
 
 Creditor waiver ("算了，不用还了") is the Communal escape valve (see §7.0): the
 creditor relinquishes their own remaining claim so the debtor no longer owes it.
-This subsection fixes its fold semantics; the field-level table and tests land in
-slice 8e-3. Until then it is a planned fact, not a live one.
 
-Fold semantics (binding intent):
+Fold semantics (binding):
 
-- `DebtForgiveness` is an append-only fact. Its implied amount is the
-  `remaining_before` snapshotted while serialized on the parent Debt row per §2.1
-  (a concurrent repayment and forgiveness must not both read the same pre-state
-  and drive `remaining < 0`).
+- `DebtForgiveness` is an append-only fact (`debt_forgivenesses`: `id` / `public_id` /
+  `debt_id` FK / `amount_cents` / `actor_account_id` / `idempotency_key` / `created_at`;
+  `CHECK amount_cents > 0`; no global `UNIQUE(idempotency_key)` — uniqueness is
+  tenant-scoped in `api_idempotency_keys`, §3.6). Its amount is the `remaining_before`
+  snapshotted while serialized on the parent Debt row per §2.1 (a concurrent repayment
+  and forgiveness must not both read the same pre-state and drive `remaining < 0`).
 - `compute_remaining` subtracts forgiveness, so a forgiven Debt folds to `cleared`,
-  NOT `voided` (`derive_status` only returns `voided` for an explicit DebtVoid).
+  NOT `voided` (`derive_status` only returns `voided` for an explicit DebtVoid). The
+  read response carries `is_forgiven` (= `status == cleared` AND a forgiveness fact
+  exists) so the client can tell a gift apart from a settle.
+- Forgiveness is NOT a repayment: it does not contribute to `paid` (no money changed
+  hands), only to the `remaining` reduction.
 - A forgiven Debt is a completion: it counts toward "two-clear" in `debt_repayment`
   goals (§6). It is a one-sided creditor op (benefits the debtor only, no adverse
   interest) and so does NOT require debtor confirmation — distinct from member Debt
   void / principal-increasing adjustment (§3.3, §3.5), which keep adverse-interest
   confirmation.
 - Authorization: member Debt only, creditor only. It supersedes any pending
-  `MemberRepaymentProposal` in the same transaction and surfaces that to the debtor.
+  `MemberRepaymentProposal` in the same transaction (an unconditional guarded flip to
+  `superseded` — the debtor's "I paid" intent is moot once forgiven) and surfaces that
+  to the debtor via the forgiven headline. A Debt that already folds to 0 (settled or
+  already forgiven) is rejected `state_conflict` (409) rather than recording a
+  zero-amount fact.
 - Idempotency: uses §3.6's fingerprint (`operation=forgive`, `debt_id`,
   `actor_account_id`, `expected_debt_row_version`); no second mechanism.
 
-Open items resolved in slice 8e-3 (NOT settled by this section):
+Open items resolved in slice 8e-3:
 
-- Reversal: whether a mistaken forgiveness is undone by an inverse append-only fact
-  (RepaymentVoid-style) or is final once committed.
-- Goal integrity: whether forgiving a Debt that has already latched a
-  `debt_repayment` goal achievement triggers the §6 / F13 integrity-review, the way
-  a DebtVoid does.
+- **Reversal**: a committed forgiveness is FINAL in 8e-3. A mistaken forgiveness is
+  corrected by re-creating the obligation (a new Debt), not by an inverse append-only
+  fact — keeping forgiveness a deliberate, relationship-level gift rather than a
+  reversible ledger entry. (A future inverse fact may be added if a real need arises.)
+- **Goal integrity**: forgiving a Debt does NOT trigger the §6 / F13 integrity-review.
+  A forgiveness folds to `cleared` (a genuine completion), which the `debt_repayment`
+  evaluator already counts toward achievement — unlike a `DebtVoid` (→ `voided`), which
+  is the only state that raises `needs_review`. So forgiving a goal-linked Debt advances
+  the goal exactly like a repayment would; no review is forced.
 
 ---
 

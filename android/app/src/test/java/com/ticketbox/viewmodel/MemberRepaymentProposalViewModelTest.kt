@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -8,6 +10,7 @@ import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -295,6 +298,65 @@ class MemberRepaymentProposalViewModelTest {
         assertEquals(false, withdrawn.showDebtorAfterReject)
         assertEquals(false, MemberProposalUiState().showDebtorAfterReject)
     }
+
+    // ── 8e ④ forgive (creditor waiver) ───────────────────────────────────────
+
+    @Test
+    fun forgiveCallsRepoBumpsFoldFlashesAndRefreshes() = runTest(dispatcher) {
+        val repo = FakeProposalActions(listResult = Result.success(listOf(sampleProposal(publicId = "p1"))))
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        viewModel.forgive(expectedRowVersion = 7L)
+        advanceUntilIdle()
+
+        assertEquals("d1" to 7L, repo.forgiveCalls.single())
+        // Forgive clears the Debt → fold changed → the host detail screen is told to refresh.
+        assertEquals(1, viewModel.state.value.foldChangedAt)
+        assertEquals(2, repo.listCalls) // initial load + refresh after forgive
+        assertTrue(viewModel.state.value.flashMessage != null)
+        assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    @Test
+    fun forgiveConflictSurfacesNeutralConflictCopy() = runTest(dispatcher) {
+        // §4.3 / P2#10: an OCC / already-settled 409 (backend `state_conflict`) shows the warm
+        // "有人刚记了一笔" copy (errorCode branch), not the generic failed fallback; fold untouched.
+        val repo = FakeProposalActions(
+            forgiveResult = Result.failure(RepositoryException("欠款或提案状态已变化，请刷新后再试。", errorCode = "state_conflict")),
+        )
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        viewModel.forgive(expectedRowVersion = 1L)
+        advanceUntilIdle()
+
+        val error = viewModel.state.value.error
+        assertTrue(error is UiText.Res)
+        assertEquals(R.string.debt_member_forgive_conflict, (error as UiText.Res).id)
+        assertEquals(0, viewModel.state.value.foldChangedAt)
+        assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    @Test
+    fun forgiveGenericFailureUsesFailedFallback() = runTest(dispatcher) {
+        // A non-coded failure (e.g. a transport error with no message) falls back to the
+        // forgive-specific failed copy, not the conflict copy.
+        val repo = FakeProposalActions(forgiveResult = Result.failure(RuntimeException()))
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        viewModel.forgive(expectedRowVersion = 1L)
+        advanceUntilIdle()
+
+        val error = viewModel.state.value.error
+        assertTrue(error is UiText.Res)
+        assertEquals(R.string.debt_member_forgive_failed, (error as UiText.Res).id)
+        assertEquals(0, viewModel.state.value.foldChangedAt)
+    }
 }
 
 private data class ProposeArgs(
@@ -316,11 +378,13 @@ private class FakeProposalActions(
     var listResult: Result<List<MemberRepaymentProposal>> = Result.success(emptyList()),
     var proposalResult: Result<MemberRepaymentProposal> = Result.success(sampleProposal()),
     var confirmResult: Result<Debt> = Result.success(sampleDebt()),
+    var forgiveResult: Result<Debt> = Result.success(sampleDebt(status = DebtLinkStatuses.CLEARED, isForgiven = true)),
 ) : DebtProposalActions {
     val proposeCalls = mutableListOf<ProposeArgs>()
     val withdrawCalls = mutableListOf<Pair<String, String>>()
     val confirmCalls = mutableListOf<ConfirmArgs>()
     val rejectCalls = mutableListOf<Pair<String, String>>()
+    val forgiveCalls = mutableListOf<Pair<String, Long>>()
     var listCalls = 0
 
     override fun canModifyLedger(): Boolean = canModify
@@ -365,6 +429,11 @@ private class FakeProposalActions(
         rejectCalls += debtPublicId to proposalPublicId
         return proposalResult
     }
+
+    override suspend fun forgiveDebt(debtPublicId: String, expectedRowVersion: Long): Result<Debt> {
+        forgiveCalls += debtPublicId to expectedRowVersion
+        return forgiveResult
+    }
 }
 
 private fun sampleProposal(
@@ -389,7 +458,10 @@ private fun sampleProposal(
     committedRepaymentPublicId = null,
 )
 
-private fun sampleDebt(): Debt = Debt(
+private fun sampleDebt(
+    status: String = DebtLinkStatuses.CLEARED,
+    isForgiven: Boolean = false,
+): Debt = Debt(
     publicId = "d1",
     ledgerId = "owner",
     direction = DebtDirections.OWED_TO_ME,
@@ -399,7 +471,7 @@ private fun sampleDebt(): Debt = Debt(
     principalAmountCents = 20_000,
     remainingAmountCents = 0,
     paidAmountCents = 20_000,
-    status = DebtLinkStatuses.CLEARED,
+    status = status,
     sourceType = DebtSourceTypes.BILL_SPLIT,
     sourceId = "inv-1",
     homeCurrencyCode = "CNY",
@@ -408,4 +480,5 @@ private fun sampleDebt(): Debt = Debt(
     createdAt = "2026-06-16T00:00:00Z",
     updatedAt = "2026-06-16T00:00:00Z",
     rowVersion = 6,
+    isForgiven = isForgiven,
 )
