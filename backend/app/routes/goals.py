@@ -9,6 +9,7 @@ from app.database import get_db
 from app.schemas import (
     DebtGoalIntegrityReviewRequest,
     DebtGoalLinksReplaceRequest,
+    DebtGoalTargetDateRequest,
     GoalCreateRequest,
     GoalListResponse,
     GoalResponse,
@@ -18,6 +19,7 @@ from app.services.goal_debt_repayment_service import (
     acknowledge_integrity_review,
     list_debt_repayment_goals,
     replace_debt_repayment_goal_links,
+    set_debt_goal_target_date,
 )
 from app.services.goal_service import archive_goal, create_goal, get_goal_response, list_goals, update_goal
 from app.services.idempotency import (
@@ -247,6 +249,53 @@ def post_goal_integrity_review_acknowledge(
         )
 
     acknowledge_integrity_review(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        payload=payload,
+        commit=False,
+    )
+    mark_idempotency_succeeded(db, claim, resource_type="goal", resource_id=public_id)
+    db.commit()
+    db.expire_all()
+    return get_goal_response(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        persist_achievement=True,
+    )
+
+
+@router.post("/{public_id}/target-date", response_model=GoalResponse)
+def post_goal_target_date(
+    public_id: str,
+    payload: DebtGoalTargetDateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> GoalResponse:
+    # ADR-0049 §7.0 / 8e-6c: set or clear a debt_repayment goal's payoff deadline. OCC carrier
+    # + idempotency, same shape as the link-replace / integrity-review routes; the claim bumps
+    # ``row_version`` only (NOT ``goal_version``) so a deadline edit never un-achieves the goal.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="set_debt_goal_target_date",
+        target_id=public_id,
+        body={"target_date": payload.target_date.isoformat() if payload.target_date else None},
+        expected_row_version=payload.expected_row_version,
+        target_type="goal",
+    )
+    if claim is None:  # idempotent replay — re-serialise the current goal
+        return get_goal_response(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            persist_achievement=True,
+        )
+
+    set_debt_goal_target_date(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,

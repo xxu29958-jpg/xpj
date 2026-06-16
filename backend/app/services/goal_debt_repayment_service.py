@@ -42,12 +42,13 @@ from app.schemas import (
     DebtGoalIntegrityReviewRequest,
     DebtGoalLinksReplaceRequest,
     DebtGoalLinkView,
+    DebtGoalTargetDateRequest,
     DebtRepaymentEvaluation,
     GoalCreateRequest,
     GoalResponse,
 )
 from app.services.debt_service import compute_remaining, derive_status
-from app.services.goal_debt_repayment_kpi import compute_external_kpi
+from app.services.goal_debt_repayment_kpi import compute_external_kpi, payoff_three_state
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
@@ -159,20 +160,23 @@ def _evaluate_links(
 
 
 def _external_kpi_for_links(
-    db: Session, non_voided_debts: list[Debt], *, now: datetime
-) -> tuple[int | None, date | None]:
-    """ADR-0049 §7.0 / 8e-6b server gate (§4): the payoff projection is computed ONLY for a
-    PURE-EXTERNAL plan — every non-voided linked Debt external (``!= 'member'`` byte-matches
-    the Android composition's external bucket). Member / mixed / all-voided plans get
-    ``(None, None)`` so /web, /owner, exports, and tests never see a §7.0-forbidden KPI on a
-    Communal plan. Read-only — runs identically on viewer and writer paths.
+    db: Session, non_voided_debts: list[Debt], *, now: datetime, target_date: date | None
+) -> tuple[int | None, date | None, date | None, str | None]:
+    """ADR-0049 §7.0 / 8e-6b+6c server gate (§4): the payoff KPI (projection + deadline echo +
+    three-state) is computed ONLY for a PURE-EXTERNAL plan — every non-voided linked Debt
+    external (``!= 'member'`` byte-matches the Android composition's external bucket). Member /
+    mixed / all-voided plans get all-None, so /web, /owner, exports, and tests never see a
+    §7.0-forbidden payoff dashboard on a Communal plan. Read-only — identical on viewer/writer.
+    Returns ``(tracking_days, projected_payoff_date, target_date_echo, three_state)`` — the
+    deadline echoes only once pure-external; three_state needs both a projection and a deadline.
     """
     is_pure_external = bool(non_voided_debts) and all(
         debt.counterparty_type != "member" for debt in non_voided_debts
     )
     if not is_pure_external:
-        return None, None
-    return compute_external_kpi(db, non_voided_debts, now=now)
+        return None, None, None, None
+    tracking_days, projected = compute_external_kpi(db, non_voided_debts, now=now)
+    return tracking_days, projected, target_date, payoff_three_state(projected, target_date)
 
 
 def _evaluate_and_maybe_latch(
@@ -215,10 +219,10 @@ def _evaluate_and_maybe_latch(
     integrity_acknowledged = goal.integrity_reviewed_version == goal.goal_version
     needs_review = any_voided and not (state == "achieved" and integrity_acknowledged)
 
-    # ADR-0049 §7.0 / 8e-6b external-debt payoff projection — server-gated to pure-external
-    # (§4); member / mixed / all-voided carry None. See :func:`_external_kpi_for_links`.
-    tracking_days, projected_payoff_date = _external_kpi_for_links(
-        db, non_voided_debts, now=now
+    # ADR-0049 §7.0 / 8e-6b+6c external-debt payoff KPI — server-gated to pure-external (§4).
+    # See :func:`_external_kpi_for_links`.
+    tracking_days, projected_payoff_date, target_date, three_state = _external_kpi_for_links(
+        db, non_voided_debts, now=now, target_date=goal.target_date
     )
 
     evaluation = DebtRepaymentEvaluation(
@@ -231,6 +235,8 @@ def _evaluate_and_maybe_latch(
         voided_debt_public_ids=voided_public_ids,
         tracking_days=tracking_days,
         projected_payoff_date=projected_payoff_date,
+        target_date=target_date,
+        three_state=three_state,
     )
     return evaluation, latched
 
@@ -306,6 +312,7 @@ def create_debt_repayment_goal(
         target_amount_cents=None,
         status="active",
         goal_version=1,
+        target_date=payload.target_date,  # §7.0 / 8e-6c optional create-time payoff deadline
         created_at=now,
         updated_at=now,
     )
@@ -417,6 +424,47 @@ def acknowledge_integrity_review(
         tenant_id=tenant_id,
         expected_row_version=payload.expected_row_version,
         set_values={"integrity_reviewed_version": goal.goal_version, "updated_at": now},
+        extra_where=(Goal.status == "active",),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = _require_debt_repayment_goal(db, tenant_id=tenant_id, public_id=public_id)
+        if current.status != "active":
+            raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
+        raise AppError("state_conflict", status_code=409)
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+
+
+def set_debt_goal_target_date(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    payload: DebtGoalTargetDateRequest,
+    commit: bool = True,
+) -> None:
+    """ADR-0049 §7.0 / 8e-6c: set or clear a debt_repayment goal's payoff deadline.
+
+    OCC-gated; bumps ``row_version`` ONLY — never ``goal_version`` (that would create an empty
+    version and silently un-achieve the goal). Allowed regardless of composition (inert until
+    pure-external; the §4 gate suppresses three_state otherwise). ``commit=False`` lets the
+    route commit it with the idempotency record.
+    """
+    goal = _require_debt_repayment_goal(db, tenant_id=tenant_id, public_id=public_id)
+    if goal.status == "archived":
+        raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
+    now = now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        Goal,
+        pk_id=goal.id,
+        tenant_id=tenant_id,
+        expected_row_version=payload.expected_row_version,
+        set_values={"target_date": payload.target_date, "updated_at": now},
         extra_where=(Goal.status == "active",),
         synchronize_session=False,
     )

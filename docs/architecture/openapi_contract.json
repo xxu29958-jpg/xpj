@@ -4072,6 +4072,34 @@
         "title": "DebtGoalLinksReplaceRequest",
         "type": "object"
       },
+      "DebtGoalTargetDateRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0049 §7.0 / 8e-6c: set or clear a debt_repayment goal's payoff deadline.\n\nOCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier). The\nsetter bumps ``row_version`` only — NOT ``goal_version`` — because the deadline is goal-\nlevel config orthogonal to the frozen linked-Debt set; bumping ``goal_version`` would\ncreate an empty version and silently un-achieve the goal. ``target_date = null`` clears\nthe deadline (the client always sends the field — a date to set, null to clear).",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "target_date"
+        ],
+        "title": "DebtGoalTargetDateRequest",
+        "type": "object"
+      },
       "DebtListResponse": {
         "properties": {
           "items": {
@@ -4143,6 +4171,29 @@
               }
             ],
             "title": "Projected Payoff Date"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          },
+          "three_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Three State"
           },
           "tracking_days": {
             "anyOf": [
@@ -6087,6 +6138,18 @@
               }
             ],
             "title": "Target Amount Cents"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
           }
         },
         "required": [
@@ -16523,6 +16586,100 @@
           }
         },
         "summary": "Post Goal Integrity Review Acknowledge",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/goals/{public_id}/target-date": {
+      "post": {
+        "operationId": "post_goal_target_date_api_goals__public_id__target_date_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtGoalTargetDateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Goal Target Date",
         "tags": [
           "goals"
         ]

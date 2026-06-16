@@ -24,6 +24,7 @@ from app.services.time_service import to_iso
 __all__ = [
     "DebtGoalLinkView",
     "DebtGoalLinksReplaceRequest",
+    "DebtGoalTargetDateRequest",
     "DebtRepaymentEvaluation",
     "GoalCreateRequest",
     "GoalListResponse",
@@ -47,6 +48,9 @@ class GoalCreateRequest(BaseModel):
     # debt_repayment shape: the Debt ids whose clearance the goal tracks. Required
     # (non-empty) for debt_repayment and rejected for spending_limit (service-enforced).
     debt_public_ids: list[str] | None = Field(default=None)
+    # ADR-0049 §7.0 / 8e-6c: optional payoff deadline for a debt_repayment goal (drives the
+    # three-state). Rejected for spending_limit (service-enforced). NULL = no deadline.
+    target_date: date | None = None
 
 
 class GoalUpdateRequest(BaseModel):
@@ -83,6 +87,22 @@ class DebtGoalLinksReplaceRequest(BaseModel):
 
     expected_row_version: int
     debt_public_ids: list[str] = Field(min_length=1)
+
+
+class DebtGoalTargetDateRequest(BaseModel):
+    """ADR-0049 §7.0 / 8e-6c: set or clear a debt_repayment goal's payoff deadline.
+
+    OCC-gated by ``expected_row_version`` (auto-detected as a mutate-token carrier). The
+    setter bumps ``row_version`` only — NOT ``goal_version`` — because the deadline is goal-
+    level config orthogonal to the frozen linked-Debt set; bumping ``goal_version`` would
+    create an empty version and silently un-achieve the goal. ``target_date = null`` clears
+    the deadline (the client always sends the field — a date to set, null to clear).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+    target_date: date | None
 
 
 class DebtGoalIntegrityReviewRequest(BaseModel):
@@ -148,6 +168,12 @@ class DebtRepaymentEvaluation(BaseModel):
     # projected to reach zero at the observed pace. Both are populated together or both None.
     tracking_days: int | None = None
     projected_payoff_date: date | None = None
+    # ADR-0049 §7.0 / 8e-6c three-state — ``target_date`` echoes the goal's payoff deadline
+    # (None when unset / non-external); ``three_state`` ∈ {on_track, ahead, at_risk} is the
+    # projected-payoff month vs the deadline month, populated ONLY when BOTH a deadline and a
+    # projection exist (else None — never editorialise on missing data, §7.0 R4 / de-shame).
+    target_date: date | None = None
+    three_state: str | None = None
 
     @field_serializer("achieved_at")
     def serialize_evaluation_datetime(self, value: datetime | None) -> str | None:

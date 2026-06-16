@@ -113,16 +113,37 @@ def _adjust_debt(
 
 
 def _create_debt_goal(
-    client: TestClient, headers: dict[str, str], *, name: str, debt_public_ids: list[str]
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    name: str,
+    debt_public_ids: list[str],
+    target_date: str | None = None,
 ):
+    body: dict = {
+        "name": name,
+        "goal_type": "debt_repayment",
+        "debt_public_ids": debt_public_ids,
+    }
+    if target_date is not None:
+        body["target_date"] = target_date  # 8e-6c optional create-time payoff deadline
+    return client.post("/api/goals", headers=headers, json=body)
+
+
+def _set_target_date(
+    client: TestClient,
+    headers: dict[str, str],
+    public_id: str,
+    *,
+    expected_row_version: int,
+    target_date: str | None,
+    idempotency_key: str | None = None,
+):
+    """POST the 8e-6c payoff-deadline setter (``target_date=None`` clears it)."""
     return client.post(
-        "/api/goals",
-        headers=headers,
-        json={
-            "name": name,
-            "goal_type": "debt_repayment",
-            "debt_public_ids": debt_public_ids,
-        },
+        f"/api/goals/{public_id}/target-date",
+        headers={**headers, "Idempotency-Key": idempotency_key or str(uuid4())},
+        json={"expected_row_version": expected_row_version, "target_date": target_date},
     )
 
 
