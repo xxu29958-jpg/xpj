@@ -42,6 +42,25 @@
 
 > 落地分批：v1 先做 1/2/3/5/10（空态 + 确认 + 庆祝 + 搜索无果，覆盖最高频与最高价值）；6/7/8/9 第二批。
 
+### 4.1 第 5 态撒花：荣誉归双方与关系（成员债）
+
+第 5 态（`milestone_celebrate`）绑两个庆祝层级，方向都一样——**荣誉归双方与这段关系，不是奖励债权人「催到钱」**。这是 ADR-0049 §7.0「成员债 = Communal 不是 Market」的呈现层落点：撒花若读成「债权人收账成功」，就把关系拉回交易轴，正是要避免的。这里分两层（守住「三端同步=共享契约，不是逐像素一致」[[feedback_three_surface_visual_sync]]）：
+
+- **跨表面契约（三端都必须做）**：两清的对等措辞、荣誉归双方、resolved 项沉降进 neutral history、不显示 collection-scorecard——这些是 §7.0 的 product rule，`/web`、`/owner` 也必须用各自形态呈现（哪怕只是状态徽标 + 暖语），不能因为「动画只在 Android」就什么两清反馈都不做。
+- **平台特定实现（可分叉）**：撒花动画（Compose Canvas，复用 `PendingClearCelebration`）只在 Android；web/owner 不要求复刻动画，用各自形态的轻量两清反馈即可。
+
+- **单笔两清**：一笔成员欠款 `open → cleared`（双方确认收款后归零）。文案对等、双向——「这笔账两清啦 ✅」，不是「已收回欠款」。复用 `PendingClearCelebration`（中央 check 气泡 + 撒花 + `haptic.confirm()`），并发一次 `MascotEvent.MilestoneReached` → `milestone_celebrate`。
+- **还清计划达成**：一个 `debt_repayment` goal 版本的关联欠款集全部清零（ADR-0049 §6 锁存达成，只读服务端 `evaluation_state`）。这是更高一档的庆祝，文案强调几笔一起完成的共同结果——「这几笔，全部两清啦 🎉」——同样复用 `PendingClearCelebration` 并发 `MascotEvent.MilestoneReached`。
+
+去道德化边界（与 ADR-0049 §7 / §7.0 一致）：
+
+- 撒花只在 `open → cleared` 的**已提交**转换上触发，且经 transition dedupe marker 去重——replay / sync / 重建不得重放（marker 是呈现元数据，非财务真相）。**仅在用户在场目击跨边沿时触发**：首次打开一笔早已清零的历史债不撒花。emit 责任在**详情屏 `LaunchedEffect`**——确认目击 `open→cleared` 服务端跨边沿才发一次 `MilestoneReached`；`MascotStateMachine` 只做 one-shot 时长去抖、不识别历史态，**别在 `loadDebt` 后无条件 emit**（同 8d「viewer 计算但不写、只在目击跨边沿」同源）。
+- **债权人 forgive（请客）不撒花**——被请客是收到一份礼，不是清偿成就；给债务人撒「两清啦」会把礼物工具化成清偿完成。forgive 落地态用暖语常驻（「这份不用补了～」），不放里程碑撒花。
+- 庆祝主语用「我们 / 这笔账 / 这段关系」，避免「你还清了 / 你收回了」。
+- 外部债（信用卡 / 房东）清零仍可走会计框架庆祝，但**夹夹不得给外部债撒花**；二者层级与文案分开。
+
+> 以上用户可见文案为**意图锚点**；最终以 8e-4 落地的 `res/values/strings.xml` 为准（BRIEF / ADR-0049 §7.0 / `docs/audits/2026-06-16-slice8e-*` / `strings.xml` 四处需在落地时对齐，[[0044]] string-resourcing）。
+
 ## 5. 原画交付物（出图时要的）
 
 - **角色三视图**（正 / 3-4 / 侧）—— Rive rigging 要拆部件（身体 / 两臂 / 两脚 / 眼 / 嘴 / 腮红 / 小票），各自独立图层。
