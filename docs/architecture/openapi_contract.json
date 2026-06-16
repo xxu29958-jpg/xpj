@@ -4132,6 +4132,29 @@
             "title": "Needs Review",
             "type": "boolean"
           },
+          "projected_payoff_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Payoff Date"
+          },
+          "tracking_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Days"
+          },
           "voided_debt_public_ids": {
             "items": {
               "type": "string"

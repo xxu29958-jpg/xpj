@@ -29,6 +29,15 @@ data class DebtRepaymentEvaluationDto(
     val linkedDebts: List<DebtGoalLinkViewDto>,
     @param:Json(name = "voided_debt_public_ids")
     val voidedDebtPublicIds: List<String>,
+    // ADR-0049 §7.0 / 8e-6b external-debt payoff projection — populated ONLY for a
+    // pure-external plan (server-gated; null for member/mixed/thin/mixed-currency).
+    // `trackingDays` = the observation window the velocity used (for a "按最近 N 天"
+    // caption); `projectedPayoffDate` = ISO date string (no Moshi LocalDate adapter, so
+    // String?, mirroring `achievedAt`). Both arrive together or both null.
+    @param:Json(name = "tracking_days")
+    val trackingDays: Int? = null,
+    @param:Json(name = "projected_payoff_date")
+    val projectedPayoffDate: String? = null,
 )
 
 /** One linked Debt's shell inside a debt_repayment goal's evaluation block. */

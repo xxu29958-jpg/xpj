@@ -76,6 +76,11 @@ data class DebtRepaymentEvaluation(
     val achievedVersion: Int?,
     val linkedDebts: List<DebtGoalLink>,
     val voidedDebtPublicIds: List<String>,
+    // ADR-0049 §7.0 / 8e-6b external-debt payoff projection（纯外部债才有，服务端 gate；成员/混装/数据不足
+    // 恒 null）。[trackingDays] = 投影用的观察窗天数（「按最近 N 天」文案）；[projectedPayoffDate] = ISO
+    // 日期串（无 Moshi LocalDate adapter 故 String?，同 [achievedAt]）。两者同时有或同时 null。
+    val trackingDays: Int? = null,
+    val projectedPayoffDate: String? = null,
 ) {
     val isAchieved: Boolean get() = evaluationState == DebtGoalEvaluationStates.ACHIEVED
     val isInProgress: Boolean get() = evaluationState == DebtGoalEvaluationStates.IN_PROGRESS

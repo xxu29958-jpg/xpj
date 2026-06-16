@@ -89,6 +89,33 @@ class DebtGoalMappersTest {
     }
 
     @Test
+    fun evaluationMapsExternalKpiProjectionFields() {
+        // 8e-6b: a pure-external plan carries the payoff projection on the wire.
+        val domain = DebtRepaymentEvaluationDto(
+            goalVersion = 1,
+            evaluationState = "in_progress",
+            needsReview = false,
+            achievedAt = null,
+            achievedVersion = null,
+            linkedDebts = emptyList(),
+            voidedDebtPublicIds = emptyList(),
+            trackingDays = 60,
+            projectedPayoffDate = "2026-09-01",
+        ).toDomain()
+
+        assertEquals(60, domain.trackingDays)
+        assertEquals("2026-09-01", domain.projectedPayoffDate)
+    }
+
+    @Test
+    fun evaluationKpiFieldsDefaultNullWhenAbsent() {
+        // member / mixed / thin plans omit the projection (server-gated) → null on the domain.
+        val domain = requireNotNull(debtGoalDto().toDomain().debtRepayment)
+        assertNull(domain.trackingDays)
+        assertNull(domain.projectedPayoffDate)
+    }
+
+    @Test
     fun spendingGoalDtoLeavesDebtRepaymentNull() {
         val domain = GoalDto(
             publicId = "goal-1",

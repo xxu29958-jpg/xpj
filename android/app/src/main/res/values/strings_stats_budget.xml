@@ -344,6 +344,10 @@
     <!-- 8e-6a 外部债「先清小的」(snowball) 排序：只对纯外部债开放（§7.0 成员/混装红线）；只升序一档（avalanche/「先清大的」均砍）。 -->
     <string name="debt_plan_sort_smallest_first">先清小的</string>
 
+    <!-- 8e-6b 外部债还清日期投影：只对纯外部债（§7.0），按观察到的还款节奏估算；月粒度避假精度，无三态/无催（去-shame）。 -->
+    <string name="debt_kpi_payoff">按最近 %1$d 天的进度，预计 %2$d 年 %3$d 月前后还清</string>
+    <string name="debt_kpi_payoff_unknown">还没有足够数据估算还清日期</string>
+
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>
     <string name="stats_recurring_candidates_count">%1$d 项</string>

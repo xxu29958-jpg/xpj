@@ -15,7 +15,7 @@ spending-only client sees.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -140,6 +140,14 @@ class DebtRepaymentEvaluation(BaseModel):
     achieved_version: int | None = None
     linked_debts: list[DebtGoalLinkView]
     voided_debt_public_ids: list[str]
+    # ADR-0049 §7.0 / 8e-6b external-debt payoff projection — pure-external plans ONLY
+    # (None for member / mixed plans, server-gated per §4, and None when the observed
+    # data is too thin / mixed-currency / shows no paydown). ``tracking_days`` is the
+    # honest observation window the projection used (for a "按最近 N 天" caption);
+    # ``projected_payoff_date`` is the calendar day (accounting-tz) the balance is
+    # projected to reach zero at the observed pace. Both are populated together or both None.
+    tracking_days: int | None = None
+    projected_payoff_date: date | None = None
 
     @field_serializer("achieved_at")
     def serialize_evaluation_datetime(self, value: datetime | None) -> str | None:

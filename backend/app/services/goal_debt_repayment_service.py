@@ -30,6 +30,8 @@ concurrent in-flight write.
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -45,6 +47,7 @@ from app.schemas import (
     GoalResponse,
 )
 from app.services.debt_service import compute_remaining, derive_status
+from app.services.goal_debt_repayment_kpi import compute_external_kpi
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
@@ -114,20 +117,20 @@ def _current_version_debts(db: Session, goal: Goal) -> list[Debt]:
     return list(db.scalars(statement))
 
 
-def _evaluate_and_maybe_latch(
-    db: Session, goal: Goal, *, persist: bool
-) -> tuple[DebtRepaymentEvaluation, bool]:
-    """Evaluate the current-version link set; latch a fresh achievement when ``persist``.
+def _evaluate_links(
+    db: Session, goal: Goal
+) -> tuple[list[DebtGoalLinkView], list[Debt], list[str], bool, bool]:
+    """Fold each current-version linked Debt → its view plus the rollup flags.
 
-    Returns ``(evaluation, latched)``. ``latched`` is True only when this call
-    stamped ``achieved_at`` / ``achieved_version`` on ``goal`` (the caller commits).
-    Achievement is sticky: once ``achieved_version == goal_version`` the state stays
-    ``achieved`` regardless of the Debts' current fold (a reopened/voided linked
-    Debt does not un-achieve a latched version, §6).
+    Returns ``(link_views, non_voided_debts, voided_public_ids, any_voided, all_cleared)``.
+    ``status`` is the derived fold (``derive_status(debt, compute_remaining(...))``), so it
+    is correct even if a Debt's persisted ``status`` column lags a concurrent in-flight
+    write (§2). The evaluation never mutates Debt state.
     """
     debts = _current_version_debts(db, goal)
     link_views: list[DebtGoalLinkView] = []
     voided_public_ids: list[str] = []
+    non_voided_debts: list[Debt] = []
     any_voided = False
     all_cleared = bool(debts)
     for debt in debts:
@@ -136,6 +139,8 @@ def _evaluate_and_maybe_latch(
         if status == "voided":
             any_voided = True
             voided_public_ids.append(debt.public_id)
+        else:
+            non_voided_debts.append(debt)
         if status != "cleared":
             all_cleared = False
         link_views.append(
@@ -150,6 +155,41 @@ def _evaluate_and_maybe_latch(
                 home_currency_code=debt.home_currency_code,
             )
         )
+    return link_views, non_voided_debts, voided_public_ids, any_voided, all_cleared
+
+
+def _external_kpi_for_links(
+    db: Session, non_voided_debts: list[Debt], *, now: datetime
+) -> tuple[int | None, date | None]:
+    """ADR-0049 §7.0 / 8e-6b server gate (§4): the payoff projection is computed ONLY for a
+    PURE-EXTERNAL plan — every non-voided linked Debt external (``!= 'member'`` byte-matches
+    the Android composition's external bucket). Member / mixed / all-voided plans get
+    ``(None, None)`` so /web, /owner, exports, and tests never see a §7.0-forbidden KPI on a
+    Communal plan. Read-only — runs identically on viewer and writer paths.
+    """
+    is_pure_external = bool(non_voided_debts) and all(
+        debt.counterparty_type != "member" for debt in non_voided_debts
+    )
+    if not is_pure_external:
+        return None, None
+    return compute_external_kpi(db, non_voided_debts, now=now)
+
+
+def _evaluate_and_maybe_latch(
+    db: Session, goal: Goal, *, persist: bool
+) -> tuple[DebtRepaymentEvaluation, bool]:
+    """Evaluate the current-version link set; latch a fresh achievement when ``persist``.
+
+    Returns ``(evaluation, latched)``. ``latched`` is True only when this call
+    stamped ``achieved_at`` / ``achieved_version`` on ``goal`` (the caller commits).
+    Achievement is sticky: once ``achieved_version == goal_version`` the state stays
+    ``achieved`` regardless of the Debts' current fold (a reopened/voided linked
+    Debt does not un-achieve a latched version, §6).
+    """
+    now = now_utc()  # one instant for both the achievement latch and the KPI projection
+    link_views, non_voided_debts, voided_public_ids, any_voided, all_cleared = _evaluate_links(
+        db, goal
+    )
 
     already_latched = goal.achieved_version == goal.goal_version
     if already_latched:
@@ -163,7 +203,7 @@ def _evaluate_and_maybe_latch(
 
     latched = False
     if persist and state == "achieved" and not already_latched:
-        goal.achieved_at = now_utc()
+        goal.achieved_at = now
         goal.achieved_version = goal.goal_version
         latched = True
 
@@ -175,6 +215,12 @@ def _evaluate_and_maybe_latch(
     integrity_acknowledged = goal.integrity_reviewed_version == goal.goal_version
     needs_review = any_voided and not (state == "achieved" and integrity_acknowledged)
 
+    # ADR-0049 §7.0 / 8e-6b external-debt payoff projection — server-gated to pure-external
+    # (§4); member / mixed / all-voided carry None. See :func:`_external_kpi_for_links`.
+    tracking_days, projected_payoff_date = _external_kpi_for_links(
+        db, non_voided_debts, now=now
+    )
+
     evaluation = DebtRepaymentEvaluation(
         goal_version=goal.goal_version,
         evaluation_state=state,
@@ -183,6 +229,8 @@ def _evaluate_and_maybe_latch(
         achieved_version=goal.achieved_version,
         linked_debts=link_views,
         voided_debt_public_ids=voided_public_ids,
+        tracking_days=tracking_days,
+        projected_payoff_date=projected_payoff_date,
     )
     return evaluation, latched
 
