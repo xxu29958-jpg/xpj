@@ -24,6 +24,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -32,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppGlassCard
@@ -80,6 +84,12 @@ fun DebtGoalScreen(
     BackHandler(onBack = handleBack)
 
     val selected = state.selectedGoal
+    // 8e-6a 「先清小的」排序：纯展示派生态，composable-local（无持久化/无 DataStore；VM 已是 11 函数满门，
+    // 加 setter 会顶破 detekt TooManyFunctions——豁免≠把类做胖，[[feedback_baseline_not_complexity_license]]）。
+    // 设计稿 §5b 显式允许走 composable-local。作为**会话级视图偏好**：跨屏内 closeDetail() 保留（选了「先清小的」
+    // 后下一个打开的纯外部债计划沿用——「排序是看法不是数据」），刻意**不** keyed-by-goal 以免每次打开都要重选；
+    // 仅 overlay 关闭 dispose / 进程死亡时回 Default。永不持久化、永不跨成员/混装（gate == External）。
+    var sortMode by rememberSaveable { mutableStateOf(DebtPlanSortMode.Default) }
     AppScrollableContent(
         role = AppPageRole.Stats,
         isRefreshing = state.isLoading,
@@ -103,7 +113,13 @@ fun DebtGoalScreen(
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         if (selected != null) {
-            debtGoalDetailSection(state = state, currency = currency, viewModel = viewModel)
+            debtGoalDetailSection(
+                state = state,
+                currency = currency,
+                viewModel = viewModel,
+                sortMode = sortMode,
+                onSortModeChange = { sortMode = it },
+            )
         } else {
             debtGoalListSection(state = state, viewModel = viewModel)
         }
@@ -228,6 +244,8 @@ private fun LazyListScope.debtGoalDetailSection(
     state: DebtGoalUiState,
     currency: CurrencyDisplay,
     viewModel: DebtGoalViewModel,
+    sortMode: DebtPlanSortMode,
+    onSortModeChange: (DebtPlanSortMode) -> Unit,
 ) {
     val goal = state.selectedGoal ?: return
     val evaluation = goal.debtRepayment ?: return
@@ -251,7 +269,15 @@ private fun LazyListScope.debtGoalDetailSection(
         }
     }
     item { SectionEyebrow(stringResource(R.string.debt_goal_detail_links_title)) }
-    items(evaluation.linkedDebts, key = { it.debtPublicId }) { link ->
+    // 8e-6a：「先清小的」排序只对**纯外部债**开放（§7.0 红线，成员/混装不做清偿排序器）。
+    // 必须用 `== External`（`!= Member` 会误纳 Mixed）。排序对**冻结快照**纯客户端算术、返回新列表，
+    // `items(key = debtPublicId)` 因稳定 key 平滑重组（不改源 list，对抗审 C2）。
+    val isPureExternal = evaluation.composition == DebtGoalComposition.External
+    if (isPureExternal) {
+        item { DebtPlanSortToggle(mode = sortMode, onModeChange = onSortModeChange) }
+    }
+    val links = if (isPureExternal) evaluation.linkedDebts.sortedForPlan(sortMode) else evaluation.linkedDebts
+    items(links, key = { it.debtPublicId }) { link ->
         DebtGoalLinkRow(link = link, currency = currency)
     }
 }
