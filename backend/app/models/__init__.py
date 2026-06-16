@@ -49,6 +49,7 @@ from app.models.classification import (
 from app.models.debt import (
     Debt,
     DebtAdjustment,
+    DebtForgiveness,
     DebtVoid,
     MemberRepaymentProposal,
     Repayment,
@@ -94,6 +95,7 @@ __all__ = [
     "DashboardCardPreference",
     "Debt",
     "DebtAdjustment",
+    "DebtForgiveness",
     "DebtGoalLink",
     "DebtVoid",
     "Device",

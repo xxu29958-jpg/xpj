@@ -10,6 +10,8 @@ schema. No business logic, no SQL, no raw-exception leakage.
 - ``POST /api/debts/{public_id}/adjustments`` — record a signed adjustment (§3.3).
 - ``POST /api/debts/{public_id}/repayment-voids`` — void one repayment (§3.4).
 - ``POST /api/debts/{public_id}/void`` — void the whole Debt (§3.5).
+- ``POST /api/debts/{public_id}/forgive`` — creditor forgives a member Debt's remaining
+  (§3.7 / §4, slice 8e-3; member + creditor only, fold-changing → cleared not voided).
 - ``POST /api/debts/{public_id}/repayment-proposals`` — debtor proposes "I paid" (§3.2).
 - ``POST /api/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw``
   — debtor withdraws their pending proposal (§3.2).
@@ -45,6 +47,7 @@ from app.errors import AppError
 from app.schemas import (
     DebtAdjustmentCreateRequest,
     DebtCreateRequest,
+    DebtForgiveCreateRequest,
     DebtListResponse,
     DebtResponse,
     DebtVoidCreateRequest,
@@ -63,6 +66,7 @@ from app.services.debt_service import (
     confirm_repayment_proposal,
     create_debt,
     create_repayment_proposal,
+    forgive_debt,
     get_debt_response,
     get_participant_debt_response,
     get_repayment_proposal_response,
@@ -99,6 +103,8 @@ _REPAYMENT_OPERATION = "record_repayment"
 _ADJUSTMENT_OPERATION = "record_adjustment"
 _REPAYMENT_VOID_OPERATION = "void_repayment"
 _DEBT_VOID_OPERATION = "void_debt"
+# ADR-0049 §3.7 / §4 (slice 8e-3): creditor forgiveness of a member Debt's remaining.
+_DEBT_FORGIVE_OPERATION = "forgive_debt"
 # ADR-0049 slice 3: member repayment proposal (§3.2). Create anchors on the
 # parent Debt public_id; proposal-targeted ops also include the parent Debt so a
 # cross-debt path replay cannot HIT on the proposal id alone.
@@ -475,6 +481,63 @@ def post_debt_void(
     # goal_service.update_goal's post-CAS expire_all).
     db.expire_all()
     return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+
+
+@router.post("/{public_id}/forgive", response_model=DebtResponse, status_code=201)
+def post_debt_forgive(
+    public_id: str,
+    payload: DebtForgiveCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> DebtResponse:
+    # ADR-0049 §3.7 / §4: creditor waiver of a member Debt's remaining ("算了，不用还了").
+    # Member-Debt + creditor only; one-sided (no debtor confirmation). Fold-changing → it
+    # carries expected_row_version (§2.1 fence + §3.6 fingerprint); the member + creditor
+    # guards run INSIDE forgive_debt after the claim — the actor-scoped fingerprint stops a
+    # different actor's replay from HITting past those guards. §5.2: the creditor may be in
+    # ANOTHER ledger, so the HIT replay + success both re-serialise via
+    # ``get_participant_debt_response`` (mirrors post_repayment_proposal_confirm, NOT
+    # post_debt_void's ledger-scoped get_debt_response).
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_DEBT_FORGIVE_OPERATION,
+        target_id=public_id,
+        target_type=_DEBT_TARGET_TYPE,
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            actor_account_id=auth.account_id,
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # §2.1 replay: re-serialise the fold, do NOT bump again.
+        return get_participant_debt_response(
+            db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id
+        )
+    forgive_debt(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        actor_account_id=auth.account_id,
+        expected_row_version=payload.expected_row_version,
+        idempotency_key=idempotency_key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=public_id
+    )
+    db.commit()
+    # bump_row_version leaves a SQL ``row_version + 1`` expression on the in-session Debt;
+    # expire before re-reading the fold for the response (mirrors the slice-2 fact routes).
+    db.expire_all()
+    # §5.2: a cross-ledger creditor gets the Debt shell (ledger id redacted).
+    return get_participant_debt_response(
+        db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id
+    )
 
 
 # ── ADR-0049 slice 3: member repayment proposals (§3.2) ──────────────────────

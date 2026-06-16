@@ -53,6 +53,9 @@ class DebtMappersTest {
         assertFalse(debt.isBillSplit)
         // An external Debt's DTO carries no viewer role → null (the field defaults absent).
         assertNull(debt.viewerIsDebtor)
+        // ADR-0049 §3.7 (slice 8e-3): is_forgiven defaults absent → false; the true case (a forgiven
+        // cleared Debt) is exercised end-to-end in DebtRepositoryTest.forgive…ReturnsForgivenFoldAfterDebt.
+        assertFalse(debt.isForgiven)
     }
 
     @Test

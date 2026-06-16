@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
+import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
@@ -618,6 +619,18 @@ interface ApiService {
         @Body request: MemberRepaymentProposalRejectRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): MemberRepaymentProposalDto
+
+    // ADR-0049 §3.7 / §4 (slice 8e-3): the creditor forgives a member Debt's remaining
+    // ("算了，不用还了"). One-sided (no debtor confirmation), member + creditor only (the server
+    // 403s a debtor / 409s an external Debt). Fold-changing → it carries expected_row_version in the
+    // body + an ADR-0042 intent-time idempotency key in the header, and replies with the fold-after
+    // DebtResponse (DebtDto: cleared + is_forgiven). §5.2: a cross-ledger creditor gets the shell.
+    @POST("api/debts/{publicId}/forgive")
+    suspend fun forgiveDebt(
+        @Path("publicId") publicId: String,
+        @Body request: DebtForgiveCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): DebtDto
 
     @GET("api/dashboard/cards")
     suspend fun dashboardCards(

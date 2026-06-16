@@ -23,6 +23,12 @@ creditor account) unioned with ledger membership, not by ledger scope alone.
 ``get_participant_debt_response`` redacts the counterparty's ledger id for a
 participant-but-not-member view (the Debt shell only). This is the prerequisite
 for enabling ``DEBT_ROLLOUT_ENABLED`` (ADR §0.1).
+
+Slice 8e-3 adds ``forgive_debt`` (§3.7 / §4): a creditor unilaterally waives a member
+Debt's remaining ("算了，不用还了"). It is fold-changing (a ``DebtForgiveness`` fact
+drives ``remaining`` to 0 → ``cleared``, not ``voided``) so it shares the same §2.1
+``lock_and_fold`` serialization + §5.2 participant scope as the proposal confirm, and
+supersedes any pending proposal in the same transaction.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from app.services.debt_service._fold import (
     compute_remaining,
     derive_status,
 )
+from app.services.debt_service._forgive import forgive_debt
 from app.services.debt_service._proposal import (
     confirm_repayment_proposal,
     create_repayment_proposal,
@@ -64,6 +71,7 @@ __all__ = [
     "create_repayment_proposal",
     "debt_response",
     "derive_status",
+    "forgive_debt",
     "get_debt",
     "get_debt_response",
     "get_participant_debt_response",

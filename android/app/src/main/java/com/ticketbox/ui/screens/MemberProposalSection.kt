@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -18,8 +19,13 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +37,7 @@ import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.viewmodel.MemberProposalUiState
@@ -62,7 +69,7 @@ internal fun MemberProposalSection(
             // Role is the server-authoritative Debt.viewerIsDebtor (§3.2); null = the viewer is not a
             // party to this member Debt (a third ledger member), so neither action card applies.
             debt.viewerIsDebtor == true -> DebtorProposalCard(state = state, viewModel = viewModel)
-            debt.viewerIsDebtor == false -> CreditorProposalCard(state = state, viewModel = viewModel, currency = currency)
+            debt.viewerIsDebtor == false -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel, currency = currency)
             else -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
         }
         // ③ 沉降：只已解决进历史 (空集时整卡不渲染，§3.2/3.6)；在途 pending 在上面的动作卡里。
@@ -124,6 +131,7 @@ private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRe
 
 @Composable
 private fun CreditorProposalCard(
+    debt: Debt,
     state: MemberProposalUiState,
     viewModel: MemberRepaymentProposalViewModel,
     currency: CurrencyDisplay,
@@ -145,6 +153,9 @@ private fun CreditorProposalCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 8e ④ forgive：仅债权人 + open 成员债 + 无在途 proposal（pending==null）时显示，低调
+                // TextButton，不与「确认收款」抢主操作（pending 时只给确认/拒绝，避免与债务人在途请求并存）。
+                CreditorForgiveAction(debt = debt, isSubmitting = state.isSubmitting, viewModel = viewModel)
             } else {
                 Text(
                     stringResource(
@@ -180,6 +191,44 @@ private fun CreditorActionButtons(
             enabled = !isSubmitting,
             modifier = Modifier.weight(1f),
         ) { Text(stringResource(R.string.debt_proposal_reject_action)) }
+    }
+}
+
+// 8e ④ forgive 入口 + 二次确认弹窗（communal 应需而免 + haptic.confirm() 配单向赠与的软触感）。债权人确认后
+// viewModel.forgive 把欠款折成 cleared(forgiven)，详情屏重拉到 is_forgiven 暖语；OCC 冲突走 neutral 提示。
+@Composable
+private fun CreditorForgiveAction(
+    debt: Debt,
+    isSubmitting: Boolean,
+    viewModel: MemberRepaymentProposalViewModel,
+) {
+    var showConfirm by rememberSaveable { mutableStateOf(false) }
+    val haptic = rememberAppHaptics()
+    TextButton(
+        onClick = { showConfirm = true },
+        enabled = !isSubmitting,
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(stringResource(R.string.debt_member_forgive_action)) }
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            title = { Text(stringResource(R.string.debt_member_forgive_confirm_title)) },
+            text = { Text(stringResource(R.string.debt_member_forgive_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConfirm = false
+                        haptic.confirm()
+                        viewModel.forgive(debt.rowVersion)
+                    },
+                ) { Text(stringResource(R.string.debt_member_forgive_confirm_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
     }
 }
 

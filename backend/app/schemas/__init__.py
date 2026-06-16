@@ -88,6 +88,7 @@ from app.schemas._dashboard import (
 from app.schemas._debts import (
     DebtAdjustmentCreateRequest,
     DebtCreateRequest,
+    DebtForgiveCreateRequest,
     DebtListResponse,
     DebtResponse,
     DebtVoidCreateRequest,
@@ -290,6 +291,7 @@ __all__ = [
     "DataQualitySummaryResponse",
     "DebtAdjustmentCreateRequest",
     "DebtCreateRequest",
+    "DebtForgiveCreateRequest",
     "DebtGoalIntegrityReviewRequest",
     "DebtGoalLinkView",
     "DebtGoalLinksReplaceRequest",
