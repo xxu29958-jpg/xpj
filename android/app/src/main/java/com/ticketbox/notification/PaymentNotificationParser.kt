@@ -41,6 +41,10 @@ object PaymentNotificationParser {
     )
 
     fun parse(snapshot: PaymentNotificationSnapshot): NotificationDraft? {
+        // 隐私 + 洁癖：**先按包名过滤**。非白名单（微信 / 支付宝 / 短信）的通知，连正文都不读——否则下面的
+        // income/expense 正则会扫**每一条通知（任何 App）的正文内容**才决定丢弃。候选判定单列成
+        // [isCandidatePackage]，可单测、把白名单文档化（注：京东白条 `com.jingdong.app.mall` 不在内=已知盲区）。
+        if (!isCandidatePackage(snapshot.packageName)) return null
         val joined = snapshot.joinedText()
         if (joined.isBlank()) return null
         if (incomeOrRefundWords.containsMatchIn(joined)) return null
@@ -56,6 +60,16 @@ object PaymentNotificationParser {
             category = null,
             expenseTime = Instant.ofEpochMilli(snapshot.postTimeMillis).toString(),
         )
+    }
+
+    /**
+     * 包名是否在白名单内（=值不值得读这条通知的正文）。微信 / 支付宝 / 短信类才算候选；其余（新闻、聊天、
+     * 随便哪个 App）一律否，正文连看都不看。单列成 `internal` 以便单测钉死白名单边界。SMS 侧的进一步细分
+     * （需含 bankContext 才落 BankSms）仍在 [resolveSource]——本判定只做"要不要看正文"这一层粗过滤。
+     */
+    internal fun isCandidatePackage(packageName: String): Boolean {
+        val pkg = packageName.lowercase()
+        return pkg in weChatPackages || pkg in alipayPackages || isSmsPackage(pkg)
     }
 
     private fun resolveSource(packageName: String, text: String): NotificationDraftSource? {

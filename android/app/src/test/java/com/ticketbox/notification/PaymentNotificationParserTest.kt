@@ -4,8 +4,10 @@ import com.ticketbox.domain.model.NotificationDraftSource
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PaymentNotificationParserTest {
     @Test
@@ -136,6 +138,18 @@ class PaymentNotificationParserTest {
         )
 
         assertNull(draft)
+    }
+
+    @Test
+    fun isCandidatePackageGatesAllowlistBeforeReadingText() {
+        // 白名单 = 值不值得读这条通知的正文（隐私：非候选包的正文连扫都不扫）。只微信/支付宝/短信类是候选。
+        assertTrue(PaymentNotificationParser.isCandidatePackage("com.tencent.mm"))
+        assertTrue(PaymentNotificationParser.isCandidatePackage("com.eg.android.AlipayGphone")) // 大小写归一
+        assertTrue(PaymentNotificationParser.isCandidatePackage("com.android.messaging"))
+        assertFalse(PaymentNotificationParser.isCandidatePackage("com.example.news"))
+        assertFalse(PaymentNotificationParser.isCandidatePackage("com.example.spoof"))
+        // 已知盲区：京东白条走 JD 主 App 包，不在白名单——将来要自动追白条须显式加入（产品决策）。
+        assertFalse(PaymentNotificationParser.isCandidatePackage("com.jingdong.app.mall"))
     }
 
     private fun snapshot(

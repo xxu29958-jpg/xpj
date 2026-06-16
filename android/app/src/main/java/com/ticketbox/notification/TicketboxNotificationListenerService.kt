@@ -25,7 +25,9 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
             ?: return
 
         val draft = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
-        if (!draftDeduper.tryReserve(draft)) return
+        // 去重按**这条通知的系统身份**（sbn.key），不是按内容——见 NotificationDraftDeduper。
+        val notificationKey = sbn.key
+        if (!draftDeduper.tryReserve(draft, notificationKey)) return
 
         serviceScope.launch {
             val result = container.expenseRepository.createNotificationDraft(
@@ -33,7 +35,7 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
                 expectedLedgerId = ledgerIdAtPost,
             )
             if (result.isFailure) {
-                draftDeduper.release(draft)
+                draftDeduper.release(draft, notificationKey)
             }
             // 通知闭环 PR-1：草稿建好后按「待确认提醒/大额提醒」开关发系统通知。
             result.onSuccess { created -> container.notifier.onDraftCreated(created) }
