@@ -257,8 +257,10 @@ jobs:
         shell: bash
     env:
       # Canonical owner server URL so BuildConfig.DEFAULT_SERVER_URL is populated
-      # without a hardcoded domain in build.gradle.kts.
-      TICKETBOX_SERVER_URL: https://api.zen70.cn
+      # without a hardcoded domain in build.gradle.kts. Value comes from the repo
+      # Actions variable (defense-in-depth: keep the origin host out of the public
+      # workflow file — set it via `gh variable set TICKETBOX_SERVER_URL`).
+      TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
       NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
       - name: Checkout

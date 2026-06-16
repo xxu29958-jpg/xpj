@@ -47,7 +47,9 @@ jobs:
         shell: powershell
 
     env:
-      TICKETBOX_SERVER_URL: https://api.zen70.cn
+      # From the gitea Actions variable — set it in the gitea repo/org Actions
+      # variables (Settings → Actions → Variables) before the next gitea CI run.
+      TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
       ANDROID_HOME: E:\projects\xiaopiaojia\.toolchains\android-sdk
       ANDROID_SDK_ROOT: E:\projects\xiaopiaojia\.toolchains\android-sdk
 

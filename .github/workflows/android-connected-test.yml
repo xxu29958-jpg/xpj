@@ -56,8 +56,9 @@ jobs:
 
     env:
       # Same canonical owner URL the regular android job injects, so
-      # BuildConfig.DEFAULT_SERVER_URL is populated.
-      TICKETBOX_SERVER_URL: https://api.zen70.cn
+      # BuildConfig.DEFAULT_SERVER_URL is populated. From the repo Actions variable
+      # (keeps the origin host out of the public workflow file).
+      TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
 
     steps:
       - name: Checkout
