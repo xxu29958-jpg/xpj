@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.DebtGoalLink
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppGlassCard
@@ -41,8 +40,8 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.viewmodel.DebtGoalUiState
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import kotlinx.coroutines.delay
@@ -192,7 +191,8 @@ private fun DebtGoalListCard(goal: Goal, onClick: () -> Unit) {
                     Text(
                         stringResource(R.string.debt_goal_card_needs_review),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        // §6.5 去 shame：复核是「需要你拿个主意」的注意态，不是错误——用 warn（琥珀）非 error（红）。
+                        color = LocalStateTokens.current.warn.fg,
                     )
                 }
             }
@@ -231,7 +231,8 @@ private fun LazyListScope.debtGoalDetailSection(
 ) {
     val goal = state.selectedGoal ?: return
     val evaluation = goal.debtRepayment ?: return
-    item { DebtGoalSummaryCard(goal) }
+    // §6 hero：件数为主视觉的关系进度卡（含状态徽章 + 达成态），取代旧的纯状态摘要卡。
+    item { DebtPlanProgressCard(evaluation = evaluation, currency = currency) }
     if (evaluation.needsReview) {
         item {
             DebtGoalIntegrityReviewCard(
@@ -251,28 +252,7 @@ private fun LazyListScope.debtGoalDetailSection(
     }
     item { SectionEyebrow(stringResource(R.string.debt_goal_detail_links_title)) }
     items(evaluation.linkedDebts, key = { it.debtPublicId }) { link ->
-        DebtLinkRow(link = link, currency = currency)
-    }
-}
-
-@Composable
-private fun DebtGoalSummaryCard(goal: Goal) {
-    val evaluation = goal.debtRepayment ?: return
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
-            DebtStatusBadge(
-                text = stringResource(debtGoalEvaluationLabelRes(evaluation.evaluationState)),
-                tone = debtGoalEvaluationTone(evaluation.evaluationState),
-            )
-            if (evaluation.isAchieved) {
-                Spacer(Modifier.size(AppSpacing.smallGap))
-                Text(
-                    stringResource(R.string.debt_goal_detail_achieved_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
+        DebtGoalLinkRow(link = link, currency = currency)
     }
 }
 
@@ -293,7 +273,8 @@ private fun DebtGoalIntegrityReviewCard(
                 stringResource(R.string.debt_goal_review_title),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.error,
+                // §6.5 去 shame：复核标题用 warn（琥珀）非 error（红），保持暖意红线。
+                color = LocalStateTokens.current.warn.fg,
             )
             Spacer(Modifier.size(AppSpacing.miniGap))
             Text(
@@ -350,37 +331,6 @@ private fun DebtGoalIntegrityActions(
                 Button(onClick = { onAction(DebtIntegrityAction.Archive) }, enabled = !isSubmitting) {
                     Text(stringResource(R.string.debt_goal_review_action_archive))
                 }
-        }
-    }
-}
-
-@Composable
-private fun DebtLinkRow(link: DebtGoalLink, currency: CurrencyDisplay) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    debtLinkCounterparty(link),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                DebtStatusBadge(
-                    text = stringResource(debtLinkStatusLabelRes(link.status)),
-                    tone = debtLinkStatusTone(link.status),
-                )
-            }
-            Spacer(Modifier.size(AppSpacing.miniGap))
-            Text(
-                stringResource(
-                    R.string.debt_goal_link_meta,
-                    stringResource(debtDirectionLabelRes(link.direction)),
-                    formatDisplayAmount(link.remainingAmountCents, currency),
-                    formatDisplayAmount(link.principalAmountCents, currency),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

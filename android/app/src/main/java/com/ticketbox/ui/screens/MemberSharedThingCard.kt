@@ -1,19 +1,13 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -29,20 +23,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppMotion
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import kotlin.math.roundToInt
@@ -103,34 +93,20 @@ internal fun MemberSharedThingCard(debt: Debt, currency: CurrencyDisplay) {
     }
 }
 
-/** 进度条 (open 时显示)：success-token 填充，counting-up，无百分比/无计数器/无红色 (§2.3)。 */
+/** 进度条 (open 时显示)：success-token 填充，counting-up，无百分比/无计数器/无红色 (§2.3)。委托通用 [AppProgressBar]
+ * (8e-5 抽出，视觉逐字节不变)，下方再缀一句无数字程度语。 */
 @Composable
 private fun CommunalProgressBar(ratio: Float) {
     val tokens = LocalStateTokens.current
-    val animated by animateFloatAsState(
-        targetValue = ratio.coerceIn(0f, 1f),
-        animationSpec = AppMotion.standardSpec(),
-        label = "communalProgress",
-    )
     val percent = (ratio.coerceIn(0f, 1f) * 100).roundToInt()
     val a11y = stringResource(R.string.debt_member_progress_a11y, percent)
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(AppSpacing.contentGap)
-                .clip(RoundedCornerShape(AppRadius.small))
-                .background(tokens.success.bg)
-                .semantics { contentDescription = a11y },
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(animated)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(AppRadius.small))
-                    .background(tokens.success.fg),
-            )
-        }
+        AppProgressBar(
+            fraction = ratio,
+            tone = tokens.success,
+            height = AppSpacing.contentGap,
+            contentDescription = a11y,
+        )
         Spacer(Modifier.size(AppSpacing.miniGap))
         Text(
             stringResource(memberDebtProgressNoteRes(ratio)),

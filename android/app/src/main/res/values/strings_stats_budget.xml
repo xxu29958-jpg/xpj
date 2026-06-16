@@ -125,7 +125,6 @@
     <string name="debt_goal_card_linked_count">%1$d 笔关联欠款</string>
     <string name="debt_goal_card_needs_review">需要复核</string>
     <string name="debt_goal_detail_links_title">关联欠款</string>
-    <string name="debt_goal_detail_achieved_hint">全部关联欠款已结清。</string>
     <string name="debt_goal_link_meta">%1$s · 剩余 %2$s · 本金 %3$s</string>
     <string name="debt_goal_review_title">需要复核</string>
     <string name="debt_goal_review_body_achieved">目标已达成，但有关联欠款被判作废。请确认如何处理。</string>
@@ -314,6 +313,33 @@
     <string name="debt_settle_celebration_body_named">你和%1$s把这件事处理好啦</string>
     <string name="debt_settle_celebration_check_desc">两清</string>
     <string name="debt_settle_celebration_announce">这笔账两清啦，你俩把这件事处理好啦</string>
+
+    <!-- 8e-5 ⑥ 还债目标进度（§6）：件数为主视觉 + 一句关系话；成员债无排序器/无三态/无日期投影/无单笔撒花/无里程碑催促。 -->
+    <!-- 计划级件数主文案（大字 tabularNum），成分自适应（§6.2/§6.7）。成员**永不带「欠」字**，冷启动不用「已和 0 位」冷措辞。 -->
+    <string name="debt_plan_headline_member_start">这几笔，和家人一起慢慢清</string>
+    <string name="debt_plan_headline_member">和家人两清了 %1$d 笔 · 还剩 %2$d 笔</string>
+    <string name="debt_plan_headline_member_done">这几笔，和家人都两清啦</string>
+    <string name="debt_plan_headline_external">已还清 %1$d / %2$d 笔</string>
+    <string name="debt_plan_headline_mixed">已处理 %1$d / %2$d 笔</string>
+    <string name="debt_plan_all_voided">关联的欠款都已作废</string>
+    <!-- 计划级金额副文案（小字弱化 tabularNum），仅同币种时显示（混币整条隐藏，§6.2 P2#7）；成员**永不带「欠」字**。 -->
+    <string name="debt_plan_amount_member">这几笔共 %1$s · 还剩 %2$s</string>
+    <string name="debt_plan_amount_member_done">这几笔共 %1$s</string>
+    <string name="debt_plan_amount_external">共 %1$s · 剩余 %2$s</string>
+    <string name="debt_plan_amount_external_done">共 %1$s</string>
+    <string name="debt_plan_progress_a11y">已两清 %1$d 笔，共 %2$d 笔</string>
+    <!-- 每笔成员行的一句话（外部行走会计 meta 不在此）：进行中复用 debt_member_progress_*。 -->
+    <string name="debt_link_member_note_cleared">已两清</string>
+    <string name="debt_link_member_note_voided">这件事不算了</string>
+    <!-- 计划达成（§6.6/§6.7）：外部/混装走轻量提示（不撒花、不夹夹）；纯成员走下方浮层撒花。 -->
+    <string name="debt_plan_complete_external">这几笔都还清啦</string>
+    <string name="debt_plan_complete_mixed">这几笔都处理完啦</string>
+    <!-- 计划达成撒花（纯成员，比单笔两清高一档，§6.6）：强调几笔一起完成，荣誉归双方与关系，措辞「计划完成」非「这笔账两清」。 -->
+    <string name="debt_plan_celebration_title">这几笔，全部两清啦 🎉</string>
+    <string name="debt_plan_celebration_body">和家人一起，把这些都处理好啦</string>
+    <string name="debt_plan_celebration_body_named">「%1$s」里的这几笔，都两清啦</string>
+    <string name="debt_plan_celebration_check_desc">全部两清</string>
+    <string name="debt_plan_celebration_announce">这几笔全部两清啦，和家人一起把这些都处理好啦</string>
 
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>

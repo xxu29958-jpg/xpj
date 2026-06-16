@@ -17,6 +17,7 @@ import com.ticketbox.ui.mascot.rememberMascotController
 import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.CreateDebtGoalScreen
 import com.ticketbox.ui.screens.DebtDetailScreen
+import com.ticketbox.ui.screens.DebtGoalCelebrationOverlay
 import com.ticketbox.ui.screens.DebtGoalScreen
 import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
@@ -148,13 +149,27 @@ internal fun DebtGoalRoute(
             },
         )
     } else {
-        // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
-        DebtGoalScreen(
-            viewModel = debtGoalViewModel,
-            currency = currency,
-            onBack = onBack,
-            onCreate = { showCreate = true },
-        )
+        // §6.6 计划达成撒花：在 DebtGoalScreen 之上叠一层浮层（与 DebtRoute 的单笔两清浮层同构）。mascot
+        // controller 是路由层关注点；celebration 由纯成员计划跨「未达成→达成」边沿产出（只读服务端 evaluation_state）。
+        val mascot = rememberMascotController()
+        val celebration by debtGoalViewModel.celebration.collectAsStateWithLifecycle()
+        // 离屏（切到创建子页 / 关 overlay）时丢弃未消费的撒花信号——浮层动画(~3.8s)中途离开会取消其 consume，
+        // 单例 VM 持有的旧信号否则泄漏到下次进入误撒花（镜像 DebtRoute 的 DisposableEffect）。
+        DisposableEffect(Unit) { onDispose { debtGoalViewModel.consumeCelebration() } }
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
+            DebtGoalScreen(
+                viewModel = debtGoalViewModel,
+                currency = currency,
+                onBack = onBack,
+                onCreate = { showCreate = true },
+            )
+            DebtGoalCelebrationOverlay(
+                celebration = celebration,
+                mascot = mascot,
+                onConsume = debtGoalViewModel::consumeCelebration,
+            )
+        }
     }
 }
 

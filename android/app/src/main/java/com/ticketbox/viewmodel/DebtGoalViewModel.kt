@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,12 +36,25 @@ data class DebtGoalUiState(
     val flashMessage: UiText? = null,
 )
 
+/**
+ * ADR-0049 §6.6 (slice 8e-5) 整个还债计划达成的撒花信号（**纯成员计划**才走浮层 + 夹夹）。
+ * 由 [DebtGoalViewModel] 在跨「未达成 → 达成」边沿、且成分为纯成员时一次性 emit，[DebtGoalCelebrationOverlay]
+ * 消费并播一次 `MascotEvent.MilestoneReached`。外部 / 混装计划达成走轻量 flashMessage（不撒花、不夹夹，§6.7）。
+ */
+data class DebtGoalCelebration(val goalName: String)
+
 class DebtGoalViewModel(
     private val repository: ReportsActions,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DebtGoalUiState(canModify = repository.canModifyLedger()))
     val state: StateFlow<DebtGoalUiState> = _state.asStateFlow()
+
+    // ADR-0049 §6.6 计划达成撒花：边沿判定 + 去重 + 撒花信号收进窄职责协作者，而非把 VM 撑过 detekt
+    // TooManyFunctions 门（豁免≠把类做胖，[[feedback_baseline_not_complexity_license]]）。celebration 属性
+    // 直接转发协作者的 flow（property，不计入 TooManyFunctions）。
+    private val celebrationController = DebtGoalCelebrationController()
+    val celebration: StateFlow<DebtGoalCelebration?> get() = celebrationController.celebration
 
     // Monotonic load token (mirrors StatsReportsViewModel): a load applies its result
     // only if it is still the latest. Overlapping loads (init + reload() on entry,
@@ -129,6 +143,11 @@ class DebtGoalViewModel(
                 current
             }
         }
+        // 主路径：详情停在 in_progress 时一次 refresh 拉到 achieved（用户在场目击跨边沿，§6.6）。
+        // 成员达成 emit overlay 撒花信号；外部/混装返回轻量 flash 文案就展示（§6.7）。
+        celebrationController.onGoalApplied(old = selected, new = fresh)?.let { flash ->
+            _state.update { it.copy(flashMessage = flash) }
+        }
     }
 
     /**
@@ -149,6 +168,12 @@ class DebtGoalViewModel(
                 } else {
                     current
                 }
+            }
+            // The list copy never latches (only the writer GET does); so opening a goal whose
+            // list copy is in_progress but whose fresh detail just turned achieved is a
+            // witnessed cross-edge. An already-achieved list copy → no edge (no spurious replay).
+            celebrationController.onGoalApplied(old = goal, new = fresh)?.let { flash ->
+                _state.update { it.copy(flashMessage = flash) }
             }
         }
     }
@@ -228,6 +253,7 @@ class DebtGoalViewModel(
             onSuccess = { updated ->
                 // Supersede any in-flight load so it can't revert this committed change.
                 loadGeneration++
+                val previous = _state.value.selectedGoal
                 _state.update { current ->
                     current.copy(
                         isSubmitting = false,
@@ -237,6 +263,12 @@ class DebtGoalViewModel(
                         error = null,
                     )
                 }
+                // removeVoidedDebts that completes the (new-version) plan is a user-caused,
+                // witnessed completion → celebrate (the external/mixed flash may overwrite the
+                // generic mutation flash; the member case emits the overlay signal instead).
+                celebrationController.onGoalApplied(old = previous, new = updated)?.let { flash ->
+                    _state.update { it.copy(flashMessage = flash) }
+                }
             },
             onFailure = { err ->
                 _state.update {
@@ -244,6 +276,55 @@ class DebtGoalViewModel(
                 }
             },
         )
+    }
+
+    /** Overlay 消费撒花信号后清空（动画播完 / 离屏 dispose 时调用，镜像 DebtDetailViewModel）。 */
+    fun consumeCelebration() {
+        celebrationController.consume()
+    }
+}
+
+/**
+ * ADR-0049 §6.6 计划达成撒花的边沿判定 + 去重 + 撒花信号的窄职责协作者（从 [DebtGoalViewModel] 抽出，
+ * 而非把 VM 撑过 detekt TooManyFunctions 门——豁免≠把类做胖，[[feedback_baseline_not_complexity_license]]）。
+ *
+ * **达成只读服务端 `evaluation_state`**（latch + sticky，backend F8）——**禁止**用客户端
+ * `clearedCount==totalCount` 当完成信号（client 可能比 latch 早一拍）。边沿 = 旧态非 achieved → 新态
+ * achieved；旧态缺失（无可比较）或已 achieved（sticky 重放）都不撒。per (publicId, goal_version) 去重。
+ * 成分自适应（§6.7）：纯成员 → emit [celebration]（浮层撒花 + 由 overlay 发夹夹）；外部 / 混装 → 返回
+ * 轻量 flash 文案给 VM 展示（不撒花、不夹夹，避免给信用卡撒花的违和）。
+ */
+internal class DebtGoalCelebrationController {
+    private val _celebration = MutableStateFlow<DebtGoalCelebration?>(null)
+    val celebration: StateFlow<DebtGoalCelebration?> = _celebration.asStateFlow()
+
+    // per (publicId, goal_version) 去重；link-replace 产生新 goal_version → 新版本若再次达成是新撒花机会。
+    private val celebratedKeys = mutableSetOf<String>()
+
+    /**
+     * 在一次「goal 应用」后判定是否跨达成边沿。纯成员达成 emit [celebration]（返回 null）；外部 / 混装
+     * 达成返回需展示的 flash 文案；无边沿 / 重放 / 已达成 / 全作废都返回 null。
+     */
+    fun onGoalApplied(old: Goal?, new: Goal): UiText? {
+        val newEval = new.debtRepayment ?: return null
+        if (!newEval.isAchieved) return null
+        val oldEval = old?.debtRepayment ?: return null
+        if (oldEval.isAchieved) return null
+        if (!celebratedKeys.add("${new.publicId}:${newEval.goalVersion}")) return null
+        return when (newEval.composition) {
+            DebtGoalComposition.Member -> {
+                _celebration.update { DebtGoalCelebration(goalName = new.name) }
+                null
+            }
+            DebtGoalComposition.External -> UiText.res(R.string.debt_plan_complete_external)
+            DebtGoalComposition.Mixed -> UiText.res(R.string.debt_plan_complete_mixed)
+            // 不可达：达成必有 ≥1 非作废 cleared 链，成分不会是 Empty（防御性兜底）。
+            DebtGoalComposition.Empty -> null
+        }
+    }
+
+    fun consume() {
+        _celebration.update { null }
     }
 }
 
