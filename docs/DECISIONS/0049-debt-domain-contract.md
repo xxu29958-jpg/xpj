@@ -350,6 +350,39 @@ Same key + same fingerprint returns the canonical committed result. Same key + d
 
 Fact tables may store the request `idempotency_key` for audit/provenance, but MUST NOT enforce it as a global unique key. Uniqueness belongs to [[0042]]'s tenant-scoped `(tenant_id, idempotency_key)` claim table so two ledgers can legitimately use the same client-generated key.
 
+## 3.7 DebtForgiveness (planned — slice 8e-3)
+
+Creditor waiver ("算了，不用还了") is the Communal escape valve (see §7.0): the
+creditor relinquishes their own remaining claim so the debtor no longer owes it.
+This subsection fixes its fold semantics; the field-level table and tests land in
+slice 8e-3. Until then it is a planned fact, not a live one.
+
+Fold semantics (binding intent):
+
+- `DebtForgiveness` is an append-only fact. Its implied amount is the
+  `remaining_before` snapshotted while serialized on the parent Debt row per §2.1
+  (a concurrent repayment and forgiveness must not both read the same pre-state
+  and drive `remaining < 0`).
+- `compute_remaining` subtracts forgiveness, so a forgiven Debt folds to `cleared`,
+  NOT `voided` (`derive_status` only returns `voided` for an explicit DebtVoid).
+- A forgiven Debt is a completion: it counts toward "two-clear" in `debt_repayment`
+  goals (§6). It is a one-sided creditor op (benefits the debtor only, no adverse
+  interest) and so does NOT require debtor confirmation — distinct from member Debt
+  void / principal-increasing adjustment (§3.3, §3.5), which keep adverse-interest
+  confirmation.
+- Authorization: member Debt only, creditor only. It supersedes any pending
+  `MemberRepaymentProposal` in the same transaction and surfaces that to the debtor.
+- Idempotency: uses §3.6's fingerprint (`operation=forgive`, `debt_id`,
+  `actor_account_id`, `expected_debt_row_version`); no second mechanism.
+
+Open items resolved in slice 8e-3 (NOT settled by this section):
+
+- Reversal: whether a mistaken forgiveness is undone by an inverse append-only fact
+  (RepaymentVoid-style) or is final once committed.
+- Goal integrity: whether forgiving a Debt that has already latched a
+  `debt_repayment` goal achievement triggers the §6 / F13 integrity-review, the way
+  a DebtVoid does.
+
 ---
 
 # 4. Bill Split Linkage
@@ -478,6 +511,77 @@ Implementation note:
 ---
 
 # 7. Mascot Events
+
+## 7.0 Member Debt Is Communal, Not Market
+
+Member debt and external debt are the same domain (§0) but they are NOT the same
+relationship. They must be framed differently in the product surface.
+
+- External debt (`counterparty_type=external`: credit card, landlord, loan) is a
+  Market Pricing relationship. The accounting frame is correct there: principal,
+  remaining, paid, adjust, void, "you owe ¥X". Keep it businesslike.
+- Member debt (`counterparty_type=member`: family) is a Communal Sharing
+  relationship. A businesslike, settle-to-zero frame actively harms the bond.
+
+Why this is a contract concern and not just copy: in relational-models terms
+(Fiske; Clark & Mills), relationship type and the medium of exchange are tightly
+linked — answering a family member's welfare gesture with a precisely priced,
+settle-to-zero ledger tends to be read as re-framing a Communal bond as a Market
+exchange. A child who "settles up" a parent's gift briskly and exactly can signal
+"I'd rather owe you nothing", i.e. declining the bond. The offense is not the
+repayment; it is rendering the relationship in Market medium (running balance,
+scorecard, efficient settlement). The same literature grounds §7's existing
+de-moralization rule: guilt (about a behavior) tends to drive repair, while shame
+(about the self) tends to drive withdrawal — so a shame or manipulative-guilt
+frame is the less effective way to resolve a family debt, not the tougher one.
+Manipulative guilt ("you should have paid sooner", "you could clear this faster")
+is banned on member surfaces for the same reason. These are design-orientation
+grounds, not precise effect-size claims; the rules below do not depend on the
+magnitude of any single effect.
+
+The cure for "too businesslike" is NOT opacity. Hidden or silently-tallied
+imbalance breeds its own resentment, so "明算账护关系" and "不 businesslike" are
+not in tension. State stays fully legible; the frame is what changes.
+
+Member-debt product rules (these constrain UI and copy, mascot included):
+
+- Amounts and state remain fully visible and accurate; numbers do not disappear.
+- Numbers MUST NOT be the hero. The hero frame is the shared thing and each
+  party's fair share (Equality-Matching), not "A owes B ¥X". Precise amounts live
+  one tap away (an expandable detail), never in the headline.
+- No persistent running total, debtor/creditor standing balance, lifetime
+  ledger, ranking, or success-vs-failure highlight is shown for member debt.
+  Resolved items recede into neutral history (settle-and-forget); they do not
+  accumulate into a scorecard, and no resolved row is visually singled out as a
+  "successful collection".
+- No shame and no manipulative guilt: no overdue/red/"催"/"欠你" framing, and no
+  "you should have paid sooner" / "clear it faster" pressure, on any member-debt
+  surface.
+- Creditor acknowledgment is a warm person-to-person thank-you, never a
+  verification/receipt. Rejection opens a conversation ("金额对不上？"), it is
+  not an accusation. After a rejection the debtor gets a neutral re-propose path,
+  not a dead grey badge.
+- Member debt MUST NOT be packaged into a debt-payoff dashboard. A pay-down view
+  containing member debt shows count-based progress and one line of relational
+  copy; it does NOT add a payoff-ordering optimizer (snowball/avalanche/custom),
+  a projected payoff date, or percentage milestone nudges. Those belong only to
+  pure-external-debt plans (a genuine Market relationship).
+
+Creditor waiver ("算了，不用还了") is the canonical Communal escape valve —
+Communal Sharing explicitly permits giving without return. A creditor
+relinquishing their own claim benefits the debtor only and carries no adverse
+interest, so it is a single-sided creditor op. It is therefore distinct from
+member Debt void / principal-increasing adjustment (§3.3, §3.5), which CAN harm
+the counterparty and MUST keep adverse-interest confirmation. Waiver is a
+first-class member-debt action; void/adjust consent rules are unchanged.
+
+Waiver is a fold-algebra change, not a pure UI op — its binding fact spec, fold
+semantics, and open invariants (reversal, goal-integrity, §2.1 serialization) are
+defined in §3.7 (landed in slice 8e-3). What §7 cares about: a forgiven Debt folds
+to `cleared` and is a completion that counts toward "two-clear" in plans, but it
+is celebrated differently from a mutual settlement — the debtor was given
+something, not made square — so it does NOT fire the settle celebration (see §4.1
+of the mascot brief).
 
 Debt events may feed the mascot, but mascot state is presentation-only.
 
