@@ -30,7 +30,9 @@ there, not a magic-number smell):
   - ``ui/components/ReceiptIllustration.kt``     — hand-drawn illustration art.
   - ``ui/components/ComponentPreviewSamples.kt`` — @Preview-only sample data,
                                                    not shipped UI.
-  - ``ui/screens/pending/PendingClearCelebration.kt`` — celebration animation art.
+  - ``ui/components/ClearCelebration.kt`` — celebration animation art (the shared
+                                            clear/settle confetti body; pending +
+                                            member-debt 两清 both forward to it).
 
 What counts as a literal: a numeric alpha in ``.copy(alpha = <number>)`` form,
 or an 8-hex ``Color(0x........)`` constructor (carries an explicit alpha byte).
@@ -73,7 +75,7 @@ EXEMPT_PREFIXES = (
 EXEMPT_FILES = (
     "components/ReceiptIllustration.kt",
     "components/ComponentPreviewSamples.kt",
-    "screens/pending/PendingClearCelebration.kt",
+    "components/ClearCelebration.kt",
 )
 
 # Frozen residual: the in-scope literal count may only ratchet DOWN. Lower this
