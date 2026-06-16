@@ -256,6 +256,141 @@ class DebtDetailViewModelTest {
 
         assertNull(viewModel.state.value.flashMessage)
     }
+
+    // ADR-0049 §5.2 (slice 8e-4) 两清庆祝边沿检测。
+
+    @Test
+    fun witnessedMemberDebtClearingEmitsCelebration() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle()
+        // 先见 open：记录非-cleared 先值，但还不撒花。
+        assertNull(viewModel.celebration.value)
+
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        val celebration = viewModel.celebration.value
+        assertTrue(celebration != null)
+        assertEquals("小敏", celebration?.counterpartyLabel)
+    }
+
+    @Test
+    fun firstSightOfAlreadyClearedMemberDebtDoesNotCelebrate() = runTest(dispatcher) {
+        // P1#4：债务人首次打开一笔早已 cleared 的成员债（创建者确认时不在场）不该撒花。
+        val repo = FakeDebtDetailActions(getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED)))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun forgivenMemberDebtClearingDoesNotCelebrate() = runTest(dispatcher) {
+        // §5.6：forgive 落地态也是 cleared，但走暖语分叉不撒「两清」花。
+        val repo = FakeDebtDetailActions(getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle()
+
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED, isForgiven = true))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun nonPartyMemberDebtClearingDoesNotCelebrate() = runTest(dispatcher) {
+        // viewerIsDebtor == null：非当事方（list/fact 路径）目击 cleared 不撒花。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN, viewerIsDebtor = null)),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle()
+
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED, viewerIsDebtor = null))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun externalDebtClearingDoesNotCelebrate() = runTest(dispatcher) {
+        // 外部债走会计框架，open→cleared 不撒「两清」花。
+        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1", status = DebtLinkStatuses.OPEN)))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        repo.getResult = Result.success(sampleDebt("d1", status = DebtLinkStatuses.CLEARED))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun celebrationDoesNotReplayAfterConsume() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle()
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED))
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertTrue(viewModel.celebration.value != null)
+
+        viewModel.consumeCelebration()
+        // 同一笔 cleared 债再 refresh：crossedEdge 与 per-debt-id 去重都拦下，不重放。
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun consumeCelebrationClearsSignal() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle()
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED))
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertTrue(viewModel.celebration.value != null)
+
+        viewModel.consumeCelebration()
+
+        assertNull(viewModel.celebration.value)
+    }
+
+    @Test
+    fun consumedCelebrationDoesNotLeakToADifferentDebt() = runTest(dispatcher) {
+        // DebtRoute 在详情屏 dispose 时 consume（中途返回会取消浮层的 consume，否则单例 VM 持有的旧信号会
+        // 泄漏到下一笔欠款误撒花，对抗审 P2）。consume 后打开另一笔欠款不得复用旧信号。
+        val repo = FakeDebtDetailActions(getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle()
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED))
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertTrue(viewModel.celebration.value != null)
+        viewModel.consumeCelebration()
+
+        // 切到另一笔（首次见、已 cleared）：P1#4 不撒花，且旧信号已被 consume 清掉。
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED).copy(publicId = "m2"))
+        viewModel.loadDebt("m2")
+        advanceUntilIdle()
+
+        assertNull(viewModel.celebration.value)
+    }
 }
 
 private data class WriteArgs(
@@ -335,4 +470,17 @@ private fun sampleDebt(
     createdAt = "2026-06-15T00:00:00Z",
     updatedAt = "2026-06-15T00:00:00Z",
     rowVersion = rowVersion,
+)
+
+// A member Debt sample for §5.2 celebration tests; defaults to the creditor viewer (viewerIsDebtor=false).
+// Uses copy() so the base sampleDebt stays at four params (avoids the LongParameterList gate).
+private fun memberDebt(
+    status: String,
+    viewerIsDebtor: Boolean? = false,
+    isForgiven: Boolean = false,
+): Debt = sampleDebt(publicId = "m1", status = status).copy(
+    counterpartyType = DebtCounterpartyTypes.MEMBER,
+    counterpartyLabel = "小敏",
+    viewerIsDebtor = viewerIsDebtor,
+    isForgiven = isForgiven,
 )

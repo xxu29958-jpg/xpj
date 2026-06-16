@@ -308,6 +308,12 @@
     <string name="debt_member_forgive_done">好啦，这份就算了～</string>
     <string name="debt_member_forgive_failed">没成功，待会儿再试一下～</string>
     <string name="debt_member_forgive_conflict">有人刚记了一笔，刷新一下再看看～</string>
+    <!-- 8e ⑤ 两清庆祝（§5.5）：A/B 路径两方共用，荣誉给「你俩 + 这件事」，不提钱、不提谁收到。forgive 走 §5.6 暖语分叉，不到这里。 -->
+    <string name="debt_settle_celebration_title">这笔账两清啦 ✅</string>
+    <string name="debt_settle_celebration_body">你俩把这件事处理好啦</string>
+    <string name="debt_settle_celebration_body_named">你和%1$s把这件事处理好啦</string>
+    <string name="debt_settle_celebration_check_desc">两清</string>
+    <string name="debt_settle_celebration_announce">这笔账两清啦，你俩把这件事处理好啦</string>
 
     <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
     <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>

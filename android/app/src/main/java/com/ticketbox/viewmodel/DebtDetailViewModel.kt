@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,12 +44,29 @@ data class DebtDetailUiState(
 /** The three direct fact writes a detail action panel can submit (ADR-0049 §3.1 / §3.3 / §3.5). */
 enum class DebtAction { Repayment, Adjustment, Void }
 
+/**
+ * A one-shot member-debt 两清 celebration signal (ADR-0049 §5.2 / slice 8e-4): the viewer witnessed a
+ * member Debt cross open→cleared (non-forgiven) in this VM lifetime. [counterpartyLabel] picks the
+ * named vs anonymous body copy. Presentation metadata only — never a financial truth.
+ */
+data class DebtSettleCelebration(val counterpartyLabel: String?)
+
 class DebtDetailViewModel(
     private val repository: DebtActions,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DebtDetailUiState(canModify = repository.canModifyLedger()))
     val state: StateFlow<DebtDetailUiState> = _state.asStateFlow()
+
+    // ADR-0049 §5.2 (slice 8e-4) 两清庆祝边沿检测。三条 →cleared 路径（债权人 confirm / 债务人目击 /
+    // forgive）都终结于「详情屏持有的 Debt 跨过 →cleared 边沿」，故只在换入服务端 DTO 的一处做检测。
+    // [previousStatusByPublicId] 记录本 VM 生命周期内每笔 Debt 上一次见到的 status：crossedEdge 要求有
+    // 明确的非-cleared 先值，所以首次打开一笔「几周前就已 cleared」的债不撒花（P1#4 修复）。
+    // [celebratedDebtIds] 去重，refresh / 重进详情都不重放。只读服务端权威 DTO，无乐观本地 status 改写。
+    private val previousStatusByPublicId = mutableMapOf<String, String>()
+    private val celebratedDebtIds = mutableSetOf<String>()
+    private val _celebration = MutableStateFlow<DebtSettleCelebration?>(null)
+    val celebration: StateFlow<DebtSettleCelebration?> = _celebration.asStateFlow()
 
     // The reusable detail VM (one instance, keyed by a constant in DebtRoute) is told which Debt to
     // show by [loadDebt] on each (re)entry, so reopening always re-fetches rather than showing a
@@ -66,6 +84,7 @@ class DebtDetailViewModel(
         viewModelScope.launch {
             repository.getDebt(publicId).fold(
                 onSuccess = { debt ->
+                    detectSettleCelebration(debt)
                     _state.update {
                         it.copy(
                             isLoading = false,
@@ -148,6 +167,7 @@ class DebtDetailViewModel(
             }
             result.fold(
                 onSuccess = { updated ->
+                    detectSettleCelebration(updated)
                     _state.update {
                         it.copy(
                             debt = updated,
@@ -171,6 +191,29 @@ class DebtDetailViewModel(
 
     fun dismissFlash() {
         _state.update { it.copy(flashMessage = null) }
+    }
+
+    /** Ack the 两清 celebration once the overlay has played (ADR-0049 §5.3). */
+    fun consumeCelebration() {
+        _celebration.value = null
+    }
+
+    // §5.2 边沿检测：crossedEdge（本 VM 内先见非-cleared、后变 cleared）= 在场目击两清；首次见已 cleared
+    // 的债 prev=null → 不撒花（P1#4）。!isForgiven → forgive 走 §5.6 暖语分叉不撒；viewerIsDebtor != null →
+    // 非当事方（list/fact 路径）不撒；isMember → 外部债走会计框架不撒。每笔一次性（celebratedDebtIds）。
+    private fun detectSettleCelebration(newDebt: Debt) {
+        val prev = previousStatusByPublicId[newDebt.publicId]
+        val crossedEdge = prev != null && prev != DebtLinkStatuses.CLEARED && newDebt.isCleared
+        if (newDebt.isMember &&
+            newDebt.viewerIsDebtor != null &&
+            crossedEdge &&
+            !newDebt.isForgiven &&
+            !celebratedDebtIds.contains(newDebt.publicId)
+        ) {
+            celebratedDebtIds += newDebt.publicId
+            _celebration.value = DebtSettleCelebration(counterpartyLabel = newDebt.counterpartyLabel)
+        }
+        previousStatusByPublicId[newDebt.publicId] = newDebt.status
     }
 }
 
