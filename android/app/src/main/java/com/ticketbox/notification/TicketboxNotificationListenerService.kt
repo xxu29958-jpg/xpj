@@ -24,8 +24,14 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
             ?.takeIf { it.isNotBlank() }
             ?: return
 
+        // 隐私边界（codex P2）：非白名单包**在读正文前**就退出——`toSnapshot()` 会读 EXTRA_TITLE/TEXT/
+        // BIG_TEXT/SUB_TEXT，必须先按包名过滤，否则非白名单 App 的通知正文仍被读进快照（parse() 内的同款
+        // gate 太晚，只挡了正则扫描、没挡正文读取）。
+        if (!PaymentNotificationParser.isCandidatePackage(sbn.packageName)) return
+
         val draft = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
-        // 去重按**这条通知的系统身份**（sbn.key），不是按内容——见 NotificationDraftDeduper。
+        // 去重按**这条通知的系统身份**（sbn.key）：本地去重器 + 透传到后端幂等键（codex P1，否则后端按内容
+        // 去重仍会吞掉同分钟同金额的第二笔真账）。
         val notificationKey = sbn.key
         if (!draftDeduper.tryReserve(draft, notificationKey)) return
 
@@ -33,6 +39,7 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
             val result = container.expenseRepository.createNotificationDraft(
                 draft,
                 expectedLedgerId = ledgerIdAtPost,
+                notificationKey = notificationKey,
             )
             if (result.isFailure) {
                 draftDeduper.release(draft, notificationKey)

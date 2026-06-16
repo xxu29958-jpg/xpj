@@ -8307,6 +8307,18 @@
             ],
             "title": "Merchant"
           },
+          "notification_key": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Key"
+          },
           "original_amount": {
             "anyOf": [
               {

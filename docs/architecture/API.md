@@ -699,7 +699,7 @@ Content-Type: application/json
 - `source` 仅支持 `wechat` / `alipay` / `bank_sms` / `bank_app` / `other`。
 - 请求体禁止 `raw_text` 等原文类字段；校验失败返回 `invalid_request`。
 - 请求体不得包含汇率字段；后端负责计算或标记 `fx_status=pending`。
-- 后端按当前账本、来源、商家、金额、30 分钟时间窗口计算幂等键；重复请求返回同一条草稿，不重复生成 pending。
+- 可选 `notification_key`：发出通知的系统身份（Android `StatusBarNotification.key`）。幂等键**以它为主轴** + 来源/商家/金额/30 分钟时间窗口为次轴：两条**不同**通知（不同 `notification_key`）即便内容相同也各生成一条草稿（两笔真账各记一笔），**同一条**通知重发（同 `notification_key`）返回同一条草稿。`notification_key` 缺省（旧客户端 / 非通知来源）时回退到纯内容 + 时间窗口键（旧行为）。
 - `viewer` 返回 `permission_denied`。
 - 不保存图片路径，不自动确认，不更新固定支出记录。
 

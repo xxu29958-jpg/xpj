@@ -92,6 +92,12 @@ class NotificationDraftCreateRequest(BaseModel):
     merchant: str | None = Field(default=None, max_length=255)
     category: str | None = Field(default=None, max_length=64)
     expense_time: datetime | None = None
+    # ADR-0049-adjacent (codex PR#20 P1): the posting notification's system identity
+    # (Android StatusBarNotification.key). The idempotency key keys on it as the primary
+    # axis so two DISTINCT notifications with identical content (same merchant/amount/minute)
+    # each create a draft, while the SAME notification re-sent dedupes. Absent (legacy /
+    # non-notification source) → falls back to the content+window key.
+    notification_key: str | None = Field(default=None, max_length=255)
 
 
 class ExpenseUpdateRequest(BaseModel):

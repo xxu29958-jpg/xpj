@@ -210,6 +210,10 @@ data class NotificationDraftRequestDto(
     val category: String?,
     @param:Json(name = "expense_time")
     val expenseTime: String?,
+    // 这条通知的系统身份(StatusBarNotification.key)。后端幂等键以它为主轴去重——两条不同通知(不同 key)
+    // 即便同金额同商户同分钟也各记一笔，同一条重发(同 key)才去重(codex P1)。Moshi 省略 null=旧内容键回退。
+    @param:Json(name = "notification_key")
+    val notificationKey: String? = null,
 )
 
 data class PaginatedExpensesDto(

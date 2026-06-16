@@ -265,6 +265,7 @@ def create_notification_draft(
         original_amount=payload.original_amount or payload.original_amount_minor,
         expense_time=payload.spent_at or payload.expense_time,
         now=now,
+        notification_key=payload.notification_key,
     )
     existing = db.scalar(
         ledger_scoped_select(Expense, tenant_id).where(

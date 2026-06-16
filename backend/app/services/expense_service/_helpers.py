@@ -131,11 +131,19 @@ def _notification_draft_key(
     original_amount: object | None,
     expense_time,
     now,
+    notification_key: str | None = None,
 ) -> str:
+    # ``notification_key`` (the posting notification's system identity, Android
+    # StatusBarNotification.key) is the PRIMARY dedup axis (codex PR#20 P1): two distinct
+    # notifications with identical content get different keys (each a real transaction → its
+    # own draft), while the same notification re-sent (same key + content) dedupes. When
+    # absent (legacy client / non-notification path) it is "" and the content+window key
+    # behaves as before — so a content collision still dedupes, preserving old behavior.
     merchant_key = _clean_optional_text(merchant) or ""
     material = "|".join(
         [
             "notification",
+            (notification_key or "").strip(),
             source,
             merchant_key.casefold(),
             str(amount_cents) if amount_cents is not None else "",
