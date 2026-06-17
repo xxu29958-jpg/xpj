@@ -271,6 +271,13 @@ def confirm_repayment_draft(
         actor_account_id=actor_account_id,
         payload=RepaymentCreateRequest(
             amount_cents=draft.amount_cents,
+            # The whole point of NLS capture is that it knows WHEN the repayment happened
+            # (captured_at = the notification post time). Confirm may be days later, so pass
+            # captured_at through as the repayment's paid_at instead of letting
+            # record_repayment fall back to now() — otherwise a delayed review back-stamps
+            # the debt history to review time. (The §6 projection keys off created_at, not
+            # paid_at, so this only sharpens the user-facing payment time, never the velocity.)
+            paid_at=draft.captured_at,
             expected_row_version=expected_row_version,
         ),
         idempotency_key=idempotency_key,

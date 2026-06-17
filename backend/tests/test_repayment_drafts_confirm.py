@@ -16,6 +16,7 @@ model true FOR UPDATE contention the shared-savepoint connection cannot.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -27,7 +28,7 @@ from app.database import SessionLocal, engine
 from app.errors import AppError
 from app.models import Account, Debt, LedgerMember, Repayment, RepaymentDraft
 from app.services import debt_service
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc, now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -98,6 +99,31 @@ def test_confirm_records_repayment_and_reduces_remaining(client: TestClient, *, 
     detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
     assert detail["remaining_amount_cents"] == 30000
     assert detail["paid_amount_cents"] == 20000
+
+
+def test_confirm_records_repayment_at_captured_time_not_review_time(
+    client: TestClient, *, identity
+) -> None:
+    # The recorded Repayment.paid_at must be the draft's captured_at (when the notification
+    # fired ≈ when the payment happened), NOT now() — a delayed review must not back-stamp
+    # the debt history to review time. (mutation: drop paid_at=draft.captured_at in confirm
+    # → paid_at falls back to now() and this fails.)
+    debt = _create_debt(client, identity, principal_amount_cents=50000)
+    captured = "2026-05-01T03:30:00Z"
+    create = client.post(
+        "/api/repayment-drafts",
+        headers=identity.app_headers,
+        json={"source": "alipay", "amount_cents": 10000, "merchant_label": "花呗", "captured_at": captured},
+    )
+    assert create.status_code == 201, create.json()
+    draft = create.json()
+    confirm = _confirm(client, identity, draft["public_id"], debt)
+    assert confirm.status_code == 201, confirm.json()
+    repayment_public_id = confirm.json()["committed_repayment_public_id"]
+    with SessionLocal() as db:
+        repayment = db.scalar(select(Repayment).where(Repayment.public_id == repayment_public_id))
+        assert repayment is not None
+        assert ensure_utc(repayment.paid_at) == datetime(2026, 5, 1, 3, 30, tzinfo=UTC)
 
 
 def test_confirm_clearing_debt_latches_cleared(client: TestClient, *, identity) -> None:
