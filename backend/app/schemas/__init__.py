@@ -193,6 +193,13 @@ from app.schemas._recurring import (
     RecurringItemResponse,
     RecurringItemTokenRequest,
 )
+from app.schemas._repayment_drafts import (
+    RepaymentDraftConfirmRequest,
+    RepaymentDraftCreateRequest,
+    RepaymentDraftDismissRequest,
+    RepaymentDraftListResponse,
+    RepaymentDraftResponse,
+)
 from app.schemas._reports import (
     LifestyleStatsResponse,
     ReportCategoryComparisonResponse,
@@ -396,6 +403,11 @@ __all__ = [
     "ReportsOverviewResponse",
     "RepaymentCreateRequest",
     "RepaymentCreateResponse",
+    "RepaymentDraftConfirmRequest",
+    "RepaymentDraftCreateRequest",
+    "RepaymentDraftDismissRequest",
+    "RepaymentDraftListResponse",
+    "RepaymentDraftResponse",
     "RepaymentVoidCreateRequest",
     "RuleApplicationBatchResponse",
     "RuleApplicationListResponse",

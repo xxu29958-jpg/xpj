@@ -9333,6 +9333,211 @@
         "title": "RepaymentCreateResponse",
         "type": "object"
       },
+      "RepaymentDraftConfirmRequest": {
+        "additionalProperties": false,
+        "description": "Confirm a pending repayment draft against a chosen Debt (ADR-0049 §杠杆③).\n\n``target_debt_public_id`` is the open external/manual Debt the captured repayment\npays down (the user picks it in slice 3a; slice 3b pre-selects a server match).\nConfirm commits one ``Repayment`` → fold-changing, so ``expected_row_version`` is\nthe chosen Debt's §2.1 stale-intent token + §3.6 fingerprint component (REQUIRED).",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "target_debt_public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Target Debt Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_debt_public_id",
+          "expected_row_version"
+        ],
+        "title": "RepaymentDraftConfirmRequest",
+        "type": "object"
+      },
+      "RepaymentDraftCreateRequest": {
+        "additionalProperties": false,
+        "description": "Post one NLS-captured repayment as a pending review draft (ADR-0049 §杠杆③).\n\n``source`` is the capturing channel (alipay / jd / meituan / wechat / bank_sms /\nbank_app / other — validated server-side). ``amount_cents`` is home-currency minor\nunits — the capture is home-currency ONLY (CNY notifications carry no FX), so the\ndraft's home currency is set SERVER-SIDE from the configured home currency, NOT taken\nas a client input (a field whose only legal value is the constant home currency would\nfake multi-currency support it doesn't have; a real foreign-currency capture would add\n``original_currency`` + ``original_amount`` — the record_repayment shape — instead).\n``notification_key`` is the per-post identity hash\n(SHA-256(``sbn.key`` | ``postTime``), 64 hex chars; absent → content+window dedup\nonly) — the PRIMARY dedup axis so a re-posted notification does not twin the draft.",
+        "properties": {
+          "amount_cents": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "merchant_label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Label"
+          },
+          "notification_key": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Key"
+          },
+          "source": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "amount_cents"
+        ],
+        "title": "RepaymentDraftCreateRequest",
+        "type": "object"
+      },
+      "RepaymentDraftDismissRequest": {
+        "additionalProperties": false,
+        "description": "Dismiss a pending repayment draft (ADR-0049 §杠杆③).\n\nA no-op body: dismiss targets the draft by path id and only succeeds while it is\nstill ``pending`` (an already-dismissed draft is an idempotent success; a confirmed\none is a ``state_conflict``). It commits no ``Repayment``, so no token.",
+        "properties": {},
+        "title": "RepaymentDraftDismissRequest",
+        "type": "object"
+      },
+      "RepaymentDraftListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RepaymentDraftResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RepaymentDraftListResponse",
+        "type": "object"
+      },
+      "RepaymentDraftResponse": {
+        "properties": {
+          "amount_cents": {
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "committed_debt_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Debt Public Id"
+          },
+          "committed_repayment_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Repayment Public Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "merchant_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Label"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "source",
+          "amount_cents",
+          "home_currency_code",
+          "captured_at",
+          "status",
+          "created_at"
+        ],
+        "title": "RepaymentDraftResponse",
+        "type": "object"
+      },
       "RepaymentVoidCreateRequest": {
         "additionalProperties": false,
         "description": "Void one mistaken repayment (ADR-0049 §3.4).\n\n``repayment_public_id`` identifies the repayment to void; it must belong to\nthis Debt. ``reason`` is required. The original repayment row is never\ndeleted (the void is append-only and excludes it from the fold).",
@@ -20094,6 +20299,314 @@
         "summary": "Post Recurring Resume",
         "tags": [
           "recurring"
+        ]
+      }
+    },
+    "/api/repayment-drafts": {
+      "get": {
+        "operationId": "get_repayment_drafts_api_repayment_drafts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepaymentDraftListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Repayment Drafts",
+        "tags": [
+          "repayment-drafts"
+        ]
+      },
+      "post": {
+        "operationId": "post_repayment_draft_api_repayment_drafts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepaymentDraftCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepaymentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Repayment Draft",
+        "tags": [
+          "repayment-drafts"
+        ]
+      }
+    },
+    "/api/repayment-drafts/{public_id}/confirm": {
+      "post": {
+        "operationId": "post_repayment_draft_confirm_api_repayment_drafts__public_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepaymentDraftConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepaymentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Repayment Draft Confirm",
+        "tags": [
+          "repayment-drafts"
+        ]
+      }
+    },
+    "/api/repayment-drafts/{public_id}/dismiss": {
+      "post": {
+        "operationId": "post_repayment_draft_dismiss_api_repayment_drafts__public_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepaymentDraftDismissRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepaymentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Repayment Draft Dismiss",
+        "tags": [
+          "repayment-drafts"
         ]
       }
     },

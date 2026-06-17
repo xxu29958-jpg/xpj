@@ -42,6 +42,7 @@ from app.routes import (
     owner_console,
     owner_ledgers,
     recurring,
+    repayment_drafts,
     reports,
     rules,
     settings,
@@ -276,6 +277,7 @@ app.include_router(budget_advisor.router)
 app.include_router(income_plans.router)
 app.include_router(goals.router)
 app.include_router(debts.router)
+app.include_router(repayment_drafts.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
 app.include_router(settings.router)

@@ -125,6 +125,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_alembic_debt_idempotency_unique_migration.py::",  # alembic up/down round-trip via engine.begin DDL
     "tests/test_alembic_goal_debt_repayment_migration.py::",  # ADR-0049 §6 widen-goals alembic round-trip via engine.begin DDL
     "tests/test_alembic_goal_target_date_migration.py::",  # ADR-0049 §7.0/8e-6c add-target_date alembic round-trip via engine.begin DDL
+    "tests/test_alembic_repayment_drafts_migration.py::",  # ADR-0049 §杠杆③ slice 3a add-repayment_drafts alembic round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
