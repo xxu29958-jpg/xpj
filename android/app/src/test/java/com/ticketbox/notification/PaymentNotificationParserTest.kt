@@ -1,6 +1,9 @@
 package com.ticketbox.notification
 
+import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.NotificationDraftSource
+import com.ticketbox.domain.model.RepaymentDraftSource
+import com.ticketbox.domain.model.RepaymentNotificationDraft
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,7 +15,7 @@ import kotlin.test.assertTrue
 class PaymentNotificationParserTest {
     @Test
     fun parsesWechatPaymentNotification() {
-        val draft = PaymentNotificationParser.parse(
+        val draft = expenseOf(
             snapshot(
                 packageName = "com.tencent.mm",
                 title = "微信支付",
@@ -29,7 +32,7 @@ class PaymentNotificationParserTest {
 
     @Test
     fun parsesAlipayPaymentNotification() {
-        val draft = PaymentNotificationParser.parse(
+        val draft = expenseOf(
             snapshot(
                 packageName = "com.eg.android.AlipayGphone",
                 title = "支付宝",
@@ -45,7 +48,7 @@ class PaymentNotificationParserTest {
 
     @Test
     fun parsesBankSmsExpenseNotification() {
-        val draft = PaymentNotificationParser.parse(
+        val draft = expenseOf(
             snapshot(
                 packageName = "com.android.mms",
                 title = "招商银行",
@@ -61,20 +64,16 @@ class PaymentNotificationParserTest {
 
     @Test
     fun rejectsIncomeNotification() {
-        val draft = PaymentNotificationParser.parse(
-            snapshot(
-                packageName = "com.tencent.mm",
-                title = "微信支付",
-                text = "收款到账 ¥88.00",
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(packageName = "com.tencent.mm", title = "微信支付", text = "收款到账 ¥88.00"),
             ),
         )
-
-        assertNull(draft)
     }
 
     @Test
     fun parsesExpenseNotificationWithPayeeLabel() {
-        val draft = PaymentNotificationParser.parse(
+        val draft = expenseOf(
             snapshot(
                 packageName = "com.tencent.mm",
                 title = "微信支付",
@@ -90,67 +89,182 @@ class PaymentNotificationParserTest {
 
     @Test
     fun rejectsGenericNotificationWithoutPaymentContext() {
-        val draft = PaymentNotificationParser.parse(
-            snapshot(
-                packageName = "com.example.news",
-                title = "新闻",
-                text = "今日消费趋势报告 ¥99.00",
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(packageName = "com.example.news", title = "新闻", text = "今日消费趋势报告 ¥99.00"),
             ),
         )
-
-        assertNull(draft)
     }
 
     @Test
     fun rejectsWechatTextFromUntrustedPackage() {
-        val draft = PaymentNotificationParser.parse(
-            snapshot(
-                packageName = "com.example.spoof",
-                title = "微信支付",
-                text = "你已成功付款给 星巴克 ¥25.80",
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(packageName = "com.example.spoof", title = "微信支付", text = "你已成功付款给 星巴克 ¥25.80"),
             ),
         )
-
-        assertNull(draft)
     }
 
     @Test
     fun rejectsAlipayTextFromUntrustedPackage() {
-        val draft = PaymentNotificationParser.parse(
-            snapshot(
-                packageName = "com.example.spoof",
-                title = "支付宝",
-                text = "付款成功 ￥12.34 商家：便利蜂",
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(packageName = "com.example.spoof", title = "支付宝", text = "付款成功 ￥12.34 商家：便利蜂"),
             ),
         )
-
-        assertNull(draft)
     }
 
     @Test
     fun rejectsBankContextFromNonSmsPackage() {
-        val draft = PaymentNotificationParser.parse(
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(
+                    packageName = "com.example.spoof",
+                    title = "招商银行",
+                    text = "您尾号1234储蓄账户支出人民币88.00元，交易商户：美团",
+                ),
+            ),
+        )
+    }
+
+    // ── §杠杆③ 还款分类器 ──────────────────────────────────────────────
+
+    @Test
+    fun parsesAlipayHuabeiRepayment() {
+        val draft = repaymentOf(
+            snapshot(packageName = "com.eg.android.AlipayGphone", title = "支付宝", text = "花呗还款成功 ¥500.00"),
+        )
+
+        assertNotNull(draft)
+        assertEquals(RepaymentDraftSource.Alipay, draft.source)
+        assertEquals(50_000L, draft.amountCents)
+        assertEquals("花呗", draft.merchantLabel)
+        assertEquals("2026-05-13T08:00:00Z", draft.capturedAt)
+    }
+
+    @Test
+    fun parsesJdBaitiaoRepayment() {
+        val draft = repaymentOf(
+            snapshot(packageName = "com.jingdong.app.mall", title = "京东", text = "白条还款成功，本期 ¥1,200.00"),
+        )
+
+        assertNotNull(draft)
+        assertEquals(RepaymentDraftSource.Jd, draft.source)
+        assertEquals(120_000L, draft.amountCents)
+        assertEquals("白条", draft.merchantLabel)
+    }
+
+    @Test
+    fun parsesJdFinanceRepaymentFromSecondaryPackage() {
+        val draft = repaymentOf(
+            snapshot(packageName = "com.jd.jrapp", title = "京东金融", text = "您的白条还款¥300已完成"),
+        )
+
+        assertNotNull(draft)
+        assertEquals(RepaymentDraftSource.Jd, draft.source)
+        assertEquals(30_000L, draft.amountCents)
+    }
+
+    @Test
+    fun parsesMeituanMonthlyRepayment() {
+        val draft = repaymentOf(
+            snapshot(packageName = "com.sankuai.meituan", title = "美团", text = "美团月付还款成功 ¥88.00"),
+        )
+
+        assertNotNull(draft)
+        assertEquals(RepaymentDraftSource.Meituan, draft.source)
+        assertEquals(8800L, draft.amountCents)
+        assertEquals("美团月付", draft.merchantLabel)
+    }
+
+    @Test
+    fun parsesWechatCreditCardRepayment() {
+        val draft = repaymentOf(
+            snapshot(packageName = "com.tencent.mm", title = "微信支付", text = "信用卡还款成功 ¥1200.00"),
+        )
+
+        assertNotNull(draft)
+        assertEquals(RepaymentDraftSource.WeChat, draft.source)
+        assertEquals(120_000L, draft.amountCents)
+    }
+
+    @Test
+    fun creditCardAutoDebitRepaymentIsNotDoubleCountedAsExpense() {
+        // 双计 bug 钉死：含「扣款」的信用卡自动还款过去会被当作新支出（扣款 在 expenseWords 里）。还款分类
+        // **优先于**消费，故这条落成还款草稿、绝不再落支出。
+        val result = PaymentNotificationParser.parse(
             snapshot(
-                packageName = "com.example.spoof",
+                packageName = "com.android.mms",
                 title = "招商银行",
-                text = "您尾号1234储蓄账户支出人民币88.00元，交易商户：美团",
+                text = "您尾号1234信用卡自动还款扣款人民币1200.00元，还款成功",
             ),
         )
 
-        assertNull(draft)
+        assertTrue(result is PaymentNotificationResult.Repayment)
+        val draft = (result as PaymentNotificationResult.Repayment).draft
+        assertEquals(RepaymentDraftSource.BankSms, draft.source)
+        assertEquals(120_000L, draft.amountCents)
+        assertEquals("尾号1234", draft.merchantLabel)
+        // 反向：绝不同时被当成支出。
+        assertNull(expenseOf(result))
+    }
+
+    @Test
+    fun ignoresRepaymentReminderWithoutActualRepayment() {
+        // 「待还款 / 还款日」是提醒(钱还没动),不该落成还款草稿(§8 只捕获已发生的还款)。
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(
+                    packageName = "com.eg.android.AlipayGphone",
+                    title = "支付宝",
+                    text = "您的花呗本期待还款 ¥1,200.00，还款日为6月10日，请按时还款",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun ignoresJdPurchaseExpenseSinceJdIsRepaymentOnlyChannel() {
+        // 京东是**还款专用**捕获渠道(杠杆③):它的消费通知不落支出草稿(NotificationDraftSource 无 JD 取值)。
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(packageName = "com.jingdong.app.mall", title = "京东", text = "下单成功，付款成功 ¥99.00"),
+            ),
+        )
+    }
+
+    @Test
+    fun ignoresRepaymentWithUnparsableAmount() {
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(packageName = "com.eg.android.AlipayGphone", title = "支付宝", text = "花呗还款成功"),
+            ),
+        )
     }
 
     @Test
     fun isCandidatePackageGatesAllowlistBeforeReadingText() {
-        // 白名单 = 值不值得读这条通知的正文（隐私：非候选包的正文连扫都不扫）。只微信/支付宝/短信类是候选。
+        // 白名单 = 值不值得读这条通知的正文（隐私：非候选包的正文连扫都不扫）。微信/支付宝/京东/京东金融/
+        // 美团/短信类是候选。
         assertTrue(PaymentNotificationParser.isCandidatePackage("com.tencent.mm"))
         assertTrue(PaymentNotificationParser.isCandidatePackage("com.eg.android.AlipayGphone")) // 大小写归一
         assertTrue(PaymentNotificationParser.isCandidatePackage("com.android.messaging"))
+        // §杠杆③ 新增:京东(白条) / 京东金融 / 美团(月付)还款渠道。
+        assertTrue(PaymentNotificationParser.isCandidatePackage("com.jingdong.app.mall"))
+        assertTrue(PaymentNotificationParser.isCandidatePackage("com.jd.jrapp"))
+        assertTrue(PaymentNotificationParser.isCandidatePackage("com.sankuai.meituan"))
         assertFalse(PaymentNotificationParser.isCandidatePackage("com.example.news"))
         assertFalse(PaymentNotificationParser.isCandidatePackage("com.example.spoof"))
-        // 已知盲区：京东白条走 JD 主 App 包，不在白名单——将来要自动追白条须显式加入（产品决策）。
-        assertFalse(PaymentNotificationParser.isCandidatePackage("com.jingdong.app.mall"))
     }
+
+    private fun expenseOf(snapshot: PaymentNotificationSnapshot): NotificationDraft? =
+        expenseOf(PaymentNotificationParser.parse(snapshot))
+
+    private fun expenseOf(result: PaymentNotificationResult?): NotificationDraft? =
+        (result as? PaymentNotificationResult.Expense)?.draft
+
+    private fun repaymentOf(snapshot: PaymentNotificationSnapshot): RepaymentNotificationDraft? =
+        (PaymentNotificationParser.parse(snapshot) as? PaymentNotificationResult.Repayment)?.draft
 
     private fun snapshot(
         packageName: String,

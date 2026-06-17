@@ -623,6 +623,21 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = unsupported()
+    override suspend fun repaymentDrafts(
+        status: String?,
+    ): com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto = unsupported()
+    override suspend fun createRepaymentDraft(
+        request: com.ticketbox.data.remote.dto.RepaymentDraftCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = unsupported()
+    override suspend fun confirmRepaymentDraft(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RepaymentDraftConfirmRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = unsupported()
+    override suspend fun dismissRepaymentDraft(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RepaymentDraftDismissRequestDto,
+    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = unsupported()
     override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = unsupported()
     override suspend fun updateDashboardCards(
         request: DashboardCardsUpdateRequestDto,

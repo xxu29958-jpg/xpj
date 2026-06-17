@@ -23,6 +23,7 @@ import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.RecurringScreen
+import com.ticketbox.ui.screens.RepaymentDraftInboxScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.viewmodel.BudgetViewModel
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
@@ -33,6 +34,7 @@ import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
+import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.viewmodel.StatsBudgetViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.budgetViewModelFactory
@@ -44,6 +46,7 @@ import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
+import com.ticketbox.viewmodel.repaymentDraftInboxViewModelFactory
 
 internal const val IncomePlanViewModelKey = "income-plans"
 internal const val DebtGoalViewModelKey = "debt-goals"
@@ -51,6 +54,7 @@ internal const val CreateDebtGoalViewModelKey = "create-debt-goal"
 internal const val DebtListViewModelKey = "debts"
 internal const val DebtDetailViewModelKey = "debt-detail"
 internal const val MemberRepaymentProposalViewModelKey = "member-repayment-proposal"
+internal const val RepaymentDraftInboxViewModelKey = "repayment-draft-inbox"
 
 @Composable
 internal fun BudgetRoute(
@@ -236,6 +240,30 @@ internal fun DebtRoute(
     }
 }
 
+/**
+ * ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱二级页（规划面）。VM 同时拿还款草稿仓库与欠款仓库
+ * （选债确认要列 open 外部手动欠款）。overlay 复用缓存 VM 且跨账本存活，故进入时 [reload] 先清旧账本残留。
+ */
+@Composable
+internal fun RepaymentDraftRoute(
+    screenFactory: MainScreenFactory,
+    onBack: () -> Unit,
+) {
+    val viewModel: RepaymentDraftInboxViewModel = viewModel(
+        key = RepaymentDraftInboxViewModelKey,
+        factory = repaymentDraftInboxViewModelFactory(
+            drafts = screenFactory.repaymentDraftRepository,
+            debts = screenFactory.debtRepository,
+        ),
+    )
+    LaunchedEffect(Unit) { viewModel.reload() }
+    RepaymentDraftInboxScreen(
+        viewModel = viewModel,
+        currency = LocalCurrencyDisplay.current,
+        onBack = onBack,
+    )
+}
+
 @Composable
 internal fun StatsRoute(
     shellState: MainShellState,
@@ -290,11 +318,12 @@ internal fun StatsRoute(
             budgetViewModel.refresh(monthlyState.month, monthlyState.stats, force = true)
             reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
         },
-        onOpenBudget = shellState::openBudget,
-        onOpenRecurring = shellState::openRecurring,
-        onOpenIncomePlans = shellState::openIncomePlans,
-        onOpenDebtGoals = shellState::openDebtGoals,
-        onOpenDebts = shellState::openDebts,
+        onOpenBudget = { shellState.openStatsSecondary(StatsSecondaryPage.Budget) },
+        onOpenRecurring = { shellState.openStatsSecondary(StatsSecondaryPage.Recurring) },
+        onOpenIncomePlans = { shellState.openStatsSecondary(StatsSecondaryPage.IncomePlans) },
+        onOpenDebtGoals = { shellState.openStatsSecondary(StatsSecondaryPage.DebtGoals) },
+        onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
+        onOpenRepaymentDrafts = { shellState.openStatsSecondary(StatsSecondaryPage.RepaymentDrafts) },
         // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
         // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
         onDrillToLedger = { category ->

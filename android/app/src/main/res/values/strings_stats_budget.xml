@@ -17,6 +17,7 @@
     <string name="stats_header_open_income_plans">收入计划</string>
     <string name="stats_header_open_debt_goals">还债目标</string>
     <string name="stats_header_open_debts">债务管理</string>
+    <string name="stats_header_open_repayment_drafts">还款待确认</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
@@ -530,4 +531,30 @@
     <string name="recurring_message_candidate_expired">固定支出候选已过期，请刷新后再试。</string>
     <string name="recurring_message_updated">固定支出已更新。</string>
     <string name="recurring_message_action_failed">操作失败。</string>
+
+    <!-- ADR-0049 §杠杆③ (slice 3a)：NLS 还款捕获复核箱 -->
+    <string name="repayment_draft_topbar_back">返回</string>
+    <string name="repayment_draft_topbar_title">还款待确认</string>
+    <string name="repayment_draft_intro_body">从支付通知里捕获到的还款，先核对再对应到一笔欠款，绝不自动记账。</string>
+    <string name="repayment_draft_captured_at">捕获于 %1$s</string>
+    <string name="repayment_draft_confirm">对应欠款</string>
+    <string name="repayment_draft_dismiss">忽略</string>
+    <string name="repayment_draft_action_busy">处理中…</string>
+    <string name="repayment_draft_empty_title">没有待确认的还款</string>
+    <string name="repayment_draft_empty_body">开启通知捕获后，花呗 / 白条 / 美团月付 / 信用卡的还款通知会出现在这里等你核对。</string>
+    <string name="repayment_draft_picker_title">这笔还款对应哪笔欠款？</string>
+    <string name="repayment_draft_picker_empty">没有可对应的欠款。请先在「债务管理」里新建一笔外部欠款。</string>
+    <string name="repayment_draft_picker_remaining">还剩 %1$s</string>
+    <string name="repayment_draft_load_failed">还款草稿加载失败，请稍后再试。</string>
+    <string name="repayment_draft_confirm_done">已记入这笔还款。</string>
+    <string name="repayment_draft_confirm_failed">这笔还款没有记成功。</string>
+    <string name="repayment_draft_dismiss_done">已忽略这条还款。</string>
+    <string name="repayment_draft_dismiss_failed">操作失败，请稍后再试。</string>
+    <string name="repayment_draft_source_alipay">花呗 / 借呗</string>
+    <string name="repayment_draft_source_jd">京东白条</string>
+    <string name="repayment_draft_source_meituan">美团月付</string>
+    <string name="repayment_draft_source_wechat">信用卡还款</string>
+    <string name="repayment_draft_source_bank_sms">银行短信</string>
+    <string name="repayment_draft_source_bank_app">银行 App</string>
+    <string name="repayment_draft_source_other">其他还款</string>
 </resources>

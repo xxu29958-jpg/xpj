@@ -50,6 +50,8 @@ internal enum class StatsSecondaryPage {
     DebtGoals,
     // ADR-0049 §2 (slice 8): 债务管理(欠款列表+新建外部欠款, 与还债目标同规划 overlay)。
     Debts,
+    // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱(列 pending 还款草稿→选债 confirm/dismiss)。
+    RepaymentDrafts,
 }
 
 internal class MainShellState {
@@ -76,28 +78,11 @@ internal class MainShellState {
         BottomTab.entries.firstOrNull { it.key == key }?.let { selectedTab = it }
     }
 
-    fun openBudget() {
-        statsSecondaryPage = StatsSecondaryPage.Budget
-    }
-
-    fun openRecurring() {
-        statsSecondaryPage = StatsSecondaryPage.Recurring
-    }
-
-    fun openIncomePlans() {
-        statsSecondaryPage = StatsSecondaryPage.IncomePlans
-    }
-
-    fun openBillSplits() {
-        statsSecondaryPage = StatsSecondaryPage.BillSplits
-    }
-
-    fun openDebtGoals() {
-        statsSecondaryPage = StatsSecondaryPage.DebtGoals
-    }
-
-    fun openDebts() {
-        statsSecondaryPage = StatsSecondaryPage.Debts
+    // 二级页（预算 / 固定支出 / 收入计划 / 拆账 / 还债目标 / 债务 / 还款复核）共用一个参数化入口：原本每页一个
+    // 同形 setter，MainShellState 已贴着 detekt 每文件函数上限（见上方 launchAction/ledgerDrill 外置注），再加一
+    // 个还款页就会触顶——收成单个 [openStatsSecondary] 是真简化（7→1）而非加 baseline 豁免。
+    fun openStatsSecondary(page: StatsSecondaryPage) {
+        statsSecondaryPage = page
     }
 
     fun closeStatsSecondaryPage() {

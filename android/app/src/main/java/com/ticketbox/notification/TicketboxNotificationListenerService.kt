@@ -29,24 +29,49 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         // gate 太晚，只挡了正则扫描、没挡正文读取）。
         if (!PaymentNotificationParser.isCandidatePackage(sbn.packageName)) return
 
-        val draft = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
+        // 统一分类器：一条通知分类成消费 / 还款 / 忽略（§杠杆③ 修双计——含「还款」措辞不再落支出）。
+        val result = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
         // 去重按**这条通知的每次投递身份** = hash(sbn.key | sbn.postTime)：含 postTime,故个别 App 复用同一
         // 通知槽承载第二笔真账(同 sbn.key、新 postTime)时各算一笔(codex P2#1);定长 hash 不触后端长度上限、
         // 原始 key 不离设备(codex P2#2)。本地去重器 + 透传后端幂等键共用同一身份(否则后端按内容去重仍吞单)。
         val notificationKey = notificationIdentityKey(sbn.key, sbn.postTime)
-        if (!draftDeduper.tryReserve(draft, notificationKey)) return
+        if (!draftDeduper.tryReserve(result, notificationKey)) return
 
         serviceScope.launch {
-            val result = container.expenseRepository.createNotificationDraft(
-                draft,
+            dispatch(container, result, ledgerIdAtPost, notificationKey)
+        }
+    }
+
+    /**
+     * 把分类结果路由到对应仓库（§1 路由不在回调线程，放协程）。消费走既有 [createNotificationDraft] +
+     * 通知闭环；还款走新 `/api/repayment-drafts`（§8 永不自动记账，落 pending 草稿等用户复核选债）。
+     * 任一失败都释放去重占位，让下次重发可重试。
+     *
+     * 还款草稿**不发系统通知**：通知默认关闭、且既有「去核对」通知点击进的是待确认页（无还款复核箱深链），
+     * 强发会把用户引到错屏；还款复核箱从「规划」菜单进，与消费草稿落 pending 默认静默同构。还款通知闭环
+     * （独立 channel + 深链）是单独后续切片，与预算/备份提醒走过的「通知闭环」分片同理。
+     */
+    private suspend fun dispatch(
+        container: com.ticketbox.AppContainer,
+        result: PaymentNotificationResult,
+        ledgerIdAtPost: String,
+        notificationKey: String,
+    ) {
+        val outcome = when (result) {
+            is PaymentNotificationResult.Expense -> container.expenseRepository.createNotificationDraft(
+                result.draft,
+                expectedLedgerId = ledgerIdAtPost,
+                notificationKey = notificationKey,
+            ).onSuccess { created -> container.notifier.onDraftCreated(created) }
+
+            is PaymentNotificationResult.Repayment -> container.repaymentDraftRepository.createDraft(
+                result.draft,
                 expectedLedgerId = ledgerIdAtPost,
                 notificationKey = notificationKey,
             )
-            if (result.isFailure) {
-                draftDeduper.release(draft, notificationKey)
-            }
-            // 通知闭环 PR-1：草稿建好后按「待确认提醒/大额提醒」开关发系统通知。
-            result.onSuccess { created -> container.notifier.onDraftCreated(created) }
+        }
+        if (outcome.isFailure) {
+            draftDeduper.release(result, notificationKey)
         }
     }
 
@@ -66,5 +91,4 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
             postTimeMillis = postTime,
         )
     }
-
 }
