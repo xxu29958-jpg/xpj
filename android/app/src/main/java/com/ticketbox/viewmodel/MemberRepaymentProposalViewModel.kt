@@ -69,6 +69,14 @@ class MemberRepaymentProposalViewModel(
 
     private var debtPublicId: String? = null
 
+    // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its proposals only if it
+    // is still the latest. Overlapping refreshes — switching member debts via load(), and the
+    // refresh after propose/confirm/reject/withdraw/forgive — each bump it, so a slow earlier list
+    // fetch can't revert to a stale 收发箱 (another debt's proposals, or the pre-action list). Every
+    // bump is a refresh, so a superseded load is always replaced by a newer refresh that owns the
+    // loading flag — it just drops.
+    private var loadGeneration = 0L
+
     fun load(publicId: String) {
         debtPublicId = publicId
         // 切换到另一笔成员欠款时先清空旧 proposal，避免在新欠款下短暂看到上一笔的收发箱（隔离）。
@@ -78,9 +86,13 @@ class MemberRepaymentProposalViewModel(
 
     fun refresh() {
         val publicId = debtPublicId ?: return
+        val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null, canModify = repository.canModifyLedger()) }
         viewModelScope.launch {
-            repository.listRepaymentProposals(publicId).fold(
+            val result = repository.listRepaymentProposals(publicId)
+            // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
+            if (gen != loadGeneration) return@launch
+            result.fold(
                 onSuccess = { proposals ->
                     _state.update { it.copy(isLoading = false, proposals = proposals, error = null) }
                 },

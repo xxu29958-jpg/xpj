@@ -11,11 +11,13 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
 import com.ticketbox.domain.model.RepaymentNotificationDraft
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -258,6 +260,65 @@ class RepaymentDraftInboxViewModelTest {
 
         assertNull(viewModel.state.value.flashMessage)
     }
+
+    // ── ADR-0049 §2.1 stale-refresh 代际守卫（功能正确性加固 #2，镜像 DebtListViewModel）─────────────
+
+    @Test
+    fun staleRefreshDoesNotReviveStaleTargetDebtRowVersion() = runTest(dispatcher) {
+        // The §2.1 OCC hazard: targetDebts carry the row_version confirm() sends. A slow refresh that
+        // captured an old row_version must not revive it over a newer fetch's bumped version — else
+        // the next confirm sends a stale OCC token → a deterministic 409.
+        val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("d1"))))
+        val debtsRepo = FakeRepayableDebtActions(listResult = Result.success(listOf(debt("card", rowVersion = 1L))))
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+        assertEquals(1L, viewModel.state.value.targetDebts.single().rowVersion)
+
+        // A slow refresh stalls having captured the rv1 debt snapshot...
+        val gate = CompletableDeferred<Unit>()
+        debtsRepo.listGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then a repayment elsewhere bumps the row_version; a newer refresh picks up rv2.
+        debtsRepo.listGate = null
+        debtsRepo.listResult = Result.success(listOf(debt("card", rowVersion = 2L)))
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(2L, viewModel.state.value.targetDebts.single().rowVersion)
+
+        // Release the stale refresh; the stale rv1 must NOT come back as the OCC token.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(2L, viewModel.state.value.targetDebts.single().rowVersion)
+    }
+
+    @Test
+    fun staleRefreshDoesNotClobberReloadedLedger() = runTest(dispatcher) {
+        // Ledger switch: a slow prior refresh must not show the old ledger's drafts under the new one.
+        val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("ledgerA"))))
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        advanceUntilIdle()
+
+        // A slow refresh stalls (it captured ledger A's drafts)...
+        val gate = CompletableDeferred<Unit>()
+        draftsRepo.listGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then a ledger switch reloads with ledger B's drafts.
+        draftsRepo.listGate = null
+        draftsRepo.listResult = Result.success(listOf(draft("ledgerB")))
+        viewModel.reload()
+        advanceUntilIdle()
+        assertEquals("ledgerB", viewModel.state.value.drafts.single().publicId)
+
+        // Release the stale refresh; ledger A's drafts must NOT leak back under ledger B.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("ledgerB", viewModel.state.value.drafts.single().publicId)
+        assertEquals(false, viewModel.state.value.isLoading)
+    }
 }
 
 private data class ConfirmCall(val draftPublicId: String, val targetDebtPublicId: String, val expectedRowVersion: Long)
@@ -272,6 +333,9 @@ private class FakeRepaymentDraftActions(
     val confirmCalls = mutableListOf<ConfirmCall>()
     val dismissCalls = mutableListOf<String>()
 
+    /** When set, listPendingDrafts() stalls until completed — used to interleave a slow load. */
+    var listGate: CompletableDeferred<Unit>? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun createDraft(
@@ -282,7 +346,10 @@ private class FakeRepaymentDraftActions(
 
     override suspend fun listPendingDrafts(): Result<List<RepaymentDraft>> {
         listCalls++
-        return listResult
+        // Capture at entry so a stalled load returns the snapshot it started with.
+        val captured = listResult
+        listGate?.await()
+        return captured
     }
 
     override suspend fun confirmDraft(
@@ -304,8 +371,16 @@ private class FakeRepayableDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
 ) : DebtActions {
+    /** When set, listDebts() stalls until completed — used to interleave a slow load. */
+    var listGate: CompletableDeferred<Unit>? = null
+
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(): Result<List<Debt>> = listResult
+    override suspend fun listDebts(): Result<List<Debt>> {
+        // Capture at entry so a stalled load returns the snapshot it started with.
+        val captured = listResult
+        listGate?.await()
+        return captured
+    }
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt(publicId))
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(debt("created"))
     override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> =

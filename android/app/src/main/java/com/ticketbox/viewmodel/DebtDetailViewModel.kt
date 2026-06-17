@@ -74,6 +74,19 @@ class DebtDetailViewModel(
     // retained stale fold; [refresh] (pull-to-refresh) re-reads the same id.
     private var loadedPublicId: String? = null
 
+    // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its result only if it is
+    // still the latest. Reopening the reusable detail VM with another Debt ([loadDebt]), pull-to-
+    // refresh, and a committed write ([submit]) each supersede an in-flight load, so a slow earlier
+    // getDebt can't clobber a just-reopened Debt or revert a just-committed fold to a stale
+    // row_version (→ a 409 on the next write).
+    private var loadGeneration = 0L
+
+    // The latest refresh's token. The loading flag is owned by the latest refresh; a refresh
+    // superseded by a NON-refresh (a committed [submit] bumps loadGeneration but is not a refresh)
+    // must clear its own loading flag when no newer refresh has taken over — else the screen sticks
+    // "loading".
+    private var latestRefreshGeneration = 0L
+
     fun loadDebt(publicId: String) {
         loadedPublicId = publicId
         refresh()
@@ -81,9 +94,22 @@ class DebtDetailViewModel(
 
     fun refresh() {
         val publicId = loadedPublicId ?: return
+        val gen = ++loadGeneration
+        latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            repository.getDebt(publicId).fold(
+            val result = repository.getDebt(publicId)
+            // Drop a load superseded by a newer load or a committed write — before celebration
+            // detection (a discarded snapshot must not record a status edge). Clear our loading flag
+            // only when no newer refresh now owns it (a non-refresh superseder — submit — would
+            // otherwise leave the screen stuck loading).
+            if (gen != loadGeneration) {
+                if (gen == latestRefreshGeneration) {
+                    _state.update { it.copy(isLoading = false) }
+                }
+                return@launch
+            }
+            result.fold(
                 onSuccess = { debt ->
                     detectSettleCelebration(debt)
                     _state.update {
@@ -170,6 +196,9 @@ class DebtDetailViewModel(
             }
             result.fold(
                 onSuccess = { updated ->
+                    // Supersede any in-flight refresh so its stale fold can't revert this committed
+                    // write (which would make the next write's OCC carrier stale → a 409).
+                    loadGeneration++
                     detectSettleCelebration(updated)
                     _state.update {
                         it.copy(

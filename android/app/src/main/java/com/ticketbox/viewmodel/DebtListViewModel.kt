@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  *
  * UI 形态镜像 [IncomePlanViewModel]（list + draft + submit），ViewModel 持草稿+校验态让底部
  * 抽屉保持纯渲染。债务读取按账本作用域，overlay VM 缓存且跨账本存活，故 [reload] 在每次进入时
- * 先清上一账本的欠款再拉（账本隔离，与 DebtGoalViewModel.reload 同构）。
+ * 先清上一账本的欠款再拉（账本隔离，与 DebtGoalViewModel.refresh(clearStale = true) 同构）。
  */
 data class DebtListUiState(
     val isLoading: Boolean = false,
@@ -52,13 +52,20 @@ class DebtListViewModel(
     private val _state = MutableStateFlow(DebtListUiState(canModify = repository.canModifyLedger()))
     val state: StateFlow<DebtListUiState> = _state.asStateFlow()
 
+    // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its result only if it is
+    // still the latest. Overlapping refreshes — init + reload on overlay (re-)entry + the refresh
+    // after a create — each bump it, so a slow earlier list fetch can't overwrite newer data (the
+    // just-created debt, or a switched ledger's debts). Every bump is a refresh, so a superseded
+    // load is always replaced by a newer refresh that owns the loading flag — it just drops.
+    private var loadGeneration = 0L
+
     init {
         refresh()
     }
 
     /**
      * 进入 overlay 时调用：先清掉上一账本残留的欠款再拉，避免在新账本下短暂看到旧账本的欠款
-     * （账本隔离；overlay VM 跨账本切换存活，见 DebtGoalViewModel.reload）。
+     * （账本隔离；overlay VM 跨账本切换存活，见 DebtGoalViewModel.refresh(clearStale = true)）。
      */
     fun reload() {
         _state.update {
@@ -68,26 +75,29 @@ class DebtListViewModel(
     }
 
     fun refresh() {
+        val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val result = repository.listDebts()
-            val nextState = result.fold(
+            // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
+            if (gen != loadGeneration) return@launch
+            result.fold(
                 onSuccess = { debts ->
-                    _state.value.copy(
-                        isLoading = false,
-                        canModify = repository.canModifyLedger(),
-                        debts = debts,
-                        error = null,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            canModify = repository.canModifyLedger(),
+                            debts = debts,
+                            error = null,
+                        )
+                    }
                 },
                 onFailure = { err ->
-                    _state.value.copy(
-                        isLoading = false,
-                        error = err.toUiText(R.string.debt_list_load_failed),
-                    )
+                    _state.update {
+                        it.copy(isLoading = false, error = err.toUiText(R.string.debt_list_load_failed))
+                    }
                 },
             )
-            _state.value = nextState
         }
     }
 

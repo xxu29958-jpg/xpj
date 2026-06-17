@@ -27,6 +27,7 @@
     <ID>TooManyFunctions:DebtGoalProgressTest.kt:DebtGoalProgressTest</ID>
     <ID>TooManyFunctions:DebtGoalViewModelTest.kt:DebtGoalViewModelTest</ID>
     <ID>TooManyFunctions:DebtGoalViewModelTest.kt:FakeReportsActions : ReportsActions</ID>
+    <ID>TooManyFunctions:DebtListViewModelTest.kt:DebtListViewModelTest</ID>
     <ID>TooManyFunctions:DebtRepositoryTest.kt:DebtRepositoryTest</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:ExpenseDaoContractTest</ID>
     <ID>TooManyFunctions:ExpenseDaoContractTest.kt:FakeExpenseDao : ExpenseDao</ID>
