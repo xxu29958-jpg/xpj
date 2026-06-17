@@ -200,13 +200,57 @@ class PaymentNotificationParserTest {
             ),
         )
 
+        // result is Repayment(sealed 互斥子类型)即证明它没被当成支出——这是真正咬住分类顺序的断言:
+        // 把 classifyKind 的 repaymentDoneWords 步删掉,「自动还款」会落到 expenseWords→EXPENSE,本断言变红。
         assertTrue(result is PaymentNotificationResult.Repayment)
         val draft = (result as PaymentNotificationResult.Repayment).draft
         assertEquals(RepaymentDraftSource.BankSms, draft.source)
         assertEquals(120_000L, draft.amountCents)
         assertEquals("尾号1234", draft.merchantLabel)
-        // 反向：绝不同时被当成支出。
-        assertNull(expenseOf(result))
+    }
+
+    @Test
+    fun parsesRepaymentCreditedDespiteIncomeWord() {
+        // 防回归(对抗审 P2)：含「到账」的真实还款不被收入词先吞掉(还款判定优先于 incomeWords)。
+        val draft = repaymentOf(
+            snapshot(packageName = "com.eg.android.AlipayGphone", title = "支付宝", text = "您的花呗还款¥500.00已到账"),
+        )
+
+        assertNotNull(draft)
+        assertEquals(RepaymentDraftSource.Alipay, draft.source)
+        assertEquals(50_000L, draft.amountCents)
+    }
+
+    @Test
+    fun parsesExpenseWithBillReminderTail() {
+        // 防回归(对抗审 P2)：消费通知附带「本期应还」账单提醒尾巴时仍按支出捕获,不被提醒步骤吞掉。
+        val draft = expenseOf(
+            snapshot(
+                packageName = "com.android.mms",
+                title = "招商银行",
+                text = "您尾号1234信用卡消费人民币88.00元，交易商户：美团，本期应还¥1288",
+            ),
+        )
+
+        assertNotNull(draft)
+        assertEquals(NotificationDraftSource.BankSms, draft.source)
+        assertEquals(8800L, draft.amountCents)
+    }
+
+    @Test
+    fun parsesRepaymentAmountAfterBillTotalNotFirstAmount() {
+        // 对抗审 P3：银行账单「本期账单¥1288已还款¥500」首金额是账单总额,还款额取还款词之后的 500。
+        val draft = repaymentOf(
+            snapshot(
+                packageName = "com.android.mms",
+                title = "招商银行",
+                text = "您尾号1234信用卡本期账单¥1,288.00，已还款¥500.00成功",
+            ),
+        )
+
+        assertNotNull(draft)
+        assertEquals(RepaymentDraftSource.BankSms, draft.source)
+        assertEquals(50_000L, draft.amountCents)
     }
 
     @Test

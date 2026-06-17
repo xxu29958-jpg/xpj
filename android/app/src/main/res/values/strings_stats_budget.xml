@@ -546,14 +546,17 @@
     <string name="repayment_draft_picker_empty">没有可对应的欠款。请先在「债务管理」里新建一笔外部欠款。</string>
     <string name="repayment_draft_picker_remaining">还剩 %1$s</string>
     <string name="repayment_draft_load_failed">还款草稿加载失败，请稍后再试。</string>
+    <string name="repayment_draft_debts_load_failed">欠款列表没能加载，请下拉刷新后再确认还款。</string>
     <string name="repayment_draft_confirm_done">已记入这笔还款。</string>
     <string name="repayment_draft_confirm_failed">这笔还款没有记成功。</string>
     <string name="repayment_draft_dismiss_done">已忽略这条还款。</string>
     <string name="repayment_draft_dismiss_failed">操作失败，请稍后再试。</string>
-    <string name="repayment_draft_source_alipay">花呗 / 借呗</string>
-    <string name="repayment_draft_source_jd">京东白条</string>
-    <string name="repayment_draft_source_meituan">美团月付</string>
-    <string name="repayment_draft_source_wechat">信用卡还款</string>
+    <!-- 来源标签只标**捕获渠道**(哪个 App / 短信),不臆断具体债务类型——支付宝里也能还信用卡、微信里也能还分付。
+         具体平台(花呗 / 白条 / 尾号X)由抠出的 merchantLabel 在卡片副行展示,不在来源标签里当事实写死。 -->
+    <string name="repayment_draft_source_alipay">支付宝还款</string>
+    <string name="repayment_draft_source_jd">京东还款</string>
+    <string name="repayment_draft_source_meituan">美团还款</string>
+    <string name="repayment_draft_source_wechat">微信还款</string>
     <string name="repayment_draft_source_bank_sms">银行短信</string>
     <string name="repayment_draft_source_bank_app">银行 App</string>
     <string name="repayment_draft_source_other">其他还款</string>

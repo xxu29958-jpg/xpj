@@ -74,6 +74,24 @@ class NotificationDraftDeduperTest {
     }
 
     @Test
+    fun legacyEmptyKeyDedupesByContentAxisNotByIdentityAlone() {
+        // 对抗审 P3:notificationKey 为空(legacy 缺省身份)时,去重退到内容次轴(source|amount|label|分钟)。
+        // 内容不同的两笔真账(空身份)各留;同内容(空身份)第二次去重。把 dedupKey 砍成只剩 notificationKey|type
+        // 会让本测试变红。
+        val deduper = NotificationDraftDeduper(clockMillis = { 1_000L }, ttlMillis = 30 * 60 * 1000L)
+        val coffee = PaymentNotificationResult.Expense(
+            NotificationDraft(NotificationDraftSource.WeChat, 2580L, "星巴克", null, "2026-05-13T08:00:00Z"),
+        )
+        val lunch = PaymentNotificationResult.Expense(
+            NotificationDraft(NotificationDraftSource.WeChat, 9999L, "麦当劳", null, "2026-05-13T08:00:00Z"),
+        )
+
+        assertTrue(deduper.tryReserve(coffee, ""))
+        assertTrue(deduper.tryReserve(lunch, "")) // 空身份但内容不同 → 各留(内容次轴生效)
+        assertFalse(deduper.tryReserve(coffee, "")) // 空身份且同内容 → 去重
+    }
+
+    @Test
     fun expenseAndRepaymentWithSameIdentityDoNotCollide() {
         // 类型前缀防跨类型碰撞：万一同一身份既被当消费又被当还款(实际一条通知只分类成其一),两者不互相吞。
         val deduper = NotificationDraftDeduper(clockMillis = { 1_000L }, ttlMillis = 30 * 60 * 1000L)

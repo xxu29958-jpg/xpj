@@ -150,6 +150,24 @@ class RepaymentDraftInboxViewModelTest {
     }
 
     @Test
+    fun partialDebtFetchFailureClearsTargetDebtsAndSurfacesError() = runTest(dispatcher) {
+        val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("d1"))))
+        val debtsRepo = FakeRepayableDebtActions(listResult = Result.success(listOf(debt("open-external"))))
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+        assertEquals(listOf("open-external"), viewModel.state.value.targetDebts.map { it.publicId })
+
+        // draft 仍成功、debt 拉取瞬时失败:候选必须被**清空**(不留陈旧 rowVersion 致下次 confirm 必 409)并报错。
+        debtsRepo.listResult = Result.failure(RuntimeException("offline"))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.targetDebts.isEmpty())
+        assertTrue(viewModel.state.value.error != null)
+        assertEquals(listOf("d1"), viewModel.state.value.drafts.map { it.publicId }) // drafts 不受影响
+    }
+
+    @Test
     fun reloadClearsPriorLedgerStateThenRefetches() = runTest(dispatcher) {
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("a"))))
         val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())

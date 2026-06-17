@@ -29,6 +29,7 @@ class RepaymentDraftMappersTest {
         assertEquals("draft-1", domain.publicId)
         assertEquals("alipay", domain.source)
         assertEquals(50_000L, domain.amountCents)
+        assertEquals("CNY", domain.homeCurrencyCode)
         assertEquals("花呗", domain.merchantLabel)
         assertEquals("2026-06-17T08:00:00Z", domain.capturedAt)
         assertTrue(domain.isPending)

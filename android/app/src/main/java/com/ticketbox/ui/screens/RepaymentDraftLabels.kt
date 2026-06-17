@@ -19,5 +19,7 @@ fun repaymentDraftSourceLabelRes(source: String): Int = when (source) {
     RepaymentDraftSource.WeChat.apiValue -> R.string.repayment_draft_source_wechat
     RepaymentDraftSource.BankSms.apiValue -> R.string.repayment_draft_source_bank_sms
     RepaymentDraftSource.BankApp.apiValue -> R.string.repayment_draft_source_bank_app
+    RepaymentDraftSource.Other.apiValue -> R.string.repayment_draft_source_other
+    // 未知值(后端将来新增渠道)前向兼容,回落「其他还款」。
     else -> R.string.repayment_draft_source_other
 }

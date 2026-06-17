@@ -63,7 +63,7 @@ class RepaymentDraftInboxViewModel(
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val draftResult = drafts.listPendingDrafts()
-            val debtResult = debts.listDebts()
+            val repayable = debts.listDebts().getOrNull()?.filter(::isRepayableDebt)
             _state.update { current ->
                 draftResult.fold(
                     onSuccess = { pending ->
@@ -71,8 +71,15 @@ class RepaymentDraftInboxViewModel(
                             isLoading = false,
                             canModify = drafts.canModifyLedger(),
                             drafts = pending,
-                            targetDebts = debtResult.getOrNull()?.filter(::isRepayableDebt) ?: current.targetDebts,
-                            error = null,
+                            // debt 拉取失败(repayable==null)时**清空**候选——绝不保留陈旧的 row_version,否则
+                            // 下次对同一债 confirm 会用陈旧 OCC token 触发确定性 409;并报错让用户下拉刷新,
+                            // 也避免空候选被误读成「没有欠款」（拉取成功但无可还款债时 repayable 是空列表、不报错）。
+                            targetDebts = repayable ?: emptyList(),
+                            error = if (repayable == null) {
+                                UiText.res(R.string.repayment_draft_debts_load_failed)
+                            } else {
+                                null
+                            },
                         )
                     },
                     onFailure = { err ->
