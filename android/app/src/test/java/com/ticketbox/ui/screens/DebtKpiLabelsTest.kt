@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.DebtRepaymentEvaluation
 import com.ticketbox.ui.design.stateTokensForSkin
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -65,6 +66,39 @@ class DebtKpiLabelsTest {
         assertSame(tokens.success, debtThreeStateTone(DebtThreeStateTone.Ahead, tokens))
         assertSame(tokens.info, debtThreeStateTone(DebtThreeStateTone.OnTrack, tokens))
         assertNotSame(tokens.danger, debtThreeStateTone(DebtThreeStateTone.AtRisk, tokens))
+    }
+
+    @Test
+    fun payoffLineStateSelectsProjectedStaleOrInsufficient() {
+        // 8e-6d display decision (the user-facing heart): the 3 mutually-exclusive backend shapes map to
+        // the 3 line states; an unparseable projected date degrades to Insufficient (no fake date, §7.0 R4).
+        fun eval(projected: String?, tracking: Int?, stale: Int?) = DebtRepaymentEvaluation(
+            goalVersion = 1,
+            evaluationState = "in_progress",
+            needsReview = false,
+            achievedAt = null,
+            achievedVersion = null,
+            linkedDebts = emptyList(),
+            voidedDebtPublicIds = emptyList(),
+            trackingDays = tracking,
+            projectedPayoffDate = projected,
+            daysSinceLastActivity = stale,
+        )
+        assertEquals(PayoffLineState.Projected(60, 2026, 9), payoffLineState(eval("2026-09-01", 60, null)))
+        assertEquals(PayoffLineState.Stale(45), payoffLineState(eval(null, null, 45)))
+        assertEquals(PayoffLineState.Insufficient, payoffLineState(eval(null, null, null)))
+        // unparseable projected date + no staleness → Insufficient (graceful, never a fabricated date).
+        assertEquals(PayoffLineState.Insufficient, payoffLineState(eval("garbage", 60, null)))
+    }
+
+    @Test
+    fun staleProjectionToneResolvesToWarnAmberNeverDangerRed() {
+        // §7.0 去-shame redline (8e-6d): a projection suppressed for staleness ("已 N 天没更新，估算可能
+        // 已过期") is a gentle nudge to update, **warn（琥珀）非 danger（红）** — pin the color so a future
+        // change can't make it red/alarming. Mirrors the at_risk tone redline.
+        val tokens = stateTokensForSkin(AppSkin.Paper)
+        assertSame(tokens.warn, debtStaleProjectionTone(tokens))
+        assertNotSame(tokens.danger, debtStaleProjectionTone(tokens))
     }
 
     @Test

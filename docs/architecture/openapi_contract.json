@@ -4140,6 +4140,17 @@
             ],
             "title": "Achieved Version"
           },
+          "days_since_last_activity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Since Last Activity"
+          },
           "evaluation_state": {
             "title": "Evaluation State",
             "type": "string"

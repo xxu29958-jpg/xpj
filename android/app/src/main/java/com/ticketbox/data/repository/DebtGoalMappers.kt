@@ -18,6 +18,7 @@ fun DebtRepaymentEvaluationDto.toDomain(): DebtRepaymentEvaluation = DebtRepayme
     projectedPayoffDate = projectedPayoffDate,
     targetDate = targetDate,
     threeState = threeState,
+    daysSinceLastActivity = daysSinceLastActivity,
 )
 
 fun DebtGoalLinkViewDto.toDomain(): DebtGoalLink = DebtGoalLink(

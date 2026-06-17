@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import com.ticketbox.R
+import com.ticketbox.domain.model.DebtRepaymentEvaluation
 import com.ticketbox.domain.model.DebtThreeStates
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTokens
@@ -78,3 +79,36 @@ internal fun debtThreeStateTone(tone: DebtThreeStateTone, tokens: StateTokens): 
 @Composable
 internal fun debtThreeStateTone(state: String): StateTone =
     debtThreeStateTone(debtThreeStateToneKind(state), LocalStateTokens.current)
+
+/**
+ * ADR-0049 §7.0 / 8e-6d 数据陈旧抑制（杠杆④）的色调（纯函数，可 JVM 单测去-shame 红线）：投影因数据过期被
+ * 抑制时显示「已 N 天没更新，估算可能已过期」，是**提醒去更新**而非失败——**warn（琥珀）非 danger（红）**，
+ * 与 at_risk 同档（[debtThreeStateTone]）。钉死这条 arm，防未来把它改成红/告警味。
+ */
+internal fun debtStaleProjectionTone(tokens: StateTokens): StateTone = tokens.warn
+
+/**
+ * 还清日期投影行的三态显示决策（ADR-0049 §7.0 / 8e-6b+6d，纯函数）：[Projected] 有投影日期 / [Stale] 数据陈旧
+ * （杠杆④）/ [Insufficient] 数据不足。抽成纯函数是因为这条分支选择是 8e-6d 的用户面核心，值得 JVM 单测钉死。
+ */
+internal sealed interface PayoffLineState {
+    data class Projected(val trackingDays: Int, val year: Int, val month: Int) : PayoffLineState
+
+    data class Stale(val daysSinceLastActivity: Int) : PayoffLineState
+
+    data object Insufficient : PayoffLineState
+}
+
+/**
+ * 把服务端三态契约（fresh / stale / none）映射到显示状态。三者互斥（后端保证 projected 与 stale 永不同时非空）；
+ * 投影日期不可解析时优雅降级到 [PayoffLineState.Insufficient]——绝不渲染假日期（§7.0 R4）。
+ */
+internal fun payoffLineState(evaluation: DebtRepaymentEvaluation): PayoffLineState {
+    val yearMonth = evaluation.projectedPayoffDate?.let { parsePayoffYearMonth(it) }
+    val trackingDays = evaluation.trackingDays
+    if (yearMonth != null && trackingDays != null) {
+        return PayoffLineState.Projected(trackingDays, yearMonth.first, yearMonth.second)
+    }
+    val staleDays = evaluation.daysSinceLastActivity
+    return if (staleDays != null) PayoffLineState.Stale(staleDays) else PayoffLineState.Insufficient
+}

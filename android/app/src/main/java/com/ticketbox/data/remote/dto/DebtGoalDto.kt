@@ -46,6 +46,11 @@ data class DebtRepaymentEvaluationDto(
     val targetDate: String? = null,
     @param:Json(name = "three_state")
     val threeState: String? = null,
+    // ADR-0049 §7.0 / 8e-6d suppress-on-stale floor: set ONLY when a payoff projection was
+    // suppressed because the data is stale (so `projectedPayoffDate` is null here). The whole-days
+    // since the last recorded fact, for a "已 N 天没更新，估算可能已过期" warn line instead of a date.
+    @param:Json(name = "days_since_last_activity")
+    val daysSinceLastActivity: Int? = null,
 )
 
 /** One linked Debt's shell inside a debt_repayment goal's evaluation block. */

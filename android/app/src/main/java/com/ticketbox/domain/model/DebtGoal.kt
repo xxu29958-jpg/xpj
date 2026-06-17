@@ -95,6 +95,10 @@ data class DebtRepaymentEvaluation(
     // （未设/非外部恒 null）；[threeState] ∈ {on_track, ahead, at_risk}，仅截止日 + 投影都有时非 null。
     val targetDate: String? = null,
     val threeState: String? = null,
+    // ADR-0049 §7.0 / 8e-6d 数据陈旧抑制（杠杆④）：仅当投影因「最近一笔记录已过陈旧阈值」被抑制时非 null
+    // （此时 [projectedPayoffDate] 为 null），携带距今天数让 UI 显示「已 N 天没更新，估算可能已过期」
+    // （warn 琥珀、非日期）。其余形态（正常投影 / 数据不足 / 非外部）恒 null。
+    val daysSinceLastActivity: Int? = null,
 ) {
     val isAchieved: Boolean get() = evaluationState == DebtGoalEvaluationStates.ACHIEVED
     val isInProgress: Boolean get() = evaluationState == DebtGoalEvaluationStates.IN_PROGRESS

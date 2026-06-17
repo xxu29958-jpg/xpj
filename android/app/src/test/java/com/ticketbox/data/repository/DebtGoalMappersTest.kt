@@ -118,6 +118,28 @@ class DebtGoalMappersTest {
         assertNull(domain.projectedPayoffDate)
         assertNull(domain.targetDate)
         assertNull(domain.threeState)
+        assertNull(domain.daysSinceLastActivity)
+    }
+
+    @Test
+    fun evaluationMapsStaleDaysSinceField() {
+        // 8e-6d: when the projection is suppressed for staleness, the wire carries
+        // days_since_last_activity (and no projected date) → the domain copies it through.
+        val domain = DebtRepaymentEvaluationDto(
+            goalVersion = 1,
+            evaluationState = "in_progress",
+            needsReview = false,
+            achievedAt = null,
+            achievedVersion = null,
+            linkedDebts = emptyList(),
+            voidedDebtPublicIds = emptyList(),
+            trackingDays = null,
+            projectedPayoffDate = null,
+            daysSinceLastActivity = 60,
+        ).toDomain()
+
+        assertEquals(60, domain.daysSinceLastActivity)
+        assertNull(domain.projectedPayoffDate)
     }
 
     @Test

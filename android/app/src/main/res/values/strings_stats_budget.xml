@@ -347,6 +347,8 @@
     <!-- 8e-6b 外部债还清日期投影：只对纯外部债（§7.0），按观察到的还款节奏估算；月粒度避假精度，无三态/无催（去-shame）。 -->
     <string name="debt_kpi_payoff">按最近 %1$d 天的进度，预计 %2$d 年 %3$d 月前后还清</string>
     <string name="debt_kpi_payoff_unknown">还没有足够数据估算还清日期</string>
+    <!-- 8e-6d 数据陈旧抑制（杠杆④）：最近一笔记录已过陈旧阈值 → 不给假日期，提示去更新。warn 琥珀非红、非催（去-shame）。 -->
+    <string name="debt_kpi_payoff_stale">已 %1$d 天没有更新，估算可能已过期</string>
 
     <!-- 8e-6c 外部债还清日期三态 + 设/改还清日期：只对纯外部债（§7.0）。at_risk 事实性「晚于计划」、琥珀非红、不催、非第二人称（去-shame）。 -->
     <string name="debt_three_state_on_track">按计划进行</string>
