@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
@@ -309,6 +311,82 @@ class LedgerViewModelTest {
     }
 
     @Test
+    fun applyBatchSetsBatchDoneOnSuccessThenSettleClears() = ledgerTest {
+        // batchDone is the one-shot signal the screen uses to close the sheet AFTER
+        // the batch resolves (not eagerly) — set on success, cleared by batchSettled.
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物")
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.batchDone)
+        vm.batchSettled()
+        assertTrue(!vm.uiState.value.batchDone)
+    }
+
+    @Test
+    fun applyBatchFailureSetsBatchDoneAndKeepsSelection() = ledgerTest {
+        // On a whole-batch failure the sheet must still close (batchDone) so the
+        // page-level error message is visible; selection is preserved (only success
+        // clears it) so the user can re-open the sheet and retry.
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            batchFailure = RuntimeException("offline"),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物")
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.batchDone)
+        assertTrue(vm.uiState.value.selectionMode)
+        assertEquals(setOf(1L), vm.uiState.value.selectedIds)
+        // Pin the specific failure copy (toUiText carries the throwable message), not just non-null,
+        // so a wrong/stale message resource on the failure arm is caught.
+        assertEquals(UiText.raw("offline"), vm.uiState.value.message)
+    }
+
+    @Test
+    fun applyBatchIgnoresReentryWhileInFlight() = ledgerTest {
+        // Double-launch guard: a second apply while the first batch is in-flight must be ignored
+        // (otherwise the second fan-out captures the same rowVersions and reports spurious OCC
+        // failures). applyingBatch is set synchronously before the launch so the guard is effective.
+        val gate = CompletableDeferred<Unit>()
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            batchGate = gate,
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物") // launches; applyingBatch=true synchronously, awaits the gate
+        runCurrent()
+        assertTrue(vm.uiState.value.applyingBatch)
+
+        vm.applyBatchCategory("购物") // re-entry while in-flight → guard returns, no second launch
+        runCurrent()
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // Exactly one batch ran despite the second tap.
+        assertEquals(1, fake.batchCallCount)
+    }
+
+    @Test
     fun applyBatchBlockedWhenReadOnly() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
@@ -342,6 +420,10 @@ class LedgerViewModelTest {
 
         assertEquals(0, fake.batchCallCount)
         assertEquals(UiText.res(R.string.ledger_msg_batch_no_selection), vm.uiState.value.message)
+        // The empty-targets arm must also flip batchDone so the screen closes the sheet and the
+        // page-level message is revealed (regression guard: the old eager close did this; the
+        // batchDone-driven close would otherwise strand the sheet open over the message).
+        assertTrue(vm.uiState.value.batchDone)
     }
 
     @Test
@@ -435,6 +517,9 @@ private class FakeLedgerActions(
     expenses: List<Expense>,
     private val canModify: Boolean = true,
     private val batchResult: BatchApplyResult? = null,
+    private val batchFailure: Throwable? = null,
+    /** When set, applyConfirmedBatch stalls until completed — used to interleave a re-tap. */
+    private val batchGate: CompletableDeferred<Unit>? = null,
     private val manualCreateFailure: Throwable? = null,
 ) : LedgerActions {
     private var confirmed = expenses
@@ -494,6 +579,8 @@ private class FakeLedgerActions(
         lastBatchExpenses = expenses
         lastBatchCategory = category
         lastBatchTags = tags
+        batchGate?.await()
+        batchFailure?.let { return Result.failure(it) }
         return Result.success(batchResult ?: BatchApplyResult(synced = expenses.size))
     }
 }

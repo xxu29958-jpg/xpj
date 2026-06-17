@@ -62,6 +62,7 @@ fun LedgerScreen(
     onApplyBatchCategory: (String) -> Unit = {},
     onApplyBatchTags: (String) -> Unit = {},
     onManualCreateSettled: () -> Unit = {},
+    onBatchSettled: () -> Unit = {},
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
@@ -75,6 +76,17 @@ fun LedgerScreen(
         if (state.manualCreateDone) {
             showManualSheet = false
             onManualCreateSettled()
+        }
+    }
+
+    // Close the batch-edit sheet only once applyConfirmedBatch RESOLVES (batchDone),
+    // not eagerly in the onApply lambda — so `applying` disables the buttons during
+    // the in-flight call and a typed tag isn't lost mid-flight. Closes on both
+    // success and failure because the synced/queued/failed outcome is page-level.
+    LaunchedEffect(state.batchDone) {
+        if (state.batchDone) {
+            showBulkEdit = false
+            onBatchSettled()
         }
     }
 
@@ -146,14 +158,8 @@ fun LedgerScreen(
                 selectedHaveTags = state.selectedHaveTags,
                 categories = state.categories,
                 applying = state.applyingBatch,
-                onApplyCategory = {
-                    showBulkEdit = false
-                    onApplyBatchCategory(it)
-                },
-                onApplyTags = {
-                    showBulkEdit = false
-                    onApplyBatchTags(it)
-                },
+                onApplyCategory = onApplyBatchCategory,
+                onApplyTags = onApplyBatchTags,
             )
         }
     }
