@@ -129,6 +129,41 @@ class DebtListViewModelTest {
     }
 
     @Test
+    fun submitDraftSuccessSetsAddSucceededThenResetClears() = runTest(dispatcher) {
+        // The one-shot success signal is what drives the sheet to close — set ONLY on a real
+        // create success, then cleared by resetDraft when the screen closes (mirrors the
+        // LedgerViewModel.manualCreateDone ack convention).
+        val repo = FakeDebtActions(createResult = Result.success(sampleDebt("created")))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("100")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.addSucceeded)
+        viewModel.resetDraft()
+        assertEquals(false, viewModel.state.value.addSucceeded)
+    }
+
+    @Test
+    fun submitDraftFailureLeavesAddSucceededFalse() = runTest(dispatcher) {
+        // A server failure must NOT signal the screen to close — the sheet stays open with its
+        // error instead of vanishing while the debt was silently not created (the fixed bug).
+        val repo = FakeDebtActions(createResult = Result.failure(RuntimeException("boom")))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("100")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.addSucceeded)
+    }
+
+    @Test
     fun resetDraftClearsInput() = runTest(dispatcher) {
         val repo = FakeDebtActions()
         val viewModel = DebtListViewModel(repo)

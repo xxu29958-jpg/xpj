@@ -33,7 +33,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,7 +60,6 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
 private const val DebtFlashDismissMillis = 4000L
@@ -88,6 +86,16 @@ fun DebtListScreen(
         if (state.flashMessage == null) return@LaunchedEffect
         delay(DebtFlashDismissMillis)
         viewModel.dismissFlash()
+    }
+
+    // 成功才关抽屉：只在 createDebt() 真正成功(addSucceeded)时收起，失败保留抽屉让 validationError 可见
+    // （修「乐观关闭」——旧逻辑在 onSubmit 里按本地 addDraft.isValid 关闭、无视网络结果，且 onClose 的
+    // resetDraft() 会抹掉失败错误 → 欠款静默没建）。resetDraft() 一并清掉一次性信号 + 草稿；effect 体
+    // 全程非挂起，关闭被打断也不会把 addSucceeded 卡在 true。
+    LaunchedEffect(state.addSucceeded) {
+        if (!state.addSucceeded) return@LaunchedEffect
+        showAddSheet = false
+        viewModel.resetDraft()
     }
 
     BackHandler(onBack = onBack)
@@ -248,20 +256,11 @@ private fun DebtAddSheet(
     sheetState: SheetState,
     onClose: () -> Unit,
 ) {
-    val coroutineScope = rememberCoroutineScope()
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         DebtDraftForm(
             state = state,
             viewModel = viewModel,
-            onSubmit = {
-                viewModel.submitDraft()
-                coroutineScope.launch {
-                    if (state.addDraft.isValid) {
-                        sheetState.hide()
-                        onClose()
-                    }
-                }
-            },
+            onSubmit = { viewModel.submitDraft() },
             onCancel = onClose,
         )
     }

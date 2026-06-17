@@ -34,6 +34,13 @@ data class IncomePlanUiState(
     val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(),
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
+    /**
+     * 一次性信号：[submitDraft] 真正成功后置 true；底部抽屉屏只在它为 true 时关闭（关时调
+     * [resetDraft] 一并清掉本信号 + 草稿，镜像 LedgerViewModel.manualCreateDone 的 ack 约定）。
+     * failure 不置位 → 抽屉保留、表单错误可见（修「乐观关闭」：旧逻辑按本地 `addDraft.isValid`
+     * 关闭、无视 create() 结果，后端失败时静默丢失）。
+     */
+    val addSucceeded: Boolean = false,
 )
 
 data class IncomePlanDraftUi(
@@ -124,7 +131,7 @@ class IncomePlanViewModel(
     }
 
     fun resetDraft() {
-        _state.update { it.copy(addDraft = IncomePlanDraftUi(), isSubmitting = false) }
+        _state.update { it.copy(addDraft = IncomePlanDraftUi(), isSubmitting = false, addSucceeded = false) }
     }
 
     fun submitDraft() {
@@ -159,6 +166,7 @@ class IncomePlanViewModel(
                             isSubmitting = false,
                             addDraft = IncomePlanDraftUi(),
                             flashMessage = UiText.res(R.string.income_plan_added),
+                            addSucceeded = true,
                         )
                     }
                     refresh()
