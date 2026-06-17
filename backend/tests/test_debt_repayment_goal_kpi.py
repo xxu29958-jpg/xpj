@@ -22,8 +22,8 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Debt
-from app.services.debt_service import compute_remaining, compute_remaining_as_of
-from app.services.goal_debt_repayment_kpi import project_payoff_days
+from app.services.debt_service import compute_remaining, compute_remaining_as_of, latest_fact_at
+from app.services.goal_debt_repayment_kpi import _PROJECTION_STALE_DAYS, project_payoff_days
 from app.services.time_service import now_utc
 from tests.debt_proposal_helpers import _create_member_debt, _mint_member_actor
 from tests.debt_repayment_goal_helpers import (
@@ -134,7 +134,7 @@ def test_remaining_as_of_excludes_repayment_voided_during_the_window(
         # now: the void excludes the repayment → remaining restored to the full principal.
         assert compute_remaining(db, row) == 10000
     # the projection sees remaining go UP over the window (reduction = 6000 − 10000 < 0) → suppress.
-    tracking_days, projected = _compute_external_kpi_for([debt["public_id"]], now=now)
+    tracking_days, projected, _ = _compute_external_kpi_for([debt["public_id"]], now=now)
     assert tracking_days is None
     assert projected is None
 
@@ -148,7 +148,7 @@ def test_external_projection_from_repayment_pace(client: TestClient, *, identity
     _repay_debt(client, identity.app_headers, debt, amount_cents=4000)
     _backdate_debt_created(debt["public_id"], now - timedelta(days=60))
     _backdate_latest_repayment(debt["public_id"], now - timedelta(days=20))
-    tracking_days, projected = _compute_external_kpi_for([debt["public_id"]], now=now)
+    tracking_days, projected, _ = _compute_external_kpi_for([debt["public_id"]], now=now)
     assert tracking_days == 60
     # remaining 6000, reduced 4000 over 60d → ceil(6000 / (4000/60)) = 90 days out.
     assert projected == _shanghai_payoff(now, 90)
@@ -164,7 +164,7 @@ def test_external_projection_counts_writeoff_adjustment_not_just_repayments(
     _adjust_debt(client, identity.app_headers, debt, amount_cents=-4000)  # write-off, no repayment
     _backdate_debt_created(debt["public_id"], now - timedelta(days=60))
     _backdate_latest_adjustment(debt["public_id"], now - timedelta(days=20))
-    tracking_days, projected = _compute_external_kpi_for([debt["public_id"]], now=now)
+    tracking_days, projected, _ = _compute_external_kpi_for([debt["public_id"]], now=now)
     assert tracking_days == 60
     # same arithmetic as the repayment case: remaining 6000, reduced 4000 over 60d → 90 days.
     assert projected == _shanghai_payoff(now, 90)
@@ -182,7 +182,7 @@ def test_external_projection_windows_on_created_at_not_paid_at(
     _backdate_latest_repayment(
         debt["public_id"], now - timedelta(days=20), paid_at=now - timedelta(days=400)
     )
-    tracking_days, projected = _compute_external_kpi_for([debt["public_id"]], now=now)
+    tracking_days, projected, _ = _compute_external_kpi_for([debt["public_id"]], now=now)
     assert tracking_days == 60
     assert projected == _shanghai_payoff(now, 90)
 
@@ -199,11 +199,12 @@ def test_external_projection_suppressed_on_mixed_currency(
     usd = _create_external_debt(client, identity.app_headers, principal_amount_cents=5000)
     _backdate_debt_created(usd["public_id"], now - timedelta(days=60))
     _set_debt_home_currency(usd["public_id"], "USD")
-    tracking_days, projected = _compute_external_kpi_for(
+    tracking_days, projected, days_since = _compute_external_kpi_for(
         [cny["public_id"], usd["public_id"]], now=now
     )
     assert tracking_days is None
     assert projected is None
+    assert days_since is None  # mixed-currency short-circuits to 'none' before staleness
 
 
 def test_external_projection_suppressed_on_thin_window(client: TestClient, *, identity) -> None:
@@ -213,9 +214,10 @@ def test_external_projection_suppressed_on_thin_window(client: TestClient, *, id
     # plan is only 5 days old → tracking_days < 14 floor → suppress (noisy young rate).
     _backdate_debt_created(debt["public_id"], now - timedelta(days=5))
     _backdate_latest_repayment(debt["public_id"], now - timedelta(days=2))
-    tracking_days, projected = _compute_external_kpi_for([debt["public_id"]], now=now)
+    tracking_days, projected, days_since = _compute_external_kpi_for([debt["public_id"]], now=now)
     assert tracking_days is None
     assert projected is None
+    assert days_since is None  # thin is the 'none' shape, NOT stale — copy must stay "数据不足"
 
 
 def test_external_projection_suppressed_without_paydown(
@@ -225,9 +227,10 @@ def test_external_projection_suppressed_without_paydown(
     debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
     # 60-day-old plan but no repayment / adjustment at all → zero reduction → no projection.
     _backdate_debt_created(debt["public_id"], now - timedelta(days=60))
-    tracking_days, projected = _compute_external_kpi_for([debt["public_id"]], now=now)
+    tracking_days, projected, days_since = _compute_external_kpi_for([debt["public_id"]], now=now)
     assert tracking_days is None
     assert projected is None
+    assert days_since is None  # no fact at all → 'none' shape, not stale (no activity to age)
 
 
 def test_external_projection_uses_accounting_tz_today(client: TestClient, *, identity) -> None:
@@ -239,10 +242,155 @@ def test_external_projection_uses_accounting_tz_today(client: TestClient, *, ide
     _repay_debt(client, identity.app_headers, debt, amount_cents=4000)
     _backdate_debt_created(debt["public_id"], now - timedelta(days=60))
     _backdate_latest_repayment(debt["public_id"], now - timedelta(days=20))
-    tracking_days, projected = _compute_external_kpi_for([debt["public_id"]], now=now)
+    tracking_days, projected, _ = _compute_external_kpi_for([debt["public_id"]], now=now)
     assert tracking_days == 60
     assert projected == date(2026, 3, 2) + timedelta(days=90)  # Shanghai today + 90
     assert projected != date(2026, 3, 1) + timedelta(days=90)  # not the naive-UTC day
+
+
+# ── 8e-6d suppress-on-stale floor (杠杆④): a positive-velocity projection drawn only from
+#    old data is suppressed; the silence (days since last fact) is surfaced instead of a date ──
+
+
+def test_external_projection_suppressed_when_data_is_stale(
+    client: TestClient, *, identity
+) -> None:
+    # THE 8e-6d hole: a real positive-velocity projection drawn ONLY from a repayment recorded
+    # long ago is a confident date the stale data no longer backs. The 60-day-old repayment still
+    # sits in the 90-day window (reduction > 0) so WITHOUT this floor it would project — prove the
+    # gate suppresses the date and surfaces how long the data has gone quiet instead.
+    now = now_utc()
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    _backdate_debt_created(debt["public_id"], now - timedelta(days=120))
+    # the only repayment was recorded 60 days ago (> the stale threshold); nothing since.
+    _insert_repayment_fact(debt["public_id"], amount_cents=4000, created_at=now - timedelta(days=60))
+    tracking_days, projected, days_since = _compute_external_kpi_for([debt["public_id"]], now=now)
+    assert tracking_days is None  # the projection bundle is suppressed...
+    assert projected is None
+    assert days_since == 60  # ...replaced by how many days the data has gone quiet.
+
+
+def test_external_projection_fresh_when_recent_activity_within_threshold(
+    client: TestClient, *, identity
+) -> None:
+    # A regular payer with recent activity is NOT flagged stale — even on an OLD debt that also
+    # carries old facts. Pins that the floor keys off the MOST-RECENT fact, not the debt age.
+    now = now_utc()
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    _backdate_debt_created(debt["public_id"], now - timedelta(days=120))
+    _insert_repayment_fact(debt["public_id"], amount_cents=4000, created_at=now - timedelta(days=60))
+    _insert_repayment_fact(debt["public_id"], amount_cents=4000, created_at=now - timedelta(days=5))
+    tracking_days, projected, days_since = _compute_external_kpi_for([debt["public_id"]], now=now)
+    assert tracking_days == 90  # the capped 90-day observation window
+    assert projected is not None  # a date is shown...
+    assert days_since is None  # ...and no staleness flag (last activity 5d ago).
+
+
+def test_external_projection_stale_boundary_is_strict(client: TestClient, *, identity) -> None:
+    # The staleness gate is a STRICT ">": exactly at the threshold is still fresh, one day past is
+    # stale. Pinned against ``_PROJECTION_STALE_DAYS`` so it survives a threshold re-tune.
+    now = now_utc()
+    fresh = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    _backdate_debt_created(fresh["public_id"], now - timedelta(days=120))
+    _insert_repayment_fact(
+        fresh["public_id"],
+        amount_cents=4000,
+        created_at=now - timedelta(days=_PROJECTION_STALE_DAYS),
+    )
+    _, projected_fresh, days_since_fresh = _compute_external_kpi_for([fresh["public_id"]], now=now)
+    assert projected_fresh is not None  # exactly at the threshold → still fresh
+    assert days_since_fresh is None
+    stale = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    _backdate_debt_created(stale["public_id"], now - timedelta(days=120))
+    _insert_repayment_fact(
+        stale["public_id"],
+        amount_cents=4000,
+        created_at=now - timedelta(days=_PROJECTION_STALE_DAYS + 1),
+    )
+    tracking_days, projected_stale, days_since_stale = _compute_external_kpi_for(
+        [stale["public_id"]], now=now
+    )
+    assert tracking_days is None  # one day past the threshold → stale
+    assert projected_stale is None
+    assert days_since_stale == _PROJECTION_STALE_DAYS + 1
+
+
+def test_external_projection_stale_survives_a_freshly_linked_debt(
+    client: TestClient, *, identity
+) -> None:
+    # P2 regression (multi-debt): a brand-new linked Debt must NOT reset the staleness clock —
+    # staleness keys off the most recent FOLD-CHANGING FACT, not Debt creation. Otherwise adding a
+    # fresh credit card to a plan would silently revive a projection drawn from a weeks-old payment.
+    now = now_utc()
+    stale = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    _backdate_debt_created(stale["public_id"], now - timedelta(days=120))
+    _insert_repayment_fact(stale["public_id"], amount_cents=4000, created_at=now - timedelta(days=60))
+    # a tiny external debt created TODAY with zero facts (a newly-linked obligation).
+    fresh = _create_external_debt(client, identity.app_headers, principal_amount_cents=100)
+    tracking_days, projected, days_since = _compute_external_kpi_for(
+        [stale["public_id"], fresh["public_id"]], now=now
+    )
+    assert tracking_days is None  # still suppressed despite the brand-new debt...
+    assert projected is None
+    assert days_since == 60  # ...because the only paydown fact is 60 days old (not the new debt).
+
+
+def test_external_projection_fresh_counts_recent_forgiveness(
+    client: TestClient, *, identity
+) -> None:
+    # latest_fact_at must span forgiveness: a recent PARTIAL forgiveness is recent activity, so a
+    # plan whose last repayment is old but was just partially waived stays FRESH (not misjudged stale).
+    now = now_utc()
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    _backdate_debt_created(debt["public_id"], now - timedelta(days=120))
+    _insert_repayment_fact(debt["public_id"], amount_cents=4000, created_at=now - timedelta(days=60))
+    # a recent partial forgiveness (does not clear the debt) is the most recent fold-changing fact.
+    _insert_forgiveness_fact(debt["public_id"], amount_cents=1000, created_at=now - timedelta(days=5))
+    tracking_days, projected, days_since = _compute_external_kpi_for([debt["public_id"]], now=now)
+    assert tracking_days == 90
+    assert projected is not None  # the recent forgiveness keeps the data fresh...
+    assert days_since is None  # ...so no staleness flag (dropping latest_fact_at's forgive branch → stale → fails).
+
+
+def test_latest_fact_at_spans_fact_types_and_is_none_without_facts(
+    client: TestClient, *, identity
+) -> None:
+    # latest_fact_at returns the max created_at across ALL fold-changing fact types (here a
+    # RepaymentVoid is the most recent), and None for a Debt with no facts. Pins the void branch —
+    # untouched by the staleness flow, where a void drives reduction negative → 'none' before staleness.
+    now = now_utc()
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    _insert_repayment_fact(debt["public_id"], amount_cents=4000, created_at=now - timedelta(days=40))
+    _insert_forgiveness_fact(debt["public_id"], amount_cents=1000, created_at=now - timedelta(days=20))
+    _void_latest_repayment(debt["public_id"], created_at=now - timedelta(days=10))
+    factless = _create_external_debt(client, identity.app_headers, principal_amount_cents=5000)
+    with SessionLocal() as db:
+        row = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
+        empty = db.scalar(select(Debt).where(Debt.public_id == factless["public_id"]))
+        latest = latest_fact_at(db, row)
+        assert latest is not None
+        assert (now - latest).days == 10  # the RepaymentVoid is the most recent fact (max, not min)
+        assert latest_fact_at(db, empty) is None  # a fact-less debt has no recorded activity
+
+
+def test_pure_external_goal_stale_carries_days_since_not_projection(
+    client: TestClient, *, identity
+) -> None:
+    # End-to-end on the wire: a stale pure-external plan serialises ``days_since_last_activity`` and
+    # suppresses the projection + three-state (proving the field flows schema → route → response).
+    now = now_utc()
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="信用卡", debt_public_ids=[debt["public_id"]]
+    ).json()
+    _backdate_debt_created(debt["public_id"], now - timedelta(days=120))
+    _insert_repayment_fact(debt["public_id"], amount_cents=4000, created_at=now - timedelta(days=60))
+    detail = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers).json()
+    block = detail["debt_repayment"]
+    assert block["projected_payoff_date"] is None
+    assert block["tracking_days"] is None
+    assert block["three_state"] is None
+    assert block["days_since_last_activity"] == 60
 
 
 # ── server-side §4 gating: member / mixed / all-voided carry NO projection ──────────────
@@ -265,6 +413,7 @@ def test_member_goal_carries_no_projection(client: TestClient, *, identity) -> N
     block = detail["debt_repayment"]
     assert block["tracking_days"] is None
     assert block["projected_payoff_date"] is None
+    assert block["days_since_last_activity"] is None  # §4: member plans carry NO staleness signal either
 
 
 def test_mixed_goal_carries_no_projection(client: TestClient, *, identity) -> None:
@@ -306,6 +455,7 @@ def test_pure_external_goal_carries_projection(client: TestClient, *, identity) 
     block = detail["debt_repayment"]
     assert block["tracking_days"] == 60
     assert block["projected_payoff_date"] is not None  # populated end-to-end on the wire
+    assert block["days_since_last_activity"] is None  # a fresh projection carries no staleness flag
 
 
 def test_all_voided_external_goal_carries_no_projection(

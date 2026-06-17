@@ -136,21 +136,24 @@ private fun DebtExternalKpiBlock(
     }
 }
 
-/** 还清日期投影行（§7.0 / 8e-6b）：节奏估算「按最近 N 天，预计 YYYY年M月前后还清」/ 数据不足中性文案。 */
+/**
+ * 还清日期投影行（§7.0 / 8e-6b+6d）三态互斥：① 节奏估算「按最近 N 天，预计 YYYY年M月前后还清」；
+ * ② 数据陈旧（杠杆④，服务端给 [DebtRepaymentEvaluation.daysSinceLastActivity]）→「已 N 天没更新，估算
+ * 可能已过期」，**warn 琥珀非红、非催**（去-shame，[debtStaleProjectionTone]），刻意不给假日期；③ 数据不足
+ * → 中性「还没有足够数据估算还清日期」。陈旧与不足分开：前者是「估算馊了去更新」，后者是「还没法估」。
+ */
 @Composable
 private fun DebtPayoffProjectionLine(evaluation: DebtRepaymentEvaluation) {
-    val yearMonth = evaluation.projectedPayoffDate?.let { parsePayoffYearMonth(it) }
-    val trackingDays = evaluation.trackingDays
-    val text = if (yearMonth != null && trackingDays != null) {
-        stringResource(R.string.debt_kpi_payoff, trackingDays, yearMonth.first, yearMonth.second)
-    } else {
-        stringResource(R.string.debt_kpi_payoff_unknown)
+    val neutral = MaterialTheme.colorScheme.onSurfaceVariant
+    val (text, color) = when (val state = payoffLineState(evaluation)) {
+        is PayoffLineState.Projected ->
+            stringResource(R.string.debt_kpi_payoff, state.trackingDays, state.year, state.month) to neutral
+        is PayoffLineState.Stale ->
+            stringResource(R.string.debt_kpi_payoff_stale, state.daysSinceLastActivity) to
+                debtStaleProjectionTone(LocalStateTokens.current).fg
+        PayoffLineState.Insufficient -> stringResource(R.string.debt_kpi_payoff_unknown) to neutral
     }
-    Text(
-        text,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color)
 }
 
 /** 设/改还清日期入口（低调 TextButton）：有截止日时「修改」、否则「设置」；点击交调用方打开 date picker。 */

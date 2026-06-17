@@ -40,6 +40,7 @@ from app.services.debt_service._fold import (
     compute_remaining,
     compute_remaining_as_of,
     derive_status,
+    latest_fact_at,
 )
 from app.services.debt_service._forgive import forgive_debt
 from app.services.debt_service._proposal import (
@@ -79,6 +80,7 @@ __all__ = [
     "get_participant_debt_response",
     "get_repayment_proposal_response",
     "get_repayment_public_id_for_idempotency",
+    "latest_fact_at",
     "list_debts",
     "list_repayment_proposals",
     "record_adjustment",

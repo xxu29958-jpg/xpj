@@ -337,10 +337,10 @@ def _insert_forgiveness_fact(
 
 
 def _compute_external_kpi_for(debt_public_ids: list[str], *, now: datetime):
-    """Load the named Debts and run the 8e-6b projection with an injected ``now``.
+    """Load the named Debts and run the 8e-6b/6d projection with an injected ``now``.
 
-    Returns ``(tracking_days, projected_payoff_date)`` straight from the KPI helper so the
-    velocity math can be pinned deterministically."""
+    Returns ``(tracking_days, projected_payoff_date, days_since_last_activity)`` straight from
+    the KPI helper so the velocity + staleness math can be pinned deterministically."""
     from app.services.goal_debt_repayment_kpi import compute_external_kpi
 
     with SessionLocal() as db:

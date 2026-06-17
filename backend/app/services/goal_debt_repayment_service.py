@@ -30,8 +30,6 @@ concurrent in-flight write.
 
 from __future__ import annotations
 
-from datetime import date, datetime
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -48,7 +46,7 @@ from app.schemas import (
     GoalResponse,
 )
 from app.services.debt_service import compute_remaining, derive_status
-from app.services.goal_debt_repayment_kpi import compute_external_kpi, payoff_three_state
+from app.services.goal_debt_repayment_kpi import external_payoff_kpi
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
@@ -159,26 +157,6 @@ def _evaluate_links(
     return link_views, non_voided_debts, voided_public_ids, any_voided, all_cleared
 
 
-def _external_kpi_for_links(
-    db: Session, non_voided_debts: list[Debt], *, now: datetime, target_date: date | None
-) -> tuple[int | None, date | None, date | None, str | None]:
-    """ADR-0049 §7.0 / 8e-6b+6c server gate (§4): the payoff KPI (projection + deadline echo +
-    three-state) is computed ONLY for a PURE-EXTERNAL plan — every non-voided linked Debt
-    external (``!= 'member'`` byte-matches the Android composition's external bucket). Member /
-    mixed / all-voided plans get all-None, so /web, /owner, exports, and tests never see a
-    §7.0-forbidden payoff dashboard on a Communal plan. Read-only — identical on viewer/writer.
-    Returns ``(tracking_days, projected_payoff_date, target_date_echo, three_state)`` — the
-    deadline echoes only once pure-external; three_state needs both a projection and a deadline.
-    """
-    is_pure_external = bool(non_voided_debts) and all(
-        debt.counterparty_type != "member" for debt in non_voided_debts
-    )
-    if not is_pure_external:
-        return None, None, None, None
-    tracking_days, projected = compute_external_kpi(db, non_voided_debts, now=now)
-    return tracking_days, projected, target_date, payoff_three_state(projected, target_date)
-
-
 def _evaluate_and_maybe_latch(
     db: Session, goal: Goal, *, persist: bool
 ) -> tuple[DebtRepaymentEvaluation, bool]:
@@ -219,11 +197,9 @@ def _evaluate_and_maybe_latch(
     integrity_acknowledged = goal.integrity_reviewed_version == goal.goal_version
     needs_review = any_voided and not (state == "achieved" and integrity_acknowledged)
 
-    # ADR-0049 §7.0 / 8e-6b+6c external-debt payoff KPI — server-gated to pure-external (§4).
-    # See :func:`_external_kpi_for_links`.
-    tracking_days, projected_payoff_date, target_date, three_state = _external_kpi_for_links(
-        db, non_voided_debts, now=now, target_date=goal.target_date
-    )
+    # ADR-0049 §7.0 / 8e-6b+6c+6d external-debt payoff KPI — server-gated to pure-external (§4).
+    # See :func:`app.services.goal_debt_repayment_kpi.external_payoff_kpi`.
+    kpi = external_payoff_kpi(db, non_voided_debts, now=now, target_date=goal.target_date)
 
     evaluation = DebtRepaymentEvaluation(
         goal_version=goal.goal_version,
@@ -233,10 +209,11 @@ def _evaluate_and_maybe_latch(
         achieved_version=goal.achieved_version,
         linked_debts=link_views,
         voided_debt_public_ids=voided_public_ids,
-        tracking_days=tracking_days,
-        projected_payoff_date=projected_payoff_date,
-        target_date=target_date,
-        three_state=three_state,
+        tracking_days=kpi.tracking_days,
+        projected_payoff_date=kpi.projected_payoff_date,
+        target_date=kpi.target_date,
+        three_state=kpi.three_state,
+        days_since_last_activity=kpi.days_since_last_activity,
     )
     return evaluation, latched
 

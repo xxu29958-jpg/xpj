@@ -81,6 +81,39 @@ def has_forgiveness(db: Session, debt_id: int) -> bool:
     )
 
 
+def latest_fact_at(db: Session, debt: Debt) -> datetime | None:
+    """The most recent append-only fact ``created_at`` on the Debt, or ``None`` if it has none.
+
+    Spans every fold-changing fact — ``Repayment`` / ``DebtAdjustment`` / ``DebtForgiveness`` /
+    ``RepaymentVoid`` — i.e. every recorded action that moves the derived ``remaining`` over
+    time. (A ``DebtVoid`` latch is excluded: a voided Debt is dropped from the projection set
+    before this is reached.) Filters on ``created_at`` — the recording cadence, indexed by the
+    ``ix_*_debt_created`` composites — never the user-editable ``paid_at``, mirroring
+    :func:`compute_remaining_as_of`. The 8e-6d staleness floor (杠杆④) uses it to detect a
+    payoff projection still being drawn from weeks-old data.
+    """
+    candidates = [
+        db.scalar(select(func.max(Repayment.created_at)).where(Repayment.debt_id == debt.id)),
+        db.scalar(
+            select(func.max(DebtAdjustment.created_at)).where(DebtAdjustment.debt_id == debt.id)
+        ),
+        db.scalar(
+            select(func.max(DebtForgiveness.created_at)).where(
+                DebtForgiveness.debt_id == debt.id
+            )
+        ),
+        db.scalar(
+            select(func.max(RepaymentVoid.created_at)).where(
+                RepaymentVoid.repayment_id.in_(
+                    select(Repayment.id).where(Repayment.debt_id == debt.id)
+                )
+            )
+        ),
+    ]
+    present = [ensure_utc(ts) for ts in candidates if ts is not None]
+    return max(present) if present else None
+
+
 def compute_paid(db: Session, debt: Debt) -> int:
     """Home-currency minor units repaid so far (non-voided repayments only).
 

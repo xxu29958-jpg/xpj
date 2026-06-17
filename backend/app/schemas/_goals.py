@@ -178,6 +178,12 @@ class DebtRepaymentEvaluation(BaseModel):
     # projection exist (else None — never editorialise on missing data, §7.0 R4 / de-shame).
     target_date: date | None = None
     three_state: str | None = None
+    # ADR-0049 §7.0 / 8e-6d suppress-on-stale floor (杠杆④): set ONLY when a positive-velocity
+    # projection was suppressed because the most recent fold-changing fact is older than the
+    # freshness threshold (so ``projected_payoff_date`` is None here). Carries the whole-days
+    # since the last activity so the UI shows "已 N 天没更新，估算可能已过期" (warn, not a date)
+    # rather than a fabricated payoff date. None in every other shape (fresh / thin / non-external).
+    days_since_last_activity: int | None = None
 
     @field_serializer("achieved_at")
     def serialize_evaluation_datetime(self, value: datetime | None) -> str | None:
