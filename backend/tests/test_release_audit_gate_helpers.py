@@ -93,13 +93,16 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
 
 
 def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
+    # §杠杆③ slice 3a re-points the single in-flight grandfather to 113 -> 115
+    # (repayment-draft create + dismiss). The prior 110 -> 113 hop is dead history —
+    # main sits at 113, so no future pr-delta has base 110.
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 113
+    baseline["mutate_token_exempted"] = 115
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 110}
+        {"mutate_token_exempted": 113}
     )
 
     assert violations == []
@@ -108,6 +111,8 @@ def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> 
 def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
 
+    # Non-grandfathered transitions still fail: the 113 -> 115 exception is exact,
+    # so neither an intermediate (113 -> 114) nor an unrelated (112 -> 113) is waved through.
     for base_count, current_count in ((112, 113), (113, 114)):
         baseline = dict(mod.STRICT_EQUALITY_BASELINE)
         baseline["mutate_token_exempted"] = current_count

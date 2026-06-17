@@ -405,3 +405,94 @@ Index(
     unique=True,
     postgresql_where=text("status = 'pending'"),
 )
+
+
+class RepaymentDraft(Base):
+    """An NLS-captured repayment awaiting human review (ADR-0049 §杠杆③, slice 3a).
+
+    The Android NotificationListenerService classifies a payment notification as a
+    *repayment* ("还款成功" / "自动扣款") for an external revolving debt (花呗 / 借呗 /
+    白条 / 京东 / 美团月付 / 银行卡) and posts it here as a PENDING draft — NEVER an
+    auto-recorded fact (§8: best-effort capture lands in review, the user confirms).
+    A repayment is not an obligation until attached to a Debt, so it gets its own
+    holding table rather than riding the pending-``Expense`` notification-draft path
+    (which would mis-file a repayment as new spending — the live double-count bug this
+    slice fixes by routing repayments away from the expense classifier).
+
+    Confirm records ONE ``Repayment`` against a user-chosen open external/manual Debt
+    (reusing :func:`record_repayment` — same §2.1 lock + overpay + OCC guards) and
+    latches the draft ``confirmed``; dismiss latches ``dismissed``. Both flips serialize
+    on the draft row (``SELECT ... FOR UPDATE`` + status guard) so two confirms can't
+    each record a repayment. The amount is home-currency minor units (CNY notifications
+    are already home-currency — no [[0027]] FX freeze on the draft; the confirmed
+    ``Repayment`` is plain ``amount_cents``).
+
+    Dedup mirrors the expense notification-draft path (``_notification_draft_key``): a
+    per-tenant ``draft_idempotency_key`` over the on-device per-post identity
+    (SHA-256(``sbn.key`` | ``postTime``)) plus content + 30-min window, so a re-posted
+    notification does not create a second draft. Slice 3a stores every draft UNLINKED
+    (the user picks the Debt at confirm time); server-side fuzzy matching (label + amount
+    → suggested Debt) is slice 3b and adds a nullable ``matched_debt_public_id`` then.
+    """
+
+    __tablename__ = "repayment_drafts"
+    __table_args__ = (
+        CheckConstraint("amount_cents > 0", name="ck_repayment_drafts_amount_positive"),
+        CheckConstraint(
+            "status IN ('pending', 'confirmed', 'dismissed')",
+            name="ck_repayment_drafts_status_valid",
+        ),
+        CheckConstraint(
+            "length(home_currency_code) = 3", name="ck_repayment_drafts_home_currency_format"
+        ),
+        # Per-tenant content+identity dedup: a re-posted notification reduces to the
+        # same key and returns the existing draft instead of inserting a twin.
+        UniqueConstraint(
+            "tenant_id", "draft_idempotency_key", name="uq_repayment_drafts_idem"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_repayment_drafts_tenant_ledger"),
+        nullable=False,
+        index=True,
+    )
+    created_by_account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("accounts.id", name="fk_repayment_drafts_created_by_account"),
+        nullable=False,
+    )
+
+    # --- captured payment (home-currency; CNY notifications carry no FX) ----------
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    merchant_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # --- dedup + lifecycle -------------------------------------------------------
+    draft_idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default="pending", nullable=False
+    )
+    # Set on confirm (loose public-id back-links; no FK so a later Debt/Repayment
+    # archival never blocks a confirmed draft from rendering its provenance).
+    committed_debt_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    committed_repayment_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by_account_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("accounts.id", name="fk_repayment_drafts_resolved_by_account"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
+
+Index("ix_repayment_drafts_tenant_status", RepaymentDraft.tenant_id, RepaymentDraft.status)

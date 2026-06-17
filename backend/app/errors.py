@@ -104,6 +104,11 @@ ERROR_MESSAGES = {
     "repayment_proposal_expired": "还款申请已过期，请重新发起。",
     "repayment_proposal_amount_invalid": "请填写正确的还款金额。",
     "repayment_proposal_already_pending": "已有一条待处理的还款申请。",
+    # ADR-0049 §杠杆③ (slice 3a): NLS-captured repayment review inbox. A stale
+    # ``expected_row_version`` on confirm and re-resolving an already-resolved draft
+    # reuse the generic ``state_conflict``; an invalid capture channel reuses
+    # ``notification_source_invalid``; an overpay reuses ``debt_overpay_rejected``.
+    "repayment_draft_not_found": "这条还款记录不存在或已处理。",
     "notification_source_invalid": "通知来源暂不支持。",
     "merchant_alias_not_found": "商家别名不存在。",
     "merchant_alias_conflict": "商家别名已指向其他商家。",

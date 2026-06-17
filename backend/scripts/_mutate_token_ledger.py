@@ -145,6 +145,7 @@ _BILL_SPLIT = ("bill_split_invitations",)
 _DASHBOARD = ("dashboard_card_preferences",)
 _DEBTS = ("debts",)
 _MEMBER_REPAYMENT_PROPOSAL = ("member_repayment_proposals",)
+_REPAYMENT_DRAFTS = ("repayment_drafts",)
 
 
 # Key format: ``"METHOD PATH"`` exactly as FastAPI registers it.
@@ -166,6 +167,12 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/debts/{public_id}/repayment-proposals": Exempt(
         "create_row", "debts", _MEMBER_REPAYMENT_PROPOSAL
     ),
+    # ADR-0049 §杠杆③ (slice 3a): the NLS captures a repayment notification and posts a
+    # brand-new PENDING RepaymentDraft row — no prior version to fence; safe replay rests
+    # on the per-tenant content+identity dedup key (uq_repayment_drafts_idem), not an
+    # expected_row_version token. NOT fold-changing (a captured draft is a review intent,
+    # not a Repayment fact — the confirm route below IS fold-changing and carries the token).
+    "POST /api/repayment-drafts": Exempt("create_row", "debts", _REPAYMENT_DRAFTS),
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
@@ -216,6 +223,14 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
     "POST /api/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject": Exempt(
         "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
+    ),
+    # ADR-0049 §杠杆③ (slice 3a): user dismisses a pending repayment draft. Flips the
+    # status to a terminal ``dismissed`` via a ``SELECT ... FOR UPDATE`` + status guard
+    # (the draft row serializes concurrent resolutions); commits no Repayment, so no
+    # expected_row_version. (CONFIRM IS fold-changing — it records a Repayment and carries
+    # the token — and is auto-detected as a carrier, not listed here.)
+    "POST /api/repayment-drafts/{public_id}/dismiss": Exempt(
+        "terminal_flag_flip", "debts", _REPAYMENT_DRAFTS
     ),
     "POST /api/recurring/items/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /api/tasks/{public_id}/cancel": Exempt("terminal_flag_flip", "tasks", ("background_tasks",)),

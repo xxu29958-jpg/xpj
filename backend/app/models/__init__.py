@@ -53,6 +53,7 @@ from app.models.debt import (
     DebtVoid,
     MemberRepaymentProposal,
     Repayment,
+    RepaymentDraft,
     RepaymentVoid,
 )
 from app.models.exchange import ExchangeRate, FxRate
@@ -120,6 +121,7 @@ __all__ = [
     "PairingCode",
     "RecurringItem",
     "Repayment",
+    "RepaymentDraft",
     "RepaymentVoid",
     "RuleApplicationBatch",
     "RuleApplicationChange",
