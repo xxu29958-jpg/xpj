@@ -51,6 +51,7 @@
     <ID>TooManyFunctions:OutboxDrainEngineTest.kt:OutboxDrainEngineTest</ID>
     <ID>TooManyFunctions:OutboxDrainWorkerTest.kt:OutboxDrainWorkerTest</ID>
     <ID>TooManyFunctions:OutboxRepositoryTest.kt:OutboxRepositoryTest</ID>
+    <ID>TooManyFunctions:PaymentNotificationParserTest.kt:PaymentNotificationParserTest</ID>
     <ID>TooManyFunctions:PendingThumbnailLoaderTest.kt:ThumbnailFakeReviewActions : PendingReviewActions</ID>
     <ID>TooManyFunctions:PendingViewModelReviewSheetAndStateTest.kt:PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewTestBase</ID>
     <ID>TooManyFunctions:PendingViewModelReviewTestSupport.kt:FakeReviewActions : PendingReviewActions</ID>

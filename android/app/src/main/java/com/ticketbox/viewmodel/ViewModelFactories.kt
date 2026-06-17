@@ -12,6 +12,7 @@ import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.TagActions
@@ -108,6 +109,16 @@ fun memberRepaymentProposalViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return MemberRepaymentProposalViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun repaymentDraftInboxViewModelFactory(
+    drafts: RepaymentDraftActions,
+    debts: DebtActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return RepaymentDraftInboxViewModel(drafts, debts) as T
     }
 }
 

@@ -73,7 +73,7 @@ internal fun LedgerRoute(
         onClearFilters = ledgerViewModel::clearFilters,
         onSync = ledgerViewModel::sync,
         onExportCsv = ledgerViewModel::exportCsv,
-        onOpenBillSplit = shellState::openBillSplits,
+        onOpenBillSplit = { shellState.openStatsSecondary(StatsSecondaryPage.BillSplits) },
         onManualCreate = ledgerViewModel::createManualExpense,
         onViewModeChange = ledgerViewModel::setViewMode,
         onEdit = { navController.openExpense(it.id) },

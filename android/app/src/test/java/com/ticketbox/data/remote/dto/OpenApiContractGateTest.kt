@@ -126,6 +126,16 @@ class OpenApiContractGateTest {
         Pairing(MemberRepaymentProposalConfirmRequestDto::class, "MemberRepaymentProposalConfirmRequest"),
         Pairing(MemberRepaymentProposalRejectRequestDto::class, "MemberRepaymentProposalRejectRequest"),
         Pairing(MemberRepaymentProposalWithdrawRequestDto::class, "MemberRepaymentProposalWithdrawRequest"),
+        // ADR-0049 §杠杆③ (slice 3a) NLS repayment-capture inbox. The response models all 7 required
+        // RepaymentDraftResponse fields (reverse check); create/confirm bodies are
+        // additionalProperties=false → the forward check is the forbid protection, and the
+        // home-currency-only create DTO omits the original-currency surface (it does not exist —
+        // the capture is CNY-only). Dismiss is a no-field body (the backend requires an empty {}).
+        Pairing(RepaymentDraftDto::class, "RepaymentDraftResponse"),
+        Pairing(RepaymentDraftListResponseDto::class, "RepaymentDraftListResponse"),
+        Pairing(RepaymentDraftCreateRequestDto::class, "RepaymentDraftCreateRequest"),
+        Pairing(RepaymentDraftConfirmRequestDto::class, "RepaymentDraftConfirmRequest"),
+        Pairing(RepaymentDraftDismissRequestDto::class, "RepaymentDraftDismissRequest"),
     )
 
     // Backend `required` fields a DTO intentionally does NOT model (Android doesn't

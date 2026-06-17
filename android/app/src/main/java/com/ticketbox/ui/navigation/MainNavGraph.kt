@@ -175,6 +175,12 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
+            // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱规划二级页。
+            StatsSecondaryPage.RepaymentDrafts -> RepaymentDraftRoute(
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+            )
+
             null -> MainTabRoute(
                 navController = navController,
                 shellState = shellState,

@@ -37,6 +37,7 @@ import com.ticketbox.data.repository.RecognizeTextDispatcher
 import com.ticketbox.data.repository.ReplaceItemsDispatcher
 import com.ticketbox.data.repository.ReplaceSplitsDispatcher
 import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.RepaymentDraftRepository
 import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
@@ -375,6 +376,14 @@ class AppContainer(context: Context) {
 
     // ADR-0049 §2 (slice 8): Debt entity repository. Direct-only online (no outbox surface).
     val debtRepository = DebtRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+
+    // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库。direct-only online；NLS service 路由还款草稿到它。
+    val repaymentDraftRepository = RepaymentDraftRepository(
         apiClient = apiClient,
         settingsStore = settingsStore,
         tokenStore = tokenStore,

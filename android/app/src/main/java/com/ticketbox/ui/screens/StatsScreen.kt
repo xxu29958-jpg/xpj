@@ -84,6 +84,8 @@ fun StatsScreen(
     onOpenDebtGoals: () -> Unit = {},
     // ADR-0049 §2 (slice 8): 债务管理(欠款列表)二级页。默认 no-op 保旧调用方/预览。
     onOpenDebts: () -> Unit = {},
+    // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱二级页。默认 no-op 保旧调用方/预览。
+    onOpenRepaymentDrafts: () -> Unit = {},
     // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
     onDrillToLedger: (String) -> Unit = {},
     // 轴3 粒度切换:动态图表卡的日/周档切换,交给 StatsReportsViewModel 重拉。
@@ -129,6 +131,7 @@ fun StatsScreen(
                 onOpenIncomePlans = onOpenIncomePlans,
                 onOpenDebtGoals = onOpenDebtGoals,
                 onOpenDebts = onOpenDebts,
+                onOpenRepaymentDrafts = onOpenRepaymentDrafts,
             )
         }
         state.message?.let {
@@ -306,50 +309,22 @@ private fun StatsTopPanel(
     onOpenIncomePlans: () -> Unit,
     onOpenDebtGoals: () -> Unit,
     onOpenDebts: () -> Unit,
+    onOpenRepaymentDrafts: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
         AppPageHeader(
             title = stringResource(R.string.stats_header_title),
             action = {
-                var planningMenuOpen by remember { mutableStateOf(false) }
-                Box {
-                    TextButton(onClick = { planningMenuOpen = true }) {
-                        Text(
-                            text = stringResource(R.string.stats_header_planning),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = null,
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = planningMenuOpen,
-                        onDismissRequest = { planningMenuOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.stats_header_open_budget)) },
-                            onClick = { planningMenuOpen = false; onOpenBudget() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.stats_header_open_recurring)) },
-                            onClick = { planningMenuOpen = false; onOpenRecurring() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
-                            onClick = { planningMenuOpen = false; onOpenIncomePlans() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
-                            onClick = { planningMenuOpen = false; onOpenDebtGoals() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.stats_header_open_debts)) },
-                            onClick = { planningMenuOpen = false; onOpenDebts() },
-                        )
-                    }
-                }
+                StatsPlanningMenu(
+                    actions = StatsPlanningActions(
+                        onOpenBudget = onOpenBudget,
+                        onOpenRecurring = onOpenRecurring,
+                        onOpenIncomePlans = onOpenIncomePlans,
+                        onOpenDebtGoals = onOpenDebtGoals,
+                        onOpenDebts = onOpenDebts,
+                        onOpenRepaymentDrafts = onOpenRepaymentDrafts,
+                    ),
+                )
             },
         )
         StatsFilterRow(
@@ -363,6 +338,57 @@ private fun StatsTopPanel(
             visibleDashboardKeys = visibleDashboardKeys,
             onTabChange = onTabChange,
         )
+    }
+}
+
+/** 「规划」下拉菜单的六个二级页入口（预算 / 固定支出 / 收入计划 / 还债目标 / 债务管理 / 还款待确认）。 */
+private data class StatsPlanningActions(
+    val onOpenBudget: () -> Unit,
+    val onOpenRecurring: () -> Unit,
+    val onOpenIncomePlans: () -> Unit,
+    val onOpenDebtGoals: () -> Unit,
+    val onOpenDebts: () -> Unit,
+    val onOpenRepaymentDrafts: () -> Unit,
+)
+
+@Composable
+private fun StatsPlanningMenu(actions: StatsPlanningActions) {
+    var planningMenuOpen by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { planningMenuOpen = true }) {
+            Text(
+                text = stringResource(R.string.stats_header_planning),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = planningMenuOpen, onDismissRequest = { planningMenuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_budget)) },
+                onClick = { planningMenuOpen = false; actions.onOpenBudget() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_recurring)) },
+                onClick = { planningMenuOpen = false; actions.onOpenRecurring() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
+                onClick = { planningMenuOpen = false; actions.onOpenIncomePlans() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
+                onClick = { planningMenuOpen = false; actions.onOpenDebtGoals() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_debts)) },
+                onClick = { planningMenuOpen = false; actions.onOpenDebts() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_repayment_drafts)) },
+                onClick = { planningMenuOpen = false; actions.onOpenRepaymentDrafts() },
+            )
+        }
     }
 }
 
