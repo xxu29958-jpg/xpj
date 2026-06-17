@@ -20,6 +20,7 @@ class RepaymentDraftMappersTest {
             merchantLabel = "花呗",
             capturedAt = "2026-06-17T08:00:00Z",
             status = RepaymentDraftStatuses.PENDING,
+            suggestedDebtPublicId = "debt-suggest",
             committedDebtPublicId = null,
             committedRepaymentPublicId = null,
             createdAt = "2026-06-17T08:00:01Z",
@@ -32,6 +33,8 @@ class RepaymentDraftMappersTest {
         assertEquals("CNY", domain.homeCurrencyCode)
         assertEquals("花呗", domain.merchantLabel)
         assertEquals("2026-06-17T08:00:00Z", domain.capturedAt)
+        // §杠杆③ 3b: the server's ephemeral inbox match is carried through to the domain model.
+        assertEquals("debt-suggest", domain.suggestedDebtPublicId)
         assertTrue(domain.isPending)
     }
 
@@ -54,6 +57,8 @@ class RepaymentDraftMappersTest {
         assertEquals("debt-9", domain.committedDebtPublicId)
         assertEquals("rep-9", domain.committedRepaymentPublicId)
         assertEquals("2026-06-17T09:00:00Z", domain.resolvedAt)
+        // A resolved draft carries no suggestion (the DTO omits it → null).
+        assertNull(domain.suggestedDebtPublicId)
         assertTrue(!domain.isPending)
     }
 

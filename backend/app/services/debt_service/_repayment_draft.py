@@ -19,8 +19,12 @@ service face:
 * :func:`dismiss_repayment_draft` — latches a pending draft ``dismissed`` (idempotent if
   already dismissed; ``state_conflict`` if already confirmed).
 
-Slice 3a stores every draft UNLINKED — the user picks the target Debt at confirm time.
-Server-side fuzzy matching (counterparty_label + amount → suggested Debt) is slice 3b.
+Every draft is stored UNLINKED — the user picks the target Debt at confirm time. Slice 3b
+adds a server-side fuzzy match (counterparty_label + amount → suggested Debt) that
+:func:`list_repayment_drafts` computes EPHEMERALLY per pending draft and returns as
+``RepaymentDraftResponse.suggested_debt_public_id`` (see :mod:`_repayment_draft_match`).
+It is never stored on the draft: a Debt suggested at capture time can be cleared / voided /
+created by review time, so the match is recomputed against current Debt state every list.
 """
 
 from __future__ import annotations
@@ -41,6 +45,10 @@ from app.schemas import (
 )
 from app.services.currency_common import home_currency_code
 from app.services.debt_service._repayment import record_repayment
+from app.services.debt_service._repayment_draft_match import (
+    list_repayment_match_candidates,
+    suggest_debt_public_id,
+)
 from app.services.time_service import ensure_utc, now_utc
 
 # Capture channels (display label is for /web + provenance, not the dedup axis).
@@ -111,7 +119,14 @@ def _repayment_draft_key(
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
-def repayment_draft_response(draft: RepaymentDraft) -> RepaymentDraftResponse:
+def repayment_draft_response(
+    draft: RepaymentDraft, *, suggested_debt_public_id: str | None = None
+) -> RepaymentDraftResponse:
+    # ``suggested_debt_public_id`` is the §杠杆③ slice-3b inbox match — supplied ONLY by the
+    # list path for a pending draft (ephemeral, never stored). Every other caller (create /
+    # confirm / dismiss responses, the confirm idempotency-replay re-serialize) returns a
+    # draft with no suggestion: a freshly-captured draft is for the NLS poster (which never
+    # uses the match) and a resolved draft is already linked.
     return RepaymentDraftResponse(
         public_id=draft.public_id,
         source=draft.source,
@@ -120,6 +135,7 @@ def repayment_draft_response(draft: RepaymentDraft) -> RepaymentDraftResponse:
         merchant_label=draft.merchant_label,
         captured_at=draft.captured_at,
         status=draft.status,
+        suggested_debt_public_id=suggested_debt_public_id,
         committed_debt_public_id=draft.committed_debt_public_id,
         committed_repayment_public_id=draft.committed_repayment_public_id,
         created_at=draft.created_at,
@@ -219,8 +235,30 @@ def list_repayment_drafts(
         RepaymentDraft.created_at.desc(), RepaymentDraft.id.desc()
     )
     drafts = list(db.scalars(statement))
+    # §杠杆③ slice 3b: suggest a target Debt for each PENDING draft (ephemeral — recomputed
+    # here, never stored). Fetch the repayable candidate set once (only when there is a
+    # pending draft to match) and run the pure matcher per pending draft; a resolved /
+    # dismissed draft carries no suggestion.
+    has_pending = any(draft.status == "pending" for draft in drafts)
+    candidates = (
+        list_repayment_match_candidates(db, tenant_id=tenant_id) if has_pending else []
+    )
     return RepaymentDraftListResponse(
-        items=[repayment_draft_response(draft) for draft in drafts]
+        items=[
+            repayment_draft_response(
+                draft,
+                suggested_debt_public_id=(
+                    suggest_debt_public_id(
+                        amount_cents=draft.amount_cents,
+                        merchant_label=draft.merchant_label,
+                        candidates=candidates,
+                    )
+                    if draft.status == "pending"
+                    else None
+                ),
+            )
+            for draft in drafts
+        ]
     )
 
 

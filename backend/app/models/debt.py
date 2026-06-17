@@ -430,9 +430,9 @@ class RepaymentDraft(Base):
     Dedup mirrors the expense notification-draft path (``_notification_draft_key``): a
     per-tenant ``draft_idempotency_key`` over the on-device per-post identity
     (SHA-256(``sbn.key`` | ``postTime``)) plus content + 30-min window, so a re-posted
-    notification does not create a second draft. Slice 3a stores every draft UNLINKED
-    (the user picks the Debt at confirm time); server-side fuzzy matching (label + amount
-    → suggested Debt) is slice 3b and adds a nullable ``matched_debt_public_id`` then.
+    notification does not create a second draft. Every draft is stored UNLINKED; slice 3b's
+    fuzzy match (label + amount → suggested Debt, :mod:`_repayment_draft_match`) is computed
+    EPHEMERALLY per list as ``RepaymentDraftResponse.suggested_debt_public_id`` — never stored.
     """
 
     __tablename__ = "repayment_drafts"

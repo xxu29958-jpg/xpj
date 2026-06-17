@@ -15,6 +15,7 @@ fun RepaymentDraftDto.toDomain(): RepaymentDraft = RepaymentDraft(
     merchantLabel = merchantLabel,
     capturedAt = capturedAt,
     status = status,
+    suggestedDebtPublicId = suggestedDebtPublicId,
     committedDebtPublicId = committedDebtPublicId,
     committedRepaymentPublicId = committedRepaymentPublicId,
     createdAt = createdAt,

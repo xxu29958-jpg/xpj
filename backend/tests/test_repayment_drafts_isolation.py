@@ -129,6 +129,44 @@ def test_cross_ledger_draft_is_isolated(client: TestClient, *, identity) -> None
     )
 
 
+def test_suggestion_candidate_set_excludes_cross_tenant_debt(client: TestClient, *, identity) -> None:
+    # §杠杆③ slice 3b: the suggested-Debt candidate query is tenant-scoped. Owner holds a
+    # non-matching external Debt (京东白条); ledger B holds the matching 花呗 Debt. The owner's
+    # 花呗 draft must NOT be suggested ledger B's Debt — a dropped tenant filter would leak it.
+    owner_debt = client.post(
+        "/api/debts",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "direction": "i_owe",
+            "counterparty_type": "external",
+            "counterparty_label": "京东白条",
+            "principal_amount_cents": 50000,
+        },
+    )
+    assert owner_debt.status_code == 201, owner_debt.json()
+
+    other_account = _seed_personal_ledger(name="ledger-b-owner", ledger_id="ledger_b")
+    other_token = _mint_app_token(account_id=other_account, ledger_id="ledger_b")
+    b_debt = client.post(
+        "/api/debts",
+        headers={**_headers(other_token), "Idempotency-Key": str(uuid4())},
+        json={
+            "direction": "i_owe",
+            "counterparty_type": "external",
+            "counterparty_label": "花呗",
+            "principal_amount_cents": 50000,
+        },
+    )
+    assert b_debt.status_code == 201, b_debt.json()
+
+    draft = _create_owner_draft(client, identity, amount_cents=20000)  # merchant_label="花呗"
+    listing = client.get("/api/repayment-drafts", headers=identity.app_headers).json()
+    listed = next(d for d in listing["items"] if d["public_id"] == draft["public_id"])
+    # Owner's only candidate is 京东白条 (no 花呗 match) → no suggestion, and never ledger B's Debt.
+    assert listed["suggested_debt_public_id"] is None
+    assert listed["suggested_debt_public_id"] != b_debt.json()["public_id"]
+
+
 def test_confirm_replay_with_different_actor_is_reused_not_hit(client: TestClient, *, identity) -> None:
     # Owner confirms a draft with key K; a SECOND writer in the SAME ledger replaying the
     # SAME key K with the SAME payload differs only by actor → the §3.6 actor-scoped

@@ -86,6 +86,11 @@ class RepaymentDraftResponse(BaseModel):
     merchant_label: str | None = None
     captured_at: datetime
     status: str
+    # §杠杆③ slice 3b: the inbox's server-suggested target Debt (fuzzy counterparty_label +
+    # amount). Ephemeral — recomputed every list, never stored — and populated ONLY for a
+    # pending draft (a resolved/created draft has none). null = no confident match → the
+    # user picks manually. A suggestion is not a fact (§8); confirm is still authoritative.
+    suggested_debt_public_id: str | None = None
     committed_debt_public_id: str | None = None
     committed_repayment_public_id: str | None = None
     created_at: datetime

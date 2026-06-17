@@ -9524,6 +9524,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "suggested_debt_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Debt Public Id"
           }
         },
         "required": [

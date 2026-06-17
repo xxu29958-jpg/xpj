@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -99,7 +100,8 @@ fun RepaymentDraftInboxScreen(
         repaymentDraftListSection(
             state = state,
             currency = currency,
-            onConfirm = { draft -> pickerDraftId = draft.publicId },
+            onConfirmSuggested = { draft, debt -> viewModel.confirm(draft.publicId, debt) },
+            onOpenPicker = { draft -> pickerDraftId = draft.publicId },
             onDismiss = viewModel::dismiss,
         )
     }
@@ -107,7 +109,10 @@ fun RepaymentDraftInboxScreen(
     val activeDraftId = pickerDraftId
     if (activeDraftId != null) {
         DebtPickerSheet(
-            state = state,
+            model = DebtPickerModel(
+                debts = state.targetDebts,
+                suggestedPublicId = state.suggestedDebtByDraftId[activeDraftId]?.publicId,
+            ),
             currency = currency,
             sheetState = sheetState,
             onPick = { debt ->
@@ -141,23 +146,38 @@ private fun RepaymentDraftInboxHeader(onBack: () -> Unit) {
 private fun LazyListScope.repaymentDraftListSection(
     state: RepaymentDraftInboxUiState,
     currency: CurrencyDisplay,
-    onConfirm: (RepaymentDraft) -> Unit,
+    onConfirmSuggested: (RepaymentDraft, Debt) -> Unit,
+    onOpenPicker: (RepaymentDraft) -> Unit,
     onDismiss: (String) -> Unit,
 ) {
     if (state.drafts.isEmpty() && !state.isLoading) {
         item { RepaymentDraftEmptyStateCard() }
     } else {
         items(state.drafts, key = { it.publicId }) { draft ->
+            val suggested = state.suggestedDebtByDraftId[draft.publicId]
             RepaymentDraftCard(
                 draft = draft,
                 currency = currency,
+                suggestedDebt = suggested,
                 action = draftRowAction(state, draft.publicId),
-                onConfirm = { onConfirm(draft) },
-                onDismiss = { onDismiss(draft.publicId) },
+                callbacks = RepaymentDraftCardCallbacks(
+                    // With a suggestion the primary action confirms it directly; without one it
+                    // opens the picker (slice-3a behavior). "选其他欠款" always opens the picker.
+                    onConfirmSuggested = { if (suggested != null) onConfirmSuggested(draft, suggested) },
+                    onOpenPicker = { onOpenPicker(draft) },
+                    onDismiss = { onDismiss(draft.publicId) },
+                ),
             )
         }
     }
 }
+
+/** Per-card action callbacks bundled so [RepaymentDraftCard] stays within the parameter budget. */
+private class RepaymentDraftCardCallbacks(
+    val onConfirmSuggested: () -> Unit,
+    val onOpenPicker: () -> Unit,
+    val onDismiss: () -> Unit,
+)
 
 private fun draftRowAction(state: RepaymentDraftInboxUiState, draftPublicId: String): DraftRowAction = when {
     state.pendingActionDraftId == draftPublicId -> DraftRowAction.Busy
@@ -169,9 +189,9 @@ private fun draftRowAction(state: RepaymentDraftInboxUiState, draftPublicId: Str
 private fun RepaymentDraftCard(
     draft: RepaymentDraft,
     currency: CurrencyDisplay,
+    suggestedDebt: Debt?,
     action: DraftRowAction,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
+    callbacks: RepaymentDraftCardCallbacks,
 ) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
@@ -204,10 +224,22 @@ private fun RepaymentDraftCard(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+            if (suggestedDebt != null) {
+                Spacer(Modifier.size(AppSpacing.compactGap))
+                Text(
+                    stringResource(R.string.repayment_draft_suggested_target, debtPickerLabel(suggestedDebt)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Spacer(Modifier.size(AppSpacing.compactGap))
             HorizontalDivider()
             Spacer(Modifier.size(AppSpacing.compactGap))
-            RepaymentDraftCardActions(action = action, onConfirm = onConfirm, onDismiss = onDismiss)
+            RepaymentDraftCardActions(
+                action = action,
+                hasSuggestion = suggestedDebt != null,
+                callbacks = callbacks,
+            )
         }
     }
 }
@@ -215,26 +247,41 @@ private fun RepaymentDraftCard(
 @Composable
 private fun RepaymentDraftCardActions(
     action: DraftRowAction,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
+    hasSuggestion: Boolean,
+    callbacks: RepaymentDraftCardCallbacks,
 ) {
     val enabled = action == DraftRowAction.Idle
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        TextButton(onClick = onDismiss, enabled = enabled) {
+        TextButton(onClick = callbacks.onDismiss, enabled = enabled) {
             Text(stringResource(R.string.repayment_draft_dismiss))
         }
         Spacer(Modifier.width(AppSpacing.smallGap))
-        Button(onClick = onConfirm, enabled = enabled) {
-            Text(
-                if (action == DraftRowAction.Busy) {
-                    stringResource(R.string.repayment_draft_action_busy)
-                } else {
-                    stringResource(R.string.repayment_draft_confirm)
-                },
-            )
+        if (hasSuggestion) {
+            // The server pre-selected a Debt: confirm it directly, or "选其他欠款" to override.
+            TextButton(onClick = callbacks.onOpenPicker, enabled = enabled) {
+                Text(stringResource(R.string.repayment_draft_choose_other))
+            }
+            Spacer(Modifier.width(AppSpacing.smallGap))
+            Button(onClick = callbacks.onConfirmSuggested, enabled = enabled) {
+                Text(repaymentDraftPrimaryLabel(action, R.string.repayment_draft_confirm_suggested))
+            }
+        } else {
+            // No suggestion (slice-3a): the primary action opens the picker to choose a Debt.
+            Button(onClick = callbacks.onOpenPicker, enabled = enabled) {
+                Text(repaymentDraftPrimaryLabel(action, R.string.repayment_draft_confirm))
+            }
         }
     }
 }
+
+/** Primary-button label: the busy spinner copy while this draft is processing, else [idleRes]. */
+@Composable
+private fun repaymentDraftPrimaryLabel(action: DraftRowAction, idleRes: Int): String =
+    if (action == DraftRowAction.Busy) {
+        stringResource(R.string.repayment_draft_action_busy)
+    } else {
+        stringResource(idleRes)
+    }
 
 @Composable
 private fun RepaymentDraftEmptyStateCard() {
@@ -258,15 +305,25 @@ private fun RepaymentDraftEmptyStateCard() {
     }
 }
 
+/** The picker's data: the repayable Debt list + which one (if any) the server suggested. */
+private class DebtPickerModel(
+    val debts: List<Debt>,
+    val suggestedPublicId: String?,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DebtPickerSheet(
-    state: RepaymentDraftInboxUiState,
+    model: DebtPickerModel,
     currency: CurrencyDisplay,
     sheetState: androidx.compose.material3.SheetState,
     onPick: (Debt) -> Unit,
     onClose: () -> Unit,
 ) {
+    // Pin the suggested Debt to the top (stable sort keeps the rest in order); it also gets a badge.
+    val ordered = remember(model.debts, model.suggestedPublicId) {
+        model.debts.sortedByDescending { it.publicId == model.suggestedPublicId }
+    }
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
             Text(
@@ -275,15 +332,20 @@ private fun DebtPickerSheet(
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.size(AppSpacing.smallGap))
-            if (state.targetDebts.isEmpty()) {
+            if (ordered.isEmpty()) {
                 Text(
                     stringResource(R.string.repayment_draft_picker_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                state.targetDebts.forEach { debt ->
-                    DebtPickerRow(debt = debt, currency = currency, onPick = { onPick(debt) })
+                ordered.forEach { debt ->
+                    DebtPickerRow(
+                        debt = debt,
+                        currency = currency,
+                        isSuggested = debt.publicId == model.suggestedPublicId,
+                        onPick = { onPick(debt) },
+                    )
                 }
             }
             Spacer(Modifier.size(AppSpacing.compactGap))
@@ -292,15 +354,27 @@ private fun DebtPickerSheet(
 }
 
 @Composable
-private fun DebtPickerRow(debt: Debt, currency: CurrencyDisplay, onPick: () -> Unit) {
-    val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
-        ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
+private fun DebtPickerRow(
+    debt: Debt,
+    currency: CurrencyDisplay,
+    isSuggested: Boolean,
+    onPick: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onPick).padding(vertical = AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Spacer(Modifier.width(AppSpacing.smallGap))
+        Text(debtPickerLabel(debt), style = MaterialTheme.typography.bodyLarge)
+        if (isSuggested) {
+            Spacer(Modifier.width(AppSpacing.smallGap))
+            Text(
+                stringResource(R.string.repayment_draft_picker_suggested_badge),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(Modifier.weight(1f))
         Text(
             stringResource(
                 R.string.repayment_draft_picker_remaining,
@@ -311,3 +385,9 @@ private fun DebtPickerRow(debt: Debt, currency: CurrencyDisplay, onPick: () -> U
         )
     }
 }
+
+/** Display label for a target Debt: its counterparty label, or the type fallback when unlabeled. */
+@Composable
+private fun debtPickerLabel(debt: Debt): String =
+    debt.counterpartyLabel?.takeIf { it.isNotBlank() }
+        ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
