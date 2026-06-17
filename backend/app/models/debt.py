@@ -162,7 +162,14 @@ class Repayment(Base):
     actor_account_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("accounts.id", name="fk_repayments_actor_account"), nullable=False
     )
-    proposal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Back-link to the proposal this repayment committed (NULL for direct/draft repayments).
+    # Nullable circular pair with MemberRepaymentProposal.committed_repayment_id (see its
+    # use_alter note). RESTRICT: append-only facts, never deleted.
+    proposal_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("member_repayment_proposals.id", name="fk_repayments_proposal", ondelete="RESTRICT"),
+        nullable=True,
+    )
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
@@ -333,6 +340,18 @@ class MemberRepaymentProposal(Base):
             name="ck_member_repayment_proposals_status_valid",
         ),
         CheckConstraint("length(home_currency_code) = 3", name="ck_mrp_home_currency_format"),
+        # §3.2 backstop: committed_repayment_id set IFF (partially_)confirmed (boolean-equality
+        # = both directions). The other statuses require it NULL.
+        CheckConstraint(
+            "(status IN ('confirmed', 'partially_confirmed')) = (committed_repayment_id IS NOT NULL)",
+            name="ck_mrp_committed_iff_confirmed",
+        ),
+        # confirmed_amount_cents tracks committed_repayment_id 1:1 (both set only on confirm);
+        # kept a separate named CHECK so a future divergence is individually diagnosable.
+        CheckConstraint(
+            "(status IN ('confirmed', 'partially_confirmed')) = (confirmed_amount_cents IS NOT NULL)",
+            name="ck_mrp_confirmed_amount_iff_confirmed",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -373,9 +392,26 @@ class MemberRepaymentProposal(Base):
         String(32), default="pending", server_default="pending", nullable=False
     )
     confirmed_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Plain int (no FK) — mirrors Repayment.proposal_id's loose back-link style.
-    committed_repayment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    supersedes_proposal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # FK to the committed Repayment (set only on confirm — see the status CHECKs).
+    # use_alter=True breaks the create_all ordering cycle of the nullable circular pair
+    # with Repayment.proposal_id (emitted as a post-CREATE ALTER). RESTRICT: append-only.
+    committed_repayment_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "repayments.id",
+            name="fk_mrp_committed_repayment",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    # Self-ref to the prior pending proposal this one superseded at create time (NULL for
+    # the first proposal on a Debt). ondelete RESTRICT — proposals are status-latched, never deleted.
+    supersedes_proposal_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("member_repayment_proposals.id", name="fk_mrp_supersedes_proposal", ondelete="RESTRICT"),
+        nullable=True,
+    )
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     # §3.2: a pending proposal expires after 30 days if neither side acts.
@@ -444,6 +480,12 @@ class RepaymentDraft(Base):
         ),
         CheckConstraint(
             "length(home_currency_code) = 3", name="ck_repayment_drafts_home_currency_format"
+        ),
+        # Backstop: committed_repayment_public_id set IFF confirmed (confirm sets both
+        # committed_* together; pending/dismissed leave them NULL).
+        CheckConstraint(
+            "(status = 'confirmed') = (committed_repayment_public_id IS NOT NULL)",
+            name="ck_repayment_drafts_committed_iff_confirmed",
         ),
         # Per-tenant content+identity dedup: a re-posted notification reduces to the
         # same key and returns the existing draft instead of inserting a twin.
