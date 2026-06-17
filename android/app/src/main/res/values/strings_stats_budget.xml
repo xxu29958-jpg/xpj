@@ -545,6 +545,10 @@
     <string name="repayment_draft_picker_title">这笔还款对应哪笔欠款？</string>
     <string name="repayment_draft_picker_empty">没有可对应的欠款。请先在「债务管理」里新建一笔外部欠款。</string>
     <string name="repayment_draft_picker_remaining">还剩 %1$s</string>
+    <string name="repayment_draft_picker_suggested_badge">建议</string>
+    <string name="repayment_draft_suggested_target">建议还到「%1$s」</string>
+    <string name="repayment_draft_confirm_suggested">确认</string>
+    <string name="repayment_draft_choose_other">选其他欠款</string>
     <string name="repayment_draft_load_failed">还款草稿加载失败，请稍后再试。</string>
     <string name="repayment_draft_debts_load_failed">欠款列表没能加载，请下拉刷新后再确认还款。</string>
     <string name="repayment_draft_confirm_done">已记入这笔还款。</string>

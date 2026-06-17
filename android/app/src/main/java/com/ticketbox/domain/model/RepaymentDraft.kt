@@ -66,6 +66,13 @@ data class RepaymentDraft(
     val merchantLabel: String?,
     val capturedAt: String,
     val status: String,
+    /**
+     * §杠杆③ 3b：服务端按 counterparty_label 模糊 + 金额匹配出的「建议对应欠款」的 publicId，仅对 pending
+     * 草稿填充、每次拉取临时计算（不入库，避免捕获时的匹配在复核时已过期）。null = 没有把握的匹配 →
+     * 用户手动选。复核箱据此在选债面预选这笔欠款；这只是建议，confirm 仍是用户的权威动作（§8）。
+     * 默认 null，使不关心建议的构造点（测试 / resolved 草稿）无需具名；唯一的 mapper 始终透传服务端值。
+     */
+    val suggestedDebtPublicId: String? = null,
     val committedDebtPublicId: String?,
     val committedRepaymentPublicId: String?,
     val createdAt: String,

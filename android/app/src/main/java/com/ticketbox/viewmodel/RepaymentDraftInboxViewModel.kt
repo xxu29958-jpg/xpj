@@ -29,6 +29,11 @@ data class RepaymentDraftInboxUiState(
     val canModify: Boolean = true,
     val drafts: List<RepaymentDraft> = emptyList(),
     val targetDebts: List<Debt> = emptyList(),
+    /**
+     * §杠杆③ 3b：每条草稿的服务端建议欠款（draft.publicId → 已解析的 [Debt]），仅含「服务端 suggested_debt_public_id
+     * 命中本地 [targetDebts] 且按本地剩余金额仍可还得起」的项。UI 据此预选/高亮，并允许一键「确认还到这笔」。
+     */
+    val suggestedDebtByDraftId: Map<String, Debt> = emptyMap(),
     val error: UiText? = null,
     val pendingActionDraftId: String? = null,
     val flashMessage: UiText? = null,
@@ -52,6 +57,7 @@ class RepaymentDraftInboxViewModel(
             it.copy(
                 drafts = emptyList(),
                 targetDebts = emptyList(),
+                suggestedDebtByDraftId = emptyMap(),
                 error = null,
                 canModify = drafts.canModifyLedger(),
             )
@@ -75,6 +81,8 @@ class RepaymentDraftInboxViewModel(
                             // 下次对同一债 confirm 会用陈旧 OCC token 触发确定性 409;并报错让用户下拉刷新,
                             // 也避免空候选被误读成「没有欠款」（拉取成功但无可还款债时 repayable 是空列表、不报错）。
                             targetDebts = repayable ?: emptyList(),
+                            // 用本地拉到的欠款解析服务端建议（拉取失败 → 空建议，与清空候选一致）。
+                            suggestedDebtByDraftId = resolveSuggestions(pending, repayable ?: emptyList()),
                             error = if (repayable == null) {
                                 UiText.res(R.string.repayment_draft_debts_load_failed)
                             } else {
@@ -134,4 +142,24 @@ class RepaymentDraftInboxViewModel(
 
     /** 可作还款对象的欠款：open + 外部手动（镜像后端 `guard_direct_fact_writable`；成员/拆账债走提案流不可直记）。 */
     private fun isRepayableDebt(debt: Debt): Boolean = debt.isOpen && debt.isDirectWritable
+}
+
+/**
+ * §杠杆③ 3b：把每条草稿的服务端 [RepaymentDraft.suggestedDebtPublicId] 解析成本地 [targetDebts] 里的 [Debt]。
+ *
+ * 服务端已只建议 open + 外部手动 + 可还得起（remaining≥amount）的欠款，这里再按**本地拉到的剩余金额**复核一次
+ * 可行性：两次拉取（草稿列表 / 欠款列表）之间若有一笔还款把剩余压到草稿金额之下，那条建议会被丢弃，而不是显示出来
+ * 再在 confirm 时 422。命中的欠款其 row_version 取自本地欠款列表（与手动选债同源，作 §2.1 OCC 令牌）。
+ */
+private fun resolveSuggestions(
+    drafts: List<RepaymentDraft>,
+    repayable: List<Debt>,
+): Map<String, Debt> {
+    if (repayable.isEmpty()) return emptyMap()
+    val byPublicId = repayable.associateBy { it.publicId }
+    return drafts.mapNotNull { draft ->
+        val debt = draft.suggestedDebtPublicId?.let(byPublicId::get) ?: return@mapNotNull null
+        if (debt.remainingAmountCents < draft.amountCents) return@mapNotNull null
+        draft.publicId to debt
+    }.toMap()
 }

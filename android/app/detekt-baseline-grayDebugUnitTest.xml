@@ -55,6 +55,7 @@
     <ID>TooManyFunctions:PendingThumbnailLoaderTest.kt:ThumbnailFakeReviewActions : PendingReviewActions</ID>
     <ID>TooManyFunctions:PendingViewModelReviewSheetAndStateTest.kt:PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewTestBase</ID>
     <ID>TooManyFunctions:PendingViewModelReviewTestSupport.kt:FakeReviewActions : PendingReviewActions</ID>
+    <ID>TooManyFunctions:RepaymentDraftInboxViewModelTest.kt:RepaymentDraftInboxViewModelTest</ID>
     <ID>TooManyFunctions:ReportsRepositoryTest.kt:ReportsFakeSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:ReportsRepositoryTest.kt:ReportsRepositoryTest</ID>
     <ID>TooManyFunctions:RuleRepositoryOutboxFallbackTest.kt:RuleRepositoryOutboxFallbackTest</ID>

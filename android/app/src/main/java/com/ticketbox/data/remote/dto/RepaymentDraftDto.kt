@@ -26,6 +26,11 @@ data class RepaymentDraftDto(
     val capturedAt: String,
     // pending / confirmed / dismissed (see RepaymentDraftStatuses).
     val status: String,
+    // §杠杆③ 3b: the server-suggested target Debt (fuzzy counterparty_label + amount), populated
+    // ONLY for a pending draft and recomputed every list (ephemeral — never stored). null = no
+    // confident match → the user picks manually. The inbox pre-selects this Debt in the picker.
+    @param:Json(name = "suggested_debt_public_id")
+    val suggestedDebtPublicId: String? = null,
     @param:Json(name = "committed_debt_public_id")
     val committedDebtPublicId: String? = null,
     @param:Json(name = "committed_repayment_public_id")

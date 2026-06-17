@@ -183,6 +183,66 @@ class RepaymentDraftInboxViewModelTest {
     }
 
     @Test
+    fun suggestionResolvesToFeasibleRepayableDebtWithLocalRowVersion() = runTest(dispatcher) {
+        // §杠杆③ 3b: the server suggests a Debt by public_id; the VM resolves it against the local
+        // repayable list so the row_version (the §2.1 OCC token) comes from the same fetch.
+        val draftsRepo = FakeRepaymentDraftActions(
+            listResult = Result.success(listOf(draft("d1", suggestedDebtPublicId = "card"))),
+        )
+        val debtsRepo = FakeRepayableDebtActions(
+            // default remaining 50_000 ≥ draft amount 50_000 → feasible.
+            listResult = Result.success(listOf(debt("card", rowVersion = 3L))),
+        )
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+
+        val suggested = viewModel.state.value.suggestedDebtByDraftId["d1"]
+        assertEquals("card", suggested?.publicId)
+        assertEquals(3L, suggested?.rowVersion)
+
+        // Mirror the screen's one-tap "确认还到" wiring (onConfirmSuggested → confirm(draft, suggested)):
+        // the confirm must carry the resolved suggestion's publicId AND its local-list row_version as
+        // the §2.1 OCC token — closing the seam between "resolves correctly" and "confirms what it resolved".
+        viewModel.confirm("d1", suggested!!)
+        advanceUntilIdle()
+        val call = draftsRepo.confirmCalls.single()
+        assertEquals("card", call.targetDebtPublicId)
+        assertEquals(3L, call.expectedRowVersion)
+    }
+
+    @Test
+    fun suggestionDroppedWhenSuggestedDebtCannotAbsorbAmount() = runTest(dispatcher) {
+        // The local remaining is below the draft amount (a repayment landed between the two
+        // fetches): drop the suggestion rather than pre-select one that would 422 on confirm.
+        val draftsRepo = FakeRepaymentDraftActions(
+            listResult = Result.success(listOf(draft("d1", suggestedDebtPublicId = "card"))), // amount 50_000
+        )
+        val debtsRepo = FakeRepayableDebtActions(
+            listResult = Result.success(listOf(debt("card").copy(remainingAmountCents = 10_000))),
+        )
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.suggestedDebtByDraftId["d1"])
+    }
+
+    @Test
+    fun suggestionDroppedWhenSuggestedDebtMissingFromRepayableList() = runTest(dispatcher) {
+        // The server suggested a Debt the client's own debt fetch doesn't include (cleared between
+        // fetches, or filtered out): no pre-selection — the user picks manually.
+        val draftsRepo = FakeRepaymentDraftActions(
+            listResult = Result.success(listOf(draft("d1", suggestedDebtPublicId = "gone"))),
+        )
+        val debtsRepo = FakeRepayableDebtActions(
+            listResult = Result.success(listOf(debt("other"))),
+        )
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.suggestedDebtByDraftId["d1"])
+    }
+
+    @Test
     fun dismissFlashClearsMessage() = runTest(dispatcher) {
         val draftsRepo = FakeRepaymentDraftActions(
             listResult = Result.success(listOf(draft("d1"))),
@@ -265,6 +325,7 @@ private class FakeRepayableDebtActions(
 private fun draft(
     publicId: String,
     status: String = RepaymentDraftStatuses.PENDING,
+    suggestedDebtPublicId: String? = null,
 ): RepaymentDraft = RepaymentDraft(
     publicId = publicId,
     source = "alipay",
@@ -273,6 +334,7 @@ private fun draft(
     merchantLabel = "花呗",
     capturedAt = "2026-06-17T08:00:00Z",
     status = status,
+    suggestedDebtPublicId = suggestedDebtPublicId,
     committedDebtPublicId = null,
     committedRepaymentPublicId = null,
     createdAt = "2026-06-17T08:00:01Z",
