@@ -390,13 +390,34 @@ jobs:
             echo "OK signing certificate $apk"
           done
 
+      - name: NVD cache key (UTC date)
+        # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
+        # below falls back to the most recent prior cache on a key miss.
+        id: nvd-key
+        if: ${{ env.NVD_API_KEY != '' }}
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache OWASP NVD database
+        # Persists the OWASP/NVD H2 DB across runs (path mirrors data.directory in
+        # android/build.gradle.kts = Gradle user home). With nvd.validForHours=24 a
+        # warm cache (<24h) makes the plugin SKIP the NVD API call entirely — the
+        # whole point: kills the recurring NVD 520/524 gateway-timeout flake on
+        # reruns/same-day runs and turns the full ~7min download into a cache hit.
+        if: ${{ env.NVD_API_KEY != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
+          restore-keys: |
+            nvd-${{ runner.os }}-
+
       - name: Dependency vulnerability scan (OWASP dependency-check)
         if: ${{ env.NVD_API_KEY != '' }}
         # Android dependency CVE gate via the OWASP plugin (android/build.gradle.kts).
         # Cloud-only (NVD download is too heavy for the single local-Gitea runner).
         # Requires the NVD_API_KEY repo secret; without it the NVD feed can hang
         # the hosted runner long enough to starve the merge gate.
-        run: ./gradlew --no-daemon dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}"
+        run: ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}"
 
       - name: Dependency vulnerability scan skipped
         if: ${{ env.NVD_API_KEY == '' }}
