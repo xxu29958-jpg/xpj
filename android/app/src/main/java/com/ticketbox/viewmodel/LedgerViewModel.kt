@@ -72,6 +72,15 @@ data class LedgerUiState(
     // so a filter change can't slip a tagged row past the confirm gate.
     val selectedHaveTags: Boolean = false,
     val applyingBatch: Boolean = false,
+    // Batch-edit sheet outcome channel: unlike manual-create (error shown INSIDE
+    // the sheet), batch synced/queued/failed is reported PAGE-LEVEL via [message],
+    // so the sheet must close on done EITHER WAY to reveal it. [batchDone] flips on
+    // both success and failure; the screen acks via batchSettled() (mirrors the
+    // manualCreateDone pattern, but closes on both arms because the result is
+    // page-level — see applyBatch). Fixes the optimistic close: the sheet used to
+    // dismiss in the onApply lambda BEFORE applyConfirmedBatch resolved, so the
+    // `applyingBatch` disable flag was dead and a typed tag string was lost on close.
+    val batchDone: Boolean = false,
     val message: UiText? = null,
     // Manual-create sheet outcome channel: the sheet stays open on failure
     // (so the typed form survives), shows [manualCreateError] inline, and only
@@ -377,6 +386,12 @@ class LedgerViewModel(
     fun applyBatchTags(tags: String) = applyBatch(category = null, tags = tags)
 
     private fun applyBatch(category: String?, tags: String?) {
+        // Synchronous re-entry guard: applyingBatch is flipped synchronously below (BEFORE the
+        // launch), so a double-tap during the dispatch+recomposition window can't fire a second
+        // fan-out — the second would capture the same rowVersions, hit OCC conflicts on the
+        // just-bumped rows, and report spurious failures. The `!applying` button disable lags
+        // a frame; this guard closes the window deterministically.
+        if (_uiState.value.applyingBatch) return
         if (!repository.canModifyLedger()) {
             _uiState.update { it.copy(readOnly = true, applyingBatch = false, message = readOnlyMessage()) }
             return
@@ -386,11 +401,15 @@ class LedgerViewModel(
         // token) from the synced confirmed cache, not the filtered view.
         val targets = allConfirmed.filter { it.id in selected }
         if (targets.isEmpty()) {
-            _uiState.update { it.copy(message = UiText.res(R.string.ledger_msg_batch_no_selection)) }
+            // Flip batchDone so the screen closes the sheet and the page-level no-selection
+            // message becomes visible (the still-open sheet would otherwise cover it). Mirrors
+            // the resolve arms — without this the close-on-batchDone migration would strand the
+            // sheet here (regression vs the old eager close, which dismissed before applyBatch).
+            _uiState.update { it.copy(batchDone = true, message = UiText.res(R.string.ledger_msg_batch_no_selection)) }
             return
         }
+        _uiState.update { it.copy(applyingBatch = true, message = null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(applyingBatch = true, message = null) }
             repository.applyConfirmedBatch(targets, category = category, tags = tags)
                 .onSuccess { result ->
                     // A freshly-applied category / tag may be new — refresh the
@@ -400,6 +419,7 @@ class LedgerViewModel(
                     _uiState.update {
                         it.copy(
                             applyingBatch = false,
+                            batchDone = true,
                             selectionMode = false,
                             selectedIds = emptySet(),
                             selectedHaveTags = false,
@@ -408,11 +428,19 @@ class LedgerViewModel(
                     }
                 }
                 .onFailure { error ->
+                    // Close the sheet too (batchDone) so the page-level error is
+                    // visible; selection is kept (not cleared) so the user can retry.
                     _uiState.update {
-                        it.copy(applyingBatch = false, message = error.toUiText(R.string.ledger_msg_batch_failed))
+                        it.copy(applyingBatch = false, batchDone = true, message = error.toUiText(R.string.ledger_msg_batch_failed))
                     }
                 }
         }
+    }
+
+    /** Screen ack after the batch-edit sheet closed (success or failure) —
+     *  clears the one-shot outcome channel so it can't re-close the next sheet. */
+    fun batchSettled() {
+        _uiState.update { it.copy(batchDone = false) }
     }
 
     /**
