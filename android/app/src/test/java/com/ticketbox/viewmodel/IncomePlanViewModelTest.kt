@@ -98,6 +98,41 @@ class IncomePlanViewModelTest {
     }
 
     @Test
+    fun submitDraftSuccessSetsAddSucceededThenResetClears() = runTest(dispatcher) {
+        // The one-shot success signal is what drives the add sheet to close — set ONLY on a real
+        // create success, then cleared by resetDraft when the screen closes (mirrors the
+        // LedgerViewModel.manualCreateDone ack convention).
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        viewModel.updateDraftLabel("工资")
+        viewModel.updateDraftAmount("10000")
+        viewModel.updateDraftPayDay("10")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.addSucceeded)
+        viewModel.resetDraft()
+        assertFalse(viewModel.state.value.addSucceeded)
+    }
+
+    @Test
+    fun submitDraftFailureLeavesAddSucceededFalse() = runTest(dispatcher) {
+        // A backend failure must NOT signal the screen to close — the sheet stays open with its
+        // validationError instead of vanishing while the user believes the plan was created.
+        val repo = FakeRepository(createResult = Result.failure(RuntimeException("网络异常")))
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        viewModel.updateDraftLabel("x")
+        viewModel.updateDraftAmount("100")
+        viewModel.updateDraftPayDay("1")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.addSucceeded)
+    }
+
+    @Test
     fun archiveTriggersRepositoryAndFlashMessage() = runTest(dispatcher) {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)

@@ -30,6 +30,14 @@ data class DebtListUiState(
     val addDraft: DebtDraftUi = DebtDraftUi(),
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
+    /**
+     * 一次性信号：[submitDraft] 真正成功后置 true；底部抽屉屏只在它为 true 时关闭(关时调
+     * [resetDraft] 一并清掉本信号 + 草稿,镜像 LedgerViewModel.manualCreateDone 的 ack 约定)。
+     * failure 不置位 → 抽屉保留、表单错误可见(修「乐观关闭」:旧逻辑按本地 `addDraft.isValid`
+     * 关闭、无视 createDebt() 结果,且 onClose 的 resetDraft() 抹掉 onFailure 刚写的
+     * validationError → 欠款静默没建)。
+     */
+    val addSucceeded: Boolean = false,
 )
 
 data class DebtDraftUi(
@@ -114,7 +122,7 @@ class DebtListViewModel(
     }
 
     fun resetDraft() {
-        _state.update { it.copy(addDraft = DebtDraftUi(), isSubmitting = false) }
+        _state.update { it.copy(addDraft = DebtDraftUi(), isSubmitting = false, addSucceeded = false) }
     }
 
     fun submitDraft() {
@@ -147,6 +155,7 @@ class DebtListViewModel(
                             isSubmitting = false,
                             addDraft = DebtDraftUi(),
                             flashMessage = UiText.res(R.string.debt_create_added),
+                            addSucceeded = true,
                         )
                     }
                     refresh()

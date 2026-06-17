@@ -36,7 +36,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,7 +63,6 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
 private const val FlashDismissMillis = 4000L
@@ -88,7 +86,6 @@ fun IncomePlanScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -97,6 +94,15 @@ fun IncomePlanScreen(
         if (state.flashMessage == null) return@LaunchedEffect
         delay(FlashDismissMillis)
         viewModel.dismissFlash()
+    }
+
+    // 成功才关抽屉：只在 create() 真正成功(addSucceeded)时收起，失败保留抽屉让 validationError 可见
+    // （修「乐观关闭」——旧逻辑在 onSubmit 里按本地 addDraft.isValid 关闭、无视网络结果）。resetDraft()
+    // 一并清掉一次性信号 + 草稿；effect 体全程非挂起，关闭被打断也不会把 addSucceeded 卡在 true。
+    LaunchedEffect(state.addSucceeded) {
+        if (!state.addSucceeded) return@LaunchedEffect
+        showAddSheet = false
+        viewModel.resetDraft()
     }
 
     BackHandler(onBack = onBack)
@@ -146,15 +152,7 @@ fun IncomePlanScreen(
                 onSourceType = viewModel::updateDraftSource,
                 onAmount = viewModel::updateDraftAmount,
                 onPayDay = viewModel::updateDraftPayDay,
-                onSubmit = {
-                    viewModel.submitDraft()
-                    coroutineScope.launch {
-                        if (state.addDraft.isValid) {
-                            sheetState.hide()
-                            showAddSheet = false
-                        }
-                    }
-                },
+                onSubmit = { viewModel.submitDraft() },
                 onCancel = {
                     showAddSheet = false
                     viewModel.resetDraft()
