@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,13 +41,8 @@ data class DebtDraftUi(
     val isValid: Boolean
         get() = counterpartyLabel.trim().isNotEmpty() && parsedAmountCents() != null
 
-    fun parsedAmountCents(): Long? {
-        val raw = amountYuanInput.trim()
-        if (raw.isEmpty()) return null
-        val yuan = raw.toDoubleOrNull() ?: return null
-        if (yuan <= 0) return null
-        return Math.round(yuan * 100)
-    }
+    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；本金须 > 0（符号保持，分空间判等价）。
+    fun parsedAmountCents(): Long? = parseAmountCents(amountYuanInput)?.takeIf { it > 0 }
 }
 
 class DebtListViewModel(

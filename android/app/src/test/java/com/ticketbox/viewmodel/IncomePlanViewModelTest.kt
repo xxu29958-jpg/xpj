@@ -142,6 +142,15 @@ class IncomePlanViewModelTest {
     fun draftAmountParsing() {
         val draft = IncomePlanDraftUi(amountYuanInput = "123.45")
         assertEquals(12345L, draft.parsedAmountCents())
+        // §3 BigDecimal 精度：>2 位小数 HALF_UP 精确进位。"1.005" → 101；旧 Double Math.round 给 100
+        // （1.005*100 的 double 是 100.4999… → 100），故此断言会在退回 Double 时变红。
+        assertEquals(101L, IncomePlanDraftUi(amountYuanInput = "1.005").parsedAmountCents())
+        // 收入计划允许 0（与 DebtList 的 > 0 不同：这里是 >= 0 边界）。
+        assertEquals(0L, IncomePlanDraftUi(amountYuanInput = "0").parsedAmountCents())
+        // 拒负：极小负额在分空间 HALF_UP 舍入到 0，也按元符号拒，不静默当成 0 元计划。
+        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "-0.004").parsedAmountCents())
+        // 溢出 Long 安全返回 null（旧 Double Math.round 会回 Long.MAX 垃圾值）。
+        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "99999999999999999999").parsedAmountCents())
         assertEquals(null, IncomePlanDraftUi(amountYuanInput = "abc").parsedAmountCents())
         assertEquals(null, IncomePlanDraftUi(amountYuanInput = "-5").parsedAmountCents())
         assertEquals(null, IncomePlanDraftUi(amountYuanInput = "").parsedAmountCents())

@@ -9,6 +9,7 @@ import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -132,7 +133,8 @@ class MemberRepaymentProposalViewModel(
         val publicId = debtPublicId ?: return
         val current = _state.value
         val form = current.activeForm ?: return
-        val amountCents = parseProposalYuanCents(current.amountInput)
+        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；>0 由 proposalValidationError 校验。
+        val amountCents = parseAmountCents(current.amountInput)
         proposalValidationError(form, amountCents, current.pendingProposal?.proposedAmountCents)?.let { res ->
             _state.update { it.copy(validationError = UiText.res(res)) }
             return
@@ -233,14 +235,6 @@ class MemberRepaymentProposalViewModel(
         }
         refresh()
     }
-}
-
-/** 把元为单位的输入解析成本位币分（提出/确认金额都是正数），无法解析或为空返回 null。 */
-private fun parseProposalYuanCents(input: String): Long? {
-    val raw = input.trim()
-    if (raw.isEmpty()) return null
-    val yuan = raw.toDoubleOrNull() ?: return null
-    return Math.round(yuan * 100)
 }
 
 /** 把本位币分格式化成元为单位的输入串（用于确认表单预填提出金额），不走浮点避免大额丢精度。 */

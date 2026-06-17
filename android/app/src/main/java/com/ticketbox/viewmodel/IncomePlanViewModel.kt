@@ -10,6 +10,7 @@ import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.isValidPayDay
+import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,12 +48,11 @@ data class IncomePlanDraftUi(
             parsedAmountCents() != null &&
             parsedPayDay() != null
 
+    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）。允许 0、拒负：极小负额（如 -0.004）在分空间
+    // HALF_UP 会舍入到 0，故先按元符号拒负，保持旧「负数无效」语义、不静默当成 0 元计划。
     fun parsedAmountCents(): Long? {
-        val raw = amountYuanInput.trim()
-        if (raw.isEmpty()) return null
-        val yuan = raw.toDoubleOrNull() ?: return null
-        if (yuan < 0) return null
-        return Math.round(yuan * 100)
+        if (amountYuanInput.trim().startsWith('-')) return null
+        return parseAmountCents(amountYuanInput)?.takeIf { it >= 0 }
     }
 
     fun parsedPayDay(): Int? {

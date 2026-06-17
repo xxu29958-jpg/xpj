@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -143,7 +144,9 @@ class DebtDetailViewModel(
         val current = _state.value
         val debt = current.debt ?: return
         val action = current.activeAction ?: return
-        val amountCents = parseDebtAmountCents(current.amountInput)
+        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；sign-agnostic，>0 magnitude 由
+        // validateDebtAction 按动作类型校验（调整的正负来自 adjustmentIncrease 开关）。
+        val amountCents = parseAmountCents(current.amountInput)
         val reason = current.reasonInput.trim()
         validateDebtAction(action, amountCents, reason)?.let { errorRes ->
             _state.update { it.copy(validationError = UiText.res(errorRes)) }
@@ -215,14 +218,6 @@ class DebtDetailViewModel(
         }
         previousStatusByPublicId[newDebt.publicId] = newDebt.status
     }
-}
-
-/** Parse a yuan input (signed — adjustments may be negative) into home-currency cents, or null. */
-private fun parseDebtAmountCents(input: String): Long? {
-    val raw = input.trim()
-    if (raw.isEmpty()) return null
-    val yuan = raw.toDoubleOrNull() ?: return null
-    return Math.round(yuan * 100)
 }
 
 /** The validation copy for an invalid action input, or null when the inputs are acceptable. */
