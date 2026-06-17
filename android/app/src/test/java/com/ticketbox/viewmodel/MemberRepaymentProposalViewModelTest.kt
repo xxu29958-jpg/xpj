@@ -112,6 +112,23 @@ class MemberRepaymentProposalViewModelTest {
     }
 
     @Test
+    fun submitProposeParsesAmountWithBigDecimalPrecision() = runTest(dispatcher) {
+        // §3：元→分走共享 BigDecimal 解析器。"1.005" HALF_UP → 101 分；旧 Double Math.round 给 100
+        // （1.005*100 的 double 是 100.4999… → 100），故此断言会在退回 Double 时变红。
+        val repo = FakeProposalActions()
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        viewModel.openForm(ProposalForm.Propose)
+        viewModel.updateAmount("1.005")
+        viewModel.submit(expectedRowVersion = 7L)
+        advanceUntilIdle()
+
+        assertEquals(101L, repo.proposeCalls.single().proposedAmountCents)
+    }
+
+    @Test
     fun submitProposeValidatesNonPositiveWithoutCall() = runTest(dispatcher) {
         val repo = FakeProposalActions()
         val viewModel = MemberRepaymentProposalViewModel(repo)

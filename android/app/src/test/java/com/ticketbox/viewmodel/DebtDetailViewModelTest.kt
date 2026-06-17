@@ -101,6 +101,26 @@ class DebtDetailViewModelTest {
     }
 
     @Test
+    fun submitRepaymentParsesAmountWithBigDecimalPrecision() = runTest(dispatcher) {
+        // §3：元→分走共享 BigDecimal 解析器。"1.005" HALF_UP → 101 分；旧 Double Math.round 给 100
+        // （1.005*100 的 double 是 100.4999… → 100），故此断言会在退回 Double 时变红。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L)),
+            writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, remaining = 49_899L)),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("1.005")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(101L, repo.repaymentCalls.single().amountCents)
+    }
+
+    @Test
     fun submitRepaymentValidationBlocksNonPositiveWithoutWrite() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions()
         val viewModel = DebtDetailViewModel(repo)
