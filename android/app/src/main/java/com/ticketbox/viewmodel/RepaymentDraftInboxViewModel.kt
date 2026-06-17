@@ -47,6 +47,14 @@ class RepaymentDraftInboxViewModel(
     private val _state = MutableStateFlow(RepaymentDraftInboxUiState(canModify = drafts.canModifyLedger()))
     val state: StateFlow<RepaymentDraftInboxUiState> = _state.asStateFlow()
 
+    // Monotonic load token (mirrors DebtListViewModel): a refresh applies its result only if it is
+    // still the latest. init + reload on overlay (re-)entry + the refresh after confirm/dismiss each
+    // bump it, so a slow earlier fetch can't revert to stale cross-ledger drafts, nor revive a stale
+    // [targetDebts] row_version (the §2.1 OCC carrier [confirm] reads → a deterministic 409 on the
+    // next confirm). Every bump is a refresh, so a superseded load just drops; the newer refresh
+    // owns the loading flag.
+    private var loadGeneration = 0L
+
     init {
         refresh()
     }
@@ -66,10 +74,13 @@ class RepaymentDraftInboxViewModel(
     }
 
     fun refresh() {
+        val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val draftResult = drafts.listPendingDrafts()
             val repayable = debts.listDebts().getOrNull()?.filter(::isRepayableDebt)
+            // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
+            if (gen != loadGeneration) return@launch
             _state.update { current ->
                 draftResult.fold(
                     onSuccess = { pending ->

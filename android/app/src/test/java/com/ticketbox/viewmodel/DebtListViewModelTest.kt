@@ -7,10 +7,12 @@ import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -171,6 +173,64 @@ class DebtListViewModelTest {
 
         assertEquals("b", viewModel.state.value.debts.single().publicId)
     }
+
+    @Test
+    fun staleRefreshDoesNotRevertAfterCreate() = runTest(dispatcher) {
+        // A slow earlier refresh must not blank out the list after the user just added a debt.
+        val repo = FakeDebtActions(
+            listResult = Result.success(emptyList()),
+            createResult = Result.success(sampleDebt("new")),
+        )
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle() // init refresh → debts = []
+
+        // A slow refresh stalls inside listDebts() (it captured the pre-create empty list)...
+        val gate = CompletableDeferred<Unit>()
+        repo.listGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then the user creates a debt; submitDraft's success refresh delivers the new list.
+        repo.listGate = null
+        repo.listResult = Result.success(listOf(sampleDebt("new")))
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("100")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals("new", viewModel.state.value.debts.single().publicId)
+
+        // Release the now-stale refresh; its empty snapshot must NOT revert the just-created list.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("new", viewModel.state.value.debts.single().publicId)
+    }
+
+    @Test
+    fun staleRefreshDoesNotClobberReloadedLedger() = runTest(dispatcher) {
+        // Ledger switch: a slow prior refresh must not show the old ledger's debts under the new one.
+        val repo = FakeDebtActions(listResult = Result.success(listOf(sampleDebt("ledgerA"))))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        // A slow refresh stalls (it captured ledger A's debts)...
+        val gate = CompletableDeferred<Unit>()
+        repo.listGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then a ledger switch reloads with ledger B's debts.
+        repo.listGate = null
+        repo.listResult = Result.success(listOf(sampleDebt("ledgerB")))
+        viewModel.reload()
+        advanceUntilIdle()
+        assertEquals("ledgerB", viewModel.state.value.debts.single().publicId)
+
+        // Release the stale refresh; ledger A's debts must NOT leak back under ledger B.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("ledgerB", viewModel.state.value.debts.single().publicId)
+        assertEquals(false, viewModel.state.value.isLoading)
+    }
 }
 
 private class FakeDebtActions(
@@ -181,11 +241,18 @@ private class FakeDebtActions(
     val createDrafts = mutableListOf<DebtDraft>()
     var listCalls = 0
 
+    /** When set, listDebts() stalls until completed — used to interleave a slow load. */
+    var listGate: CompletableDeferred<Unit>? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun listDebts(): Result<List<Debt>> {
         listCalls++
-        return listResult
+        // Capture the result at entry so a stalled load returns the snapshot it started with, even
+        // if a newer load swaps listResult in the meantime.
+        val captured = listResult
+        listGate?.await()
+        return captured
     }
 
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))

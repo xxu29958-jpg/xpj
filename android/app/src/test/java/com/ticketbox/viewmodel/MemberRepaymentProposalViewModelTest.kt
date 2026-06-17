@@ -11,10 +11,12 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -374,6 +376,63 @@ class MemberRepaymentProposalViewModelTest {
         assertEquals(R.string.debt_member_forgive_failed, (error as UiText.Res).id)
         assertEquals(0, viewModel.state.value.foldChangedAt)
     }
+
+    // ── ADR-0049 §2.1 stale-refresh 代际守卫（功能正确性加固 #2，镜像 DebtGoalViewModel）─────────────
+
+    @Test
+    fun staleRefreshDoesNotRevertAfterAction() = runTest(dispatcher) {
+        // A slow earlier refresh must not bring back a withdrawn proposal after the action's own
+        // refresh delivered the post-action (empty) list.
+        val repo = FakeProposalActions(listResult = Result.success(listOf(sampleProposal(publicId = "p1"))))
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle() // proposals = [p1]
+
+        // A slow refresh stalls inside listRepaymentProposals() (it captured [p1])...
+        val gate = CompletableDeferred<Unit>()
+        repo.listGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then the debtor withdraws; the action's success refresh delivers the empty 收发箱.
+        repo.listGate = null
+        repo.listResult = Result.success(emptyList())
+        viewModel.withdraw("p1")
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.proposals.isEmpty())
+
+        // Release the stale refresh; the withdrawn proposal must NOT reappear.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.proposals.isEmpty())
+    }
+
+    @Test
+    fun staleRefreshDoesNotClobberSwitchedDebt() = runTest(dispatcher) {
+        // Switching member debts: a slow prior refresh of d1 must not show d1's 收发箱 under d2.
+        val repo = FakeProposalActions(listResult = Result.success(listOf(sampleProposal(publicId = "pA"))))
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        // A slow refresh of d1 stalls (it captured d1's proposals)...
+        val gate = CompletableDeferred<Unit>()
+        repo.listGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then the user switches to d2.
+        repo.listGate = null
+        repo.listResult = Result.success(listOf(sampleProposal(publicId = "pB")))
+        viewModel.load("d2")
+        advanceUntilIdle()
+        assertEquals("pB", viewModel.state.value.proposals.single().publicId)
+
+        // Release the stale d1 refresh; d1's proposals must NOT leak under d2.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("pB", viewModel.state.value.proposals.single().publicId)
+    }
 }
 
 private data class ProposeArgs(
@@ -404,11 +463,18 @@ private class FakeProposalActions(
     val forgiveCalls = mutableListOf<Pair<String, Long>>()
     var listCalls = 0
 
+    /** When set, listRepaymentProposals() stalls until completed — used to interleave a slow load. */
+    var listGate: CompletableDeferred<Unit>? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun listRepaymentProposals(debtPublicId: String): Result<List<MemberRepaymentProposal>> {
         listCalls++
-        return listResult
+        // Capture the result at entry so a stalled load returns the snapshot it started with, even
+        // if a newer load swaps listResult in the meantime.
+        val captured = listResult
+        listGate?.await()
+        return captured
     }
 
     override suspend fun proposeRepayment(

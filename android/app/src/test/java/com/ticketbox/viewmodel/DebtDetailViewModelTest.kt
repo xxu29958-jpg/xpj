@@ -7,10 +7,12 @@ import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -411,6 +413,136 @@ class DebtDetailViewModelTest {
 
         assertNull(viewModel.celebration.value)
     }
+
+    // ── ADR-0049 §2.1 stale-refresh 代际守卫（功能正确性加固 #2，镜像 DebtGoalViewModel）─────────────
+
+    @Test
+    fun staleRefreshDoesNotRevertCommittedWrite() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 5L, remaining = 50_000L)),
+            writeResult = Result.success(sampleDebt("d1", rowVersion = 6L, remaining = 40_000L)),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle() // debt = rv5
+
+        // A slow refresh stalls inside getDebt() (it captured the pre-write rv5 snapshot)...
+        val gate = CompletableDeferred<Unit>()
+        repo.getGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then the user records a repayment, committing the fold-after rv6.
+        repo.getGate = null
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("100")
+        viewModel.submit()
+        advanceUntilIdle()
+        assertEquals(6L, viewModel.state.value.debt?.rowVersion)
+
+        // Release the now-stale refresh; its rv5 snapshot must NOT revert the committed write — else
+        // the next write's OCC carrier would be stale (→ a 409).
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(6L, viewModel.state.value.debt?.rowVersion)
+        assertEquals(40_000L, viewModel.state.value.debt?.remainingAmountCents)
+    }
+
+    @Test
+    fun refreshSupersededByWriteStillClearsLoadingFlag() = runTest(dispatcher) {
+        // A refresh dropped because a (non-refresh) write superseded it must still clear isLoading,
+        // or the screen sticks "loading".
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 5L)),
+            writeResult = Result.success(sampleDebt("d1", rowVersion = 6L)),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        val gate = CompletableDeferred<Unit>()
+        repo.getGate = gate
+        viewModel.refresh()
+        runCurrent()
+        assertTrue(viewModel.state.value.isLoading)
+
+        repo.getGate = null
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("100")
+        viewModel.submit()
+        advanceUntilIdle()
+        // The stalled refresh still owns the (true) loading flag; the write didn't touch it.
+        assertTrue(viewModel.state.value.isLoading)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun slowLoadDoesNotClobberAReopenedDebt() = runTest(dispatcher) {
+        // The reusable detail VM is reopened with another Debt while a prior load is still in flight;
+        // the stale load must not overwrite the reopened Debt.
+        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("A")))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("A")
+        advanceUntilIdle()
+
+        // A slow re-fetch of A stalls (it captured A's snapshot)...
+        val gate = CompletableDeferred<Unit>()
+        repo.getGate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        // ...then the user reopens the detail on a different Debt B.
+        repo.getGate = null
+        repo.getResult = Result.success(sampleDebt("B"))
+        viewModel.loadDebt("B")
+        advanceUntilIdle()
+        assertEquals("B", viewModel.state.value.debt?.publicId)
+
+        // Release the stale A load; it must NOT clobber the reopened Debt B.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("B", viewModel.state.value.debt?.publicId)
+    }
+
+    @Test
+    fun staleDroppedMemberSnapshotDoesNotCelebrate() = runTest(dispatcher) {
+        // The gen-drop must run BEFORE detectSettleCelebration: a discarded stale snapshot must not
+        // fire a 两清 celebration (nor record a status edge). Pinned with a member debt — the only
+        // case where the guard interacts with celebration detection.
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)),
+            // A repayment that leaves it OPEN → no real edge, so the committed write never celebrates.
+            writeResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("m1")
+        advanceUntilIdle() // open recorded as the non-cleared prior; no celebration
+
+        // A slow refresh stalls having captured a CLEARED member snapshot...
+        val gate = CompletableDeferred<Unit>()
+        repo.getGate = gate
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED))
+        viewModel.refresh()
+        runCurrent()
+
+        // ...superseded by a committed repayment (still OPEN, no edge).
+        repo.getGate = null
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("100")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        // Release the stale CLEARED snapshot; it is dropped before celebration detection, so no 两清
+        // fires from a discarded snapshot and the committed OPEN state is retained (also catches full
+        // guard removal — the CLEARED snapshot would otherwise both celebrate and overwrite).
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertNull(viewModel.celebration.value)
+        assertEquals(DebtLinkStatuses.OPEN, viewModel.state.value.debt?.status)
+    }
 }
 
 private data class WriteArgs(
@@ -429,11 +561,20 @@ private class FakeDebtDetailActions(
     val adjustmentCalls = mutableListOf<WriteArgs>()
     val voidCalls = mutableListOf<WriteArgs>()
 
+    /** When set, getDebt() stalls until completed — used to interleave a slow load. */
+    var getGate: CompletableDeferred<Unit>? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun listDebts(): Result<List<Debt>> = Result.success(emptyList())
 
-    override suspend fun getDebt(publicId: String): Result<Debt> = getResult
+    override suspend fun getDebt(publicId: String): Result<Debt> {
+        // Capture the result at entry so a stalled load returns the snapshot it started with, even
+        // if a newer load swaps getResult in the meantime.
+        val captured = getResult
+        getGate?.await()
+        return captured
+    }
 
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(sampleDebt())
 
