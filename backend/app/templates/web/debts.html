@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}欠款 — 小票夹{% endblock %}
+{% block content %}
+<h1 class="page-title page-title--compact">欠款</h1>
+<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。展示外部欠款与家庭成员之间的款项，按方向、状态和本位币剩余金额排列；金额与手机 App 一致。记一笔、还款、调整或作废请在手机 App 或本机操作。</p>
+{% if not can_write %}
+<div class="readonly-callout">只读角色可以查看欠款明细；记账、还款或作废请联系拥有者或成员。</div>
+{% endif %}
+
+{% if debts %}
+<div class="debt-list">
+  {% for debt in debts %}
+  <div class="dt-card debt-row">
+    <div class="debt-row-main">
+      <div class="debt-name">{{ debt.name }}</div>
+      <div class="debt-badges">
+        <span class="dt-pill">{{ debt.direction_label }}</span>
+        <span class="dt-pill {{ debt.status_tone }}">{{ debt.status_label }}</span>
+      </div>
+    </div>
+    <div class="debt-row-amount">
+      <div class="debt-remaining">{{ debt.remaining_label }}</div>
+      <div class="debt-principal">本金 {{ debt.principal_label }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="dt-card debt-empty">
+  <div class="debt-empty-title">还没有欠款记录</div>
+  <div class="debt-empty-body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</div>
+</div>
+{% endif %}
+{% endblock %}

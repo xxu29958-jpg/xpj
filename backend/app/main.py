@@ -59,6 +59,7 @@ from app.routes import (
     web_categories,
     web_dashboard,
     web_data_quality,
+    web_debts,
     web_duplicates,
     web_expense_edit,
     web_expense_items,
@@ -315,6 +316,7 @@ app.include_router(web_reports.router)
 app.include_router(web_goals.router)
 app.include_router(web_search.router)
 app.include_router(web_data_quality.router)
+app.include_router(web_debts.router)
 app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)
 app.include_router(web_import_export.router)
