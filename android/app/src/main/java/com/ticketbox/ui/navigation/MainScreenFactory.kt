@@ -37,5 +37,7 @@ internal class MainScreenFactory(
         recurringRepository = recurringRepository,
         budgetRepository = budgetRepository,
         reportsRepository = reportsRepository,
+        // 轨道2 [P1]：StatsReportsViewModel 的还款待确认 badge 计数源。
+        repaymentDrafts = repaymentDraftRepository,
     )
 }

@@ -56,6 +56,11 @@ data class StatsUiState(
      * (that path uses [message] for the informational "本机估算" notice).
      */
     val statsLoadError: UiText? = null,
+    /**
+     * 轨道2 [P1]：pending 还款草稿数，统计页头「管理」菜单的「还款待确认」项据此显示计数 badge（>0 才显）。
+     * 账本作用域（与月/标签无关），由 [StatsReportsViewModel] 在每次 refresh 时拉取、经 [mergeStatsUiState] 透传。
+     */
+    val pendingRepaymentDraftCount: Int = 0,
 )
 
 data class MonthlyStatsUiState(
@@ -96,6 +101,8 @@ data class StatsReportsUiState(
     val reportsMessage: UiText? = null,
     val month: String = "",
     val selectedTag: String = "",
+    // 轨道2 [P1]：pending 还款草稿数（菜单「还款待确认」badge 源）。账本作用域，不随月/标签 gate。
+    val pendingRepaymentDraftCount: Int = 0,
 )
 
 internal fun mergeStatsUiState(
@@ -133,5 +140,7 @@ internal fun mergeStatsUiState(
         loading = monthly.loading,
         message = monthly.message,
         statsLoadError = monthly.statsLoadError,
+        // 账本作用域 badge 计数：不随 reportsMatch/budgetMatch/标签 gate（与月/标签无关，标签筛选态也要显示）。
+        pendingRepaymentDraftCount = reports.pendingRepaymentDraftCount,
     )
 }
