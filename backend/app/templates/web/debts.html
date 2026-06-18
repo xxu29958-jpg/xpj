@@ -10,7 +10,8 @@
 {% if debts %}
 <div class="debt-list">
   {% for debt in debts %}
-  <a class="dt-card debt-row" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}">
+  <a class="dt-card debt-row" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
+     aria-label="{{ debt.name }}，{{ debt.direction_label }}，{{ debt.status_label }}，剩余 {{ debt.remaining_label }}">
     <div class="debt-row-main">
       <div class="debt-name">{{ debt.name }}</div>
       <div class="debt-badges">
@@ -19,16 +20,16 @@
       </div>
     </div>
     <div class="debt-row-amount">
-      <div class="debt-remaining">{{ debt.remaining_label }}</div>
+      <span class="dh-amt dh-amt--row" aria-hidden="true"><span class="dh-cur">{{ debt.remaining_segments.cur }}</span><span class="dh-int">{{ debt.remaining_segments.int }}</span><span class="dh-dec">{{ debt.remaining_segments.dec }}</span></span>
       <div class="debt-principal">本金 {{ debt.principal_label }}</div>
     </div>
   </a>
   {% endfor %}
 </div>
 {% else %}
-<div class="dt-card debt-empty">
-  <div class="debt-empty-title">还没有欠款记录</div>
-  <div class="debt-empty-body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</div>
+<div class="dt-card dt-card--empty">
+  <div class="empty-headline">还没有欠款记录</div>
+  <div class="empty-body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</div>
 </div>
 {% endif %}
 {% endblock %}

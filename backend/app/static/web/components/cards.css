@@ -26,6 +26,14 @@
 .dt-card-tight { padding: 16px 18px; }
 /* 时间线大列表内 padding 收紧（confirmed.html 用） */
 .dt-card--timeline { padding: 8px 24px 16px; }
+/* 静态(不可点)卡：hover 完全回到静止态——基类静止态无阴影,故这里 box-shadow:none
+   (非 --shadow-card,否则反而冒出静止态没有的阴影)。只有 <a> 行该有「可交互」示意,
+   静态详情卡跳动会像 bug(债务详情两卡用)。 */
+.dt-card--static:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--border-card);
+}
 /* 空态大卡片(duplicates / data_quality 无数据等) */
 .dt-card--empty {
     padding: var(--space-10) var(--space-7);

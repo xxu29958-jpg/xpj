@@ -1,7 +1,10 @@
-/* /web 桌面账本 · 欠款列表页 (ADR-0049 债务域 web 面 slice 1)
+/* /web 桌面账本 · 欠款列表 + 详情 (ADR-0049 债务域 web 面 slice 1/2a + 1B premium)
  *
- * 镜像 Android DebtListScreen 行布局：左侧对手方名 + 方向/状态徽章 (.dt-pill 复用),
- * 右侧本位币剩余金额 (英雄) + 本金脚注。纯只读，无写入控件。全部尺寸走 token。
+ * 列表行 (DebtListScreen 镜像)：左对手方名 (三层节奏 名→徽章→muted 本金脚注)，右本位币
+ * 剩余 editorial 拆分英雄 (照 confirmed.css .ledger-hero .lh-amt：小货币标/大整数/小数 muted)。
+ * 详情按角色分轴：外部 = businesslike 会计卡 (display 拆分英雄 + 中性细还款条)，家庭 = communal
+ * 关系卡 (无金额关系主句 + 柔化件数条 + 「看看账」展开，永不红)。纯只读。全部尺寸走 token；
+ * 裸 px 仅留 1px 发丝线 / 数字光学间距 / chevron 发丝 / 媒体断点 (均注明，非布局尺度)。
  */
 .debt-list {
     display: flex;
@@ -16,6 +19,10 @@
     text-decoration: none;
     color: inherit;
 }
+/* 行是 <a> → hover 名变 brand 示意可点 (照 reports .merch-row)。键盘焦点环由全局
+   components/a11y.css 的 :focus-visible (outline + --brand-focus-ring 逐主题 alpha) 接管,
+   不在此另造 (避免用非语义 token 覆盖全站焦点范式)。 */
+.debt-row:hover .debt-name { color: var(--brand-primary); }
 
 .debt-row-main {
     flex: 1 1 auto;
@@ -27,6 +34,7 @@
     font-size: var(--type-subtitle-size);
     font-weight: 600;
     color: var(--text-default);
+    transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .debt-badges {
@@ -39,50 +47,41 @@
 .debt-row-amount {
     flex: 0 0 auto;
     text-align: right;
+    white-space: nowrap;
 }
 
-.debt-remaining {
-    font-family: var(--font-num);
-    font-size: var(--type-headline-size);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-default);
-    line-height: 1.2;
-}
-
+/* 本金脚注：降到第四级 text-meta，别压过英雄。 */
 .debt-principal {
     font-family: var(--font-num);
     font-size: var(--type-caption-size);
     font-variant-numeric: tabular-nums;
-    color: var(--text-muted);
+    color: var(--text-meta);
     margin-top: var(--space-1);
 }
 
-.debt-empty {
-    text-align: center;
-    padding: var(--space-8) var(--space-6);
-}
-
-.debt-empty-title {
-    font-family: var(--font-zh);
-    font-weight: 600;
+/* ── Editorial 金额拆分英雄 (cur 小·muted / int 大 / dec 小·muted) ── */
+.dh-amt {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 1px; /* 1px：数字光学间距，非布局 */
+    font-family: var(--font-num);
+    font-feature-settings: var(--type-tabular-features);
     color: var(--text-default);
+    line-height: 1.15;
+    white-space: nowrap;
 }
-
-.debt-empty-body {
-    font-size: var(--type-caption-size);
-    color: var(--text-muted);
-    margin-top: var(--space-3);
-}
-
-@media (max-width: 720px) {
-    .debt-row {
-        gap: var(--space-4);
-    }
-    .debt-remaining {
-        font-size: var(--type-title-size);
-    }
-}
+.dh-cur { color: var(--text-muted); align-self: flex-start; }
+/* 小数尾用 --text-muted 而非更淡的 --text-meta：仍弱于 --text-default 整数(两级层级),
+   但三主题对卡面均 ≥4.5:1(设计 §1B 硬性三主题验收;--text-meta 在 paper/midnight 不达标)。 */
+.dh-dec { color: var(--text-muted); }
+/* 列表行档：紧凑 editorial (整数 title/600，货币·小数 caption)。 */
+.dh-amt--row .dh-cur { font-size: var(--type-caption-size); font-weight: 500; }
+.dh-amt--row .dh-int { font-size: var(--type-title-size); font-weight: 600; letter-spacing: -0.02em; }
+.dh-amt--row .dh-dec { font-size: var(--type-caption-size); font-weight: 500; }
+/* 详情英雄档：display 拆分 (镜像 reports .kpi-cell--hero，businesslike 轻字重 400)。 */
+.dh-amt--hero .dh-cur { font-size: var(--type-title-size); font-weight: 400; margin-right: var(--space-2); }
+.dh-amt--hero .dh-int { font-size: var(--type-display-size); font-weight: 400; letter-spacing: -0.02em; }
+.dh-amt--hero .dh-dec { font-size: var(--type-headline-size); font-weight: 400; }
 
 /* ── 详情页 (slice 2a)：外部 businesslike 卡 / 家庭 communal 卡 ── */
 .debt-detail-back {
@@ -105,8 +104,7 @@
     opacity: 0.6;
 }
 
-.debt-member-eyebrow,
-.debt-summary-eyebrow {
+.debt-member-eyebrow {
     font-size: var(--type-caption-size);
     color: var(--text-muted);
     font-family: var(--font-zh);
@@ -119,19 +117,15 @@
     color: var(--text-default);
 }
 
+/* 外部详情英雄是 .dh-amt--hero 容器，只给行高 (尺寸由拆分段承载)。 */
 .debt-summary-headline {
-    font-family: var(--font-num);
-    font-size: var(--type-hero-size);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-default);
-    line-height: 1.15;
+    line-height: var(--type-display-line);
 }
 
-/* 件数进度条：success 色，无百分比文字 (a11y 走 aria-label) */
+/* 成员件数进度条 (柔化)：暖鼓励底 + success fill 圆角 + 缓入 (count-up 感)，永不红。 */
 .debt-progress {
     height: var(--space-3);
-    background: var(--surface-sunken);
+    background: var(--goal-on-track-bg);
     border-radius: var(--radius-pill);
     overflow: hidden;
 }
@@ -139,23 +133,65 @@
     height: 100%;
     background: var(--state-success-fg);
     border-radius: inherit;
+    transition: width var(--motion-slow) var(--ease-standard);
 }
 .debt-progress-note {
     font-size: var(--type-caption-size);
     color: var(--text-muted);
 }
 
+/* 外部债 businesslike 还款条：细 (4px) + 中性深 fill (非 success 绿) + 缓入。 */
+.debt-pay-bar {
+    height: var(--space-2);
+    background: var(--surface-sunken);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+}
+.debt-pay-fill {
+    height: 100%;
+    background: var(--text-default);
+    border-radius: inherit;
+    transition: width var(--motion-slow) var(--ease-standard);
+}
+
+/* ── 「看看账」<details>：安静 pill summary + 旋转 chevron + 分界缓开 ── */
 .debt-look summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: fit-content;
     cursor: pointer;
+    user-select: none;
+    list-style: none;
+    padding: var(--space-2) var(--space-3-5);
+    border-radius: var(--radius-pill);
+    background: var(--surface-sunken);
     font-size: var(--type-caption-size);
     color: var(--text-muted);
 }
+.debt-look summary::-webkit-details-marker { display: none; }
+.debt-look summary::after {
+    content: "";
+    width: var(--space-2);
+    height: var(--space-2);
+    border-right: 1.5px solid currentColor; /* 1.5px chevron 发丝，装饰非布局 */
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg); /* ▸ 收起态指右 */
+    transition: transform var(--motion-fast) var(--ease-standard);
+}
+.debt-look[open] summary::after { transform: rotate(45deg); } /* ▾ 展开态指下 */
+
 .debt-look-rows,
 .debt-summary-rows {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
     margin-top: var(--space-3);
+}
+/* 展开内容加上分界线，与 summary pill 区隔。 */
+.debt-look-rows {
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-card); /* 1px 发丝分界 */
 }
 .debt-look-row,
 .debt-summary-row {
@@ -172,4 +208,13 @@
     font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
     color: var(--text-default);
+}
+
+@media (max-width: 720px) {
+    .debt-row {
+        gap: var(--space-4);
+    }
+    /* 详情英雄移动降一级 (display→hero)，整数 28px 不溢出窄屏。 */
+    .dh-amt--hero .dh-int { font-size: var(--type-hero-size); }
+    .dh-amt--hero .dh-dec { font-size: var(--type-subtitle-size); }
 }

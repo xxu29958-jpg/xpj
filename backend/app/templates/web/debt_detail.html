@@ -7,7 +7,7 @@
 
 {% if debt.is_member %}
 {# 家庭(成员)债 = communal 关系卡：无金额关系主句 + 件数进度 + 「看看账」展开，永不红 #}
-<div class="dt-card debt-member-card{% if debt.is_voided %} debt-card-sunk{% endif %}">
+<div class="dt-card dt-card--static debt-member-card{% if debt.is_voided %} debt-card-sunk{% endif %}">
   <div class="debt-member-eyebrow">{{ debt.eyebrow }}</div>
   <div class="debt-member-headline">{{ debt.headline }}</div>
   {% if debt.show_progress %}
@@ -26,14 +26,21 @@
   </details>
 </div>
 {% else %}
-{# 外部债 = businesslike 会计卡：剩余英雄 + 本金/已偿还/剩余 + 状态徽章 #}
-<div class="dt-card debt-summary-card">
-  <div class="debt-summary-eyebrow">剩余</div>
-  <div class="debt-summary-headline">{{ debt.remaining_label }}</div>
+{# 外部债 = businesslike 会计卡：剩余 editorial 英雄 + 中性还款条 + 本金/已偿还/状态 #}
+<div class="dt-card dt-card--static debt-summary-card">
+  <div class="card-title">剩余</div>
+  {# 英雄数字纯靠可见拆分文本被读 (镜像 confirmed.html .lh-amt 范式,inline span 不断读 →
+     「¥123.45」);剩余的语义由上方 .card-title 眉「剩余」承载,不另加 span aria-label 以免
+     generic-role 上的 label 在部分 SR 下与文本重复串读。 #}
+  <div class="debt-summary-headline">
+    <span class="dh-amt dh-amt--hero"><span class="dh-cur">{{ debt.remaining_segments.cur }}</span><span class="dh-int">{{ debt.remaining_segments.int }}</span><span class="dh-dec">{{ debt.remaining_segments.dec }}</span></span>
+  </div>
+  <div class="debt-pay-bar" role="img" aria-label="已偿还 {{ debt.paid_ratio_percent }}%">
+    <div class="debt-pay-fill" style="width: {{ debt.paid_ratio_percent }}%"></div>
+  </div>
   <div class="debt-summary-rows">
     <div class="debt-summary-row"><span>本金</span><span class="debt-num">{{ debt.principal_label }}</span></div>
     <div class="debt-summary-row"><span>已偿还</span><span class="debt-num">{{ debt.paid_label }}</span></div>
-    <div class="debt-summary-row"><span>剩余</span><span class="debt-num">{{ debt.remaining_label }}</span></div>
     <div class="debt-summary-row"><span>状态</span><span class="dt-pill {{ debt.status_tone }}">{{ debt.status_label }}</span></div>
   </div>
 </div>

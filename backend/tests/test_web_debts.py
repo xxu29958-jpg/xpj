@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember
+from app.routes.web_common import _amount_segments
 from app.routes.web_debts import (
     _communal_ratio,
     _debt_view,
@@ -104,7 +105,10 @@ def test_web_debts_lists_external_i_owe_open(web_client: TestClient, *, identity
     assert "应付" in resp.text  # i_owe direction label
     assert "未结清" in resp.text  # open status label
     assert "本金" in resp.text
-    assert "500.00" in resp.text  # home-currency principal/remaining
+    assert "500.00" in resp.text  # home-currency principal footnote
+    # Editorial-split remaining hero (cur/int/dec spans), not a blunt label string.
+    assert "dh-amt--row" in resp.text
+    assert '<span class="dh-int">500</span>' in resp.text
 
 
 def test_web_debts_renders_owed_to_me_direction(web_client: TestClient, *, identity) -> None:
@@ -132,7 +136,9 @@ def test_web_debts_renders_cleared_status_and_zero_remaining(
     assert resp.status_code == 200
     assert "已结清" in resp.text  # cleared status label
     assert "dt-pill ok" in resp.text  # cleared → success tone class rendered
-    assert "0.00" in resp.text  # remaining is now zero
+    # Remaining hero integer is now exactly 0 (the only dh-int in the row; principal
+    # stays a plain footnote, so this precisely checks remaining == 0).
+    assert '<span class="dh-int">0</span>' in resp.text
     assert "本金 " in resp.text  # principal footnote still shown
 
 
@@ -202,6 +208,21 @@ def test_debt_view_maps_labels_tones_and_fallbacks() -> None:
         _stub_debt(counterparty_type="external", counterparty_label="   ")
     )
     assert external_blank["name"] == "外部欠款"
+    # Remaining hero is exposed as cur/int/dec segments for the editorial split.
+    seg = _debt_view(_stub_debt(remaining_amount_cents=123456))["remaining_segments"]
+    assert seg == {"cur": "¥", "int": "1,234", "dec": ".56"}
+
+
+def test_amount_segments_splits_cur_int_dec() -> None:
+    """Editorial amount split: small currency mark + thousands-separated integer +
+    decimal tail. No-fraction currencies drop the decimal segment."""
+    assert _amount_segments(50000, "CNY") == {"cur": "¥", "int": "500", "dec": ".00"}
+    assert _amount_segments(123456, "CNY") == {"cur": "¥", "int": "1,234", "dec": ".56"}
+    assert _amount_segments(0, "CNY") == {"cur": "¥", "int": "0", "dec": ".00"}
+    assert _amount_segments(None, "CNY") == {"cur": "¥", "int": "0", "dec": ".00"}
+    # JPY is a no-fraction currency → dec is empty, amount is the raw minor unit.
+    assert _amount_segments(1500, "JPY")["dec"] == ""
+    assert _amount_segments(1500, "JPY")["int"] == "1,500"
 
 
 # ── slice 2a: 详情页 ──────────────────────────────────────────────────────────
@@ -215,7 +236,15 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
     assert "应付" in resp.text  # external direction subtitle (businesslike)
     for label in ("本金", "已偿还", "剩余", "未结清"):
         assert label in resp.text
-    assert "500.00" in resp.text
+    assert "500.00" in resp.text  # principal row
+    # 1B premium: editorial display-split hero + businesslike repayment bar +
+    # tracked (letter-spaced) card-title eyebrow (uppercase is a no-op on 剩余).
+    assert "dh-amt--hero" in resp.text
+    assert "debt-pay-bar" in resp.text
+    assert "card-title" in resp.text
+    # The duplicate 剩余 ROW is removed (剩余 now lives only in the eyebrow/aria);
+    # there must be no 剩余 row label left.
+    assert "<span>剩余</span>" not in resp.text
 
 
 def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None:
@@ -298,3 +327,17 @@ def test_detail_view_member_neutral_and_fx_fallback() -> None:
     external = _detail_view(_stub_debt(counterparty_type="external", status="voided"))
     assert external["is_member"] is False
     assert external["status_tone"] == "danger"
+
+    # External card exposes an editorial-split remaining hero + a businesslike
+    # paid/principal ratio for the thin neutral repayment bar.
+    partial = _detail_view(
+        _stub_debt(
+            counterparty_type="external", status="open",
+            principal_amount_cents=50000, paid_amount_cents=20000,
+            remaining_amount_cents=30000,
+        )
+    )
+    assert partial["remaining_segments"] == {"cur": "¥", "int": "300", "dec": ".00"}
+    assert partial["paid_ratio_percent"] == 40  # 20000 / 50000
+    # Member branch never carries the external accounting fields.
+    assert "paid_ratio_percent" not in member

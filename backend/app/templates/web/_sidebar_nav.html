@@ -97,6 +97,17 @@
       </span>
       <span>已发拆账</span>
     </a>
+    {# 轴2 IA: 欠款是「操作/清算」面(数据血缘 bill_split→成员债)，归账单流、接在拆账项后(从规划移来)。 #}
+    <a class="nav-item {% if '/debts' in _p %}active{% endif %}" href="/web/debts{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/>
+          <path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
+        </svg>
+      </span>
+      <span>欠款</span>
+    </a>
     <a class="nav-item {% if '/import' in _p or '/export' in _p %}active{% endif %}" href="/web/import{{ q }}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
@@ -112,7 +123,7 @@
 
   {# 轴2 IA(owner 拍板 A4): 原「治理」组拆成「规划」+「治理」两组;
      固定支出归规划(Android 已放 Reports 二级页,三端语义对齐)。 #}
-  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/debts' in _p or '/income-plans' in _p or '/budget-advise' in _p or '/recurring' in _p %}open{% endif %}>
+  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/income-plans' in _p or '/budget-advise' in _p or '/recurring' in _p %}open{% endif %}>
     <summary class="nav-group-title">规划</summary>
     <a class="nav-item {% if '/budgets' in _p %}active{% endif %}" href="/web/budgets{{ q }}">
       <span class="nav-icon">
@@ -134,16 +145,6 @@
         </svg>
       </span>
       <span>目标</span>
-    </a>
-    <a class="nav-item {% if '/debts' in _p %}active{% endif %}" href="/web/debts{{ q }}">
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/>
-          <path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
-        </svg>
-      </span>
-      <span>欠款</span>
     </a>
     <a class="nav-item {% if '/income-plans' in _p %}active{% endif %}" href="/web/income-plans{{ q }}">
       <span class="nav-icon">
