@@ -36,14 +36,15 @@ data class Debt(
     /**
      * The SERVER-authoritative debtor/creditor role for the viewer of a member Debt (§3.2): `true` =
      * viewer is the debtor (may propose / withdraw), `false` = creditor (may confirm / reject),
-     * `null` = external Debt / not a party / a path without participant context (list & fact routes).
+     * `null` = external Debt / not a party / a path without participant context (fact routes).
      *
      * The client must NOT derive this: it does not know its own account id, and ledger membership
      * does not distinguish a member Debt's same-ledger owner from a same-ledger member counterparty
-     * (the backend grants both a full, ledger-id-present response). The detail fetch
-     * (`GET /api/debts/{id}` → `get_participant_debt_response`) is the only path that populates it.
-     * Defaults to `null` (unknown) so non-member-debt construction sites need not name it; the one
-     * real mapper ([com.ticketbox.data.repository.toDomain]) always carries the server value through.
+     * (the backend grants both a full, ledger-id-present response). Both the detail fetch
+     * (`GET /api/debts/{id}` → `get_participant_debt_response`) and the LIST (`GET /api/debts`, which
+     * computes it per row for the authenticated viewer — slice 1A communal rows) populate it server-
+     * side. Defaults to `null` (unknown) so non-member-debt construction sites need not name it; the
+     * one real mapper ([com.ticketbox.data.repository.toDomain]) always carries the server value through.
      */
     val viewerIsDebtor: Boolean? = null,
     /**

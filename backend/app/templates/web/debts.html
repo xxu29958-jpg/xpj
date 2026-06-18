@@ -2,14 +2,42 @@
 {% block title %}欠款 — 小票夹{% endblock %}
 {% block content %}
 <h1 class="page-title page-title--compact">欠款</h1>
-<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。展示外部欠款与家庭成员之间的款项，按方向、状态和本位币剩余金额排列；金额与手机 App 一致。记一笔、还款、调整或作废请在手机 App 或本机操作。</p>
+<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。家人之间的款项按「一起处理这件事」呈现，外部欠款按方向、状态与本位币剩余排列；金额与手机 App 一致。记一笔、还款、调整或作废请在手机 App 或本机操作。</p>
 {% if not can_write %}
 <div class="readonly-callout">只读角色可以查看欠款明细；记账、还款或作废请联系拥有者或成员。</div>
 {% endif %}
 
-{% if debts %}
+{% if member_debts or external_debts %}
+{% if member_debts %}
+<h2 class="debt-section-title">家人</h2>
 <div class="debt-list">
-  {% for debt in debts %}
+  {% for debt in member_debts %}
+  {# 家人(成员)债 = communal 关系行：对手方名 + viewer-相对关系主句(无金额) + open 时细 success 进度条 +
+     状态徽章(neutral/success 永不红 — 红线②)。作废/已结清沉降(淡出，办完可追溯)。 #}
+  <a class="dt-card debt-row debt-row--member{% if debt.recede %} debt-card-sunk{% endif %}"
+     href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
+     aria-label="{{ debt.name }}，{{ debt.member_headline }}，{{ debt.member_status_label }}">
+    <div class="debt-row-main">
+      <div class="debt-name">{{ debt.name }}</div>
+      <div class="debt-member-line">{{ debt.member_headline }}</div>
+      {% if debt.show_progress %}
+      <div class="debt-progress debt-progress--row" role="img" aria-label="{{ debt.progress_note }}">
+        <div class="debt-progress-fill" style="width: {{ debt.ratio_percent }}%"></div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="debt-row-side">
+      <span class="dt-pill {{ debt.member_status_tone }}">{{ debt.member_status_label }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% if external_debts %}
+<h2 class="debt-section-title">外部</h2>
+<div class="debt-list">
+  {% for debt in external_debts %}
+  {# 外部债 = businesslike 会计行：应付/应收 + 状态 + 本位币剩余 editorial 拆分英雄 + 本金脚注。 #}
   <a class="dt-card debt-row" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
      aria-label="{{ debt.name }}，{{ debt.direction_label }}，{{ debt.status_label }}，剩余 {{ debt.remaining_label }}">
     <div class="debt-row-main">
@@ -26,6 +54,7 @@
   </a>
   {% endfor %}
 </div>
+{% endif %}
 {% else %}
 <div class="dt-card dt-card--empty">
   <div class="empty-headline">还没有欠款记录</div>

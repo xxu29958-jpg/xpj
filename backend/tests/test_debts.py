@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Account, ExchangeRate, LedgerMember
+from app.models import Account, Debt, ExchangeRate, LedgerMember
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -152,6 +152,63 @@ def test_list_debts_is_ledger_scoped(client: TestClient, *, identity) -> None:
     assert gray_list.status_code == 200, gray_list.json()
     gray_labels = [item["counterparty_label"] for item in gray_list.json()["items"]]
     assert gray_labels == ["同事"]
+
+
+def _seed_owner_ledger_member_debt(*, direction: str = "i_owe") -> str:
+    """Seed a committed member (bill_split) Debt in the 'owner' ledger with the ledger
+    owner as the Debt owner, so the API caller (the owner) is a party. ``POST /api/debts``
+    only creates external Debt, so member obligations are seeded directly via ORM."""
+    with SessionLocal() as db:
+        counterparty = Account(display_name="家人")
+        db.add(counterparty)
+        db.flush()
+        owner_account_id = db.scalar(
+            select(LedgerMember.account_id)
+            .where(LedgerMember.ledger_id == "owner", LedgerMember.role == "owner")
+            .limit(1)
+        )
+        assert owner_account_id is not None
+        debt = Debt(
+            tenant_id="owner",
+            owner_account_id=owner_account_id,
+            created_by_account_id=owner_account_id,
+            direction=direction,
+            counterparty_type="member",
+            counterparty_account_id=counterparty.id,
+            principal_amount_cents=12000,
+            home_currency_code="CNY",
+            status="open",
+            source_type="bill_split",
+            source_id=str(uuid4()),
+        )
+        db.add(debt)
+        db.commit()
+        return debt.public_id
+
+
+def test_list_debts_carries_viewer_is_debtor(client: TestClient, *, identity) -> None:
+    # ADR-0049 §3.2 (slice 1A): the list carries the SERVER-authoritative viewer role per row
+    # so the communal client row frames the relationship from the viewer's side. The owner is
+    # the debtor of this i_owe member debt → viewer_is_debtor True; an external row stays None.
+    # (Drop the viewer pass in list_debts → the member row falls back to None and this fails.)
+    member_public_id = _seed_owner_ledger_member_debt(direction="i_owe")
+    ext = client.post(
+        "/api/debts",
+        headers=_idem_headers(identity.app_headers),
+        json={
+            "direction": "i_owe",
+            "counterparty_type": "external",
+            "counterparty_label": "房东",
+            "principal_amount_cents": 30000,
+        },
+    )
+    assert ext.status_code == 201, ext.json()
+
+    listing = client.get("/api/debts", headers=identity.app_headers)
+    assert listing.status_code == 200, listing.json()
+    by_id = {item["public_id"]: item for item in listing.json()["items"]}
+    assert by_id[member_public_id]["viewer_is_debtor"] is True
+    assert by_id[ext.json()["public_id"]]["viewer_is_debtor"] is None
 
 
 def test_get_debt_by_public_id_and_cross_ledger_404(client: TestClient, *, identity) -> None:

@@ -200,7 +200,11 @@ def get_debts(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DebtListResponse:
-    return list_debts(db, tenant_id=auth.tenant_id)
+    # ADR-0049 §3.2: each member row carries the server-authoritative viewer_is_debtor
+    # for the authenticated account, so the communal list row frames the relationship
+    # from the viewer's side (a bill_split member Debt's owner may be a non-owner member
+    # → owner-relative direction alone can't frame it). External rows stay None.
+    return list_debts(db, tenant_id=auth.tenant_id, viewer_account_id=auth.account_id)
 
 
 @router.get("/{public_id}", response_model=DebtResponse)

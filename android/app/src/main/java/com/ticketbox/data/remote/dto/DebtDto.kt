@@ -62,8 +62,9 @@ data class DebtDto(
     val rowVersion: Long,
     // ADR-0049 §3.2 (slice 8d): server-authoritative viewer role for a member Debt (true=debtor /
     // false=creditor / null=external·not-a-party·non-participant path). The client must NOT derive
-    // it — see domain Debt.viewerIsDebtor. Only the detail fetch (get_participant_debt_response)
-    // populates it; the list/fact responses leave it null.
+    // it — see domain Debt.viewerIsDebtor. The detail fetch (get_participant_debt_response) and the
+    // list (GET /api/debts, computed per row for the viewer — slice 1A communal rows) populate it;
+    // fact responses leave it null.
     @param:Json(name = "viewer_is_debtor")
     val viewerIsDebtor: Boolean? = null,
     // ADR-0049 §3.7 / §4 (slice 8e-3): true when this CLEARED Debt was forgiven by the creditor
