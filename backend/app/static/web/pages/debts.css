@@ -242,6 +242,72 @@
     color: var(--text-default);
 }
 
+/* ── slice 2b：成员 proposal 状态行 + 过往沉降 ── */
+/* 在途状态句：一行关系描述 (谁该接下一步)，安静柔底，永不红 (neutral)。 */
+.debt-proposal-status {
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-card);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    line-height: 1.5;
+}
+
+/* 过往块：已解决 proposal 沉降，逐行清晰但集合零汇总 (无 total/count/rank)。 */
+.debt-history { margin-top: var(--space-4); }
+.debt-history-title {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+    letter-spacing: 0.04em;
+}
+/* 沉降行：金额/备注/日期左栈 + neutral 状态 pill 右；整行低权重 (muted 文本层级承载沉降，
+   三主题对比安全——不叠重 opacity 免 midnight 看不清)。 */
+.debt-history-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+}
+.debt-history-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+.debt-history-amt {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.debt-history-note { font-size: var(--type-caption-size); color: var(--text-muted); }
+.debt-history-date { font-size: var(--type-caption-size); color: var(--text-meta); }
+/* 「查看全部 N 条过往」展开：安静 text-button 风 + 旋转 chevron 指示展开/收起 (复用 .debt-look，no-JS)。 */
+.debt-history-more { margin-top: var(--space-3); }
+.debt-history-more summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    list-style: none;
+    width: fit-content;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.debt-history-more summary::-webkit-details-marker { display: none; }
+.debt-history-more summary::after {
+    content: "";
+    width: var(--space-2);
+    height: var(--space-2);
+    border-right: 1.5px solid currentColor; /* 1.5px chevron 发丝，装饰非布局 */
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg); /* ▸ 收起态指右 */
+    transition: transform var(--motion-fast) var(--ease-standard);
+}
+.debt-history-more[open] summary::after { transform: rotate(45deg); } /* ▾ 展开态指下 */
+
 @media (max-width: 720px) {
     .debt-row {
         gap: var(--space-4);

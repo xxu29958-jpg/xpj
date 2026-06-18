@@ -25,6 +25,42 @@
     </div>
   </details>
 </div>
+{# slice 2b：成员还款 proposal 状态 + 过往历史 (只读；在途一行关系状态句 + 已解决沉降，永不红) #}
+{% if proposals %}
+{% if proposals.pending_line %}
+<div class="debt-proposal-status">{{ proposals.pending_line }}</div>
+{% endif %}
+{% if proposals.has_resolved %}
+<div class="dt-card dt-card--static debt-history">
+  <div class="debt-history-title">{{ proposals.history_title }}</div>
+  {% for row in proposals.resolved_visible %}
+  <div class="debt-history-row">
+    <div class="debt-history-main">
+      <span class="debt-history-amt">{{ row.amount_label }}</span>
+      {% if row.note %}<span class="debt-history-note">{{ row.note }}</span>{% endif %}
+      <span class="debt-history-date">{{ row.date_text }}</span>
+    </div>
+    <span class="dt-pill">{{ row.status_label }}</span>
+  </div>
+  {% endfor %}
+  {% if proposals.resolved_hidden %}
+  <details class="debt-history-more">
+    <summary>{{ proposals.history_expand_label }}</summary>
+    {% for row in proposals.resolved_hidden %}
+    <div class="debt-history-row">
+      <div class="debt-history-main">
+        <span class="debt-history-amt">{{ row.amount_label }}</span>
+        {% if row.note %}<span class="debt-history-note">{{ row.note }}</span>{% endif %}
+        <span class="debt-history-date">{{ row.date_text }}</span>
+      </div>
+      <span class="dt-pill">{{ row.status_label }}</span>
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
 {% else %}
 {# 外部债 = businesslike 会计卡：剩余 editorial 英雄 + 中性还款条 + 本金/已偿还/状态 #}
 <div class="dt-card dt-card--static debt-summary-card">
