@@ -53,6 +53,7 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
+import com.ticketbox.ui.components.CountBadge
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.screens.stats.CategoryStructureCard
@@ -328,6 +329,8 @@ private fun StatsTopPanel(
                         onOpenDebts = onOpenDebts,
                         onOpenRepaymentDrafts = onOpenRepaymentDrafts,
                     ),
+                    // 轨道2 [P1]：「还款待确认」项的 pending 还款草稿数 badge（账本作用域，>0 才显）。
+                    repaymentDraftBadgeCount = state.pendingRepaymentDraftCount,
                 )
             },
         )
@@ -375,7 +378,7 @@ private fun StatsMenuSectionLabel(text: String) {
 }
 
 @Composable
-private fun StatsPlanningMenu(actions: StatsPlanningActions) {
+private fun StatsPlanningMenu(actions: StatsPlanningActions, repaymentDraftBadgeCount: Int) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { menuOpen = true }) {
@@ -394,6 +397,20 @@ private fun StatsPlanningMenu(actions: StatsPlanningActions) {
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_repayment_drafts)) },
+                // pending 还款草稿数 badge（>0 才显，镜像 /web nav-badge 的 `{% if pending_count %}`）。
+                trailingIcon = if (repaymentDraftBadgeCount > 0) {
+                    {
+                        CountBadge(
+                            count = repaymentDraftBadgeCount,
+                            contentDescription = stringResource(
+                                R.string.stats_header_repayment_drafts_badge_description,
+                                repaymentDraftBadgeCount,
+                            ),
+                        )
+                    }
+                } else {
+                    null
+                },
                 onClick = { menuOpen = false; actions.onOpenRepaymentDrafts() },
             )
             HorizontalDivider()

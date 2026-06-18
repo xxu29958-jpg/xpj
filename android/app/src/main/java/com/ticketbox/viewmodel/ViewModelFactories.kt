@@ -35,6 +35,8 @@ fun repositoryViewModelFactory(
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetActions? = null,
     reportsRepository: ReportsActions? = null,
+    // 轨道2 [P1]：StatsReportsViewModel 的还款待确认 badge 计数源（pending 还款草稿）。
+    repaymentDrafts: RepaymentDraftActions? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when (modelClass) {
@@ -43,7 +45,7 @@ fun repositoryViewModelFactory(
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
             MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, recurringRepository)
             StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, budgetRepository)
-            StatsReportsViewModel::class.java -> StatsReportsViewModel(reportsRepository)
+            StatsReportsViewModel::class.java -> StatsReportsViewModel(reportsRepository, repaymentDrafts)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
     }
