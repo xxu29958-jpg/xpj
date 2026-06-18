@@ -11,12 +11,14 @@
     <string name="stats_all_cards_hidden_title">首页卡片已全部隐藏</string>
     <string name="stats_all_cards_hidden_body">可以在设置 > 首页卡片中恢复默认卡片。</string>
     <string name="stats_header_title">统计</string>
+    <string name="stats_header_menu">管理</string>
+    <string name="stats_header_section_debt">债务</string>
     <string name="stats_header_planning">规划</string>
     <string name="stats_header_open_budget">预算</string>
     <string name="stats_header_open_recurring">固定支出</string>
     <string name="stats_header_open_income_plans">收入计划</string>
     <string name="stats_header_open_debt_goals">还债目标</string>
-    <string name="stats_header_open_debts">债务管理</string>
+    <string name="stats_header_open_debts">欠款</string>
     <string name="stats_header_open_repayment_drafts">还款待确认</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
@@ -157,7 +159,7 @@
     <!-- ADR-0049 §2 (slice 8) 债务管理：欠款列表 + 新建外部欠款。方向/状态标签复用上面 §6 的
          debt_direction_* / debt_link_status_* / debt_goal_counterparty_external。 -->
     <string name="debt_list_topbar_back">返回</string>
-    <string name="debt_list_topbar_title">债务管理</string>
+    <string name="debt_list_topbar_title">欠款</string>
     <string name="debt_list_intro_body">记录与外部对象之间的欠款，跟踪每笔的清偿进度。</string>
     <string name="debt_list_add">记一笔欠款</string>
     <string name="debt_list_empty_title">还没有欠款记录</string>

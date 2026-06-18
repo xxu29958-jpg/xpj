@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -26,6 +28,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
@@ -341,7 +345,12 @@ private fun StatsTopPanel(
     }
 }
 
-/** 「规划」下拉菜单的六个二级页入口（预算 / 固定支出 / 收入计划 / 还债目标 / 债务管理 / 还款待确认）。 */
+/**
+ * 「管理」下拉菜单：分两节呈现六个二级页入口（ADR-0049 轨道2）——
+ * 债务节{欠款 / 还款待确认}（操作向）在前，规划节{预算 / 固定支出 / 收入计划 / 还债目标}在后。
+ * 节标题为非点击 label 行，两节间 HorizontalDivider 分隔；触发钮为中性「管理」（菜单已跨债务+规划）。
+ * copy 一律中性操作向，禁催收/收账（一个 label 路由到分角色的两条卡，中性才对两条路径都安全）。
+ */
 private data class StatsPlanningActions(
     val onOpenBudget: () -> Unit,
     val onOpenRecurring: () -> Unit,
@@ -351,42 +360,59 @@ private data class StatsPlanningActions(
     val onOpenRepaymentDrafts: () -> Unit,
 )
 
+/** 下拉菜单内的非点击节标题行（与 DropdownMenuItem 默认 12dp 横向 padding 对齐）。 */
+@Composable
+private fun StatsMenuSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap)
+            .semantics { heading() },
+    )
+}
+
 @Composable
 private fun StatsPlanningMenu(actions: StatsPlanningActions) {
-    var planningMenuOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { planningMenuOpen = true }) {
+        TextButton(onClick = { menuOpen = true }) {
             Text(
-                text = stringResource(R.string.stats_header_planning),
+                text = stringResource(R.string.stats_header_menu),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
             )
             Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null)
         }
-        DropdownMenu(expanded = planningMenuOpen, onDismissRequest = { planningMenuOpen = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_budget)) },
-                onClick = { planningMenuOpen = false; actions.onOpenBudget() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_recurring)) },
-                onClick = { planningMenuOpen = false; actions.onOpenRecurring() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
-                onClick = { planningMenuOpen = false; actions.onOpenIncomePlans() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
-                onClick = { planningMenuOpen = false; actions.onOpenDebtGoals() },
-            )
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            StatsMenuSectionLabel(stringResource(R.string.stats_header_section_debt))
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_debts)) },
-                onClick = { planningMenuOpen = false; actions.onOpenDebts() },
+                onClick = { menuOpen = false; actions.onOpenDebts() },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_repayment_drafts)) },
-                onClick = { planningMenuOpen = false; actions.onOpenRepaymentDrafts() },
+                onClick = { menuOpen = false; actions.onOpenRepaymentDrafts() },
+            )
+            HorizontalDivider()
+            StatsMenuSectionLabel(stringResource(R.string.stats_header_planning))
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_budget)) },
+                onClick = { menuOpen = false; actions.onOpenBudget() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_recurring)) },
+                onClick = { menuOpen = false; actions.onOpenRecurring() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
+                onClick = { menuOpen = false; actions.onOpenIncomePlans() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
+                onClick = { menuOpen = false; actions.onOpenDebtGoals() },
             )
         }
     }
