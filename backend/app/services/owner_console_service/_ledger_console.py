@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Expense
 from app.services.data_quality_service import data_quality_summary
+from app.services.debt_service import count_open_external_debts
+from app.services.goal_debt_repayment_service import ledger_has_goal_needing_review
 from app.services.ledger_service import (
     LedgerSummary,
     archive_ledger,
@@ -67,6 +69,12 @@ class LedgerHealthVM:
     so the owner can spot which ledger needs attention without opening each
     one individually. All values are read-only; the dashboard renders direct
     links to the matching /web pages.
+
+    ``open_external_debt_count`` and ``debt_goal_needs_review`` are the slice-5
+    debt-overview aggregates: a count of outstanding external obligations and a
+    single integrity flag for any debt goal that needs review (a linked Debt was
+    voided). Both are AGGREGATE only — ADR-0049 §7.0 / slice 5 forbid surfacing
+    any per-user / per-counterparty / who-owes-who detail in the owner ops view.
     """
 
     ledger_id: str
@@ -78,6 +86,8 @@ class LedgerHealthVM:
     missing_merchant: int
     missing_category: int
     oldest_pending_age_days: int | None
+    open_external_debt_count: int
+    debt_goal_needs_review: bool
 
 
 def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
@@ -90,13 +100,29 @@ def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
     owner_id = get_owner_account_id(db)
     if owner_id is None:
         return []
+    summaries = list_managed_ledgers_for_account(db, account_id=owner_id)
+    # One grouped query for the slice-5 open-external-debt aggregate across every
+    # managed ledger (N+1 avoidance, mirrors _ledger_console_rows). A failure here
+    # degrades to "no debt counts" without hiding the data-quality rows.
+    try:
+        open_external_by_ledger = count_open_external_debts(
+            db, [s.ledger_id for s in summaries]
+        )
+    except Exception:  # noqa: BLE001 — debt aggregate must not break the dashboard
+        logger.exception("owner_console ledger_health: count_open_external_debts failed")
+        open_external_by_ledger = {}
     rows: list[LedgerHealthVM] = []
-    for summary in list_managed_ledgers_for_account(db, account_id=owner_id):
+    for summary in summaries:
         try:
             dq = data_quality_summary(db, tenant_id=summary.ledger_id)
         except Exception:  # noqa: BLE001 — one bad ledger must not hide the rest
             logger.exception("owner_console ledger_health: data_quality_summary failed for ledger=%s", summary.ledger_id)
             continue
+        try:
+            needs_review = ledger_has_goal_needing_review(db, tenant_id=summary.ledger_id)
+        except Exception:  # noqa: BLE001 — one bad goal eval must not drop the row's dq counts
+            logger.exception("owner_console ledger_health: goal review flag failed for ledger=%s", summary.ledger_id)
+            needs_review = False
         rows.append(
             LedgerHealthVM(
                 ledger_id=summary.ledger_id,
@@ -108,6 +134,8 @@ def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
                 missing_merchant=dq.missing_merchant,
                 missing_category=dq.missing_category,
                 oldest_pending_age_days=dq.oldest_pending_age_days,
+                open_external_debt_count=open_external_by_ledger.get(summary.ledger_id, 0),
+                debt_goal_needs_review=needs_review,
             )
         )
     return rows

@@ -472,3 +472,18 @@ def list_debt_repayment_goals(
         build_debt_repayment_goal_response(db, goal, persist_achievement=False)
         for goal in goals
     ]
+
+
+def ledger_has_goal_needing_review(db: Session, *, tenant_id: str) -> bool:
+    """Whether ANY active debt_repayment goal in the ledger needs review (§6/F13).
+
+    Owner-overview aggregate (slice 5): a single integrity boolean, NOT per-goal
+    detail. Reuses the read-only evaluator via :func:`list_debt_repayment_goals`
+    (``persist_achievement=False``, never latches), so the flag matches the
+    /web/debt-goals page exactly. ``needs_review`` is True when a linked Debt was
+    debt-voided and that goal_version's integrity review is still unacknowledged.
+    """
+    return any(
+        goal.debt_repayment is not None and goal.debt_repayment.needs_review
+        for goal in list_debt_repayment_goals(db, tenant_id=tenant_id)
+    )

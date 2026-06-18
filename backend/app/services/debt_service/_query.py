@@ -14,7 +14,7 @@ shell").
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -231,3 +231,31 @@ def list_debts(
             )
         items.append(response)
     return DebtListResponse(items=items)
+
+
+def count_open_external_debts(db: Session, tenant_ids: list[str]) -> dict[str, int]:
+    """Per-ledger count of OPEN external Debts (owner-overview aggregate, slice 5).
+
+    Counts debts whose stored lifecycle ``status='open'`` and
+    ``counterparty_type='external'``, grouped by ``tenant_id`` so an N-ledger owner
+    dashboard resolves in ONE query (mirrors the ``_ledger_console`` grouped-count
+    pattern). The stored ``status`` is the latch maintained at every fold-changing
+    write (``lock_and_fold`` re-derives + persists it from the §2 fold), so an
+    at-rest snapshot count matches the derived status without a per-debt fold:
+    ``open`` excludes both ``cleared`` (remaining 0) and ``voided`` (DebtVoid latch).
+
+    External-only by design (ADR-0049 §7.0 / slice 5): a member Debt is a
+    relationship surface, never an owner-ops counter — the overview shows aggregate
+    counts only, NO per-user / per-counterparty / who-owes-who detail. Returns a dict
+    keyed by tenant; ledgers with no open external debt are absent (caller defaults 0).
+    """
+    if not tenant_ids:
+        return {}
+    rows = db.execute(
+        select(Debt.tenant_id, func.count())
+        .where(Debt.tenant_id.in_(tenant_ids))
+        .where(Debt.counterparty_type == "external")
+        .where(Debt.status == "open")
+        .group_by(Debt.tenant_id)
+    ).all()
+    return {tenant_id: int(count) for tenant_id, count in rows}
