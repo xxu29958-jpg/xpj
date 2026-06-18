@@ -2,7 +2,8 @@
  *
  * .dt-pill —— 通用圆角徽章基类,变体:
  *   .dt-pill          中性(默认)
- *   .dt-pill.warn     警告
+ *   .dt-pill.warn     警告(铜色品牌——拆账 pending 等)
+ *   .dt-pill.amber    琥珀(at-risk / 复核 等 warn 态——走 --state-warn-*，非铜色品牌)
  *   .dt-pill.danger   危险
  *   .dt-pill.ok       成功
  *   .dt-pill.muted    弱化
@@ -27,6 +28,9 @@
     white-space: nowrap;
 }
 .dt-pill.warn { color: var(--brand-primary); border-color: var(--brand-accent); background: var(--brand-primary-bg); }
+/* 琥珀 warn 态 (at-risk / 复核)：走 --state-warn-* 三主题已有的暖金 trio，区别于上面的铜色品牌
+   .warn。三主题安全 (paper/mono/midnight 均定义)，永不红——成员/债务面去-shame 的 amber 态走它。 */
+.dt-pill.amber { color: var(--state-warn-fg); border-color: var(--state-warn-border); background: var(--state-warn-bg); }
 .dt-pill.danger { color: var(--state-danger-fg); border-color: var(--state-danger-border); background: var(--state-danger-bg); }
 .dt-pill.ok { color: var(--state-success-fg); border-color: var(--state-success-border); background: var(--state-success-bg); }
 .dt-pill.muted { color: var(--text-meta); }

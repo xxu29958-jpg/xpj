@@ -123,7 +123,7 @@
 
   {# 轴2 IA(owner 拍板 A4): 原「治理」组拆成「规划」+「治理」两组;
      固定支出归规划(Android 已放 Reports 二级页,三端语义对齐)。 #}
-  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/income-plans' in _p or '/budget-advise' in _p or '/recurring' in _p %}open{% endif %}>
+  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/debt-goals' in _p or '/income-plans' in _p or '/budget-advise' in _p or '/recurring' in _p %}open{% endif %}>
     <summary class="nav-group-title">规划</summary>
     <a class="nav-item {% if '/budgets' in _p %}active{% endif %}" href="/web/budgets{{ q }}">
       <span class="nav-icon">
@@ -145,6 +145,17 @@
         </svg>
       </span>
       <span>目标</span>
+    </a>
+    {# 轴2 IA: 债务目标是前瞻/规划面 (跟踪关联欠款清偿)，与 目标/预算 同性质，归规划组、接在 目标 后。 #}
+    <a class="nav-item {% if '/debt-goals' in _p %}active{% endif %}" href="/web/debt-goals{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h13"/><path d="M3 12h9"/><path d="M3 18h7"/>
+          <path d="m15 16 2.5 2.5L22 14"/>
+        </svg>
+      </span>
+      <span>还债目标</span>
     </a>
     <a class="nav-item {% if '/income-plans' in _p %}active{% endif %}" href="/web/income-plans{{ q }}">
       <span class="nav-icon">
