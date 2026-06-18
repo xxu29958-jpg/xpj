@@ -1,0 +1,87 @@
+/* /web 桌面账本 · 还款捕获审计 (ADR-0049 债务域 web 面 slice 3)
+ *
+ * 只读审计日志行 (.dt-card--static 不抬升=不可点)：左来源 eyebrow + 商户名 (三层节奏) + 捕获日 +
+ * 描述性 provenance / 关联债行，右本位币额 (tabular) + 状态 pill。dismissed 行走共享 .debt-card-sunk
+ * 沉降 (淡出，永不红)。全部尺寸走 token；裸 px 仅留数字光学间距 (注明)。空态复用 .dt-card--empty。
+ */
+.rd-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3-5);
+}
+
+.rd-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-5);
+}
+
+.rd-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* 头部三层节奏：来源 eyebrow (muted) + 商户名 (subtitle 600)。商户缺省时只剩来源。 */
+.rd-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.rd-source {
+    font-family: var(--font-zh);
+    font-size: var(--type-caption-size);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+.rd-merchant {
+    font-family: var(--font-zh);
+    font-size: var(--type-subtitle-size);
+    font-weight: 600;
+    color: var(--text-default);
+}
+
+/* 捕获日：第四级 meta。 */
+.rd-meta {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+    margin-top: var(--space-2);
+}
+
+/* 描述性 provenance (pending 的「系统猜测对应」)：中性、安静，非 actionable 预选。 */
+.rd-provenance {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+    margin-top: var(--space-2);
+}
+/* 关联债行 (confirmed 的「已记到」)：内容级，比 provenance 实一档。 */
+.rd-linked {
+    font-size: var(--type-caption-size);
+    color: var(--text-default);
+    margin-top: var(--space-2);
+}
+
+/* 右栏：额 (tabular editorial) 上、状态 pill 下，右对齐永不折。 */
+.rd-side {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-3);
+    white-space: nowrap;
+}
+.rd-amount {
+    font-family: var(--font-num);
+    font-size: var(--type-subtitle-size);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-default);
+    letter-spacing: -0.01em;
+}
+
+@media (max-width: 720px) {
+    .rd-row {
+        gap: var(--space-4);
+    }
+}

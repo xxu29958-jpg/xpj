@@ -27714,6 +27714,55 @@
         ]
       }
     },
+    "/web/repayment-drafts": {
+      "get": {
+        "operationId": "web_repayment_drafts_web_repayment_drafts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Repayment Drafts",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/reports": {
       "get": {
         "operationId": "web_reports_web_reports_get",

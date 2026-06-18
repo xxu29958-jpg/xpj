@@ -72,6 +72,7 @@ from app.routes import (
     web_merchants,
     web_pending,
     web_recurring,
+    web_repayment_drafts,
     web_reports,
     web_search,
     web_tags,
@@ -319,6 +320,7 @@ app.include_router(web_search.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_debts.router)
 app.include_router(web_debt_goals.router)
+app.include_router(web_repayment_drafts.router)
 app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)
 app.include_router(web_import_export.router)
