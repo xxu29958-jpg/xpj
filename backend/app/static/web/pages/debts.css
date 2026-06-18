@@ -1,0 +1,83 @@
+/* /web 桌面账本 · 欠款列表页 (ADR-0049 债务域 web 面 slice 1)
+ *
+ * 镜像 Android DebtListScreen 行布局：左侧对手方名 + 方向/状态徽章 (.dt-pill 复用),
+ * 右侧本位币剩余金额 (英雄) + 本金脚注。纯只读，无写入控件。全部尺寸走 token。
+ */
+.debt-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3-5);
+}
+
+.debt-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+}
+
+.debt-row-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.debt-name {
+    font-family: var(--font-zh);
+    font-size: var(--type-subtitle-size);
+    font-weight: 600;
+    color: var(--text-default);
+}
+
+.debt-badges {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.debt-row-amount {
+    flex: 0 0 auto;
+    text-align: right;
+}
+
+.debt-remaining {
+    font-family: var(--font-num);
+    font-size: var(--type-headline-size);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-default);
+    line-height: 1.2;
+}
+
+.debt-principal {
+    font-family: var(--font-num);
+    font-size: var(--type-caption-size);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+}
+
+.debt-empty {
+    text-align: center;
+    padding: var(--space-8) var(--space-6);
+}
+
+.debt-empty-title {
+    font-family: var(--font-zh);
+    font-weight: 600;
+    color: var(--text-default);
+}
+
+.debt-empty-body {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+    margin-top: var(--space-3);
+}
+
+@media (max-width: 720px) {
+    .debt-row {
+        gap: var(--space-4);
+    }
+    .debt-remaining {
+        font-size: var(--type-title-size);
+    }
+}

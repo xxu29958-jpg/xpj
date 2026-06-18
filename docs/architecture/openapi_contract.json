@@ -25366,6 +25366,55 @@
         ]
       }
     },
+    "/web/debts": {
+      "get": {
+        "operationId": "web_debts_web_debts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debts",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/duplicates": {
       "get": {
         "operationId": "web_duplicates_web_duplicates_get",

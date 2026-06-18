@@ -97,6 +97,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/dashboard/cards/reset"): "writer-only",
     # Data quality
     ("GET", "/web/data-quality"): "local-only-rendering",
+    # Debts (ADR-0049 债务域 web 面 slice 1 — 只读列表)
+    ("GET", "/web/debts"): "local-only-rendering",
     # Duplicates
     ("GET", "/web/duplicates"): "local-only-rendering",
     ("POST", "/web/duplicates/{expense_id}/keep"): "writer-only",
