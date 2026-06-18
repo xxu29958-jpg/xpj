@@ -63,16 +63,19 @@ from app.services.debt_service._repayment import (
     record_repayment,
 )
 from app.services.debt_service._repayment_draft import (
+    RepaymentDraftAuditRow,
     confirm_repayment_draft,
     create_repayment_draft,
     dismiss_repayment_draft,
     get_repayment_draft_response,
+    list_repayment_draft_audit_for_account,
     list_repayment_drafts,
     repayment_draft_response,
 )
 from app.services.debt_service._void import void_debt, void_repayment
 
 __all__ = [
+    "RepaymentDraftAuditRow",
     "compute_paid",
     "compute_remaining",
     "compute_remaining_as_of",
@@ -94,6 +97,7 @@ __all__ = [
     "get_repayment_public_id_for_idempotency",
     "latest_fact_at",
     "list_debts",
+    "list_repayment_draft_audit_for_account",
     "list_repayment_drafts",
     "list_repayment_proposals",
     "record_adjustment",

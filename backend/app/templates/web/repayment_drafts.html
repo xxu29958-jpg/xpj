@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}还款捕获 · 小票夹{% endblock %}
+{% block content %}
+<h1 class="page-title page-title--compact">还款捕获</h1>
+<p class="page-hint">{{ intro }}</p>
+
+{% if not rows %}
+<div class="dt-card dt-card--empty">
+  <div class="empty-headline">{{ empty_title }}</div>
+  <div class="empty-body">{{ empty_body }}</div>
+</div>
+{% else %}
+<div class="rd-list">
+  {% for r in rows %}
+  {# 只读审计行 (.dt-card--static 不抬升=不可点)：左来源/商户/捕获日/provenance|关联，右额+状态 pill。
+     dismissed 沉降 (.debt-card-sunk 淡出，永不红)。 #}
+  <div class="dt-card dt-card--static rd-row{% if r.recede %} debt-card-sunk{% endif %}">
+    <div class="rd-main">
+      <div class="rd-head">
+        <span class="rd-source">{{ r.source_label }}</span>
+        {% if r.merchant %}<span class="rd-merchant">{{ r.merchant }}</span>{% endif %}
+      </div>
+      <div class="rd-meta">{{ r.captured_label }}</div>
+      {% if r.provenance %}<div class="rd-provenance">{{ r.provenance }}</div>{% endif %}
+      {% if r.linked_line %}<div class="rd-linked">{{ r.linked_line }}</div>{% endif %}
+    </div>
+    <div class="rd-side">
+      <span class="rd-amount">{{ r.amount_label }}</span>
+      <span class="dt-pill {{ r.status_tone }}">{{ r.status_label }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

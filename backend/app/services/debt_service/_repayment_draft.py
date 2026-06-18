@@ -30,13 +30,16 @@ created by review time, so the match is recomputed against current Debt state ev
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
+from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import RepaymentDraft
+from app.models import Debt, RepaymentDraft
 from app.schemas import (
     RepaymentCreateRequest,
     RepaymentDraftCreateRequest,
@@ -51,18 +54,21 @@ from app.services.debt_service._repayment_draft_match import (
 )
 from app.services.time_service import ensure_utc, now_utc
 
-# Capture channels (display label is for /web + provenance, not the dedup axis).
+# Capture channels (display label is the /web source label, not the dedup axis).
 # 花呗/借呗 surface from Alipay; 白条 from 京东/京东金融; 美团月付 from 美团; plus
 # WeChat credit-card repayments and bank repayment SMS. Extendable as the Android
-# package allowlist grows.
+# package allowlist grows. The display strings mirror Android
+# ``RepaymentDraftLabels.repaymentDraftSourceLabelRes`` / ``strings_stats_budget.xml``
+# (§14 三端 copy 同步) — 平台带「还款」后缀, 短信/App 渠道不带; keys are the api ``source``
+# values (``_clean_repayment_source`` validates against this key set).
 REPAYMENT_DRAFT_SOURCE_LABELS = {
-    "alipay": "支付宝",
-    "jd": "京东",
-    "meituan": "美团",
-    "wechat": "微信",
+    "alipay": "支付宝还款",
+    "jd": "京东还款",
+    "meituan": "美团还款",
+    "wechat": "微信还款",
     "bank_sms": "银行短信",
     "bank_app": "银行 App",
-    "other": "其他",
+    "other": "其他还款",
 }
 
 _REPAYMENT_DRAFT_WINDOW_MINUTES = 30
@@ -357,3 +363,107 @@ def dismiss_repayment_draft(
         db.commit()
         db.refresh(draft)
     return draft
+
+
+@dataclass(frozen=True)
+class RepaymentDraftAuditRow:
+    """One NLS repayment capture, reduced to the read-only /web audit view (web slice 3).
+
+    Account-scoped audit log row — NOT the API ``RepaymentDraftResponse`` (it carries no
+    OCC/idempotency machinery the web page can't act on, and adds the resolved Debt
+    counterparty labels the read-only audit renders). ``linked_debt_label`` is the
+    committed Debt's raw ``counterparty_label`` (only meaningful when ``status``
+    ``confirmed``; ``None`` = the Debt has no label → the route applies its fallback name).
+    ``has_suggestion`` + ``suggested_debt_label`` carry a pending draft's server-suggested
+    Debt provenance (the route renders 「系统猜测对应:<对手方>」; ``has_suggestion`` separates
+    "no match" from "matched a label-less Debt"). UI prose/fallback names live in the route
+    (§1: services don't write UI copy). No ``public_id`` field: the page is read-only with no
+    per-row action/deep-link, so the row carries only rendered fields (mirrors slice-4 views)."""
+
+    source: str
+    amount_cents: int
+    home_currency_code: str
+    merchant_label: str | None
+    captured_at: datetime
+    status: str
+    linked_debt_label: str | None
+    has_suggestion: bool
+    suggested_debt_label: str | None
+
+
+def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, str | None]:
+    """Resolve Debt ``public_id`` → raw ``counterparty_label`` for the audit's 关联债 /
+    suggested-provenance names. ``public_id`` is globally unique on ``Debt``, so one
+    ``IN`` query resolves labels across ledgers. Cross-tenant-safe: every id here came from
+    the account's OWN drafts (a committed Debt it confirmed, or a suggestion from the
+    draft's own tenant), so the account already participates in those ledgers — no leak."""
+    if not public_ids:
+        return {}
+    rows = db.execute(
+        select(Debt.public_id, Debt.counterparty_label).where(Debt.public_id.in_(public_ids))
+    ).all()
+    return dict(rows)
+
+
+def list_repayment_draft_audit_for_account(
+    db: Session, *, account_id: int
+) -> list[RepaymentDraftAuditRow]:
+    """Account-scoped read-only audit of the account's NLS repayment captures (web slice 3).
+
+    Repayment captures are personal (your phone's payment notifications), so the web audit
+    shows ONLY the viewer's own — every draft with ``created_by_account_id == account_id``,
+    across ALL ledgers (account-scoped, NOT ledger-scoped), newest-first. For each PENDING
+    draft a suggested-Debt match is recomputed EPHEMERALLY (§8 — a suggestion is not a fact,
+    never stored) against the draft's OWN tenant candidate set (a draft confirms only against
+    its own ledger's Debt; candidates are fetched once per distinct tenant). For each
+    CONFIRMED draft the committed Debt is the 关联债. Both the suggested and committed Debt
+    counterparty labels are resolved here (the audit spans ledgers; resolving labels in the
+    service keeps Debt reads out of the route — §1). Confirm/dismiss/选债 stay on Android +
+    /api; this is a read-only log."""
+    drafts = list(
+        db.scalars(
+            select(RepaymentDraft)
+            .where(RepaymentDraft.created_by_account_id == account_id)
+            .order_by(RepaymentDraft.created_at.desc(), RepaymentDraft.id.desc())
+        )
+    )
+    candidates_by_tenant: dict[str, list] = {}
+    suggested_by_draft: dict[int, str | None] = {}
+    referenced: set[str] = set()
+    for draft in drafts:
+        if draft.status == "pending":
+            if draft.tenant_id not in candidates_by_tenant:
+                candidates_by_tenant[draft.tenant_id] = list_repayment_match_candidates(
+                    db, tenant_id=draft.tenant_id
+                )
+            suggested = suggest_debt_public_id(
+                amount_cents=draft.amount_cents,
+                merchant_label=draft.merchant_label,
+                candidates=candidates_by_tenant[draft.tenant_id],
+            )
+            suggested_by_draft[draft.id] = suggested
+            if suggested is not None:
+                referenced.add(suggested)
+        elif draft.status == "confirmed" and draft.committed_debt_public_id is not None:
+            referenced.add(draft.committed_debt_public_id)
+    labels = _debt_counterparty_labels(db, referenced)
+    rows: list[RepaymentDraftAuditRow] = []
+    for draft in drafts:
+        suggested_id = suggested_by_draft.get(draft.id)
+        committed_id = (
+            draft.committed_debt_public_id if draft.status == "confirmed" else None
+        )
+        rows.append(
+            RepaymentDraftAuditRow(
+                source=draft.source,
+                amount_cents=draft.amount_cents,
+                home_currency_code=draft.home_currency_code,
+                merchant_label=draft.merchant_label,
+                captured_at=draft.captured_at,
+                status=draft.status,
+                linked_debt_label=labels.get(committed_id) if committed_id else None,
+                has_suggestion=suggested_id is not None,
+                suggested_debt_label=labels.get(suggested_id) if suggested_id else None,
+            )
+        )
+    return rows

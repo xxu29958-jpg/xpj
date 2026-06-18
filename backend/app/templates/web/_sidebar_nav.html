@@ -108,6 +108,17 @@
       </span>
       <span>欠款</span>
     </a>
+    {# 轴2 IA: 还款捕获是「操作/清算」面 (NLS 捕获→还债)，归账单流、接在欠款后 (只读审计，确认在手机 App)。 #}
+    <a class="nav-item {% if '/repayment-drafts' in _p %}active{% endif %}" href="/web/repayment-drafts{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </span>
+      <span>还款捕获</span>
+    </a>
     <a class="nav-item {% if '/import' in _p or '/export' in _p %}active{% endif %}" href="/web/import{{ q }}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
