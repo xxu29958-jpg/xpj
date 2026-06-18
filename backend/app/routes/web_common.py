@@ -353,6 +353,26 @@ def _home_amount_label(amount_cents: int | None, currency_code: str | None) -> s
     return _minor_amount_label(amount_cents, currency_code or home_currency_code())
 
 
+def _amount_segments(amount_cents: int | None, currency_code: str | None) -> dict[str, str]:
+    """Editorial split of a home-currency amount into ``cur`` / ``int`` / ``dec`` for
+    the premium hero rendering (照 ``confirmed.css .ledger-hero .lh-amt``: a small muted
+    currency mark + a large integer + a small muted decimal tail).
+
+    ``dec`` is ``""`` for no-fraction currencies (mirrors ``_minor_amount_label``'s
+    fraction handling); the thousands-separated integer matches the rest of /web's debt
+    labels. Keeping the split here — not in the template — honours §14: the template just
+    drops the three pieces into spans.
+    """
+    code = (currency_code or home_currency_code()).upper()
+    symbol = _currency_symbol(code)
+    cents = amount_cents or 0
+    if code in NO_FRACTION_CURRENCY_CODES:
+        return {"cur": symbol, "int": f"{cents:,}", "dec": ""}
+    sign = "-" if cents < 0 else ""
+    whole, frac = divmod(abs(cents), 100)
+    return {"cur": symbol, "int": f"{sign}{whole:,}", "dec": f".{frac:02d}"}
+
+
 def _expense_amount_labels(expense) -> tuple[str, str | None]:
     home_code = (getattr(expense, "home_currency_code", None) or home_currency_code()).upper()
     original_code = (getattr(expense, "original_currency_code", None) or home_code).upper()

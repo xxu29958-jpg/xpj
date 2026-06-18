@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.routes.web_common import (
     LocalOnly,
+    _amount_segments,
     _base_ctx,
     _home_amount_label,
     _list_ledger_options,
@@ -81,7 +82,12 @@ def _debt_view(debt) -> dict:
         "direction_label": _DIRECTION_LABELS.get(debt.direction, "应付"),
         "status_label": _STATUS_LABELS.get(debt.status, "未结清"),
         "status_tone": _STATUS_TONE.get(debt.status, ""),
+        # remaining_label: full string for the row's aria-label (the visible hero is the
+        # editorial cur/int/dec split below). principal stays a plain muted footnote.
         "remaining_label": _home_amount_label(
+            debt.remaining_amount_cents, debt.home_currency_code
+        ),
+        "remaining_segments": _amount_segments(
             debt.remaining_amount_cents, debt.home_currency_code
         ),
         "principal_label": _home_amount_label(
@@ -148,7 +154,8 @@ def _detail_view(debt) -> dict:
         "name": name,
         "is_member": use_member,
         "is_voided": status == "voided",
-        "remaining_label": _home_amount_label(debt.remaining_amount_cents, home),
+        # remaining 在详情走 editorial 拆分英雄(外部 remaining_segments) / 成员卡无金额英雄,
+        # 故详情不需要成串 remaining_label(列表行的 aria-label 才用,见 _debt_view)。
         "principal_label": _home_amount_label(debt.principal_amount_cents, home),
         "paid_label": _home_amount_label(debt.paid_amount_cents, home),
     }
@@ -170,11 +177,19 @@ def _detail_view(debt) -> dict:
             }
         )
     else:
+        # External = businesslike accounting card: remaining as an editorial hero
+        # (cur/int/dec split) + a thin neutral repayment bar (paid/principal). The
+        # bar's ratio reuses _communal_ratio — same clamp(paid/principal) arithmetic,
+        # rendered businesslike (--text-default fill, not the communal success green).
         view.update(
             {
                 "direction_subtitle": _DIRECTION_LABELS.get(debt.direction, "应付"),
                 "status_label": _STATUS_LABELS.get(status, "未结清"),
                 "status_tone": _STATUS_TONE.get(status, ""),
+                "remaining_segments": _amount_segments(debt.remaining_amount_cents, home),
+                "paid_ratio_percent": int(
+                    round(_communal_ratio(debt.paid_amount_cents, debt.principal_amount_cents) * 100)
+                ),
             }
         )
     return view
