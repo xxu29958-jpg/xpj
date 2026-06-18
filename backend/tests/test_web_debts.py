@@ -10,7 +10,12 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember
-from app.routes.web_debts import _debt_view
+from app.routes.web_debts import (
+    _communal_ratio,
+    _debt_view,
+    _detail_view,
+    _member_headline,
+)
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web
 # loopback gate by overriding _require_local; the plain ``client`` fixture keeps
@@ -167,7 +172,11 @@ def _stub_debt(**overrides) -> SimpleNamespace:
         "status": "open",
         "remaining_amount_cents": 50000,
         "principal_amount_cents": 50000,
+        "paid_amount_cents": 0,
         "home_currency_code": "CNY",
+        "original_currency_code": None,
+        "viewer_is_debtor": None,
+        "is_forgiven": False,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -193,3 +202,99 @@ def test_debt_view_maps_labels_tones_and_fallbacks() -> None:
         _stub_debt(counterparty_type="external", counterparty_label="   ")
     )
     assert external_blank["name"] == "外部欠款"
+
+
+# ── slice 2a: 详情页 ──────────────────────────────────────────────────────────
+
+
+def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, identity) -> None:
+    debt = _create_external_debt(web_client, identity=identity, direction="i_owe")
+    resp = web_client.get(f"/web/debts/{debt['public_id']}")
+    assert resp.status_code == 200
+    assert "招商信用卡" in resp.text
+    assert "应付" in resp.text  # external direction subtitle (businesslike)
+    for label in ("本金", "已偿还", "剩余", "未结清"):
+        assert label in resp.text
+    assert "500.00" in resp.text
+
+
+def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None:
+    # Owner viewing their own ledger's member debt → viewer resolves to a party
+    # → communal card: 一起处理 eyebrow + relational headline + 看看账, NO accounting
+    # framing (应付/应收/剩余) and NO danger tone (red-line ②).
+    public_id = _seed_member_debt(direction="i_owe", principal_cents=20000)
+    detail = web_client.get(f"/web/debts/{public_id}")
+    assert detail.status_code == 200
+    assert "一起处理" in detail.text  # participant eyebrow (viewer resolved to a party)
+    assert "看看账" in detail.text  # 看看账 expander
+    assert "这件事一共" in detail.text  # expander shows total, not remaining
+    # Red lines: member detail must not show accounting framing or danger tone.
+    assert "应付" not in detail.text
+    assert "应收" not in detail.text
+    assert "剩余" not in detail.text  # member card never surfaces remaining
+    assert "dt-pill danger" not in detail.text  # never red for member debt
+    assert "进行中" in detail.text  # member open status badge (neutral)
+
+
+def test_web_debt_detail_unknown_returns_404(web_client: TestClient) -> None:
+    resp = web_client.get("/web/debts/does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_member_headline_matrix() -> None:
+    h = _member_headline
+    # third-party (viewer_is_debtor=None)
+    assert h(None, "open", False, 0.3) == "这件事还在进行中"
+    assert h(None, "cleared", False, 1.0) == "这件事，他们已经两清啦"
+    assert h(None, "voided", False, 0.0) == "这件事已经不算了"
+    # voided wins regardless of party
+    assert h(True, "voided", False, 0.5) == "这件事已经不算了"
+    # cleared: plain vs forgiven (debtor/creditor)
+    assert h(True, "cleared", False, 1.0) == "这件事，我们已经两清啦"
+    assert h(True, "cleared", True, 1.0) == "这份 TA 说不用还啦 ❤️"
+    assert h(False, "cleared", True, 1.0) == "这份不用补了～"
+    # open i_owe (debtor) three tiers + near-ratio boundary (0.7 → near)
+    assert h(True, "open", False, 0.0) == "你帮我垫了，慢慢还给你"
+    assert h(True, "open", False, 0.3) == "你帮我垫的，正在慢慢对上"
+    assert h(True, "open", False, 0.7) == "你帮我垫的，快两清啦"
+    # open owed_to_me (creditor) three tiers
+    assert h(False, "open", False, 0.0) == "我帮你垫的，不着急"
+    assert h(False, "open", False, 0.3) == "我帮你垫的，慢慢来"
+    assert h(False, "open", False, 0.9) == "我帮你垫的，快两清啦"
+
+
+def test_communal_ratio_clamps() -> None:
+    assert _communal_ratio(0, 0) == 0.0  # zero principal → 0
+    assert _communal_ratio(50, 100) == 0.5
+    assert _communal_ratio(200, 100) == 1.0  # clamped high
+    assert _communal_ratio(-10, 100) == 0.0  # clamped low
+
+
+def test_detail_view_member_neutral_and_fx_fallback() -> None:
+    # Open member debt → communal card, relational subtitle, status neutral.
+    member = _detail_view(
+        _stub_debt(counterparty_type="member", counterparty_label="爸爸",
+                   viewer_is_debtor=True, status="open", paid_amount_cents=0)
+    )
+    assert member["is_member"] is True
+    assert member["direction_subtitle"] == "你帮我垫的"
+    assert member["eyebrow"] == "一起处理 · 爸爸"
+    assert member["member_status_tone"] == ""  # open → neutral
+
+    # Voided member debt → neutral, NEVER danger (red-line ②).
+    voided = _detail_view(_stub_debt(counterparty_type="member", status="voided"))
+    assert voided["is_member"] is True
+    assert voided["headline"] == "这件事已经不算了"
+    assert voided["member_status_tone"] == ""  # neutral, not danger
+
+    # Foreign-currency member debt → FX fallback to external accounting card.
+    foreign = _detail_view(
+        _stub_debt(counterparty_type="member", original_currency_code="USD", status="voided")
+    )
+    assert foreign["is_member"] is False
+    assert foreign["status_tone"] == "danger"  # external voided CAN be danger
+
+    # External debt → never member; external voided uses danger tone.
+    external = _detail_view(_stub_debt(counterparty_type="external", status="voided"))
+    assert external["is_member"] is False
+    assert external["status_tone"] == "danger"

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}欠款详情 — 小票夹{% endblock %}
+{% block content %}
+<a class="debt-detail-back" href="/web/debts?ledger_id={{ selected_ledger_id }}">← 返回</a>
+<h1 class="page-title page-title--compact">{{ debt.name }}</h1>
+<p class="page-hint">{{ debt.direction_subtitle }}</p>
+
+{% if debt.is_member %}
+{# 家庭(成员)债 = communal 关系卡：无金额关系主句 + 件数进度 + 「看看账」展开，永不红 #}
+<div class="dt-card debt-member-card{% if debt.is_voided %} debt-card-sunk{% endif %}">
+  <div class="debt-member-eyebrow">{{ debt.eyebrow }}</div>
+  <div class="debt-member-headline">{{ debt.headline }}</div>
+  {% if debt.show_progress %}
+  <div class="debt-progress" role="img" aria-label="已经对上 {{ debt.ratio_percent }}%，一起把这件事处理完">
+    <div class="debt-progress-fill" style="width: {{ debt.ratio_percent }}%"></div>
+  </div>
+  <div class="debt-progress-note">{{ debt.progress_note }}</div>
+  {% endif %}
+  <details class="debt-look">
+    <summary>看看账</summary>
+    <div class="debt-look-rows">
+      <div class="debt-look-row"><span>这件事一共</span><span class="debt-num">{{ debt.principal_label }}</span></div>
+      <div class="debt-look-row"><span>已经对上</span><span class="debt-num">{{ debt.paid_label }}</span></div>
+      <div class="debt-look-row"><span>当前状态</span><span class="dt-pill {{ debt.member_status_tone }}">{{ debt.member_status_label }}</span></div>
+    </div>
+  </details>
+</div>
+{% else %}
+{# 外部债 = businesslike 会计卡：剩余英雄 + 本金/已偿还/剩余 + 状态徽章 #}
+<div class="dt-card debt-summary-card">
+  <div class="debt-summary-eyebrow">剩余</div>
+  <div class="debt-summary-headline">{{ debt.remaining_label }}</div>
+  <div class="debt-summary-rows">
+    <div class="debt-summary-row"><span>本金</span><span class="debt-num">{{ debt.principal_label }}</span></div>
+    <div class="debt-summary-row"><span>已偿还</span><span class="debt-num">{{ debt.paid_label }}</span></div>
+    <div class="debt-summary-row"><span>剩余</span><span class="debt-num">{{ debt.remaining_label }}</span></div>
+    <div class="debt-summary-row"><span>状态</span><span class="dt-pill {{ debt.status_tone }}">{{ debt.status_label }}</span></div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
