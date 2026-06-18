@@ -51,7 +51,7 @@
 | [0044](0044-android-string-resourcing.md) | Android UI 字符串外置 strings.xml | resourcing 非翻译：只放中文、不建第二语言；按 screen/module 分 PR | accepted；反转 §14 deferral，§13 i18n 仍不做 |
 | [0045](0045-csrf-signing-key.md) | CSRF 签名密钥 per-install 化 | 公开占位常量 → app_meta 持久化随机密钥派生（budget-advisor audit HMAC 同源） | accepted |
 | [0046](0046-android-recurring-reminder-detection-source.md) | Android 固定支出提醒检测源 | WorkManager 仅作 Scheduler；Engine/Policy/Store/Dispatcher 四层契约；本地 sent-key 去重；不触 §13 MAJOR | accepted；recurring 通知出口见 notif-loop PR-2 |
-| [0047](0047-bundled-installer-portable-postgres.md) | 分发形态：捆绑安装器 + portable PG | EDB 官方 zip 捆绑 PG 17（major 钉死，升级另 ADR）；管理器双进程监督；局域网默认；应用角色直建堵 owner 陷阱 | **proposed**（owner 已口头定调「发给别人用」） |
+| [0047](0047-bundled-installer-windows-services.md) | 分发形态：捆绑安装器 + PG/后端注册 Windows 服务 + 主机管理器 | PG+后端各注册 Windows 服务（SCM 当守护，否决便携双进程守护；后端用 **Shawl** 包，**NSSM 弃维否决**）；PG 隐形+应用角色建库堵 owner 陷阱+connect-retry 必需；EXE=控制台管理器（不在关键路径）；网络用户自配（LAN 优先 mDNS+NsdManager 自愈漂移，远程**荐 Tailscale**、named tunnel 进阶，永不在 plain-http 设 `__Host-` cookie）；PG major 钉死 17；**默认不签**（SAC 可逆上 Trusted Signing） | **accepted**（owner 2026-06-18 拍板+联网验证修订，运行时未实现） |
 | [0048](0048-rive-mascot-animation.md) | 吉祥物「夹夹」动画技术栈 = Rive | MIT runtime；`.riv` 本地加载零联网；只用稳定 View API（beta Compose API 不进主线）；一套 artboard 喂三端 + 运行时绑 token 色；纯表现层不写业务 | **proposed**（角色 brief = docs/roadmap/MASCOT_BRIEF.md，原画 v3 已定稿） |
 | [0049](0049-debt-domain-contract.md) | Debt Domain Contract | 统一 Debt obligation：家庭内欠款与外部负债同表，Repayment/Adjustment append-only，bill_split accept 可原子生成 Debt，debt_repayment goal 读取 Debt 清偿状态 | accepted target contract；[[0029]]/[[0038]]/[[0041]]/[[0042]]/[[0048]] |
 
