@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}还债目标 · 小票夹{% endblock %}
+{% block content %}
+<h1 class="page-title page-title--compact">还债目标</h1>
+<p class="page-hint">{{ intro }}</p>
+
+{% if not goals %}
+<div class="dt-card dt-card--empty">
+  <div class="empty-headline">{{ empty_title }}</div>
+  <div class="empty-body">{{ empty_body }}</div>
+</div>
+{% else %}
+<div class="dg-list">
+  {% for goal in goals %}
+  <div class="dt-card dt-card--static dg-card">
+    <div class="dg-head">
+      <div class="dg-name">{{ goal.name }}</div>
+      <span class="dt-pill {{ goal.eval_tone }}">{{ goal.eval_label }}</span>
+    </div>
+
+    {% if goal.all_voided %}
+    <div class="dg-all-voided">{{ all_voided_text }}</div>
+    {% else %}
+    <div class="dg-headline">{{ goal.headline }}</div>
+    <div class="debt-progress" role="img" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔">
+      <div class="debt-progress-fill" style="width: {{ goal.fraction_percent }}%"></div>
+    </div>
+    {% if goal.amount_line %}
+    <div class="dg-amount">{{ goal.amount_line }}</div>
+    {% endif %}
+    {% if goal.kpi %}
+    <div class="dg-kpi">
+      {% if goal.kpi.three_state_label %}
+      <span class="dt-pill {{ goal.kpi.three_state_tone }}">{{ goal.kpi.three_state_label }}</span>
+      {% endif %}
+      {% if goal.kpi.target_label %}
+      <div class="dg-target">{{ goal.kpi.target_label }}</div>
+      {% endif %}
+      <div class="dg-projection{% if goal.kpi.payoff.tone == 'warn' %} dg-projection--warn{% endif %}">{{ goal.kpi.payoff.text }}</div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% if goal.needs_review %}
+    <div class="dg-review">
+      <div class="dg-review-note">{{ needs_review_note }}</div>
+      <div class="dg-review-hint">{{ needs_review_hint }}</div>
+    </div>
+    {% endif %}
+
+    <div class="dg-links">
+      <div class="dg-links-title">{{ goal.links_title }}</div>
+      {% for link in goal.links %}
+      <div class="dg-link{% if link.recede %} debt-card-sunk{% endif %}">
+        <div class="dg-link-top">
+          <span class="dg-link-name">{{ link.name }}</span>
+          <span class="dt-pill {{ link.status_tone }}">{{ link.status_label }}</span>
+        </div>
+        {% if link.show_bar %}
+        {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
+        <div class="dg-link-bar" role="img" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}">
+          <div class="dg-link-fill{% if link.is_cleared %} is-cleared{% endif %}" style="width: {{ link.fraction_percent }}%"></div>
+        </div>
+        {% endif %}
+        {% if link.is_member %}
+        <div class="dg-link-note">{{ link.note }}</div>
+        {% else %}
+        <div class="dg-link-meta">{{ link.meta }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

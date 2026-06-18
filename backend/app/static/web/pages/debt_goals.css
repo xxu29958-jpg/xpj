@@ -1,0 +1,148 @@
+/* /web 桌面账本 · 还债目标进度 (ADR-0049 债务域 web 面 slice 4)
+ *
+ * 镜像 Android DebtPlanProgress：成员/混装 = 件数英雄 (一格=一笔=一次两清)，金额弱化副文案；
+ * 仅纯外部目标显 KPI (three_state 琥珀非红 + 还清投影三态)。复用 debts.css 的 .debt-card-sunk
+ * (作废沉降，永不红 — 红线②) + .debt-progress/-fill (件数 success 条) + 共享 .dt-pill.amber
+ * (at_risk / 复核 琥珀)。全部尺寸走 token；裸 px 仅 1px 发丝分界 (注明，非布局尺度)。
+ */
+.dg-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+.dg-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3-5);
+}
+
+.dg-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.dg-name {
+    font-family: var(--font-zh);
+    font-size: var(--type-title-size);
+    font-weight: 600;
+    color: var(--text-default);
+}
+
+/* 件数主文案：英雄主句 (无金额)，弱于目标名但非 metadata。 */
+.dg-headline {
+    font-family: var(--font-zh);
+    font-size: var(--type-subtitle-size);
+    font-weight: 600;
+    color: var(--text-default);
+}
+
+/* 金额弱化副文案：成员永不带「欠」，混币整条隐藏 (caption + tabular)。 */
+.dg-amount {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+/* 全作废短路：中性说明文案 (永不红)。 */
+.dg-all-voided {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+/* ── 纯外部 KPI 块：three_state 琥珀徽章 + 还清目标日期 + 投影 3 臂 ── */
+.dg-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+.dg-target {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.dg-projection {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+/* stale / 可能晚于计划 → 琥珀文本 (非红，不催不施压，§7.0)。 */
+.dg-projection--warn {
+    color: var(--state-warn-fg);
+}
+
+/* ── 复核提示 (needs_review)：琥珀 note，无钮 (复核在 App)，永不红 (§6.5 去-shame) ── */
+.dg-review {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-card);
+    background: var(--state-warn-bg);
+    border: 1px solid var(--state-warn-border); /* 1px 发丝边 */
+}
+.dg-review-note {
+    font-size: var(--type-caption-size);
+    color: var(--state-warn-fg);
+}
+.dg-review-hint {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+}
+
+/* ── 关联欠款行 (DebtGoalLinkRow 镜像)：与进度区用发丝分界区隔 ── */
+.dg-links {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3-5);
+    margin-top: var(--space-2);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-card); /* 1px 发丝分界 */
+}
+.dg-links-title {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+    letter-spacing: 0.04em;
+}
+.dg-link {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.dg-link-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+.dg-link-name {
+    font-family: var(--font-zh);
+    font-size: var(--type-subtitle-size);
+    font-weight: 500;
+    color: var(--text-default);
+}
+/* per-link 迷你条：同 sunken 轨，fill 中性(open) / success(cleared)——镜像 Android tone。 */
+.dg-link-bar {
+    height: var(--space-2);
+    background: var(--surface-sunken);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+}
+.dg-link-fill {
+    height: 100%;
+    background: var(--text-default);
+    border-radius: inherit;
+    transition: width var(--motion-slow) var(--ease-standard);
+}
+.dg-link-fill.is-cleared {
+    background: var(--state-success-fg);
+}
+.dg-link-note,
+.dg-link-meta {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.dg-link-meta {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+}
