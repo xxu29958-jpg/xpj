@@ -13,6 +13,8 @@
     display: flex;
     align-items: center;
     gap: var(--space-5);
+    text-decoration: none;
+    color: inherit;
 }
 
 .debt-row-main {
@@ -80,4 +82,94 @@
     .debt-remaining {
         font-size: var(--type-title-size);
     }
+}
+
+/* ── 详情页 (slice 2a)：外部 businesslike 卡 / 家庭 communal 卡 ── */
+.debt-detail-back {
+    display: inline-block;
+    margin-bottom: var(--space-4);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    text-decoration: none;
+}
+
+.debt-member-card,
+.debt-summary-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3-5);
+}
+
+/* 作废的成员债视觉沉降 (中性，永不红 — 红线②) */
+.debt-card-sunk {
+    opacity: 0.6;
+}
+
+.debt-member-eyebrow,
+.debt-summary-eyebrow {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+    font-family: var(--font-zh);
+}
+
+.debt-member-headline {
+    font-family: var(--font-zh);
+    font-size: var(--type-title-size);
+    font-weight: 600;
+    color: var(--text-default);
+}
+
+.debt-summary-headline {
+    font-family: var(--font-num);
+    font-size: var(--type-hero-size);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-default);
+    line-height: 1.15;
+}
+
+/* 件数进度条：success 色，无百分比文字 (a11y 走 aria-label) */
+.debt-progress {
+    height: var(--space-3);
+    background: var(--surface-sunken);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+}
+.debt-progress-fill {
+    height: 100%;
+    background: var(--state-success-fg);
+    border-radius: inherit;
+}
+.debt-progress-note {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+.debt-look summary {
+    cursor: pointer;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.debt-look-rows,
+.debt-summary-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+}
+.debt-look-row,
+.debt-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.debt-look-row > span:first-child,
+.debt-summary-row > span:first-child {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.debt-num {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-default);
 }

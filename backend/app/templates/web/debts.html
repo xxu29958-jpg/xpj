@@ -10,7 +10,7 @@
 {% if debts %}
 <div class="debt-list">
   {% for debt in debts %}
-  <div class="dt-card debt-row">
+  <a class="dt-card debt-row" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}">
     <div class="debt-row-main">
       <div class="debt-name">{{ debt.name }}</div>
       <div class="debt-badges">
@@ -22,7 +22,7 @@
       <div class="debt-remaining">{{ debt.remaining_label }}</div>
       <div class="debt-principal">本金 {{ debt.principal_label }}</div>
     </div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% else %}
