@@ -52,6 +52,7 @@ from app.services.debt_service._proposal import (
     withdraw_repayment_proposal,
 )
 from app.services.debt_service._query import (
+    count_open_external_debts,
     debt_response,
     get_debt,
     get_debt_response,
@@ -81,6 +82,7 @@ __all__ = [
     "compute_remaining_as_of",
     "confirm_repayment_draft",
     "confirm_repayment_proposal",
+    "count_open_external_debts",
     "create_bill_split_debt",
     "create_debt",
     "create_repayment_draft",

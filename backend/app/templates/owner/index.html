@@ -294,6 +294,8 @@
         <th class="text-end">缺商家</th>
         <th class="text-end">未分类</th>
         <th class="text-end">最久</th>
+        <th class="text-end">外部欠款</th>
+        <th>目标复核</th>
         <th>操作</th>
       </tr>
     </thead>
@@ -315,6 +317,12 @@
         <td class="text-end">{{ row.missing_category }}</td>
         <td class="text-end">
           {% if row.oldest_pending_age_days is none %}—{% else %}{{ row.oldest_pending_age_days }}d{% endif %}
+        </td>
+        <td class="text-end">{{ row.open_external_debt_count }}</td>
+        <td>
+          {% if row.debt_goal_needs_review %}
+          <a href="/web/debt-goals?ledger_id={{ row.ledger_id }}" target="_blank"><span class="badge badge-warn">需复核</span></a>
+          {% else %}—{% endif %}
         </td>
         <td>
           <a href="/web?ledger_id={{ row.ledger_id }}" target="_blank">/web</a>
