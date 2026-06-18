@@ -59,6 +59,38 @@
     margin-top: var(--space-1);
 }
 
+/* ── slice 1A：家人/外部 软分组 + 成员 communal 行 ── */
+/* 分组标题 (section header 非 tab)：安静 eyebrow，家人在前。无聚合记分牌 (禁 per-person/总额)。 */
+.debt-section-title {
+    font-family: var(--font-zh);
+    font-size: var(--type-caption-size);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: var(--space-6) 0 var(--space-3);
+}
+.debt-section-title:first-of-type { margin-top: 0; }
+
+/* 成员行右侧只有状态徽章 (neutral/success，永不 danger)；金额精确数留详情「看看账」。 */
+.debt-row-side {
+    flex: 0 0 auto;
+    align-self: flex-start;
+}
+
+/* 关系主句 (无金额)：行2 内容级文本，弱于对手方名 (行1) 但非 metadata。 */
+.debt-member-line {
+    font-family: var(--font-zh);
+    font-size: var(--type-caption-size);
+    color: var(--text-default);
+    margin-top: var(--space-2);
+}
+
+/* 行内 success 进度条：比详情卡更细 (open 时显示)，复用 .debt-progress 暖底 + success fill + 缓入。 */
+.debt-progress--row {
+    height: var(--space-2);
+    margin-top: var(--space-3);
+}
+
 /* ── Editorial 金额拆分英雄 (cur 小·muted / int 大 / dec 小·muted) ── */
 .dh-amt {
     display: inline-flex;

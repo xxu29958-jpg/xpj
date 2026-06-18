@@ -171,15 +171,30 @@ private fun LazyListScope.debtListSection(
 ) {
     if (state.debts.isEmpty() && !state.isLoading) {
         item { DebtEmptyStateCard() }
-    } else {
-        items(state.debts, key = { it.publicId }) { debt ->
-            DebtRow(debt = debt, currency = currency, onClick = { onOpenDebt(debt) })
+        return
+    }
+    // slice 1A: 软分两组 (家人在前)，家人行 communal、外部行会计；各组 active-first 排序。
+    val (members, externals) = groupDebtsForList(state.debts)
+    if (members.isNotEmpty()) {
+        item(key = "debt-section-family") {
+            DebtSectionHeader(stringResource(R.string.debt_list_section_family))
+        }
+        items(members, key = { it.publicId }) { debt ->
+            MemberDebtRow(debt = debt, onClick = { onOpenDebt(debt) })
+        }
+    }
+    if (externals.isNotEmpty()) {
+        item(key = "debt-section-external") {
+            DebtSectionHeader(stringResource(R.string.debt_list_section_external))
+        }
+        items(externals, key = { it.publicId }) { debt ->
+            ExternalDebtRow(debt = debt, currency = currency, onClick = { onOpenDebt(debt) })
         }
     }
 }
 
 @Composable
-private fun DebtRow(debt: Debt, currency: CurrencyDisplay, onClick: () -> Unit) {
+private fun ExternalDebtRow(debt: Debt, currency: CurrencyDisplay, onClick: () -> Unit) {
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {

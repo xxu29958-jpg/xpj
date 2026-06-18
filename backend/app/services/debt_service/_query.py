@@ -196,11 +196,38 @@ def get_debt_response(db: Session, *, tenant_id: str, public_id: str) -> DebtRes
     return _debt_response_with_fold(db, debt)
 
 
-def list_debts(db: Session, *, tenant_id: str) -> DebtListResponse:
+def list_debts(
+    db: Session, *, tenant_id: str, viewer_account_id: int | None = None
+) -> DebtListResponse:
+    """Ledger-scoped Debt list. With ``viewer_account_id`` each row carries the
+    server-authoritative ``viewer_is_debtor`` for that viewer (§3.2).
+
+    The list cannot frame a MEMBER debt from the stored ``direction`` alone:
+    ``direction`` is owner-relative, and a bill_split member Debt's owner is the
+    receiver who accepted the split — a *writer member* of the ledger, not
+    necessarily the ledger owner (``accept_invitation`` only requires write
+    membership). So one ledger can hold a member Debt whose owner is neither the
+    loopback owner-console viewer nor the web-session viewer; rendering owner-relative
+    ``direction`` as-is would mis-frame "you fronted this for me" onto a third party.
+    The viewer's debtor/creditor role is therefore computed PER ROW from the viewer's
+    account — the SAME server-authoritative derivation the detail uses
+    (:func:`_viewer_is_debtor`), NOT a client-side guess (red-line ⑥). External rows
+    stay ``None`` (no member counterparty). A ``None`` viewer (e.g. a ledger with no
+    active owner on loopback) leaves every role ``None`` and the list degrades to the
+    neutral third-party framing.
+    """
     statement = ledger_scoped_select(Debt, tenant_id).order_by(
         Debt.status.asc(),
         Debt.created_at.asc(),
         Debt.id.asc(),
     )
     debts = list(db.scalars(statement))
-    return DebtListResponse(items=[_debt_response_with_fold(db, debt) for debt in debts])
+    items: list[DebtResponse] = []
+    for debt in debts:
+        response = _debt_response_with_fold(db, debt)
+        if viewer_account_id is not None:
+            response = response.model_copy(
+                update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)}
+            )
+        items.append(response)
+    return DebtListResponse(items=items)

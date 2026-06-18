@@ -163,6 +163,8 @@
     <string name="debt_list_empty_title">还没有欠款记录</string>
     <string name="debt_list_empty_body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</string>
     <string name="debt_list_card_principal">本金 %1$s</string>
+    <string name="debt_list_section_family">家人</string>
+    <string name="debt_list_section_external">外部</string>
     <string name="debt_list_load_failed">欠款加载失败，请稍后再试。</string>
     <string name="debt_create_sheet_title">记一笔欠款</string>
     <string name="debt_create_label_direction">方向</string>

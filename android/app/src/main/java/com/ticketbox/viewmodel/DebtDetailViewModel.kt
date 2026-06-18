@@ -232,7 +232,7 @@ class DebtDetailViewModel(
 
     // §5.2 边沿检测：crossedEdge（本 VM 内先见非-cleared、后变 cleared）= 在场目击两清；首次见已 cleared
     // 的债 prev=null → 不撒花（P1#4）。!isForgiven → forgive 走 §5.6 暖语分叉不撒；viewerIsDebtor != null →
-    // 非当事方（list/fact 路径）不撒；isMember → 外部债走会计框架不撒。每笔一次性（celebratedDebtIds）。
+    // 非当事方（fact 路径无 viewer 上下文 / 第三方成员）不撒；isMember → 外部债走会计框架不撒。每笔一次性（celebratedDebtIds）。
     private fun detectSettleCelebration(newDebt: Debt) {
         val prev = previousStatusByPublicId[newDebt.publicId]
         val crossedEdge = prev != null && prev != DebtLinkStatuses.CLEARED && newDebt.isCleared

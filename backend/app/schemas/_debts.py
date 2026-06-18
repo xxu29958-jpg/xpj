@@ -99,8 +99,10 @@ class DebtResponse(BaseModel):
     # viewer of a member Debt — the client cannot derive it (it does not know its own account id,
     # and ledger membership does not distinguish the same-ledger owner from a same-ledger member
     # counterparty). ``True`` = viewer is the debtor (may propose / withdraw); ``False`` = creditor
-    # (may confirm / reject); ``None`` for an external Debt, a non-participant member, or any path
-    # without participant context (list / fact routes). Only ``get_participant_debt_response`` sets it.
+    # (may confirm / reject); ``None`` for an external Debt, a non-participant member, or a fact route
+    # without participant context. Both ``get_participant_debt_response`` (detail) and ``list_debts``
+    # with a ``viewer_account_id`` (the list, computed per row for the viewer — slice 1A communal rows)
+    # populate it server-side; the client never derives it.
     viewer_is_debtor: bool | None = None
     # ADR-0049 §3.7 / §4 (slice 8e-3): True when this Debt was CLEARED by a creditor forgiveness
     # ("算了，不用还了") rather than fully repaid — i.e. status=='cleared' AND a DebtForgiveness fact

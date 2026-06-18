@@ -16,6 +16,7 @@ from app.routes.web_debts import (
     _debt_view,
     _detail_view,
     _member_headline,
+    _split_debt_views,
 )
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web
@@ -156,17 +157,83 @@ def test_web_debts_renders_voided_status(web_client: TestClient, *, identity) ->
     assert "dt-pill danger" in resp.text  # voided → danger tone class rendered
 
 
-def test_web_debts_lists_member_debt_with_accounting_labels(web_client: TestClient) -> None:
-    # The list is a neutral index: member (bill_split) debts render with the SAME
-    # accounting direction/status labels as Android DebtListScreen (the relational
-    # communal framing is the detail surface's job — a later slice). No
-    # counterparty_label → the 家庭成员 fallback. An open member debt is neutral.
+def _seed_third_party_member_debt() -> str:
+    """Seed an 'owner'-ledger member debt between two OTHER accounts, so the ledger owner
+    (the web/loopback viewer) is a THIRD party. Proves the row computes viewer_is_debtor per
+    VIEWER, not from owner-relative direction (a direction-based row would mis-frame it)."""
+    with SessionLocal() as db:
+        debtor = Account(display_name="弟弟")
+        creditor = Account(display_name="妹妹")
+        db.add_all([debtor, creditor])
+        db.flush()
+        debt = Debt(
+            tenant_id="owner",
+            owner_account_id=debtor.id,  # Debt owner = debtor, NOT the ledger owner (the viewer)
+            created_by_account_id=debtor.id,
+            direction="i_owe",
+            counterparty_type="member",
+            counterparty_account_id=creditor.id,
+            counterparty_label="妹妹",
+            principal_amount_cents=10000,
+            home_currency_code="CNY",
+            status="open",
+            source_type="bill_split",
+            source_id=str(uuid4()),
+        )
+        db.add(debt)
+        db.commit()
+        return debt.public_id
+
+
+def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
+    # slice 1A: member (bill_split) debts render as a COMMUNAL relational row, not the
+    # accounting framing. The viewer (loopback owner = the i_owe debtor) sees the relational
+    # headline + 家人 section header + neutral status, NEVER 应付/应收 and NEVER danger (red-line ②).
+    # No counterparty_label → the 家庭成员 fallback. (Drop the viewer pass → headline degrades to
+    # the third-party "这件事还在进行中" and this fails.)
     _seed_member_debt(direction="i_owe")
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "家庭成员" in resp.text  # counterparty fallback name
-    assert "应付" in resp.text  # i_owe direction label (accounting, same as external)
-    assert "未结清" in resp.text  # open status label
+    assert '<h2 class="debt-section-title">家人</h2>' in resp.text  # 家人 section header
+    # Communal relational headline (viewer=owner=debtor, open, ratio 0).
+    assert "你帮我垫了，慢慢还给你" in resp.text
+    assert "进行中" in resp.text  # member open status badge (neutral)
+    # Red lines: a member row never shows the accounting framing.
+    assert "应付" not in resp.text
+    assert "应收" not in resp.text
+    # No external debts seeded → no 外部 section.
+    assert '<h2 class="debt-section-title">外部</h2>' not in resp.text
+
+
+def test_web_debts_groups_family_before_external(web_client: TestClient, *, identity) -> None:
+    # slice 1A soft-grouping: 家人 section first (single scroll), then 外部. Family rows are
+    # communal; external rows keep the accounting labels (应付). No list-level scoreboard.
+    _seed_member_debt(direction="i_owe")
+    _create_external_debt(web_client, identity=identity, direction="i_owe", label="招商信用卡")
+    resp = web_client.get("/web/debts")
+    assert resp.status_code == 200
+    fam = '<h2 class="debt-section-title">家人</h2>'
+    ext = '<h2 class="debt-section-title">外部</h2>'
+    assert fam in resp.text
+    assert ext in resp.text
+    assert resp.text.index(fam) < resp.text.index(ext)  # 家人 before 外部
+    assert "你帮我垫了，慢慢还给你" in resp.text  # family communal headline
+    assert "招商信用卡" in resp.text  # external row
+    assert "应付" in resp.text  # external still uses the accounting direction label
+
+
+def test_web_debts_member_row_third_party_viewer(web_client: TestClient) -> None:
+    # The viewer (ledger owner) is neither the debtor nor the creditor → third-party relational
+    # framing, NOT the owner-relative "你帮我垫的" a direction-based row would wrongly show. This
+    # pins that the row honors the VIEWER's account, not the Debt's stored owner.
+    _seed_third_party_member_debt()
+    resp = web_client.get("/web/debts")
+    assert resp.status_code == 200
+    assert "这件事还在进行中" in resp.text  # third-party headline
+    assert "你帮我垫" not in resp.text
+    assert "我帮你垫" not in resp.text
+    assert "dt-pill danger" not in resp.text  # never red for a member row
 
 
 def _stub_debt(**overrides) -> SimpleNamespace:
@@ -211,6 +278,74 @@ def test_debt_view_maps_labels_tones_and_fallbacks() -> None:
     # Remaining hero is exposed as cur/int/dec segments for the editorial split.
     seg = _debt_view(_stub_debt(remaining_amount_cents=123456))["remaining_segments"]
     assert seg == {"cur": "¥", "int": "1,234", "dec": ".56"}
+
+
+def test_debt_view_member_branch_is_communal() -> None:
+    """A member row is communal: relational headline + neutral/success status, NO accounting
+    fields (direction_label / remaining_segments), recede when terminal."""
+    # Open member debt, viewer=debtor, zero paid → start headline, neutral status, progress shown.
+    member = _debt_view(
+        _stub_debt(counterparty_type="member", counterparty_label="爸爸",
+                   viewer_is_debtor=True, status="open", paid_amount_cents=0)
+    )
+    assert member["is_member"] is True
+    assert member["member_headline"] == "你帮我垫了，慢慢还给你"
+    assert member["show_progress"] is True
+    assert member["ratio_percent"] == 0
+    assert (member["member_status_label"], member["member_status_tone"]) == ("进行中", "")
+    assert member["recede"] is False
+    # A member row never carries the external accounting fields.
+    assert "direction_label" not in member
+    assert "remaining_segments" not in member
+
+    # Cleared member debt → recede (sunk), success status, no progress bar.
+    cleared = _debt_view(
+        _stub_debt(counterparty_type="member", viewer_is_debtor=True, status="cleared",
+                   paid_amount_cents=12000, principal_amount_cents=12000)
+    )
+    assert cleared["member_headline"] == "这件事，我们已经两清啦"
+    assert (cleared["member_status_label"], cleared["member_status_tone"]) == ("已两清", "ok")
+    assert cleared["show_progress"] is False
+    assert cleared["recede"] is True
+
+    # Forgiven member debt (cleared + is_forgiven) → the warm 被请客 headline, NOT plain 两清.
+    # Pins that _debt_view threads debt.is_forgiven into _member_headline (a mutation hardcoding
+    # is_forgiven=False would silently downgrade this to "我们已经两清啦" and only this asserts it).
+    forgiven = _debt_view(
+        _stub_debt(counterparty_type="member", viewer_is_debtor=True, status="cleared",
+                   is_forgiven=True, paid_amount_cents=12000, principal_amount_cents=12000)
+    )
+    assert forgiven["member_headline"] == "这份 TA 说不用还啦 ❤️"
+
+    # Voided member debt → neutral status (NEVER danger, red-line ②) + recede.
+    voided = _debt_view(_stub_debt(counterparty_type="member", status="voided"))
+    assert voided["member_status_tone"] == ""  # neutral, not danger
+    assert voided["recede"] is True
+
+    # Foreign-currency member debt → falls back to the external accounting row (FX defense).
+    foreign = _debt_view(
+        _stub_debt(counterparty_type="member", original_currency_code="USD", status="open")
+    )
+    assert foreign["is_member"] is False
+    assert "direction_label" in foreign
+
+
+def test_split_debt_views_groups_and_sorts_active_first() -> None:
+    """家人/外部 split with active-first ordering (open before cleared/voided) inside each group."""
+    items = [
+        _stub_debt(public_id="m_cleared", counterparty_type="member", status="cleared",
+                   viewer_is_debtor=True, paid_amount_cents=100, principal_amount_cents=100),
+        _stub_debt(public_id="e_voided", counterparty_type="external", status="voided"),
+        _stub_debt(public_id="m_open", counterparty_type="member", status="open",
+                   viewer_is_debtor=True),
+        _stub_debt(public_id="e_open", counterparty_type="external", status="open"),
+        # Foreign member debt sorts into the EXTERNAL group (FX fallback).
+        _stub_debt(public_id="m_foreign", counterparty_type="member",
+                   original_currency_code="USD", status="open"),
+    ]
+    members, externals = _split_debt_views(items)
+    assert [v["public_id"] for v in members] == ["m_open", "m_cleared"]  # open before cleared
+    assert [v["public_id"] for v in externals] == ["e_open", "m_foreign", "e_voided"]  # open first
 
 
 def test_amount_segments_splits_cur_int_dec() -> None:
