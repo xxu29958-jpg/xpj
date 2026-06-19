@@ -72,6 +72,7 @@ from app.services.debt_service import (
     get_repayment_proposal_response,
     get_repayment_public_id_for_idempotency,
     list_debts,
+    list_member_receivables_for_account,
     list_repayment_proposals,
     record_adjustment,
     record_repayment,
@@ -205,6 +206,20 @@ def get_debts(
     # from the viewer's side (a bill_split member Debt's owner may be a non-owner member
     # → owner-relative direction alone can't frame it). External rows stay None.
     return list_debts(db, tenant_id=auth.tenant_id, viewer_account_id=auth.account_id)
+
+
+@router.get("/receivables", response_model=DebtListResponse)
+def get_debt_receivables(
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> DebtListResponse:
+    # ADR-0049 P3b / ⑤c (creditor discovery): the ACCOUNT-scoped list of cross-ledger
+    # member Debts this account is the creditor of. A bill_split member Debt lives in
+    # the debtor's ledger, so the ledger-scoped GET "" can't show the sender (creditor)
+    # their receivable — this closes that gap. Shell-redacted (ledger_id=None, §5.2):
+    # the creditor never learns which ledger the debtor parked the obligation in.
+    # Declared BEFORE GET "/{public_id}" so "receivables" is not captured as an id.
+    return list_member_receivables_for_account(db, account_id=auth.account_id)
 
 
 @router.get("/{public_id}", response_model=DebtResponse)

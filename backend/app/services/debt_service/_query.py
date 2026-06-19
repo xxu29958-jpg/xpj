@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt
+from app.models import Account, Debt, LedgerMember
 from app.schemas import DebtListResponse, DebtResponse
 from app.services.debt_service._fold import (
     compute_paid,
@@ -115,10 +115,40 @@ def get_participant_debt_response(
     # §3.2: the server is the authority for the viewer's debtor/creditor role (the client can't
     # derive it — see DebtResponse.viewer_is_debtor). Cross-ledger reads additionally redact the
     # counterparty's ledger id (§5.2).
-    update: dict = {"viewer_is_debtor": _viewer_is_debtor(debt, account_id)}
+    viewer_is_debtor = _viewer_is_debtor(debt, account_id)
+    update: dict = {"viewer_is_debtor": viewer_is_debtor}
     if not is_ledger_member:
         update["ledger_id"] = None
+        # ⑤c list↔detail consistency: a cross-ledger CREDITOR's receivables list shows the
+        # debtor's name in counterparty_label; surface the same name here so opening the
+        # detail doesn't fall back to the generic member label. Only the creditor side
+        # (viewer_is_debtor is False) — the debtor's own payable view stays generic (the
+        # counterparty there is the creditor, framed by the communal headline, not named).
+        if viewer_is_debtor is False:
+            debtor_name = _owner_display_names(db, {debt.owner_account_id}).get(
+                debt.owner_account_id
+            )
+            if debtor_name:
+                update["counterparty_label"] = debtor_name
     return response.model_copy(update=update)
+
+
+def _owner_display_names(db: Session, owner_account_ids: set[int]) -> dict[int, str]:
+    """Batch-resolve ``{account_id: display_name}`` for the given debtor (owner) accounts.
+
+    One ``WHERE id IN (...)`` (no N+1) for the receivables list; blank names are omitted
+    so the caller leaves ``counterparty_label`` ``None`` and the renderers fall back to the
+    generic member label (``Account.display_name`` is NOT NULL, so this is belt-and-suspenders).
+    The debtor's name is shared provenance — the creditor is the bill_split sender who named
+    this receiver at invite time — so surfacing it does NOT cross the §5.2/ADR-0029 boundary
+    (which redacts the debtor's LEDGER, not their identity).
+    """
+    if not owner_account_ids:
+        return {}
+    rows = db.execute(
+        select(Account.id, Account.display_name).where(Account.id.in_(owner_account_ids))
+    ).all()
+    return {acc_id: name for acc_id, name in rows if (name or "").strip()}
 
 
 def _viewer_is_debtor(debt: Debt, account_id: int) -> bool | None:
@@ -230,6 +260,82 @@ def list_debts(
                 update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)}
             )
         items.append(response)
+    return DebtListResponse(items=items)
+
+
+def list_member_receivables_for_account(
+    db: Session, *, account_id: int
+) -> DebtListResponse:
+    """Account-scoped list of the CROSS-LEDGER member Debts this account is the
+    creditor of — "money owed to me" that the ledger-scoped :func:`list_debts`
+    cannot surface (creditor-discovery gap, ADR-0049 P3b / ⑤c).
+
+    A bill_split member Debt lives in the DEBTOR's ledger (``tenant_id`` = the
+    receiver's chosen ledger, ``owner`` = receiver = debtor, member ``counterparty``
+    = sender = creditor, ``direction='i_owe'``). The debtor sees it in their own
+    ``list_debts``; the creditor is a member of a DIFFERENT ledger and has no
+    ledger-scoped path to it. This returns every member Debt where the account is
+    the counterparty-CREDITOR (``direction='i_owe'`` so the counterparty is the
+    creditor — :func:`proposal_debtor_creditor`; an ``owed_to_me`` member Debt would
+    make the counterparty the DEBTOR, a payable, correctly excluded) AND whose
+    ledger the account is NOT an ACTIVE member of (a same-ledger member Debt the
+    account already sees in ``list_debts`` is not duplicated here; the owner-creditor
+    case is never cross-ledger since the owner is always a member of the Debt's ledger).
+    "Active" matches the auth membership definition so a soft-removed creditor — who
+    can no longer get a token for that ledger — still sees the receivable here.
+
+    Shell-redacted (§5.2 / ADR-0029 privacy): ``ledger_id`` is always ``None`` — the
+    creditor must never learn which ledger the debtor parked the obligation in (the
+    receiver's private ledger choice). ``viewer_is_debtor`` is ``False`` for every
+    row (the viewer is the creditor by construction). Every other field (principal /
+    remaining / paid / status / currency / source) is the obligation shell the
+    creditor needs to track the receivable.
+    """
+    # ACTIVE membership only (disabled_at IS NULL) — must match the auth path
+    # (identity_service._auth filters disabled_at IS NULL to build the AuthContext that
+    # scopes list_debts). A creditor SOFT-REMOVED from the debtor's ledger has a
+    # disabled LedgerMember row but cannot obtain a token for that ledger, so they can
+    # NOT see the Debt via list_debts — counting that stale membership here would hide a
+    # genuinely-unreachable receivable. (A still-ACTIVE member of the Debt's ledger CAN
+    # reach it by viewing that ledger, so it is intentionally excluded from this
+    # cross-ledger lens.)
+    viewer_is_member = (
+        select(LedgerMember.id)
+        .where(LedgerMember.ledger_id == Debt.tenant_id)
+        .where(LedgerMember.account_id == account_id)
+        .where(LedgerMember.disabled_at.is_(None))
+        .exists()
+    )
+    statement = (
+        select(Debt)
+        # counterparty_type=='member' is belt-and-suspenders: ck_debts_member_has_account
+        # makes counterparty_account_id NON-NULL iff member, so the account-id match below
+        # already restricts to member rows (an external Debt has a NULL counterparty). Kept
+        # for explicit intent.
+        .where(Debt.counterparty_type == "member")
+        .where(Debt.direction == "i_owe")
+        .where(Debt.counterparty_account_id == account_id)
+        .where(~viewer_is_member)
+        .order_by(Debt.status.asc(), Debt.created_at.asc(), Debt.id.asc())
+    )
+    debts = list(db.scalars(statement))
+    # Who owes the creditor: the debtor is the Debt OWNER (the bill_split receiver). The
+    # creditor must see WHO, so surface the debtor's live display name in counterparty_label
+    # (one batched lookup, no N+1). The stored counterparty_account_id is the creditor's own
+    # id and direction is owner-relative 'i_owe' — both left UNTOUCHED so the row stays
+    # byte-identical to the detail framing (list↔detail consistency); only the label is added.
+    debtor_names = _owner_display_names(db, {debt.owner_account_id for debt in debts})
+    items: list[DebtResponse] = []
+    for debt in debts:
+        response = _debt_response_with_fold(db, debt)
+        update: dict = {
+            "viewer_is_debtor": _viewer_is_debtor(debt, account_id),
+            "ledger_id": None,
+        }
+        debtor_name = debtor_names.get(debt.owner_account_id)
+        if debtor_name:
+            update["counterparty_label"] = debtor_name
+        items.append(response.model_copy(update=update))
     return DebtListResponse(items=items)
 
 
