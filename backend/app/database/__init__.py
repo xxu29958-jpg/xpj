@@ -136,8 +136,60 @@ def _stamp_alembic_baseline_if_needed() -> None:
             )
     if current_revision != head:
         with engine.begin() as connection:
+            _assert_role_can_alter_existing_schema(connection)
             cfg.attributes["connection"] = connection
             command.upgrade(cfg, "head")
+
+
+def _assert_role_can_alter_existing_schema(connection) -> None:
+    """Pre-flight before Alembic ``upgrade`` on an EXISTING schema: the connected
+    role must be able to ALTER the public tables, or the migration half-fails
+    cryptically mid-run.
+
+    The 2026-06-04 PostgreSQL cut-over loaded data as the ``postgres`` superuser,
+    leaving most tables owned by ``postgres`` while the app role had only DML; the
+    first ALTER migration was rejected ("must be owner") and startup silently
+    bricked for ~4 days (see docs/runbook/POSTGRES_MIGRATION.md §3 and the
+    table-owner trap). This turns that failure mode into a clear, actionable
+    pre-flight error listing the mis-owned tables.
+
+    Conservative by design: a table is flagged only when the connected role has
+    NO membership relationship to the owning role (``pg_has_role(... 'MEMBER')``
+    is false) — exactly the trap. A role is always a member of itself and a
+    superuser is a member of every role, so a freshly ``create_all``'d database
+    (every table owned by the current role) and the healthy production setup both
+    yield zero flagged rows; this never blocks a legitimate start. A
+    member-without-inherit edge case (rare, not the cut-over trap) is left to fail
+    naturally at the ALTER, same as today — fail-open there beats false-positive
+    bricking a legitimate startup.
+    """
+    from sqlalchemy import text
+
+    rows = connection.execute(
+        text(
+            """
+            SELECT tablename, tableowner
+            FROM pg_tables
+            WHERE schemaname = 'public'
+              AND tableowner <> current_user
+              AND NOT pg_has_role(current_user, tableowner, 'MEMBER')
+            ORDER BY tablename
+            """
+        )
+    ).all()
+    if not rows:
+        return
+
+    current = connection.scalar(text("SELECT current_user"))
+    sample = ", ".join(f"{row.tablename}(属主={row.tableowner})" for row in rows[:8])
+    suffix = "" if len(rows) <= 8 else f" 等共 {len(rows)} 张表"
+    raise RuntimeError(
+        f"拒绝执行数据库迁移:当前数据库角色 '{current}' 不是下列表的属主、"
+        f"也不是属主角色的成员或超级用户,ALTER / ADD CONSTRAINT 迁移会失败"
+        f"(历史 cut-over 表属主错位陷阱)。请先用超级用户归位表属主"
+        f"(见 docs/runbook/POSTGRES_MIGRATION.md §3 与 "
+        f"backend/scripts/fix_table_owners.sql),再重启服务。受影响表:{sample}{suffix}。"
+    )
 
 
 def _seed_fresh_schema_metadata_if_needed() -> None:
