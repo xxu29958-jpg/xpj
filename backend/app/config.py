@@ -253,6 +253,23 @@ PLACEHOLDER_APP_TOKEN = "replace-with-random-app-token"
 PLACEHOLDER_ADMIN_TOKEN = "replace-with-random-admin-token"
 PLACEHOLDER_SECRETS = frozenset({PLACEHOLDER_UPLOAD_TOKEN, PLACEHOLDER_APP_TOKEN, PLACEHOLDER_ADMIN_TOKEN})
 
+# PG-only (debt #4) localhost superuser fallback used ONLY when DATABASE_URL is
+# unset. Connecting as the ``postgres`` superuser to run create_all / migrations
+# is exactly the 2026-06-04 cut-over setup that left tables owned by ``postgres``
+# and bricked startup for ~4 days (see docs/runbook/POSTGRES_MIGRATION.md §3 and
+# the table-owner trap). Real deployments MUST set DATABASE_URL to the app role.
+DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5432/ticketbox"
+
+
+def database_url_is_default_fallback() -> bool:
+    """True when DATABASE_URL is unset and the superuser@localhost default is in use.
+
+    Startup surfaces a WARN in this case (model-invariant hardening P1): running
+    migrations as the default superuser is the table-owner-trap precondition.
+    Read live (not via the lru_cached settings) so it reflects the env at call time.
+    """
+    return os.getenv("DATABASE_URL") is None
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -268,7 +285,7 @@ def get_settings() -> Settings:
         # PG-only (debt #4): no SQLite fallback. Real deployments set
         # DATABASE_URL in .env (see docs/runbook/POSTGRES_MIGRATION.md); this
         # localhost default only serves a bare local run with no .env.
-        database_url=os.getenv("DATABASE_URL", "postgresql+psycopg://postgres@localhost:5432/ticketbox"),
+        database_url=os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
         upload_dir=upload_dir.resolve(),
         max_upload_size_mb=int(os.getenv("MAX_UPLOAD_SIZE_MB", "10")),
         delete_image_after_confirm=_bool_env("DELETE_IMAGE_AFTER_CONFIRM", False),

@@ -13,6 +13,8 @@ other public symbols are direct re-exports.
 
 from __future__ import annotations
 
+import logging
+
 from app.database._core import (
     BACKEND_ROOT,
     Base,
@@ -30,6 +32,8 @@ from app.database._seed import (
 )
 from app.database._uploads import migrate_upload_paths_to_tenant_dirs
 from app.version import BACKEND_VERSION
+
+_logger = logging.getLogger(__name__)
 
 __all__ = [
     "BACKEND_ROOT",
@@ -51,6 +55,7 @@ __all__ = [
 def init_db() -> None:
     from app import models  # noqa: F401
 
+    _warn_if_default_database_url()
     Base.metadata.create_all(bind=engine)
     record_schema_migration(
         BASELINE_MIGRATION_NAME,
@@ -135,6 +140,15 @@ def _stamp_alembic_baseline_if_needed() -> None:
                 {"v": current_revision},
             )
     if current_revision != head:
+        # A pre-existing Alembic-tracked DB behind head (``alembic_version`` row
+        # present at entry) is the production restart / upgrade path the
+        # pre-migration snapshot protects. A fresh ``create_all``'d DB has no
+        # ``alembic_version`` table at entry and runs the same guarded migrations
+        # as no-ops with no data to lose — skip the backup there, otherwise every
+        # fresh start / test reset would needlessly shell out to ``pg_dump`` (and
+        # a missing binary would fail-closed-brick a legitimate fresh start).
+        if has_version_table:
+            _backup_before_upgrade(current_revision, head)
         with engine.begin() as connection:
             _assert_role_can_alter_existing_schema(connection)
             cfg.attributes["connection"] = connection
@@ -189,6 +203,72 @@ def _assert_role_can_alter_existing_schema(connection) -> None:
         f"(历史 cut-over 表属主错位陷阱)。请先用超级用户归位表属主"
         f"(见 docs/runbook/POSTGRES_MIGRATION.md §3 与 "
         f"backend/scripts/fix_table_owners.sql),再重启服务。受影响表:{sample}{suffix}。"
+    )
+
+
+def _warn_if_default_database_url() -> None:
+    """WARN at startup when DATABASE_URL is unset and the superuser@localhost fallback
+    is in use (model-invariant hardening P1). Running create_all / migrations as the
+    default ``postgres`` superuser is the 2026-06-04 cut-over setup that left tables
+    owned by ``postgres`` and bricked startup for ~4 days (the table-owner trap). Real
+    deployments must set DATABASE_URL to the app role; this surfaces the risk early.
+    """
+    from app.config import database_url_is_default_fallback
+
+    if database_url_is_default_fallback():
+        _logger.warning(
+            "DATABASE_URL 未设置,正使用默认的 postgres 超级用户@localhost:5432 回落。"
+            "以超级用户跑 create_all / 迁移会让表属主=postgres,埋下表属主错位陷阱"
+            "(2026-06-04 静默停机根因)。生产请将 DATABASE_URL 指向应用角色。"
+        )
+
+
+def _backup_before_upgrade(current_revision: str | None, head: str) -> None:
+    """Snapshot the EXISTING database BEFORE running pending Alembic migrations
+    (model-invariant hardening P1). An Alembic upgrade on an existing DB is the one
+    irreversible startup step; take a pg_dump restore point first so a migration that
+    corrupts or half-applies can be recovered. Fail-CLOSED: if the backup fails the
+    upgrade does NOT run (data-correctness over availability, ADR-0049 §0).
+
+    Escape hatch: ``SKIP_PRE_MIGRATION_BACKUP=true`` skips the snapshot with a loud
+    WARN — for the case where pg_dump itself is broken/unavailable and the operator
+    has backed up by hand; without it a broken backup tool would permanently brick a
+    legitimate migration (the very silent-brick class this hardening prevents).
+
+    Only reached for a pre-existing Alembic-tracked DB behind head (caller gates on
+    ``has_version_table``); a fresh ``create_all``'d DB runs its guarded no-op
+    migrations without a pre-backup (nothing to lose, and no ``pg_dump`` dependency
+    on the first-start / test-reset path). Residual by design: a true pre-Alembic
+    v1.1 DB (real data but no ``alembic_version`` row at entry) also skips this
+    backup; that path is vestigial post-2026-06-04 cut-over (any prior startup
+    created the version table), and such an operator must back up by hand first.
+    """
+    import os
+
+    if os.getenv("SKIP_PRE_MIGRATION_BACKUP", "").strip().lower() in {"1", "true", "yes"}:
+        _logger.warning(
+            "SKIP_PRE_MIGRATION_BACKUP 已设置——跳过迁移前自动备份(%s -> %s)。"
+            "请确认已手动备份数据库。",
+            current_revision,
+            head,
+        )
+        return
+
+    from app.services.backup_service import create_pre_upgrade_backup
+
+    try:
+        entry = create_pre_upgrade_backup()
+    except Exception as exc:
+        raise RuntimeError(
+            f"拒绝执行数据库迁移:迁移前自动备份失败({exc})。迁移是不可逆启动步骤,"
+            f"未成功备份不迁移(数据安全优先)。请确认 pg_dump 可用、备份目录可写后重启;"
+            f"若已手动备份且确需跳过,设 SKIP_PRE_MIGRATION_BACKUP=true 再重启。"
+        ) from exc
+    _logger.info(
+        "迁移前已写入数据库快照(%s),准备从 %s 迁移到 %s。",
+        entry.file_name,
+        current_revision,
+        head,
     )
 
 

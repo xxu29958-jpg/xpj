@@ -132,6 +132,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
     "tests/test_db_migration_owner_preflight.py::",  # P1: CREATE/DROP ROLE + separate-engine role switching to exercise the migration owner-trap pre-flight guard
+    "tests/test_db_migration_backup_gate.py::",  # P1: stamp alembic_version below head via separate engine.begin connection to exercise the pre-migration backup gate
 
     # True concurrency: need real independent connections (2-session races, FOR
     # UPDATE lock contention) that one shared savepoint connection cannot model.
