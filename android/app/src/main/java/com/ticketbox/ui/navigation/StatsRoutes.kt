@@ -278,6 +278,12 @@ internal fun StatsRoute(
 
     LaunchedEffect(shellState.dashboardCardsRevision, monthlyState.ledgerReady) {
         if (shellState.dashboardCardsRevision > 0 && monthlyState.ledgerReady) {
+            // P4 stale-refresh: settings can change stats-relevant data while this VM
+            // persists (dashboard cards; tag delete/rename/merge bumps the same
+            // signal). refresh() resyncs confirmed (the byTag chip source) but does
+            // not re-pull the tag list, so a deleted tag would linger in the filter
+            // chips — reloadTags() closes that gap.
+            monthlyStatsViewModel.reloadTags()
             monthlyStatsViewModel.refresh()
             budgetViewModel.refresh(monthlyState.month, monthlyState.stats, force = true)
             reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
@@ -314,6 +320,9 @@ internal fun StatsRoute(
         onMonthChange = monthlyStatsViewModel::setMonth,
         onTagChange = monthlyStatsViewModel::setTag,
         onRefresh = {
+            // Pull-to-refresh also re-pulls tags so the user has a direct recovery
+            // path for a lingering deleted-tag chip (P4 stale-refresh).
+            monthlyStatsViewModel.reloadTags()
             monthlyStatsViewModel.refresh()
             budgetViewModel.refresh(monthlyState.month, monthlyState.stats, force = true)
             reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)

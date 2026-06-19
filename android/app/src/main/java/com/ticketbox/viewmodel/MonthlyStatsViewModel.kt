@@ -96,6 +96,17 @@ class MonthlyStatsViewModel(
         }
     }
 
+    /**
+     * Re-pull the authoritative tag list. Tags are otherwise loaded only on init /
+     * ledger switch (P4 stale-refresh): after a tag is deleted/renamed/merged in
+     * settings, the stats filter chips kept showing the dead tag because this VM
+     * persists across the settings round-trip and never re-pulled. StatsRoute calls
+     * this on the cross-screen refresh signal and on pull-to-refresh; the resync of
+     * de-tagged expenses (the byTag chip source) already rides refresh()'s
+     * syncConfirmed.
+     */
+    fun reloadTags() = loadTags()
+
     private fun observeDailyTrend() {
         viewModelScope.launch {
             repository.observeConfirmed().collect { expenses ->

@@ -328,6 +328,10 @@ internal fun SettingsDestinationHost(
                 viewModel = vm,
                 readOnly = !ledgerRoleCanModify(states.settings.role),
                 onBack = { route = SettingsDestination.Root },
+                // P4 stale-refresh: a committed tag mutation reuses the stats-refresh
+                // signal so the stats tab re-pulls its tag list (drops the dead chip)
+                // on next show — same validated channel as dashboard-card edits.
+                onTagsChanged = actions.onDashboardCardsChanged,
             )
         }
 
