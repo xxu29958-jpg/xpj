@@ -134,3 +134,26 @@ def lock_and_fold(
     debt.updated_at = now_utc()
     debt.status = derive_status(debt, remaining_after)
     return debt, result
+
+
+def lock_debt_for_intent(
+    db: Session, *, tenant_id: str, public_id: str, account_id: int | None = None
+) -> Debt:
+    """FOR UPDATE the parent Debt for a NON-fold-changing write that still must read
+    the authoritative fold under the lock (ADR-0049 §3.2 proposal create: refuse a
+    pending proposal on a Debt a concurrent confirm/forgive has already settled).
+
+    Unlike :func:`lock_and_fold` this takes the parent row lock but NEVER bumps
+    ``row_version``, touches ``updated_at``, or re-derives ``status`` — a pending
+    proposal is an INTENT, not a §2 fact, so it must not move the fold or the
+    concurrency token. It also leaves the voided/stale-intent gating to the caller
+    (a proposal create reports voided as ``debt_already_voided`` itself). Keeping
+    the ``FOR UPDATE`` here (not a hand-rolled lock in ``_proposal``) preserves the
+    module invariant that this file is the single place that locks a parent Debt.
+
+    Same §2.1/§5.2 participant scoping as :func:`lock_and_fold`: ``account_id is
+    None`` keeps the ledger-scoped lock; supplied admits the cross-ledger member
+    counterparty, with the same ``debt_not_found`` existence hiding for everyone
+    else.
+    """
+    return _lock_debt(db, tenant_id=tenant_id, public_id=public_id, account_id=account_id)

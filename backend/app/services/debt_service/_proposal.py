@@ -38,6 +38,7 @@ from app.schemas import (
     MemberRepaymentProposalRejectRequest,
     MemberRepaymentProposalResponse,
 )
+from app.services.debt_service._fold import compute_remaining
 from app.services.debt_service._guards import (
     guard_actor_is_creditor,
     guard_actor_is_debtor,
@@ -49,7 +50,7 @@ from app.services.debt_service._query import (
     get_participant_debt_response,
     resolve_debt_for_participant,
 )
-from app.services.debt_service._serialize import lock_and_fold
+from app.services.debt_service._serialize import lock_and_fold, lock_debt_for_intent
 from app.services.time_service import now_utc
 
 # §3.2: a pending proposal expires 30 days after it is created if neither side
@@ -83,6 +84,41 @@ def _load_participant_debt(
     debt, _ = resolve_debt_for_participant(
         db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id
     )
+    return debt
+
+
+def _lock_creatable_member_debt(
+    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
+) -> Debt:
+    """Lock + gate the member Debt a debtor may file a NEW proposal against (§3.2 / §0).
+
+    FOR UPDATE the parent Debt (``lock_debt_for_intent`` — read the fold under the lock,
+    do NOT bump row_version; a pending proposal is an intent, not a fact), then refuse
+    the states that make a new proposal meaningless: a ``voided`` Debt
+    (``debt_already_voided``), a non-member Debt (``guard_member_debt``), an actor who is
+    not the debtor (``guard_actor_is_debtor``), and — the §0 fix — a SETTLED member Debt
+    whose fold has nothing left (fully repaid OR creditor-forgiven, ``remaining <= 0``).
+    Slice 3 originally blocked only ``voided``, so a stale client could file a pending
+    proposal on a cleared/forgiven Debt that the §3.2 confirm overpay check could never
+    accept — a permanently un-confirmable ghost. Reading ``remaining`` under the lock
+    also closes the create-vs-clear race with a concurrent confirm/forgive.
+
+    Locking BEFORE the role guard (a non-debtor participant briefly contends the row
+    lock before their 403) is deliberate, NOT the resolve-then-lock order the sibling
+    forgive/confirm flows use: it evaluates BOTH the ``voided`` latch and the settled
+    fold under the one lock. The settled ``state_conflict`` runs strictly after
+    ``guard_actor_is_debtor``, so a non-debtor never observes settled state, and the
+    lock is released on the immediate AppError rollback — no leak, no meaningful DoS.
+    """
+    debt = lock_debt_for_intent(
+        db, tenant_id=tenant_id, public_id=public_id, account_id=actor_account_id
+    )
+    if debt.status == "voided":
+        raise AppError("debt_already_voided", status_code=409)
+    guard_member_debt(debt)
+    guard_actor_is_debtor(debt, actor_account_id)
+    if compute_remaining(db, debt) <= 0:
+        raise AppError("state_conflict", status_code=409)
     return debt
 
 
@@ -238,13 +274,11 @@ def create_repayment_proposal(
     ``commit=False`` lets the route commit the insert together with the [[0042]]
     idempotency-success record in one transaction.
     """
-    debt = _load_participant_debt(
+    # Lock the parent Debt FOR UPDATE and gate it (§3.2 / §0): voided / non-member /
+    # not-the-debtor / already-settled all refuse a new proposal (see helper).
+    debt = _lock_creatable_member_debt(
         db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
     )
-    if debt.status == "voided":
-        raise AppError("debt_already_voided", status_code=409)
-    guard_member_debt(debt)
-    guard_actor_is_debtor(debt, actor_account_id)
     _, creditor_account_id = proposal_debtor_creditor(debt)
 
     paid_at = payload.paid_at or now_utc()
