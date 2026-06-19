@@ -151,7 +151,22 @@ def debt_rollout_on(monkeypatch: pytest.MonkeyPatch):
         get_settings.cache_clear()
 
 
-def test_backfill_creates_missing_member_debt(client: TestClient, *, identity) -> None:
+@pytest.fixture
+def debt_rollout_off(monkeypatch: pytest.MonkeyPatch):
+    # ⑤b flipped the default ON. The backfill tests need the closed-period state (a
+    # split accepted while OFF, so no inline Debt) set up explicitly. Mirrors
+    # ``debt_rollout_on``.
+    monkeypatch.setenv("DEBT_ROLLOUT_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()
+
+
+def test_backfill_creates_missing_member_debt(
+    client: TestClient, *, identity, debt_rollout_off
+) -> None:
     # A split accepted while the rollout was OFF has no Debt; backfill creates one
     # with the exact shape an inline-at-accept Debt would have (mirrors
     # test_bill_split_debt_linkage.test_accept_with_rollout_creates_member_debt).
@@ -197,7 +212,9 @@ def test_backfill_skips_invitation_that_already_has_debt(
     assert len(_debts_for(public_id)) == 1
 
 
-def test_backfill_is_idempotent_on_rerun(client: TestClient, *, identity) -> None:
+def test_backfill_is_idempotent_on_rerun(
+    client: TestClient, *, identity, debt_rollout_off
+) -> None:
     # First run creates the missing Debt; the second is a clean no-op (the
     # missing-Debt query is now empty).
     receiver_id = _seed_receiver()
@@ -225,10 +242,11 @@ def test_backfill_ignores_non_accepted_invitations(client: TestClient, *, identi
     assert _debts_for(rejected_pid) == []
 
 
-def test_reconcile_is_noop_when_rollout_off(client: TestClient, *, identity) -> None:
+def test_reconcile_is_noop_when_rollout_off(
+    client: TestClient, *, identity, debt_rollout_off
+) -> None:
     # The safety invariant: a split accepted in the closed period legitimately has no
     # Debt, so the startup reconcile must NOT fabricate one while the rollout is OFF.
-    get_settings.cache_clear()  # ensure the default OFF read for accept + reconcile
     receiver_id = _seed_receiver()
     public_id = _invite(client, identity, receiver_id, amount_cents=2500)
     _accept(public_id, receiver_id)  # rollout OFF → no Debt
@@ -239,13 +257,14 @@ def test_reconcile_is_noop_when_rollout_off(client: TestClient, *, identity) -> 
 
 
 def test_reconcile_backfills_when_rollout_on(
-    client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, *, identity, debt_rollout_off, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The flip-the-flag path: a split accepted while OFF gets its Debt backfilled the
-    # moment the reconcile runs with the rollout ON (⑤b).
+    # moment the reconcile runs with the rollout ON (⑤b). The ``debt_rollout_off``
+    # fixture seeds the closed-period accept (no inline Debt); this test then flips
+    # the same monkeypatch'd env ON to exercise the startup reconcile.
     owner_id = _owner_account_id()
     receiver_id = _seed_receiver()
-    get_settings.cache_clear()
     public_id = _invite(client, identity, receiver_id, amount_cents=2500)
     _accept(public_id, receiver_id)  # accepted while OFF → no Debt yet
     assert _debts_for(public_id) == []
@@ -273,7 +292,7 @@ def test_reconcile_backfills_when_rollout_on(
 
 
 def test_backfill_status_filter_excludes_non_accepted_with_bound_ledger(
-    client: TestClient, *, identity
+    client: TestClient, *, identity, debt_rollout_off
 ) -> None:
     # The status=='accepted' filter is the operative gate, INDEPENDENT of the
     # receiver_ledger_id guard: an invitation that reached 'accepted' (so its ledger
@@ -295,7 +314,9 @@ def test_backfill_status_filter_excludes_non_accepted_with_bound_ledger(
     assert _debts_for(public_id) == []
 
 
-def test_backfill_skips_accepted_with_null_ledger(client: TestClient, *, identity) -> None:
+def test_backfill_skips_accepted_with_null_ledger(
+    client: TestClient, *, identity, debt_rollout_off
+) -> None:
     # Defensive guard: an 'accepted' row with a NULL receiver_ledger_id (structurally
     # impossible via the atomic accept claim, but guarded against) must be SKIPPED, not
     # turned into a tenant-less Debt. Pins the `if inv.receiver_ledger_id is None` branch.
@@ -318,7 +339,7 @@ def test_backfill_skips_accepted_with_null_ledger(client: TestClient, *, identit
 
 
 def test_backfill_foreign_parent_debt_stays_home_shape(
-    client: TestClient, *, identity
+    client: TestClient, *, identity, debt_rollout_off
 ) -> None:
     # Strict home-shape on the BACKFILL path: even when the PARENT expense is foreign
     # (USD), the backfilled Debt owes the home-currency share with NO copied USD

@@ -3,7 +3,8 @@
 Accepting a ``BillSplitInvitation``, when the Debt rollout is enabled, also
 creates the receiver's member ``Debt`` (``i_owe`` the sender) in the SAME
 transaction as the receiver expense + the invited→accepted claim (§4: all
-commit together or none). Gated OFF by default (ADR §0.1 runtime subset). A
+commit together or none). Defaults ON since ⑤b (ADR §0.1); the closed-period
+(no-Debt) state is set up explicitly with the ``debt_rollout_off`` fixture. A
 re-accept creates no second Debt; terminal statuses create none.
 """
 
@@ -118,6 +119,30 @@ def debt_rollout_on(monkeypatch: pytest.MonkeyPatch):
         get_settings.cache_clear()
 
 
+@pytest.fixture
+def debt_rollout_off(monkeypatch: pytest.MonkeyPatch):
+    # ⑤b flipped the default ON, so the "accepted while OFF → no Debt" closed-period
+    # state must now be set up explicitly. Mirrors ``debt_rollout_on``.
+    monkeypatch.setenv("DEBT_ROLLOUT_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()
+
+
+def test_debt_rollout_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ⑤b activation: the Debt rollout now defaults ON (forward-only, ADR §4 / §0.1).
+    # With no env override the config default governs; flipping the default back to
+    # False would turn this red.
+    monkeypatch.delenv("DEBT_ROLLOUT_ENABLED", raising=False)
+    get_settings.cache_clear()
+    try:
+        assert get_settings().debt_rollout_enabled is True
+    finally:
+        get_settings.cache_clear()
+
+
 def test_accept_with_rollout_creates_member_debt(
     client: TestClient, *, identity, debt_rollout_on
 ) -> None:
@@ -153,8 +178,10 @@ def test_accept_with_rollout_creates_member_debt(
     assert received.tenant_id == "receiver_b"
 
 
-def test_accept_without_rollout_creates_no_debt(client: TestClient, *, identity) -> None:
-    # Default (rollout off): accept still creates the receiver expense, no Debt.
+def test_accept_without_rollout_creates_no_debt(
+    client: TestClient, *, identity, debt_rollout_off
+) -> None:
+    # With the rollout explicitly OFF: accept still creates the receiver expense, no Debt.
     receiver_id = _seed_receiver()
     public_id = _invite(client, identity, receiver_id)
 

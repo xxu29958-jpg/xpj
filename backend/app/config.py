@@ -136,16 +136,17 @@ class Settings:
     fx_rate_source: str
     fx_rate_ecb_url: str
     fx_rate_frankfurter_url: str
-    # ADR-0049 §4 bill-split → Debt linkage rollout gate. OFF by default: the
-    # Debt domain is a target contract still being built out (ADR §0.1 runtime
-    # subset), so accepting a bill split creates a Debt only once the rollout is
-    # deliberately switched on. The §0.1 HARD BOUNDARY (a bill-split member Debt
-    # is owned by the receiver's ledger with the sender as cross-ledger creditor)
-    # is now CLEARED: slice 5 made repayment confirm/reject account-scoped (§5.2),
-    # so the creditor can confirm/clear it even across ledgers. The flag still
-    # defaults OFF as a deliberate rollout stage (creditor discovery UX +
-    # pre-rollout backfill are product decisions). Flipping it on is forward-only
-    # per §4.
+    # ADR-0049 §4 bill-split → Debt linkage rollout gate. ON by default (⑤b
+    # activation, 2026-06-19): accepting a bill split now creates the receiver's
+    # member Debt. Every rollout prerequisite is met — the §0.1 HARD BOUNDARY (a
+    # bill-split member Debt is owned by the receiver's ledger with the sender as
+    # cross-ledger creditor) was cleared by slice 5's account-scoped confirm/reject
+    # (§5.2); the cross-ledger creditor discovery + confirm UX shipped across all
+    # three surfaces (⑤c read views + ⑤b-2 Android confirm path); and pre-rollout
+    # backfill self-heals historically-accepted splits on the next startup
+    # (``reconcile_bill_split_debts_if_enabled``, P3b). Flipping it ON is
+    # forward-only per §4; set ``DEBT_ROLLOUT_ENABLED=false`` to opt one install
+    # out (does not remove already-created Debts).
     debt_rollout_enabled: bool
 
     @property
@@ -439,5 +440,5 @@ def get_settings() -> Settings:
             ).strip()
             or "https://api.frankfurter.dev/v1/latest?base=EUR"
         ),
-        debt_rollout_enabled=_bool_env("DEBT_ROLLOUT_ENABLED", False),
+        debt_rollout_enabled=_bool_env("DEBT_ROLLOUT_ENABLED", True),
     )
