@@ -68,6 +68,9 @@ fun classifyLocalUnlockAvailability(
     else -> LocalUnlockAvailability.None
 }
 
+internal fun biometricPromptRequiresNegativeButton(authenticators: Int): Boolean =
+    (authenticators and DEVICE_CREDENTIAL) == 0
+
 class BiometricAuthManager(private val activity: FragmentActivity) {
     fun unlockAvailability(): LocalUnlockAvailability {
         val manager = BiometricManager.from(activity)
@@ -161,12 +164,16 @@ class BiometricAuthManager(private val activity: FragmentActivity) {
         )
     }
 
-    private fun promptInfo(authenticators: Int): BiometricPrompt.PromptInfo =
-        BiometricPrompt.PromptInfo.Builder()
+    private fun promptInfo(authenticators: Int): BiometricPrompt.PromptInfo {
+        val builder = BiometricPrompt.PromptInfo.Builder()
             .setTitle(activity.getString(R.string.biometric_prompt_title))
             .setSubtitle(activity.getString(R.string.biometric_prompt_subtitle))
             .setAllowedAuthenticators(authenticators)
-            .build()
+        if (biometricPromptRequiresNegativeButton(authenticators)) {
+            builder.setNegativeButtonText(activity.getString(R.string.common_cancel))
+        }
+        return builder.build()
+    }
 
     private fun unlockCipher(): Cipher {
         val cipher = Cipher.getInstance(TRANSFORMATION)
