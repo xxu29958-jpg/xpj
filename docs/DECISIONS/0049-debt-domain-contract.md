@@ -56,7 +56,7 @@ Therefore this ADR is a target contract. Confirmation checks are required before
 
 Slice 4 wires bill-split → Debt creation (§4) behind the `DEBT_ROLLOUT_ENABLED` flag, default OFF. A bill-split member Debt is owned by the receiver's ledger with the sender as creditor. Slice 4's hard boundary was: this flag MUST NOT be enabled until account-scoped participant confirm/reject (§5.2) is implemented, because ledger-scoped confirm/reject left a creditor who is not a member of the receiver's ledger unable to confirm or clear it.
 
-Slice 5 implements that account-scoped participant confirm/reject (§5.2): the repayment-proposal flow now resolves a Debt by participant identity (debtor OR creditor account) unioned with ledger membership, so the cross-ledger creditor can confirm/reject/clear the obligation, and a participant-but-not-member view is redacted to the Debt shell only (no counterparty ledger internals). **The §0.1 hard-boundary prerequisite is therefore met.** The flag still defaults OFF as a deliberate rollout stage — creditor-side discovery UX (listing cross-ledger debts/incoming proposals) and pre-rollout backfill (§4) remain product decisions, not correctness blockers — but enabling it no longer creates un-repayable Debts.
+Slice 5 implements that account-scoped participant confirm/reject (§5.2): the repayment-proposal flow now resolves a Debt by participant identity (debtor OR creditor account) unioned with ledger membership, so the cross-ledger creditor can confirm/reject/clear the obligation, and a participant-but-not-member view is redacted to the Debt shell only (no counterparty ledger internals). **The §0.1 hard-boundary prerequisite is therefore met.** The flag still defaults OFF as a deliberate rollout stage — creditor-side discovery UX (listing cross-ledger debts/incoming proposals) remains a product decision; pre-rollout backfill (§4) is now implemented as a flag-gated startup self-heal (P3b, see §4 below) — but enabling it no longer creates un-repayable Debts.
 
 ---
 
@@ -430,7 +430,7 @@ Uniqueness:
 
 Rejected, cancelled, or expired invitations create no Debt.
 
-Existing accepted invitations from before Debt rollout are not automatically backfilled by this ADR. Backfill, if needed, requires an explicit migration plan and reconciliation check.
+Existing accepted invitations from before Debt rollout ARE backfilled (P3b): `bill_split_service.backfill_bill_split_debts` creates the missing member Debt — byte-identical to the inline accept linkage — for every accepted split with no `bill_split` Debt, driven at startup by `reconcile_bill_split_debts_if_enabled` ONLY when the rollout is ON. While the rollout is OFF an accepted split legitimately has no Debt, so the reconcile is a no-op then (it must not fabricate obligations for the closed period); it is idempotent and `uq_debts_source` backstops a double-insert.
 
 Bill-split linkage is default-on for accepted invitations after rollout. Opt-out requires a future product decision and ADR update.
 
@@ -628,7 +628,6 @@ This ADR does not implement:
 - external bank/card integrations
 - realized-income ledger
 - cross-ledger shared expense visibility
-- automatic backfill of old accepted bill splits
 
 External Debt v1 is fixed-principal / installment / IOU only.
 

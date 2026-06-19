@@ -149,6 +149,13 @@ async def lifespan(_: FastAPI):
         # default. Auto-generated in app_meta on first boot (no operator step, no brick).
         set_persisted_csrf_key(get_or_create_csrf_signing_key(_db))
     assert_csrf_signing_key_available()
+    # ADR-0049 §4 / P3b: when the Debt rollout is ON, backfill the member Debt for
+    # any bill split accepted while the rollout was OFF — a deliberate self-heal that
+    # kicks in once the operator flips the flag, a cheap no-op once reconciled, and a
+    # no-op while OFF (an accepted split legitimately has no Debt in the closed period).
+    from app.services.bill_split_service import reconcile_bill_split_debts_if_enabled
+
+    reconcile_bill_split_debts_if_enabled()
     # ADR-0030 orphan recovery: tasks that were running or queued when
     # the previous process died are now phantoms — force-fail them.
     recover_orphaned_tasks()

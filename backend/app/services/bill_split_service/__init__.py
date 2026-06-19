@@ -28,6 +28,10 @@ constants + member-load + audit helpers (``_common``).
 
 from __future__ import annotations
 
+from app.services.bill_split_service._backfill import (
+    backfill_bill_split_debts,
+    reconcile_bill_split_debts_if_enabled,
+)
 from app.services.bill_split_service._common import (
     INVITATION_TTL,
     SPLIT_RECEIVED_SOURCE,
@@ -62,6 +66,7 @@ __all__ = [
     "WRITER_ROLES",
     "accept_invitation",
     "assert_no_immutable_field_changes",
+    "backfill_bill_split_debts",
     "cancel_invitation",
     "create_invitation",
     "expire_invitations",
@@ -69,6 +74,7 @@ __all__ = [
     "list_inbox",
     "list_sent",
     "list_sent_for_expense",
+    "reconcile_bill_split_debts_if_enabled",
     "reject_invitation",
     "to_inbox_response_dict",
     "to_sent_response_dict",
