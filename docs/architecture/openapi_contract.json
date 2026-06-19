@@ -27498,6 +27498,55 @@
         ]
       }
     },
+    "/web/receivables": {
+      "get": {
+        "operationId": "web_receivables_web_receivables_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Receivables",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/recurring": {
       "get": {
         "operationId": "web_recurring_web_recurring_get",

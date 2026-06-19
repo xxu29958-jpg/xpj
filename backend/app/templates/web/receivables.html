@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}欠我的 · 小票夹{% endblock %}
+{% block content %}
+<h1 class="page-title page-title--compact">欠我的</h1>
+<p class="page-hint">{{ intro }}</p>
+
+{% if not rows %}
+<div class="dt-card dt-card--empty">
+  <div class="empty-headline">{{ empty_title }}</div>
+  <div class="empty-body">{{ empty_body }}</div>
+</div>
+{% else %}
+<div class="debt-list">
+  {% for debt in rows %}
+  {# 应收 = communal 关系行 (.dt-card--static 不抬升=只读非链接,镜像还款捕获审计页):债务人名 +
+     viewer-相对关系主句「我帮你垫的…」(无金额) + open 时细 success 进度条 + 状态徽章
+     (neutral/success 永不红 — 红线②)。作废/已结清沉降 (.debt-card-sunk 淡出,办完可追溯)。 #}
+  <div class="dt-card dt-card--static debt-row debt-row--member{% if debt.recede %} debt-card-sunk{% endif %}"
+       role="group" aria-label="{{ debt.name }},{{ debt.member_headline }},{{ debt.status_label }}">
+    <div class="debt-row-main">
+      <div class="debt-name">{{ debt.name }}</div>
+      <div class="debt-member-line">{{ debt.member_headline }}</div>
+      {% if debt.show_progress %}
+      <div class="debt-progress debt-progress--row" role="img" aria-label="{{ debt.progress_note }}">
+        <div class="debt-progress-fill" style="width: {{ debt.ratio_percent }}%"></div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="debt-row-side">
+      <span class="dt-pill {{ debt.status_tone }}">{{ debt.status_label }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
