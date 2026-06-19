@@ -2,8 +2,12 @@ package com.ticketbox.security
 
 import android.os.Build
 import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Decision-matrix coverage for [classifyLocalUnlockAvailability] (audit 8.1 local-
@@ -123,5 +127,15 @@ class LocalUnlockAvailabilityTest {
         )
         assertEquals(LocalUnlockAvailability.DeviceCredential, before)
         assertEquals(LocalUnlockAvailability.None, after)
+    }
+
+    @Test
+    fun biometricOnlyPromptRequiresNegativeButton() {
+        assertTrue(biometricPromptRequiresNegativeButton(BIOMETRIC_STRONG))
+    }
+
+    @Test
+    fun deviceCredentialPromptMustNotSetNegativeButton() {
+        assertFalse(biometricPromptRequiresNegativeButton(BIOMETRIC_STRONG or DEVICE_CREDENTIAL))
     }
 }
