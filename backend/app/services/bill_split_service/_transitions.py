@@ -165,9 +165,10 @@ def accept_invitation(
     # participant identity (debtor OR creditor account) unioned with ledger
     # membership, so the cross-ledger creditor can confirm/reject and clear this
     # Debt (debt_service ``_load_participant_debt`` / ``lock_and_fold(account_id=)``).
-    # That closes the §0.1 hard-boundary prerequisite for ``DEBT_ROLLOUT_ENABLED``;
-    # the flag still defaults OFF as a deliberate rollout stage (creditor discovery
-    # UX + pre-rollout backfill remain product decisions, ADR §4 / §0.1).
+    # That closed the §0.1 hard-boundary prerequisite for ``DEBT_ROLLOUT_ENABLED``,
+    # which now defaults ON (⑤b activation): the creditor discovery + confirm UX
+    # shipped on all three surfaces and pre-rollout backfill self-heals on startup
+    # (ADR §4 / §0.1). An install can still opt out with DEBT_ROLLOUT_ENABLED=false.
     if get_settings().debt_rollout_enabled:
         create_bill_split_debt(
             db,
