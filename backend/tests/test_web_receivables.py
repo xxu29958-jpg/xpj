@@ -79,6 +79,14 @@ def _clear(public_id: str, debtor_id: int) -> None:
         db.commit()
 
 
+def _set_voided(public_id: str) -> None:
+    """Latch a receivable voided (status rank 2) — the ordering test only reads status."""
+    with SessionLocal() as db:
+        debt = db.scalar(select(Debt).where(Debt.public_id == public_id))
+        debt.status = "voided"
+        db.commit()
+
+
 def _page(web_client: TestClient) -> str:
     resp = web_client.get("/web/receivables?ledger_id=owner")
     assert resp.status_code == 200, resp.text
@@ -137,6 +145,28 @@ def test_web_receivables_aggregates_across_debtor_ledgers(web_client: TestClient
     html = _page(web_client)
     assert "阿明" in html  # receivable from one debtor's ledger
     assert "小刚" in html  # receivable from another debtor's ledger — cross-ledger aggregated
+
+
+# ── active-first ordering (open before cleared before voided) ─────────────────
+def test_web_receivables_active_first_open_before_cleared_before_voided(
+    web_client: TestClient, *, identity
+) -> None:
+    """Open receivables sort before cleared, cleared before voided (active-first),
+    even though the service returns status.asc (alphabetical → cleared before open).
+    Mirrors the debt list + Android sortReceivablesActiveFirst; without the route
+    re-sort the cleared row would render before the open row."""
+    owner_id = _owner_account_id()
+    d_open = _seed_debtor_ledger("阿明", "recv_open")
+    d_cleared = _seed_debtor_ledger("小红", "recv_cleared")
+    d_voided = _seed_debtor_ledger("老王", "recv_voided")
+    _seed_receivable(creditor_id=owner_id, debtor_id=d_open, debtor_ledger="recv_open")
+    pid_cleared = _seed_receivable(creditor_id=owner_id, debtor_id=d_cleared, debtor_ledger="recv_cleared")
+    pid_voided = _seed_receivable(creditor_id=owner_id, debtor_id=d_voided, debtor_ledger="recv_voided")
+    _clear(pid_cleared, d_cleared)
+    _set_voided(pid_voided)
+
+    html = _page(web_client)
+    assert html.index("阿明") < html.index("小红") < html.index("老王")
 
 
 # ── _receivable_row_view pure unit (status tone + recede + communal headline) ─

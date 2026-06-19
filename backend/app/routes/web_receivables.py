@@ -33,6 +33,7 @@ from app.routes.web_common import (
 )
 from app.routes.web_debts import (
     _MEMBER_STATUS,
+    _STATUS_RANK,
     _communal_ratio,
     _debt_name,
     _member_headline,
@@ -87,6 +88,11 @@ def web_receivables(
         if account_id is not None
         else []
     )
+    # Active-first: open receivables before cleared/voided (sunk to the bottom). The
+    # service returns status.asc (alphabetical → cleared before open), so re-sort here —
+    # mirroring web_debts._split_debt_views + Android sortReceivablesActiveFirst (shared 1A
+    # _STATUS_RANK). Python's stable sort preserves the service's created_at order in-rank.
+    rows = sorted(rows, key=lambda d: _STATUS_RANK.get(d.status, 0))
     ctx = _base_ctx(
         request,
         options=options,
