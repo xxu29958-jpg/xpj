@@ -11,6 +11,7 @@ import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.OutboxRepository
+import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
@@ -102,6 +103,17 @@ fun debtDetailViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtDetailViewModel(repository) as T
+    }
+}
+
+// ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面。只依赖窄接口 ReceivablesActions
+// （DebtRepository 实现它），故无需碰其它 DebtActions 的测试 fake。
+@Suppress("UNCHECKED_CAST")
+fun receivablesViewModelFactory(
+    repository: ReceivablesActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return ReceivablesViewModel(repository) as T
     }
 }
 

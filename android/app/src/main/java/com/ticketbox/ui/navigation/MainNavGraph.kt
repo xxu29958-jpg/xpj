@@ -175,6 +175,12 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
+            // ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面二级页。
+            StatsSecondaryPage.Receivables -> ReceivablesRoute(
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+            )
+
             // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱规划二级页。
             StatsSecondaryPage.RepaymentDrafts -> RepaymentDraftRoute(
                 screenFactory = screenFactory,

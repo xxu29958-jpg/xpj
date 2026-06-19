@@ -145,6 +145,56 @@ class DebtRepositoryTest {
         assertEquals(1_200L, debt.remainingAmountCents)
     }
 
+    // ── ADR-0049 ⑤c (slice ⑤c-2) cross-ledger receivables ──────────────────
+
+    @Test
+    fun listReceivablesMapsCrossLedgerMemberRows() = runTest {
+        val handler = DebtApiHandler().apply {
+            receivablesResult = DebtListResponseDto(
+                items = listOf(
+                    debtDto(publicId = "r1", remaining = 6_000L).copy(
+                        counterpartyType = DebtCounterpartyTypes.MEMBER,
+                        counterpartyAccountId = 7L,
+                        counterpartyLabel = "小王",
+                        ledgerId = null,
+                        sourceType = DebtSourceTypes.BILL_SPLIT,
+                        viewerIsDebtor = false,
+                    ),
+                ),
+            )
+        }
+
+        val receivables = repository(handler).listReceivables().getOrThrow()
+
+        assertEquals(1, receivables.size)
+        val row = receivables.single()
+        assertEquals("r1", row.publicId)
+        assertEquals(6_000L, row.remainingAmountCents)
+        // ⑤c contract: every row is a member receivable on the creditor side, ledger redacted (§5.2),
+        // counterparty_label = the debtor's name.
+        assertTrue(row.isMember)
+        assertEquals(false, row.viewerIsDebtor)
+        assertNull(row.ledgerId)
+        assertEquals("小王", row.counterpartyLabel)
+    }
+
+    @Test
+    fun listReceivablesErrorSurfacesAsFailure() = runTest {
+        val handler = DebtApiHandler().apply {
+            receivablesError = HttpException(
+                Response.error<DebtListResponseDto>(
+                    403,
+                    """{"error":"invalid_token","message":"没有权限。"}"""
+                        .toResponseBody("application/json".toMediaType()),
+                ),
+            )
+        }
+
+        val result = repository(handler).listReceivables()
+
+        assertTrue(result.isFailure)
+    }
+
     @Test
     fun recordRepaymentSendsAmountVersionKeyAndRefolds() = runTest {
         val handler = DebtApiHandler().apply { writeResult = debtDto(publicId = "d1", remaining = 40_000L) }
@@ -608,6 +658,9 @@ private class DebtApiHandler : InvocationHandler {
     var forgiveResult: DebtDto? = null
     var debtsResult: DebtListResponseDto? = null
     var debtsError: Throwable? = null
+    // ADR-0049 ⑤c (slice ⑤c-2) cross-ledger receivables read.
+    var receivablesResult: DebtListResponseDto? = null
+    var receivablesError: Throwable? = null
     // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
     var debtResult: DebtDto? = null
     var writeResult: DebtDto? = null
@@ -637,6 +690,10 @@ private class DebtApiHandler : InvocationHandler {
             "debts" -> {
                 debtsError?.let { throw it }
                 debtsResult ?: DebtListResponseDto(items = listOf(debtDto()))
+            }
+            "debtReceivables" -> {
+                receivablesError?.let { throw it }
+                receivablesResult ?: DebtListResponseDto(items = listOf(debtDto()))
             }
             "debt" -> debtResult ?: debtDto(publicId = values[0] as String)
             "createDebt" -> {

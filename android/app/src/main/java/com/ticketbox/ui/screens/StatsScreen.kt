@@ -89,6 +89,8 @@ fun StatsScreen(
     onOpenDebtGoals: () -> Unit = {},
     // ADR-0049 §2 (slice 8): 债务管理(欠款列表)二级页。默认 no-op 保旧调用方/预览。
     onOpenDebts: () -> Unit = {},
+    // ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面二级页。默认 no-op 保旧调用方/预览。
+    onOpenReceivables: () -> Unit = {},
     // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱二级页。默认 no-op 保旧调用方/预览。
     onOpenRepaymentDrafts: () -> Unit = {},
     // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
@@ -136,6 +138,7 @@ fun StatsScreen(
                 onOpenIncomePlans = onOpenIncomePlans,
                 onOpenDebtGoals = onOpenDebtGoals,
                 onOpenDebts = onOpenDebts,
+                onOpenReceivables = onOpenReceivables,
                 onOpenRepaymentDrafts = onOpenRepaymentDrafts,
             )
         }
@@ -314,6 +317,7 @@ private fun StatsTopPanel(
     onOpenIncomePlans: () -> Unit,
     onOpenDebtGoals: () -> Unit,
     onOpenDebts: () -> Unit,
+    onOpenReceivables: () -> Unit,
     onOpenRepaymentDrafts: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
@@ -327,6 +331,7 @@ private fun StatsTopPanel(
                         onOpenIncomePlans = onOpenIncomePlans,
                         onOpenDebtGoals = onOpenDebtGoals,
                         onOpenDebts = onOpenDebts,
+                        onOpenReceivables = onOpenReceivables,
                         onOpenRepaymentDrafts = onOpenRepaymentDrafts,
                     ),
                     // 轨道2 [P1]：「还款待确认」项的 pending 还款草稿数 badge（账本作用域，>0 才显）。
@@ -360,6 +365,7 @@ private data class StatsPlanningActions(
     val onOpenIncomePlans: () -> Unit,
     val onOpenDebtGoals: () -> Unit,
     val onOpenDebts: () -> Unit,
+    val onOpenReceivables: () -> Unit,
     val onOpenRepaymentDrafts: () -> Unit,
 )
 
@@ -394,6 +400,10 @@ private fun StatsPlanningMenu(actions: StatsPlanningActions, repaymentDraftBadge
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_debts)) },
                 onClick = { menuOpen = false; actions.onOpenDebts() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_receivables)) },
+                onClick = { menuOpen = false; actions.onOpenReceivables() },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_repayment_drafts)) },

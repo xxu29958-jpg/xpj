@@ -22,6 +22,7 @@ import com.ticketbox.ui.screens.DebtGoalScreen
 import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
 import com.ticketbox.ui.screens.IncomePlanScreen
+import com.ticketbox.ui.screens.ReceivablesScreen
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.RepaymentDraftInboxScreen
 import com.ticketbox.ui.screens.StatsScreen
@@ -32,7 +33,9 @@ import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
+import com.ticketbox.viewmodel.MonthlyStatsUiState
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
+import com.ticketbox.viewmodel.ReceivablesViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.viewmodel.StatsBudgetViewModel
@@ -45,6 +48,7 @@ import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
+import com.ticketbox.viewmodel.receivablesViewModelFactory
 import com.ticketbox.viewmodel.recurringViewModelFactory
 import com.ticketbox.viewmodel.repaymentDraftInboxViewModelFactory
 
@@ -52,6 +56,7 @@ internal const val IncomePlanViewModelKey = "income-plans"
 internal const val DebtGoalViewModelKey = "debt-goals"
 internal const val CreateDebtGoalViewModelKey = "create-debt-goal"
 internal const val DebtListViewModelKey = "debts"
+internal const val ReceivablesViewModelKey = "receivables"
 internal const val DebtDetailViewModelKey = "debt-detail"
 internal const val MemberRepaymentProposalViewModelKey = "member-repayment-proposal"
 internal const val RepaymentDraftInboxViewModelKey = "repayment-draft-inbox"
@@ -241,6 +246,25 @@ internal fun DebtRoute(
 }
 
 /**
+ * ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面（规划二级页，与「欠款」并列）。VM 是 overlay 内
+ * 单例（常量 key），跨账本切换存活。应收是**账户作用域**（跨账本）、与活跃账本无关，故不像 [DebtRoute] 按账本
+ * 清旧数据，只在每次（重新）进入时 [ReceivablesViewModel.refresh] 拉最新；纯只读、无详情子页（链不链详情见
+ * ⑤c link-vs-static 决策：跟 web ⑤c-3 一样做只读非链接的发现面）。
+ */
+@Composable
+internal fun ReceivablesRoute(
+    screenFactory: MainScreenFactory,
+    onBack: () -> Unit,
+) {
+    val viewModel: ReceivablesViewModel = viewModel(
+        key = ReceivablesViewModelKey,
+        factory = receivablesViewModelFactory(screenFactory.debtRepository),
+    )
+    LaunchedEffect(Unit) { viewModel.refresh() }
+    ReceivablesScreen(viewModel = viewModel, onBack = onBack)
+}
+
+/**
  * ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱二级页（规划面）。VM 同时拿还款草稿仓库与欠款仓库
  * （选债确认要列 open 外部手动欠款）。overlay 复用缓存 VM 且跨账本存活，故进入时 [reload] 先清旧账本残留。
  */
@@ -283,10 +307,7 @@ internal fun StatsRoute(
             // signal). refresh() resyncs confirmed (the byTag chip source) but does
             // not re-pull the tag list, so a deleted tag would linger in the filter
             // chips — reloadTags() closes that gap.
-            monthlyStatsViewModel.reloadTags()
-            monthlyStatsViewModel.refresh()
-            budgetViewModel.refresh(monthlyState.month, monthlyState.stats, force = true)
-            reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
+            reloadAllStats(monthlyStatsViewModel, budgetViewModel, reportsViewModel, monthlyState)
         }
     }
 
@@ -319,19 +340,13 @@ internal fun StatsRoute(
         state = state,
         onMonthChange = monthlyStatsViewModel::setMonth,
         onTagChange = monthlyStatsViewModel::setTag,
-        onRefresh = {
-            // Pull-to-refresh also re-pulls tags so the user has a direct recovery
-            // path for a lingering deleted-tag chip (P4 stale-refresh).
-            monthlyStatsViewModel.reloadTags()
-            monthlyStatsViewModel.refresh()
-            budgetViewModel.refresh(monthlyState.month, monthlyState.stats, force = true)
-            reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
-        },
+        onRefresh = { reloadAllStats(monthlyStatsViewModel, budgetViewModel, reportsViewModel, monthlyState) },
         onOpenBudget = { shellState.openStatsSecondary(StatsSecondaryPage.Budget) },
         onOpenRecurring = { shellState.openStatsSecondary(StatsSecondaryPage.Recurring) },
         onOpenIncomePlans = { shellState.openStatsSecondary(StatsSecondaryPage.IncomePlans) },
         onOpenDebtGoals = { shellState.openStatsSecondary(StatsSecondaryPage.DebtGoals) },
         onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
+        onOpenReceivables = { shellState.openStatsSecondary(StatsSecondaryPage.Receivables) },
         onOpenRepaymentDrafts = { shellState.openStatsSecondary(StatsSecondaryPage.RepaymentDrafts) },
         // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
         // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
@@ -342,4 +357,21 @@ internal fun StatsRoute(
         // 轴3 粒度切换:VM 持粒度并重拉,UI selected 用服务端回显。
         onGranularityChange = reportsViewModel::setGranularity,
     )
+}
+
+/**
+ * 统计页全量重拉，由下拉刷新与 dashboard-card 变更 effect 共用（P4 stale-refresh）：先 reloadTags 重拉
+ * 标签列表（否则删掉的标签会滞留在筛选 chip），再按当前月 + 标签重同步 monthly / budget / reports。抽成
+ * 纯函数消除两处逐字重复，调用方显式传 [monthlyState]（与原内联 lambda 捕获完全一致，无行为变化）。
+ */
+private fun reloadAllStats(
+    monthly: MonthlyStatsViewModel,
+    budget: StatsBudgetViewModel,
+    reports: StatsReportsViewModel,
+    monthlyState: MonthlyStatsUiState,
+) {
+    monthly.reloadTags()
+    monthly.refresh()
+    budget.refresh(monthlyState.month, monthlyState.stats, force = true)
+    reports.refresh(monthlyState.month, monthlyState.selectedTag)
 }

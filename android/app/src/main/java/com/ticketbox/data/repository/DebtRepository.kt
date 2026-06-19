@@ -42,6 +42,17 @@ interface DebtActions {
 }
 
 /**
+ * ADR-0049 P3b / ⑤c (slice ⑤c-2) the creditor-discovery read surface, split from [DebtActions] so
+ * the read-only receivables ViewModel depends only on this one method (and its test fake stays
+ * tiny). ACCOUNT-scoped (cross-ledger), NOT ledger-scoped: it lists the member Debts this account is
+ * the creditor of that live in OTHER ledgers (a bill_split Debt is owned by the debtor's ledger), so
+ * the ledger-scoped [DebtActions.listDebts] can never surface them. Read-only — no viewer guard.
+ */
+interface ReceivablesActions {
+    suspend fun listReceivables(): Result<List<Debt>>
+}
+
+/**
  * ADR-0049 §3.2 (slice 8d) member repayment-proposal operations, split from [DebtActions] so the
  * proposal ViewModel depends only on this narrow surface (and its test fakes stay small). The two
  * parties of a member Debt can live in different ledgers (§5.2), so these are participant-scoped on
@@ -91,7 +102,7 @@ class DebtRepository(
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(
         apiClient, settingsStore, tokenStore,
     ),
-) : DebtActions {
+) : DebtActions, ReceivablesActions {
     private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
@@ -118,6 +129,16 @@ class DebtRepository(
     override suspend fun getDebt(publicId: String): Result<Debt> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api -> api.debt(publicId).toDomain() }
+        }
+
+    // ADR-0049 P3b / ⑤c (slice ⑤c-2): the cross-ledger member receivables this account is the
+    // creditor of. Account-scoped — same ledger token transport, but the server keys on the
+    // account, so the active ledger does not change the result (no per-ledger stale-clear needed).
+    override suspend fun listReceivables(): Result<List<Debt>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.debtReceivables().items.map { it.toDomain() }
+            }
         }
 
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
