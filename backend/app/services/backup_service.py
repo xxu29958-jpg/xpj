@@ -42,7 +42,7 @@ class BackupEntry:
     file_name: str
     size_bytes: int
     created_at: datetime
-    kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3"
+    kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3" / "pre-upgrade"
 
 
 def _backup_dir() -> Path:
@@ -63,6 +63,8 @@ def backup_directory_label() -> str:
 def _classify(name: str) -> str:
     if name.startswith("ticketbox-before-restore-"):
         return "pre-restore"
+    if name.startswith("ticketbox-pre-upgrade-"):
+        return "pre-upgrade"
     if name.startswith("ticketbox-pre-v0.3"):
         return "pre-v0.3"
     if name.startswith("ticketbox-manual-"):
@@ -141,6 +143,16 @@ def create_manual_backup() -> BackupEntry:
     Raises :class:`AppError` on a missing ``pg_dump`` binary or a failed dump.
     """
     return _create_backup(prefix="ticketbox-manual", kind="manual")
+
+
+def create_pre_upgrade_backup() -> BackupEntry:
+    """Snapshot the live database BEFORE an Alembic migration runs (model-invariant
+    hardening P1). Same ``pg_dump -Fc`` as a manual backup but tagged ``pre-upgrade``
+    so the pre-migration restore point is identifiable. Raises :class:`AppError` on a
+    missing ``pg_dump`` binary or a failed dump (the startup gate turns that into a
+    fail-closed abort — see ``app.database._backup_before_upgrade``).
+    """
+    return _create_backup(prefix="ticketbox-pre-upgrade", kind="pre-upgrade")
 
 
 def _create_backup(*, prefix: str, kind: str) -> BackupEntry:
