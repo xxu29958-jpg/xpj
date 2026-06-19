@@ -173,12 +173,35 @@ class MonthlyStatsViewModelTest {
         assertNull(viewModel.uiState.value.statsLoadError)
         assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
     }
+
+    // P4 stale-refresh: tags are loaded on init / ledger switch only, so after a tag
+    // is deleted in settings the filter chips kept the dead tag. reloadTags() re-pulls
+    // the authoritative list (StatsRoute calls it on the cross-screen refresh signal /
+    // pull-to-refresh).
+    @Test
+    fun reloadTagsRePullsAuthoritativeTagList() = statsTest {
+        val stats = FakeStatsActions()
+        stats.tagList = listOf("餐饮", "还好")
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("餐饮", "还好"), viewModel.uiState.value.tags)
+
+        // A tag was deleted in settings → the authoritative list drops it.
+        stats.tagList = listOf("餐饮")
+        viewModel.reloadTags()
+        advanceUntilIdle()
+        assertEquals(listOf("餐饮"), viewModel.uiState.value.tags)
+    }
 }
 
 private class FakeStatsActions : StatsActions {
     val ledgerFlow = MutableStateFlow<String?>("owner")
     val confirmedFlow = MutableStateFlow<List<Expense>>(emptyList())
     var monthlyStatsResponder: (suspend (String?, String?) -> Result<MonthlyStats>)? = null
+    var tagList: List<String> = emptyList()
 
     override fun observeActiveLedgerId(): Flow<String?> = ledgerFlow
 
@@ -190,7 +213,7 @@ private class FakeStatsActions : StatsActions {
 
     override suspend fun months(): Result<List<String>> = Result.success(listOf("2026-05", "2026-04"))
 
-    override suspend fun tags(): Result<List<String>> = Result.success(emptyList())
+    override suspend fun tags(): Result<List<String>> = Result.success(tagList)
 
     override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> {
         monthlyStatsResponder?.let { return it(month, tag) }

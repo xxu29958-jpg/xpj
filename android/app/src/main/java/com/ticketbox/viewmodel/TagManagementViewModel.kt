@@ -28,6 +28,12 @@ data class TagManagementUiState(
     // confirmed, NOT a silent merge). Null unless a conflict just resolved to a
     // live tag in the current list.
     val mergeSuggestion: MergeSuggestion? = null,
+    // P4 stale-refresh: monotonically bumped after each successful tag mutation
+    // (rename/delete/merge/undo). The screen observes it and tells the stats tab to
+    // re-pull its tag list so a deleted/renamed tag stops lingering in the filter
+    // chips (the stats VM persists across the settings round-trip and otherwise
+    // only loads tags on init / ledger switch).
+    val tagsChangedRevision: Int = 0,
 )
 
 /** A rename key-collision steered into a (user-confirmed) merge: rename [source]
@@ -195,7 +201,17 @@ class TagManagementViewModel(
 
     private suspend fun finishWithReload(message: UiText, undoable: TagUndoHandle? = null) {
         val tags = tagRepository.tags().getOrNull()?.sortedByUsage() ?: _uiState.value.tags
-        _uiState.update { it.copy(tags = tags, busy = false, message = message, undoable = undoable) }
+        _uiState.update {
+            it.copy(
+                tags = tags,
+                busy = false,
+                message = message,
+                undoable = undoable,
+                // Every path here is a committed tag mutation (rename/delete/merge/
+                // undo success) → signal the stats tab to re-pull its tag list (P4).
+                tagsChangedRevision = it.tagsChangedRevision + 1,
+            )
+        }
     }
 
     private fun failWith(error: Throwable) {

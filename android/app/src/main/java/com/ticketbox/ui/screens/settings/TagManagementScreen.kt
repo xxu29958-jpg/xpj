@@ -55,12 +55,21 @@ fun TagManagementScreen(
     viewModel: TagManagementViewModel,
     readOnly: Boolean,
     onBack: () -> Unit,
+    onTagsChanged: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     var renaming by remember { mutableStateOf<ManagedTag?>(null) }
     var merging by remember { mutableStateOf<ManagedTag?>(null) }
     var deleting by remember { mutableStateOf<ManagedTag?>(null) }
     var preselectedMergeTarget by remember { mutableStateOf<ManagedTag?>(null) }
+
+    // P4 stale-refresh: after each committed tag mutation, tell the stats tab to
+    // re-pull its tag list so a deleted/renamed tag stops lingering in the filter
+    // chips. Keyed on the monotonic revision so it re-fires per mutation (>0 guard
+    // skips the initial composition).
+    LaunchedEffect(state.tagsChangedRevision) {
+        if (state.tagsChangedRevision > 0) onTagsChanged()
+    }
 
     // 契约 5: a rename key-collision against a live tag steers into the merge
     // dialog, preselected on the colliding tag (still user-confirmed).

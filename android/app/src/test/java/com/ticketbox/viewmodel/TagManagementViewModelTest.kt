@@ -231,6 +231,75 @@ class TagManagementViewModelTest {
         advanceUntilIdle()
         assertEquals(UiText.res(R.string.tag_management_error_state_conflict), vm.uiState.value.message)
     }
+
+    // P4 stale-refresh: a committed tag mutation bumps tagsChangedRevision so the
+    // screen tells the stats tab to re-pull its tag list (drop the dead chip).
+    @Test
+    fun successfulDeleteBumpsTagsChangedRevision() = runTest(dispatcher) {
+        val repo = FakeTagActions(listOf(tag("a", "出差", 3, rv = 2L), tag("b", "餐饮", 5)))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(0, vm.uiState.value.tagsChangedRevision)
+        vm.deleteTag(tag("a", "出差", 3, rv = 2L))
+        advanceUntilIdle()
+        assertEquals(1, vm.uiState.value.tagsChangedRevision)
+    }
+
+    @Test
+    fun failedMutationDoesNotBumpTagsChangedRevision() = runTest(dispatcher) {
+        val repo = FakeTagActions(listOf(tag("a", "出差", 1)))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        repo.failNext = RepositoryException("", "state_conflict")
+        vm.deleteTag(tag("a", "出差", 1))
+        advanceUntilIdle()
+        // A failed mutation changed nothing on the server → stats must not be told to
+        // refresh (otherwise the signal would fire on every failure too).
+        assertEquals(0, vm.uiState.value.tagsChangedRevision)
+    }
+
+    @Test
+    fun eachSuccessfulMutationBumpsRevisionMonotonically() = runTest(dispatcher) {
+        val repo = FakeTagActions(
+            listOf(tag("a", "出差", 3, rv = 2L), tag("b", "餐饮", 5), tag("c", "饭", 1)),
+        )
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        vm.deleteTag(tag("a", "出差", 3, rv = 2L))
+        advanceUntilIdle()
+        vm.mergeTags(tag("c", "饭", 1), tag("b", "餐饮", 5))
+        advanceUntilIdle()
+        // Monotonic increment (not a set-to-1): two mutations → 2.
+        assertEquals(2, vm.uiState.value.tagsChangedRevision)
+    }
+
+    // Pin the bump per committed path (not just delete/merge): rename and undo also
+    // funnel through finishWithReload today, but a future split-out of either success
+    // block could silently drop the stats-refresh signal with no failing test.
+    @Test
+    fun successfulRenameBumpsTagsChangedRevision() = runTest(dispatcher) {
+        val repo = FakeTagActions(listOf(tag("a", "餐饮", 5)))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        vm.renameTag(tag("a", "餐饮", 5), "餐厅")
+        advanceUntilIdle()
+        assertEquals(1, vm.uiState.value.tagsChangedRevision)
+    }
+
+    @Test
+    fun successfulUndoBumpsTagsChangedRevision() = runTest(dispatcher) {
+        val repo = FakeTagActions(listOf(tag("a", "出差", 3, rv = 2L), tag("b", "餐饮", 5)))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        vm.deleteTag(tag("a", "出差", 3, rv = 2L))
+        advanceUntilIdle()
+        val beforeUndo = vm.uiState.value.tagsChangedRevision
+        vm.undo()
+        advanceUntilIdle()
+        // Undo restored the tag → its own committed path must also bump (delta isolates
+        // the undo contribution from the delete that set up the handle).
+        assertEquals(beforeUndo + 1, vm.uiState.value.tagsChangedRevision)
+    }
 }
 
 /** Stateful fake: successful mutations mutate [tags] so the VM's reload reflects them. */
