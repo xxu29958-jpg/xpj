@@ -184,7 +184,7 @@
          communal MemberDebtRow（返回按钮复用 debt_list_topbar_back）。文案镜像 web ⑤c-3 receivables.html
          的措辞，用 Android 全角标点惯例。 -->
     <string name="receivables_topbar_title">欠我的</string>
-    <string name="receivables_intro_body">家人接受你发起的拆账后，还没和你对上的份额都在这里（跨账本汇总）。还款请在手机 App 由对方发起、你确认。</string>
+    <string name="receivables_intro_body">家人接受你发起的拆账后，还没和你对上的份额都在这里（跨账本汇总）。对方发起还款后，点开对应的那笔来确认。</string>
     <string name="receivables_empty_title">还没有待对上的款</string>
     <string name="receivables_empty_body">你帮家人垫了钱、对方接受拆账后，还没对上的份额会显示在这里。</string>
     <string name="receivables_load_failed">应收加载失败，请稍后再试。</string>

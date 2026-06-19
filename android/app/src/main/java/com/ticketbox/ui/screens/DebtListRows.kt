@@ -77,8 +77,8 @@ internal fun DebtSectionHeader(title: String) {
  * 家人(成员)债 communal 行：对手方名(行1) + viewer-相对关系主句(行2，无金额) + open 时细 success 进度条
  * + 右侧状态徽章 (neutral/success 永不红)。已结清/作废沉降 (alpha，办完可追溯)。精确数留详情「看看账」。
  *
- * [onClick] 为 null 时是**静态(不可点)**行——跨账本应收(⑤c-2)是只读发现面，镜像 web 的 `.dt-card--static`
- * (还款由债务人在手机 App 发起、债权人确认，§7.0 命名要对上的人但不催)。欠款列表传入 tap 进详情。
+ * [onClick] 非 null 时整行可点进详情——欠款列表与跨账本应收(⑤b-2：债权人在详情确认对方的还款)都传入
+ * tap → 详情；为 null 时是**静态(不可点)**行（保留给未来只读场景，§7.0 命名要对上的人但不催）。
  */
 @Composable
 internal fun MemberDebtRow(debt: Debt, onClick: (() -> Unit)? = null) {
