@@ -19,6 +19,7 @@
     <string name="stats_header_open_income_plans">收入计划</string>
     <string name="stats_header_open_debt_goals">还债目标</string>
     <string name="stats_header_open_debts">欠款</string>
+    <string name="stats_header_open_receivables">欠我的</string>
     <string name="stats_header_open_repayment_drafts">还款待确认</string>
     <string name="stats_header_repayment_drafts_badge_description">%1$d 笔待复核</string>
     <string name="stats_filter_all_months">全部月份</string>
@@ -178,6 +179,15 @@
     <string name="debt_create_validation_error">请填写欠款对象和大于 0 的金额。</string>
     <string name="debt_create_added">已记录欠款。</string>
     <string name="debt_create_failed">保存失败，请稍后再试。</string>
+
+    <!-- ADR-0049 P3b / ⑤c (slice ⑤c-2) 欠我的(应收)：跨账本债权人的只读发现面。每行复用 §1A 的
+         communal MemberDebtRow（返回按钮复用 debt_list_topbar_back）。文案镜像 web ⑤c-3 receivables.html
+         的措辞，用 Android 全角标点惯例。 -->
+    <string name="receivables_topbar_title">欠我的</string>
+    <string name="receivables_intro_body">家人接受你发起的拆账后，还没和你对上的份额都在这里（跨账本汇总）。还款请在手机 App 由对方发起、你确认。</string>
+    <string name="receivables_empty_title">还没有待对上的款</string>
+    <string name="receivables_empty_body">你帮家人垫了钱、对方接受拆账后，还没对上的份额会显示在这里。</string>
+    <string name="receivables_load_failed">应收加载失败，请稍后再试。</string>
 
     <!-- ADR-0049 §6 (slice 8b) 新建还债目标：目标名称 + 未结清欠款多选选择器。 -->
     <string name="debt_goal_create_cta">新建目标</string>

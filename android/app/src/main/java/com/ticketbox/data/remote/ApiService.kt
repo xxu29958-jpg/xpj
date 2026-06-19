@@ -550,6 +550,13 @@ interface ApiService {
     @GET("api/debts")
     suspend fun debts(): DebtListResponseDto
 
+    // ADR-0049 P3b / ⑤c (slice ⑤c-2) creditor discovery: the ACCOUNT-scoped (cross-ledger) list of
+    // member Debts this account is the creditor of — "money owed to me" that the ledger-scoped
+    // GET /api/debts can't surface (a bill_split member Debt lives in the debtor's ledger). Every row
+    // is a member receivable (viewer_is_debtor=false), ledger_id redacted to null (§5.2). Read-only.
+    @GET("api/debts/receivables")
+    suspend fun debtReceivables(): DebtListResponseDto
+
     @POST("api/debts")
     suspend fun createDebt(
         @Body request: DebtCreateRequestDto,

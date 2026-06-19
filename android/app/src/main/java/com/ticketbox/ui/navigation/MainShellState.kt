@@ -50,6 +50,8 @@ internal enum class StatsSecondaryPage {
     DebtGoals,
     // ADR-0049 §2 (slice 8): 债务管理(欠款列表+新建外部欠款, 与还债目标同规划 overlay)。
     Debts,
+    // ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面，与「欠款」(Debts) 并列成中性 sibling。
+    Receivables,
     // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱(列 pending 还款草稿→选债 confirm/dismiss)。
     RepaymentDrafts,
 }

@@ -572,6 +572,7 @@ internal class FakeApiService(
         timezone: String?,
     ): GoalDto = unsupported()
     override suspend fun debts(): com.ticketbox.data.remote.dto.DebtListResponseDto = unsupported()
+    override suspend fun debtReceivables(): com.ticketbox.data.remote.dto.DebtListResponseDto = unsupported()
     override suspend fun createDebt(
         request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
         idempotencyKey: String?,
