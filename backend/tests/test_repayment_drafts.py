@@ -249,6 +249,17 @@ def _seed_debt_orm(
     with SessionLocal() as db:
         owner = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
         assert owner is not None
+        # Keep each seeded shape STRUCTURALLY valid (ck_debts_member_has_account /
+        # ck_debts_bill_split_has_source_id) while still representing the excluded
+        # category: a member counterparty needs an internal account; a bill_split
+        # Debt needs a source_id. (manual → source_id stays NULL.)
+        counterparty_account_id = None
+        if counterparty_type == "member":
+            member = Account(display_name="家人")
+            db.add(member)
+            db.flush()
+            counterparty_account_id = member.id
+        source_id = str(uuid4()) if source_type == "bill_split" else None
         now = now_utc()
         debt = Debt(
             tenant_id="owner",
@@ -256,11 +267,13 @@ def _seed_debt_orm(
             created_by_account_id=owner.id,
             direction="i_owe",
             counterparty_type=counterparty_type,
+            counterparty_account_id=counterparty_account_id,
             counterparty_label=label,
             principal_amount_cents=principal_amount_cents,
             home_currency_code="CNY",
             status=status,
             source_type=source_type,
+            source_id=source_id,
             created_at=now,
             updated_at=now,
         )

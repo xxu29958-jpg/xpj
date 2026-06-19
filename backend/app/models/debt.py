@@ -71,6 +71,25 @@ class Debt(Base):
         ),
         CheckConstraint("principal_amount_cents > 0", name="ck_debts_principal_positive"),
         CheckConstraint("length(home_currency_code) = 3", name="ck_debts_home_currency_format"),
+        # ADR-0049 §2/§5.1 母表 shape invariants the service already maintains
+        # (_create._clean_counterparty + _create.create_bill_split_debt), pushed
+        # to the DB so a future writer can't store a structurally-malformed obligation:
+        #  - a MEMBER counterparty is identified by an internal account; an EXTERNAL
+        #    counterparty has no internal account (counterparty_account_id is the party id).
+        #  - a bill_split-sourced Debt always names its source invitation; a manual
+        #    Debt never carries a source_id (the uq_debts_source NULL-distinct relies on it).
+        # (counterparty_label presence is left to the service: it is display
+        # provenance, not a structural identity field — the account above is.)
+        # Predicate text kept byte-identical to the migration (20260619_0001) by
+        # manual convention — the alembic round-trip test asserts they match.
+        CheckConstraint(
+            "(counterparty_type = 'member') = (counterparty_account_id IS NOT NULL)",
+            name="ck_debts_member_has_account",
+        ),
+        CheckConstraint(
+            "(source_type = 'bill_split') = (source_id IS NOT NULL)",
+            name="ck_debts_bill_split_has_source_id",
+        ),
         # §10 hard constraint: a bill-split-sourced Debt is unique per
         # (source_type, source_id) so re-accepting an invitation cannot create
         # a second Debt (§4). source_id is NULL for manual Debt — a composite
