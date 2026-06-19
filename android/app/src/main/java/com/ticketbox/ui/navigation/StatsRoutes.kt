@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.mascot.rememberMascotController
 import com.ticketbox.ui.screens.BudgetScreen
@@ -59,6 +60,10 @@ internal const val DebtListViewModelKey = "debts"
 internal const val ReceivablesViewModelKey = "receivables"
 internal const val DebtDetailViewModelKey = "debt-detail"
 internal const val MemberRepaymentProposalViewModelKey = "member-repayment-proposal"
+// ⑤b-2: 应收(欠我的)的详情子页用自己的一组单例 VM（与 DebtRoute 的 debt-detail / member-repayment-
+// proposal 隔离），避免两个 overlay 共享同一实例的庆祝去重 / 上一笔 status 跨面串扰。
+internal const val ReceivablesDetailViewModelKey = "receivables-detail"
+internal const val ReceivablesProposalViewModelKey = "receivables-proposal"
 internal const val RepaymentDraftInboxViewModelKey = "repayment-draft-inbox"
 
 @Composable
@@ -207,34 +212,21 @@ internal fun DebtRoute(
     val currency = LocalCurrencyDisplay.current
     // 欠款详情是 overlay 内的子页(与列表互斥渲染,各屏自带 BackHandler):点击列表行进入详情,
     // 返回回到列表(顺手让列表重拉以反映详情里记的账)。详情 VM 是单例(常量 key),每次进入用
-    // loadDebt 重拉而非复用陈旧折叠(与 DebtGoalRoute 的 reload 同构)。
+    // loadDebt 重拉而非复用陈旧折叠(与 DebtGoalRoute 的 reload 同构)。详情子页 + 两清浮层的接线
+    // 抽到共享的 [DebtDetailHost]（跨账本应收 ⑤b-2 复用同一套）。
     var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openDebtId = detailDebtId
     if (openDebtId != null) {
-        LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
-        // §5（slice 8e-4）两清庆祝：在详情屏之上叠一层浮层（避免顶破 DebtDetailScreen 的 LongMethod，
-        // 且天然覆盖整屏）。mascot controller 是路由层关注点——第一个真实 mascot emit 点（§5.4）。
-        val mascot = rememberMascotController()
-        val celebration by detailViewModel.celebration.collectAsStateWithLifecycle()
-        // 详情屏离开时丢弃未消费的庆祝信号——浮层动画(~3.8s)中途返回会取消其 consume，单例 VM 持有的旧
-        // 信号否则会泄漏到下一笔欠款误撒花;dispose 先于下一笔 compose，无闪烁(对抗审 P2)。
-        DisposableEffect(openDebtId) { onDispose { detailViewModel.consumeCelebration() } }
-        Box(modifier = Modifier.fillMaxSize()) {
-            DebtDetailScreen(
-                viewModel = detailViewModel,
-                proposalViewModel = proposalViewModel,
-                currency = currency,
-                onBack = {
-                    detailDebtId = null
-                    debtListViewModel.refresh()
-                },
-            )
-            DebtSettleCelebrationOverlay(
-                celebration = celebration,
-                mascot = mascot,
-                onConsume = detailViewModel::consumeCelebration,
-            )
-        }
+        DebtDetailHost(
+            openDebtId = openDebtId,
+            detailViewModel = detailViewModel,
+            proposalViewModel = proposalViewModel,
+            currency = currency,
+            onBack = {
+                detailDebtId = null
+                debtListViewModel.refresh()
+            },
+        )
     } else {
         DebtListScreen(
             viewModel = debtListViewModel,
@@ -246,10 +238,55 @@ internal fun DebtRoute(
 }
 
 /**
- * ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面（规划二级页，与「欠款」并列）。VM 是 overlay 内
- * 单例（常量 key），跨账本切换存活。应收是**账户作用域**（跨账本）、与活跃账本无关，故不像 [DebtRoute] 按账本
- * 清旧数据，只在每次（重新）进入时 [ReceivablesViewModel.refresh] 拉最新；纯只读、无详情子页（链不链详情见
- * ⑤c link-vs-static 决策：跟 web ⑤c-3 一样做只读非链接的发现面）。
+ * 欠款详情子页 + 两清庆祝浮层的接线，[DebtRoute]（同账本欠款列表）与 [ReceivablesRoute]（跨账本应收
+ * ⑤b-2）共用：两个 overlay 的「列表 → 详情」结构完全一致，抽出避免重复那段微妙的 mascot / celebration /
+ * dispose 接线，并让两个路由各自的函数保持短小。详情 VM 与 proposal VM 由调用方按自己的常量 key 创建后
+ * 传入（两面各持一份实例，互不串扰）。
+ *
+ * §5（slice 8e-4）两清庆祝叠在详情屏之上（避免顶破 [DebtDetailScreen] 的 LongMethod，且天然覆盖整屏）；
+ * mascot controller 是路由层关注点（§5.4 第一个真实 mascot emit 点）。[DisposableEffect] 在详情屏离开
+ * （返回 / 切到另一笔）时丢弃未消费的庆祝信号——浮层动画(~3.8s)中途返回会取消其 consume，单例 VM 持有的
+ * 旧信号否则会泄漏到下一笔欠款误撒花；dispose 先于下一笔 compose，无闪烁（对抗审 P2）。
+ */
+@Composable
+private fun DebtDetailHost(
+    openDebtId: String,
+    detailViewModel: DebtDetailViewModel,
+    proposalViewModel: MemberRepaymentProposalViewModel,
+    currency: CurrencyDisplay,
+    onBack: () -> Unit,
+) {
+    LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
+    val mascot = rememberMascotController()
+    val celebration by detailViewModel.celebration.collectAsStateWithLifecycle()
+    DisposableEffect(openDebtId) { onDispose { detailViewModel.consumeCelebration() } }
+    Box(modifier = Modifier.fillMaxSize()) {
+        DebtDetailScreen(
+            viewModel = detailViewModel,
+            proposalViewModel = proposalViewModel,
+            currency = currency,
+            onBack = onBack,
+        )
+        DebtSettleCelebrationOverlay(
+            celebration = celebration,
+            mascot = mascot,
+            onConsume = detailViewModel::consumeCelebration,
+        )
+    }
+}
+
+/**
+ * ADR-0049 P3b / ⑤c+⑤b-2: 欠我的(应收) —— creditor 发现面（⑤c-2 列表）+ 跨账本 creditor 确认入口
+ * （⑤b-2 详情子页）。VM 是 overlay 内单例（常量 key），跨账本切换存活；应收是**账户作用域**（跨账本）、
+ * 与活跃账本无关，故不像 [DebtRoute] 按账本清旧数据，只在每次（重新）进入时 [ReceivablesViewModel.refresh]
+ * 拉最新。
+ *
+ * ⑤b-2 把 ⑤c-2 的「只读非链接」反转为可点进详情：翻 `DEBT_ROLLOUT` 后债务人可对跨账本拆账债发起还款
+ * proposal，债权人此前在 Android 无任何确认路径（详情只从账本作用域的 [DebtRoute] 列表进、跨账本债不在
+ * 其中）。这里给应收行加 tap → 跨账本 debt detail（与列表互斥渲染的子页，复用 [DebtDetailHost]），详情走
+ * §5.2 participant-scoped 路径：creditor 在 [DebtDetailScreen] 的 proposal 收发箱确认/拒绝对方的还款。详情
+ * VM 用自己的一组 key（[ReceivablesDetailViewModelKey] / [ReceivablesProposalViewModelKey]），与 DebtRoute
+ * 隔离。返回回到列表并 refresh（确认后那笔应收已 cleared，沉降到列表底部）。
  */
 @Composable
 internal fun ReceivablesRoute(
@@ -260,8 +297,36 @@ internal fun ReceivablesRoute(
         key = ReceivablesViewModelKey,
         factory = receivablesViewModelFactory(screenFactory.debtRepository),
     )
+    val detailViewModel: DebtDetailViewModel = viewModel(
+        key = ReceivablesDetailViewModelKey,
+        factory = debtDetailViewModelFactory(screenFactory.debtRepository),
+    )
+    val proposalViewModel: MemberRepaymentProposalViewModel = viewModel(
+        key = ReceivablesProposalViewModelKey,
+        factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
+    )
     LaunchedEffect(Unit) { viewModel.refresh() }
-    ReceivablesScreen(viewModel = viewModel, onBack = onBack)
+    val currency = LocalCurrencyDisplay.current
+    var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
+    val openDebtId = detailDebtId
+    if (openDebtId != null) {
+        DebtDetailHost(
+            openDebtId = openDebtId,
+            detailViewModel = detailViewModel,
+            proposalViewModel = proposalViewModel,
+            currency = currency,
+            onBack = {
+                detailDebtId = null
+                viewModel.refresh()
+            },
+        )
+    } else {
+        ReceivablesScreen(
+            viewModel = viewModel,
+            onOpenReceivable = { detailDebtId = it.publicId },
+            onBack = onBack,
+        )
+    }
 }
 
 /**
