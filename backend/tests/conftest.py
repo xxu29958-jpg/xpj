@@ -130,6 +130,8 @@ _PG_REAL_DB_NODES = (
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
+    "tests/test_db_migration_owner_preflight.py::",  # P1: CREATE/DROP ROLE + separate-engine role switching to exercise the migration owner-trap pre-flight guard
+
     # True concurrency: need real independent connections (2-session races, FOR
     # UPDATE lock contention) that one shared savepoint connection cannot model.
     # Every race test follows the ``test_two_sessions_*`` naming convention, so a
