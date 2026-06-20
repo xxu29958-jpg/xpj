@@ -28,6 +28,7 @@ from app.services.debt_service._fold import (
     has_forgiveness,
 )
 from app.services.debt_service._guards import proposal_debtor_creditor
+from app.services.debt_service._installment import installment_payoff_date
 
 
 def participant_can_access(
@@ -198,6 +199,10 @@ def debt_response(
         source_type=debt.source_type,
         source_id=debt.source_id,
         debt_kind=debt.debt_kind,
+        # §B: the stored schedule + the derived deterministic payoff date (None for non-installment).
+        installment_count=debt.installment_count,
+        installment_period_months=debt.installment_period_months,
+        installment_payoff_date=installment_payoff_date(debt),
         home_currency_code=debt.home_currency_code,
         original_currency_code=debt.original_currency_code,
         original_amount_minor=debt.original_amount_minor,

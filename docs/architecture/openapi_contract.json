@@ -3920,6 +3920,32 @@
             ],
             "title": "Event Time"
           },
+          "installment_count": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 600.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Count"
+          },
+          "installment_period_months": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 120.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Period Months"
+          },
           "original_amount": {
             "anyOf": [
               {
@@ -4362,6 +4388,40 @@
           "home_currency_code": {
             "title": "Home Currency Code",
             "type": "string"
+          },
+          "installment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Count"
+          },
+          "installment_payoff_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Payoff Date"
+          },
+          "installment_period_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Period Months"
           },
           "is_forgiven": {
             "default": false,
@@ -9269,6 +9329,40 @@
           "home_currency_code": {
             "title": "Home Currency Code",
             "type": "string"
+          },
+          "installment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Count"
+          },
+          "installment_payoff_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Payoff Date"
+          },
+          "installment_period_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Period Months"
           },
           "is_forgiven": {
             "default": false,

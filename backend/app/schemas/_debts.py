@@ -17,7 +17,7 @@ internal int id — §3).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -75,6 +75,15 @@ class DebtCreateRequest(BaseModel):
     # `required`) so an older client that omits it still creates an `unspecified` Debt —
     # and the Android DebtCreateRequestDto need not model it for the contract gate.
     debt_kind: DebtKind = "unspecified"
+    # §B 完整 installment: the contractual schedule. ``installment_count`` (期数) must pair with
+    # ``debt_kind == 'installment'`` (the service rejects it otherwise); ``installment_period_months``
+    # (周期) defaults to 1 (monthly) server-side when count is given and omitted. Both ignored for
+    # any other kind. Defaulted/optional so existing clients need not model them. The ``le`` caps
+    # (600 periods × 120 months ≈ 6000 years) keep the derived payoff date from overflowing the
+    # ``date`` year on absurd input (a self-inflicted 500 otherwise); they are generous vs any real
+    # consumer-loan schedule (50 years monthly / decade-long periods).
+    installment_count: int | None = Field(default=None, gt=0, le=600)
+    installment_period_months: int | None = Field(default=None, gt=0, le=120)
 
 
 class DebtResponse(BaseModel):
@@ -100,6 +109,13 @@ class DebtResponse(BaseModel):
     # DebtDto can adopt it later without the contract gate's reverse check reddening now;
     # always populated at-rest (the column is NOT NULL).
     debt_kind: DebtKind = "unspecified"
+    # §B 完整 installment: the stored schedule (NULL for non-installment) + the DERIVED deterministic
+    # payoff date (建账 + count×period months). The payoff date replaces the suppressed velocity
+    # projection for an all-installment goal; None when no schedule is set. All defaulted (the
+    # Android DebtDto adopts them later without reddening the contract gate's reverse check).
+    installment_count: int | None = None
+    installment_period_months: int | None = None
+    installment_payoff_date: date | None = None
     home_currency_code: str
     original_currency_code: str | None = None
     original_amount_minor: int | None = None

@@ -134,14 +134,20 @@ def _plan_amount_line(
 
 
 def _payoff_line(evaluation: object) -> dict:
-    """还清投影 3 臂 (镜像 payoffLineState)：projected(中性) / stale(琥珀warn) / insufficient(中性)。
+    """还清投影 4 臂 (镜像 payoffLineState)：velocity(中性) / §B 分期合约(中性) / stale(琥珀warn) / insufficient(中性)。
 
-    projected_payoff_date 与 days_since_last_activity 服务端互斥 (suppress-on-stale)；
-    projected 与 days 都缺 → insufficient。stale 用琥珀文本(非红)，不催不施压。
+    projected_payoff_date 有值时：tracking_days 有 = velocity 外推(「按最近N天进度」)；tracking_days 为 None
+    = §B 分期合约确定性还清日(「按分期合约」，非外推，不带速率措辞)。两者互斥。projected 缺而 days 有 →
+    suppress-on-stale(琥珀，非红，不催不施压)；都缺 → insufficient。
     """
     payoff = evaluation.projected_payoff_date
-    if payoff is not None and evaluation.tracking_days is not None:
-        text = f"按最近 {evaluation.tracking_days} 天的进度，预计 {payoff.year} 年 {payoff.month} 月前后还清"
+    if payoff is not None:
+        if evaluation.tracking_days is not None:
+            text = f"按最近 {evaluation.tracking_days} 天的进度，预计 {payoff.year} 年 {payoff.month} 月前后还清"
+        else:
+            # §B: deterministic installment contract date (期数×周期), not a velocity extrapolation —
+            # so no "按最近N天进度" framing. tracking_days is None exactly in this all-installment case.
+            text = f"按分期合约，预计 {payoff.year} 年 {payoff.month} 月还清"
         return {"text": text, "tone": "neutral"}
     if evaluation.days_since_last_activity is not None:
         text = f"已 {evaluation.days_since_last_activity} 天没有更新，估算可能已过期"
