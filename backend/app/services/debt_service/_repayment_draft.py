@@ -26,14 +26,11 @@ adds a server-side fuzzy match (counterparty_label + amount → suggested Debt) 
 It is never stored on the draft: a Debt suggested at capture time can be cleared / voided /
 created by review time, so the match is recomputed against current Debt state every list.
 
-ACCOUNT-SCOPED, not just tenant-scoped (§8 / privacy): a repayment capture is personal —
-it is one member's phone payment notification (which platform/card, amount, merchant,
-time). Every read/lock of a specific draft (list, confirm/dismiss lock, replay re-serialise)
-filters on ``created_by_account_id == actor_account_id`` so a shared-ledger member can
-never see or act on another member's captures. This mirrors the deliberately account-scoped
-``list_repayment_draft_audit_for_account`` (the /web audit) and the account-scoped learning
-matcher; the API inbox MUST hold the same boundary (a ledger-only scope leaks every
-member's private notification data to any writer of that ledger).
+ACCOUNT-SCOPED, not just tenant-scoped (§8 / privacy): a repayment capture is personal (one
+member's phone payment notification). Every read/lock of a specific draft (list, confirm/dismiss
+lock, replay) filters ``created_by_account_id == actor_account_id`` so a shared-ledger member
+can't see or act on another's captures — mirroring the account-scoped /web audit
+(``list_repayment_draft_audit_for_account``) and learning matcher; a ledger-only scope leaks.
 """
 
 from __future__ import annotations
@@ -161,12 +158,10 @@ def repayment_draft_response(
 def get_repayment_draft_response(
     db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
 ) -> RepaymentDraftResponse:
-    """Serialize one account-scoped draft (used by the confirm idempotency-replay path).
+    """Serialize one account-scoped draft (confirm idempotency-replay path).
 
-    A replay HIT can only occur for the actor's own confirm intent (the [[0042]] fingerprint
-    is actor-scoped) and confirm only latches the actor's own draft, so the
-    ``created_by_account_id`` filter never bites this path — it is here for the uniform
-    account-scope invariant (a future caller can't reuse this as a tenant-wide reader)."""
+    The replay HIT is always the actor's own confirm intent, so the ``created_by_account_id``
+    filter never bites here — it keeps the uniform account-scope invariant (§8 / privacy)."""
     draft = db.scalar(
         ledger_scoped_select(RepaymentDraft, tenant_id)
         .where(RepaymentDraft.created_by_account_id == actor_account_id)
@@ -249,9 +244,7 @@ def create_repayment_draft(
 def list_repayment_drafts(
     db: Session, *, tenant_id: str, actor_account_id: int, status: str | None = None
 ) -> RepaymentDraftListResponse:
-    # Account-scoped (§8 / privacy): the review inbox shows ONLY the actor's own captures.
-    # A ledger-only scope would leak every shared-ledger member's private payment-notification
-    # data to any writer of that ledger (mirrors list_repayment_draft_audit_for_account).
+    # Account-scoped (§8 / privacy, see module docstring): the inbox shows ONLY the actor's own.
     statement = ledger_scoped_select(RepaymentDraft, tenant_id).where(
         RepaymentDraft.created_by_account_id == actor_account_id
     )
@@ -294,11 +287,9 @@ def list_repayment_drafts(
 def _lock_pending_draft(
     db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
 ) -> RepaymentDraft:
-    """``SELECT ... FOR UPDATE`` an account-scoped draft; the row is the serialization
-    point so two resolutions (confirm/dismiss) cannot both fire.
-
-    Account-scoped (§8 / privacy): only the capturing member may confirm/dismiss their own
-    draft; another shared-ledger member resolving it gets an existence-hidden 404."""
+    """``SELECT ... FOR UPDATE`` an account-scoped draft (the serialization point so two
+    confirm/dismiss resolutions can't both fire). Account-scoped (§8 / privacy): only the
+    capturing member may resolve their own draft; another member gets an existence-hidden 404."""
     draft = db.scalar(
         ledger_scoped_select(RepaymentDraft, tenant_id)
         .where(RepaymentDraft.created_by_account_id == actor_account_id)
