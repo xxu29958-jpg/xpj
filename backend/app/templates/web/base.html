@@ -54,7 +54,6 @@
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ backend_version }}">
   <script defer src="/static/shared/csrf.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/pwa-register.js?v={{ backend_version }}"></script>
-  <script defer src="/static/web/vendor/echarts.min.js"></script>
   <script defer src="/static/web/desktop/core.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/desktop/theme.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/desktop/ledger-switcher.js?v={{ backend_version }}"></script>
@@ -64,12 +63,16 @@
   <script defer src="/static/web/desktop/review-hotkeys.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/desktop/bulk-bar.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/desktop/ledger-filter.js?v={{ backend_version }}"></script>
-  <script defer src="/static/web/desktop/dashboard.js?v={{ backend_version }}"></script>
-  <script defer src="/static/web/desktop/trend-chart.js?v={{ backend_version }}"></script>
-  <script defer src="/static/web/desktop/category-donut.js?v={{ backend_version }}"></script>
-  <script defer src="/static/web/reports.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/desktop/drag-reorder.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/desktop/split-layout.js?v={{ backend_version }}"></script>
+  {# issue #64 W1: ECharts vendor (~1.1MB) + the chart/report modules load per-page,
+     not globally, so non-report pages skip that payload. Pages with charts fill
+     page_scripts. It sits BEFORE desktop.js because desktop.js's deferred boot()
+     runs during the interactive phase (readyState != "loading") and calls the chart
+     init fns immediately — they must already be defined, i.e. their scripts must have
+     executed earlier in document order. Keep echarts first within a page's block
+     (the chart modules reference the global ``echarts``). #}
+  {% block page_scripts %}{% endblock %}
   <script defer src="/static/web/desktop.js?v={{ backend_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ backend_version }}"></script>
 </head>
