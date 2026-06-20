@@ -159,6 +159,45 @@ def test_protected_image_route_rejects_legacy_path_for_non_default_ledger(
     assert legacy_image.is_file()
 
 
+def test_protected_image_route_rejects_other_tenant_prefixed_path(
+    client: TestClient, *, identity,
+) -> None:
+    """A tenant-prefixed upload path belongs only to that tenant. Resolving it
+    under a different tenant must 404 -- the path-prefix scoping in
+    ``resolve_upload_path_for_tenant`` is the compensating control that keeps
+    a stale / hostile cross-tenant ``image_path`` from leaking another tenant's
+    file. Pins the structural guarantee (vs only the legacy-unscoped case).
+    """
+
+    owner_dir = TEST_UPLOAD_DIR / "owner" / "2026" / "01"
+    owner_dir.mkdir(parents=True, exist_ok=True)
+    owner_image = owner_dir / "owner-scoped.png"
+    owner_image.write_bytes(PNG_BYTES)
+    owner_relative = owner_image.relative_to(BACKEND_ROOT).as_posix()
+
+    # A tester_1 expense points at the owner-prefixed path. The path is inside
+    # the uploads root but under owner/, not tester_1/, and is not an unscoped
+    # legacy path -> it must not resolve for tester_1.
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="tester_1",
+            image_path=owner_relative,
+            image_hash="cross-tenant-prefixed-hash",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        expense_id = expense.id
+
+    response = client.get(
+        f"/api/expenses/{expense_id}/image", headers=identity.gray_app_headers
+    )
+    assert response.status_code == 404
+    assert response.json()["error"] == "image_not_found"
+    assert owner_image.is_file()
+
+
 def test_protected_image_route_rejects_absolute_and_drive_paths(
     client: TestClient, *, identity,
 ) -> None:

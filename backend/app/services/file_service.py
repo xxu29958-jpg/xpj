@@ -370,13 +370,18 @@ def resolve_upload_path_for_tenant(relative_path: str | None, tenant_id: str) ->
 def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[Path, str]:
     """Resolve a relative image path that the caller has already authorized.
 
-    The caller is responsible for verifying that the owning expense belongs to
-    ``tenant_id``. This function only enforces filesystem-level safety:
+    The caller verifies that the *expense row* belongs to ``tenant_id`` (the API
+    path does this via the tenant-scoped ``get_expense``). This function is the
+    compensating control: beyond filesystem safety it confines resolution to the
+    caller's own tenant subtree, so passing a mismatched ``tenant_id`` yields
+    ``image_not_found`` instead of leaking another tenant's file. It enforces:
 
     - reject empty / missing paths
     - reject absolute paths and Windows drive specs
     - reject ``..`` traversal that escapes the uploads root
     - require the resolved file to live inside the uploads root
+    - require the file to live under ``uploads/<tenant>/`` (tenant isolation);
+      unscoped legacy paths are the one exception, below
 
     Legacy v0.2 paths (``uploads/YYYY/MM/foo.png`` without a tenant prefix) are
     accepted only for the default legacy ledger as long as they remain inside
