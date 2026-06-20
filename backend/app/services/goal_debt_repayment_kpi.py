@@ -33,6 +33,7 @@ from app.models import Debt
 from app.services.debt_service import (
     compute_remaining,
     compute_remaining_as_of,
+    installment_payoff_date,
     latest_fact_at,
 )
 from app.services.time_service import ensure_utc, safe_zone
@@ -192,11 +193,12 @@ class ExternalPayoffKpi(NamedTuple):
 
 _EMPTY_PAYOFF_KPI = ExternalPayoffKpi(None, None, None, None, None)
 
-# 8e-6e: kinds whose remaining has no honest linear velocity, so a payoff projection lies.
-# ``one_off`` (a one-time IOU) has no repayment cadence; ``installment`` decreases on a
-# contractual schedule (linear extrapolation over-projects, and its payoff date is the
-# contract's期数×周期, not a velocity guess). ``revolving`` + ``unspecified`` keep projecting
-# (the latter preserving current behavior for unclassified external debt).
+# 8e-6e: kinds whose remaining has no honest linear VELOCITY projection. ``one_off`` (a one-time
+# IOU) has no repayment cadence; ``installment`` decreases on a contractual schedule (linear
+# extrapolation over-projects). ``revolving`` + ``unspecified`` keep the velocity projection.
+# §B refinement: a scheduled ``installment`` is no longer merely suppressed — it gets a
+# DETERMINISTIC contract payoff (期数×周期, handled BEFORE this gate). This set now only catches the
+# leftovers: ``one_off``, and an ``installment`` that carries no count yet (no schedule to compute).
 _NO_PROJECTION_KINDS = frozenset({"one_off", "installment"})
 
 
@@ -211,19 +213,52 @@ def external_payoff_kpi(
     so /web, /owner, exports, and tests never see a §7.0-forbidden payoff dashboard on a
     Communal plan. Read-only — identical on viewer / writer.
 
-    8e-6e: a pure-external plan whose EVERY non-voided Debt is a no-rhythm kind
-    (``one_off`` / ``installment``) gets no velocity projection — linear extrapolation lies on
-    those (see ``_NO_PROJECTION_KINDS``). A mixed set with ≥1 ``revolving`` / ``unspecified``
-    Debt still projects over the whole set: the aggregate paydown is meaningful and a per-Debt
-    "project some, not others" split is incoherent (the projection divides into a single summed
-    remaining). The user-set deadline is still echoed in the suppressed case (a fact they
-    entered); only the projection / three-state / staleness stay None.
+    §B: an all-installment plan (EVERY non-voided Debt is ``installment`` WITH a count) gets the
+    DETERMINISTIC contract payoff — ``max`` of the linked debts' 建账+期数×周期 dates — NOT a velocity
+    projection (its payoff is the contract's, not extrapolated); ``three_state`` compares it to the
+    deadline and ``tracking_days`` / staleness stay None (no velocity to track).
+
+    8e-6e: a pure-external plan whose EVERY non-voided Debt is a no-rhythm kind WITHOUT a deterministic
+    schedule (``one_off``, or an ``installment`` lacking a count) gets no projection at all — linear
+    extrapolation lies on those (see ``_NO_PROJECTION_KINDS``). A mixed set with ≥1 ``revolving`` /
+    ``unspecified`` Debt still velocity-projects over the whole set: the aggregate paydown is
+    meaningful and a per-Debt "project some, not others" split is incoherent (the projection divides
+    into a single summed remaining). The user-set deadline is still echoed in the suppressed case (a
+    fact they entered); only the projection / three-state / staleness stay None.
     """
     is_pure_external = bool(non_voided_debts) and all(
         debt.counterparty_type != "member" for debt in non_voided_debts
     )
     if not is_pure_external:
         return _EMPTY_PAYOFF_KPI
+    # §B 完整 installment: an all-installment plan (EVERY non-voided Debt is ``installment`` WITH a
+    # schedule → a non-None payoff date) shows the DETERMINISTIC contract payoff — the LATEST of the
+    # linked debts' payoff dates (the plan clears when the last installment finishes) — instead of the
+    # suppressed velocity projection. Pure (created_at × count × period); no fact query, no velocity,
+    # no staleness. A mix with any revolving/unspecified (or an installment lacking a count) yields a
+    # None in the list, so this short-circuits only on the all-scheduled-installment case and the rest
+    # falls through to the suppress / velocity branches below as before.
+    installment_dates = [installment_payoff_date(debt) for debt in non_voided_debts]
+    if all(payoff is not None for payoff in installment_dates):
+        # Only OPEN installments (remaining > 0) bound the plan's payoff: a debt repaid early no
+        # longer contributes a balance, so its (possibly later) original contract date must NOT push
+        # ``projected`` / ``three_state`` out. When EVERY installment is settled the list is empty →
+        # suppress (mirror the velocity path's ``remaining_now <= 0`` guard), echoing only the deadline.
+        open_dates = [
+            payoff
+            for debt, payoff in zip(non_voided_debts, installment_dates, strict=True)
+            if compute_remaining(db, debt) > 0
+        ]
+        if not open_dates:
+            return ExternalPayoffKpi(None, None, target_date, None, None)
+        projected = max(open_dates)
+        return ExternalPayoffKpi(
+            tracking_days=None,
+            projected_payoff_date=projected,
+            target_date=target_date,
+            three_state=payoff_three_state(projected, target_date),
+            days_since_last_activity=None,
+        )
     if all(debt.debt_kind in _NO_PROJECTION_KINDS for debt in non_voided_debts):
         return ExternalPayoffKpi(None, None, target_date, None, None)
     tracking_days, projected, days_since = compute_external_kpi(db, non_voided_debts, now=now)

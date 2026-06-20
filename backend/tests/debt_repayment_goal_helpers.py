@@ -47,6 +47,8 @@ def _create_external_debt(
     *,
     principal_amount_cents: int = 10000,
     debt_kind: str | None = None,
+    installment_count: int | None = None,
+    installment_period_months: int | None = None,
 ) -> dict:
     body: dict = {
         "direction": "i_owe",
@@ -56,6 +58,10 @@ def _create_external_debt(
     }
     if debt_kind is not None:  # 8e-6e repayment-rhythm classification (default unspecified)
         body["debt_kind"] = debt_kind
+    if installment_count is not None:  # §B installment schedule (期数 × 周期)
+        body["installment_count"] = installment_count
+    if installment_period_months is not None:
+        body["installment_period_months"] = installment_period_months
     response = client.post("/api/debts", headers=_idem(headers), json=body)
     assert response.status_code == 201, response.json()
     return response.json()

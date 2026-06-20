@@ -269,6 +269,38 @@ def test_web_debt_goals_external_projection_stale_renders_warn(web_client: TestC
     assert "dt-pill danger" not in resp.text  # stale is amber-toned, never red
 
 
+def test_web_debt_goals_all_installment_renders_contract_payoff(web_client: TestClient) -> None:
+    # §B: an all-installment goal renders the DETERMINISTIC contract payoff ("按分期合约 ... 还清"), NOT
+    # the insufficient-data arm — even though tracking_days is None (no velocity). Closes the renderer
+    # bug where projected-date-with-tracking_days-None fell through to "还没有足够数据".
+    from datetime import UTC, datetime
+
+    with SessionLocal() as db:
+        owner_id = _owner_account_id(db)
+        goal = Goal(
+            tenant_id="owner", name="分期计划", goal_type="debt_repayment", period="monthly",
+            status="active", goal_version=1,
+        )
+        db.add(goal)
+        db.flush()
+        debt = Debt(
+            tenant_id="owner", owner_account_id=owner_id, created_by_account_id=owner_id,
+            direction="i_owe", counterparty_type="external", counterparty_label="花呗分期",
+            principal_amount_cents=120000, home_currency_code="CNY", status="open",
+            source_type="manual", debt_kind="installment", installment_count=6,
+            installment_period_months=1, created_at=datetime(2026, 3, 10, 4, 0, tzinfo=UTC),
+        )
+        db.add(debt)
+        db.flush()
+        db.add(DebtGoalLink(goal_id=goal.id, goal_version=1, debt_id=debt.id))
+        db.commit()
+    resp = web_client.get("/web/debt-goals")
+    assert resp.status_code == 200
+    assert "按分期合约" in resp.text  # deterministic contract framing (not velocity "按最近 N 天")
+    assert "2026 年 9 月" in resp.text  # 建账 2026-03 + 6 期 = 2026-09
+    assert "还没有足够数据估算还清日期" not in resp.text  # NOT the insufficient arm (the fixed bug)
+
+
 def test_web_debt_goals_mixed_has_no_kpi_block(web_client: TestClient) -> None:
     # Mixed composition → "已处理 X / Y 笔"; the KPI block is gated == External, so Mixed gets none.
     _seed_debt_goal(

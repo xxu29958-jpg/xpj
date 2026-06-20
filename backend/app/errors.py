@@ -84,6 +84,8 @@ ERROR_MESSAGES = {
     "debt_counterparty_invalid": "欠款对象信息不完整。",
     "debt_amount_invalid": "请填写大于 0 的欠款金额。",
     "debt_direction_invalid": "欠款方向不正确。",
+    # §B 完整 installment: 期数/周期 only valid for an installment debt (both > 0, paired).
+    "debt_installment_invalid": "分期期数信息不正确。",
     # ADR-0049 Debt domain (slice 2: repayment / adjustment / void facts). A
     # stale ``expected_row_version`` and writing on a voided Debt reuse the
     # generic ``state_conflict`` below.

@@ -62,6 +62,26 @@ def _clean_source_type(value: str | None) -> str:
     return cleaned
 
 
+def _clean_installment(
+    debt_kind: str, count: int | None, period_months: int | None
+) -> tuple[int | None, str | None]:
+    """ADR-0049 §B: validate + default the installment schedule (期数 × 周期).
+
+    The schedule is only meaningful for ``debt_kind == 'installment'``: a ``count`` on any other
+    kind, or a ``period`` without a ``count``, is ``debt_installment_invalid`` (422). When a count
+    is given the period defaults to 1 (monthly) — so the stored pair is always both-NULL or
+    both-positive, matching the ``ck_debts_installment_valid`` paired CHECK. (Field ``gt=0`` on the
+    schema already rejects non-positive inputs; this is the kind-pairing gate.)
+    """
+    if count is None:
+        if period_months is not None:
+            raise AppError("debt_installment_invalid", status_code=422)
+        return None, None
+    if debt_kind != "installment":
+        raise AppError("debt_installment_invalid", status_code=422)
+    return count, period_months if period_months is not None else 1
+
+
 def _clean_counterparty(
     counterparty_type: str,
     *,
@@ -128,6 +148,9 @@ def create_debt(
         account_id=payload.counterparty_account_id,
         label=payload.counterparty_label,
     )
+    installment_count, installment_period_months = _clean_installment(
+        payload.debt_kind, payload.installment_count, payload.installment_period_months
+    )
     money = _freeze_money(db, tenant_id=tenant_id, payload=payload)
 
     now = now_utc()
@@ -142,6 +165,9 @@ def create_debt(
         # 8e-6e: repayment-rhythm classification (default 'unspecified'; the Literal on
         # DebtCreateRequest already constrains the value, the DB CHECK is the backstop).
         debt_kind=payload.debt_kind,
+        # §B: contractual installment schedule (both NULL unless debt_kind == 'installment').
+        installment_count=installment_count,
+        installment_period_months=installment_period_months,
         status="open",
         source_type=source_type,
         source_id=None,

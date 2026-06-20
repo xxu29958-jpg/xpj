@@ -84,6 +84,20 @@ class Debt(Base):
             "debt_kind IN ('unspecified', 'revolving', 'installment', 'one_off')",
             name="ck_debts_kind_valid",
         ),
+        # ADR-0049 §B (完整 installment): the contractual schedule of an ``installment`` external
+        # debt — ``installment_count`` periods of ``installment_period_months`` months each, both
+        # NULL for any other debt. The deterministic payoff date (建账 + count×period months) replaces
+        # the suppressed velocity projection for an all-installment plan; the count drives "已还 N/M 期"
+        # progress (paid-period count is DERIVED from repayment facts, never stored — §B "少存状态").
+        # Paired-and-positive: both NULL (not an installment), or both > 0. Reclassifying a Debt away
+        # from ``installment`` leaves these set but inert (the KPI/response only read them when
+        # debt_kind == 'installment'), so no debt_kind↔schedule coupling is enforced here. Predicate
+        # text byte-identical to the migration (20260620_0003) by manual convention — round-trip tested.
+        CheckConstraint(
+            "(installment_count IS NULL AND installment_period_months IS NULL) "
+            "OR (installment_count > 0 AND installment_period_months > 0)",
+            name="ck_debts_installment_valid",
+        ),
         CheckConstraint("principal_amount_cents > 0", name="ck_debts_principal_positive"),
         CheckConstraint("length(home_currency_code) = 3", name="ck_debts_home_currency_format"),
         # ADR-0049 §2/§5.1 母表 shape invariants the service already maintains
@@ -157,6 +171,11 @@ class Debt(Base):
     debt_kind: Mapped[str] = mapped_column(
         String(16), default="unspecified", server_default="unspecified", nullable=False
     )
+    # ADR-0049 §B 完整 installment: the contractual schedule (count × period-months), both NULL
+    # unless ``debt_kind == 'installment'``. The payoff date is derived (建账 + count×period months);
+    # paid-period progress is derived from repayment-fact count (never stored). See ck_debts_installment_valid.
+    installment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    installment_period_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_type: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
     source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
