@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Account, RepaymentDraft
+from app.services import debt_service
 from app.services.time_service import now_utc
 
 # A merchant label that confidently matches NO debt label below ("卡A"/"卡B"/...), so the
@@ -200,12 +201,22 @@ def test_learning_is_account_scoped(client: TestClient, *, identity) -> None:
     owner_fresh = _create_draft(client, identity, merchant_label=_NO_MATCH_LABEL, notification_key="acct-own2")
     assert _suggestion(client, identity, owner_fresh["public_id"]) == x["public_id"]
 
-    # A second account's pending draft (same ledger, same signature) gets no suggestion.
+    # A second account's pending draft (same ledger, same signature) gets no suggestion. The
+    # inbox is account-scoped (privacy), so this draft NEVER appears in the owner's API list at
+    # all — read it at the service layer AS the second account (mirrors test_repayment_drafts.py's
+    # direct list call): it shows in its own owner's list and inherits NO learned target. (Mutation:
+    # scope the history query to tenant instead of account → the second account would pre-select X.)
     other_account_id = _seed_account("家人B")
     other_draft_id = _seed_pending_draft(
         tenant_id="owner", account_id=other_account_id, merchant_label=_NO_MATCH_LABEL
     )
-    assert _suggestion(client, identity, other_draft_id) is None
+    with SessionLocal() as db:
+        other_listing = debt_service.list_repayment_drafts(
+            db, tenant_id="owner", actor_account_id=other_account_id, status="pending"
+        )
+    other = next((d for d in other_listing.items if d.public_id == other_draft_id), None)
+    assert other is not None, "the second account sees its own capture"
+    assert other.suggested_debt_public_id is None, "but it inherits no learned target from the owner"
 
 
 def test_learns_blank_label_signature(client: TestClient, *, identity) -> None:

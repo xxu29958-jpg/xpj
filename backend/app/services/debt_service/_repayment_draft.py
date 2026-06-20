@@ -25,6 +25,12 @@ adds a server-side fuzzy match (counterparty_label + amount → suggested Debt) 
 ``RepaymentDraftResponse.suggested_debt_public_id`` (see :mod:`_repayment_draft_match`).
 It is never stored on the draft: a Debt suggested at capture time can be cleared / voided /
 created by review time, so the match is recomputed against current Debt state every list.
+
+ACCOUNT-SCOPED, not just tenant-scoped (§8 / privacy): a repayment capture is personal (one
+member's phone payment notification). Every read/lock of a specific draft (list, confirm/dismiss
+lock, replay) filters ``created_by_account_id == actor_account_id`` so a shared-ledger member
+can't see or act on another's captures — mirroring the account-scoped /web audit
+(``list_repayment_draft_audit_for_account``) and learning matcher; a ledger-only scope leaks.
 """
 
 from __future__ import annotations
@@ -150,11 +156,15 @@ def repayment_draft_response(
 
 
 def get_repayment_draft_response(
-    db: Session, *, tenant_id: str, public_id: str
+    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
 ) -> RepaymentDraftResponse:
-    """Serialize one tenant-scoped draft (used by the confirm idempotency-replay path)."""
+    """Serialize one account-scoped draft (confirm idempotency-replay path).
+
+    The replay HIT is always the actor's own confirm intent, so the ``created_by_account_id``
+    filter never bites here — it keeps the uniform account-scope invariant (§8 / privacy)."""
     draft = db.scalar(
         ledger_scoped_select(RepaymentDraft, tenant_id)
+        .where(RepaymentDraft.created_by_account_id == actor_account_id)
         .where(RepaymentDraft.public_id == public_id)
         .limit(1)
     )
@@ -232,9 +242,12 @@ def create_repayment_draft(
 
 
 def list_repayment_drafts(
-    db: Session, *, tenant_id: str, status: str | None = None
+    db: Session, *, tenant_id: str, actor_account_id: int, status: str | None = None
 ) -> RepaymentDraftListResponse:
-    statement = ledger_scoped_select(RepaymentDraft, tenant_id)
+    # Account-scoped (§8 / privacy, see module docstring): the inbox shows ONLY the actor's own.
+    statement = ledger_scoped_select(RepaymentDraft, tenant_id).where(
+        RepaymentDraft.created_by_account_id == actor_account_id
+    )
     if status is not None:
         statement = statement.where(RepaymentDraft.status == status)
     statement = statement.order_by(
@@ -271,11 +284,15 @@ def list_repayment_drafts(
     )
 
 
-def _lock_pending_draft(db: Session, *, tenant_id: str, public_id: str) -> RepaymentDraft:
-    """``SELECT ... FOR UPDATE`` a tenant-scoped draft; the row is the serialization
-    point so two resolutions (confirm/dismiss) cannot both fire."""
+def _lock_pending_draft(
+    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
+) -> RepaymentDraft:
+    """``SELECT ... FOR UPDATE`` an account-scoped draft (the serialization point so two
+    confirm/dismiss resolutions can't both fire). Account-scoped (§8 / privacy): only the
+    capturing member may resolve their own draft; another member gets an existence-hidden 404."""
     draft = db.scalar(
         ledger_scoped_select(RepaymentDraft, tenant_id)
+        .where(RepaymentDraft.created_by_account_id == actor_account_id)
         .where(RepaymentDraft.public_id == public_id)
         .with_for_update()
         .limit(1)
@@ -306,7 +323,9 @@ def confirm_repayment_draft(
     fence on ``expected_row_version`` — a failure there rolls back the draft latch too
     (single transaction, ``commit=False``).
     """
-    draft = _lock_pending_draft(db, tenant_id=tenant_id, public_id=public_id)
+    draft = _lock_pending_draft(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     if draft.status != "pending":
         # Already confirmed or dismissed — a second confirm cannot record again.
         raise AppError("state_conflict", status_code=409)
@@ -352,7 +371,9 @@ def dismiss_repayment_draft(
     commit: bool = False,
 ) -> RepaymentDraft:
     """Latch a pending draft ``dismissed`` (idempotent if already dismissed)."""
-    draft = _lock_pending_draft(db, tenant_id=tenant_id, public_id=public_id)
+    draft = _lock_pending_draft(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
+    )
     if draft.status == "dismissed":
         return draft  # idempotent: already dismissed
     if draft.status == "confirmed":

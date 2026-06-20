@@ -230,7 +230,10 @@ def test_service_unfiltered_list_suggests_only_pending_drafts(client: TestClient
     assert dismiss.status_code == 201, dismiss.json()
 
     with SessionLocal() as db:
-        listing = debt_service.list_repayment_drafts(db, tenant_id="owner", status=None)
+        owner_account_id = db.scalar(select(Account.id).order_by(Account.id.asc()).limit(1))
+        listing = debt_service.list_repayment_drafts(
+            db, tenant_id="owner", actor_account_id=owner_account_id, status=None
+        )
     by_id = {item.public_id: item for item in listing.items}
     assert by_id[pending["public_id"]].suggested_debt_public_id == debt["public_id"]
     assert by_id[resolved["public_id"]].suggested_debt_public_id is None
