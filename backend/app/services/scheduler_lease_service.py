@@ -2,9 +2,21 @@
 
 Each FastAPI worker starts its own in-process scheduler threads. The scheduled
 jobs are idempotent, but cloud or multi-worker deployments should still avoid
-duplicate work and duplicate outbound calls. This module provides a small
-database lease on top of ``app_meta`` so all workers share one coordination
-point without introducing a queue broker.
+duplicate work and duplicate outbound calls. This module claims a lease on the
+``scheduler_leases`` table so all workers share one coordination point without
+introducing a queue broker.
+
+Atomic claim: the whole claim is a single ``INSERT ... ON CONFLICT (name) DO
+UPDATE ... WHERE scheduler_leases.expires_at <= :now RETURNING name``. A returned
+row means this worker won the lease; an empty result means another worker holds
+an unexpired lease. There is no separate "ensure the row exists" step, so two
+workers racing on a fresh or expired lease can never both win — Postgres
+serializes the conflicting upsert on the row and the loser's ``WHERE`` re-checks
+against the just-written future ``expires_at``.
+
+``expires_at`` is a real ``timestamptz``, so the claim compares times by type
+rather than by the UTC-ISO ASCII lexicographic coincidence the prior ``app_meta``
+string value relied on.
 
 Transaction contract: the lease coordinates across workers by committing
 autonomously, so it must own its session's transaction lifecycle. Callers pass
@@ -20,40 +32,24 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
-from sqlalchemy import or_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
-from app.models import AppMeta
+from app.models import SchedulerLease
 from app.services.time_service import now_utc
 
-_LEASE_KEY_PREFIX = "scheduler_lease:"
 _SCHEDULER_NAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
+# scheduler_leases.name is the VARCHAR(64) primary key.
+_MAX_LEASE_NAME_LENGTH = 64
 
 
-def _lease_key(name: str) -> str:
+def _clean_lease_name(name: str) -> str:
     cleaned = name.strip().lower()
     if not _SCHEDULER_NAME_PATTERN.fullmatch(cleaned):
         raise ValueError("scheduler lease name must use [a-z0-9_-]")
-    key = f"{_LEASE_KEY_PREFIX}{cleaned}"
-    if len(key) > 64:
-        raise ValueError("scheduler lease key exceeds app_meta.key length")
-    return key
-
-
-def _ensure_lease_row(db: Session, *, key: str) -> None:
-    # Reached only via ``try_claim_scheduler_lease``, which has already asserted
-    # the session has no in-flight transaction. The lease row is committed on
-    # its own so the subsequent atomic claim UPDATE runs against a durable row;
-    # this never touches caller-owned business work.
-    if db.scalar(select(AppMeta).where(AppMeta.key == key)) is not None:
-        db.commit()
-        return
-    db.add(AppMeta(key=key, value="1970-01-01T00:00:00+00:00", updated_at=now_utc()))
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
+    if len(cleaned) > _MAX_LEASE_NAME_LENGTH:
+        raise ValueError("scheduler lease name exceeds scheduler_leases.name length")
+    return cleaned
 
 
 def try_claim_scheduler_lease(
@@ -75,17 +71,20 @@ def try_claim_scheduler_lease(
             "scheduler lease must be claimed on a session with no in-flight "
             "transaction; commit or roll back caller work before claiming"
         )
-    key = _lease_key(name)
+    lease_name = _clean_lease_name(name)
     now = now_utc()
     expires_at = now + timedelta(seconds=max(1, int(lease_seconds)))
-    _ensure_lease_row(db, key=key)
-    result = db.execute(
-        update(AppMeta)
-        .where(AppMeta.key == key)
-        .where(or_(AppMeta.value.is_(None), AppMeta.value <= now.isoformat()))
-        .values(value=expires_at.isoformat(), updated_at=now)
+    statement = (
+        postgresql_insert(SchedulerLease)
+        .values(name=lease_name, expires_at=expires_at, updated_at=now)
+        .on_conflict_do_update(
+            index_elements=["name"],
+            set_={"expires_at": expires_at, "updated_at": now},
+            where=SchedulerLease.expires_at <= now,
+        )
+        .returning(SchedulerLease.name)
     )
-    claimed = int(result.rowcount or 0) == 1
+    claimed = db.execute(statement).first() is not None
     db.commit()
     return claimed
 

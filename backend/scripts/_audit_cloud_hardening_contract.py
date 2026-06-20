@@ -78,7 +78,7 @@ def _scheduler_missing() -> list[str]:
     missing = _require_tokens(
         "scheduler lease",
         scheduler_lease,
-        ("def try_claim_scheduler_lease", "scheduler_lease:", "rowcount"),
+        ("def try_claim_scheduler_lease", "SchedulerLease", "on_conflict_do_update"),
     )
     for path in (
         "app/services/fx_rate_scheduler.py",
