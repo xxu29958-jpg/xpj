@@ -47,6 +47,9 @@ data class DebtDraftUi(
     val amountYuanInput: String = "",
     // 8e-6e 还款类型（可选；默认 unspecified = 不分类）。仅外部债，create 透传到后端 debt_kind。
     val kind: String = DebtKinds.UNSPECIFIED,
+    // §B 分期期数原文（仅 kind==installment 时表单显示）。留空 / 非法 → 不排期（parsedInstallmentCount 返回
+    // null）；范围由 [parsedInstallmentCount] 收口（1..600，镜像后端 le 上限），kind 的 gate 在 toCreateRequest。
+    val installmentCountInput: String = "",
     val validationError: UiText? = null,
 ) {
     val isValid: Boolean
@@ -54,6 +57,9 @@ data class DebtDraftUi(
 
     // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；本金须 > 0（符号保持，分空间判等价）。
     fun parsedAmountCents(): Long? = parseAmountCents(amountYuanInput)?.takeIf { it > 0 }
+
+    // 分期期数：正整数且 1..600（镜像后端 installment_count 的 gt=0/le=600）；空 / 非数字 / 越界 → null（不排期）。
+    fun parsedInstallmentCount(): Int? = installmentCountInput.trim().toIntOrNull()?.takeIf { it in 1..600 }
 }
 
 class DebtListViewModel(
@@ -128,6 +134,10 @@ class DebtListViewModel(
         _state.update { it.copy(addDraft = it.addDraft.copy(kind = value, validationError = null)) }
     }
 
+    fun updateDraftInstallmentCount(value: String) {
+        _state.update { it.copy(addDraft = it.addDraft.copy(installmentCountInput = value, validationError = null)) }
+    }
+
     fun resetDraft() {
         _state.update { it.copy(addDraft = DebtDraftUi(), isSubmitting = false, addSucceeded = false) }
     }
@@ -154,6 +164,7 @@ class DebtListViewModel(
                     counterpartyLabel = label,
                     principalAmountCents = amount,
                     debtKind = draft.kind,
+                    installmentCount = draft.parsedInstallmentCount(),
                 ),
             )
             result.fold(

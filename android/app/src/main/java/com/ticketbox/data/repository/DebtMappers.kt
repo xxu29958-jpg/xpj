@@ -23,6 +23,10 @@ fun DebtDto.toDomain(): Debt = Debt(
     sourceType = sourceType,
     sourceId = sourceId,
     debtKind = debtKind,
+    installmentCount = installmentCount,
+    installmentPeriodMonths = installmentPeriodMonths,
+    installmentPayoffDate = installmentPayoffDate,
+    installmentPaidCount = installmentPaidCount,
     homeCurrencyCode = homeCurrencyCode,
     originalCurrencyCode = originalCurrencyCode,
     originalAmountMinor = originalAmountMinor,
@@ -38,12 +42,17 @@ fun DebtDto.toDomain(): Debt = Debt(
  * direction, the counterparty's display label, and the home-currency principal in cents.
  * [debtKind] (8e-6e) is the optional repayment-rhythm classification the create form's picker sets;
  * it defaults to [DebtKinds.UNSPECIFIED] so a form that doesn't touch it still creates a Debt.
+ * [installmentCount] (§B) is the optional 分期期数 — meaningful ONLY when [debtKind] is installment
+ * (the create form shows it only then); [toCreateRequest] drops it for any other kind so a stale
+ * value from a kind the user later switched away from can't reach the backend (which 422s 期数 on a
+ * non-installment debt). 周期 (period) is not captured here — the backend defaults it to monthly.
  */
 data class DebtDraft(
     val direction: String,
     val counterpartyLabel: String,
     val principalAmountCents: Long,
     val debtKind: String = DebtKinds.UNSPECIFIED,
+    val installmentCount: Int? = null,
 )
 
 fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
@@ -54,6 +63,10 @@ fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
     principalAmountCents = principalAmountCents,
     sourceType = DebtSourceTypes.MANUAL,
     debtKind = debtKind,
+    // §B chokepoint: 期数 only rides along for an installment debt. The backend pairs 期数 with
+    // kind=='installment' (a non-installment 期数 → 422 "分期期数信息不正确"); gating here means the
+    // create form needn't clear the field when the user toggles kind away from installment.
+    installmentCount = installmentCount?.takeIf { debtKind == DebtKinds.INSTALLMENT }?.toLong(),
 )
 
 /** ADR-0049 §3.2 (slice 8d) — map a member repayment proposal DTO to its domain model. */

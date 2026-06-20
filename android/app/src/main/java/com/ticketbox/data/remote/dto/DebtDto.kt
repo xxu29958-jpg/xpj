@@ -46,6 +46,19 @@ data class DebtDto(
     // payload that omits it decodes to "unspecified" and the contract gate's reverse check is silent.
     @param:Json(name = "debt_kind")
     val debtKind: String = "unspecified",
+    // §B 完整 installment 合约排期（仅 installment 外部债非空，其余 kind 为 null）。count/period 是
+    // at-rest 排期；payoff_date 与 paid_count 是后端 DERIVED 只读派生（建账+期数×周期 / floor(已还/每期)）。
+    // 全部 DEFAULTED — DebtResponse 把它们设默认（非 `required`），故旧 payload 省略它们时解码为 null、
+    // 契约门反向检查静默；它们是已声明属性 → 正向检查通过（[[project_android_openapi_contract_gate]]）。
+    @param:Json(name = "installment_count")
+    val installmentCount: Long? = null,
+    @param:Json(name = "installment_period_months")
+    val installmentPeriodMonths: Long? = null,
+    // ISO date 串（后端 `date` → "2027-06-20"）；UI 按月粒度呈现（parsePayoffYearMonth）。
+    @param:Json(name = "installment_payoff_date")
+    val installmentPayoffDate: String? = null,
+    @param:Json(name = "installment_paid_count")
+    val installmentPaidCount: Long? = null,
     @param:Json(name = "home_currency_code")
     val homeCurrencyCode: String,
     @param:Json(name = "original_currency_code")
@@ -110,6 +123,12 @@ data class DebtCreateRequestDto(
     // contract gate's forward check passes only for declared fields).
     @param:Json(name = "debt_kind")
     val debtKind: String = "unspecified",
+    // §B 完整 installment 期数（仅 kind=='installment' 时有效）。DEFAULTED/可空 — 留空即不排期（创建一笔
+    // 没有已知排期的 installment 债）；周期 `installment_period_months` 故意不建模：后端在给了 count 而省略
+    // period 时默认按月（每月一期），是国内分期的压倒性默认（cold-start 基准，详见 DebtMappers）。`installment_count`
+    // 是 DebtCreateRequest 的已声明属性（additionalProperties=false → 正向检查只对已声明字段通过）。
+    @param:Json(name = "installment_count")
+    val installmentCount: Long? = null,
 )
 
 /**

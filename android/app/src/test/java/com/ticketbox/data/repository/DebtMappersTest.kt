@@ -151,6 +151,78 @@ class DebtMappersTest {
     }
 
     @Test
+    fun toDomainMapsInstallmentReadFields() {
+        // §B: the four installment read fields map through verbatim — count/period (at-rest schedule)
+        // and payoff_date/paid_count (backend DERIVED). isInstallmentScheduled is true once an
+        // installment debt carries a count (the gate the detail screen uses for the schedule card).
+        val debt = DebtDto(
+            publicId = "debt-inst",
+            ledgerId = "owner",
+            direction = DebtDirections.I_OWE,
+            counterpartyType = DebtCounterpartyTypes.EXTERNAL,
+            counterpartyAccountId = null,
+            counterpartyLabel = "信用卡分期",
+            principalAmountCents = 120_000,
+            remainingAmountCents = 70_000,
+            paidAmountCents = 50_000,
+            status = DebtLinkStatuses.OPEN,
+            sourceType = DebtSourceTypes.MANUAL,
+            sourceId = null,
+            debtKind = DebtKinds.INSTALLMENT,
+            installmentCount = 12,
+            installmentPeriodMonths = 1,
+            installmentPayoffDate = "2027-06-15",
+            installmentPaidCount = 5,
+            homeCurrencyCode = "CNY",
+            createdAt = "2026-06-15T00:00:00Z",
+            updatedAt = "2026-06-15T00:00:00Z",
+            rowVersion = 1,
+        ).toDomain()
+
+        assertEquals(12L, debt.installmentCount)
+        assertEquals(1L, debt.installmentPeriodMonths)
+        assertEquals("2027-06-15", debt.installmentPayoffDate)
+        assertEquals(5L, debt.installmentPaidCount)
+        assertTrue(debt.isInstallmentScheduled)
+        // Reclassified away from installment → NOT scheduled even though the count column survives
+        // (mirrors the backend gate going INERT after set_debt_kind leaves the schedule columns).
+        assertFalse(debt.copy(debtKind = DebtKinds.REVOLVING).isInstallmentScheduled)
+    }
+
+    @Test
+    fun toCreateRequestGatesInstallmentCountOnKind() {
+        // §B chokepoint: 期数 only rides along for an installment debt (the backend 422s 期数 on a
+        // non-installment debt). Same count, three kinds → only installment forwards it.
+        val installment = DebtDraft(
+            direction = DebtDirections.I_OWE,
+            counterpartyLabel = "花呗",
+            principalAmountCents = 120_000,
+            debtKind = DebtKinds.INSTALLMENT,
+            installmentCount = 12,
+        ).toCreateRequest()
+        assertEquals(12L, installment.installmentCount)
+
+        // The user typed 12 but left kind at revolving → the chokepoint drops it (no stray 422).
+        val revolving = DebtDraft(
+            direction = DebtDirections.I_OWE,
+            counterpartyLabel = "花呗",
+            principalAmountCents = 120_000,
+            debtKind = DebtKinds.REVOLVING,
+            installmentCount = 12,
+        ).toCreateRequest()
+        assertNull(revolving.installmentCount)
+
+        // Installment kind but no count entered → null (an installment debt with no known schedule yet).
+        val noCount = DebtDraft(
+            direction = DebtDirections.I_OWE,
+            counterpartyLabel = "花呗",
+            principalAmountCents = 120_000,
+            debtKind = DebtKinds.INSTALLMENT,
+        ).toCreateRequest()
+        assertNull(noCount.installmentCount)
+    }
+
+    @Test
     fun proposalToDomainMapsAllFields() {
         val dto = MemberRepaymentProposalDto(
             publicId = "p1",
