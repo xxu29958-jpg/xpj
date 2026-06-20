@@ -87,6 +87,7 @@ from app.schemas._dashboard import (
 )
 from app.schemas._debts import (
     DebtAdjustmentCreateRequest,
+    DebtBillParseResponse,
     DebtCreateRequest,
     DebtForgiveCreateRequest,
     DebtKindSetRequest,
@@ -299,6 +300,7 @@ __all__ = [
     "DashboardCardsUpdateRequest",
     "DataQualitySummaryResponse",
     "DebtAdjustmentCreateRequest",
+    "DebtBillParseResponse",
     "DebtCreateRequest",
     "DebtForgiveCreateRequest",
     "DebtGoalIntegrityReviewRequest",

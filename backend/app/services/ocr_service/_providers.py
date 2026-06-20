@@ -1,63 +1,25 @@
-"""ADR-0015 OCR Provider pipeline: 4 provider implementations + factory."""
+"""ADR-0015 OCR Provider pipeline: 4 provider implementations + factory.
+
+The ``local_llm`` provider drives the self-hosted vision model through the
+shared ``app.services.local_llm_vision`` engine (the same engine the debt-bill
+parser uses); this module owns only the receipt-specific prompt + the
+receipt JSON→``OcrResult`` mapping.
+"""
 
 from __future__ import annotations
 
-import base64
-import json
-import logging
 import mimetypes
-import threading
-from contextlib import contextmanager
-from time import monotonic
-from typing import Any
-from urllib import error, request
 
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense
 from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.file_service import resolve_protected_image
-from app.services.ocr_service._llm_parsing import (
-    _extract_message_content,
-    _parse_json_object,
-    _result_from_llm_json,
-)
+from app.services.local_llm_vision import call_local_llm_vision, require_local_llm_base_url
+from app.services.ocr_service._llm_parsing import _result_from_llm_json
 from app.services.ocr_service._merge import _merge_result_with_text_parse
 from app.services.ocr_service._models import OcrProvider, OcrResult
 from app.services.receipt_parse_service import parse_receipt_text
-
-logger = logging.getLogger(__name__)
-
-
-class _LocalLlmSlotLimiter:
-    def __init__(self) -> None:
-        self._condition = threading.Condition()
-        self._active_slots = 0
-
-    def acquire(self, max_concurrent: int, queue_timeout_seconds: float) -> None:
-        limit = max(1, int(max_concurrent or 1))
-        timeout = max(0.0, float(queue_timeout_seconds))
-        deadline = monotonic() + timeout
-        with self._condition:
-            while limit <= self._active_slots:
-                remaining = deadline - monotonic()
-                if remaining <= 0:
-                    raise AppError(
-                        "rate_limited",
-                        "本地大模型识别队列繁忙，请稍后再试。",
-                        status_code=429,
-                    )
-                self._condition.wait(remaining)
-            self._active_slots += 1
-
-    def release(self) -> None:
-        with self._condition:
-            if self._active_slots > 0:
-                self._active_slots -= 1
-            self._condition.notify_all()
-
-
-_LOCAL_LLM_SLOT_LIMITER = _LocalLlmSlotLimiter()
 
 
 class EmptyOcrProvider:
@@ -123,98 +85,13 @@ class RapidOcrProvider:
 class LocalLlmOcrProvider:
     def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
         settings = get_settings()
-        _require_local_llm_base_url(settings.local_llm_base_url)
+        # Fail fast before reading the image off disk when config rejected the URL.
+        require_local_llm_base_url(settings.local_llm_base_url)
         image_path, media_type = resolve_protected_image(expense.image_path, expense.tenant_id)
         image_bytes = image_path.read_bytes()
         media_type = media_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
-        encoded = base64.b64encode(image_bytes).decode("ascii")
-        model = settings.local_llm_model or self._first_available_model(settings.local_llm_base_url)
-        payload = {
-            "model": model,
-            "temperature": 0,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": _local_llm_prompt_text(),
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{media_type};base64,{encoded}"},
-                        },
-                    ],
-                }
-            ],
-        }
-        with _local_llm_slot(
-            settings.local_llm_max_concurrent,
-            settings.local_llm_queue_timeout_seconds,
-        ):
-            response = self._post_chat_completion(payload)
-        content = _extract_message_content(response)
-        parsed_json = _parse_json_object(content)
+        parsed_json = call_local_llm_vision(image_bytes, media_type, _local_llm_prompt_text())
         return _result_from_llm_json(parsed_json, timezone_name=timezone_name)
-
-    def _first_available_model(self, base_url: str) -> str:
-        endpoint = f"{base_url}/models"
-        req = request.Request(endpoint, method="GET")
-        try:
-            with request.urlopen(req, timeout=10) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except (OSError, error.URLError, json.JSONDecodeError) as exc:
-            raise AppError("server_error", "本地大模型服务不可用。", status_code=500) from exc
-
-        models = payload.get("data") if isinstance(payload, dict) else None
-        if not models:
-            raise AppError("server_error", "本地大模型服务没有可用模型。", status_code=500)
-        model_id = models[0].get("id") if isinstance(models[0], dict) else None
-        if not model_id:
-            raise AppError("server_error", "本地大模型服务模型列表格式不正确。", status_code=500)
-        return str(model_id)
-
-    def _post_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
-        settings = get_settings()
-        endpoint = f"{settings.local_llm_base_url}/chat/completions"
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        req = request.Request(
-            endpoint,
-            data=body,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            with request.urlopen(req, timeout=settings.local_llm_timeout_seconds) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except error.HTTPError as exc:
-            detail_bytes = exc.read(4096)
-            logger.warning(
-                "local_llm_ocr: HTTP error status=%s reason=%s detail_bytes=%s",
-                exc.code,
-                exc.reason,
-                len(detail_bytes),
-            )
-            raise AppError("server_error", "本地大模型识别失败。", status_code=500) from exc
-        except (OSError, error.URLError, json.JSONDecodeError) as exc:
-            raise AppError("server_error", "本地大模型服务不可用。", status_code=500) from exc
-
-
-def _require_local_llm_base_url(base_url: str) -> None:
-    """Refuse to call the local LLM when config rejected the URL.
-
-    Empty value here means ``_resolve_local_llm_base_url`` (in app.config)
-    treated the configured URL as non-loopback and dropped it. We surface that
-    as a clear, actionable error rather than silently sending uploaded receipts
-    to whatever the env variable pointed at.
-    """
-
-    if not base_url:
-        raise AppError(
-            "server_error",
-            "LOCAL_LLM_BASE_URL 必须是本机回环地址（127.0.0.1 / ::1 / localhost）。",
-            status_code=500,
-        )
 
 
 def _local_llm_prompt_text() -> str:
@@ -229,15 +106,6 @@ def _local_llm_prompt_text() -> str:
         "raw_text(string), confidence(number 0-1). Do not return source; the "
         "server owns the source field."
     )
-
-
-@contextmanager
-def _local_llm_slot(max_concurrent: int, queue_timeout_seconds: float):
-    _LOCAL_LLM_SLOT_LIMITER.acquire(max_concurrent, queue_timeout_seconds)
-    try:
-        yield
-    finally:
-        _LOCAL_LLM_SLOT_LIMITER.release()
 
 
 def get_ocr_provider(provider_name: str | None = None) -> OcrProvider:

@@ -31,6 +31,7 @@ DebtKind = Literal["unspecified", "revolving", "installment", "one_off"]
 
 __all__ = [
     "DebtAdjustmentCreateRequest",
+    "DebtBillParseResponse",
     "DebtCreateRequest",
     "DebtForgiveCreateRequest",
     "DebtKindSetRequest",
@@ -152,6 +153,25 @@ class DebtResponse(BaseModel):
 
 class DebtListResponse(BaseModel):
     items: list[DebtResponse]
+
+
+class DebtBillParseResponse(BaseModel):
+    """ADR-0049 §D 债务账单解析建议（瞬态，不落库、不建债）。
+
+    一张「欠款截图」OCR 后的**建议**还款条款，用于预填建/编外部债表单。所有字段
+    可空（缺字段=留给用户手填）；§8 红线：这是建议非事实，``source_text`` 是模型回的
+    源文本片段（防编数字），用户在表单确认/改后才落账。未配视觉 provider 时全字段为空
+    （回落手填），端点仍 200。
+    """
+
+    merchant: str | None = None
+    principal_amount_cents: int | None = None
+    installment_count: int | None = None
+    installment_period_months: int | None = None
+    per_period_amount_cents: int | None = None
+    repayment_day: int | None = None
+    source_text: str = ""
+    confidence: float | None = None
 
 
 class RepaymentCreateResponse(DebtResponse):

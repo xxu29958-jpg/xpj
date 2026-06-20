@@ -160,6 +160,11 @@ ALLOWLIST: dict[str, Exempt] = {
     # safe replay rests on the [[0042]] Idempotency-Key the route requires, not
     # an expected_row_version token.
     "POST /api/debts": Exempt("create_row", "debts", _DEBTS),
+    # ADR-0049 §D: debt-bill OCR transient parse — reads the uploaded screenshot,
+    # runs the vision provider, returns suggested repayment terms to prefill the
+    # create-debt form. Pure read-modify-emit: writes NO db row (the image is not
+    # even stored — slice 1 is parse-only), so no expected_row_version token.
+    "POST /api/debts/parse-bill": Exempt("read_only_compute", "debts", ()),
     # ADR-0049 slice 3: debtor proposes "I paid" (§3.2). Inserts a brand-new
     # pending proposal row — no prior version to fence; safe replay rests on the
     # [[0042]] Idempotency-Key the route requires + the one-pending partial UNIQUE
