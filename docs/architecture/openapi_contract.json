@@ -3893,6 +3893,17 @@
             "title": "Counterparty Type",
             "type": "string"
           },
+          "debt_kind": {
+            "default": "unspecified",
+            "enum": [
+              "unspecified",
+              "revolving",
+              "installment",
+              "one_off"
+            ],
+            "title": "Debt Kind",
+            "type": "string"
+          },
           "direction": {
             "title": "Direction",
             "type": "string"
@@ -4272,6 +4283,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "debt_kind": {
+            "default": "unspecified",
+            "enum": [
+              "unspecified",
+              "revolving",
+              "installment",
+              "one_off"
+            ],
+            "title": "Debt Kind",
+            "type": "string"
           },
           "direction": {
             "title": "Direction",
@@ -9168,6 +9190,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "debt_kind": {
+            "default": "unspecified",
+            "enum": [
+              "unspecified",
+              "revolving",
+              "installment",
+              "one_off"
+            ],
+            "title": "Debt Kind",
+            "type": "string"
           },
           "direction": {
             "title": "Direction",

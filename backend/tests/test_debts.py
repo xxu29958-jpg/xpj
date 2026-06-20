@@ -320,6 +320,60 @@ def test_create_debt_rejects_unknown_field(client: TestClient, *, identity) -> N
     assert response.status_code == 422, response.json()
 
 
+def test_create_debt_accepts_and_echoes_debt_kind(client: TestClient, *, identity) -> None:
+    # 8e-6e: create accepts the optional repayment-rhythm classification and the read paths
+    # (create response + GET detail) echo it.
+    created = client.post(
+        "/api/debts",
+        headers=_idem_headers(identity.app_headers),
+        json={
+            "direction": "i_owe",
+            "counterparty_type": "external",
+            "counterparty_label": "招商信用卡",
+            "principal_amount_cents": 50000,
+            "debt_kind": "revolving",
+        },
+    )
+    assert created.status_code == 201, created.json()
+    assert created.json()["debt_kind"] == "revolving"
+    public_id = created.json()["public_id"]
+    detail = client.get(f"/api/debts/{public_id}", headers=identity.app_headers)
+    assert detail.status_code == 200, detail.json()
+    assert detail.json()["debt_kind"] == "revolving"
+
+
+def test_create_debt_defaults_to_unspecified_kind(client: TestClient, *, identity) -> None:
+    # 8e-6e: omitting debt_kind classifies as unspecified (keeps current projecting behavior).
+    response = client.post(
+        "/api/debts",
+        headers=_idem_headers(identity.app_headers),
+        json={
+            "direction": "i_owe",
+            "counterparty_type": "external",
+            "counterparty_label": "招商信用卡",
+            "principal_amount_cents": 1000,
+        },
+    )
+    assert response.status_code == 201, response.json()
+    assert response.json()["debt_kind"] == "unspecified"
+
+
+def test_create_debt_rejects_invalid_debt_kind(client: TestClient, *, identity) -> None:
+    # 8e-6e: the DebtKind Literal rejects an out-of-enum value (the DB CHECK is the backstop).
+    response = client.post(
+        "/api/debts",
+        headers=_idem_headers(identity.app_headers),
+        json={
+            "direction": "i_owe",
+            "counterparty_type": "external",
+            "counterparty_label": "非法分类",
+            "principal_amount_cents": 1000,
+            "debt_kind": "credit_card",
+        },
+    )
+    assert response.status_code == 422, response.json()
+
+
 def test_create_debt_requires_idempotency_key(client: TestClient, *, identity) -> None:
     # coverage: auth-401
     response = client.post(

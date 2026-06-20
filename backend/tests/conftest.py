@@ -129,6 +129,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_alembic_debt_constraint_hardening_migration.py::",  # ADR-0049 #4 add FK + status<->committed CHECK alembic round-trip via engine.begin DDL
     "tests/test_alembic_debt_shape_checks_migration.py::",  # ADR-0049 P2 add Debt 母表 shape CHECK alembic round-trip via engine.begin DDL
     "tests/test_alembic_scheduler_leases_migration.py::",  # known-bugs 🟢#4 add scheduler_leases (typed timestamptz lease) alembic round-trip + app_meta cleanup via engine.begin DDL
+    "tests/test_alembic_debt_kind_migration.py::",  # ADR-0049 8e-6e add debts.debt_kind (NOT NULL server-default + CHECK) alembic round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
