@@ -80,5 +80,16 @@
     <div class="debt-summary-row"><span>状态</span><span class="dt-pill {{ debt.status_tone }}">{{ debt.status_label }}</span></div>
   </div>
 </div>
+{# §B 分期计划卡：仅进行中 + 已排期 installment 外部债 (debt.installment 非 None)。镜像 Android 详情屏分期卡：
+   还清日「按分期合约…」(三端同步) / 已还期数中性进度 / 每期无息估算。完成措辞由 status 承载,此处只读不宣称已还清。 #}
+{% if debt.installment %}
+<div class="dt-card dt-card--static debt-installment-card">
+  <div class="card-title">分期计划</div>
+  <div class="debt-installment-schedule">{{ debt.installment.schedule_label }}</div>
+  <div class="debt-installment-progress">{{ debt.installment.progress_label }}</div>
+  {% if debt.installment.payoff_label %}<div class="debt-installment-payoff">{{ debt.installment.payoff_label }}</div>{% endif %}
+  <div class="debt-installment-per-period">{{ debt.installment.per_period_label }}</div>
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}

@@ -47,9 +47,10 @@ data class DebtDraftUi(
     val amountYuanInput: String = "",
     // 8e-6e 还款类型（可选；默认 unspecified = 不分类）。仅外部债，create 透传到后端 debt_kind。
     val kind: String = DebtKinds.UNSPECIFIED,
-    // §B 分期期数原文（仅 kind==installment 时表单显示）。留空 / 非法 → 不排期（parsedInstallmentCount 返回
-    // null）；范围由 [parsedInstallmentCount] 收口（1..600，镜像后端 le 上限），kind 的 gate 在 toCreateRequest。
+    // §B 分期期数 + 还款周期原文（仅 kind==installment 时表单显示）。期数留空 / 非法 → 不排期；周期留空 → 后端
+    // 默认每月。范围由 parsed* 收口（期数 1..600、周期 1..120，镜像后端 le 上限），kind 的 gate 在 toCreateRequest。
     val installmentCountInput: String = "",
+    val installmentPeriodInput: String = "",
     val validationError: UiText? = null,
 ) {
     val isValid: Boolean
@@ -60,6 +61,10 @@ data class DebtDraftUi(
 
     // 分期期数：正整数且 1..600（镜像后端 installment_count 的 gt=0/le=600）；空 / 非数字 / 越界 → null（不排期）。
     fun parsedInstallmentCount(): Int? = installmentCountInput.trim().toIntOrNull()?.takeIf { it in 1..600 }
+
+    // 还款周期（每几个月一期）：正整数且 1..120（镜像后端 installment_period_months le=120）；空 / 非法 → null
+    // （后端默认每月）。只在 parsedInstallmentCount 也非空时随车（toCreateRequest 的 chokepoint 守这条配对）。
+    fun parsedInstallmentPeriod(): Int? = installmentPeriodInput.trim().toIntOrNull()?.takeIf { it in 1..120 }
 }
 
 class DebtListViewModel(
@@ -138,6 +143,10 @@ class DebtListViewModel(
         _state.update { it.copy(addDraft = it.addDraft.copy(installmentCountInput = value, validationError = null)) }
     }
 
+    fun updateDraftInstallmentPeriod(value: String) {
+        _state.update { it.copy(addDraft = it.addDraft.copy(installmentPeriodInput = value, validationError = null)) }
+    }
+
     fun resetDraft() {
         _state.update { it.copy(addDraft = DebtDraftUi(), isSubmitting = false, addSucceeded = false) }
     }
@@ -165,6 +174,7 @@ class DebtListViewModel(
                     principalAmountCents = amount,
                     debtKind = draft.kind,
                     installmentCount = draft.parsedInstallmentCount(),
+                    installmentPeriodMonths = draft.parsedInstallmentPeriod(),
                 ),
             )
             result.fold(

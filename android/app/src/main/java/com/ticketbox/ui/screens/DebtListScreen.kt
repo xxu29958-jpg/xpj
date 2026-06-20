@@ -323,6 +323,7 @@ private fun DebtDraftForm(
         Spacer(Modifier.size(AppSpacing.compactGap))
         DebtKindCreateField(selected = draft.kind, onSelect = viewModel::updateDraftKind)
         DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, onValueChange = viewModel::updateDraftInstallmentCount)
+        DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, onValueChange = viewModel::updateDraftInstallmentPeriod)
         draft.validationError?.let { err ->
             Spacer(Modifier.size(AppSpacing.smallGap))
             Text(

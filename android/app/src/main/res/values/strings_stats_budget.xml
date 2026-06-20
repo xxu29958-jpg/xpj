@@ -258,7 +258,9 @@
          「按分期合约，预计 {year} 年 {month} 月还清」**逐字同步**（含全角「，」、数字两侧半角空格）；改一端必同步另一端
          （[[feedback_three_surface_visual_sync]]，目前无机器门守护这条字面值）。 -->
     <string name="debt_create_label_installment_count">分期期数（可选）</string>
-    <string name="debt_create_installment_count_hint">填了就按每月一期排出还清日；留空则先不排期。</string>
+    <string name="debt_create_installment_count_hint">填了就排出还清日；留空则先不排期。</string>
+    <string name="debt_create_label_installment_period">还款周期（每几个月，可选）</string>
+    <string name="debt_create_installment_period_hint">留空按每月一期；季度分期填 3、半年填 6。</string>
     <string name="debt_installment_card_title">分期计划</string>
     <string name="debt_installment_schedule_monthly">共 %1$d 期 · 每月一期</string>
     <string name="debt_installment_schedule_periodic">共 %1$d 期 · 每 %2$d 个月一期</string>

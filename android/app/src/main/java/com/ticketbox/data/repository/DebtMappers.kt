@@ -42,10 +42,12 @@ fun DebtDto.toDomain(): Debt = Debt(
  * direction, the counterparty's display label, and the home-currency principal in cents.
  * [debtKind] (8e-6e) is the optional repayment-rhythm classification the create form's picker sets;
  * it defaults to [DebtKinds.UNSPECIFIED] so a form that doesn't touch it still creates a Debt.
- * [installmentCount] (§B) is the optional 分期期数 — meaningful ONLY when [debtKind] is installment
- * (the create form shows it only then); [toCreateRequest] drops it for any other kind so a stale
- * value from a kind the user later switched away from can't reach the backend (which 422s 期数 on a
- * non-installment debt). 周期 (period) is not captured here — the backend defaults it to monthly.
+ * [installmentCount] / [installmentPeriodMonths] (§B) are the optional 分期期数 / 还款周期 — meaningful
+ * ONLY when [debtKind] is installment (the create form shows them only then); [toCreateRequest] drops
+ * them for any other kind so a stale value from a kind the user later switched away from can't reach
+ * the backend (which 422s 期数 on a non-installment debt). [installmentPeriodMonths] null → the backend
+ * defaults the period to monthly (每月一期 = the cold-start default); it only rides along WITH a count
+ * (the backend CHECK pairs the two).
  */
 data class DebtDraft(
     val direction: String,
@@ -53,6 +55,7 @@ data class DebtDraft(
     val principalAmountCents: Long,
     val debtKind: String = DebtKinds.UNSPECIFIED,
     val installmentCount: Int? = null,
+    val installmentPeriodMonths: Int? = null,
 )
 
 fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
@@ -67,6 +70,9 @@ fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
     // kind=='installment' (a non-installment 期数 → 422 "分期期数信息不正确"); gating here means the
     // create form needn't clear the field when the user toggles kind away from installment.
     installmentCount = installmentCount?.takeIf { debtKind == DebtKinds.INSTALLMENT }?.toLong(),
+    // 周期同 gate，且只在 count 也给时随车（后端 CHECK 把 count/period 配对；period 留空→后端默认每月）。
+    installmentPeriodMonths = installmentPeriodMonths
+        ?.takeIf { debtKind == DebtKinds.INSTALLMENT && installmentCount != null }?.toLong(),
 )
 
 /** ADR-0049 §3.2 (slice 8d) — map a member repayment proposal DTO to its domain model. */

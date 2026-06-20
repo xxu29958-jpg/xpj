@@ -123,12 +123,14 @@ data class DebtCreateRequestDto(
     // contract gate's forward check passes only for declared fields).
     @param:Json(name = "debt_kind")
     val debtKind: String = "unspecified",
-    // §B 完整 installment 期数（仅 kind=='installment' 时有效）。DEFAULTED/可空 — 留空即不排期（创建一笔
-    // 没有已知排期的 installment 债）；周期 `installment_period_months` 故意不建模：后端在给了 count 而省略
-    // period 时默认按月（每月一期），是国内分期的压倒性默认（cold-start 基准，详见 DebtMappers）。`installment_count`
-    // 是 DebtCreateRequest 的已声明属性（additionalProperties=false → 正向检查只对已声明字段通过）。
+    // §B 完整 installment 期数 + 周期（均仅 kind=='installment' 时有效）。DEFAULTED/可空 — count 留空即不排期；
+    // period 留空（null）后端默认按月（每月一期）= 国内分期的压倒性默认。两者都是 DebtCreateRequest 的已声明属性
+    // （additionalProperties=false → 正向检查只对已声明字段通过）；后端 CHECK 把 count/period 配对，故 period
+    // 只在 count 也给时随车（见 DebtMappers.toCreateRequest 的 chokepoint）。
     @param:Json(name = "installment_count")
     val installmentCount: Long? = null,
+    @param:Json(name = "installment_period_months")
+    val installmentPeriodMonths: Long? = null,
 )
 
 /**
