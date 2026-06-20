@@ -186,6 +186,33 @@
     transition: width var(--motion-slow) var(--ease-standard);
 }
 
+/* §B 分期计划卡：复用 .dt-card 卡壳 + .card-title 眉，镜像 Android 详情屏分期卡层级 (排期=主 / 进度=正文 /
+   还清日 + 每期估算=次要)。外部债会计向但中性——不催不施压、永不红。还清日措辞与 Android + web _payoff_line 同步。 */
+.debt-installment-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.debt-installment-schedule {
+    font-family: var(--font-zh);
+    font-size: var(--type-subtitle-size);
+    font-weight: 600;
+    color: var(--text-default);
+}
+.debt-installment-progress {
+    font-size: var(--type-body-size);
+    color: var(--text-default);
+    font-feature-settings: var(--type-tabular-features);
+}
+.debt-installment-payoff {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+.debt-installment-per-period {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+}
+
 /* ── 「看看账」<details>：安静 pill summary + 旋转 chevron + 分界缓开 ── */
 .debt-look summary {
     display: inline-flex;

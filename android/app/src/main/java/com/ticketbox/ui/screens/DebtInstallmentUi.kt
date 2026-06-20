@@ -77,6 +77,25 @@ internal fun DebtInstallmentCountField(kind: String, countInput: String, onValue
 }
 
 /**
+ * 新建外部债表单的「还款周期（每几个月，可选）」字段：仅 [kind] 为 installment 时渲染。留空 = 后端默认每月一期；
+ * 季度分期填 3、半年填 6。范围/解析由 DebtDraftUi.parsedInstallmentPeriod 收口（1..120），周期只在期数也填时随车。
+ */
+@Composable
+internal fun DebtInstallmentPeriodField(kind: String, periodInput: String, onValueChange: (String) -> Unit) {
+    if (kind != DebtKinds.INSTALLMENT) return
+    Spacer(Modifier.size(AppSpacing.compactGap))
+    OutlinedTextField(
+        value = periodInput,
+        onValueChange = onValueChange,
+        label = { Text(stringResource(R.string.debt_create_label_installment_period)) },
+        supportingText = { Text(stringResource(R.string.debt_create_installment_period_hint)) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/**
  * 详情屏的分期计划卡 item：仅对**进行中且已排期**的 installment 外部债渲染（[Debt.isInstallmentScheduled]）。
  * 已结清 / 作废债不显示（合约还清日对已早还清的债是未来值，显示会矛盾；状态以摘要卡的状态徽章为准）。
  */

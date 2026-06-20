@@ -190,36 +190,53 @@ class DebtMappersTest {
     }
 
     @Test
-    fun toCreateRequestGatesInstallmentCountOnKind() {
-        // §B chokepoint: 期数 only rides along for an installment debt (the backend 422s 期数 on a
-        // non-installment debt). Same count, three kinds → only installment forwards it.
+    fun toCreateRequestGatesInstallmentScheduleOnKindAndCount() {
+        // §B chokepoint: 期数 + 周期 only ride along for an installment debt (the backend 422s 期数 on a
+        // non-installment debt). 周期 additionally only rides WITH a count (the backend CHECK pairs them).
         val installment = DebtDraft(
             direction = DebtDirections.I_OWE,
             counterpartyLabel = "花呗",
             principalAmountCents = 120_000,
             debtKind = DebtKinds.INSTALLMENT,
             installmentCount = 12,
+            installmentPeriodMonths = 3,
         ).toCreateRequest()
         assertEquals(12L, installment.installmentCount)
+        assertEquals(3L, installment.installmentPeriodMonths)
 
-        // The user typed 12 but left kind at revolving → the chokepoint drops it (no stray 422).
+        // The user typed 12+3 but left kind at revolving → the chokepoint drops BOTH (no stray 422).
         val revolving = DebtDraft(
             direction = DebtDirections.I_OWE,
             counterpartyLabel = "花呗",
             principalAmountCents = 120_000,
             debtKind = DebtKinds.REVOLVING,
             installmentCount = 12,
+            installmentPeriodMonths = 3,
         ).toCreateRequest()
         assertNull(revolving.installmentCount)
+        assertNull(revolving.installmentPeriodMonths)
 
-        // Installment kind but no count entered → null (an installment debt with no known schedule yet).
-        val noCount = DebtDraft(
+        // Installment, no count entered → both null (period without a count is an invalid pair).
+        val periodOnly = DebtDraft(
             direction = DebtDirections.I_OWE,
             counterpartyLabel = "花呗",
             principalAmountCents = 120_000,
             debtKind = DebtKinds.INSTALLMENT,
+            installmentPeriodMonths = 3,
         ).toCreateRequest()
-        assertNull(noCount.installmentCount)
+        assertNull(periodOnly.installmentCount)
+        assertNull(periodOnly.installmentPeriodMonths)
+
+        // Installment + count but no period → period null (the backend defaults it to monthly).
+        val countNoPeriod = DebtDraft(
+            direction = DebtDirections.I_OWE,
+            counterpartyLabel = "花呗",
+            principalAmountCents = 120_000,
+            debtKind = DebtKinds.INSTALLMENT,
+            installmentCount = 12,
+        ).toCreateRequest()
+        assertEquals(12L, countNoPeriod.installmentCount)
+        assertNull(countNoPeriod.installmentPeriodMonths)
     }
 
     @Test

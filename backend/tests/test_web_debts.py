@@ -250,6 +250,13 @@ def _stub_debt(**overrides) -> SimpleNamespace:
         "original_currency_code": None,
         "viewer_is_debtor": None,
         "is_forgiven": False,
+        # §B installment fields — defaulted so a plain external/member stub yields installment=None
+        # through _installment_view (non-installment → no schedule card); installment tests override them.
+        "debt_kind": "unspecified",
+        "installment_count": None,
+        "installment_period_months": None,
+        "installment_paid_count": None,
+        "installment_payoff_date": None,
     }
     base.update(overrides)
     return SimpleNamespace(**base)

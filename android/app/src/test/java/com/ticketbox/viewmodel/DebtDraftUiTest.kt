@@ -38,4 +38,17 @@ class DebtDraftUiTest {
         assertNull(DebtDraftUi(installmentCountInput = "601").parsedInstallmentCount())
         assertNull(DebtDraftUi(installmentCountInput = "12.5").parsedInstallmentCount())
     }
+
+    @Test
+    fun parsedInstallmentPeriodAcceptsPositiveIntInRangeRejectsRest() {
+        // §B 还款周期（每几个月）：正整数且 1..120（镜像后端 installment_period_months le=120）。
+        assertEquals(3, DebtDraftUi(installmentPeriodInput = "3").parsedInstallmentPeriod())
+        assertEquals(1, DebtDraftUi(installmentPeriodInput = " 1 ").parsedInstallmentPeriod())
+        assertEquals(120, DebtDraftUi(installmentPeriodInput = "120").parsedInstallmentPeriod())
+        // 空 → null（后端默认每月）；非法 / 非正 / 越界 / 小数 → null。
+        assertNull(DebtDraftUi(installmentPeriodInput = "").parsedInstallmentPeriod())
+        assertNull(DebtDraftUi(installmentPeriodInput = "0").parsedInstallmentPeriod())
+        assertNull(DebtDraftUi(installmentPeriodInput = "121").parsedInstallmentPeriod())
+        assertNull(DebtDraftUi(installmentPeriodInput = "3.5").parsedInstallmentPeriod())
+    }
 }

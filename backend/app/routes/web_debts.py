@@ -230,6 +230,36 @@ def _member_progress_note(ratio: float) -> str:
     return _MEMBER_PROGRESS_NOTE["most"]
 
 
+def _installment_view(debt, home: str) -> dict | None:
+    """§B 外部 installment 债详情的分期卡视图模型；非「进行中 + 已排期 installment」返回 None（不渲染卡）。
+
+    镜像 Android ``DebtInstallmentCard`` + ``shouldShowInstallmentCard``（isOpen && isInstallmentScheduled）：
+    合约还清日（措辞与 ``web_debt_goals._payoff_line`` 的「按分期合约」臂、Android ``debt_installment_payoff``
+    逐字一致——三端同步）/ 已还期数**中性**进度（绝不基于 paid==count 宣称「已还清」，提额调整会让 N/N 而剩余
+    仍 >0，完成由 status==cleared 决定，故卡只对 open 渲染）/ 每期**无息**估算（本金÷期数，floor，标「估算不含手续费」）。
+    """
+    count = debt.installment_count
+    if debt.debt_kind != "installment" or count is None or debt.status != "open":
+        return None
+    period = debt.installment_period_months
+    schedule = (
+        f"共 {count} 期 · 每月一期"
+        if period in (None, 1)
+        else f"共 {count} 期 · 每 {period} 个月一期"
+    )
+    paid = min(debt.installment_paid_count or 0, count)
+    payoff = debt.installment_payoff_date
+    per_period_cents = debt.principal_amount_cents // count
+    return {
+        "schedule_label": schedule,
+        "progress_label": f"已还 {paid} / {count} 期",
+        "payoff_label": (
+            f"按分期合约，预计 {payoff.year} 年 {payoff.month} 月还清" if payoff is not None else None
+        ),
+        "per_period_label": f"每期约 {_home_amount_label(per_period_cents, home)} · 估算不含手续费",
+    }
+
+
 def _detail_view(debt) -> dict:
     """详情页视图模型 (slice 2a)，按角色分轴。
 
@@ -285,6 +315,8 @@ def _detail_view(debt) -> dict:
                 "paid_ratio_percent": int(
                     round(_communal_ratio(debt.paid_amount_cents, debt.principal_amount_cents) * 100)
                 ),
+                # §B 分期计划卡（仅进行中 + 已排期 installment 外部债非 None；镜像 Android 详情屏）。
+                "installment": _installment_view(debt, home),
             }
         )
     return view

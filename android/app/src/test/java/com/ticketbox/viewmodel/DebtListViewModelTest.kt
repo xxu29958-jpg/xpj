@@ -110,12 +110,14 @@ class DebtListViewModelTest {
         viewModel.updateDraftAmount("1200")
         viewModel.updateDraftKind(DebtKinds.INSTALLMENT)
         viewModel.updateDraftInstallmentCount("12")
+        viewModel.updateDraftInstallmentPeriod("3")
         viewModel.submitDraft()
         advanceUntilIdle()
 
         val draft = repo.createDrafts.single()
         assertEquals(DebtKinds.INSTALLMENT, draft.debtKind)
         assertEquals(12, draft.installmentCount)
+        assertEquals(3, draft.installmentPeriodMonths)
     }
 
     @Test
