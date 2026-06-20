@@ -11,6 +11,11 @@ $BackendRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
 $BackupDir = Join-Path $DataRoot "backups"
 
+# 备份作业并发守卫(BUG-2):与 backup_service._backup_lock 共用同一个哨兵文件 + TTL。
+# 文件名以 "." 开头,不会被 ticketbox-*.dump 轮转/列举/异地同步匹配到。
+$BackupLockPath = Join-Path $BackupDir ".backup.lock"
+$BackupLockStaleSeconds = 30 * 60
+
 # 解析 Python 解释器(优先 venv),供 pg_dump 归档校验步骤
 # (app.services.postgres_backup_validation_service)使用。
 function Resolve-Python {
@@ -248,6 +253,55 @@ function Sync-BackupsOffsite {
     Write-Host "异地备份同步完成：$Destination（db 归档 $($dumps.Count) 个，异地保留 90 天）。"
 }
 
+function Test-BackupLockStale {
+    # 哨兵文件早于 TTL = 之前的备份作业崩溃残留,可回收(镜像 backup_service._lock_is_stale)。
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $item = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+    if (-not $item) {
+        return $false  # 已不在 —— 下一次独占创建会赢
+    }
+    return ((Get-Date) - $item.LastWriteTime).TotalSeconds -gt $BackupLockStaleSeconds
+}
+
+function Get-BackupLock {
+    # 取得返回 $true;另一个存活作业持锁返回 $false(跳过,不报错)。CreateNew 等价于
+    # Python 的 O_CREAT|O_EXCL:文件已存在即抛 IOException,由它仲裁回收竞态。
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    while ($true) {
+        try {
+            $stream = [System.IO.File]::Open(
+                $Path,
+                [System.IO.FileMode]::CreateNew,
+                [System.IO.FileAccess]::Write,
+                [System.IO.FileShare]::None
+            )
+            try {
+                $payload = "$PID`n$([DateTime]::UtcNow.ToString('o'))`n"
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
+                $stream.Write($bytes, 0, $bytes.Length)
+            }
+            finally {
+                $stream.Dispose()
+            }
+            return $true
+        }
+        catch [System.IO.IOException] {
+            if (Test-BackupLockStale -Path $Path) {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+                continue
+            }
+            return $false
+        }
+    }
+}
+
+function Remove-BackupLock {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+}
+
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
@@ -256,27 +310,40 @@ if ($databaseUrl -notmatch '^postgresql') {
     throw "备份脚本只支持 PostgreSQL（DATABASE_URL=$databaseUrl）。"
 }
 
-$target = Join-Path $BackupDir "ticketbox-$timestamp.dump"
-$target = Assert-PathInside -Path $target -Root $BackupDir
-Backup-PostgresDatabase -DatabaseUrl $databaseUrl -TargetPath $target
-$rotateFilter = "ticketbox-*.dump"
-Write-Host "已备份到 $target"
+# 并发守卫(BUG-2):手动备份 / Owner Console / 本计划任务同写 backups\ 时,轮转会互相
+# 删到对方的文件而报错。检测到在跑就跳过(良性,退出码 0,不让计划任务结果出红)。
+if (-not (Get-BackupLock -Path $BackupLockPath)) {
+    Write-Host "另一备份作业正在运行，跳过本次备份（并发守卫）。"
+    return
+}
 
-$resolvedBackupRoot = (Resolve-Path -LiteralPath $BackupDir).Path
-$backups = Get-ChildItem -LiteralPath $BackupDir -Filter $rotateFilter |
-    Sort-Object LastWriteTime -Descending
+try {
+    $target = Join-Path $BackupDir "ticketbox-$timestamp.dump"
+    $target = Assert-PathInside -Path $target -Root $BackupDir
+    Backup-PostgresDatabase -DatabaseUrl $databaseUrl -TargetPath $target
+    $rotateFilter = "ticketbox-*.dump"
+    Write-Host "已备份到 $target"
 
-if ($Keep -gt 0 -and $backups.Count -gt $Keep) {
-    $backups | Select-Object -Skip $Keep | ForEach-Object {
-        $resolvedCandidate = Assert-PathInside -Path $_.FullName -Root $resolvedBackupRoot
-        Remove-Item -LiteralPath $resolvedCandidate -Force
+    $resolvedBackupRoot = (Resolve-Path -LiteralPath $BackupDir).Path
+    $backups = Get-ChildItem -LiteralPath $BackupDir -Filter $rotateFilter |
+        Sort-Object LastWriteTime -Descending
+
+    if ($Keep -gt 0 -and $backups.Count -gt $Keep) {
+        $backups | Select-Object -Skip $Keep | ForEach-Object {
+            $resolvedCandidate = Assert-PathInside -Path $_.FullName -Root $resolvedBackupRoot
+            # 并发轮转可能已删掉同一个旧文件 —— 已不在即达到目标状态,不算错(BUG-2)。
+            Remove-Item -LiteralPath $resolvedCandidate -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    $offsiteDir = Get-OffsiteBackupDir
+    if ($offsiteDir) {
+        Sync-BackupsOffsite -Destination $offsiteDir
+    }
+    else {
+        Write-Host "未配置异地备份目录（XPJ_OFFSITE_BACKUP_DIR / OneDrive 均缺席），跳过异地同步。"
     }
 }
-
-$offsiteDir = Get-OffsiteBackupDir
-if ($offsiteDir) {
-    Sync-BackupsOffsite -Destination $offsiteDir
-}
-else {
-    Write-Host "未配置异地备份目录（XPJ_OFFSITE_BACKUP_DIR / OneDrive 均缺席），跳过异地同步。"
+finally {
+    Remove-BackupLock -Path $BackupLockPath
 }

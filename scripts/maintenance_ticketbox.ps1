@@ -96,11 +96,13 @@ function Prune-OldBackups {
         return
     }
 
+    # 保留清理在备份锁外运行;锁串行化的是 pg_dump 本身,删除则做成幂等
+    # (并发轮转/清理可能已删掉同一旧文件,已不在即达到目标状态,不算错 —— BUG-2)。
     $deletedBytes = 0L
     foreach ($file in $oldFiles) {
         $candidate = Assert-PathInside -Path $file.FullName -Root $backupRoot
         $deletedBytes += $file.Length
-        Remove-Item -LiteralPath $candidate -Force
+        Remove-Item -LiteralPath $candidate -Force -ErrorAction SilentlyContinue
     }
     Write-Host "备份保留清理完成：删除 $($oldFiles.Count) 个旧备份，释放 $(Format-Bytes $deletedBytes)。"
 }
