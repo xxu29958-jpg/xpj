@@ -37,6 +37,28 @@ class SchemaMigration(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class SchedulerLease(Base):
+    """One coordination lease row per named in-process scheduler.
+
+    Each FastAPI worker runs its own daemon scheduler threads; the scheduled
+    jobs are idempotent, but multi-worker / cloud deployments should still avoid
+    duplicate work without a queue broker. ``try_claim_scheduler_lease`` claims a
+    lease atomically with a single ``INSERT ... ON CONFLICT (name) DO UPDATE ...
+    WHERE expires_at <= now() RETURNING name`` (a returned row == claimed).
+
+    ``expires_at`` is a real ``timestamptz`` so the claim compares times by type,
+    not by the UTC-ISO ASCII lexicographic coincidence the prior ``app_meta``
+    string value relied on. This is a process-coordination table only — it carries
+    no business data and is never tenant-scoped.
+    """
+
+    __tablename__ = "scheduler_leases"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class BootstrapSecretConsumption(Base):
     """Persistent record for one-time HTTP bootstrap secrets.
 

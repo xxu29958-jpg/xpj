@@ -72,7 +72,12 @@ from app.models.import_csv import CsvImportBatch, CsvImportRow
 from app.models.learning import AlgorithmDecision, LedgerLearningEvent
 from app.models.ocr_facts import OcrFact
 from app.models.recurring import RecurringItem
-from app.models.system import BootstrapSecretConsumption, SchemaMigration, UserUiPreference
+from app.models.system import (
+    BootstrapSecretConsumption,
+    SchedulerLease,
+    SchemaMigration,
+    UserUiPreference,
+)
 
 __all__ = [
     "Account",
@@ -125,6 +130,7 @@ __all__ = [
     "RepaymentVoid",
     "RuleApplicationBatch",
     "RuleApplicationChange",
+    "SchedulerLease",
     "SchemaMigration",
     "Tag",
     "TagMutationUndoGroup",
