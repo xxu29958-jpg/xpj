@@ -36,6 +36,22 @@ object DebtCounterpartyTypes {
 }
 
 /**
+ * ADR-0049 §7.0 / 8e-6e 外部债还款节奏分类（**仅外部债**；服务端 §4 gate 用它决定是否做速率还清投影）。
+ * [UNSPECIFIED]（默认）与 [REVOLVING] 有持续节奏 → 照常投影；[INSTALLMENT]（合同分期）/ [ONE_OFF]（一次性
+ * 借款）没有线性还款节奏 → 服务端**抑制**投影（其还清日是合同/约定而非外推）。纯录入 / 展示用，绝不在
+ * 客户端据此推导业务结论（投影由后端权威计算）。成员债不分类（关系不是会计）。
+ */
+object DebtKinds {
+    const val UNSPECIFIED = "unspecified"
+    const val REVOLVING = "revolving"
+    const val INSTALLMENT = "installment"
+    const val ONE_OFF = "one_off"
+
+    /** Picker / chip 顺序（默认在前）。 */
+    val ORDERED = listOf(UNSPECIFIED, REVOLVING, INSTALLMENT, ONE_OFF)
+}
+
+/**
  * ADR-0049 §7.0 / 8e-6c 外部债还清日期三态（projected-payoff 月 vs 截止月，纯外部债才有，服务端 §4 gate）。
  * [AT_RISK] 是**事实性**的「晚于计划」态，**不是 shame 触发**——UI 渲染琥珀/warn、绝不红，无「更快还清」催促。
  */

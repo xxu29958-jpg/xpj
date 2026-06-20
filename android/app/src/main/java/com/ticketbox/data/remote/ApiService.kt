@@ -15,6 +15,7 @@ import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
+import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
@@ -592,6 +593,19 @@ interface ApiService {
     suspend fun voidDebt(
         @Path("publicId") publicId: String,
         @Body request: DebtVoidCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): DebtDto
+
+    // ADR-0049 §7.0 / 8e-6e: set or correct an existing external Debt's repayment-rhythm
+    // classification (debt_kind). OCC token in the body (bumps row_version; NOT fold-changing —
+    // it gates only the payoff projection, not remaining/paid/status) + an ADR-0042 intent-time
+    // idempotency key in the header (nullable for Retrofit ergonomics — the repository always
+    // supplies a UUID). Returns the re-serialized fold (DebtResponse → DebtDto) so the detail
+    // screen swaps in the fresh row_version + debt_kind.
+    @POST("api/debts/{publicId}/kind")
+    suspend fun setDebtKind(
+        @Path("publicId") publicId: String,
+        @Body request: DebtKindSetRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
 

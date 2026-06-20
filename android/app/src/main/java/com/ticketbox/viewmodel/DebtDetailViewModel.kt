@@ -111,7 +111,8 @@ class DebtDetailViewModel(
             }
             result.fold(
                 onSuccess = { debt ->
-                    detectSettleCelebration(debt)
+                    detectSettleCelebration(debt, previousStatusByPublicId, celebratedDebtIds)
+                        ?.let { _celebration.value = it }
                     _state.update {
                         it.copy(
                             isLoading = false,
@@ -199,7 +200,8 @@ class DebtDetailViewModel(
                     // Supersede any in-flight refresh so its stale fold can't revert this committed
                     // write (which would make the next write's OCC carrier stale → a 409).
                     loadGeneration++
-                    detectSettleCelebration(updated)
+                    detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)
+                        ?.let { _celebration.value = it }
                     _state.update {
                         it.copy(
                             debt = updated,
@@ -221,6 +223,31 @@ class DebtDetailViewModel(
         }
     }
 
+    /**
+     * 8e-6e：把当前外部债重分类为 [kind]（POST /api/debts/{id}/kind，带 §2.1 OCC 载体 + ADR-0042 幂等键）。
+     * 选中当前类型是 no-op（不发请求，避免无谓 row_version bump）。成功后用服务端折叠后的 [Debt]（新
+     * row_version + debt_kind）原子换入并 bump loadGeneration——压制在途 refresh 的旧快照回退（否则下一次
+     * 写的 OCC 载体会变陈 → 409），与 [submit] 同构。失败走既有 [DebtDetailUiState.error] 横幅。选择器抽屉
+     * 的开合是详情屏的本地 UI 态（镜像新建抽屉），故本 VM 只负责提交这一步。
+     */
+    fun selectKind(kind: String) {
+        val debt = _state.value.debt ?: return
+        if (kind == debt.debtKind) return
+        viewModelScope.launch {
+            repository.setDebtKind(debt.publicId, debt.rowVersion, kind).fold(
+                onSuccess = { updated ->
+                    loadGeneration++
+                    _state.update {
+                        it.copy(debt = updated, error = null, flashMessage = UiText.res(R.string.debt_kind_updated))
+                    }
+                },
+                onFailure = { err ->
+                    _state.update { it.copy(error = err.toUiText(R.string.debt_action_failed)) }
+                },
+            )
+        }
+    }
+
     fun dismissFlash() {
         _state.update { it.copy(flashMessage = null) }
     }
@@ -229,24 +256,33 @@ class DebtDetailViewModel(
     fun consumeCelebration() {
         _celebration.value = null
     }
+}
 
-    // §5.2 边沿检测：crossedEdge（本 VM 内先见非-cleared、后变 cleared）= 在场目击两清；首次见已 cleared
-    // 的债 prev=null → 不撒花（P1#4）。!isForgiven → forgive 走 §5.6 暖语分叉不撒；viewerIsDebtor != null →
-    // 非当事方（fact 路径无 viewer 上下文 / 第三方成员）不撒；isMember → 外部债走会计框架不撒。每笔一次性（celebratedDebtIds）。
-    private fun detectSettleCelebration(newDebt: Debt) {
-        val prev = previousStatusByPublicId[newDebt.publicId]
-        val crossedEdge = prev != null && prev != DebtLinkStatuses.CLEARED && newDebt.isCleared
-        if (newDebt.isMember &&
-            newDebt.viewerIsDebtor != null &&
-            crossedEdge &&
-            !newDebt.isForgiven &&
-            !celebratedDebtIds.contains(newDebt.publicId)
-        ) {
-            celebratedDebtIds += newDebt.publicId
-            _celebration.value = DebtSettleCelebration(counterpartyLabel = newDebt.counterpartyLabel)
-        }
-        previousStatusByPublicId[newDebt.publicId] = newDebt.status
+// §5.2 边沿检测（提到顶层让 DebtDetailViewModel 守住 detekt TooManyFunctions 阈值，逻辑不变）：crossedEdge
+// （本 VM 内先见非-cleared、后变 cleared）= 在场目击两清，返回庆祝信号；否则 null。首次见已 cleared 的债
+// prev=null → 不撒（P1#4）；!isForgiven → forgive 走 §5.6 暖语分叉不撒；viewerIsDebtor != null → 非当事方
+// （fact 路径无 viewer 上下文 / 第三方成员）不撒；isMember → 外部债走会计框架不撒。每笔一次性（celebratedDebtIds）。
+// 永远记录最新 status。两个传入的集合是 VM 的实例态，由调用方持有。
+private fun detectSettleCelebration(
+    newDebt: Debt,
+    previousStatusByPublicId: MutableMap<String, String>,
+    celebratedDebtIds: MutableSet<String>,
+): DebtSettleCelebration? {
+    val prev = previousStatusByPublicId[newDebt.publicId]
+    val crossedEdge = prev != null && prev != DebtLinkStatuses.CLEARED && newDebt.isCleared
+    val celebration = if (newDebt.isMember &&
+        newDebt.viewerIsDebtor != null &&
+        crossedEdge &&
+        !newDebt.isForgiven &&
+        !celebratedDebtIds.contains(newDebt.publicId)
+    ) {
+        celebratedDebtIds += newDebt.publicId
+        DebtSettleCelebration(counterpartyLabel = newDebt.counterpartyLabel)
+    } else {
+        null
     }
+    previousStatusByPublicId[newDebt.publicId] = newDebt.status
+    return celebration
 }
 
 /** The validation copy for an invalid action input, or null when the inputs are acceptable. */

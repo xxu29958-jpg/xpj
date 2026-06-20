@@ -6,6 +6,7 @@ import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
@@ -15,6 +16,7 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
@@ -66,6 +68,8 @@ class DebtRepositoryTest {
         // The repository trims the label before the request leaves the client.
         assertEquals("房东", call.request.counterpartyLabel)
         assertEquals(50_000L, call.request.principalAmountCents)
+        // 8e-6e: an untouched create carries the default kind (unspecified).
+        assertEquals(DebtKinds.UNSPECIFIED, call.request.debtKind)
         // ADR-0042: a fresh single-use intent key per direct call.
         assertTrue(!call.idempotencyKey.isNullOrBlank())
         assertEquals("created", created.publicId)
@@ -329,6 +333,57 @@ class DebtRepositoryTest {
 
         assertTrue(result.isFailure)
         assertTrue(handler.voidCalls.isEmpty())
+    }
+
+    // ── ADR-0049 §7.0 / 8e-6e debt_kind correction setter ───────────────────
+
+    @Test
+    fun setDebtKindSendsKindVersionKeyAndRefolds() = runTest {
+        val handler = DebtApiHandler().apply {
+            setKindResult = debtDto(publicId = "d1", remaining = 50_000L)
+                .copy(debtKind = DebtKinds.REVOLVING, rowVersion = 4)
+        }
+
+        val updated = repository(handler).setDebtKind(
+            publicId = "d1",
+            expectedRowVersion = 3L,
+            debtKind = DebtKinds.REVOLVING,
+        ).getOrThrow()
+
+        val call = handler.setKindCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals(DebtKinds.REVOLVING, call.request.debtKind)
+        assertEquals(3L, call.request.expectedRowVersion)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        // The fold-after Debt is swapped in (fresh row_version + the new kind).
+        assertEquals(DebtKinds.REVOLVING, updated.debtKind)
+        assertEquals(4L, updated.rowVersion)
+    }
+
+    @Test
+    fun setDebtKindViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .setDebtKind("d1", expectedRowVersion = 1L, debtKind = DebtKinds.ONE_OFF)
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(handler.setKindCalls.isEmpty())
+    }
+
+    @Test
+    fun setDebtKindMintsFreshKeyPerCall() = runTest {
+        val handler = DebtApiHandler()
+        val repository = repository(handler)
+
+        // ADR-0042: each direct reclassification is a distinct single-use intent — keys must NOT repeat.
+        repository.setDebtKind("d1", expectedRowVersion = 1L, debtKind = DebtKinds.REVOLVING).getOrThrow()
+        repository.setDebtKind("d1", expectedRowVersion = 2L, debtKind = DebtKinds.INSTALLMENT).getOrThrow()
+
+        val keys = handler.setKindCalls.mapNotNull { it.idempotencyKey }
+        assertEquals(2, keys.size)
+        assertEquals(2, keys.toSet().size)
     }
 
     // ── ADR-0049 §3.2 (slice 8d) member repayment proposals ─────────────────
@@ -616,6 +671,7 @@ private data class CreateDebtCall(val request: DebtCreateRequestDto, val idempot
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
 private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
+private data class SetKindCall(val publicId: String, val request: DebtKindSetRequestDto, val idempotencyKey: String?)
 private data class ForgiveCall(val publicId: String, val request: DebtForgiveCreateRequestDto, val idempotencyKey: String?)
 private data class ProposeProposalCall(
     val publicId: String,
@@ -648,6 +704,9 @@ private class DebtApiHandler : InvocationHandler {
     val repaymentCalls = mutableListOf<RepaymentCall>()
     val adjustmentCalls = mutableListOf<AdjustmentCall>()
     val voidCalls = mutableListOf<VoidCall>()
+    // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
+    val setKindCalls = mutableListOf<SetKindCall>()
+    var setKindResult: DebtDto? = null
     // ADR-0049 §3.2 (slice 8d) proposal-route recordings.
     val proposeCalls = mutableListOf<ProposeProposalCall>()
     val withdrawProposalCalls = mutableListOf<WithdrawProposalCall>()
@@ -769,6 +828,12 @@ private class DebtApiHandler : InvocationHandler {
             )
             proposalResult ?: proposalDto(publicId = values[1] as String)
         }
+        // forgive / setDebtKind are NOT proposals; split into a second helper so neither this
+        // dispatch nor invoke trips the CyclomaticComplexMethod / LongMethod gates as routes grow.
+        else -> debtFactWriteCall(name, values)
+    }
+
+    private fun debtFactWriteCall(name: String, values: Array<out Any?>): Any? = when (name) {
         "forgiveDebt" -> {
             forgiveCalls += ForgiveCall(
                 publicId = values[0] as String,
@@ -776,6 +841,14 @@ private class DebtApiHandler : InvocationHandler {
                 idempotencyKey = values[2] as String?,
             )
             forgiveResult ?: debtDto(publicId = values[0] as String)
+        }
+        "setDebtKind" -> {
+            setKindCalls += SetKindCall(
+                publicId = values[0] as String,
+                request = values[1] as DebtKindSetRequestDto,
+                idempotencyKey = values[2] as String?,
+            )
+            setKindResult ?: debtDto(publicId = values[0] as String)
         }
         else -> error("unexpected ApiService call: $name")
     }

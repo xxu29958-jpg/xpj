@@ -179,6 +179,7 @@
     <string name="debt_create_validation_error">请填写欠款对象和大于 0 的金额。</string>
     <string name="debt_create_added">已记录欠款。</string>
     <string name="debt_create_failed">保存失败，请稍后再试。</string>
+    <string name="debt_create_label_kind">还款类型（可选）</string>
 
     <!-- ADR-0049 P3b / ⑤c (slice ⑤c-2) 欠我的(应收)：跨账本债权人的只读发现面。每行复用 §1A 的
          communal MemberDebtRow（返回按钮复用 debt_list_topbar_back）。文案镜像 web ⑤c-3 receivables.html
@@ -232,6 +233,23 @@
     <string name="debt_action_adjustment_done">已记录调整。</string>
     <string name="debt_action_void_done">已作废这笔欠款。</string>
     <string name="debt_action_failed">操作失败，请稍后再试。</string>
+
+    <!-- ADR-0049 §7.0 / 8e-6e 外部债还款类型（影响“预计还清时间”的估算方式；仅外部债，成员债不分类）。
+         unspecified 默认/revolving 循环周转/installment 合同分期/one_off 一次性借款。 -->
+    <string name="debt_kind_label">还款类型</string>
+    <string name="debt_kind_hint">影响“预计还清时间”的估算</string>
+    <string name="debt_kind_edit">修改</string>
+    <string name="debt_kind_unspecified">未分类</string>
+    <string name="debt_kind_revolving">循环周转</string>
+    <string name="debt_kind_installment">分期还款</string>
+    <string name="debt_kind_one_off">一次性借款</string>
+    <string name="debt_kind_unspecified_desc">不确定就先这样，按实际进度估算还清时间</string>
+    <string name="debt_kind_revolving_desc">像信用卡那样循环借还</string>
+    <string name="debt_kind_installment_desc">固定期数、按合同分期还</string>
+    <string name="debt_kind_one_off_desc">一次借入、整笔归还</string>
+    <string name="debt_kind_sheet_title">选择还款类型</string>
+    <string name="debt_kind_sheet_body">不同类型会影响“预计还清时间”的估算方式。</string>
+    <string name="debt_kind_updated">已更新还款类型。</string>
 
     <!-- ADR-0049 §3.2 (slice 8d) + §7.0 (slice 8e-2) 成员欠款 repayment 收发箱：① 暖措辞（关系化，
          去核验/收账味）。成员债 = Communal 不是 Market；仅成员债改，外部债 debt_action_* 不动。 -->

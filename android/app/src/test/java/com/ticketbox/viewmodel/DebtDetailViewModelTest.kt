@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import kotlinx.coroutines.CompletableDeferred
@@ -277,6 +278,63 @@ class DebtDetailViewModelTest {
         viewModel.dismissFlash()
 
         assertNull(viewModel.state.value.flashMessage)
+    }
+
+    // ── ADR-0049 §7.0 / 8e-6e 还款类型纠正 ──────────────────────────────────
+
+    @Test
+    fun selectKindSendsOccKindAndSwapsFold() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1", rowVersion = 5L)))
+        repo.setKindResult = Result.success(sampleDebt("d1", rowVersion = 6L).copy(debtKind = DebtKinds.REVOLVING))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.selectKind(DebtKinds.REVOLVING)
+        advanceUntilIdle()
+
+        val call = repo.setKindCalls.single()
+        assertEquals("d1", call.publicId)
+        // OCC carrier = the loaded Debt's row_version.
+        assertEquals(5L, call.expectedRowVersion)
+        assertEquals(DebtKinds.REVOLVING, call.kind)
+        // Fold-after Debt swapped in (row_version advanced, new kind) + success flash.
+        assertEquals(6L, viewModel.state.value.debt?.rowVersion)
+        assertEquals(DebtKinds.REVOLVING, viewModel.state.value.debt?.debtKind)
+        assertTrue(viewModel.state.value.flashMessage != null)
+        assertNull(viewModel.state.value.error)
+    }
+
+    @Test
+    fun selectSameKindIsNoOpWithoutWrite() = runTest(dispatcher) {
+        // Selecting the already-current kind sends no request (avoids an idle row_version bump).
+        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1")))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.selectKind(DebtKinds.UNSPECIFIED)
+        advanceUntilIdle()
+
+        assertTrue(repo.setKindCalls.isEmpty())
+        assertNull(viewModel.state.value.flashMessage)
+    }
+
+    @Test
+    fun selectKindFailureSurfacesErrorBannerLeavingDebtUnchanged() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1", rowVersion = 5L)))
+        repo.setKindResult = Result.failure(RuntimeException("boom"))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.selectKind(DebtKinds.INSTALLMENT)
+        advanceUntilIdle()
+
+        // Failure → the screen-level error banner; the loaded Debt (kind + row_version) is unchanged.
+        assertTrue(viewModel.state.value.error != null)
+        assertEquals(DebtKinds.UNSPECIFIED, viewModel.state.value.debt?.debtKind)
+        assertEquals(5L, viewModel.state.value.debt?.rowVersion)
     }
 
     // ADR-0049 §5.2 (slice 8e-4) 两清庆祝边沿检测。
@@ -552,6 +610,8 @@ private data class WriteArgs(
     val reason: String?,
 )
 
+private data class KindArgs(val publicId: String, val expectedRowVersion: Long, val kind: String)
+
 private class FakeDebtDetailActions(
     private val canModify: Boolean = true,
     var getResult: Result<Debt> = Result.success(sampleDebt()),
@@ -560,6 +620,8 @@ private class FakeDebtDetailActions(
     val repaymentCalls = mutableListOf<WriteArgs>()
     val adjustmentCalls = mutableListOf<WriteArgs>()
     val voidCalls = mutableListOf<WriteArgs>()
+    val setKindCalls = mutableListOf<KindArgs>()
+    var setKindResult: Result<Debt> = Result.success(sampleDebt())
 
     /** When set, getDebt() stalls until completed — used to interleave a slow load. */
     var getGate: CompletableDeferred<Unit>? = null
@@ -604,6 +666,15 @@ private class FakeDebtDetailActions(
     ): Result<Debt> {
         voidCalls += WriteArgs(publicId, expectedRowVersion, null, reason)
         return writeResult
+    }
+
+    override suspend fun setDebtKind(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtKind: String,
+    ): Result<Debt> {
+        setKindCalls += KindArgs(publicId, expectedRowVersion, debtKind)
+        return setKindResult
     }
 }
 

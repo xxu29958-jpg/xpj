@@ -320,6 +320,8 @@ private fun DebtDraftForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.size(AppSpacing.compactGap))
+        DebtKindCreateField(selected = draft.kind, onSelect = viewModel::updateDraftKind)
         draft.validationError?.let { err ->
             Spacer(Modifier.size(AppSpacing.smallGap))
             Text(

@@ -4,6 +4,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
@@ -39,6 +40,12 @@ interface DebtActions {
         reason: String,
     ): Result<Debt>
     suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt>
+
+    // ADR-0049 §7.0 / 8e-6e: set / correct this external Debt's repayment-rhythm classification
+    // (debt_kind). [expectedRowVersion] is the §2.1 OCC carrier (the local Debt's row_version); the
+    // response is the fold-after Debt (a fresh row_version + the new debt_kind) the detail screen
+    // swaps in. Direct-only online; viewer role short-circuits before the network.
+    suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt>
 }
 
 /**
@@ -221,6 +228,27 @@ class DebtRepository(
                         reason = cleanReason,
                         expectedRowVersion = expectedRowVersion,
                     ),
+                    idempotencyKey = UUID.randomUUID().toString(),
+                ).toDomain()
+            }
+        }
+    }
+
+    override suspend fun setDebtKind(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtKind: String,
+    ): Result<Debt> {
+        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.setDebtKind(
+                    publicId = publicId,
+                    request = DebtKindSetRequestDto(
+                        debtKind = debtKind,
+                        expectedRowVersion = expectedRowVersion,
+                    ),
+                    // ADR-0042: single-use key — direct-only path, no offline replay.
                     idempotencyKey = UUID.randomUUID().toString(),
                 ).toDomain()
             }

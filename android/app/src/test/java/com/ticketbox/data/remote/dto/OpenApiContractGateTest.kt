@@ -114,6 +114,12 @@ class OpenApiContractGateTest {
         // ADR-0049 §3.7 / §4 (slice 8e-3) creditor-forgive body (expected_row_version only),
         // additionalProperties=false → forward check is the forbid protection.
         Pairing(DebtForgiveCreateRequestDto::class, "DebtForgiveCreateRequest"),
+        // ADR-0049 §7.0 / 8e-6e debt_kind correction setter body. additionalProperties=false → the
+        // forward check is the forbid protection; both fields (debt_kind / expected_row_version) are
+        // backend-`required`, so the reverse check needs them modeled (they are). DebtDto +
+        // DebtCreateRequestDto adopting debt_kind is silent here (DebtResponse/DebtCreateRequest both
+        // default it → not `required`, no reverse pressure; it IS a declared property → forward OK).
+        Pairing(DebtKindSetRequestDto::class, "DebtKindSetRequest"),
         // ADR-0049 §3.2 (slice 8d) member repayment-proposal surface. The response models all 15
         // MemberRepaymentProposalResponse properties (reverse check needs every required field); the
         // request bodies are additionalProperties=false → the forward check is the forbid protection,

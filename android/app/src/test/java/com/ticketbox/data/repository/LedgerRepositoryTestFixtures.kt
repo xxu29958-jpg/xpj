@@ -405,6 +405,11 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    override suspend fun setDebtKind(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.DebtKindSetRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
     override suspend fun forgiveDebt(
         publicId: String,
         request: com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto,

@@ -395,6 +395,9 @@ private class FakeRepayableDebtActions(
 
     override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> =
         Result.success(debt(publicId))
+
+    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> =
+        Result.success(debt(publicId))
 }
 
 private fun draft(
