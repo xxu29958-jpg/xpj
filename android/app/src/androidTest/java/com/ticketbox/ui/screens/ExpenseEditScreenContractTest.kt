@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -9,6 +10,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.ui.screens.expense.TAG_TAGS_FIELD
+import com.ticketbox.ui.screens.expense.TAG_VALUE_SCORE_FIELD
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import org.junit.Assert.assertEquals
@@ -52,9 +55,11 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("取消").performClick()
 
         composeRule.onNodeWithText("展开").performScrollTo().performClick()
-        composeRule.onNodeWithText("标签").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("qa").performScrollTo().performTextReplacement("家庭")
-        composeRule.onNodeWithText("值不值评分，1-5").performScrollTo()
+        // Locate the 「更多记录」inputs by stable testTag, not the Material3 label/value text node
+        // (which isn't reliably exposed in the semantics tree — was the flaky "标签" lookup).
+        composeRule.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag(TAG_TAGS_FIELD).performTextReplacement("家庭")
+        composeRule.onNodeWithTag(TAG_VALUE_SCORE_FIELD).performScrollTo()
         composeRule.onNodeWithText("查看识别原文").performScrollTo().performClick()
         composeRule.onNodeWithText("重新识别").performScrollTo().performClick()
         // 「保存」现在浮在底部操作栏（不在滚动流里），无需 performScrollTo——

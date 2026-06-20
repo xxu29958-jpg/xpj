@@ -12,12 +12,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
+
+// Stable test tags for the 「更多记录」inputs — instrumented tests target these instead of the
+// Material3 label/value text (not reliably in the semantics tree). Shared constants so the UI and
+// ExpenseEditScreenContractTest never drift on a magic string.
+internal const val TAG_TAGS_FIELD = "expense-edit-tags-field"
+internal const val TAG_VALUE_SCORE_FIELD = "expense-edit-value-score-field"
+internal const val TAG_REGRET_SCORE_FIELD = "expense-edit-regret-score-field"
 
 @Composable
 internal fun ExpenseEditMoreSection(
@@ -72,10 +80,13 @@ internal fun ExpenseEditMoreSection(
             }
 
             if (moreExpanded) {
+                // testTag: instrumented tests locate these by a stable tag, not a Material3
+                // OutlinedTextField label/value text node (which isn't reliably exposed in the
+                // semantics tree — the cause of ExpenseEditScreenContractTest's flaky "标签" lookup).
                 OutlinedTextField(
                     value = tags,
                     onValueChange = onTagsChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag(TAG_TAGS_FIELD),
                     label = { Text(stringResource(R.string.expense_edit_more_tags_label)) },
                     placeholder = { Text(stringResource(R.string.expense_edit_more_tags_placeholder)) },
                     enabled = !readOnly,
@@ -83,7 +94,7 @@ internal fun ExpenseEditMoreSection(
                 OutlinedTextField(
                     value = valueScoreText,
                     onValueChange = onValueScoreChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag(TAG_VALUE_SCORE_FIELD),
                     label = { Text(stringResource(R.string.expense_edit_more_value_score_label)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
@@ -92,7 +103,7 @@ internal fun ExpenseEditMoreSection(
                 OutlinedTextField(
                     value = regretScoreText,
                     onValueChange = onRegretScoreChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag(TAG_REGRET_SCORE_FIELD),
                     label = { Text(stringResource(R.string.expense_edit_more_regret_score_label)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
