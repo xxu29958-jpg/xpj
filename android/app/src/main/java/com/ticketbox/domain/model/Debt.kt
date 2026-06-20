@@ -27,6 +27,14 @@ data class Debt(
     val status: String,
     val sourceType: String,
     val sourceId: String?,
+    /**
+     * ADR-0049 §7.0 / 8e-6e external-debt repayment-rhythm classification (see [DebtKinds]). The
+     * server's authoritative at-rest value; the detail-screen type chip lets the owner correct it
+     * (`POST /api/debts/{id}/kind`). Defaults to [DebtKinds.UNSPECIFIED] so construction sites that
+     * don't care need not name it; the mapper carries the server value through. Meaningful only for
+     * external Debt (member debt is not classified) — it gates the backend payoff projection.
+     */
+    val debtKind: String = DebtKinds.UNSPECIFIED,
     val homeCurrencyCode: String,
     val originalCurrencyCode: String?,
     val originalAmountMinor: Long?,

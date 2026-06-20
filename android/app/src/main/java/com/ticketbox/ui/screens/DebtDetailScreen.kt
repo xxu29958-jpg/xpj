@@ -116,6 +116,10 @@ fun DebtDetailScreen(
                 }
             } else {
                 item { DebtSummaryCard(debt = loaded, currency = currency) }
+                // 8e-6e 还款类型（仅外部债）：当前分类卡 + open 债的 owner 点「修改」开选择器纠正（自带本地态）。
+                item {
+                    DebtKindCardWithEditor(debt = loaded, canModify = state.canModify, onSelect = viewModel::selectKind)
+                }
                 item { DebtActionPanel(debt = loaded, canModify = state.canModify, onAction = viewModel::openAction) }
             }
         }

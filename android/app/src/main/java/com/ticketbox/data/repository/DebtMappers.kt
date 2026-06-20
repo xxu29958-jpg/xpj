@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
+import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberRepaymentProposal
 
@@ -21,6 +22,7 @@ fun DebtDto.toDomain(): Debt = Debt(
     status = status,
     sourceType = sourceType,
     sourceId = sourceId,
+    debtKind = debtKind,
     homeCurrencyCode = homeCurrencyCode,
     originalCurrencyCode = originalCurrencyCode,
     originalAmountMinor = originalAmountMinor,
@@ -34,11 +36,14 @@ fun DebtDto.toDomain(): Debt = Debt(
 /**
  * A new external Debt to create (ADR-0049 §2). slice 8 captures the home-currency path: a
  * direction, the counterparty's display label, and the home-currency principal in cents.
+ * [debtKind] (8e-6e) is the optional repayment-rhythm classification the create form's picker sets;
+ * it defaults to [DebtKinds.UNSPECIFIED] so a form that doesn't touch it still creates a Debt.
  */
 data class DebtDraft(
     val direction: String,
     val counterpartyLabel: String,
     val principalAmountCents: Long,
+    val debtKind: String = DebtKinds.UNSPECIFIED,
 )
 
 fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
@@ -48,6 +53,7 @@ fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
     counterpartyLabel = counterpartyLabel.trim(),
     principalAmountCents = principalAmountCents,
     sourceType = DebtSourceTypes.MANUAL,
+    debtKind = debtKind,
 )
 
 /** ADR-0049 §3.2 (slice 8d) — map a member repayment proposal DTO to its domain model. */

@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +45,8 @@ data class DebtDraftUi(
     val direction: String = DebtDirections.I_OWE,
     val counterpartyLabel: String = "",
     val amountYuanInput: String = "",
+    // 8e-6e 还款类型（可选；默认 unspecified = 不分类）。仅外部债，create 透传到后端 debt_kind。
+    val kind: String = DebtKinds.UNSPECIFIED,
     val validationError: UiText? = null,
 ) {
     val isValid: Boolean
@@ -121,6 +124,10 @@ class DebtListViewModel(
         _state.update { it.copy(addDraft = it.addDraft.copy(amountYuanInput = value, validationError = null)) }
     }
 
+    fun updateDraftKind(value: String) {
+        _state.update { it.copy(addDraft = it.addDraft.copy(kind = value, validationError = null)) }
+    }
+
     fun resetDraft() {
         _state.update { it.copy(addDraft = DebtDraftUi(), isSubmitting = false, addSucceeded = false) }
     }
@@ -146,6 +153,7 @@ class DebtListViewModel(
                     direction = draft.direction,
                     counterpartyLabel = label,
                     principalAmountCents = amount,
+                    debtKind = draft.kind,
                 ),
             )
             result.fold(

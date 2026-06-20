@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import kotlinx.coroutines.CompletableDeferred
@@ -79,6 +80,37 @@ class DebtListViewModelTest {
         assertTrue(viewModel.state.value.flashMessage != null)
         assertEquals(false, viewModel.state.value.isSubmitting)
         assertTrue(repo.listCalls > listCallsAfterInit)
+    }
+
+    @Test
+    fun submitDraftCarriesSelectedKind() = runTest(dispatcher) {
+        // 8e-6e: the create form's kind picker flows into the DebtDraft (default unspecified → picked).
+        val repo = FakeDebtActions(createResult = Result.success(sampleDebt("created")))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("100")
+        viewModel.updateDraftKind(DebtKinds.INSTALLMENT)
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(DebtKinds.INSTALLMENT, repo.createDrafts.single().debtKind)
+    }
+
+    @Test
+    fun submitDraftDefaultsKindToUnspecified() = runTest(dispatcher) {
+        // No kind picked → the draft carries the default (unspecified) so an untouched form still creates.
+        val repo = FakeDebtActions(createResult = Result.success(sampleDebt("created")))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("100")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(DebtKinds.UNSPECIFIED, repo.createDrafts.single().debtKind)
     }
 
     @Test
@@ -314,6 +346,12 @@ private class FakeDebtActions(
         publicId: String,
         expectedRowVersion: Long,
         reason: String,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun setDebtKind(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtKind: String,
     ): Result<Debt> = Result.success(sampleDebt(publicId))
 }
 

@@ -277,6 +277,12 @@ private class FakeCreateDebtActions(
         expectedRowVersion: Long,
         reason: String,
     ): Result<Debt> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun setDebtKind(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtKind: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 }
 
 private class FakeCreateReportsActions(

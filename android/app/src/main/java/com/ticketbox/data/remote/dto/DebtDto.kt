@@ -41,6 +41,11 @@ data class DebtDto(
     val sourceType: String,
     @param:Json(name = "source_id")
     val sourceId: String? = null,
+    // 8e-6e external-debt repayment-rhythm classification (unspecified/revolving/installment/one_off;
+    // see DebtKinds). DEFAULTED — DebtResponse.debt_kind is defaulted (not `required`), so an older
+    // payload that omits it decodes to "unspecified" and the contract gate's reverse check is silent.
+    @param:Json(name = "debt_kind")
+    val debtKind: String = "unspecified",
     @param:Json(name = "home_currency_code")
     val homeCurrencyCode: String,
     @param:Json(name = "original_currency_code")
@@ -99,6 +104,12 @@ data class DebtCreateRequestDto(
     val principalAmountCents: Long,
     @param:Json(name = "source_type")
     val sourceType: String = "manual",
+    // 8e-6e optional repayment-rhythm classification (see DebtKinds). DEFAULTED — DebtCreateRequest
+    // defaults it server-side, so omitting it creates an `unspecified` Debt; the create form's picker
+    // overrides it. `debt_kind` is a declared schema property (additionalProperties=false → the
+    // contract gate's forward check passes only for declared fields).
+    @param:Json(name = "debt_kind")
+    val debtKind: String = "unspecified",
 )
 
 /**
@@ -149,6 +160,22 @@ data class DebtVoidCreateRequestDto(
  * of the schema (the contract gate's forward check is the forbid protection).
  */
 data class DebtForgiveCreateRequestDto(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+)
+
+/**
+ * Body for `POST /api/debts/{id}/kind` — set / correct an existing Debt's repayment-rhythm
+ * classification (ADR-0049 §7.0 / 8e-6e correction entry). [debtKind] is one of DebtKinds;
+ * [expectedRowVersion] is the §2.1 stale-intent OCC token (a reclassification bumps `row_version`,
+ * so two concurrent edits cannot both silently win) + the §3.6 fingerprint component. NOT
+ * fold-changing — `debt_kind` gates only the external-debt payoff projection. The backend marks
+ * this body `additionalProperties=false`, so the DTO field set must stay a subset of the schema
+ * (the contract gate's forward check is the forbid protection).
+ */
+data class DebtKindSetRequestDto(
+    @param:Json(name = "debt_kind")
+    val debtKind: String,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )

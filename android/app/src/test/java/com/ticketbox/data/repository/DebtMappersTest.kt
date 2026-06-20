@@ -4,6 +4,7 @@ import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
@@ -56,6 +57,35 @@ class DebtMappersTest {
         // ADR-0049 §3.7 (slice 8e-3): is_forgiven defaults absent → false; the true case (a forgiven
         // cleared Debt) is exercised end-to-end in DebtRepositoryTest.forgive…ReturnsForgivenFoldAfterDebt.
         assertFalse(debt.isForgiven)
+        // 8e-6e: debt_kind defaults absent → unspecified (DebtResponse defaults it, not required).
+        assertEquals(DebtKinds.UNSPECIFIED, debt.debtKind)
+    }
+
+    @Test
+    fun toDomainMapsDebtKind() {
+        // A non-default debt_kind (e.g. a bill_split Debt the owner reclassified to installment) maps
+        // through verbatim — the detail screen renders the server-authoritative kind, never derives it.
+        val debt = DebtDto(
+            publicId = "debt-3",
+            ledgerId = "owner",
+            direction = DebtDirections.I_OWE,
+            counterpartyType = DebtCounterpartyTypes.EXTERNAL,
+            counterpartyAccountId = null,
+            counterpartyLabel = "银行",
+            principalAmountCents = 120_000,
+            remainingAmountCents = 120_000,
+            paidAmountCents = 0,
+            status = DebtLinkStatuses.OPEN,
+            sourceType = DebtSourceTypes.MANUAL,
+            sourceId = null,
+            debtKind = DebtKinds.INSTALLMENT,
+            homeCurrencyCode = "CNY",
+            createdAt = "2026-06-15T00:00:00Z",
+            updatedAt = "2026-06-15T00:00:00Z",
+            rowVersion = 1,
+        ).toDomain()
+
+        assertEquals(DebtKinds.INSTALLMENT, debt.debtKind)
     }
 
     @Test
@@ -104,6 +134,20 @@ class DebtMappersTest {
         assertEquals(DebtSourceTypes.MANUAL, request.sourceType)
         assertEquals("小王", request.counterpartyLabel)
         assertEquals(12_345L, request.principalAmountCents)
+        // 8e-6e: an untouched draft carries the default kind (unspecified) into the create body.
+        assertEquals(DebtKinds.UNSPECIFIED, request.debtKind)
+    }
+
+    @Test
+    fun toCreateRequestCarriesSelectedKind() {
+        val request = DebtDraft(
+            direction = DebtDirections.I_OWE,
+            counterpartyLabel = "信用卡",
+            principalAmountCents = 80_000,
+            debtKind = DebtKinds.REVOLVING,
+        ).toCreateRequest()
+
+        assertEquals(DebtKinds.REVOLVING, request.debtKind)
     }
 
     @Test
