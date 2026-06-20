@@ -43,7 +43,10 @@ from app.services.debt_service._fold import (
     latest_fact_at,
 )
 from app.services.debt_service._forgive import forgive_debt
-from app.services.debt_service._installment import installment_payoff_date
+from app.services.debt_service._installment import (
+    installment_paid_count,
+    installment_payoff_date,
+)
 from app.services.debt_service._kind import set_debt_kind
 from app.services.debt_service._proposal import (
     confirm_repayment_proposal,
@@ -100,6 +103,7 @@ __all__ = [
     "get_repayment_draft_response",
     "get_repayment_proposal_response",
     "get_repayment_public_id_for_idempotency",
+    "installment_paid_count",
     "installment_payoff_date",
     "latest_fact_at",
     "list_debts",

@@ -116,6 +116,10 @@ class DebtResponse(BaseModel):
     installment_count: int | None = None
     installment_period_months: int | None = None
     installment_payoff_date: date | None = None
+    # §B: 已还期数, DERIVED from paid (floor of paid / per-period, clamped to count); None for
+    # non-installment. Defaulted like its siblings — the Android DebtDto adopts it without
+    # reddening the contract gate's reverse check.
+    installment_paid_count: int | None = None
     home_currency_code: str
     original_currency_code: str | None = None
     original_amount_minor: int | None = None

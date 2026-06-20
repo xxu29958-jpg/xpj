@@ -4400,6 +4400,17 @@
             ],
             "title": "Installment Count"
           },
+          "installment_paid_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Paid Count"
+          },
           "installment_payoff_date": {
             "anyOf": [
               {
@@ -9340,6 +9351,17 @@
               }
             ],
             "title": "Installment Count"
+          },
+          "installment_paid_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Paid Count"
           },
           "installment_payoff_date": {
             "anyOf": [
