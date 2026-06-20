@@ -1233,6 +1233,20 @@
         "title": "Body_post_csv_import_batch_api_imports_csv_post",
         "type": "object"
       },
+      "Body_post_parse_debt_bill_api_debts_parse_bill_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_post_parse_debt_bill_api_debts_parse_bill_post",
+        "type": "object"
+      },
       "Body_post_restore_web_income_plans__public_id__restore_post": {
         "properties": {
           "expected_row_version": {
@@ -3860,6 +3874,95 @@
           "expected_row_version"
         ],
         "title": "DebtAdjustmentCreateRequest",
+        "type": "object"
+      },
+      "DebtBillParseResponse": {
+        "description": "ADR-0049 §D 债务账单解析建议（瞬态，不落库、不建债）。\n\n一张「欠款截图」OCR 后的**建议**还款条款，用于预填建/编外部债表单。所有字段\n可空（缺字段=留给用户手填）；§8 红线：这是建议非事实，``source_text`` 是模型回的\n源文本片段（防编数字），用户在表单确认/改后才落账。未配视觉 provider 时全字段为空\n（回落手填），端点仍 200。",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "installment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Count"
+          },
+          "installment_period_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Period Months"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "per_period_amount_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Period Amount Cents"
+          },
+          "principal_amount_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Amount Cents"
+          },
+          "repayment_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repayment Day"
+          },
+          "source_text": {
+            "default": "",
+            "title": "Source Text",
+            "type": "string"
+          }
+        },
+        "title": "DebtBillParseResponse",
         "type": "object"
       },
       "DebtCreateRequest": {
@@ -12873,6 +12976,75 @@
           }
         },
         "summary": "Post Debt",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/parse-bill": {
+      "post": {
+        "operationId": "post_parse_debt_bill_api_debts_parse_bill_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_parse_debt_bill_api_debts_parse_bill_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillParseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Parse Debt Bill",
         "tags": [
           "debts"
         ]

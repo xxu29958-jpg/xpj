@@ -1,58 +1,22 @@
-"""LocalLlmOcrProvider response parsing — pure helpers + JSON decoders (leaf)."""
+"""LocalLlmOcrProvider response → ``OcrResult`` mapping (receipt-specific coercers).
+
+The generic OpenAI-envelope decoding (``extract_message_content`` /
+``parse_json_object``) lives in ``app.services.local_llm_vision``; this module
+owns only how a receipt's JSON object maps onto the expense draft fields.
+"""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
 from typing import Any
 
 from app.config import get_settings
-from app.errors import AppError
 from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
 from app.services.ocr_service._models import OcrResult
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc_assuming_local
-
-
-def _extract_message_content(response: dict[str, Any]) -> str:
-    choices = response.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise AppError("server_error", "本地大模型返回格式不正确。", status_code=500)
-    message = choices[0].get("message") if isinstance(choices[0], dict) else None
-    content = message.get("content") if isinstance(message, dict) else None
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(str(item.get("text", "")) for item in content if isinstance(item, dict))
-    raise AppError("server_error", "本地大模型没有返回文本内容。", status_code=500)
-
-
-def _parse_json_object(content: str) -> dict[str, Any]:
-    cleaned = content.strip()
-    if cleaned.startswith("```"):
-        cleaned = rewrap_code_fence(cleaned)
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start < 0 or end <= start:
-        raise AppError("server_error", "本地大模型没有返回 JSON。", status_code=500)
-    try:
-        payload = json.loads(cleaned[start : end + 1])
-    except json.JSONDecodeError as exc:
-        raise AppError("server_error", "本地大模型返回的 JSON 无法解析。", status_code=500) from exc
-    if not isinstance(payload, dict):
-        raise AppError("server_error", "本地大模型返回的 JSON 不是对象。", status_code=500)
-    return payload
-
-
-def rewrap_code_fence(content: str) -> str:
-    lines = content.splitlines()
-    if lines and lines[0].strip().startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].strip() == "```":
-        lines = lines[:-1]
-    return "\n".join(lines).strip()
 
 
 def _result_from_llm_json(payload: Mapping[str, object], timezone_name: str | None = None) -> OcrResult:

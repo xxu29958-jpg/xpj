@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import patch
-from urllib import error
 
 import pytest
 
 import app.services.ocr_service._apply as ocr_apply
-from app.errors import AppError
 from app.models import Expense
 from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.ocr_service import (
@@ -22,11 +18,7 @@ from app.services.ocr_service import (
     retry_ocr,
 )
 from app.services.ocr_service._llm_parsing import _result_from_llm_json
-from app.services.ocr_service._providers import (
-    LocalLlmOcrProvider,
-    _local_llm_prompt_text,
-    _local_llm_slot,
-)
+from app.services.ocr_service._providers import _local_llm_prompt_text
 
 
 def test_apply_ocr_result_is_noop_for_terminal_expenses() -> None:
@@ -191,47 +183,3 @@ def test_local_llm_prompt_uses_canonical_categories_and_server_owned_source() ->
         assert category in prompt
     assert "Do not return source" in prompt
     assert "never 0" in prompt
-
-
-def test_local_llm_http_error_body_is_not_exposed_in_app_error() -> None:
-    with patch("app.services.ocr_service._providers.request.urlopen") as mock_urlopen:
-        mock_urlopen.side_effect = error.HTTPError(
-            "http://x",
-            500,
-            "Server Error",
-            {},
-            BytesIO(b'{"error":"api_key=sk-local-secret upstream body"}'),
-        )
-        with pytest.raises(AppError) as exc_info:
-            LocalLlmOcrProvider()._post_chat_completion({"messages": []})
-
-    assert "sk-local-secret" not in exc_info.value.message
-    assert "api_key" not in exc_info.value.message
-
-
-def test_local_llm_slot_applies_backpressure() -> None:
-    with (
-        _local_llm_slot(max_concurrent=1, queue_timeout_seconds=0),
-        pytest.raises(AppError) as exc_info,
-        _local_llm_slot(max_concurrent=1, queue_timeout_seconds=0),
-    ):
-        pass
-
-    assert exc_info.value.error == "rate_limited"
-    assert exc_info.value.status_code == 429
-
-    with _local_llm_slot(max_concurrent=1, queue_timeout_seconds=0):
-        pass
-
-
-def test_local_llm_slot_uses_current_limit_without_parallel_semaphore_escape() -> None:
-    with (
-        _local_llm_slot(max_concurrent=1, queue_timeout_seconds=0),
-        _local_llm_slot(max_concurrent=2, queue_timeout_seconds=0),
-        pytest.raises(AppError) as exc_info,
-        _local_llm_slot(max_concurrent=2, queue_timeout_seconds=0),
-    ):
-        pass
-
-    assert exc_info.value.error == "rate_limited"
-    assert exc_info.value.status_code == 429

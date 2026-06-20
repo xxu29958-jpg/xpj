@@ -27,6 +27,7 @@ from app.routes import (
     budget_advisor,
     budgets,
     dashboard,
+    debt_bills,
     debts,
     duplicates,
     exchange_rates,
@@ -288,6 +289,7 @@ app.include_router(budget_advisor.router)
 app.include_router(income_plans.router)
 app.include_router(goals.router)
 app.include_router(debts.router)
+app.include_router(debt_bills.router)
 app.include_router(repayment_drafts.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)

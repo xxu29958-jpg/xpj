@@ -70,6 +70,9 @@ class Settings:
     local_llm_timeout_seconds: int
     local_llm_max_concurrent: int
     local_llm_queue_timeout_seconds: float
+    # ADR-0049 §D 债务账单解析 provider。默认 'empty'=不调模型、回落手填；'mock'=dev/test；
+    # 'local_llm'=复用 LOCAL_LLM_* 同一台自托管视觉模型（无独立 LLM 配置）。
+    debt_bill_provider: str
     budget_advisor_provider: str
     budget_advisor_base_url: str
     budget_advisor_api_key: str
@@ -313,6 +316,9 @@ def get_settings() -> Settings:
         # bound how long callers wait for a slot.
         local_llm_max_concurrent=max(1, int(os.getenv("LOCAL_LLM_MAX_CONCURRENT", "2"))),
         local_llm_queue_timeout_seconds=max(0.0, float(os.getenv("LOCAL_LLM_QUEUE_TIMEOUT_SECONDS", "5"))),
+        # ADR-0049 §D: 债务账单解析 provider，默认 'empty'（未配视觉模型即回落手填）。
+        # 选 'local_llm' 复用上面的 LOCAL_LLM_* 配置（同一台自托管视觉模型）。
+        debt_bill_provider=os.getenv("DEBT_BILL_PROVIDER", "empty").strip().lower(),
         # ADR-0036: v1.1 AI budget advisor provider. Default 'empty' = no AI
         # call, local rules only. 'openai_compat' covers ollama / vLLM /
         # llama.cpp / LM Studio locally + OpenAI / DeepSeek / SiliconFlow /
