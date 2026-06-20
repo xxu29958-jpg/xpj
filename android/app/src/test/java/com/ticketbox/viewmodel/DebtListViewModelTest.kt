@@ -99,6 +99,26 @@ class DebtListViewModelTest {
     }
 
     @Test
+    fun submitDraftCarriesInstallmentCountForInstallmentKind() = runTest(dispatcher) {
+        // §B: the parsed 分期期数 flows into the DebtDraft (the toCreateRequest chokepoint then gates it
+        // on kind — covered in DebtMappersTest); here we只验证 VM 把 parsedInstallmentCount 接进了草稿。
+        val repo = FakeDebtActions(createResult = Result.success(sampleDebt("created")))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.updateDraftCounterparty("花呗")
+        viewModel.updateDraftAmount("1200")
+        viewModel.updateDraftKind(DebtKinds.INSTALLMENT)
+        viewModel.updateDraftInstallmentCount("12")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        val draft = repo.createDrafts.single()
+        assertEquals(DebtKinds.INSTALLMENT, draft.debtKind)
+        assertEquals(12, draft.installmentCount)
+    }
+
+    @Test
     fun submitDraftDefaultsKindToUnspecified() = runTest(dispatcher) {
         // No kind picked → the draft carries the default (unspecified) so an untouched form still creates.
         val repo = FakeDebtActions(createResult = Result.success(sampleDebt("created")))

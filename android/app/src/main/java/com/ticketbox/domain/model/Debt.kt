@@ -35,6 +35,16 @@ data class Debt(
      * external Debt (member debt is not classified) — it gates the backend payoff projection.
      */
     val debtKind: String = DebtKinds.UNSPECIFIED,
+    /**
+     * §B 完整 installment 合约排期。[installmentCount]（期数）/ [installmentPeriodMonths]（周期月数）是
+     * at-rest 排期，仅 installment 外部债非空；[installmentPayoffDate]（ISO 日期串）与 [installmentPaidCount]
+     * 是后端 DERIVED 只读派生（建账+期数×周期 的合约还清日 / floor(已还÷每期) 的已还期数），客户端纯读、绝不
+     * 重算。全部默认 `null`（非 installment 或旧 payload）；只在 [isInstallmentScheduled] 为真时有意义。
+     */
+    val installmentCount: Long? = null,
+    val installmentPeriodMonths: Long? = null,
+    val installmentPayoffDate: String? = null,
+    val installmentPaidCount: Long? = null,
     val homeCurrencyCode: String,
     val originalCurrencyCode: String?,
     val originalAmountMinor: Long?,
@@ -81,4 +91,13 @@ data class Debt(
 
     /** The complement of [viewerIsDebtor] for a member Debt (may confirm / reject, §3.2); null when role is unknown. */
     val viewerIsCreditor: Boolean? get() = viewerIsDebtor?.let { !it }
+
+    /**
+     * §B 完整 installment：这笔债是否是「分期 + 已有排期」——即 [debtKind] 为 installment 且 [installmentCount]
+     * 非空。后端只在该条件成立时才派生 [installmentPayoffDate] / [installmentPaidCount]，故详情屏据此 gate 分期
+     * 计划卡的渲染。注意：完成措辞（已还清）必须 gate 在 [isCleared]，绝不用「已还期数==总期数」——提额调整会让
+     * 已还期数达到 N/N 而剩余仍 > 0（后端 installment_paid_count docstring）。
+     */
+    val isInstallmentScheduled: Boolean
+        get() = debtKind == DebtKinds.INSTALLMENT && installmentCount != null
 }

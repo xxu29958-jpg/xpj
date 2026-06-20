@@ -251,6 +251,21 @@
     <string name="debt_kind_sheet_body">不同类型会影响“预计还清时间”的估算方式。</string>
     <string name="debt_kind_updated">已更新还款类型。</string>
 
+    <!-- ADR-0049 §B 完整 installment：① 新建外部债选「分期还款」后显示的可选期数输入；② 详情屏分期计划卡
+         （还清日 / 已还期数进度 / 每期估算）。仅外部 installment 债。还清日是合约确定值（建账+期数×周期），
+         不带速率「前后」措辞；每期金额是无息估算（本金÷期数），明确标「估算不含手续费」不误导。
+         ⚠ debt_installment_payoff 与 /web 的 backend/app/routes/web_debt_goals.py:150 f-string
+         「按分期合约，预计 {year} 年 {month} 月还清」**逐字同步**（含全角「，」、数字两侧半角空格）；改一端必同步另一端
+         （[[feedback_three_surface_visual_sync]]，目前无机器门守护这条字面值）。 -->
+    <string name="debt_create_label_installment_count">分期期数（可选）</string>
+    <string name="debt_create_installment_count_hint">填了就按每月一期排出还清日；留空则先不排期。</string>
+    <string name="debt_installment_card_title">分期计划</string>
+    <string name="debt_installment_schedule_monthly">共 %1$d 期 · 每月一期</string>
+    <string name="debt_installment_schedule_periodic">共 %1$d 期 · 每 %2$d 个月一期</string>
+    <string name="debt_installment_progress">已还 %1$d / %2$d 期</string>
+    <string name="debt_installment_payoff">按分期合约，预计 %1$d 年 %2$d 月还清</string>
+    <string name="debt_installment_per_period">每期约 %1$s · 估算不含手续费</string>
+
     <!-- ADR-0049 §3.2 (slice 8d) + §7.0 (slice 8e-2) 成员欠款 repayment 收发箱：① 暖措辞（关系化，
          去核验/收账味）。成员债 = Communal 不是 Market；仅成员债改，外部债 debt_action_* 不动。 -->
     <string name="debt_proposal_debtor_title">把我那份补上</string>
