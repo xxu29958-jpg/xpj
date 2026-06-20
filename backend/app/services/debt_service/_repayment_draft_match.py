@@ -47,10 +47,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt
+from app.models import Debt, RepaymentDraft
 from app.services.debt_service._fold import compute_remaining
 
 # Label match strength: a strictly-better strength wins; a tie at the best strength is
@@ -159,3 +160,83 @@ def suggest_debt_public_id(
     if len(feasible) == 1:
         return feasible[0].public_id
     return None
+
+
+def learned_debt_for_signature(
+    db: Session,
+    *,
+    account_id: int,
+    source: str,
+    merchant_label: str | None,
+    feasible_ids: set[str],
+) -> str | None:
+    """Cold-start repayment-matching "learning" tiebreaker (ADR-0049 §杠杆③ / 设计 §E first cut).
+
+    When the confident label/amount matcher above stays silent, fall back to what THIS account
+    has historically confirmed for the same capture signature ``(account, source, normalized
+    label)``: the still-feasible Debt every matching confirmed draft pointed at. Pure cold-start —
+    NO new table, NO scoring/threshold: it reads ``committed_debt_public_id`` straight off the
+    account's own already-confirmed :class:`RepaymentDraft` rows (set on confirm). It self-improves
+    as the user confirms more captures; nothing waits on accumulated production data.
+
+    Redlines:
+    - **account-scoped** (``created_by_account_id``), never tenant-scoped — repayment capture is
+      personal (your phone's notifications); a family member's confirmations must not pre-select
+      for you (§8 / privacy).
+    - **still-feasible only** (``committed_debt_public_id IN feasible_ids``): a Debt since cleared /
+      voided / driven infeasible by the captured amount is never suggested — same staleness redline
+      as the ephemeral matcher (a suggestion is not a fact).
+    - **ambiguity → silence**: if the signature has confirmed to ≥2 distinct still-feasible Debts
+      (e.g. a generic "信用卡" label split across cards), suggest nothing rather than guess the
+      wrong card ("撞键当歧义闭嘴"). Reuses the matcher's ``_normalize_label`` (no second
+      normalization, so capture-side and learn-side keys always agree).
+    """
+    if not feasible_ids:
+        return None
+    target = _normalize_label(merchant_label)
+    rows = db.execute(
+        select(RepaymentDraft.merchant_label, RepaymentDraft.committed_debt_public_id)
+        .where(RepaymentDraft.created_by_account_id == account_id)
+        .where(RepaymentDraft.source == source)
+        .where(RepaymentDraft.status == "confirmed")
+        .where(RepaymentDraft.committed_debt_public_id.in_(feasible_ids))
+    ).all()
+    distinct = {
+        committed_id
+        for label, committed_id in rows
+        if _normalize_label(label) == target
+    }
+    return next(iter(distinct)) if len(distinct) == 1 else None
+
+
+def suggest_debt_for_draft(
+    db: Session,
+    *,
+    account_id: int,
+    source: str,
+    merchant_label: str | None,
+    amount_cents: int,
+    candidates: list[RepaymentMatchCandidate],
+) -> str | None:
+    """The inbox's suggested Debt: the confident label/amount match (slice 3b), or — when that
+    stays silent — the cold-start learned target for this account's capture signature (设计 §E).
+
+    The confident matcher always wins (a clear label/amount match beats a remembered habit); the
+    learned fallback only fills the gap the matcher leaves, over the SAME feasible candidate set,
+    so a suggested ``public_id`` is always something the user could also pick manually.
+    """
+    confident = suggest_debt_public_id(
+        amount_cents=amount_cents, merchant_label=merchant_label, candidates=candidates
+    )
+    if confident is not None:
+        return confident
+    feasible_ids = {
+        c.public_id for c in candidates if amount_cents <= c.remaining_amount_cents
+    }
+    return learned_debt_for_signature(
+        db,
+        account_id=account_id,
+        source=source,
+        merchant_label=merchant_label,
+        feasible_ids=feasible_ids,
+    )
