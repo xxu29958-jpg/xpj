@@ -14,13 +14,16 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 
 from app.models import Debt
-from app.services.debt_service import installment_payoff_date
+from app.services.debt_service import installment_paid_count, installment_payoff_date
 from tests.debt_repayment_goal_helpers import (
+    _adjust_debt,
     _backdate_debt_created,
     _clear_debt,
     _create_debt_goal,
     _create_external_debt,
     _idem,
+    _insert_forgiveness_fact,
+    _repay_debt,
 )
 
 
@@ -77,6 +80,7 @@ def test_non_installment_debt_has_null_schedule(client: TestClient, *, identity)
     assert debt["installment_count"] is None
     assert debt["installment_period_months"] is None
     assert debt["installment_payoff_date"] is None
+    assert debt["installment_paid_count"] is None
 
 
 def test_create_installment_count_requires_installment_kind(client: TestClient, *, identity) -> None:
@@ -283,3 +287,113 @@ def test_reclassified_debt_response_hides_schedule_fields(client: TestClient, *,
     assert fetched["installment_count"] is None
     assert fetched["installment_period_months"] is None
     assert fetched["installment_payoff_date"] is None
+    assert fetched["installment_paid_count"] is None
+
+
+# ── 已还期数 (installment_paid_count, DERIVED from paid) ────────────────────────
+
+
+def test_installment_paid_count_floors_whole_periods() -> None:
+    # per-period = principal // count = 10000 // 4 = 2500; paid 6000 covers 2 whole periods plus a
+    # partial one → floor to 2 (a half-paid period does not advance the counter).
+    debt = Debt(
+        debt_kind="installment", installment_count=4, installment_period_months=1,
+        principal_amount_cents=10000,
+    )
+    assert installment_paid_count(debt, paid=6000) == 2
+
+
+def test_installment_paid_count_clamps_to_total() -> None:
+    # An over-repayment (paid 12500 = 5 periods of 2500) must not report progress beyond the 4 total
+    # 期数 — clamp to installment_count.
+    debt = Debt(
+        debt_kind="installment", installment_count=4, installment_period_months=1,
+        principal_amount_cents=10000,
+    )
+    assert installment_paid_count(debt, paid=12500) == 4
+
+
+def test_installment_paid_count_gated_on_debt_kind() -> None:
+    # Same INERT-after-reclassify gate as the payoff date: a now-revolving debt that still carries the
+    # schedule columns reports None, not a stale period count; flipping back to installment revives it.
+    debt = Debt(
+        debt_kind="revolving", installment_count=4, installment_period_months=1,
+        principal_amount_cents=10000,
+    )
+    assert installment_paid_count(debt, paid=5000) is None
+    debt.debt_kind = "installment"
+    assert installment_paid_count(debt, paid=5000) == 2
+
+
+def test_installment_paid_count_degenerate_per_zero_is_zero() -> None:
+    # principal < count → per-period floors to 0; guard the divide (a ZeroDivisionError would surface
+    # as a 500) and report no whole period rather than crash.
+    debt = Debt(
+        debt_kind="installment", installment_count=10, installment_period_months=1,
+        principal_amount_cents=3,
+    )
+    assert installment_paid_count(debt, paid=3) == 0
+
+
+def test_installment_paid_count_in_response_tracks_repayments(client: TestClient, *, identity) -> None:
+    # End-to-end: the per-Debt response derives 已还期数 from the FOLDED paid (compute_paid), so a real
+    # 5000 repayment on a 10000/4 schedule (per-period 2500) reports 2 periods paid.
+    debt = _create_external_debt(
+        client, identity.app_headers, debt_kind="installment", installment_count=4,
+        principal_amount_cents=10000,
+    )
+    _repay_debt(client, identity.app_headers, debt, amount_cents=5000)
+    fetched = _get_debt(client, identity.app_headers, debt["public_id"])
+    assert fetched["installment_paid_count"] == 2
+
+
+def test_installment_paid_count_forgiveness_does_not_inflate(client: TestClient, *, identity) -> None:
+    # 已还期数 is REAL money repaid, not principal-minus-remaining: a forgiveness reduces remaining
+    # without cash, so it must NOT advance the counter. Repay 1 period (2500), then forgive 5000 — the
+    # count stays 1 (paid 口径), where a remaining-based count would wrongly read 3.
+    debt = _create_external_debt(
+        client, identity.app_headers, debt_kind="installment", installment_count=4,
+        principal_amount_cents=10000,
+    )
+    _repay_debt(client, identity.app_headers, debt, amount_cents=2500)
+    _insert_forgiveness_fact(debt["public_id"], amount_cents=5000, created_at=datetime(2026, 1, 1, tzinfo=UTC))
+    fetched = _get_debt(client, identity.app_headers, debt["public_id"])
+    assert fetched["installment_paid_count"] == 1
+
+
+def test_installment_paid_count_ignores_adjustment(client: TestClient, *, identity) -> None:
+    # 已还期数 tracks the ORIGINAL contract (principal 10000 / 4 = per-period 2500), NOT the live
+    # adjusted obligation — mirroring how the payoff DATE is contract-fixed. A +10000 adjustment raises
+    # remaining to 15000, but a 5000 repayment is still 2 of the original installments, not
+    # 5000 // ((5000+15000)/4) = 1. Pins the documented adjustment-independence tradeoff.
+    debt = _create_external_debt(
+        client, identity.app_headers, debt_kind="installment", installment_count=4,
+        principal_amount_cents=10000,
+    )
+    adjusted = _adjust_debt(client, identity.app_headers, debt, amount_cents=10000)
+    _repay_debt(client, identity.app_headers, adjusted, amount_cents=5000)
+    fetched = _get_debt(client, identity.app_headers, debt["public_id"])
+    assert fetched["remaining_amount_cents"] == 15000  # 10000 principal + 10000 adj − 5000 paid
+    assert fetched["installment_paid_count"] == 2  # original-contract periods, adjustment ignored
+
+
+def test_installment_paid_count_installment_kind_without_count_is_none() -> None:
+    # The second gate clause: debt_kind=='installment' but NO schedule (installment_count is None) must
+    # return None, not crash. Dropping `or installment_count is None` would do `principal // None` →
+    # TypeError → 500. The debt_kind-only gate test cannot reach this (it uses revolving WITH a count).
+    debt = Debt(
+        debt_kind="installment", installment_count=None, installment_period_months=None,
+        principal_amount_cents=10000,
+    )
+    assert installment_paid_count(debt, paid=5000) is None
+
+
+def test_installment_paid_count_in_repayment_response_body(client: TestClient, *, identity) -> None:
+    # The 201 repayment response (RepaymentCreateResponse, a second DebtResponse assembly site) must
+    # carry the freshly-folded 已还期数, not just a later GET. Pins the `**debt.model_dump()` spread.
+    debt = _create_external_debt(
+        client, identity.app_headers, debt_kind="installment", installment_count=4,
+        principal_amount_cents=10000,
+    )
+    body = _repay_debt(client, identity.app_headers, debt, amount_cents=5000)
+    assert body["installment_paid_count"] == 2

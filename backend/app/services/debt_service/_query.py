@@ -28,7 +28,10 @@ from app.services.debt_service._fold import (
     has_forgiveness,
 )
 from app.services.debt_service._guards import proposal_debtor_creditor
-from app.services.debt_service._installment import installment_payoff_date
+from app.services.debt_service._installment import (
+    installment_paid_count,
+    installment_payoff_date,
+)
 
 
 def participant_can_access(
@@ -209,6 +212,9 @@ def debt_response(
         installment_count=debt.installment_count if is_installment else None,
         installment_period_months=debt.installment_period_months if is_installment else None,
         installment_payoff_date=installment_payoff_date(debt),
+        # §B: 已还期数 — DERIVED from the already-folded ``paid`` (no extra query). Gated by the
+        # function itself; the explicit ``is_installment`` mirrors the sibling fields' gate style.
+        installment_paid_count=installment_paid_count(debt, paid=paid) if is_installment else None,
         home_currency_code=debt.home_currency_code,
         original_currency_code=debt.original_currency_code,
         original_amount_minor=debt.original_amount_minor,
