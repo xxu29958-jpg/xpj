@@ -185,6 +185,12 @@ def get_debt(db: Session, *, tenant_id: str, public_id: str) -> Debt:
 def debt_response(
     debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = False
 ) -> DebtResponse:
+    # §B: gate ALL schedule fields on debt_kind. ``set_debt_kind`` leaves the columns populated when
+    # reclassifying AWAY from installment, so reading them raw would expose stale installment metadata
+    # on a now-revolving/one_off debt. Gating the whole shape (count + period + the already-gated
+    # payoff date) keeps a non-installment response clean — matching the schema's "None for
+    # non-installment" contract.
+    is_installment = debt.debt_kind == "installment"
     return DebtResponse(
         public_id=debt.public_id,
         ledger_id=debt.tenant_id,
@@ -199,9 +205,9 @@ def debt_response(
         source_type=debt.source_type,
         source_id=debt.source_id,
         debt_kind=debt.debt_kind,
-        # §B: the stored schedule + the derived deterministic payoff date (None for non-installment).
-        installment_count=debt.installment_count,
-        installment_period_months=debt.installment_period_months,
+        # §B: the stored schedule + the derived deterministic payoff date, all None for non-installment.
+        installment_count=debt.installment_count if is_installment else None,
+        installment_period_months=debt.installment_period_months if is_installment else None,
         installment_payoff_date=installment_payoff_date(debt),
         home_currency_code=debt.home_currency_code,
         original_currency_code=debt.original_currency_code,

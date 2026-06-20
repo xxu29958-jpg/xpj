@@ -240,12 +240,18 @@ def external_payoff_kpi(
     # falls through to the suppress / velocity branches below as before.
     installment_dates = [installment_payoff_date(debt) for debt in non_voided_debts]
     if all(payoff is not None for payoff in installment_dates):
-        # Suppress on a SETTLED plan (aggregate remaining <= 0), mirroring the velocity path's
-        # ``remaining_now <= 0`` guard — an already-cleared installment goal must not echo a stale
-        # contract date as if it were still a live projection. Echo only the user's deadline.
-        if sum(compute_remaining(db, debt) for debt in non_voided_debts) <= 0:
+        # Only OPEN installments (remaining > 0) bound the plan's payoff: a debt repaid early no
+        # longer contributes a balance, so its (possibly later) original contract date must NOT push
+        # ``projected`` / ``three_state`` out. When EVERY installment is settled the list is empty →
+        # suppress (mirror the velocity path's ``remaining_now <= 0`` guard), echoing only the deadline.
+        open_dates = [
+            payoff
+            for debt, payoff in zip(non_voided_debts, installment_dates, strict=True)
+            if compute_remaining(db, debt) > 0
+        ]
+        if not open_dates:
             return ExternalPayoffKpi(None, None, target_date, None, None)
-        projected = max(installment_dates)
+        projected = max(open_dates)
         return ExternalPayoffKpi(
             tracking_days=None,
             projected_payoff_date=projected,

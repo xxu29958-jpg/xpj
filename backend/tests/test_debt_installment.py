@@ -243,3 +243,43 @@ def test_installment_count_over_cap_rejected(client: TestClient, *, identity) ->
         },
     )
     assert response.status_code == 422
+
+
+def test_cleared_installment_excluded_from_payoff_max(client: TestClient, *, identity) -> None:
+    # Codex P2: an early-repaid installment with a LATER contract date must NOT push the plan payoff
+    # out — only OPEN installments (remaining > 0) bound the deterministic max.
+    open_debt = _create_external_debt(
+        client, identity.app_headers, debt_kind="installment", installment_count=3
+    )
+    cleared_debt = _create_external_debt(
+        client, identity.app_headers, debt_kind="installment", installment_count=12
+    )
+    _backdate_debt_created(open_debt["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # → 2026-04-10
+    _backdate_debt_created(cleared_debt["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # contract → 2027-01-10
+    _clear_debt(client, identity.app_headers, cleared_debt)  # fully repaid → remaining 0
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="一笔已清分期",
+        debt_public_ids=[open_debt["public_id"], cleared_debt["public_id"]],
+    ).json()
+    block = _payoff_block(client, identity.app_headers, goal["public_id"])
+    # max over OPEN only → the open debt's 2026-04-10, NOT the cleared debt's later 2027-01-10.
+    assert block["projected_payoff_date"] == "2026-04-10"
+
+
+def test_reclassified_debt_response_hides_schedule_fields(client: TestClient, *, identity) -> None:
+    # Codex P2: reclassifying installment→revolving leaves the columns populated (set_debt_kind), but
+    # the response must report a clean non-installment shape — ALL schedule fields None, not just payoff.
+    debt = _create_external_debt(
+        client, identity.app_headers, debt_kind="installment", installment_count=6
+    )
+    response = client.post(
+        f"/api/debts/{debt['public_id']}/kind",
+        headers=_idem(identity.app_headers),
+        json={"debt_kind": "revolving", "expected_row_version": debt["row_version"]},
+    )
+    assert response.status_code == 200, response.json()
+    fetched = _get_debt(client, identity.app_headers, debt["public_id"])
+    assert fetched["debt_kind"] == "revolving"
+    assert fetched["installment_count"] is None
+    assert fetched["installment_period_months"] is None
+    assert fetched["installment_payoff_date"] is None
