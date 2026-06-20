@@ -50,7 +50,7 @@ from app.services.currency_common import home_currency_code
 from app.services.debt_service._repayment import record_repayment
 from app.services.debt_service._repayment_draft_match import (
     list_repayment_match_candidates,
-    suggest_debt_public_id,
+    suggest_debt_for_draft,
 )
 from app.services.time_service import ensure_utc, now_utc
 
@@ -254,9 +254,12 @@ def list_repayment_drafts(
             repayment_draft_response(
                 draft,
                 suggested_debt_public_id=(
-                    suggest_debt_public_id(
-                        amount_cents=draft.amount_cents,
+                    suggest_debt_for_draft(
+                        db,
+                        account_id=draft.created_by_account_id,
+                        source=draft.source,
                         merchant_label=draft.merchant_label,
+                        amount_cents=draft.amount_cents,
                         candidates=candidates,
                     )
                     if draft.status == "pending"
@@ -436,9 +439,12 @@ def list_repayment_draft_audit_for_account(
                 candidates_by_tenant[draft.tenant_id] = list_repayment_match_candidates(
                     db, tenant_id=draft.tenant_id
                 )
-            suggested = suggest_debt_public_id(
-                amount_cents=draft.amount_cents,
+            suggested = suggest_debt_for_draft(
+                db,
+                account_id=draft.created_by_account_id,
+                source=draft.source,
                 merchant_label=draft.merchant_label,
+                amount_cents=draft.amount_cents,
                 candidates=candidates_by_tenant[draft.tenant_id],
             )
             suggested_by_draft[draft.id] = suggested
