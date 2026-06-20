@@ -18,7 +18,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
@@ -58,7 +58,7 @@ fun FamilyMembersScreen(
     onBack: () -> Unit,
     onMembershipChanged: () -> Unit = {},
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     var pendingAction by remember { mutableStateOf<FamilyMemberAction?>(null) }
     val canManageMembers = currentRole == LEDGER_ROLE_OWNER && viewModel.deviceIsOwner()
 
