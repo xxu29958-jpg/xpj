@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import re
 import subprocess
+import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -140,9 +143,13 @@ def is_backup_valid(file_name: str) -> bool:
 def create_manual_backup() -> BackupEntry:
     """Snapshot the live database into ``backups/`` via ``pg_dump -Fc``.
 
-    Raises :class:`AppError` on a missing ``pg_dump`` binary or a failed dump.
+    Takes the backup concurrency lock (BUG-2): if a scheduled task or another
+    manual backup is already running, raises ``backup_in_progress`` (409) and the
+    operator simply retries. Raises :class:`AppError` on a missing ``pg_dump``
+    binary or a failed dump.
     """
-    return _create_backup(prefix="ticketbox-manual", kind="manual")
+    with _backup_lock():
+        return _run_pg_dump(prefix="ticketbox-manual", kind="manual")
 
 
 def create_pre_upgrade_backup() -> BackupEntry:
@@ -151,11 +158,79 @@ def create_pre_upgrade_backup() -> BackupEntry:
     so the pre-migration restore point is identifiable. Raises :class:`AppError` on a
     missing ``pg_dump`` binary or a failed dump (the startup gate turns that into a
     fail-closed abort — see ``app.database._backup_before_upgrade``).
+
+    Deliberately does NOT take the backup concurrency lock: this is a pure dump
+    (no rotation, so it cannot cause the BUG-2 rotation race) that runs
+    single-threaded during startup and must be fail-closed. Taking the lock would
+    let a leftover sentinel from a crashed run stall a legitimate migration — a
+    startup-brick class we refuse to introduce. A concurrent scheduled dump is
+    harmless: both produce independent archives and only the scheduled job rotates.
     """
-    return _create_backup(prefix="ticketbox-pre-upgrade", kind="pre-upgrade")
+    return _run_pg_dump(prefix="ticketbox-pre-upgrade", kind="pre-upgrade")
 
 
-def _create_backup(*, prefix: str, kind: str) -> BackupEntry:
+# ── Concurrency guard (BUG-2) ────────────────────────────────────────────────
+# The Owner Console (``create_manual_backup``) and the scheduled Windows task
+# (``backend/scripts/backup_database.ps1``) both write into the same ``backups/``
+# directory. When two backup jobs overlap, their rotation/prune steps race on the
+# dump files and the loser errors out (benign — no data loss, but the task result
+# goes red). A shared sentinel lock file serializes backup *jobs* across both the
+# Python and PowerShell entry points; the PowerShell side honours the same file
+# name and TTL (see ``backup_database.ps1``). The startup pre-migration snapshot
+# is deliberately unlocked (see ``create_pre_upgrade_backup``).
+_LOCK_NAME = ".backup.lock"
+# A pg_dump of a personal-finance database finishes in seconds; a lock older than
+# this can only be a crashed job, so it is reclaimed rather than blocking forever.
+_LOCK_STALE_SECONDS = 30 * 60
+
+
+def _lock_path() -> Path:
+    # Lives in backups/ but starts with '.', so it never matches the
+    # ``ticketbox-*.dump`` glob used by list_backups / rotation / offsite sync.
+    return _backup_dir() / _LOCK_NAME
+
+
+def _lock_is_stale(path: Path) -> bool:
+    try:
+        age_seconds = time.time() - path.stat().st_mtime
+    except FileNotFoundError:
+        return False  # already gone — the next exclusive create will win
+    return age_seconds > _LOCK_STALE_SECONDS
+
+
+@contextlib.contextmanager
+def _backup_lock() -> Iterator[None]:
+    """Serialize backup jobs via an exclusive sentinel file (non-blocking).
+
+    If another live job holds the lock, raise ``backup_in_progress`` (409) — the
+    manual-backup operator simply retries. A lock older than
+    ``_LOCK_STALE_SECONDS`` is treated as a crashed job and reclaimed; the
+    ``O_EXCL`` create on the next loop arbitrates the reclaim race.
+    """
+    path = _lock_path()
+    payload = f"{os.getpid()}\n{now_utc().isoformat()}\n".encode()
+    while True:
+        try:
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            if _lock_is_stale(path):
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(str(path))
+                continue
+            raise AppError("backup_in_progress", status_code=409) from None
+        try:
+            os.write(fd, payload)
+        finally:
+            os.close(fd)
+        break
+    try:
+        yield
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(str(path))
+
+
+def _run_pg_dump(*, prefix: str, kind: str) -> BackupEntry:
     libpq_url = _libpq_url(get_settings().database_url)
     directory = _backup_dir()
     stamp = now_utc().astimezone().strftime("%Y%m%d-%H%M%S")

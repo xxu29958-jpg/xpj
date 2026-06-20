@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -152,3 +154,92 @@ def test_owner_backups_page_no_warning_when_fresh(
     resp = local_client.get("/owner/backups")
     assert resp.status_code == 200
     assert "alert-danger" not in resp.text
+
+
+# ── Backup concurrency guard (BUG-2: shared sentinel lock) ───────────────────
+
+
+def _fresh_backup_entry(kind: str):
+    from app.services import backup_service
+    from app.services.time_service import now_utc
+
+    return backup_service.BackupEntry(
+        file_name=f"ticketbox-{kind}-probe.dump",
+        size_bytes=1,
+        created_at=now_utc().astimezone(),
+        kind=kind,
+    )
+
+
+def test_manual_backup_holds_lock_during_dump(monkeypatch: pytest.MonkeyPatch) -> None:
+    """create_manual_backup must run the dump *inside* the lock and release after."""
+    from app.services import backup_service
+
+    observed: dict[str, bool] = {}
+
+    def fake_run_pg_dump(*, prefix: str, kind: str):
+        observed["lock_present"] = backup_service._lock_path().exists()  # noqa: SLF001
+        return _fresh_backup_entry(kind)
+
+    monkeypatch.setattr(backup_service, "_run_pg_dump", fake_run_pg_dump)
+    backup_service._lock_path().unlink(missing_ok=True)  # noqa: SLF001
+    try:
+        backup_service.create_manual_backup()
+        assert observed["lock_present"] is True  # dump ran while the lock was held
+        assert backup_service._lock_path().exists() is False  # released after  # noqa: SLF001
+    finally:
+        backup_service._lock_path().unlink(missing_ok=True)  # noqa: SLF001
+
+
+def test_manual_backup_skips_when_lock_held(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fresh lock held by another job makes a manual backup raise 409, not dump."""
+    from app.errors import AppError
+    from app.services import backup_service
+
+    def fail_if_called(*, prefix: str, kind: str):
+        raise AssertionError("pg_dump must not run while another backup holds the lock")
+
+    monkeypatch.setattr(backup_service, "_run_pg_dump", fail_if_called)
+    lock = backup_service._lock_path()  # noqa: SLF001
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("99999\nheld\n", encoding="utf-8")
+    try:
+        with pytest.raises(AppError) as excinfo:
+            backup_service.create_manual_backup()
+        assert excinfo.value.error == "backup_in_progress"
+        assert excinfo.value.status_code == 409
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def test_stale_backup_lock_is_reclaimed() -> None:
+    """A lock older than the TTL is a crashed job — acquiring reclaims it."""
+    import os
+
+    from app.services import backup_service
+
+    lock = backup_service._lock_path()  # noqa: SLF001
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("99999\ncrashed\n", encoding="utf-8")
+    stale_mtime = time.time() - (backup_service._LOCK_STALE_SECONDS + 60)  # noqa: SLF001
+    os.utime(lock, (stale_mtime, stale_mtime))
+    try:
+        with backup_service._backup_lock():  # noqa: SLF001
+            assert lock.exists()  # reclaimed and re-held, no backup_in_progress
+        assert lock.exists() is False  # released on exit
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def test_backup_lock_file_invisible_to_listing() -> None:
+    """The sentinel must never be mistaken for a backup (it starts with '.')."""
+    from app.services import backup_service
+
+    lock = backup_service._lock_path()  # noqa: SLF001
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("99999\nheld\n", encoding="utf-8")
+    try:
+        assert backup_service.is_backup_valid(lock.name) is False
+        assert lock.name not in {entry.file_name for entry in backup_service.list_backups()}
+    finally:
+        lock.unlink(missing_ok=True)

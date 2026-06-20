@@ -50,6 +50,7 @@ ERROR_MESSAGES = {
     "rule_application_not_found": "规则应用批次不存在。",
     "rule_in_use": "分类规则仍在使用，不能删除。",
     "admin_api_local_only": "管理接口仅允许本机访问。",
+    "backup_in_progress": "正在备份中，请稍后再试。",
     "server_error": "服务器开小差了，请稍后再试。",
     "invalid_request": "请求参数不正确。",
     "route_not_found": "没有找到这个功能入口。",
