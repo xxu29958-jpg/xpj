@@ -33,6 +33,7 @@ __all__ = [
     "DebtAdjustmentCreateRequest",
     "DebtCreateRequest",
     "DebtForgiveCreateRequest",
+    "DebtKindSetRequest",
     "DebtListResponse",
     "DebtResponse",
     "DebtVoidCreateRequest",
@@ -212,6 +213,21 @@ class DebtForgiveCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    expected_row_version: int
+
+
+class DebtKindSetRequest(BaseModel):
+    """Set / correct an existing Debt's repayment-rhythm classification (8e-6e correction entry).
+
+    OCC carrier: ``expected_row_version`` is the §2.1 stale-intent token (a reclassification bumps
+    ``row_version``, so two concurrent edits cannot both silently win) + the [[0042]] fingerprint
+    component. NOT fold-changing — ``debt_kind`` drives only the external-debt payoff projection gate
+    (``external_payoff_kpi``); ``remaining`` / ``paid`` are untouched.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    debt_kind: DebtKind
     expected_row_version: int
 
 
