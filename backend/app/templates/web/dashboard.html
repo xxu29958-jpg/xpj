@@ -323,3 +323,12 @@
   </style>
 </noscript>
 {% endblock %}
+
+{# issue #64 W1: the dashboard's JS-enhanced view renders the #chart-category donut
+   (dashboard.js → initCategoryDonut), so this page loads ECharts + category-donut.js +
+   dashboard.js. echarts first; all before desktop.js (see base.html page_scripts note). #}
+{% block page_scripts %}
+  <script defer src="/static/web/vendor/echarts.min.js"></script>
+  <script defer src="/static/web/desktop/category-donut.js?v={{ backend_version }}"></script>
+  <script defer src="/static/web/desktop/dashboard.js?v={{ backend_version }}"></script>
+{% endblock %}
