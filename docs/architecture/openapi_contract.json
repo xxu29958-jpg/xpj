@@ -4110,6 +4110,32 @@
         "title": "DebtGoalTargetDateRequest",
         "type": "object"
       },
+      "DebtKindSetRequest": {
+        "additionalProperties": false,
+        "description": "Set / correct an existing Debt's repayment-rhythm classification (8e-6e correction entry).\n\nOCC carrier: ``expected_row_version`` is the §2.1 stale-intent token (a reclassification bumps\n``row_version``, so two concurrent edits cannot both silently win) + the [[0042]] fingerprint\ncomponent. NOT fold-changing — ``debt_kind`` drives only the external-debt payoff projection gate\n(``external_payoff_kpi``); ``remaining`` / ``paid`` are untouched.",
+        "properties": {
+          "debt_kind": {
+            "enum": [
+              "unspecified",
+              "revolving",
+              "installment",
+              "one_off"
+            ],
+            "title": "Debt Kind",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "debt_kind",
+          "expected_row_version"
+        ],
+        "title": "DebtKindSetRequest",
+        "type": "object"
+      },
       "DebtListResponse": {
         "properties": {
           "items": {
@@ -13046,6 +13072,100 @@
           }
         },
         "summary": "Post Debt Forgive",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/kind": {
+      "post": {
+        "operationId": "post_debt_kind_api_debts__public_id__kind_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtKindSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Debt Kind",
         "tags": [
           "debts"
         ]

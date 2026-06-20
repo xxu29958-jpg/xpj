@@ -48,6 +48,7 @@ from app.schemas import (
     DebtAdjustmentCreateRequest,
     DebtCreateRequest,
     DebtForgiveCreateRequest,
+    DebtKindSetRequest,
     DebtListResponse,
     DebtResponse,
     DebtVoidCreateRequest,
@@ -77,6 +78,7 @@ from app.services.debt_service import (
     record_adjustment,
     record_repayment,
     reject_repayment_proposal,
+    set_debt_kind,
     void_debt,
     void_repayment,
     withdraw_repayment_proposal,
@@ -106,6 +108,8 @@ _REPAYMENT_VOID_OPERATION = "void_repayment"
 _DEBT_VOID_OPERATION = "void_debt"
 # ADR-0049 §3.7 / §4 (slice 8e-3): creditor forgiveness of a member Debt's remaining.
 _DEBT_FORGIVE_OPERATION = "forgive_debt"
+# ADR-0049 §7.0 / 8e-6e: correct an existing Debt's repayment-rhythm classification.
+_DEBT_KIND_OPERATION = "set_debt_kind"
 # ADR-0049 slice 3: member repayment proposal (§3.2). Create anchors on the
 # parent Debt public_id; proposal-targeted ops also include the parent Debt so a
 # cross-debt path replay cannot HIT on the proposal id alone.
@@ -557,6 +561,52 @@ def post_debt_forgive(
     return get_participant_debt_response(
         db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id
     )
+
+
+@router.post("/{public_id}/kind", response_model=DebtResponse)
+def post_debt_kind(
+    public_id: str,
+    payload: DebtKindSetRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> DebtResponse:
+    # ADR-0049 §7.0 / 8e-6e: set / correct a Debt's repayment-rhythm classification. OCC carrier
+    # + idempotency, same shape as the goal target-date setter; the claim bumps row_version (not
+    # fold-changing — debt_kind only gates the external-debt projection). Ledger-scoped writer (the
+    # owner classifies their own external debt); a stale token → state_conflict 409. Actor-scoped
+    # fingerprint so a HIT can't replay past the writer guard.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation=_DEBT_KIND_OPERATION,
+        target_id=public_id,
+        target_type=_DEBT_TARGET_TYPE,
+        body=_actor_scoped_fingerprint_body(
+            payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            actor_account_id=auth.account_id,
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # idempotent replay — re-serialise the current Debt
+        return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+    set_debt_kind(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        payload=payload,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type=_DEBT_TARGET_TYPE, resource_id=public_id
+    )
+    db.commit()
+    # claim_row_with_token bumps row_version via a SQL expression; expire before re-reading.
+    db.expire_all()
+    return get_debt_response(db, tenant_id=auth.tenant_id, public_id=public_id)
 
 
 # ── ADR-0049 slice 3: member repayment proposals (§3.2) ──────────────────────

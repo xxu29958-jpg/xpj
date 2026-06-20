@@ -43,6 +43,7 @@ from app.services.debt_service._fold import (
     latest_fact_at,
 )
 from app.services.debt_service._forgive import forgive_debt
+from app.services.debt_service._kind import set_debt_kind
 from app.services.debt_service._proposal import (
     confirm_repayment_proposal,
     create_repayment_proposal,
@@ -108,6 +109,7 @@ __all__ = [
     "record_repayment",
     "reject_repayment_proposal",
     "repayment_draft_response",
+    "set_debt_kind",
     "void_debt",
     "void_repayment",
     "withdraw_repayment_proposal",
