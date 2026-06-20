@@ -197,6 +197,7 @@ def debt_response(
         status=derive_status(debt, remaining),
         source_type=debt.source_type,
         source_id=debt.source_id,
+        debt_kind=debt.debt_kind,
         home_currency_code=debt.home_currency_code,
         original_currency_code=debt.original_currency_code,
         original_amount_minor=debt.original_amount_minor,

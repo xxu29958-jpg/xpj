@@ -192,23 +192,40 @@ class ExternalPayoffKpi(NamedTuple):
 
 _EMPTY_PAYOFF_KPI = ExternalPayoffKpi(None, None, None, None, None)
 
+# 8e-6e: kinds whose remaining has no honest linear velocity, so a payoff projection lies.
+# ``one_off`` (a one-time IOU) has no repayment cadence; ``installment`` decreases on a
+# contractual schedule (linear extrapolation over-projects, and its payoff date is the
+# contract's期数×周期, not a velocity guess). ``revolving`` + ``unspecified`` keep projecting
+# (the latter preserving current behavior for unclassified external debt).
+_NO_PROJECTION_KINDS = frozenset({"one_off", "installment"})
+
 
 def external_payoff_kpi(
     db: Session, non_voided_debts: list[Debt], *, now: datetime, target_date: date | None
 ) -> ExternalPayoffKpi:
-    """ADR-0049 §7.0 / 8e-6b+6c+6d server gate (§4): the payoff KPI for a PURE-EXTERNAL plan.
+    """ADR-0049 §7.0 / 8e-6b+6c+6d+6e server gate (§4): the payoff KPI for a PURE-EXTERNAL plan.
 
     The projection + deadline echo + three-state + staleness signal are assembled ONLY when
     every non-voided linked Debt is external (``!= 'member'`` byte-matches the Android
     composition's external bucket). Member / mixed / all-voided plans get the all-None bundle,
     so /web, /owner, exports, and tests never see a §7.0-forbidden payoff dashboard on a
     Communal plan. Read-only — identical on viewer / writer.
+
+    8e-6e: a pure-external plan whose EVERY non-voided Debt is a no-rhythm kind
+    (``one_off`` / ``installment``) gets no velocity projection — linear extrapolation lies on
+    those (see ``_NO_PROJECTION_KINDS``). A mixed set with ≥1 ``revolving`` / ``unspecified``
+    Debt still projects over the whole set: the aggregate paydown is meaningful and a per-Debt
+    "project some, not others" split is incoherent (the projection divides into a single summed
+    remaining). The user-set deadline is still echoed in the suppressed case (a fact they
+    entered); only the projection / three-state / staleness stay None.
     """
     is_pure_external = bool(non_voided_debts) and all(
         debt.counterparty_type != "member" for debt in non_voided_debts
     )
     if not is_pure_external:
         return _EMPTY_PAYOFF_KPI
+    if all(debt.debt_kind in _NO_PROJECTION_KINDS for debt in non_voided_debts):
+        return ExternalPayoffKpi(None, None, target_date, None, None)
     tracking_days, projected, days_since = compute_external_kpi(db, non_voided_debts, now=now)
     return ExternalPayoffKpi(
         tracking_days=tracking_days,

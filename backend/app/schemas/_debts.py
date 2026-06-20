@@ -19,10 +19,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.services.time_service import to_iso
+
+# ADR-0049 §7.0 / 8e-6e: an external debt's repayment-rhythm classification, gating the
+# payoff projection. ``unspecified`` (default) keeps current projecting behavior.
+DebtKind = Literal["unspecified", "revolving", "installment", "one_off"]
 
 __all__ = [
     "DebtAdjustmentCreateRequest",
@@ -65,6 +70,10 @@ class DebtCreateRequest(BaseModel):
     original_amount: Decimal | None = Field(default=None, gt=0)
     event_time: datetime | None = None
     source_type: str = "manual"
+    # 8e-6e: optional repayment-rhythm classification (external debt). Defaulted (not
+    # `required`) so an older client that omits it still creates an `unspecified` Debt —
+    # and the Android DebtCreateRequestDto need not model it for the contract gate.
+    debt_kind: DebtKind = "unspecified"
 
 
 class DebtResponse(BaseModel):
@@ -86,6 +95,10 @@ class DebtResponse(BaseModel):
     status: str
     source_type: str
     source_id: str | None = None
+    # 8e-6e repayment-rhythm classification. Defaulted (not `required`) so the Android
+    # DebtDto can adopt it later without the contract gate's reverse check reddening now;
+    # always populated at-rest (the column is NOT NULL).
+    debt_kind: DebtKind = "unspecified"
     home_currency_code: str
     original_currency_code: str | None = None
     original_amount_minor: int | None = None

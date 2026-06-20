@@ -69,6 +69,21 @@ class Debt(Base):
             "source_type IN ('manual', 'bill_split')",
             name="ck_debts_source_type_valid",
         ),
+        # ADR-0049 §7.0 / 8e-6e: classifies an EXTERNAL debt's repayment rhythm so the
+        # payoff projection (velocity → date, goal_debt_repayment_kpi) only runs where
+        # linear extrapolation is honest. ``revolving`` (花呗/白条/信用卡/月付) has a regular
+        # cadence; ``one_off`` (a one-time IOU) has none; ``installment`` decreases on a
+        # contractual schedule (linear velocity over-projects, and its payoff date is the
+        # contract's, not a guess) — so both ``one_off`` and ``installment`` suppress the
+        # projection. ``unspecified`` is the default and KEEPS current behavior (it still
+        # projects — existing external debt must not silently lose its projection). One
+        # stored field, N behavior branches (projection/matching/display); the projection
+        # gate is the only consumer in this slice. Predicate text byte-identical to the
+        # migration (20260620_0002) by manual convention — its round-trip test asserts it.
+        CheckConstraint(
+            "debt_kind IN ('unspecified', 'revolving', 'installment', 'one_off')",
+            name="ck_debts_kind_valid",
+        ),
         CheckConstraint("principal_amount_cents > 0", name="ck_debts_principal_positive"),
         CheckConstraint("length(home_currency_code) = 3", name="ck_debts_home_currency_format"),
         # ADR-0049 §2/§5.1 母表 shape invariants the service already maintains
@@ -135,6 +150,12 @@ class Debt(Base):
     # --- lifecycle + source --------------------------------------------------
     status: Mapped[str] = mapped_column(
         String(16), default="open", server_default="open", nullable=False
+    )
+    # ADR-0049 §7.0 / 8e-6e repayment-rhythm classification; gates the payoff projection
+    # (see the ck_debts_kind_valid CHECK above). Default ``unspecified`` keeps current
+    # projection behavior for existing/unclassified external debt.
+    debt_kind: Mapped[str] = mapped_column(
+        String(16), default="unspecified", server_default="unspecified", nullable=False
     )
     source_type: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
     source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

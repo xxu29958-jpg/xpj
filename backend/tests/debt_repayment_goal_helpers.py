@@ -42,18 +42,21 @@ def _set_owner_ledger_role(role: str) -> None:
 
 
 def _create_external_debt(
-    client: TestClient, headers: dict[str, str], *, principal_amount_cents: int = 10000
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    principal_amount_cents: int = 10000,
+    debt_kind: str | None = None,
 ) -> dict:
-    response = client.post(
-        "/api/debts",
-        headers=_idem(headers),
-        json={
-            "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "招商信用卡",
-            "principal_amount_cents": principal_amount_cents,
-        },
-    )
+    body: dict = {
+        "direction": "i_owe",
+        "counterparty_type": "external",
+        "counterparty_label": "招商信用卡",
+        "principal_amount_cents": principal_amount_cents,
+    }
+    if debt_kind is not None:  # 8e-6e repayment-rhythm classification (default unspecified)
+        body["debt_kind"] = debt_kind
+    response = client.post("/api/debts", headers=_idem(headers), json=body)
     assert response.status_code == 201, response.json()
     return response.json()
 
