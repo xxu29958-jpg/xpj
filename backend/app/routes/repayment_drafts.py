@@ -68,7 +68,9 @@ def get_repayment_drafts(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RepaymentDraftListResponse:
-    return list_repayment_drafts(db, tenant_id=auth.tenant_id, status=status)
+    return list_repayment_drafts(
+        db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, status=status
+    )
 
 
 @router.post("", response_model=RepaymentDraftResponse, status_code=201)
@@ -110,7 +112,9 @@ def post_repayment_draft_confirm(
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # replay: re-serialise the (already confirmed) draft, no re-record.
-        return get_repayment_draft_response(db, tenant_id=auth.tenant_id, public_id=public_id)
+        return get_repayment_draft_response(
+            db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, public_id=public_id
+        )
     draft = confirm_repayment_draft(
         db,
         tenant_id=auth.tenant_id,

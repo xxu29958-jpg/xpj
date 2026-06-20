@@ -10,7 +10,12 @@ ledger scope or the actor scope would still pass them. This file is the missing 
   → a foreign draft becomes confirmable/dismissable/readable);
 - a SECOND writer in the same ledger replaying another actor's confirm Idempotency-Key gets
   ``idempotency_key_reused`` (422), not a HIT (mutation: drop ``actor_account_id`` from the
-  confirm fingerprint → the second actor replays past the guard).
+  confirm fingerprint → the second actor replays past the guard);
+- a SECOND writer in the SAME ledger never sees another member's captures in their inbox and
+  gets 404 confirming/dismissing them — repayment captures are personal (§8 / privacy), so
+  list/confirm/dismiss are account-scoped, not just ledger-scoped (mutation: drop
+  ``created_by_account_id == actor_account_id`` → a co-member's private capture leaks / becomes
+  actionable). This is the API-side mirror of the /web audit's account-scope.
 """
 
 from __future__ import annotations
@@ -165,6 +170,86 @@ def test_suggestion_candidate_set_excludes_cross_tenant_debt(client: TestClient,
     # Owner's only candidate is 京东白条 (no 花呗 match) → no suggestion, and never ledger B's Debt.
     assert listed["suggested_debt_public_id"] is None
     assert listed["suggested_debt_public_id"] != b_debt.json()["public_id"]
+
+
+def test_same_ledger_drafts_are_account_scoped_both_directions(
+    client: TestClient, *, identity
+) -> None:
+    # Two writers in the SAME ledger 'owner'. A repayment capture is one member's phone payment
+    # notification (§8 / privacy), so each member's inbox must show ONLY their own — neither
+    # sees the other's. (Mutation: drop created_by_account_id from list_repayment_drafts → a
+    # co-member's private capture appears in the other's inbox.)
+    owner_draft = _create_owner_draft(client, identity, amount_cents=12000)  # created by owner
+
+    member_account = _seed_member_account(name="ledger-owner-writer-2", ledger_id="owner")
+    member = _headers(_mint_app_token(account_id=member_account, ledger_id="owner"))
+    member_resp = client.post(
+        "/api/repayment-drafts",
+        headers=member,
+        # distinct source/amount → a different dedup key, so this is a separate draft, not a
+        # dedup HIT on the owner's.
+        json={"source": "wechat", "amount_cents": 34000, "merchant_label": "白条"},
+    )
+    assert member_resp.status_code == 201, member_resp.json()
+    member_draft = member_resp.json()
+
+    owner_ids = {
+        d["public_id"]
+        for d in client.get("/api/repayment-drafts", headers=identity.app_headers).json()["items"]
+    }
+    member_ids = {
+        d["public_id"] for d in client.get("/api/repayment-drafts", headers=member).json()["items"]
+    }
+
+    assert owner_draft["public_id"] in owner_ids
+    assert member_draft["public_id"] not in owner_ids  # owner does NOT see the member's capture
+    assert member_draft["public_id"] in member_ids
+    assert owner_draft["public_id"] not in member_ids  # member does NOT see the owner's capture
+
+
+def test_same_ledger_other_member_cannot_confirm_my_draft(
+    client: TestClient, *, identity
+) -> None:
+    # A SECOND writer in the same ledger with a FRESH Idempotency-Key (so the reuse-422 above is
+    # NOT what fires) still cannot confirm the owner's personal capture → account-scoped 404.
+    debt = _create_owner_debt(client, identity)
+    draft = _create_owner_draft(client, identity)
+    member = _headers(
+        _mint_app_token(
+            account_id=_seed_member_account(name="ledger-owner-writer-2", ledger_id="owner"),
+            ledger_id="owner",
+        )
+    )
+    confirm = client.post(
+        f"/api/repayment-drafts/{draft['public_id']}/confirm",
+        headers={**member, "Idempotency-Key": str(uuid4())},
+        json={"target_debt_public_id": debt["public_id"], "expected_row_version": debt["row_version"]},
+    )
+    assert confirm.status_code == 404, confirm.json()
+    assert confirm.json()["error"] == "repayment_draft_not_found"
+
+    # Untouched: the owner's draft is still pending and confirmable by the owner.
+    a_listing = client.get("/api/repayment-drafts", headers=identity.app_headers).json()
+    assert any(
+        d["public_id"] == draft["public_id"] and d["status"] == "pending" for d in a_listing["items"]
+    )
+
+
+def test_same_ledger_other_member_cannot_dismiss_my_draft(
+    client: TestClient, *, identity
+) -> None:
+    draft = _create_owner_draft(client, identity)
+    member = _headers(
+        _mint_app_token(
+            account_id=_seed_member_account(name="ledger-owner-writer-2", ledger_id="owner"),
+            ledger_id="owner",
+        )
+    )
+    dismiss = client.post(
+        f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=member, json={}
+    )
+    assert dismiss.status_code == 404, dismiss.json()
+    assert dismiss.json()["error"] == "repayment_draft_not_found"
 
 
 def test_confirm_replay_with_different_actor_is_reused_not_hit(client: TestClient, *, identity) -> None:
