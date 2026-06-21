@@ -22,6 +22,12 @@ val dependencyCheckDataDir =
 
 dependencyCheck {
     failBuildOnCVSS = 7.0f
+    // NVD 数据源不可用(空缓存 + NVD 网关 520/524/超时)会让分析引擎抛异常,默认 failOnError=true
+    // 时整个构建红——这正是 CI 上「无法更新缓存的网络数据源...分析失败了」那次 13m 红的根因。
+    // 设为 false:把「拉不到数据/分析异常」降级为告警而非构建失败;真实漏洞门不受影响——
+    // failBuildOnCVSS(上一行)在 NVD 数据可用时照常拦 CVSS>=7.0。代价:NVD 不可达那次扫描查不到东西
+    // (无数据)而静默通过,对自用财务 App + 日级缓存可接受(本就把 OWASP 当告警面,非合并硬门)。
+    failOnError = false
     formats = listOf("HTML", "JSON")
     suppressionFile = file("config/dependency-check/suppressions.xml").takeIf { it.exists() }?.absolutePath
     // OWASP recommends an NVD API key to avoid throttling; CI injects it and
