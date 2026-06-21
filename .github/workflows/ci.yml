@@ -417,6 +417,16 @@ jobs:
         # Cloud-only (NVD download is too heavy for the single local-Gitea runner).
         # Requires the NVD_API_KEY repo secret; without it the NVD feed can hang
         # the hosted runner long enough to starve the merge gate.
+        #
+        # continue-on-error: a NVD-source outage on a cold cache makes
+        # dependency-check 12.1.0 throw a FATAL ExceptionCollection that the gradle
+        # `failOnError=false` knob can NOT suppress (AbstractAnalyze rethrows when
+        # `failOnError || ex.isFatal()`), so the only reliable way to keep that
+        # infra flake off the substantive Android gate is to mark the STEP non-fatal
+        # to the job. The step still runs the CVE scan and surfaces findings (red
+        # step / JSON+HTML report) when NVD data is available — OWASP is an advisory
+        # surface here (no required checks), not a merge-blocking gate.
+        continue-on-error: true
         run: ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}"
 
       - name: Dependency vulnerability scan skipped
