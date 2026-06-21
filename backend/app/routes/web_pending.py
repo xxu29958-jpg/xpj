@@ -8,7 +8,7 @@ modules under the 280-line budget. Business logic lives in
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -177,16 +177,50 @@ def _format_bulk_message(action: str, result: BulkResult) -> str:
     return "；".join(parts) + "。"
 
 
+# issue #64 W3: only the removal-type bulk actions speak the fetch+partial JSON
+# contract — they pop rows out of the pending list, which the /web bulk bar can
+# splice from the DOM without a full reload. set_category / set_merchant /
+# keep_duplicate mutate a row in place (it stays visible), so they keep the
+# full-page redirect and are unaffected by ``fragment``.
+_REMOVAL_ACTIONS = frozenset({"reject", "confirm_ready"})
+
+
+def _bulk_fragment_json(action: str, result: BulkResult) -> JSONResponse:
+    """fetch+partial success body: which rows the server actually removed plus
+    the same summary the redirect path flashes. ``removed_ids`` is authoritative
+    — confirm_ready skips non-ready rows, so the client must not assume every
+    selected row left the queue."""
+    return JSONResponse(
+        {
+            "removed_ids": list(result.success_ids),
+            "message": _format_bulk_message(action, result),
+            "flash_type": "success",
+        }
+    )
+
+
+def _bulk_error_json(message: str) -> JSONResponse:
+    return JSONResponse({"removed_ids": [], "message": message, "flash_type": "error"})
+
+
+def _bulk_no_selection(
+    selected_id: str, *, filter: str, fragment: bool
+) -> Response:
+    msg = "请先勾选账单。"
+    if fragment:
+        return _bulk_error_json(msg)
+    return _pending_redirect(selected_id, filter=filter, msg=msg)
+
+
 def _reject_pending_rows(
     db: Session,
     *,
     selected_id: str,
     expense_ids: list[int],
-) -> str:
-    result = apply_review_bulk(
+) -> BulkResult:
+    return apply_review_bulk(
         db, tenant_id=selected_id, action="reject", expense_ids=expense_ids
     )
-    return _format_bulk_message("reject", result)
 
 
 @router.post("/pending/batch-reject", response_class=HTMLResponse)
@@ -195,20 +229,26 @@ def web_pending_batch_reject(
     ledger_id: str = Form(default=""),
     expense_ids: list[int] = Form(default=[]),
     filter: str = Form(default="all"),
+    # issue #64 W3: fetch+partial path. ``fragment=1`` (only the JS bulk bar adds
+    # it) swaps the full-page redirect for a JSON {removed_ids, message,
+    # flash_type} so the client splices rows without reloading. No-JS POSTs omit
+    # it and keep the redirect — progressive enhancement, mirrors the drawer.
+    fragment: int = Form(default=0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
 
     if not expense_ids:
-        return _pending_redirect(selected_id, filter=filter, msg="请先勾选账单。")
+        return _bulk_no_selection(selected_id, filter=filter, fragment=bool(fragment))
 
+    result = _reject_pending_rows(db, selected_id=selected_id, expense_ids=expense_ids)
+    if fragment:
+        return _bulk_fragment_json("reject", result)
     return _pending_redirect(
-        selected_id,
-        filter=filter,
-        msg=_reject_pending_rows(db, selected_id=selected_id, expense_ids=expense_ids),
+        selected_id, filter=filter, msg=_format_bulk_message("reject", result)
     )
 
 
@@ -221,9 +261,13 @@ def web_review_bulk(
     category: str = Form(default=""),
     merchant: str = Form(default=""),
     filter: str = Form(default="all"),
+    # issue #64 W3: see web_pending_batch_reject. Only honoured for the removal
+    # action (confirm_ready); set_category/set_merchant/keep_duplicate ignore it
+    # and stay on the redirect, since they don't pop rows from the list.
+    fragment: int = Form(default=0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
@@ -232,8 +276,10 @@ def web_review_bulk(
     if action_clean not in ALLOWED_ACTIONS:
         raise AppError("invalid_request", status_code=422)
 
+    fragment_removal = bool(fragment) and action_clean in _REMOVAL_ACTIONS
+
     if not expense_ids:
-        return _pending_redirect(selected_id, filter=filter, msg="请先勾选账单。")
+        return _bulk_no_selection(selected_id, filter=filter, fragment=fragment_removal)
 
     try:
         result = apply_review_bulk(
@@ -246,9 +292,13 @@ def web_review_bulk(
         )
     except AppError as exc:
         if exc.status_code == 422 and exc.error == "invalid_request":
+            if fragment_removal:
+                return _bulk_error_json(exc.message)
             return _pending_redirect(selected_id, filter=filter, msg=exc.message)
         raise
 
+    if fragment_removal:
+        return _bulk_fragment_json(action_clean, result)
     return _pending_redirect(
         selected_id,
         filter=filter,

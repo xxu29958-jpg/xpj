@@ -313,3 +313,123 @@ def test_web_bulk_cross_ledger_id_is_ignored(web_client: TestClient, *, identity
     # Owner ledger still has its expense.
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{eid_owner}/edit" in pending.text
+
+
+# --- issue #64 W3: fetch+partial fragment contract for removal-type bulk actions -----
+
+
+def test_web_bulk_confirm_ready_fragment_returns_actioned_ids(
+    web_client: TestClient, *, identity
+) -> None:
+    """fragment=1 confirm_ready answers JSON {removed_ids, message, flash_type}
+    naming ONLY the rows that actually left the queue — the missing-amount row is
+    skipped, stays pending, and is NOT in removed_ids (the client must not assume
+    every selected row succeeded)."""
+    no_amount = _create_pending(web_client, identity=identity)
+    ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "confirm_ready", "ledger_id": "owner",
+              "expense_ids": [str(no_amount), str(ready)], "filter": "all", "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["removed_ids"] == [ready]
+    assert body["flash_type"] == "success"
+    assert "已确认 1 条" in body["message"]
+    assert "跳过 1 条" in body["message"]
+    # Server-side state actually changed: ready confirmed (gone), no-amount stays.
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert f"/web/expenses/{ready}/edit" not in pending.text
+    assert f"/web/expenses/{no_amount}/edit" in pending.text
+
+
+def test_web_bulk_confirm_ready_fragment_excludes_cross_ledger(
+    web_client: TestClient, *, identity
+) -> None:
+    """removed_ids must never name a row outside the current ledger — a foreign
+    id lands in skipped_reasons, never success_ids, so the client can't be told
+    to splice a row it doesn't own."""
+    ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
+    bogus_id = ready + 99999  # id far outside any existing range
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "confirm_ready", "ledger_id": "owner",
+              "expense_ids": [str(ready), str(bogus_id)], "filter": "all", "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["removed_ids"] == [ready]
+    assert bogus_id not in body["removed_ids"]
+    assert "已确认 1 条" in body["message"]
+    assert "不属于当前账本" in body["message"]
+
+
+def test_web_batch_reject_fragment_returns_removed_ids(
+    web_client: TestClient, *, identity
+) -> None:
+    first = _seed_pending_with_amount(web_client, "12.00", "Y", identity=identity)
+    second = _seed_pending_with_amount(web_client, "13.00", "Z", identity=identity)
+    resp = web_client.post(
+        "/web/pending/batch-reject",
+        data={"ledger_id": "owner", "expense_ids": [str(first), str(second)],
+              "filter": "all", "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body["removed_ids"]) == {first, second}
+    assert body["flash_type"] == "success"
+    assert "已忽略 2 条" in body["message"]
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert f"/web/expenses/{first}/edit" not in pending.text
+    assert f"/web/expenses/{second}/edit" not in pending.text
+
+
+def test_web_batch_reject_fragment_no_selection_returns_error_json(
+    web_client: TestClient,
+) -> None:
+    resp = web_client.post(
+        "/web/pending/batch-reject",
+        data={"ledger_id": "owner", "filter": "all", "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["removed_ids"] == []
+    assert body["flash_type"] == "error"
+    assert "请先勾选账单" in body["message"]
+
+
+def test_web_bulk_set_category_ignores_fragment_and_redirects(
+    web_client: TestClient, *, identity
+) -> None:
+    """fragment is honoured ONLY for removal actions — set_category mutates a row
+    in place (it stays visible), so it keeps the full-page redirect even with
+    fragment=1. Pins the _REMOVAL_ACTIONS gate so an in-place action can never
+    claim rows were removed."""
+    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "set_category", "ledger_id": "owner", "expense_ids": [str(eid)],
+              "category": "餐饮", "filter": "all", "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}  # redirect, NOT a JSON fragment
+    assert "removed_ids" not in resp.text  # gate is behaviour-pinned, not just 200-vs-303
+    detail = web_client.get(f"/web/expenses/{eid}/edit?ledger_id=owner")
+    assert "餐饮" in detail.text
+
+
+def test_bulk_bar_js_has_fetch_partial_mechanism() -> None:
+    """The /web fetch-JS has no browser test in the suite (like drawer.js), so a
+    content-assertion is the regression floor: pin the markers of the fetch+partial
+    path so ripping it out (silent regression to full-page reload) reds here."""
+    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
+    js = js_path.read_text(encoding="utf-8")
+    assert 'body.append("fragment", "1");' in js
+    assert "function removalKind" in js
+    assert "removed_ids" in js
+    assert "data-native-fallback" in js  # offline → native full-page fallback
