@@ -492,26 +492,26 @@ jobs:
             exit 0
           fi
           if [ -f "$log" ] && grep -q "OWASP_SCAN_TIMED_OUT_124" "$log"; then
-            # Tolerate the bounded timeout. An earlier design tried to tolerate ONLY an
-            # NVD-fetch-phase stall by grepping for "Analysis Started" / "NVD CVE" phase
-            # logs, but a REAL CI run proved dependency-check's gradle output emits NO such
-            # phase-progress logs — only the one-line banner "Checking for updates and
-            # analyzing dependencies for vulnerabilities", then silence until the
-            # result/error. So that NVD-vs-analysis distinction is UNOBSERVABLE here, and the
-            # evidence check dead-ended EVERY timeout into a false fail-safe red (the exact
-            # mode this was meant to make green). Tolerating all bounded timeouts is safe for
-            # the CVE gate: a timeout means the scan was KILLED before it completed, so
-            # checkForFailure never ran and no failBuildOnCVSS finding exists to swallow — a
-            # COMPLETED run that finds a CVE logs that message, which the finding branch above
-            # catches and reds. The deps are re-scanned on the next run. This also keeps the
-            # job off the 40-min wall-clock cancel that used to skip this gate entirely.
-            echo "::warning::OWASP dependency-check was killed at the 12m bound before completing (slow/unreachable NVD source, or a wedged scan). Tolerated — an incomplete scan finished no analysis, so there are no findings to gate on; the next push re-attempts a full scan. (A completed scan that finds a CVE >= the threshold still reds via the finding branch.)"
-            # A timed-out fetch can leave a PARTIAL H2 DB — drop it (same as the data-empty
-            # branch) so an incomplete NVD DB isn't cached and the next run rebuilds it.
+            # FAIL SAFE (red) on the bounded timeout — owner's security-posture decision.
+            # A real CI run proved dependency-check's gradle output emits NO phase-progress
+            # logs (only the one-line "Checking for updates and analyzing dependencies for
+            # vulnerabilities" banner, then silence), so a slow NVD fetch (tolerable) is
+            # INDISTINGUISHABLE from a slow analysis that could be hiding a CVSS>=7 dependency
+            # not yet emitted as a failBuildOnCVSS line. Rather than fail OPEN on that
+            # ambiguity, we fail CLOSED: a scan that can't complete in 12m reds the job. The
+            # 12m bound still eliminates the original 40-min wall-clock HANG (which skipped
+            # this gate and tied up the runner) — a timeout now reds fast at ~13m. (The
+            # unambiguous NVD-data-empty outage above — "No documents exist" — stays tolerated
+            # because an empty CVE store makes a finding impossible.) Re-run when NVD is
+            # responsive; OWASP is non-gating here (no required checks), so this doesn't block
+            # merge-on-substantive-gates.
+            echo "::error::OWASP dependency-check was killed at the 12m bound before completing (slow/unreachable NVD source, or slow/wedged analysis). Failing safe (red): with no phase logs we cannot prove this was an NVD outage vs a slow analysis hiding a real finding, so we fail closed. The 12m bound still prevents the 40-min job hang; re-run when NVD is responsive."
+            # A timed-out fetch can leave a PARTIAL H2 DB — drop it so an incomplete NVD DB
+            # isn't cached and the next run rebuilds from scratch.
             rm -rf "${HOME}/.gradle/dependency-check-data" || true
-            exit 0
+            exit 1
           fi
-          echo "::error::OWASP step failed and the log is neither a CVE finding, a known NVD-data-empty outage, nor a scan timeout (could be a corrupt cache DB, parser/analyzer fatal, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
+          echo "::error::OWASP step failed and the log is neither a CVE finding nor a known NVD-data-empty outage (could be a corrupt cache DB, parser/analyzer fatal, scan timeout, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
           exit 1
 
       - name: Dependency vulnerability scan skipped
