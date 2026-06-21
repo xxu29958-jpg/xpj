@@ -126,6 +126,12 @@ class ExpenseRepository(
     override suspend fun fetchPending(): Result<List<Expense>> =
         pendingRepository.fetchPending()
 
+    override suspend fun getCachedPending(): Result<List<Expense>> =
+        pendingRepository.getCachedPending()
+
+    override suspend fun syncPending(): Result<List<Expense>> =
+        pendingRepository.syncPending()
+
     override suspend fun fetchExpense(id: Long): Result<Expense> =
         detailRepository.fetchExpense(id)
 

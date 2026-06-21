@@ -76,6 +76,10 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun fetchPending(): Result<List<Expense>> = Result.success(emptyList())
 
+    override suspend fun getCachedPending(): Result<List<Expense>> = Result.success(emptyList())
+
+    override suspend fun syncPending(): Result<List<Expense>> = Result.success(emptyList())
+
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> {
         thumbnailCalls += id
         if (id in failures) {

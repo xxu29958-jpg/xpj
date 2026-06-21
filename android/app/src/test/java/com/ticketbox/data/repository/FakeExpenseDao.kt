@@ -21,6 +21,12 @@ internal class FakeExpenseDao(
             .sortedByDescending { it.expenseTime ?: it.confirmedAt ?: it.createdAt }
     }
 
+    override suspend fun getPending(ledgerId: String): List<ExpenseEntity> {
+        return expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "pending" }
+            .sortedWith(compareByDescending<ExpenseEntity> { it.createdAt }.thenByDescending { it.serverId })
+    }
+
     override suspend fun findByServerId(ledgerId: String, serverId: Long): ExpenseEntity? {
         return expenses.values.firstOrNull { it.ledgerId == ledgerId && it.serverId == serverId }
     }
@@ -75,6 +81,14 @@ internal class FakeExpenseDao(
     override suspend fun deleteConfirmedForLedger(ledgerId: String) {
         expenses.values
             .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
+            .map { it.id }
+            .forEach { expenses.remove(it) }
+        emit(ledgerId)
+    }
+
+    override suspend fun deletePendingForLedger(ledgerId: String) {
+        expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "pending" }
             .map { it.id }
             .forEach { expenses.remove(it) }
         emit(ledgerId)

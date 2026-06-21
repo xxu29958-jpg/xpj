@@ -21,6 +21,24 @@ interface PendingReviewActions {
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     fun currentActiveLedgerId(): String? = null
     suspend fun fetchPending(): Result<List<Expense>>
+
+    /**
+     * issue #64 A3：本地优先读 pending 缓存（Room 一次性快照）。供
+     * [com.ticketbox.viewmodel.PendingViewModel] 在首屏 / 换账本时立即铺列表，
+     * 不必干等网络。返回空 = 无缓存（首次绑定 / 缓存被换账本清掉），VM 退回骨架屏 +
+     * [syncPending]。与 [fetchPending] 分开：fetchPending 是纯网络读、还供
+     * GlobalSearch 复用，不碰缓存；getCachedPending 只读 Room、不发网络。
+     */
+    suspend fun getCachedPending(): Result<List<Expense>>
+
+    /**
+     * issue #64 A3：拉远端 pending 并写回本地缓存（write-through），供
+     * [com.ticketbox.viewmodel.PendingViewModel.refresh] 调用——刷新一次就让本地
+     * 缓存跟上一次，下次首屏 [getCachedPending] 才有新鲜种子。与 [fetchPending] 的
+     * 唯一区别是落 Room；返回的领域列表与 fetchPending 等价。
+     */
+    suspend fun syncPending(): Result<List<Expense>>
+
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
     /**
      * Direct PATCH only — no outbox fallback. Use this for chained
