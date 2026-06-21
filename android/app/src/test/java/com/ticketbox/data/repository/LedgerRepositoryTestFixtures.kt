@@ -586,6 +586,8 @@ internal class LedgerFakeDao : ExpenseDao {
     fun find(id: Long): ExpenseEntity? = map[id]
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
     override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> = map.values.filter { it.ledgerId == ledgerId }
+    override suspend fun getPending(ledgerId: String): List<ExpenseEntity> =
+        map.values.filter { it.ledgerId == ledgerId && it.status == "pending" }
     override suspend fun findByServerId(ledgerId: String, serverId: Long): ExpenseEntity? =
         map.values.firstOrNull { it.ledgerId == ledgerId && it.serverId == serverId }
     override suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity> =
@@ -606,6 +608,10 @@ internal class LedgerFakeDao : ExpenseDao {
     }
     override suspend fun deleteConfirmedForLedger(ledgerId: String) {
         val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.id }
+        ids.forEach { map.remove(it) }
+    }
+    override suspend fun deletePendingForLedger(ledgerId: String) {
+        val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "pending" }.map { it.id }
         ids.forEach { map.remove(it) }
     }
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {

@@ -34,6 +34,15 @@ internal class ExpensePendingRepository(
         }
     }
 
+    override suspend fun getCachedPending(): Result<List<Expense>> = core.errorHandler.safeCall {
+        core.getCachedPending()
+    }
+
+    override suspend fun syncPending(): Result<List<Expense>> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bind()
+        core.syncPendingFromService(service = bound.service, ledgerIdAtRequest = bound.ledgerId)
+    }
+
     override suspend fun uploadScreenshot(
         fileName: String,
         contentType: String?,

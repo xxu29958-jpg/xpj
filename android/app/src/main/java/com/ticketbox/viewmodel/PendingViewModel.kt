@@ -107,6 +107,12 @@ class PendingViewModel(
     // overwrite the row we just put back. requestGeneration is reserved for
     // ledger switches; we can't reuse it without cancelling unrelated flows.
     private var refreshSkipEpoch = 0
+    // issue #64 A3: pending 本地优先读的「首屏种子」一次性闸。仅首屏 / 换账本后的
+    // 第一次 refresh 从 Room 缓存铺列表（消空白间隙）；之后的下拉刷新不再回种，避免
+    // 在用户已乐观移除（confirm/reject 只改内存不写 Room）后又从陈旧缓存把行复活
+    // ——撞 issue 红线「review action 执行器行为不变」。换账本时在
+    // observeLedgerChanges 重置为 false 以便对新账本重新种一次。
+    private var pendingCacheSeeded = false
     // VM-owned 5s auto-dismiss timer for the 撤销 banner. Lives here rather
     // than in a Compose LaunchedEffect so it isn't restarted every time the
     // banner is recomposed (LazyColumn dispose / bottom-tab switch /
@@ -138,6 +144,8 @@ class PendingViewModel(
                     requestGeneration += 1
                     uploadLedgerIdAtStart = null
                     reviewSkippedIds.clear()
+                    // A3: 新账本要重新种一次首屏缓存。
+                    pendingCacheSeeded = false
                     val readOnly = isReadOnly()
                     _uiState.value = PendingUiState(
                         readOnly = readOnly,
@@ -191,7 +199,11 @@ class PendingViewModel(
             val generation = requestGeneration
             val skipEpoch = refreshSkipEpoch
             _uiState.update { it.copy(loading = true, message = null) }
-            repository.fetchPending()
+            // A3: 先用本地缓存铺首屏（仅首次 / 换账本后那次），再走网络 write-through。
+            // 顺序在同一协程里：种子完成后才发网络 → 飞行模式下网络失败时缓存仍留在
+            // 列表里（onFailure 不动 items），无竞态。
+            seedFromCacheIfFirstLoad(generation)
+            repository.syncPending()
                 .onSuccess { expenses ->
                     if (requestGeneration != generation) return@onSuccess
                     // undoReject bumped refreshSkipEpoch between our fetch
@@ -212,6 +224,23 @@ class PendingViewModel(
                     if (refreshSkipEpoch != skipEpoch) return@onFailure
                     _uiState.update { it.copy(loading = false, message = error.toUiText(R.string.pending_msg_load_failed)) }
                 }
+        }
+    }
+
+    /**
+     * A3 首屏种子：仅当本轮是首屏 / 换账本后的第一次刷新、且列表还空时，从 Room
+     * 缓存铺一次 pending（[pendingCacheSeeded] 一次性闸）。闸先同步置位再 await，
+     * 并发刷新不会重复种；[requestGeneration] 守换账本；铺前再查一次 items 仍空，
+     * 不覆盖刚落地的 fetch / 乐观状态。空缓存也算「已种」——避免下拉刷新回种复活。
+     */
+    private suspend fun seedFromCacheIfFirstLoad(generation: Int) {
+        if (pendingCacheSeeded || _uiState.value.items.isNotEmpty()) return
+        pendingCacheSeeded = true
+        repository.getCachedPending().onSuccess { cached ->
+            if (requestGeneration != generation) return@onSuccess
+            if (cached.isNotEmpty() && _uiState.value.items.isEmpty()) {
+                _uiState.update { it.copy(items = cached) }
+            }
         }
     }
 

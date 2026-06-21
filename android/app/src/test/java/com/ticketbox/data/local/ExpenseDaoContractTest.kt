@@ -187,6 +187,71 @@ class ExpenseDaoContractTest {
         assertEquals(listOf(1L), dao.getConfirmed("owner").map { it.serverId })
     }
 
+    @Test
+    fun pendingSyncRoundTripsAndPreservesConfirmedCache() = runTest {
+        // A3: applyPendingSyncForLedger must populate the pending cache without
+        // touching the confirmed cache that shares the same table (the
+        // LedgerScreen list depends on it).
+        val dao = FakeExpenseDao()
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1, status = "confirmed"))
+
+        dao.applyPendingSyncForLedger(
+            ledgerId = "owner",
+            expenses = listOf(
+                entity("owner", serverId = 2, status = "pending"),
+                entity("owner", serverId = 3, status = "pending"),
+            ),
+        )
+
+        assertEquals(setOf(2L, 3L), dao.getPending("owner").map { it.serverId }.toSet())
+        assertEquals(listOf(1L), dao.getConfirmed("owner").map { it.serverId })
+    }
+
+    @Test
+    fun pendingSyncWholesaleReplacesStalePending() = runTest {
+        // A3: pending arrives as one atomic non-paginated list, so each sync is
+        // a full snapshot — rows confirmed/rejected elsewhere (absent from the
+        // new response) must drop, no prune needed.
+        val dao = FakeExpenseDao()
+        dao.applyPendingSyncForLedger(
+            ledgerId = "owner",
+            expenses = listOf(
+                entity("owner", serverId = 1, status = "pending"),
+                entity("owner", serverId = 2, status = "pending"),
+            ),
+        )
+
+        dao.applyPendingSyncForLedger(
+            ledgerId = "owner",
+            expenses = listOf(
+                entity("owner", serverId = 2, status = "pending", merchant = "updated"),
+                entity("owner", serverId = 3, status = "pending"),
+            ),
+        )
+
+        val byServerId = dao.getPending("owner").associateBy { it.serverId }
+        assertEquals(setOf(2L, 3L), byServerId.keys)
+        assertEquals("updated", byServerId[2L]?.merchant)
+    }
+
+    @Test
+    fun pendingSyncIsLedgerScoped() = runTest {
+        // A3: a pending sync for one ledger must not wipe another ledger's
+        // pending cache.
+        val dao = FakeExpenseDao()
+        dao.applyPendingSyncForLedger(
+            ledgerId = "owner",
+            expenses = listOf(entity("owner", serverId = 1, status = "pending")),
+        )
+        dao.applyPendingSyncForLedger(
+            ledgerId = "L_family",
+            expenses = listOf(entity("L_family", serverId = 2, status = "pending")),
+        )
+
+        assertEquals(listOf(1L), dao.getPending("owner").map { it.serverId })
+        assertEquals(listOf(2L), dao.getPending("L_family").map { it.serverId })
+    }
+
     private fun entity(
         ledgerId: String,
         serverId: Long,
@@ -243,6 +308,12 @@ private class FakeExpenseDao : ExpenseDao {
             .sortedByDescending { it.expenseTime ?: it.confirmedAt ?: it.createdAt }
     }
 
+    override suspend fun getPending(ledgerId: String): List<ExpenseEntity> {
+        return expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "pending" }
+            .sortedWith(compareByDescending<ExpenseEntity> { it.createdAt }.thenByDescending { it.serverId })
+    }
+
     override suspend fun findByServerId(ledgerId: String, serverId: Long): ExpenseEntity? {
         return expenses.values.firstOrNull { it.ledgerId == ledgerId && it.serverId == serverId }
     }
@@ -293,6 +364,14 @@ private class FakeExpenseDao : ExpenseDao {
     override suspend fun deleteConfirmedForLedger(ledgerId: String) {
         val ids = expenses.values
             .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
+            .map { it.id }
+        ids.forEach { expenses.remove(it) }
+        emit(ledgerId)
+    }
+
+    override suspend fun deletePendingForLedger(ledgerId: String) {
+        val ids = expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "pending" }
             .map { it.id }
         ids.forEach { expenses.remove(it) }
         emit(ledgerId)

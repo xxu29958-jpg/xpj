@@ -10,6 +10,7 @@
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getConfirmed: List&lt;ExpenseEntity&gt;</ID>
+    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getPending: List&lt;ExpenseEntity&gt;</ID>
     <ID>CyclomaticComplexMethod:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>CyclomaticComplexMethod:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
     <ID>CyclomaticComplexMethod:ExpenseMappers.kt:fun ExpenseDraft.toRequest: ExpenseUpdateRequest</ID>
@@ -52,6 +53,7 @@
     <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
     <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
     <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getConfirmed: List&lt;ExpenseEntity&gt;</ID>
+    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getPending: List&lt;ExpenseEntity&gt;</ID>
     <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl.&lt;no name provided&gt;$protected override fun bind</ID>
     <ID>LongMethod:ExpenseEditFields.kt:@Composable internal fun EditDraftPreviewCard</ID>
     <ID>LongMethod:ExpenseEditMoreSection.kt:@Composable internal fun ExpenseEditMoreSection</ID>

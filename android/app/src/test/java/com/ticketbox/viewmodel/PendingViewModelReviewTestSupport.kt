@@ -110,6 +110,10 @@ internal class FakeReviewActions(
 
     var pending: List<Expense> = pending
 
+    // A3: 本地缓存种子源，与 [pending]（网络源）分开，便于测「缓存先铺、网络后替」。
+    var cachedPending: List<Expense> = emptyList()
+    var getCachedPendingResponder: (suspend () -> Result<List<Expense>>)? = null
+
     var updateResponder: (suspend (Long, ExpenseDraft) -> Result<Expense>)? = null
     var confirmResponder: (suspend (Long) -> Result<Expense>)? = null
     var rejectResponder: (suspend (Long) -> Result<Expense>)? = null
@@ -156,6 +160,20 @@ internal class FakeReviewActions(
         fetchPendingResponder?.let { return it() }
         return Result.success(pending)
     }
+
+    var getCachedPendingCalls: Int = 0
+        private set
+
+    override suspend fun getCachedPending(): Result<List<Expense>> {
+        getCachedPendingCalls += 1
+        getCachedPendingResponder?.let { return it() }
+        return Result.success(cachedPending)
+    }
+
+    // refresh() 现在走 syncPending；在 fake 里委托给 fetchPending，让既有
+    // fetchPendingResponder / fetchPendingCalls 驱动的 refresh 测试无改动通过
+    // （无真实 Room，sync 与 fetch 在 fake 里等价）。
+    override suspend fun syncPending(): Result<List<Expense>> = fetchPending()
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> =
         thumbnailResponder?.invoke(id)

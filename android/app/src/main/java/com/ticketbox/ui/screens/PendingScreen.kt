@@ -111,13 +111,15 @@ fun PendingScreen(
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
     val haptics = rememberAppHaptics()
-    // 待确认清零庆祝：previousItemCount > 0 → 0 时触发 1.5s 庆祝动画。
-    // 用 remember 持有上一帧的 count，state 一旦回到 0 就 flip showCelebration。
-    var previousItemCount by remember { mutableStateOf(state.items.size) }
+    // 待确认清零庆祝：仅在「已结算」(非 loading) 帧之间从 >0 → 0 才触发 1.5s 动画。
+    // A3 首屏缓存种子会在 loading 期间先把 items 铺满、随后被空的网络响应替换；若把
+    // 这种 seed→空响应 也当「清零」，会在用户其实没清任何东西（是别端清的）时误放
+    // 庆祝。故 loading 帧一律跳过：既不比较基线也不更新基线，基线只取已结算计数。
+    var previousItemCount by remember { mutableStateOf(if (state.loading) 0 else state.items.size) }
     var showCelebration by remember { mutableStateOf(false) }
     LaunchedEffect(state.items.size, state.loading) {
-        val nowEmpty = state.items.isEmpty() && !state.loading
-        if (previousItemCount > 0 && nowEmpty) {
+        if (state.loading) return@LaunchedEffect
+        if (previousItemCount > 0 && state.items.isEmpty()) {
             showCelebration = true
             kotlinx.coroutines.delay(1800)
             showCelebration = false

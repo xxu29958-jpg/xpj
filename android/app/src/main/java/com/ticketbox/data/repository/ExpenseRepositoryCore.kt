@@ -266,6 +266,36 @@ internal class ExpenseRepositoryCore(
         return collected
     }
 
+    /**
+     * issue #64 A3：pending 列表本地优先读的「读缓存」入口。从 Room 取本账本已缓存
+     * 的 pending 行（[syncPendingFromService] 写回的），供 PendingViewModel 在
+     * init / 换账本时立即填充列表、消掉「空白 → 骨架屏 → 网络回来」的间隙。
+     * 一次性快照读，不是持续 Flow——持续 Flow 会复活 VM 已乐观移除的行
+     * （confirm/reject 只改内存不写 Room），撞 review action 执行器「行为不变」红线。
+     */
+    suspend fun getCachedPending(ledgerId: String = activeLedgerIdOrLegacy()): List<Expense> =
+        expenseDao.getPending(ledgerId).map { it.toDomain() }
+
+    /**
+     * issue #64 A3：pending 列表本地优先读的「拉远端 + 写回缓存」入口。镜像
+     * [syncConfirmedFromService] 但 pending 走非分页单次 `pendingExpenses()`，整张
+     * 列表原子到达，故写回用 wholesale-replace（[ExpenseDao.applyPendingSyncForLedger]，
+     * 只清 pending 不动 confirmed 缓存），无需 prune。换账本守卫与 confirmed 同：
+     * 拿到响应后若 active ledger 已变即丢弃，绝不把旧账本数据写进新账本缓存。
+     */
+    suspend fun syncPendingFromService(
+        service: ApiService,
+        ledgerIdAtRequest: String = activeLedgerIdOrLegacy(),
+    ): List<Expense> {
+        val dtos = service.pendingExpenses()
+        if (activeLedgerIdOrLegacy() != ledgerIdAtRequest) {
+            return emptyList()
+        }
+        val entities = dtos.map { it.toEntity(ledgerIdAtRequest) }
+        expenseDao.applyPendingSyncForLedger(ledgerId = ledgerIdAtRequest, expenses = entities)
+        return dtos.map { it.toDomain() }
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun observeConfirmed(): Flow<List<Expense>> =
         settingsStore.observeActiveLedgerId()
