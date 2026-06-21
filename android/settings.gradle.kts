@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Ticketbox"
 include(":app")
+// issue #64 A1: Baseline Profile generation lives in its own com.android.test module.
+include(":macrobenchmark")

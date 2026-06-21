@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0049（0018 已撤回；0032–0034 未使用，编号跳过）。
+**编号范围**：0001–0050（0018 已撤回；0032–0034 未使用，编号跳过）。
 
 ## 索引
 
@@ -54,10 +54,11 @@
 | [0047](0047-bundled-installer-windows-services.md) | 分发形态：捆绑安装器 + PG/后端注册 Windows 服务 + 主机管理器 | PG+后端各注册 Windows 服务（SCM 当守护，否决便携双进程守护；后端用 **Shawl** 包，**NSSM 弃维否决**；Shawl ctrl-C+`--stop-timeout` 调大 graceful）；**各用独立虚拟服务账户 `NT SERVICE\…`**；**数据默认 `C:\ProgramData\Ticketbox`（高级可改位置，断 ACL 继承、升级不偷换、卸载默认留数据、迁移走管理器）**；PG 隐形+应用角色建库堵 owner 陷阱+connect-retry 必需；**覆盖升级前置 `pre_upgrade` 快照失败即中止**；EXE=控制台管理器（bootstrap/配设备走 loopback API、二维码只塞短期 pairing code 不塞 token、/owner 永远 loopback）；网络用户自配（LAN 优先 mDNS+NsdManager 自愈漂移，远程**荐 Tailscale**、named tunnel 进阶，永不在 plain-http 设 `__Host-` cookie）；PG major 钉死 17；**默认不签**（SAC 可逆上 Trusted Signing） | **accepted**（owner 2026-06-18 拍板+联网验证+补强服务身份/数据目录/ACL/升级前置，运行时未实现） |
 | [0048](0048-rive-mascot-animation.md) | 吉祥物「夹夹」动画技术栈 = Rive | MIT runtime；`.riv` 本地加载零联网；只用稳定 View API（beta Compose API 不进主线）；一套 artboard 喂三端 + 运行时绑 token 色；纯表现层不写业务 | **proposed**（角色 brief = docs/roadmap/MASCOT_BRIEF.md，原画 v3 已定稿） |
 | [0049](0049-debt-domain-contract.md) | Debt Domain Contract | 统一 Debt obligation：家庭内欠款与外部负债同表，Repayment/Adjustment append-only，bill_split accept 可原子生成 Debt，debt_repayment goal 读取 Debt 清偿状态 | accepted target contract；[[0029]]/[[0038]]/[[0041]]/[[0042]]/[[0048]] |
+| [0050](0050-android-baseline-profile-prerelease.md) | Android Baseline Profile 预发布工具 | issue #64 A1：AGP 9.2 上稳定版 baselineprofile 报废（实证），owner 拍板采 1.5.0-alpha06；仅构建/测试期、不进运行时，回收=1.5.0 stable | accepted；[[0011]]/[[0009]]/[[0010]]；detekt alpha 同形例外 |
 
 ## 编写新 ADR
 
-下一编号 `0050`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0051`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题
