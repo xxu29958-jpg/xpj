@@ -498,11 +498,22 @@ jobs:
             # completes and the dependency-analysis loop begins; if that marker is present
             # the bound was hit DURING analysis/reporting (a non-NVD hang, even on a warm
             # cache) which could mask a real finding — fail safe rather than tolerate.
+            # (a) If analysis began, the bound was hit during analysis/reporting (a non-NVD
+            #     hang, even on a warm cache) which could mask a real finding — fail safe.
             if grep -qi "Analysis Started" "$log"; then
               echo "::error::OWASP hit the 12m bound AFTER analysis began (\"Analysis Started\" seen) — a hang in the dependency-analysis/reporting phase, not an NVD-fetch stall. Failing safe so a wedged scanner can't pass as a tolerated NVD timeout."
               exit 1
             fi
-            echo "::warning::OWASP dependency-check hit the 12m bound during the NVD update/fetch phase (analysis never started — slow/unreachable NVD source). Tolerated — nothing was analysed, so there are no findings to gate on; this keeps the job off the 40-min wall-clock cancel that used to skip this gate entirely."
+            # (b) Tolerate ONLY with POSITIVE evidence the stall was the NVD update/fetch (the
+            #     network-bound, flaky part). A bound hit during gradle configuration /
+            #     dependency resolution / lock wait — BEFORE dependency-check reaches NVD —
+            #     also lacks "Analysis Started" yet is NOT an NVD outage, so require an
+            #     NVD-update log signature; otherwise fail safe.
+            if ! grep -qiE "Checking for updates|NVD CVE|NVD API|Download Started for NVD|NVD data" "$log"; then
+              echo "::error::OWASP hit the 12m bound BEFORE the NVD update/fetch phase began (no NVD-update log signature — likely a gradle config / dependency-resolution / lock stall, not an NVD outage). Failing safe."
+              exit 1
+            fi
+            echo "::warning::OWASP dependency-check hit the 12m bound DURING the NVD update/fetch phase (NVD-update log seen, analysis never started — slow/unreachable NVD source). Tolerated — nothing was analysed, so there are no findings to gate on; this keeps the job off the 40-min wall-clock cancel that used to skip this gate entirely."
             # A timed-out fetch leaves a PARTIAL H2 DB — same rationale as the data-empty
             # branch: drop it so an incomplete NVD DB isn't cached and the next run re-attempts
             # a full build instead of scanning with partial coverage.
