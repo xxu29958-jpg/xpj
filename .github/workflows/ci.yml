@@ -430,17 +430,18 @@ jobs:
         run: |
           set +e            # capture the exit code manually; errexit would skip the lines below
           set -o pipefail
-          # Bound the NVD download/scan so a slow or hung NVD source FAILS FAST (~12 min)
-          # instead of hanging to the job's 40-min wall-clock limit — which cancels the
-          # job and SKIPS the Enforce gate, leaving the Android job red with no
-          # adjudication. `timeout` exits 124 on expiry; record a controlled marker the
-          # Enforce gate tolerates (a timed-out scan analysed nothing → produced no
-          # findings, same as an NVD data outage). 12m keeps total job time
-          # (~20m build + ≤12m scan + Enforce) safely under timeout-minutes: 40.
-          timeout 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee owasp-output.log
+          # Bound the NVD download/scan so a slow or hung NVD source FAILS FAST instead of
+          # hanging to the job's 40-min wall-clock limit — which cancels the job and SKIPS
+          # the Enforce gate, leaving the Android job red with no adjudication. `-k 1m`
+          # makes it a HARD bound: send TERM at 12m and, if a wedged JVM ignores/blocks it,
+          # SIGKILL 1m later — so control always returns here (worst case ~13m, still under
+          # timeout-minutes: 40 with the ~20m build). timeout reports 124 (TERM) or 137
+          # (KILL); on either, record a controlled marker the Enforce gate tolerates (a
+          # timed-out scan analysed nothing → produced no findings, same as an NVD outage).
+          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee owasp-output.log
           rc=${PIPESTATUS[0]}
-          if [ "$rc" -eq 124 ]; then
-            echo "OWASP_SCAN_TIMED_OUT_124 (dependency-check exceeded the 12m NVD bound)" | tee -a owasp-output.log
+          if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            echo "OWASP_SCAN_TIMED_OUT_124 (dependency-check exceeded the 12m NVD bound; timeout rc=$rc)" | tee -a owasp-output.log
           fi
           exit "$rc"
 
