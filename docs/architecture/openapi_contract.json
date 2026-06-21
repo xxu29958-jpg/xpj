@@ -1773,6 +1773,11 @@
             "title": "Filter",
             "type": "string"
           },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1907,6 +1912,11 @@
             "default": "all",
             "title": "Filter",
             "type": "string"
+          },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
           },
           "ledger_id": {
             "default": "",

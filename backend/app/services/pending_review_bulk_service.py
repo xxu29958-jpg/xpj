@@ -42,8 +42,19 @@ SKIP_REASON_NOT_SUSPECTED_DUPLICATE = "非疑似重复"
 
 @dataclass
 class BulkResult:
-    success_count: int = 0
+    # issue #64 W3: track WHICH rows were actioned, not just how many. The
+    # fetch+partial /web bulk bar splices exactly these rows out of the DOM —
+    # confirm_ready skips non-ready rows, so a count alone can't tell the client
+    # which of the selected rows actually left the pending list.
+    success_ids: list[int] = field(default_factory=list)
     skipped_reasons: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def success_count(self) -> int:
+        return len(self.success_ids)
+
+    def record_success(self, row_id: int) -> None:
+        self.success_ids.append(row_id)
 
     def bump(self, label: str) -> None:
         self.skipped_reasons[label] = self.skipped_reasons.get(label, 0) + 1
@@ -148,7 +159,7 @@ def _apply_metadata_update(
         return
     try:
         update_expense(db, row.id, tenant_id, payload)
-        result.success_count += 1
+        result.record_success(row.id)
     except AppError:
         result.bump("更新失败")
 
@@ -161,7 +172,7 @@ def _apply_reject(db: Session, row, tenant_id: str, result: BulkResult) -> None:
         # ADR-0038 PR-2b: 服务端 bulk handler 已经读到 row.updated_at，
         # 直接喂给 reject_expense；不让外层管线携带 token。
         reject_expense(db, row.id, tenant_id, expected_row_version=row.row_version)
-        result.success_count += 1
+        result.record_success(row.id)
     except AppError:
         result.bump("忽略失败")
 
@@ -175,7 +186,7 @@ def _apply_confirm_ready(db: Session, row, tenant_id: str, result: BulkResult) -
         return
     try:
         confirm_expense(db, row.id, tenant_id, expected_row_version=row.row_version)
-        result.success_count += 1
+        result.record_success(row.id)
     except AppError:
         result.bump("确认失败")
 
@@ -188,6 +199,6 @@ def _apply_keep_duplicate(db: Session, row, tenant_id: str, result: BulkResult) 
         mark_expense_not_duplicate(
             db, row.id, tenant_id, expected_row_version=row.row_version
         )
-        result.success_count += 1
+        result.record_success(row.id)
     except AppError:
         result.bump("更新失败")
