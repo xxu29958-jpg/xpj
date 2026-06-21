@@ -413,11 +413,64 @@ jobs:
 
       - name: Dependency vulnerability scan (OWASP dependency-check)
         if: ${{ env.NVD_API_KEY != '' }}
+        id: owasp
         # Android dependency CVE gate via the OWASP plugin (android/build.gradle.kts).
         # Cloud-only (NVD download is too heavy for the single local-Gitea runner).
-        # Requires the NVD_API_KEY repo secret; without it the NVD feed can hang
-        # the hosted runner long enough to starve the merge gate.
-        run: ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}"
+        # Requires the NVD_API_KEY repo secret.
+        #
+        # continue-on-error lets the run REACH the "Enforce" gate below even when
+        # dependency-check exits non-zero — a cold NVD cache + NVD-source outage throws
+        # a FATAL ExceptionCollection (gradle exit 1). This does NOT disable the gate:
+        # the next step re-adjudicates the failure from the log so a real CVE finding
+        # (failBuildOnCVSS, the docs/security/THREAT_MODEL.md gate) still reds the job;
+        # only the specific NVD-data-unavailable path is tolerated, everything else
+        # (corrupt DB, parser/analyzer fatals, unknown) fails safe. failOnError stays at
+        # its default (true) so a corrupt cached DB can't silently skip analysis as a pass.
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee owasp-output.log
+
+      - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
+        if: ${{ env.NVD_API_KEY != '' }}
+        # Re-asserts the dependency-check gate the previous step's continue-on-error
+        # would otherwise drop. failOnError stays true, so outcome=success genuinely
+        # means "analysis ran clean" (a corrupt-DB skip can't masquerade as success).
+        # On failure, distinguish the two cases from the gradle log — report+CVSS check
+        # run AFTER analysis, the fatal data error throws BEFORE:
+        #   real finding       -> "...vulnerabilities that have a CVSS score greater than..."
+        #   NVD data empty      -> "No documents exist" / "NoDataException" (Lucene CVE index empty)
+        # Tolerate ONLY the NVD-data-empty signatures (NOT the generic "Analysis failed"
+        # wrapper, which also fronts corrupt-DB / parser / analyzer fatals); fail-safe
+        # (red) on a real finding and on every other / unrecognized failure so nothing
+        # — a real CVE or a broken scanner — is silently swallowed.
+        run: |
+          if [ "${{ steps.owasp.outcome }}" = "success" ]; then
+            echo "OWASP scan completed with no findings at/above the failBuildOnCVSS threshold."
+            exit 0
+          fi
+          log=owasp-output.log
+          if [ -f "$log" ] && grep -qiE "vulnerabilities that have a CVSS score greater than|failBuildOnCVSS" "$log"; then
+            echo "::error::OWASP found a dependency at/above the failBuildOnCVSS threshold — real finding, failing the build (threat-model gate)."
+            grep -iE "CVSS score greater than" "$log" || true
+            exit 1
+          fi
+          if [ -f "$log" ] && grep -qiE "No documents exist|NoDataException" "$log"; then
+            echo "::warning::OWASP dependency-check could not run: the NVD CVE data store is empty (cold cache + NVD source unreachable). Tolerated — no data to gate on."
+            # Don't let a tolerated outage POISON the cache: dependency-check already
+            # created an empty ~/.gradle/dependency-check-data H2 dir before throwing
+            # NoDataException, and because the job now ends green the actions/cache step
+            # would save that empty dir under today's key — same-day reruns would restore
+            # it and keep short-circuiting to this tolerated path instead of rebuilding.
+            # Delete it so the cache save has nothing to persist and the next run
+            # re-attempts the NVD build (a good same-day cache, if one exists, is under an
+            # already-saved immutable key and is unaffected).
+            rm -rf "${HOME}/.gradle/dependency-check-data" || true
+            echo "Removed the empty dependency-check data dir to avoid caching a poisoned NVD DB. Re-run once NVD is reachable to restore coverage."
+            exit 0
+          fi
+          echo "::error::OWASP step failed and the log is neither a CVE finding nor a known NVD-data-empty outage (could be a corrupt cache DB, parser/analyzer fatal, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
+          exit 1
 
       - name: Dependency vulnerability scan skipped
         if: ${{ env.NVD_API_KEY == '' }}
