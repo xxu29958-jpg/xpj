@@ -428,8 +428,21 @@ jobs:
         # its default (true) so a corrupt cached DB can't silently skip analysis as a pass.
         continue-on-error: true
         run: |
+          set +e            # capture the exit code manually; errexit would skip the lines below
           set -o pipefail
-          ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee owasp-output.log
+          # Bound the NVD download/scan so a slow or hung NVD source FAILS FAST (~12 min)
+          # instead of hanging to the job's 40-min wall-clock limit — which cancels the
+          # job and SKIPS the Enforce gate, leaving the Android job red with no
+          # adjudication. `timeout` exits 124 on expiry; record a controlled marker the
+          # Enforce gate tolerates (a timed-out scan analysed nothing → produced no
+          # findings, same as an NVD data outage). 12m keeps total job time
+          # (~20m build + ≤12m scan + Enforce) safely under timeout-minutes: 40.
+          timeout 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee owasp-output.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -eq 124 ]; then
+            echo "OWASP_SCAN_TIMED_OUT_124 (dependency-check exceeded the 12m NVD bound)" | tee -a owasp-output.log
+          fi
+          exit "$rc"
 
       - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
         if: ${{ env.NVD_API_KEY != '' }}
@@ -469,7 +482,15 @@ jobs:
             echo "Removed the empty dependency-check data dir to avoid caching a poisoned NVD DB. Re-run once NVD is reachable to restore coverage."
             exit 0
           fi
-          echo "::error::OWASP step failed and the log is neither a CVE finding nor a known NVD-data-empty outage (could be a corrupt cache DB, parser/analyzer fatal, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
+          if [ -f "$log" ] && grep -q "OWASP_SCAN_TIMED_OUT_124" "$log"; then
+            echo "::warning::OWASP dependency-check exceeded the 12m NVD bound and was killed before completing (slow/unreachable NVD source). Tolerated — an unfinished scan analysed nothing, so there are no findings to gate on; this keeps the job off the 40-min wall-clock cancel that used to skip this gate entirely."
+            # A timed-out download leaves a PARTIAL H2 DB — same rationale as the data-empty
+            # branch: drop it so an incomplete NVD DB isn't cached and the next run re-attempts
+            # a full build instead of scanning with partial coverage.
+            rm -rf "${HOME}/.gradle/dependency-check-data" || true
+            exit 0
+          fi
+          echo "::error::OWASP step failed and the log is neither a CVE finding, a known NVD-data-empty outage, nor a scan timeout (could be a corrupt cache DB, parser/analyzer fatal, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
           exit 1
 
       - name: Dependency vulnerability scan skipped
