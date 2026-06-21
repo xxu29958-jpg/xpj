@@ -22,13 +22,11 @@ val dependencyCheckDataDir =
 
 dependencyCheck {
     failBuildOnCVSS = 7.0f
-    // failOnError=false 只降级 NON-FATAL 分析告警(暖缓存下某 analyzer 的非致命异常),让它们不红
-    // 构建。它压不住 FATAL 的 NVD 冷缓存断供——dependency-check 12.1.0 的 AbstractAnalyze 在
-    // `failOnError || ex.isFatal()` 仍重抛(冷缓存 + NVD 拉不到 = fatal),那条 infra flake 由
-    // .github/workflows/ci.yml 的 OWASP「Enforce」门按 gradle 日志区分:真 CVE 发现仍红,只放过数据断供。
-    // 真实漏洞门不丢:failBuildOnCVSS(上一行)独立于 failOnError,NVD 数据可用时照常拦 CVSS>=7.0,
-    // 是 docs/security/THREAT_MODEL.md 记载的依赖漏洞门(非告警面)。
-    failOnError = false
+    // failOnError 保持默认 true(不设 false):corrupt/unreadable 的缓存 H2 库会让 new Engine 抛
+    // DatabaseException,12.1.0 的 AbstractAnalyze 仅在 failOnError 为 true 时重抛、否则记日志并跳过
+    // 整个分析块——那会让扫描静默 no-op 却 exit 0,绕过 CVE 阈值检查。保持 true → 这类失败仍红,
+    // 由 ci.yml 的 OWASP「Enforce」门按 gradle 日志精确区分:仅 NVD 数据断供(No documents exist /
+    // NoDataException)放过,真 CVE 发现与其它致命失败(含 corrupt DB)一律红。
     formats = listOf("HTML", "JSON")
     suppressionFile = file("config/dependency-check/suppressions.xml").takeIf { it.exists() }?.absolutePath
     // OWASP recommends an NVD API key to avoid throttling; CI injects it and
