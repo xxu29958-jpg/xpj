@@ -413,21 +413,50 @@ jobs:
 
       - name: Dependency vulnerability scan (OWASP dependency-check)
         if: ${{ env.NVD_API_KEY != '' }}
+        id: owasp
         # Android dependency CVE gate via the OWASP plugin (android/build.gradle.kts).
         # Cloud-only (NVD download is too heavy for the single local-Gitea runner).
-        # Requires the NVD_API_KEY repo secret; without it the NVD feed can hang
-        # the hosted runner long enough to starve the merge gate.
+        # Requires the NVD_API_KEY repo secret.
         #
-        # continue-on-error: a NVD-source outage on a cold cache makes
-        # dependency-check 12.1.0 throw a FATAL ExceptionCollection that the gradle
-        # `failOnError=false` knob can NOT suppress (AbstractAnalyze rethrows when
-        # `failOnError || ex.isFatal()`), so the only reliable way to keep that
-        # infra flake off the substantive Android gate is to mark the STEP non-fatal
-        # to the job. The step still runs the CVE scan and surfaces findings (red
-        # step / JSON+HTML report) when NVD data is available — OWASP is an advisory
-        # surface here (no required checks), not a merge-blocking gate.
+        # continue-on-error lets the run REACH the "Enforce" gate below even when
+        # dependency-check throws a FATAL ExceptionCollection — which a cold NVD cache
+        # + NVD-source outage triggers (AbstractAnalyze rethrows on `failOnError ||
+        # ex.isFatal()`, so gradle `failOnError=false` can NOT suppress it). This does
+        # NOT disable the gate: the next step re-adjudicates the failure from the log so
+        # a real CVE finding (failBuildOnCVSS, the docs/security/THREAT_MODEL.md gate)
+        # still reds the job — only the data-unavailable path is tolerated.
         continue-on-error: true
-        run: ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}"
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee owasp-output.log
+
+      - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
+        if: ${{ env.NVD_API_KEY != '' }}
+        # Re-asserts the dependency-check gate the previous step's continue-on-error
+        # would otherwise drop. dependency-check writes the report and throws the
+        # failBuildOnCVSS error AFTER analysis but throws the fatal infra error BEFORE,
+        # so the gradle log cleanly separates the two cases:
+        #   real finding -> "...vulnerabilities that have a CVSS score greater than..."
+        #   NVD outage    -> "Unable to continue dependency-check analysis" / "No documents exist" / "Analysis failed"
+        # Fail on a real finding; tolerate ONLY a recognized data outage; fail-safe
+        # (red) on any unrecognized failure so nothing is silently swallowed.
+        run: |
+          if [ "${{ steps.owasp.outcome }}" = "success" ]; then
+            echo "OWASP scan completed with no findings at/above the failBuildOnCVSS threshold."
+            exit 0
+          fi
+          log=owasp-output.log
+          if [ -f "$log" ] && grep -qiE "vulnerabilities that have a CVSS score greater than|failBuildOnCVSS" "$log"; then
+            echo "::error::OWASP found a dependency at/above the failBuildOnCVSS threshold — real finding, failing the build (threat-model gate)."
+            grep -iE "CVSS score greater than" "$log" || true
+            exit 1
+          fi
+          if [ -f "$log" ] && grep -qiE "Unable to continue dependency-check analysis|No documents exist|Unable to update|NoDataException|Analysis failed" "$log"; then
+            echo "::warning::OWASP dependency-check could not complete: the NVD data source was unavailable on a cold cache. Tolerated — no CVE data to gate on. Re-run once NVD is reachable to restore coverage."
+            exit 0
+          fi
+          echo "::error::OWASP step failed for an unrecognized reason — failing safe so no real finding is swallowed. See the previous step's log."
+          exit 1
 
       - name: Dependency vulnerability scan skipped
         if: ${{ env.NVD_API_KEY == '' }}
