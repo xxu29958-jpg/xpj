@@ -456,7 +456,17 @@ jobs:
             exit 1
           fi
           if [ -f "$log" ] && grep -qiE "No documents exist|NoDataException" "$log"; then
-            echo "::warning::OWASP dependency-check could not run: the NVD CVE data store is empty (cold cache + NVD source unreachable). Tolerated — no data to gate on. Re-run once NVD is reachable to restore coverage."
+            echo "::warning::OWASP dependency-check could not run: the NVD CVE data store is empty (cold cache + NVD source unreachable). Tolerated — no data to gate on."
+            # Don't let a tolerated outage POISON the cache: dependency-check already
+            # created an empty ~/.gradle/dependency-check-data H2 dir before throwing
+            # NoDataException, and because the job now ends green the actions/cache step
+            # would save that empty dir under today's key — same-day reruns would restore
+            # it and keep short-circuiting to this tolerated path instead of rebuilding.
+            # Delete it so the cache save has nothing to persist and the next run
+            # re-attempts the NVD build (a good same-day cache, if one exists, is under an
+            # already-saved immutable key and is unaffected).
+            rm -rf "${HOME}/.gradle/dependency-check-data" || true
+            echo "Removed the empty dependency-check data dir to avoid caching a poisoned NVD DB. Re-run once NVD is reachable to restore coverage."
             exit 0
           fi
           echo "::error::OWASP step failed and the log is neither a CVE finding nor a known NVD-data-empty outage (could be a corrupt cache DB, parser/analyzer fatal, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
