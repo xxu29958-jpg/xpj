@@ -258,6 +258,34 @@ kotlin {
     }
 }
 
+// issue #64 A2: Compose model stability via the compiler's stability config.
+//
+// stabilityConfigurationFiles tells the Compose compiler to treat the listed
+// types as stable, so composables that take them — directly, or as the element
+// type of a List/Map parameter — become skippable and stop recomposing every
+// list item when an unrelated part of the parent state changes. The hard rule
+// (issue #64 A2) is that domain/model must NOT import Compose, so we never put
+// @Stable/@Immutable on the data classes; this external file carries the same
+// signal without the dependency. compose_stability_config.conf lists only the
+// types the metrics report verified as unstable.
+//
+// Metrics/reports are opt-in via -Pticketbox.composeMetrics=true so normal and
+// CI builds pay nothing (no extra task outputs, no behavior change). Regenerate
+// the stability report with:
+//   ./gradlew :app:compileGrayDebugKotlin -Pticketbox.composeMetrics=true
+// then read app/build/compose_compiler/*-classes.txt (per-class stability) and
+// *-composables.txt (skippable/restartable per @Composable).
+composeCompiler {
+    stabilityConfigurationFiles.add(
+        layout.projectDirectory.file("compose_stability_config.conf"),
+    )
+    if (project.findProperty("ticketbox.composeMetrics") == "true") {
+        val composeMetricsDir = layout.buildDirectory.dir("compose_compiler")
+        metricsDestination.set(composeMetricsDir)
+        reportsDestination.set(composeMetricsDir)
+    }
+}
+
 // ADR-0041 follow-up: androidx.lifecycle 2.10.0 transitively pins
 // kotlinx-serialization to 1.7.3 (Kotlin-2.0 era) `strictly`, which is binary-
 // incompatible with room-testing 2.8.4's schema-bundle serializers — they need
