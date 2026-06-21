@@ -509,8 +509,12 @@ jobs:
             #     dependency resolution / lock wait — BEFORE dependency-check reaches NVD —
             #     also lacks "Analysis Started" yet is NOT an NVD outage, so require an
             #     NVD-update log signature; otherwise fail safe.
-            if ! grep -qiE "Checking for updates|NVD CVE|NVD API|Download Started for NVD|NVD data" "$log"; then
-              echo "::error::OWASP hit the 12m bound BEFORE the NVD update/fetch phase began (no NVD-update log signature — likely a gradle config / dependency-resolution / lock stall, not an NVD outage). Failing safe."
+            # NVD-SPECIFIC markers only — NOT the generic "Checking for updates" banner,
+            # which Engine.doUpdates logs before iterating EVERY cached datasource (RetireJS
+            # / hosted-suppressions / KEV), so a stall in one of those (after the banner, no
+            # "Analysis Started" yet) is not an NVD outage and must fail safe.
+            if ! grep -qiE "NVD CVE|NVD API|Download Started for NVD|NVD data" "$log"; then
+              echo "::error::OWASP hit the 12m bound without any NVD-specific update log (NVD CVE / NVD API / Download Started for NVD) — the stall was before NVD or in a non-NVD datasource (gradle config / dependency resolution / RetireJS / KEV), not a demonstrated NVD outage. Failing safe."
               exit 1
             fi
             echo "::warning::OWASP dependency-check hit the 12m bound DURING the NVD update/fetch phase (NVD-update log seen, analysis never started — slow/unreachable NVD source). Tolerated — nothing was analysed, so there are no findings to gate on; this keeps the job off the 40-min wall-clock cancel that used to skip this gate entirely."
