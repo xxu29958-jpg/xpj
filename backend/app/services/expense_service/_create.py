@@ -20,6 +20,7 @@ from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateReque
 from app.services.classify_service import classify_expense
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload
+from app.services.expense_query import local_ref_storage_key, resolve_expense
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
     NOTIFICATION_DRAFT_SOURCE_PREFIX,
@@ -134,9 +135,7 @@ def enrich_pending_expense(
     from app.database import SessionLocal
 
     with SessionLocal() as db:
-        expense = db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
-        )
+        expense = resolve_expense(db, tenant_id, expense_id)
         if expense is None or expense.status != "pending":
             return
 
@@ -155,9 +154,7 @@ def enrich_pending_expense(
             # shim was SQLite-only). Serializing concurrent same-expense
             # enrichment without holding a row lock over the I/O is deferred (low
             # value: single background worker, rare).
-            expense = db.scalar(
-                ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
-            )
+            expense = resolve_expense(db, tenant_id, expense_id)
             if expense is None or expense.status != "pending":
                 return
             if not expense.thumbnail_path:
@@ -316,7 +313,7 @@ def create_manual_expense(
     # the expense's own ``draft_idempotency_key`` (unique per tenant) so slice 3 can
     # later resolve a ``local:{client_ref}`` mutation by it; the device prefix is built
     # server-side from the authenticated token, never trusted from the body.
-    key = f"{auth.device_id}:{payload.client_ref}"
+    key = local_ref_storage_key(auth.device_id, payload.client_ref)
     fingerprint = _manual_request_fingerprint(payload)
     existing = _find_manual_expense_by_key(db, tenant_id, key)
     if existing is not None:

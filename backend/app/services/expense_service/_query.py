@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
-from app.services.expense_query import get_expense  # noqa: F401 — re-exported
+from app.services.expense_query import (  # noqa: F401 — re-exported
+    get_expense,
+    resolve_expense,
+)
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 
 __all__ = [
@@ -18,6 +21,7 @@ __all__ = [
     "list_confirmed",
     "list_expenses_by_ids",
     "list_pending",
+    "resolve_expense",
 ]
 
 
