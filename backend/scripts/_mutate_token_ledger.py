@@ -188,6 +188,14 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/invitations/accept": Exempt("session_rotation", "identity", _ACCEPT_INVITE, "medium"),
     "POST /api/ledgers": Exempt("create_row", "identity", _LEDGER_CREATE),
     "POST /api/ledgers/{ledger_id}/invitations": Exempt("create_row", "identity", ("invitations",)),
+    # issue #65 slice 6a: owner-facing "My Devices" (app-token, owner-only). Same
+    # operations + OCC-justification as the loopback /api/admin/devices entries
+    # above, just account-owner-scoped instead of admin-scoped. Device rows have
+    # no row_version: rename is a single-writer name update, revoke latches
+    # revoked_at, pairing-codes mints a new row — none is fold-changing.
+    "POST /api/ledgers/{ledger_id}/devices/{public_id}/rename": Exempt("admin_single_writer", "identity", ("devices",)),
+    "POST /api/ledgers/{ledger_id}/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"),
+    "POST /api/ledgers/{ledger_id}/devices/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
     "POST /api/merchants/aliases": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /api/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")

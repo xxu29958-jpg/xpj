@@ -151,6 +151,8 @@ from app.schemas._goals import (
 from app.schemas._identity import (
     AdminDeviceRenameRequest,
     AdminDeviceResponse,
+    MyDeviceListResponse,
+    MyDeviceResponse,
     AdminUploadLinkCreateRequest,
     AdminUploadLinkResponse,
     AdminUploadLinkSecretResponse,
@@ -255,6 +257,8 @@ from app.schemas._tags import (
 __all__ = [
     "AdminDeviceRenameRequest",
     "AdminDeviceResponse",
+    "MyDeviceListResponse",
+    "MyDeviceResponse",
     "AdminUploadLinkCreateRequest",
     "AdminUploadLinkResponse",
     "AdminUploadLinkSecretResponse",

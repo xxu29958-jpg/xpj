@@ -268,6 +268,24 @@ class AdminDeviceRenameRequest(BaseModel):
     device_name: str = Field(min_length=1, max_length=120)
 
 
+# issue #65 slice 6a — owner-facing "My Devices" (app-token /api/ledgers/{id}/devices).
+# Distinct from AdminDeviceResponse: drops account_name/ledger_* (the owner sees
+# only their own account's devices in one ledger) and adds created_at + is_current
+# so the client can hide the self-revoke affordance.
+class MyDeviceResponse(BaseModel):
+    public_id: str
+    device_name: str
+    platform: str
+    last_seen_at: str | None = None
+    created_at: str | None = None
+    revoked_at: str | None = None
+    is_current: bool
+
+
+class MyDeviceListResponse(BaseModel):
+    devices: list[MyDeviceResponse]
+
+
 class AdminUploadLinkResponse(BaseModel):
     public_id: str
     ledger_id: str
