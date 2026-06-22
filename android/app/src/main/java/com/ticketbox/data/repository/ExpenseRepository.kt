@@ -5,6 +5,7 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -72,6 +73,8 @@ class ExpenseRepository(
     replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
     // ADR-0042 Slice E-2: body-carrying adapter for the offline-aware "粘贴文字识别".
     recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
+    // issue #65 slice 4: body adapter for the offline-aware manual create.
+    manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>? = null,
 ) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions, ExpenseEditActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
@@ -86,6 +89,7 @@ class ExpenseRepository(
         replaceItemsAdapter = replaceItemsAdapter,
         replaceSplitsAdapter = replaceSplitsAdapter,
         recognizeTextAdapter = recognizeTextAdapter,
+        manualCreateAdapter = manualCreateAdapter,
     )
     /**
      * 见 [ExpenseRepositoryCore.onConfirmedCommitted]：确认态落本地缓存的单点回调

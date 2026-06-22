@@ -25,14 +25,21 @@ package com.ticketbox.data.local
  *   DeleteMerchantAlias              DELETE /api/merchants/aliases/{publicId}
  *   UpdateGoal                       PATCH  /api/goals/{publicId}
  *   UpdateIncomePlan                 PATCH  /api/income-plans/{publicId}
+ *   CreateExpense                    POST   /api/expenses/manual
  *
- * Routes that legitimately don't take a token (creates / terminal
- * lifecycle / batch with its own preview_token) are NOT in the
+ * Most creates / terminal lifecycle / batch routes are NOT in the
  * outbox — they go through the normal online-only ApiService path.
- * See ``ALLOWLIST`` in ``backend/scripts/_audit_mutate_token_coverage.py``.
+ * [CreateExpense] is the deliberate exception (issue #65 slice 4):
+ * offline manual create is made idempotent by a body ``client_ref``
+ * (NOT an ``expected_row_version`` token), so the backend HITs the
+ * existing row on a lost-response replay. It carries
+ * ``expectedRowVersion = 0`` (the create has no prior version) and no
+ * ``Idempotency-Key`` header. See ``ALLOWLIST`` in
+ * ``backend/scripts/_audit_mutate_token_coverage.py``.
  */
 enum class PendingMutationType(val wireValue: String) {
     PatchExpense("patch_expense"),
+    CreateExpense("create_expense"),
     ConfirmExpense("confirm_expense"),
     RejectExpense("reject_expense"),
     MarkNotDuplicate("mark_not_duplicate"),

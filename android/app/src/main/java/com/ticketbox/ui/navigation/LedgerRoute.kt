@@ -76,7 +76,11 @@ internal fun LedgerRoute(
         onOpenBillSplit = { shellState.openStatsSecondary(StatsSecondaryPage.BillSplits) },
         onManualCreate = ledgerViewModel::createManualExpense,
         onViewModeChange = ledgerViewModel::setViewMode,
-        onEdit = { navController.openExpense(it.id) },
+        // issue #65 slice 4: a not-yet-synced offline create has a negative local
+        // id the server can't resolve, and the detail screen loads by server id —
+        // so it isn't tappable into edit until it syncs. Slice 5 gives pending
+        // rows their own visible affordance + local-backed editing.
+        onEdit = { if (it.id > 0) navController.openExpense(it.id) },
         onEnterSelection = ledgerViewModel::enterSelection,
         onExitSelection = ledgerViewModel::exitSelection,
         onToggleSelect = ledgerViewModel::toggleSelected,

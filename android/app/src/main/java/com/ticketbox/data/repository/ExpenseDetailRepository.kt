@@ -110,7 +110,7 @@ internal class ExpenseDetailRepository(
         // 409ing on the stale token. The dispatcher replays it from
         // row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see confirmExpenseAllowingOffline
             // (ExpensePendingRepository): a direct call must not jump an
             // unresolved queued mutation for the same row.
@@ -189,7 +189,7 @@ internal class ExpenseDetailRepository(
             val saved = bound.call { it.replaceExpenseItems(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ReplaceItemsOutcome.Synced(saved)
         }
-        if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+        if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
             enqueueReplaceItems(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
             return@safeCall ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items))
@@ -352,7 +352,7 @@ internal class ExpenseDetailRepository(
             val saved = bound.call { it.replaceExpenseSplits(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ReplaceSplitsOutcome.Synced(saved)
         }
-        if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+        if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
             enqueueReplaceSplits(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
             return@safeCall ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits))
@@ -463,7 +463,7 @@ internal class ExpenseDetailRepository(
             // ADR-0042: one intent-time key for both the direct attempt and the
             // replay — see acknowledgeItemsMismatchAllowingOffline for rationale.
             val idempotencyKey = UUID.randomUUID().toString()
-            if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+            if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
                 // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
                 core.enqueueStateTransition(
                     bound = bound,
@@ -533,7 +533,7 @@ internal class ExpenseDetailRepository(
             val recognized = bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ExpenseStateOutcome.Synced(recognized)
         }
-        if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+        if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
             enqueueRecognizeText(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
             return@safeCall ExpenseStateOutcome.Queued(expense)

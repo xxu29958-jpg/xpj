@@ -110,7 +110,7 @@ class ExpenseRepositoryConfirmedSyncTest {
 
         repository.syncConfirmed(month = "2026-05", category = "交通", tag = null).getOrThrow()
 
-        assertEquals(listOf(9L, 99L), dao.getConfirmed("owner").map { it.serverId }.sorted())
+        assertEquals(listOf(9L, 99L), dao.getConfirmed("owner").mapNotNull { it.serverId }.sorted())
         assertNull(settingsStore.lastConfirmedSyncAt())
     }
 

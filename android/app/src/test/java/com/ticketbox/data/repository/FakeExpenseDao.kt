@@ -38,8 +38,16 @@ internal class FakeExpenseDao(
 
     override suspend fun confirmedServerIdsForLedger(ledgerId: String): List<Long> {
         return expenses.values
-            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
-            .map { it.serverId }
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId != null }
+            .mapNotNull { it.serverId }
+    }
+
+    override suspend fun localRowIdForClientRef(ledgerId: String, clientRef: String): Long? =
+        expenses.values.firstOrNull { it.ledgerId == ledgerId && it.clientRef == clientRef }?.id
+
+    override suspend fun deleteByLocalId(id: Long) {
+        val removed = expenses.remove(id)
+        if (removed != null) emit(removed.ledgerId)
     }
 
     override suspend fun insert(expense: ExpenseEntity): Long {

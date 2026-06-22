@@ -27,7 +27,11 @@ internal fun SearchRoute(
             onApplyRecentSearch = viewModel::applyRecentSearch,
             onClearRecentSearches = viewModel::clearRecentSearches,
             onRefreshPending = viewModel::refreshPending,
-            onOpenExpense = navController::openExpense,
+            // issue #65 slice 4: global search reads the local confirmed cache,
+            // which now includes not-yet-synced offline creates (negative local
+            // id). They can't be opened in the server-id-loaded detail screen yet
+            // — mirror the LedgerRoute guard. Slice 5 makes pending rows editable.
+            onOpenExpense = { if (it > 0) navController.openExpense(it) },
         ),
     )
 }

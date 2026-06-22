@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -298,6 +298,98 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // issue #65 slice 4: offline manual create needs a row that exists BEFORE
+        // it has a server id. Two structural changes to the expenses cache:
+        //   1. ``serverId`` becomes NULLABLE (null until the CreateExpense outbox
+        //      row drains and writes the server id back). SQLite can't ALTER a
+        //      column's NOT NULL away, so the table is rebuilt (create-new →
+        //      copy → drop → rename → re-index) — the standard SQLite recipe.
+        //   2. a nullable ``clientRef`` column + a UNIQUE ``(ledgerId, clientRef)``
+        //      index (NULLs distinct, so it only constrains local-create rows).
+        // Existing rows copy across unchanged with ``clientRef`` defaulting to
+        // NULL (they're all server-originated). Exposed as a list (mirroring
+        // 10→11 / 11→12) so AppDatabaseMigrationSqlTest runs the EXACT production
+        // statements against in-memory SQLite, while the instrumented
+        // AppDatabaseMigrationTest validates the result against the exported
+        // 13.json on a device. The column/index definitions match Room's
+        // generated 13.json so TableInfo validation passes.
+        internal val MIGRATION_12_13_STATEMENTS: List<String> = listOf(
+            """
+            CREATE TABLE IF NOT EXISTS expenses_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                ledgerId TEXT NOT NULL,
+                serverId INTEGER,
+                publicId TEXT NOT NULL,
+                amountCents INTEGER,
+                homeCurrencyCode TEXT NOT NULL,
+                originalCurrencyCode TEXT NOT NULL,
+                originalAmountMinor INTEGER,
+                exchangeRateToCny TEXT,
+                exchangeRateDate TEXT,
+                exchangeRateSource TEXT,
+                fxStatus TEXT NOT NULL,
+                merchant TEXT,
+                category TEXT NOT NULL,
+                note TEXT,
+                source TEXT NOT NULL,
+                thumbnailPath TEXT,
+                imageDeletedAt TEXT,
+                thumbnailDeletedAt TEXT,
+                imageHash TEXT,
+                rawText TEXT,
+                confidence REAL,
+                duplicateStatus TEXT NOT NULL,
+                duplicateOfId INTEGER,
+                duplicateReason TEXT,
+                tags TEXT,
+                valueScore INTEGER,
+                regretScore INTEGER,
+                status TEXT NOT NULL,
+                expenseTime TEXT,
+                createdAt TEXT NOT NULL,
+                confirmedAt TEXT,
+                updatedAt TEXT,
+                rowVersion INTEGER NOT NULL DEFAULT 1,
+                clientRef TEXT
+            )
+            """.trimIndent(),
+            """
+            INSERT INTO expenses_new (
+                id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                originalCurrencyCode, originalAmountMinor, exchangeRateToCny,
+                exchangeRateDate, exchangeRateSource, fxStatus, merchant, category,
+                note, source, thumbnailPath, imageDeletedAt, thumbnailDeletedAt,
+                imageHash, rawText, confidence, duplicateStatus, duplicateOfId,
+                duplicateReason, tags, valueScore, regretScore, status, expenseTime,
+                createdAt, confirmedAt, updatedAt, rowVersion
+            )
+            SELECT
+                id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                originalCurrencyCode, originalAmountMinor, exchangeRateToCny,
+                exchangeRateDate, exchangeRateSource, fxStatus, merchant, category,
+                note, source, thumbnailPath, imageDeletedAt, thumbnailDeletedAt,
+                imageHash, rawText, confidence, duplicateStatus, duplicateOfId,
+                duplicateReason, tags, valueScore, regretScore, status, expenseTime,
+                createdAt, confirmedAt, updatedAt, rowVersion
+            FROM expenses
+            """.trimIndent(),
+            "DROP TABLE expenses",
+            "ALTER TABLE expenses_new RENAME TO expenses",
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_expenses_ledgerId_serverId ON expenses (ledgerId, serverId)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_expenses_ledgerId_clientRef ON expenses (ledgerId, clientRef)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_expenses_publicId ON expenses (publicId)",
+            "CREATE INDEX IF NOT EXISTS index_expenses_status_expenseTime ON expenses (status, expenseTime)",
+            "CREATE INDEX IF NOT EXISTS index_expenses_status_confirmedAt ON expenses (status, confirmedAt)",
+            "CREATE INDEX IF NOT EXISTS index_expenses_status_createdAt ON expenses (status, createdAt)",
+            "CREATE INDEX IF NOT EXISTS index_expenses_ledgerId ON expenses (ledgerId)",
+        )
+
+        internal val Migration12To13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_12_13_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -317,6 +409,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration9To10,
                         Migration10To11,
                         Migration11To12,
+                        Migration12To13,
                     )
                     .build()
                     .also { instance = it }
