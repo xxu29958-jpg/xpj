@@ -112,9 +112,9 @@ internal class ExpensePendingRepositoryBatchFanoutTest : ExpensePendingRepositor
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         val api = ApiServiceStub(
             updateExpenseResultById = mapOf(
-                1L to ApiResult.Success(successExpenseDto()),
-                2L to ApiResult.Throw(IOException("net out")),
-                3L to ApiResult.Throw(httpException(409, """{"error":"state_conflict","message":"账单已修改"}""")),
+                "1" to ApiResult.Success(successExpenseDto()),
+                "2" to ApiResult.Throw(IOException("net out")),
+                "3" to ApiResult.Throw(httpException(409, """{"error":"state_conflict","message":"账单已修改"}""")),
             ),
         )
         val repo = buildRepository(api, outbox, adapter)

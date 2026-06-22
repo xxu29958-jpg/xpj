@@ -69,7 +69,7 @@ class ReplaceSplitsDispatcherTest {
             private set
 
         override suspend fun replaceExpenseSplits(
-            id: Long,
+            id: String,
             request: ExpenseSplitReplaceRequestDto,
             idempotencyKey: String?,
         ): ExpenseSplitsResponseDto {

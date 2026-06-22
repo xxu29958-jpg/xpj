@@ -242,7 +242,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
             confirmedFailuresRemaining = 0,
         ) {
             override suspend fun updateExpense(
-                id: Long,
+                id: String,
                 request: ExpenseUpdateRequest,
                 idempotencyKey: String?,
             ): ExpenseDto {

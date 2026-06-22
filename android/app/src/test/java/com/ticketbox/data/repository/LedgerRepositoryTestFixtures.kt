@@ -223,18 +223,18 @@ internal class StubApi(
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = ledgerUnsupported()
     override suspend fun expense(id: Long): ExpenseDto = ledgerUnsupported()
     override suspend fun updateExpense(
-        id: Long,
+        id: String,
         request: ExpenseUpdateRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
     override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = ledgerUnsupported()
     override suspend fun replaceExpenseItems(
-        id: Long,
+        id: String,
         request: ExpenseItemReplaceRequestDto,
         idempotencyKey: String?,
     ): ExpenseItemsResponseDto = ledgerUnsupported()
     override suspend fun acknowledgeExpenseItemsMismatch(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseItemsResponseDto = ledgerUnsupported()
@@ -254,17 +254,17 @@ internal class StubApi(
     override suspend fun cancelBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitSentDto = ledgerUnsupported()
     override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto = ledgerUnsupported()
     override suspend fun replaceExpenseSplits(
-        id: Long,
+        id: String,
         request: ExpenseSplitReplaceRequestDto,
         idempotencyKey: String?,
     ): ExpenseSplitsResponseDto = ledgerUnsupported()
     override suspend fun confirmExpense(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
     override suspend fun rejectExpense(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
@@ -273,12 +273,12 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
     ): ExpenseDto = ledgerUnsupported()
     override suspend fun retryOcr(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
     override suspend fun recognizeText(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
@@ -291,7 +291,7 @@ internal class StubApi(
         decisionPublicId: String,
     ): StatusDto = ledgerUnsupported()
     override suspend fun markNotDuplicate(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()

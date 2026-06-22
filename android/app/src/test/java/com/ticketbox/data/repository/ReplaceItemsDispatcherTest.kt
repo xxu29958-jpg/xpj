@@ -71,7 +71,7 @@ class ReplaceItemsDispatcherTest {
             private set
 
         override suspend fun replaceExpenseItems(
-            id: Long,
+            id: String,
             request: ExpenseItemReplaceRequestDto,
             idempotencyKey: String?,
         ): ExpenseItemsResponseDto {

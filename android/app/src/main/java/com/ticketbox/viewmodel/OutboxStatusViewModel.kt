@@ -9,6 +9,7 @@ import com.ticketbox.data.repository.FailedResolution
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.parseExpenseTargetRef
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -95,9 +96,10 @@ class OutboxStatusViewModel(
     }
 
     private suspend fun freshExpenseToken(row: OutboxRow): Long? {
-        val prefix = "expense:"
-        if (!row.targetId.startsWith(prefix)) return null
-        val id = row.targetId.removePrefix(prefix).toLongOrNull() ?: return null
+        // A device-local ``local:{client_ref}`` ref has no server row_version to
+        // re-fetch yet (it gains a server id on sync, slice 4), so toLongOrNull()
+        // yields null → keep-mine stays unavailable until the row is synced.
+        val id = parseExpenseTargetRef(row.targetId)?.toLongOrNull() ?: return null
         return expenseRepository.fetchExpense(id).getOrNull()?.rowVersion
     }
 }
