@@ -1,6 +1,13 @@
 package com.ticketbox.domain.model
 
 data class Expense(
+    // issue #65 slice 4: the server id when synced; for a not-yet-synced offline
+    // manual create it is a NEGATIVE stand-in derived from the local Room PK
+    // (``serverId ?: -localPk`` in ExpenseEntity.toDomain). Negative ids are
+    // unique per local row and disjoint from positive server ids, so the
+    // existing id-keyed UI machinery (list keys, selection, action-gating) keeps
+    // working without collision. Never send a non-positive id to the server —
+    // address such rows via [clientRef] / ``expense:local:{clientRef}`` instead.
     val id: Long,
     val publicId: String,
     val amountCents: Long?,
@@ -41,6 +48,14 @@ data class Expense(
     val rowVersion: Long,
     val confirmedAt: String?,
     val rejectedAt: String?,
+    // issue #65 slice 4: present iff this row was created on this device and
+    // carries a device-unique client ref. Stays set after sync (the audit link);
+    // use [pendingSync] — not its nullness — to ask "is this synced yet".
+    val clientRef: String? = null,
+    // issue #65 slice 4: true while an offline manual create has no server id yet
+    // (its CreateExpense outbox row hasn't drained). Derived from
+    // ``serverId == null`` in ExpenseEntity.toDomain. A synced row is false.
+    val pendingSync: Boolean = false,
 )
 
 /**

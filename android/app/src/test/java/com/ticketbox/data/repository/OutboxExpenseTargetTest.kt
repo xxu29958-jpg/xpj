@@ -10,8 +10,12 @@ import kotlin.test.assertNull
  * behavior is that a device-local ``local:{client_ref}`` ref passes through
  * UNCHANGED — the old per-dispatcher ``removePrefix("expense:").toLongOrNull()``
  * would have mangled it to null and Discarded the row.
+ *
+ * Slice 4 adds the offline-create encoding ([expenseLocalTargetId]) and the
+ * pending-aware selector ([expenseOutboxTargetId]). Extends the outbox test base
+ * only to borrow ``baselineExpense()`` for the [Expense] builder.
  */
-class OutboxExpenseTargetTest {
+internal class OutboxExpenseTargetTest : ExpensePendingRepositoryOutboxTestBase() {
     @Test
     fun `expenseTargetId encodes a server id`() {
         assertEquals("expense:42", expenseTargetId(42L))
@@ -36,5 +40,33 @@ class OutboxExpenseTargetTest {
     @Test
     fun `build then parse round-trips a server id`() {
         assertEquals("7", parseExpenseTargetRef(expenseTargetId(7L)))
+    }
+
+    @Test
+    fun `expenseLocalTargetId encodes a device-local ref`() {
+        assertEquals("expense:local:abc-123", expenseLocalTargetId("abc-123"))
+    }
+
+    @Test
+    fun `expenseLocalTargetId round-trips to a local ref through parse`() {
+        assertEquals("local:abc-123", parseExpenseTargetRef(expenseLocalTargetId("abc-123")))
+    }
+
+    @Test
+    fun `expenseOutboxTargetId targets the local ref while pending`() {
+        val pending = baselineExpense().copy(id = -5L, clientRef = "abc-123", pendingSync = true)
+        assertEquals("expense:local:abc-123", expenseOutboxTargetId(pending))
+    }
+
+    @Test
+    fun `expenseOutboxTargetId targets the server id once synced`() {
+        // baselineExpense() is a synced row (pendingSync defaults false, clientRef null).
+        assertEquals("expense:42", expenseOutboxTargetId(baselineExpense()))
+    }
+
+    @Test
+    fun `expenseOutboxTargetId falls back to the id for a pending row without a clientRef`() {
+        val orphan = baselineExpense().copy(id = -5L, clientRef = null, pendingSync = true)
+        assertEquals("expense:-5", expenseOutboxTargetId(orphan))
     }
 }

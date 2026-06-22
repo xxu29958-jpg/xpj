@@ -166,6 +166,14 @@ data class ExpenseManualCreateRequestDto(
     val valueScore: Int?,
     @param:Json(name = "regret_score")
     val regretScore: Int?,
+    // issue #65 slice 4: device-unique idempotency ref for offline-capable
+    // manual create. The backend (Slice 1) keys dedup on
+    // ``{device_id}:{client_ref}`` so the SAME ref retried after a lost response
+    // HITs the existing row instead of double-creating. Optional (non-required in
+    // the OpenAPI schema), so this addition keeps the contract gate green with no
+    // snapshot change; Moshi omits it when null (the online quick-add path).
+    @param:Json(name = "client_ref")
+    val clientRef: String? = null,
 )
 
 /**

@@ -185,6 +185,7 @@
 
     <!-- ADR-0044 wave 2：离线同步卡 改动类型标签（SyncStatusScreen.mutationLabel），按 PendingMutationType 展示 -->
     <string name="sync_status_mutation_patch_expense">修改账单</string>
+    <string name="sync_status_mutation_create_expense">新建账单</string>
     <string name="sync_status_mutation_confirm_expense">确认入账</string>
     <string name="sync_status_mutation_reject_expense">删除账单</string>
     <string name="sync_status_mutation_mark_not_duplicate">保留账单（非重复）</string>

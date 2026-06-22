@@ -401,6 +401,7 @@ internal fun isExpiredFailure(lastError: String?): Boolean =
 @Composable
 private fun mutationLabel(type: PendingMutationType): String = when (type) {
     PendingMutationType.PatchExpense -> stringResource(R.string.sync_status_mutation_patch_expense)
+    PendingMutationType.CreateExpense -> stringResource(R.string.sync_status_mutation_create_expense)
     PendingMutationType.ConfirmExpense -> stringResource(R.string.sync_status_mutation_confirm_expense)
     PendingMutationType.RejectExpense -> stringResource(R.string.sync_status_mutation_reject_expense)
     PendingMutationType.MarkNotDuplicate -> stringResource(R.string.sync_status_mutation_mark_not_duplicate)

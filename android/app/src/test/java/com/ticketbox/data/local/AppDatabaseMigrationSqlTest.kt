@@ -48,6 +48,20 @@ class AppDatabaseMigrationSqlTest {
             "status TEXT NOT NULL, retryCount INTEGER NOT NULL DEFAULT 0, lastError TEXT, createdAt TEXT NOT NULL, " +
             "attemptedAt TEXT, completedAt TEXT)"
 
+    // v12 expenses schema (from schemas/.../12.json createSql): serverId NOT NULL,
+    // no clientRef column. Issue #65 slice 4's 12→13 makes serverId nullable and
+    // adds clientRef + the (ledgerId, clientRef) unique index via a table rebuild.
+    private val v12Expenses =
+        "CREATE TABLE expenses (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, ledgerId TEXT NOT NULL, " +
+            "serverId INTEGER NOT NULL, publicId TEXT NOT NULL, amountCents INTEGER, homeCurrencyCode TEXT NOT NULL, " +
+            "originalCurrencyCode TEXT NOT NULL, originalAmountMinor INTEGER, exchangeRateToCny TEXT, " +
+            "exchangeRateDate TEXT, exchangeRateSource TEXT, fxStatus TEXT NOT NULL, merchant TEXT, " +
+            "category TEXT NOT NULL, note TEXT, source TEXT NOT NULL, thumbnailPath TEXT, imageDeletedAt TEXT, " +
+            "thumbnailDeletedAt TEXT, imageHash TEXT, rawText TEXT, confidence REAL, duplicateStatus TEXT NOT NULL, " +
+            "duplicateOfId INTEGER, duplicateReason TEXT, tags TEXT, valueScore INTEGER, regretScore INTEGER, " +
+            "status TEXT NOT NULL, expenseTime TEXT, createdAt TEXT NOT NULL, confirmedAt TEXT, updatedAt TEXT, " +
+            "rowVersion INTEGER NOT NULL DEFAULT 1)"
+
     @Test
     fun migration10To11RunsAgainstSqliteAndProducesExpectedSchema() {
         Class.forName("org.sqlite.JDBC")
@@ -126,10 +140,80 @@ class AppDatabaseMigrationSqlTest {
         }
     }
 
+    @Test
+    fun migration12To13MakesServerIdNullableAndAddsClientRef() {
+        Class.forName("org.sqlite.JDBC")
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { conn ->
+            conn.createStatement().use { st ->
+                st.execute(v12Expenses)
+                // Seed a server-originated v12 row (no clientRef column yet).
+                st.execute(
+                    "INSERT INTO expenses (ledgerId, serverId, publicId, homeCurrencyCode, originalCurrencyCode, " +
+                        "fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion) VALUES " +
+                        "('owner', 9, 'pub-9', 'CNY', 'CNY', 'ready', '餐饮', '缓存', 'none', 'confirmed', " +
+                        "'2026-05-13T00:00:00Z', 1)",
+                )
+                AppDatabase.MIGRATION_12_13_STATEMENTS.forEach { st.execute(it) }
+            }
+
+            // expenses gains clientRef; serverId is now nullable.
+            assertTrue(conn.columns("expenses").contains("clientRef"), "expenses must gain a clientRef column")
+            assertFalse(conn.columnNotNull("expenses", "serverId"), "serverId must be nullable after 12→13")
+
+            // The pre-existing server row survives the rebuild with clientRef NULL.
+            conn.query("SELECT clientRef FROM expenses WHERE serverId = 9") { rs ->
+                assertTrue(rs.next(), "the pre-existing server row must survive the table rebuild")
+                rs.getString(1)
+                assertTrue(rs.wasNull(), "migrated rows carry a NULL clientRef")
+            }
+
+            // A local-only row (serverId NULL) is now insertable — proves nullability functionally,
+            // which an offline manual create relies on.
+            conn.createStatement().use { st ->
+                st.execute(
+                    "INSERT INTO expenses (ledgerId, serverId, publicId, homeCurrencyCode, originalCurrencyCode, " +
+                        "fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion, clientRef) VALUES " +
+                        "('owner', NULL, 'local-abc', 'CNY', 'CNY', 'ready', '餐饮', '手动记账', 'none', 'confirmed', " +
+                        "'2026-05-13T00:01:00Z', 1, 'abc')",
+                )
+            }
+            conn.query("SELECT COUNT(*) FROM expenses WHERE serverId IS NULL") { rs ->
+                rs.next()
+                assertEquals(1, rs.getInt(1), "a NULL-serverId local row must be insertable")
+            }
+
+            // All 7 expenses indices are rebuilt, including the new (ledgerId, clientRef) unique index.
+            val indexNames = conn.indexNames("expenses")
+            assertTrue(
+                indexNames.contains("index_expenses_ledgerId_clientRef"),
+                "the (ledgerId, clientRef) unique index must exist: $indexNames",
+            )
+            assertEquals(7, indexNames.size, "all 7 expenses indices must be present after the rebuild: $indexNames")
+        }
+    }
+
     private fun Connection.columns(table: String): Set<String> {
         val cols = mutableSetOf<String>()
         query("PRAGMA table_info($table)") { rs -> while (rs.next()) cols += rs.getString("name") }
         return cols
+    }
+
+    private fun Connection.columnNotNull(table: String, column: String): Boolean {
+        var notNull = false
+        query("PRAGMA table_info($table)") { rs ->
+            while (rs.next()) {
+                if (rs.getString("name") == column) notNull = rs.getInt("notnull") == 1
+            }
+        }
+        return notNull
+    }
+
+    private fun Connection.indexNames(table: String): List<String> {
+        val names = mutableListOf<String>()
+        query(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = '$table' AND name LIKE 'index_%'",
+        ) { rs -> while (rs.next()) names += rs.getString("name") }
+        return names
     }
 
     private inline fun <T> Connection.query(sql: String, block: (java.sql.ResultSet) -> T): T =

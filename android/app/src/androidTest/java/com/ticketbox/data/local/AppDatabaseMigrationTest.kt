@@ -115,4 +115,61 @@ class AppDatabaseMigrationTest {
             assertTrue("idempotencyKey defaults to NULL", cursor.isNull(0))
         }
     }
+
+    @Test
+    fun migrate12To13MakesServerIdNullableAndAddsClientRef() {
+        // issue #65 slice 4: v12→v13 rebuilds expenses to make serverId NULLABLE
+        // and add clientRef + a (ledgerId, clientRef) unique index — so an offline
+        // manual create can exist locally before it has a server id. The
+        // emulator-free AppDatabaseMigrationSqlTest runs the raw SQL; this run
+        // applies Migration12To13 and validates the rebuilt schema against the
+        // exported 13.json on a device (the table-rebuild recipe is the part most
+        // likely to drift from Room's expected TableInfo), then asserts a seeded
+        // v12 row survives with a NULL clientRef.
+        val name = "migration-12-13-test.db"
+        helper.createDatabase(name, 12).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO expenses (
+                    id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                    originalCurrencyCode, fxStatus, merchant, category, source,
+                    duplicateStatus, status, createdAt, rowVersion
+                ) VALUES (
+                    1, 'owner', 9, 'pub-9', 1500, 'CNY',
+                    'CNY', 'ready', '星巴克', '餐饮', '缓存',
+                    'none', 'confirmed', '2026-05-13T00:00:00Z', 1
+                )
+                """.trimIndent(),
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            name,
+            13,
+            true,
+            AppDatabase.Migration12To13,
+        )
+
+        // The pre-existing server row survives the rebuild with a NULL clientRef.
+        db.query("SELECT clientRef FROM expenses WHERE serverId = 9").use { cursor ->
+            assertTrue("migrated expenses row must survive the rebuild", cursor.moveToFirst())
+            assertTrue("clientRef defaults to NULL for server rows", cursor.isNull(0))
+        }
+        // serverId is now nullable: a local-only row (NULL serverId) is insertable.
+        db.execSQL(
+            """
+            INSERT INTO expenses (
+                ledgerId, serverId, publicId, homeCurrencyCode, originalCurrencyCode,
+                fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion, clientRef
+            ) VALUES (
+                'owner', NULL, 'local-abc', 'CNY', 'CNY',
+                'ready', '餐饮', '手动记账', 'none', 'confirmed', '2026-05-13T00:01:00Z', 1, 'abc'
+            )
+            """.trimIndent(),
+        )
+        db.query("SELECT COUNT(*) FROM expenses WHERE serverId IS NULL").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("a NULL-serverId local row must be insertable", 1L, cursor.getLong(0))
+        }
+    }
 }

@@ -192,30 +192,37 @@ internal class ExpensePendingRepository(
         val outbox = core.outbox
         val adapter = core.patchExpenseAdapter
         val token = request.expectedRowVersion
+        // issue #65 slice 4: address a not-yet-synced offline create by its
+        // device-local ref (``local:{clientRef}``) — its id is a negative local
+        // stand-in the server can't resolve. ``targetId`` keys the outbox + the
+        // FIFO guard; ``pathRef`` is the matching mutation-route path param.
+        val targetId = expenseOutboxTargetId(optimistic)
+        val pathRef = parseExpenseTargetRef(targetId) ?: id.toString()
         if (outbox == null || adapter == null || token == null || token == 0L) {
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we saved.
             val updated = core.cacheIfConfirmed(
-                bound.call { it.updateExpense(id.toString(), request, idempotencyKey) },
+                bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
                 bound.ledgerId,
             )
             return SaveOutcome.Synced(updated.toDomain())
         }
-        if (core.hasUnresolvedQueuedMutationsFor(id)) {
+        if (core.hasUnresolvedQueuedMutationsFor(targetId)) {
             // Per-target FIFO guard: an unresolved queued mutation for this
             // row exists, so a direct PATCH now would land out of intent
             // order (e.g. ahead of a queued confirm whose token cascade
-            // expects to run first). Queue behind it; the dispatcher's
-            // fresh-token cascade corrects this row's token on replay.
-            enqueuePatchExpense(bound, outbox, adapter, id, request, token, idempotencyKey)
+            // expects to run first, or a queued CreateExpense that must land
+            // before this edit). Queue behind it; the dispatcher's fresh-token
+            // cascade corrects this row's token on replay.
+            enqueuePatchExpense(bound, outbox, adapter, targetId, request, token, idempotencyKey)
             return SaveOutcome.Queued(optimistic)
         }
         return try {
             // Direct PATCH first — fast path when online. Returns
             // Synced with the server's canonical Expense.
             val updated = core.cacheIfConfirmed(
-                bound.call { it.updateExpense(id.toString(), request, idempotencyKey) },
+                bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
                 bound.ledgerId,
             )
             SaveOutcome.Synced(updated.toDomain())
@@ -226,7 +233,7 @@ internal class ExpensePendingRepository(
             // IOException is the offline-fallback trigger —
             // HttpException (409 / 4xx / 5xx) propagates out to
             // safeCall and surfaces as Result.failure.
-            enqueuePatchExpense(bound, outbox, adapter, id, request, token, idempotencyKey)
+            enqueuePatchExpense(bound, outbox, adapter, targetId, request, token, idempotencyKey)
             SaveOutcome.Queued(optimistic)
         }
     }
@@ -255,7 +262,7 @@ internal class ExpensePendingRepository(
         bound: BoundLedgerRequest,
         outbox: OutboxRepository,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseUpdateRequest>,
-        id: Long,
+        targetId: String,
         request: ExpenseUpdateRequest,
         token: Long,
         idempotencyKey: String,
@@ -263,7 +270,10 @@ internal class ExpensePendingRepository(
         bound.requireStillActive()
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
-            targetId = expenseTargetId(id),
+            // issue #65 slice 4: caller resolves the server-id vs local-ref
+            // target (expenseOutboxTargetId) so a pending-create edit replays
+            // against ``expense:local:{clientRef}``.
+            targetId = targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
             expectedRowVersion = token,
             // Same key as the direct attempt would have used — see the rationale
@@ -364,7 +374,7 @@ internal class ExpensePendingRepository(
         // server HITs the recorded success instead of false-409ing on the stale
         // token. The dispatcher replays it from row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard: an unresolved queued mutation (e.g. the
             // PATCH a just-queued save enqueued) must replay BEFORE this
             // confirm — a direct confirm now would commit the row WITHOUT the
@@ -405,7 +415,7 @@ internal class ExpensePendingRepository(
         // ADR-0042: one intent-time key for both the direct attempt and the
         // replay — see confirmExpenseAllowingOffline for the rationale.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see confirmExpenseAllowingOffline.
             core.enqueueStateTransition(
                 bound = bound,
@@ -440,7 +450,7 @@ internal class ExpensePendingRepository(
         // ADR-0042: one intent-time key for both the direct attempt and the
         // replay — see confirmExpenseAllowingOffline for the rationale.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expense.id)) {
+        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see confirmExpenseAllowingOffline.
             core.enqueueStateTransition(
                 bound = bound,

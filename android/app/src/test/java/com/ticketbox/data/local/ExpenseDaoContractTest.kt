@@ -252,6 +252,51 @@ class ExpenseDaoContractTest {
         assertEquals(listOf(2L), dao.getPending("L_family").map { it.serverId })
     }
 
+    // issue #65 slice 4: write-back reconciliation when an offline create syncs.
+    private fun localRow(clientRef: String): ExpenseEntity =
+        entity("owner", serverId = 0).copy(serverId = null, clientRef = clientRef, publicId = "local-$clientRef")
+
+    private fun serverRowFor(clientRef: String, serverId: Long = 42L): ExpenseEntity =
+        entity("owner", serverId = serverId).copy(publicId = "server-pub-$serverId", clientRef = clientRef)
+
+    @Test
+    fun applyLocalCreateServerIdentityPromotesLocalRowInPlace() = runTest {
+        val dao = FakeExpenseDao()
+        val localId = dao.insert(localRow("ref-X"))
+
+        dao.applyLocalCreateServerIdentity("owner", serverRowFor("ref-X"))
+
+        val row = dao.getConfirmed("owner").single()
+        assertEquals(42L, row.serverId)
+        assertEquals("ref-X", row.clientRef)
+        assertEquals(localId, row.id, "the row is promoted in place (same Room PK)")
+    }
+
+    @Test
+    fun applyLocalCreateServerIdentityDropsLocalRowWhenSyncAlreadyInsertedServerRow() = runTest {
+        val dao = FakeExpenseDao()
+        dao.insert(localRow("ref-X"))
+        // A confirmed-list sync already inserted the server row separately (no clientRef).
+        dao.insert(entity("owner", serverId = 42).copy(publicId = "server-pub-42"))
+
+        dao.applyLocalCreateServerIdentity("owner", serverRowFor("ref-X"))
+
+        val rows = dao.getConfirmed("owner")
+        assertEquals(1, rows.size, "the duplicate local-create row is dropped; one row survives")
+        assertEquals(42L, rows.single().serverId)
+    }
+
+    @Test
+    fun applyLocalCreateServerIdentityCachesServerRowWhenLocalRowGone() = runTest {
+        val dao = FakeExpenseDao()
+        // No local row for ref-X (cache cleared between create and sync).
+
+        dao.applyLocalCreateServerIdentity("owner", serverRowFor("ref-X"))
+
+        val row = dao.getConfirmed("owner").single()
+        assertEquals(42L, row.serverId, "the canonical server row is still cached so the create isn't lost")
+    }
+
     private fun entity(
         ledgerId: String,
         serverId: Long,
@@ -325,8 +370,16 @@ private class FakeExpenseDao : ExpenseDao {
 
     override suspend fun confirmedServerIdsForLedger(ledgerId: String): List<Long> {
         return expenses.values
-            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
-            .map { it.serverId }
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId != null }
+            .mapNotNull { it.serverId }
+    }
+
+    override suspend fun localRowIdForClientRef(ledgerId: String, clientRef: String): Long? =
+        expenses.values.firstOrNull { it.ledgerId == ledgerId && it.clientRef == clientRef }?.id
+
+    override suspend fun deleteByLocalId(id: Long) {
+        val removed = expenses.remove(id)
+        if (removed != null) emit(removed.ledgerId)
     }
 
     override suspend fun insert(expense: ExpenseEntity): Long {

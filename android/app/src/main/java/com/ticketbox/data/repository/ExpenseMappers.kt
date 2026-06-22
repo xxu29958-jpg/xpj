@@ -27,6 +27,7 @@ import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.LifestyleStats
@@ -47,6 +48,7 @@ import com.ticketbox.domain.model.TagUndoResult
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.Instant
 
 fun ExpenseDto.toDomain(): Expense {
     val imageAvailable = isImageAvailable
@@ -156,7 +158,12 @@ private fun ExpenseDto.requiredPublicId(): String {
 fun ExpenseEntity.toDomain(): Expense {
     val thumbnailAvailable = imageDeletedAt == null && thumbnailDeletedAt == null
     return Expense(
-        id = serverId,
+        // issue #65 slice 4: a not-yet-synced offline create (serverId == null)
+        // gets a NEGATIVE stand-in derived from its local Room PK so id-keyed UI
+        // (list keys / selection / action-gating) stays collision-free; once the
+        // CreateExpense outbox row syncs, serverId is written back and this flips
+        // to the real positive id. See [Expense.id] / [Expense.pendingSync].
+        id = serverId ?: -id,
         publicId = publicId,
         amountCents = amountCents,
         homeAmountCents = amountCents,
@@ -196,14 +203,18 @@ fun ExpenseEntity.toDomain(): Expense {
         rowVersion = rowVersion,
         confirmedAt = confirmedAt,
         rejectedAt = null,
+        clientRef = clientRef,
+        pendingSync = serverId == null,
     )
 }
 
 /** Body builder for ``POST /api/expenses/manual``. Create semantics only —
  *  always submits the FX trio (currency / amount / spent_at) plus
  *  ``expense_time``; there is no baseline to diff against and the dedicated
- *  DTO has no OCC-token field by construction. */
-fun ExpenseDraft.toManualCreateRequest(): ExpenseManualCreateRequestDto {
+ *  DTO has no OCC-token field by construction. [clientRef] (issue #65 slice 4)
+ *  is the device-unique idempotency ref the offline-aware create path mints and
+ *  reuses on outbox replay; the online quick-add path leaves it null. */
+fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManualCreateRequestDto {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
     val submittedCurrency = originalCurrencyCode
         ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
@@ -221,6 +232,59 @@ fun ExpenseDraft.toManualCreateRequest(): ExpenseManualCreateRequestDto {
         tags = tags,
         valueScore = valueScore,
         regretScore = regretScore,
+        clientRef = clientRef,
+    )
+}
+
+/**
+ * issue #65 slice 4: the optimistic local [ExpenseEntity] for an offline manual
+ * create — written to Room immediately so the row shows in the confirmed list
+ * (and survives an app restart) before its CreateExpense outbox row drains.
+ *
+ * ``serverId = null`` (no server id yet → drives [Expense.pendingSync]);
+ * ``clientRef`` links it to the queued create + the server's
+ * ``draft_idempotency_key``; ``publicId`` is a unique device-local sentinel that
+ * the sync write-back replaces with the server's. Manual creates are confirmed
+ * on the server immediately, so the row is cached as ``status = "confirmed"``
+ * with ``source = 手动记账`` and ``rowVersion = 1`` (the server's create default).
+ * Mirrors [toManualCreateRequest] for the FX-derived amount fields so the
+ * optimistic row matches what the server will return.
+ */
+fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): ExpenseEntity {
+    val submittedOriginalMinor = originalAmountMinor ?: amountCents
+    val submittedCurrency = originalCurrencyCode ?: FxContract.HomeCurrency
+    return ExpenseEntity(
+        ledgerId = ledgerId,
+        serverId = null,
+        publicId = "local-$clientRef",
+        amountCents = amountCents ?: submittedOriginalMinor,
+        homeCurrencyCode = FxContract.HomeCurrency.storageKey,
+        originalCurrencyCode = submittedCurrency.storageKey,
+        originalAmountMinor = submittedOriginalMinor,
+        exchangeRateToCny = null,
+        exchangeRateDate = null,
+        exchangeRateSource = null,
+        fxStatus = FxContract.StatusReady,
+        merchant = merchant.cleanOptional(),
+        category = normalizeExpenseCategory(category),
+        note = note.cleanOptional(),
+        source = ExpenseSourceValues.MANUAL_ENTRY,
+        thumbnailPath = null,
+        imageHash = null,
+        rawText = null,
+        duplicateStatus = "none",
+        duplicateOfId = null,
+        duplicateReason = null,
+        tags = tags.cleanOptional(),
+        valueScore = valueScore,
+        regretScore = regretScore,
+        status = "confirmed",
+        expenseTime = expenseTime,
+        createdAt = Instant.now().toString(),
+        confirmedAt = Instant.now().toString(),
+        updatedAt = null,
+        rowVersion = 1,
+        clientRef = clientRef,
     )
 }
 

@@ -10,12 +10,14 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
@@ -83,6 +85,15 @@ internal class ExpenseRepositoryCore(
      * hard failure when either the outbox OR this adapter is missing.
      */
     val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
+    /**
+     * issue #65 slice 4: body adapter for the offline-aware manual create
+     * ([ExpenseLedgerRepositoryActions.createManualExpense] / [enqueueLocalCreate])
+     * and the [CreateExpenseDispatcher] replay. ``null`` keeps pre-slice-4 tests
+     * (no outbox wiring) on the direct-only create path. (Added as a ctor
+     * param like the sibling adapters — the LongParameterList baseline entry for
+     * this constructor has no parameter list, so it absorbs the new arg.)
+     */
+    val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>? = null,
 ) {
     val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
@@ -338,8 +349,8 @@ internal class ExpenseRepositoryCore(
      * branch instead; callers without outbox wiring keep the direct path
      * (there is no queue to respect).
      */
-    suspend fun hasUnresolvedQueuedMutationsFor(expenseId: Long): Boolean =
-        outbox?.activeForTarget(expenseTargetId(expenseId))?.isNotEmpty() ?: false
+    suspend fun hasUnresolvedQueuedMutationsFor(targetId: String): Boolean =
+        outbox?.activeForTarget(targetId)?.isNotEmpty() ?: false
 
     /**
      * Whether [enqueueStateTransition] CAN enqueue for this expense —
@@ -397,14 +408,60 @@ internal class ExpenseRepositoryCore(
         bound.requireStillActive()
         outboxRef.enqueue(
             type = type,
-            targetId = expenseTargetId(expense.id),
+            // issue #65 slice 4: a not-yet-synced expense (pendingSync) is
+            // addressed by its device-local ref so the backend resolves it via
+            // draft_idempotency_key; a synced one keeps the server-id target.
+            targetId = expenseOutboxTargetId(expense),
             payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L)),
             expectedRowVersion = expense.rowVersion,
             idempotencyKey = idempotencyKey,
         )
     }
 
+    /**
+     * issue #65 slice 4: offline-aware manual create. The caller (online attempt
+     * failed with [java.io.IOException], or there's a queued sibling) writes the
+     * optimistic local row to Room and queues a [PendingMutationType.CreateExpense]
+     * row keyed by ``expense:local:{clientRef}``; the returned [Expense] is the
+     * optimistic projection surfaced to the UI immediately (negative local id,
+     * ``pendingSync = true``).
+     *
+     * Mirrors [enqueueStateTransition]'s session-race guard: re-checks the bound
+     * ledger is still active BEFORE writing so a mid-flight ledger switch can't
+     * land a stale-session create in the now-current ledger. ``onConfirmedCommitted``
+     * fires for the new confirmed row (轴 6 budget detection). The CreateExpense
+     * row carries ``expectedRowVersion = 0`` (no prior version) and no
+     * ``Idempotency-Key`` header — idempotency is the body ``client_ref``.
+     */
+    suspend fun enqueueLocalCreate(
+        bound: BoundLedgerRequest,
+        outbox: OutboxRepository,
+        adapter: JsonAdapter<ExpenseManualCreateRequestDto>,
+        draft: ExpenseDraft,
+        clientRef: String,
+    ): Expense {
+        bound.requireStillActive()
+        val entity = draft.toLocalCreateEntity(bound.ledgerId, clientRef)
+        val rowId = expenseDao.insert(entity)
+        onConfirmedCommitted(bound.ledgerId)
+        outbox.enqueue(
+            type = PendingMutationType.CreateExpense,
+            targetId = expenseLocalTargetId(clientRef),
+            payloadJson = adapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
+            expectedRowVersion = FIRST_WRITE_ROW_VERSION,
+            idempotencyKey = null,
+        )
+        return entity.copy(id = rowId).toDomain()
+    }
+
     companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
+
+        /**
+         * issue #65 slice 4: the create has no prior server row version — mirrors
+         * the backend ``expense_query.FIRST_WRITE_ROW_VERSION`` sentinel (0). The
+         * server's create default ``row_version`` is 1, written back on sync.
+         */
+        const val FIRST_WRITE_ROW_VERSION: Long = 0L
     }
 }

@@ -593,7 +593,11 @@ internal class LedgerFakeDao : ExpenseDao {
     override suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity> =
         map.values.filter { it.ledgerId == ledgerId && it.serverId in serverIds.toSet() }
     override suspend fun confirmedServerIdsForLedger(ledgerId: String): List<Long> =
-        map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.serverId }
+        map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId != null }
+            .mapNotNull { it.serverId }
+    override suspend fun localRowIdForClientRef(ledgerId: String, clientRef: String): Long? =
+        map.values.firstOrNull { it.ledgerId == ledgerId && it.clientRef == clientRef }?.id
+    override suspend fun deleteByLocalId(id: Long) { map.remove(id) }
     override suspend fun insert(expense: ExpenseEntity): Long {
         map[expense.id] = expense
         return expense.id

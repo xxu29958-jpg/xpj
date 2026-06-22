@@ -8,7 +8,9 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -32,7 +34,9 @@ import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxScheduler
 import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
+import com.ticketbox.data.repository.CreateExpenseDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
+import com.ticketbox.data.repository.toEntity
 import com.ticketbox.data.repository.RecognizeTextDispatcher
 import com.ticketbox.data.repository.ReplaceItemsDispatcher
 import com.ticketbox.data.repository.ReplaceSplitsDispatcher
@@ -153,6 +157,12 @@ class AppContainer(context: Context) {
     // roundtrip guarantee as replaceItemsAdapter.
     private val recognizeTextAdapter = outboxMoshi.adapter(ExpenseRecognizeTextRequestDto::class.java)
 
+    // issue #65 slice 4: body adapter shared between the offline-aware manual
+    // create (ExpenseLedgerRepositoryActions / ExpenseRepositoryCore.enqueueLocalCreate)
+    // and CreateExpenseDispatcher's replay. Same roundtrip guarantee as
+    // patchExpenseAdapter.
+    private val manualCreateAdapter = outboxMoshi.adapter(ExpenseManualCreateRequestDto::class.java)
+
     // ADR-0042 Slice F: PATCH /api/goals/{publicId} adapter. Shared between
     // UpdateGoalDispatcher and ReportsRepository.updateGoalAllowingOffline.
     private val goalUpdateAdapter = outboxMoshi.adapter(GoalUpdateRequestDto::class.java)
@@ -243,6 +253,20 @@ class AppContainer(context: Context) {
         PatchExpenseDispatcher(
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = patchExpenseAdapter,
+        ),
+        // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual
+        // create). On success, write the server-assigned id/public_id/row_version
+        // back onto the optimistic local row (resolved by clientRef) so its domain
+        // id flips from the negative local stand-in to the real server id.
+        CreateExpenseDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = manualCreateAdapter,
+            applyServerIdentity = { ledgerId, clientRef, created ->
+                database.expenseDao().applyLocalCreateServerIdentity(
+                    ledgerId,
+                    created.toEntity(ledgerId).copy(clientRef = clientRef),
+                )
+            },
         ),
         // PR-2g.4: PATCH /api/rules/categories/{id} via outbox.
         UpdateCategoryRuleDispatcher(
@@ -339,6 +363,8 @@ class AppContainer(context: Context) {
         replaceItemsAdapter = replaceItemsAdapter,
         replaceSplitsAdapter = replaceSplitsAdapter,
         recognizeTextAdapter = recognizeTextAdapter,
+        // issue #65 slice 4: offline-aware manual create.
+        manualCreateAdapter = manualCreateAdapter,
     )
 
     val ledgerRepository = LedgerRepository(

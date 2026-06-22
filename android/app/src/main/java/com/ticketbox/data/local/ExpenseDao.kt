@@ -66,6 +66,14 @@ interface ExpenseDao {
     )
     suspend fun confirmedServerIdsForLedger(ledgerId: String): List<Long>
 
+    /**
+     * issue #65 slice 4: the local Room PK of the offline-create row for
+     * [clientRef], or null if none. Single-column read (no full-entity mapping)
+     * used by [applyLocalCreateServerIdentity] to promote the row in place.
+     */
+    @Query("SELECT id FROM expenses WHERE ledgerId = :ledgerId AND clientRef = :clientRef LIMIT 1")
+    suspend fun localRowIdForClientRef(ledgerId: String, clientRef: String): Long?
+
     @Insert
     suspend fun insert(expense: ExpenseEntity): Long
 
@@ -83,7 +91,13 @@ interface ExpenseDao {
         require(expense.ledgerId == ledgerId) {
             "expense.ledgerId=${expense.ledgerId} does not match scope $ledgerId"
         }
-        val existing = findByServerId(ledgerId, expense.serverId)
+        // issue #65 slice 4: this path keys on the server id, so it only handles
+        // server-originated rows. An offline local create (serverId == null) is
+        // written via insert() / applyLocalCreateServerIdentity, never here.
+        val serverId = requireNotNull(expense.serverId) {
+            "upsertByServerIdForLedger received a local-only row (serverId == null)"
+        }
+        val existing = findByServerId(ledgerId, serverId)
         if (existing == null) {
             insert(expense.copy(id = 0))
         } else if (expense.rowVersion >= existing.rowVersion) {
@@ -105,11 +119,16 @@ interface ExpenseDao {
         require(expenses.all { it.ledgerId == ledgerId }) {
             "upsertAllByServerIdForLedger received mixed-ledger entities"
         }
-        val existingByServerId = findByServerIds(ledgerId, expenses.map { it.serverId })
+        // issue #65 slice 4: server-id-keyed, so local-only rows (serverId ==
+        // null) are skipped defensively — a single malformed row must not abort a
+        // whole confirmed-list batch (server-fetched entities always carry one).
+        val serverScoped = expenses.filter { it.serverId != null }
+        if (serverScoped.isEmpty()) return
+        val existingByServerId = findByServerIds(ledgerId, serverScoped.mapNotNull { it.serverId })
             .associateBy { it.serverId }
         val inserts = mutableListOf<ExpenseEntity>()
         val updates = mutableListOf<ExpenseEntity>()
-        expenses.forEach { expense ->
+        serverScoped.forEach { expense ->
             val existing = existingByServerId[expense.serverId]
             if (existing == null) {
                 inserts += expense.copy(id = 0)
@@ -120,6 +139,49 @@ interface ExpenseDao {
         }
         if (inserts.isNotEmpty()) insertAll(inserts)
         if (updates.isNotEmpty()) updateAll(updates)
+    }
+
+    @Query("DELETE FROM expenses WHERE id = :id")
+    suspend fun deleteByLocalId(id: Long)
+
+    /**
+     * issue #65 slice 4: write the server-assigned identity back onto the
+     * optimistic offline-create row once its CreateExpense outbox row drains.
+     * [serverEntity] is the server's canonical row (``serverId`` + ``publicId`` +
+     * ``rowVersion`` set) carrying the original [ExpenseEntity.clientRef].
+     *
+     * Resolves by clientRef and promotes the row IN PLACE (same Room PK), so the
+     * domain id flips from its negative local stand-in to the real server id
+     * without a list-key churn beyond the sync moment. Reconciles the race where
+     * a confirmed-list sync already inserted the server row as a SEPARATE row
+     * while the create was draining: drop the local-create row and refresh the
+     * synced one, keeping one row and avoiding the (ledgerId, serverId)
+     * unique-index clash. If the local row is gone (cache cleared), just cache
+     * the canonical server row so the create isn't lost.
+     */
+    @Transaction
+    suspend fun applyLocalCreateServerIdentity(ledgerId: String, serverEntity: ExpenseEntity) {
+        require(serverEntity.ledgerId == ledgerId) {
+            "serverEntity.ledgerId=${serverEntity.ledgerId} does not match scope $ledgerId"
+        }
+        val clientRef = requireNotNull(serverEntity.clientRef) {
+            "applyLocalCreateServerIdentity requires the entity to carry its clientRef"
+        }
+        val serverId = requireNotNull(serverEntity.serverId) {
+            "applyLocalCreateServerIdentity requires a server id from the create response"
+        }
+        val localId = localRowIdForClientRef(ledgerId, clientRef)
+        if (localId == null) {
+            upsertByServerIdForLedger(ledgerId, serverEntity)
+            return
+        }
+        val existingServer = findByServerId(ledgerId, serverId)
+        if (existingServer != null && existingServer.id != localId) {
+            deleteByLocalId(localId)
+            update(serverEntity.copy(id = existingServer.id))
+        } else {
+            update(serverEntity.copy(id = localId))
+        }
     }
 
     @Query("DELETE FROM expenses")
@@ -166,7 +228,7 @@ interface ExpenseDao {
             upsertAllByServerIdForLedger(ledgerId, chunk)
         }
         if (pruneScope != null) {
-            val remoteServerIds = expenses.map { it.serverId }.toSet()
+            val remoteServerIds = expenses.mapNotNull { it.serverId }.toSet()
             val staleServerIds = confirmedServerIdsForLedger(ledgerId)
                 .filter { it !in remoteServerIds && it in pruneScope }
             staleServerIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
