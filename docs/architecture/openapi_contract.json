@@ -15268,7 +15268,7 @@
         ]
       },
       "patch": {
-        "description": "ADR-0042 idempotent edit: claim the ``Idempotency-Key`` BEFORE the OCC\n``row_version`` claim (§4.4), so an outbox replay of a committed-but-unseen\nPATCH (its response lost on the wire) re-serialises the canonical row\ninstead of false-409-ing on its now-stale ``expected_row_version`` (§4.6).\n\nOCC and idempotency are distinct: OCC rejects *concurrent* writers; this\nlayer makes *the same* write safe to replay. The key, the OCC claim, the\nfield edits, and ``mark_idempotency_succeeded`` all commit together\n(``update_expense(commit=False)``) so the success record and the mutation\nare atomic (§4.5). Any failure before that commit (OCC 409, validation,\npermission) leaves no ``succeeded`` row, so a legitimate retry still runs\n(§4.9).",
+        "description": "ADR-0042 idempotent edit: claim the ``Idempotency-Key`` BEFORE the OCC\n``row_version`` claim (§4.4), so an outbox replay of a committed-but-unseen\nPATCH (its response lost on the wire) re-serialises the canonical row\ninstead of false-409-ing on its now-stale ``expected_row_version`` (§4.6).\n\nOCC and idempotency are distinct: OCC rejects *concurrent* writers; this\nlayer makes *the same* write safe to replay. The key, the OCC claim, the\nfield edits, and ``mark_idempotency_succeeded`` all commit together\n(``update_expense(commit=False)``) so the success record and the mutation\nare atomic (§4.5). Any failure before that commit (OCC 409, validation,\npermission) leaves no ``succeeded`` row, so a legitimate retry still runs\n(§4.9).\n\nIssue #65 slice 3: ``expense_id`` is a server-id-or-``local:{client_ref}``\nref. ``resolve_expense_for_mutation`` maps it to the server pk and the\neffective OCC version (first-write sentinel → current row_version).",
         "operationId": "patch_expense_api_expenses__expense_id__patch",
         "parameters": [
           {
@@ -15277,7 +15277,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -15371,7 +15371,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -15597,7 +15597,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -15691,7 +15691,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -15785,7 +15785,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -15879,7 +15879,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -15973,7 +15973,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -16067,7 +16067,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -16305,7 +16305,7 @@
             "required": true,
             "schema": {
               "title": "Expense Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
