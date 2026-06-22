@@ -114,7 +114,7 @@ def post_manual_expense(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    expense = create_manual_expense(db, payload, auth.tenant_id)
+    expense = create_manual_expense(db, payload, auth)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

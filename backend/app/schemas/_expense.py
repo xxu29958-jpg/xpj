@@ -77,6 +77,11 @@ class ExpenseManualCreateRequest(BaseModel):
     tags: str | None = None
     value_score: int | None = Field(default=None, ge=1, le=5)
     regret_score: int | None = Field(default=None, ge=1, le=5)
+    # Issue #65 slice 1: optional device-scoped idempotency ref. Present → the server
+    # dedups on (device_id, client_ref) and rejects a replay carrying a materially
+    # different body under the same ref. Absent → no dedup (online-only create,
+    # unchanged pre-#65 behavior). The Android outbox (slice 4) generates it.
+    client_ref: str | None = Field(default=None, max_length=64)
 
 
 class NotificationDraftCreateRequest(BaseModel):
