@@ -5,8 +5,11 @@ console and the loopback ``/api/admin/*`` routes. This module wraps them for the
 account owner's app-token ``/api/ledgers/{ledger_id}/devices`` routes (Slice 6):
 
 * every operation is scoped to the owner's active ledger (``ledger_ids`` filter)
-  so a device is only visible / mutable if it has a token or upload-link in that
-  ledger — never cross-ledger or cross-account;
+  so a device is only visible / mutable if it has a token or upload-link in THAT
+  ledger. This is ledger-admin authority, not account-ownership: an owner can
+  revoke ANOTHER member's device's access to their ledger (correct — a ledger
+  owner controls who reaches their ledger), but the revoke is contained to this
+  ledger and never reaches a device's tokens in ledgers the caller doesn't own;
 * it marks which row is the caller's OWN device (``is_current``) so the client
   can hide the self-revoke affordance;
 * it gives owner-appropriate copy for the self-revoke guard (the shared admin

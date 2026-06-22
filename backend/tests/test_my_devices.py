@@ -44,6 +44,31 @@ def _seed_viewer_token(ledger_id: str = "owner") -> str:
     return token
 
 
+def _seed_member_device(ledger_id: str = "owner") -> str:
+    """Another account's device, member of + linked to the ledger. Returns its public_id."""
+    now = now_utc()
+    with SessionLocal() as db:
+        account = Account(display_name="family member", created_at=now)
+        db.add(account)
+        db.flush()
+        db.add(LedgerMember(ledger_id=ledger_id, account_id=account.id, role="member", created_at=now))
+        device = Device(account_id=account.id, device_name="member phone", platform="android", created_at=now)
+        db.add(device)
+        db.flush()
+        db.add(
+            AuthToken(
+                token_hash=hash_secret(new_session_token()),
+                account_id=account.id,
+                device_id=device.id,
+                ledger_id=ledger_id,
+                scope="app",
+                created_at=now,
+            )
+        )
+        db.commit()
+        return device.public_id
+
+
 def _devices(client: TestClient, headers: dict[str, str]) -> list[dict]:
     response = client.get("/api/ledgers/owner/devices", headers=headers)
     assert response.status_code == 200, response.text
@@ -92,6 +117,23 @@ def test_cannot_revoke_the_current_device(client: TestClient, *, identity) -> No
         headers=identity.app_headers,
     )
     assert response.status_code == 409, response.text
+
+
+def test_owner_revokes_another_members_device_in_the_ledger(client: TestClient, *, identity) -> None:
+    # issue #65 slice 6a review (F-doc): scope is the LEDGER, not the owner's own
+    # account — a ledger owner CAN revoke another member's device's access to
+    # their ledger (intended ledger-admin authority). Pin it so a future "restrict
+    # to same account" change can't silently break this.
+    member_device = _seed_member_device("owner")
+    listed = [d["public_id"] for d in _devices(client, identity.app_headers)]
+    assert member_device in listed, "a member's device linked to this ledger is visible to the owner"
+
+    response = client.post(
+        f"/api/ledgers/owner/devices/{member_device}/revoke", headers=identity.app_headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["revoked_at"] is not None
+    assert response.json()["is_current"] is False
 
 
 def test_create_pairing_code_returns_a_code(client: TestClient, *, identity) -> None:

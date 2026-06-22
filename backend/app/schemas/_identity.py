@@ -269,9 +269,9 @@ class AdminDeviceRenameRequest(BaseModel):
 
 
 # issue #65 slice 6a — owner-facing "My Devices" (app-token /api/ledgers/{id}/devices).
-# Distinct from AdminDeviceResponse: drops account_name/ledger_* (the owner sees
-# only their own account's devices in one ledger) and adds created_at + is_current
-# so the client can hide the self-revoke affordance.
+# Distinct from AdminDeviceResponse: drops account_name/ledger_* (the list is
+# already scoped to one ledger and carries no cross-account PII) and adds
+# created_at + is_current so the client can hide the self-revoke affordance.
 class MyDeviceResponse(BaseModel):
     public_id: str
     device_name: str
