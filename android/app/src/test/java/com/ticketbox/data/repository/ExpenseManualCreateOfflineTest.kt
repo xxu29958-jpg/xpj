@@ -104,6 +104,26 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
+    fun `a pending offline create is loadable from the local cache by its negative id`() = runTest {
+        // issue #65 slice 5: the editable-pending path — the edit VM loads a
+        // not-yet-synced row from the local cache (the server can't resolve its
+        // negative id).
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val pending = repo.createManualExpense(draft).getOrThrow()
+
+        val loaded = repo.fetchExpenseFromLocalCache(pending.id).getOrThrow()
+        assertEquals(pending.id, loaded.id)
+        assertEquals(pending.clientRef, loaded.clientRef)
+        assertTrue(loaded.pendingSync, "the cached row is still pending")
+
+        // A non-existent local id (synced away / cache cleared) surfaces a failure.
+        assertTrue(repo.fetchExpenseFromLocalCache(-99999L).isFailure)
+    }
+
+    @Test
     fun `online create stays direct, sends client_ref, enqueues nothing`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()

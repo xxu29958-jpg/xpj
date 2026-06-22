@@ -27,6 +27,8 @@
     <string name="components_expense_card_pill_amount_missing">待补金额</string>
     <string name="components_expense_card_pill_review">请核对</string>
     <string name="components_expense_card_pill_duplicate">疑似新账</string>
+    <!-- issue #65 slice 5: 离线手动记账行尚未同步到服务器时的可见标记 -->
+    <string name="components_expense_card_pill_pending_sync">待同步</string>
     <string name="components_expense_card_image_placeholder_saved">截图已保存，点开后可查看</string>
     <string name="components_expense_card_tags">标签：%1$s</string>
     <string name="components_expense_card_edit">编辑</string>

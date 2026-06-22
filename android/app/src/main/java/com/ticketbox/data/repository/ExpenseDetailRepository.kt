@@ -28,6 +28,22 @@ internal class ExpenseDetailRepository(
         core.cacheIfConfirmed(bound.call { it.expense(id) }, bound.ledgerId).toDomain()
     }
 
+    /**
+     * issue #65 slice 5: load a not-yet-synced offline-create row from the local
+     * cache. Its domain id is the NEGATIVE of its Room PK
+     * ([ExpenseEntity.toDomain]); look it up among the confirmed cache rows that
+     * still have no server id (`serverId == null`). No network — the server has no
+     * such row yet. Surfaces a load failure if the row is gone (synced under a new
+     * id or cache-cleared); the caller then re-derives state from a fresh sync.
+     */
+    suspend fun fetchExpenseFromLocalCache(domainId: Long): Result<Expense> = core.errorHandler.safeCall {
+        val ledgerId = core.activeLedgerIdOrLegacy()
+        core.expenseDao.getConfirmed(ledgerId)
+            .firstOrNull { it.serverId == null && it.id == -domainId }
+            ?.toDomain()
+            ?: throw RepositoryException("这笔账单还没同步好，请稍候再编辑。")
+    }
+
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         bound.call { it.expenseItems(id) }.toDomain()

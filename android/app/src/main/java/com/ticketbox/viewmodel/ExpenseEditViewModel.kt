@@ -121,9 +121,14 @@ class ExpenseEditViewModel(
     init {
         loadExpense()
         loadCategories()
-        loadThumbnail()
-        loadExpenseItems()
-        loadExpenseSplits()
+        // issue #65 slice 5: a not-yet-synced offline create (negative local id)
+        // has no server-side image / line items / splits yet — skip those loads so
+        // they don't 404 and surface spurious "load failed" messages on the page.
+        if (expenseId > 0) {
+            loadThumbnail()
+            loadExpenseItems()
+            loadExpenseSplits()
+        }
     }
 
     fun retryLoadExpense() {
@@ -133,7 +138,14 @@ class ExpenseEditViewModel(
     private fun loadExpense() {
         viewModelScope.launch {
             _uiState.update { it.copy(expenseLoading = true, message = null) }
-            repository.fetchExpense(expenseId)
+            // issue #65 slice 5: a not-yet-synced offline create has a NEGATIVE
+            // local id the server can't resolve — load it from the local cache.
+            val loaded = if (expenseId < 0) {
+                repository.fetchExpenseFromLocalCache(expenseId)
+            } else {
+                repository.fetchExpense(expenseId)
+            }
+            loaded
                 .onSuccess { expense ->
                     _uiState.update {
                         it.copy(

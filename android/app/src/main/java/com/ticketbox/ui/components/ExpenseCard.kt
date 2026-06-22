@@ -54,6 +54,7 @@ import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.asAmount
 
 enum class ExpensePreviewMode {
@@ -185,6 +186,16 @@ fun ExpenseCard(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
+                        // issue #65 slice 5: an offline manual create shows a "待同步"
+                        // badge until its CreateExpense outbox row syncs (pendingSync
+                        // flips false on write-back → the badge disappears). Reuses
+                        // the shared ``info`` state token (OutboxStatus visual language).
+                        if (expense.pendingSync) {
+                            StatusPill(
+                                text = stringResource(R.string.components_expense_card_pill_pending_sync),
+                                tone = LocalStateTokens.current.info,
+                            )
+                        }
                         StatusPill(
                             text = expense.category,
                             active = true,
