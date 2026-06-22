@@ -5281,6 +5281,18 @@
             ],
             "title": "Category"
           },
+          "client_ref": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Ref"
+          },
           "expense_time": {
             "anyOf": [
               {

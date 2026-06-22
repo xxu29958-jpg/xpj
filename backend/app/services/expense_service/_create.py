@@ -35,12 +35,14 @@ from app.services.expense_service._helpers import (
 )
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.file_service import SavedUpload, delete_relative_upload
+from app.services.idempotency import fingerprint_request
 from app.services.ocr_service import (
     collect_auto_ocr_extractions,
 )
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
+from app.tenants import AuthContext
 
 logger = logging.getLogger(__name__)
 
@@ -202,8 +204,49 @@ def enrich_pending_expense(
             delete_relative_upload(generated_thumbnail_path)
 
 
-def create_manual_expense(
-    db: Session, payload: ExpenseManualCreateRequest, tenant_id: str
+def _manual_request_fingerprint(payload: ExpenseManualCreateRequest) -> str:
+    """sha256 of the user-supplied manual-create body (issue #65 slice 1).
+
+    Computed from the REQUEST as sent — never from the stored row — so the server's
+    own mutations (auto-classify of ``category``, the ``expense_time`` → ``now``
+    default, FX rate-derived ``amount_cents``) can't make a faithful replay look like
+    a different request. ``client_ref`` is excluded: it IS the key, not part of the
+    intent it guards.
+    """
+    body = payload.model_dump(mode="json", exclude_unset=True, exclude={"client_ref"})
+    return fingerprint_request(
+        operation="create_manual_expense",
+        target_id=None,
+        body=body,
+        expected_row_version=None,
+    )
+
+
+def _find_manual_expense_by_key(
+    db: Session, tenant_id: str, key: str
+) -> Expense | None:
+    return db.scalar(
+        ledger_scoped_select(Expense, tenant_id).where(
+            Expense.draft_idempotency_key == key
+        )
+    )
+
+
+def _resolve_existing_manual_create(existing: Expense, fingerprint: str) -> Expense:
+    """A row already owns this ``(device_id, client_ref)`` key: idempotent HIT iff the
+    request fingerprint matches, else the ref was reused for a different expense."""
+    if existing.draft_request_fingerprint != fingerprint:
+        raise AppError("idempotency_key_reused", status_code=422)
+    return existing
+
+
+def _insert_manual_expense(
+    db: Session,
+    payload: ExpenseManualCreateRequest,
+    tenant_id: str,
+    *,
+    draft_idempotency_key: str | None,
+    draft_request_fingerprint: str | None,
 ) -> Expense:
     now = now_utc()
     expense = Expense(
@@ -226,6 +269,8 @@ def create_manual_expense(
         tags=normalize_tags(payload.tags),
         value_score=payload.value_score,
         regret_score=payload.regret_score,
+        draft_idempotency_key=draft_idempotency_key,
+        draft_request_fingerprint=draft_request_fingerprint,
     )
     apply_currency_payload(
         db,
@@ -248,6 +293,48 @@ def create_manual_expense(
     db.commit()
     db.refresh(expense)
     return expense
+
+
+def create_manual_expense(
+    db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext
+) -> Expense:
+    tenant_id = auth.tenant_id
+    if payload.client_ref is None:
+        # Online-only create (no client-supplied ref) — no dedup; every call is a
+        # fresh row. Unchanged pre-#65 behavior.
+        return _insert_manual_expense(
+            db,
+            payload,
+            tenant_id,
+            draft_idempotency_key=None,
+            draft_request_fingerprint=None,
+        )
+
+    # Issue #65 slice 1: device-scoped idempotent create. The composite key lives in
+    # the expense's own ``draft_idempotency_key`` (unique per tenant) so slice 3 can
+    # later resolve a ``local:{client_ref}`` mutation by it; the device prefix is built
+    # server-side from the authenticated token, never trusted from the body.
+    key = f"{auth.device_id}:{payload.client_ref}"
+    fingerprint = _manual_request_fingerprint(payload)
+    existing = _find_manual_expense_by_key(db, tenant_id, key)
+    if existing is not None:
+        return _resolve_existing_manual_create(existing, fingerprint)
+    try:
+        return _insert_manual_expense(
+            db,
+            payload,
+            tenant_id,
+            draft_idempotency_key=key,
+            draft_request_fingerprint=fingerprint,
+        )
+    except IntegrityError:
+        # A concurrent request won the (tenant_id, draft_idempotency_key) unique race
+        # between our lookup and flush — re-read and treat it as the canonical row.
+        db.rollback()
+        existing = _find_manual_expense_by_key(db, tenant_id, key)
+        if existing is not None:
+            return _resolve_existing_manual_create(existing, fingerprint)
+        raise
 
 
 def create_notification_draft(

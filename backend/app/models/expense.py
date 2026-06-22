@@ -119,6 +119,12 @@ class Expense(Base):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     ocr_draft_fields: Mapped[str | None] = mapped_column(Text, nullable=True)
     draft_idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Issue #65 slice 1: sha256 fingerprint of the manual-create request body that first
+    # claimed ``draft_idempotency_key``. A later request hitting the same key with a
+    # different fingerprint is a reused ref for a different expense → rejected
+    # (idempotency_key_reused), instead of silently returning the first row. NULL for
+    # upload / notification-draft / no-client_ref rows (they don't take this path).
+    draft_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     duplicate_status: Mapped[str] = mapped_column(String(32), default="none", nullable=False, index=True)
     duplicate_of_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     duplicate_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
