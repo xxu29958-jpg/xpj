@@ -44,6 +44,7 @@ from app.services.expense_service._query import (
     list_expenses_by_ids,
     list_pending,
     resolve_expense,
+    resolve_expense_for_mutation,
 )
 from app.services.expense_service._update import (
     batch_update_confirmed_expenses,
@@ -76,6 +77,7 @@ __all__ = [
     "recognize_expense_text",
     "reject_expense",
     "resolve_expense",
+    "resolve_expense_for_mutation",
     "retry_expense_ocr",
     "undo_reject_expense",
     "update_expense",

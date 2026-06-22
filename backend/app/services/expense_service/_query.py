@@ -10,6 +10,7 @@ from app.models import Expense
 from app.services.expense_query import (  # noqa: F401 — re-exported
     get_expense,
     resolve_expense,
+    resolve_expense_for_mutation,
 )
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 
@@ -22,6 +23,7 @@ __all__ = [
     "list_expenses_by_ids",
     "list_pending",
     "resolve_expense",
+    "resolve_expense_for_mutation",
 ]
 
 
