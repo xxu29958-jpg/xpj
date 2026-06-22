@@ -12,14 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
-from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import ExpenseRecognizeTextRequest
 from app.services.classify_service import classify_expense
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.expense_service._helpers import _replace_ocr_draft_items_from_text
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
-from app.services.expense_service._query import get_expense
+from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.learning_service import read_ocr_text
 from app.services.ocr_service import OcrResult, extract_ocr_result
 from app.services.optimistic_concurrency import claim_row_with_token
@@ -48,9 +47,7 @@ def _claim_pending_expense_for_ocr(
     )
     if rowcount != 1:
         db.expire_all()
-        current = db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
-        )
+        current = resolve_expense(db, tenant_id, expense_id)
         if current is None or current.status != "pending":
             raise AppError("expense_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)

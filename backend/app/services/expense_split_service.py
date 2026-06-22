@@ -15,7 +15,7 @@ from app.schemas import (
     ExpenseSplitResponse,
     ExpenseSplitsResponse,
 )
-from app.services.expense_service import EDITABLE_STATUSES, get_expense
+from app.services.expense_service import EDITABLE_STATUSES, get_expense, resolve_expense
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
@@ -94,9 +94,7 @@ def replace_expense_splits(
     )
     if rowcount != 1:
         db.expire_all()
-        current = db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
-        )
+        current = resolve_expense(db, tenant_id, expense_id)
         if current is None or current.status not in EDITABLE_STATUSES:
             raise AppError("expense_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)

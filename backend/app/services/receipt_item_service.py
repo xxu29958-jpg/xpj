@@ -12,7 +12,7 @@ from app.schemas import (
     ExpenseItemsResponse,
 )
 from app.services.category_service import normalize_category
-from app.services.expense_query import EDITABLE_STATUSES, get_expense
+from app.services.expense_query import EDITABLE_STATUSES, get_expense, resolve_expense
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_parse_service import ParsedReceiptItem
 from app.services.time_service import now_utc
@@ -48,9 +48,7 @@ def replace_expense_items(
     )
     if rowcount != 1:
         db.expire_all()
-        current = db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
-        )
+        current = resolve_expense(db, tenant_id, expense_id)
         if current is None or current.status not in EDITABLE_STATUSES:
             raise AppError("expense_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
@@ -145,9 +143,7 @@ def acknowledge_items_sum_mismatch(
     )
     if rowcount != 1:
         db.rollback()
-        current = db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
-        )
+        current = resolve_expense(db, tenant_id, expense_id)
         if current is None:
             raise AppError("expense_not_found", status_code=404)
         if current.items_sum_status != "mismatch_known":
