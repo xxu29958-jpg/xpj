@@ -17,6 +17,13 @@ $StrictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $MojibakeMarkers = @(
     "灏", "銆", "锛", "绋", "缁", "璁", "鐨", "丄", "丷", "鈥"
 )
+# 合法包含 marker 字面量的文件：本脚本定义 marker 列表，runbook 文档化 marker 示例。
+# 这些文件仍受非法 UTF-8 / U+FFFD 检查约束，只豁免「marker 字符」这条兜底启发式。
+# 用「相对仓库根的正斜杠路径」精确匹配，避免同名文件落到别处时被误豁免。
+$MojibakeMarkerAllowlist = @(
+    "scripts/check_text_encoding.ps1",
+    "docs/runbook/windows-powershell-gotchas.md"
+)
 $TextExtensions = @(
     ".bat", ".cmd", ".css", ".env.example", ".gradle", ".html", ".json",
     ".kt", ".kts", ".md", ".properties", ".ps1", ".py", ".toml", ".txt",
@@ -27,7 +34,7 @@ $IgnoredDirectories = @(
     ".venv", ".venv-build", ".ci-venv", "build", "__pycache__"
 )
 
-function Test-IgnoredPath {
+function Get-RelativePath {
     param([Parameter(Mandatory = $true)][System.IO.FileInfo]$File)
 
     $rootPath = $ProjectRoot.Path.TrimEnd("\", "/")
@@ -35,7 +42,13 @@ function Test-IgnoredPath {
     if ($relative.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
         $relative = $relative.Substring($rootPath.Length).TrimStart("\", "/")
     }
-    $parts = $relative -split "[\\/]"
+    return ($relative -replace "\\", "/")
+}
+
+function Test-IgnoredPath {
+    param([Parameter(Mandatory = $true)][System.IO.FileInfo]$File)
+
+    $parts = (Get-RelativePath -File $File) -split "/"
     foreach ($part in $parts) {
         if ($IgnoredDirectories -contains $part) {
             return $true
@@ -77,7 +90,7 @@ function Test-TextFile {
         throw "发现 UTF-8 替换字符，疑似编码损坏：$($File.FullName)"
     }
 
-    if ($File.Name -ne "check_text_encoding.ps1") {
+    if ($MojibakeMarkerAllowlist -notcontains (Get-RelativePath -File $File)) {
         foreach ($marker in $MojibakeMarkers) {
             if ($text.Contains($marker)) {
                 throw "发现疑似乱码片段 '$marker'：$($File.FullName)。请确认不是把 UTF-8 当 ANSI 读取后写回。"
