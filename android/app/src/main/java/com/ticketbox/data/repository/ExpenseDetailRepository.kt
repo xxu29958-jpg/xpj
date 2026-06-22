@@ -29,17 +29,20 @@ internal class ExpenseDetailRepository(
     }
 
     /**
-     * issue #65 slice 5: load a not-yet-synced offline-create row from the local
-     * cache. Its domain id is the NEGATIVE of its Room PK
-     * ([ExpenseEntity.toDomain]); look it up among the confirmed cache rows that
-     * still have no server id (`serverId == null`). No network — the server has no
-     * such row yet. Surfaces a load failure if the row is gone (synced under a new
-     * id or cache-cleared); the caller then re-derives state from a fresh sync.
+     * issue #65 slice 5: load an offline-create row from the local cache by the
+     * NEGATIVE local id the list still holds. That id is ``-roomPk``
+     * ([ExpenseEntity.toDomain]), so the row is matched by its Room PK
+     * (``it.id == -domainId``) — NOT by ``serverId == null``: if the CreateExpense
+     * outbox drained in the brief window between the tap and this load, the row
+     * keeps its Room PK but gained a server id (write-back updates in place), and
+     * this still finds it (now returning the positive synced id). No network — the
+     * server can't resolve the negative id. Surfaces a load failure only if the row
+     * is genuinely gone (cache cleared / re-pair).
      */
     suspend fun fetchExpenseFromLocalCache(domainId: Long): Result<Expense> = core.errorHandler.safeCall {
         val ledgerId = core.activeLedgerIdOrLegacy()
         core.expenseDao.getConfirmed(ledgerId)
-            .firstOrNull { it.serverId == null && it.id == -domainId }
+            .firstOrNull { it.id == -domainId }
             ?.toDomain()
             ?: throw RepositoryException("这笔账单还没同步好，请稍候再编辑。")
     }
