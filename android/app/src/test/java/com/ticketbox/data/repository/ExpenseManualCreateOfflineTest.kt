@@ -31,14 +31,29 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     private class ManualCreateApi(
         private val dto: ExpenseDto? = null,
         private val failure: Throwable? = null,
+        // A direct PATCH that WOULD succeed if attempted — so a test can prove the
+        // FIFO guard diverted to the queue (updateExpenseCalls stays 0) rather than
+        // relying on a thrown exception to fall through to the offline branch.
+        private val updateDto: ExpenseDto? = null,
     ) : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
         var lastRequest: ExpenseManualCreateRequestDto? = null
+            private set
+        var updateExpenseCalls = 0
             private set
 
         override suspend fun createManualExpense(request: ExpenseManualCreateRequestDto): ExpenseDto {
             lastRequest = request
             failure?.let { throw it }
             return requireNotNull(dto) { "ManualCreateApi needs a dto or a failure" }
+        }
+
+        override suspend fun updateExpense(
+            id: String,
+            request: ExpenseUpdateRequest,
+            idempotencyKey: String?,
+        ): ExpenseDto {
+            updateExpenseCalls++
+            return requireNotNull(updateDto) { "ManualCreateApi.updateExpense not configured" }
         }
     }
 
@@ -111,15 +126,17 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val pendingDao = FakePendingMutationDao()
         val outbox = OutboxRepository(dao = pendingDao)
         // Create offline → local row + queued CreateExpense (response lost / airplane mode).
-        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        // The direct PATCH would SUCCEED if attempted (updateDto set), so the only
+        // way this edit ends up Queued against the local ref is the FIFO guard
+        // diverting it behind the unresolved CreateExpense — not a fallback exception.
+        val api = ManualCreateApi(failure = IOException("airplane mode"), updateDto = confirmedDto())
+        val repo = createRepo(api, dao, outbox)
         val pending = repo.createManualExpense(draft).getOrThrow()
 
-        // Edit the not-yet-synced row. The unresolved CreateExpense for the same
-        // local target makes the FIFO guard divert this to the queue, and it MUST
-        // address the row by its local ref (the negative id can't be resolved).
         val outcome = repo.saveExpenseAllowingOffline(pending.id, draft, baseline = pending)
             .getOrThrow() as SaveOutcome.Queued
 
+        assertEquals(0, api.updateExpenseCalls, "the FIFO guard must divert BEFORE any direct PATCH is attempted")
         assertEquals("新商家", outcome.expense.merchant)
         val patchRow = pendingDao.rows.values.single { it.type == PendingMutationType.PatchExpense.wireValue }
         assertEquals(
