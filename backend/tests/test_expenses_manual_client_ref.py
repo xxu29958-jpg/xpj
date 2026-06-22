@@ -118,6 +118,11 @@ def test_client_ref_replay_with_auto_classified_category_is_idempotent(
     }
     first = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
     assert first.status_code == 200, first.text
+    # Precondition: the server actually auto-classified (no category sent → seeded
+    # "便利店"→餐饮 rule fires). Asserting it means that if default-rule seeding ever
+    # breaks this test fails LOUDLY, instead of silently decaying into a plain
+    # same-body idempotency check that no longer exercises the auto-classify scenario.
+    assert first.json()["category"] == "餐饮"
     second = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
     assert second.status_code == 200, second.text
 
