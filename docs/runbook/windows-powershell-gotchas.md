@@ -88,6 +88,27 @@ if ($LASTEXITCODE -eq 0) {
 
 ---
 
+## 一个 step 里串多条 native 命令，前面的非零退出会被后面那条覆盖
+
+**症状**：一个 step 顺序跑了好几个 `powershell -File xxx.ps1`，**第一个明明 fail 了**（日志里能看到它抛的错），step 却照样绿。本仓 `check_text_encoding.ps1` 编码硬门就这么**静默死了好几天**——CI run #83 的 Backend job 是 success，可它的日志里清清楚楚打着 `发现疑似乱码片段 '灏'`，gate 实际从没拦住过任何东西。
+
+**根因**：CI runner 的 wrapper 只在末尾看一次 `exit $LASTEXITCODE`。PS 5.1 里 native 命令（含 `powershell -File ...` 这种子进程）的**非零退出不触发 terminating error**（`$ErrorActionPreference='stop'` 只管 cmdlet），脚本继续往下跑；下一条 native 命令成功退出把 `$LASTEXITCODE` **重置成 0**，后面纯 cmdlet 又不动它。于是 wrapper 末尾读到的是**最后一条** native 命令的码——前面任何一条的失败都被无声吞掉。只有排在最后的那条 native 命令的失败才真正能让 step 红。
+
+**正确做法**：每条 native 命令后面**立刻**显式查退出码并传播，别攒到末尾：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+powershell -ExecutionPolicy Bypass -File scripts\check_dependency_versions.ps1
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+```
+
+这跟「git 静默成功命令查 `$LASTEXITCODE`」是同一条铁律的另一面：native 命令的成败**只能用紧跟其后的 `$LASTEXITCODE` 判定**，不能假设它会自动让 step 失败。`backend/tests/test_audit_ci_gap.py` 有一条回归测试钉死这两条 gate 调用后必须紧跟 `$LASTEXITCODE` 守卫，防 gate 再次被无声删护栏后复活原 bug。
+
+**铁律**：一个 step 串多条 native 命令，每条后面紧跟 `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`；绝不靠 wrapper 末尾那一次 `exit $LASTEXITCODE` 兜前面所有命令。
+
+---
+
 ## 含内嵌双引号的 commit message 走 `-m` 会被切碎
 
 **症状**：`git commit -m @'...'@`（here-string）里若 message 含内嵌双引号（如「替换 "v1.0 迁移" 字样」），git 把后半段当 pathspec，报 `error: pathspec '...' did not match`。

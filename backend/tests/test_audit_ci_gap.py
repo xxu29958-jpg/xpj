@@ -210,6 +210,50 @@ jobs:
     assert ":app:lintGrayDebug" in missing
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_NATIVE_PS_GATE_SCRIPTS = ("check_text_encoding.ps1", "check_dependency_versions.ps1")
+_LASTEXITCODE_GUARD = "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+_ENCODING_GATE_WORKFLOWS = (
+    _REPO_ROOT / ".github" / "workflows" / "ci.yml",
+    _REPO_ROOT / ".gitea" / "workflows" / "windows-ci.yml",
+)
+
+
+def test_native_ps_gate_calls_are_lastexitcode_guarded() -> None:
+    """Each ``powershell -File ...check_*.ps1`` native call in the
+    'Check PowerShell scripts' step must be IMMEDIATELY followed by an explicit
+    ``$LASTEXITCODE`` guard.
+
+    Without it a failing gate's exit code is reset to 0 by the next native call,
+    the runner wrapper's final ``exit $LASTEXITCODE`` reads 0, and the step
+    passes green — exactly how check_text_encoding.ps1 silently died on main
+    (CI run #83 Backend job = success while its log showed the marker error).
+    See the ``一个 step 里串多条 native 命令`` section in
+    docs/runbook/windows-powershell-gotchas.md.
+    """
+    for workflow in _ENCODING_GATE_WORKFLOWS:
+        lines = workflow.read_text(encoding="utf-8").splitlines()
+        guarded = 0
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith("powershell "):
+                continue
+            if not any(script in stripped for script in _NATIVE_PS_GATE_SCRIPTS):
+                continue
+            nxt = lines[idx + 1].strip() if idx + 1 < len(lines) else ""
+            assert nxt == _LASTEXITCODE_GUARD, (
+                f"{workflow}: native PS gate call on line {idx + 1} ({stripped!r}) "
+                f"is not immediately followed by {_LASTEXITCODE_GUARD!r} "
+                f"(got {nxt!r}); a failing gate's exit code would be masked."
+            )
+            guarded += 1
+        assert guarded == len(_NATIVE_PS_GATE_SCRIPTS), (
+            f"{workflow}: expected {len(_NATIVE_PS_GATE_SCRIPTS)} guarded native PS "
+            f"gate calls, found {guarded} — did the 'Check PowerShell scripts' "
+            f"step change shape?"
+        )
+
+
 def test_ci_gap_ignores_if_false_jobs(tmp_path: Path) -> None:
     mod = _load()
     workflows = tmp_path / ".gitea" / "workflows"
