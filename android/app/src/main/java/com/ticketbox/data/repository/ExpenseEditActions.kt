@@ -28,6 +28,15 @@ import com.ticketbox.domain.model.ProtectedImage
 interface ExpenseEditActions {
     fun canModifyLedger(): Boolean = true
     suspend fun fetchExpense(id: Long): Result<Expense>
+
+    /**
+     * issue #65 slice 5: load a not-yet-synced offline-create row (NEGATIVE local
+     * id) from the local cache — the server can't resolve a negative id, so
+     * [fetchExpense] would 404. Defaults to [fetchExpense] so an implementer that
+     * doesn't cache keeps the pre-slice-5 behaviour (the server error surfaces as
+     * a load failure); the real repository overrides it.
+     */
+    suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = fetchExpense(id)
     suspend fun categories(): Result<List<String>>
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
     suspend fun fetchImage(id: Long): Result<ProtectedImage>

@@ -139,6 +139,9 @@ class ExpenseRepository(
     override suspend fun fetchExpense(id: Long): Result<Expense> =
         detailRepository.fetchExpense(id)
 
+    override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
+        detailRepository.fetchExpenseFromLocalCache(id)
+
     override suspend fun uploadScreenshot(
         fileName: String,
         contentType: String?,

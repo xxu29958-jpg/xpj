@@ -26,27 +26,40 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.StateTone
 import com.ticketbox.ui.design.tabularNum
 
+/**
+ * [tone] (issue #65 slice 5): when non-null, the pill renders in that
+ * shared-token [StateTone] (the OutboxStatus visual language — e.g. the ``info``
+ * tone for a "待同步" badge) instead of the primary/muted [active] scheme. Lets a
+ * caller reuse one pill component across the three-surface design tokens without
+ * a per-state component fork.
+ */
 @Composable
 fun StatusPill(
     text: String,
     modifier: Modifier = Modifier,
     active: Boolean = true,
+    tone: StateTone? = null,
 ) {
+    val background = tone?.bg ?: if (active) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
+    }
+    val foreground = tone?.fg ?: if (active) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Text(
         text = text,
         modifier = modifier
             .clip(RoundedCornerShape(AppRadius.pill))
-            .background(
-                if (active) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
-                },
-            )
+            .background(background)
             .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
-        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = foreground,
         style = MaterialTheme.typography.labelMedium,
         fontWeight = AppTextHierarchy.body.weight,
     )

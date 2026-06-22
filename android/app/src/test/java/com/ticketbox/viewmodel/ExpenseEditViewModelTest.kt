@@ -80,6 +80,28 @@ internal class ExpenseEditViewModelTest {
     )
 
     @Test
+    fun negativeIdLoadsPendingRowFromLocalCacheAndSkipsServerSubLoads() = edit { fake ->
+        // issue #65 slice 5: a not-yet-synced offline create has a NEGATIVE local
+        // id the server can't resolve — the VM must load it from the local cache,
+        // and skip the server-only image / items / splits loads (else they 404 and
+        // show spurious "load failed" messages).
+        val pending = fake.baseExpense.copy(id = -5L, clientRef = "ref-x", pendingSync = true)
+        fake.localCacheResponder = { id ->
+            if (id == -5L) Result.success(pending) else Result.failure(IllegalStateException("unexpected id $id"))
+        }
+
+        val vm = ExpenseEditViewModel(expenseId = -5L, repository = fake)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(pending, state.expense, "a negative id must load from the local cache")
+        assertEquals(1, fake.localCacheCalls, "the local-cache path must be used, not the server fetch")
+        assertNull(state.thumbnail, "no server image load for a pending row")
+        assertNull(state.expenseItems, "no server items load for a pending row")
+        assertNull(state.expenseSplits, "no server splits load for a pending row")
+    }
+
+    @Test
     fun saveSyncedShowsSuccessAndSignalsDone() = edit { fake ->
         val vm = viewModel(fake)
         val saved = fake.baseExpense.copy(merchant = "新商家", rowVersion = 2L)
@@ -546,6 +568,8 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     )
 
     var fetchExpenseResponder: (suspend (Long) -> Result<Expense>)? = null
+    // issue #65 slice 5: the negative-id (offline-create) local-cache load path.
+    var localCacheResponder: (suspend (Long) -> Result<Expense>)? = null
     var saveOfflineResponder: (suspend (Long, ExpenseDraft, Expense) -> Result<SaveOutcome>)? = null
     var confirmOfflineResponder: (suspend (Expense) -> Result<ExpenseStateOutcome>)? = null
     var ackResponder: (suspend (Expense, ExpenseItems) -> Result<ItemsAckOutcome>)? = null
@@ -573,11 +597,18 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         private set
     var confirmedExpense: Expense? = null
         private set
+    var localCacheCalls: Int = 0
+        private set
 
     override fun canModifyLedger(): Boolean = canModifyLedgerFlag
 
     override suspend fun fetchExpense(id: Long): Result<Expense> =
         fetchExpenseResponder?.invoke(id) ?: Result.success(baseExpense)
+
+    override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> {
+        localCacheCalls += 1
+        return localCacheResponder?.invoke(id) ?: Result.success(baseExpense)
+    }
 
     override suspend fun categories(): Result<List<String>> = Result.success(listOf("餐饮", "交通"))
 

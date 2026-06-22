@@ -65,6 +65,10 @@ data class Expense(
  */
 fun Expense.canInitiateBillSplit(readOnly: Boolean): Boolean =
     status == "confirmed" &&
+        // issue #65 slice 5: a not-yet-synced offline create has no server id, so
+        // a cross-ledger split invitation (which addresses the sender expense by
+        // server id) can't be issued until it syncs.
+        !pendingSync &&
         amountCents != null &&
         source != ExpenseSourceValues.BILL_SPLIT_RECEIVED &&
         !readOnly

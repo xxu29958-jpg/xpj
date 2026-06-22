@@ -104,6 +104,46 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
+    fun `a pending offline create is loadable from the local cache by its negative id`() = runTest {
+        // issue #65 slice 5: the editable-pending path — the edit VM loads a
+        // not-yet-synced row from the local cache (the server can't resolve its
+        // negative id).
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val pending = repo.createManualExpense(draft).getOrThrow()
+
+        val loaded = repo.fetchExpenseFromLocalCache(pending.id).getOrThrow()
+        assertEquals(pending.id, loaded.id)
+        assertEquals(pending.clientRef, loaded.clientRef)
+        assertTrue(loaded.pendingSync, "the cached row is still pending")
+
+        // A non-existent local id (cache cleared) surfaces a failure.
+        assertTrue(repo.fetchExpenseFromLocalCache(-99999L).isFailure)
+    }
+
+    @Test
+    fun `fetchExpenseFromLocalCache still finds the row after it synced (nav-vs-sync race)`() = runTest {
+        // issue #65 slice 5 review (F2): if the CreateExpense outbox drains in the
+        // window between the list tap and the edit load, the row keeps its Room PK
+        // but gains a server id. Matching by Room PK (not serverId == null) means
+        // the edit screen still loads it — now as the synced, positive-id row.
+        val dao = FakeExpenseDao()
+        val outbox = OutboxRepository(dao = FakePendingMutationDao())
+        val repo = createRepo(ManualCreateApi(), dao, outbox)
+        // The row was created locally (Room PK) and has since synced (serverId set).
+        val roomPk = dao.insert(
+            draft.toLocalCreateEntity(activeLedger, "ref-x").copy(serverId = 77L, publicId = "server-pub-77"),
+        )
+
+        val loaded = repo.fetchExpenseFromLocalCache(-roomPk).getOrThrow()
+
+        assertEquals(77L, loaded.id, "the row loads by Room PK whether or not it has synced")
+        assertFalse(loaded.pendingSync, "a synced row is no longer pending")
+    }
+
+    @Test
     fun `online create stays direct, sends client_ref, enqueues nothing`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
