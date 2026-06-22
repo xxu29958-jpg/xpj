@@ -49,6 +49,18 @@ def _count_manual_rows(tenant_id: str = "owner") -> int:
         )
 
 
+def _stored_amount_for_ref(client_ref: str, tenant_id: str = "owner") -> int:
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(Expense).where(
+                Expense.tenant_id == tenant_id,
+                Expense.draft_idempotency_key.like(f"%:{client_ref}"),
+            )
+        )
+        assert row is not None
+        return row.amount_cents
+
+
 def _add_second_owner_device(identity) -> str:
     """Issue a second app token bound to a NEW device on the SAME owner ledger."""
     with SessionLocal() as db:
@@ -120,6 +132,8 @@ def test_same_client_ref_different_amount_is_rejected(client: TestClient, *, ide
     assert conflict.status_code == 422, conflict.text
     assert conflict.json()["error"] == "idempotency_key_reused"
     assert _count_manual_rows() == 1
+    # The rejected replay must NOT have mutated the original row.
+    assert _stored_amount_for_ref("ref-amt") == 1000
 
 
 def test_same_client_ref_different_merchant_is_rejected(client: TestClient, *, identity) -> None:
@@ -149,6 +163,18 @@ def test_null_client_ref_creates_distinct_rows(client: TestClient, *, identity) 
     }
     first = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
     second = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+
+    assert second.json()["id"] != first.json()["id"]
+    assert _count_manual_rows() == 2
+
+
+def test_empty_client_ref_is_treated_as_no_ref(client: TestClient, *, identity) -> None:
+    # An empty-string client_ref (client bug) must NOT dedup as the key "{device_id}:";
+    # it falls back to the no-ref path, so two such calls create two distinct rows.
+    first = _post_manual(client, identity.app_headers, client_ref="")
+    second = _post_manual(client, identity.app_headers, client_ref="")
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
 

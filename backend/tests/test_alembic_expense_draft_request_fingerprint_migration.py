@@ -55,6 +55,11 @@ def _assert_full_shape() -> None:
     cols = _expenses_columns()
     assert _COLUMN in cols, f"{_COLUMN} missing from expenses"
     assert cols[_COLUMN]["nullable"] is True, f"{_COLUMN} should be nullable"
+    # Pin the length too, not just presence/nullable — a migration↔ORM type/length
+    # drift (e.g. one side String(64), the other String(128)) must fail HERE.
+    assert getattr(cols[_COLUMN]["type"], "length", None) == 64, (
+        f"{_COLUMN} should be VARCHAR(64)"
+    )
 
 
 def test_add_draft_request_fingerprint_round_trips_on_postgres() -> None:

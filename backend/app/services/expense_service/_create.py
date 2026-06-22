@@ -299,9 +299,11 @@ def create_manual_expense(
     db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext
 ) -> Expense:
     tenant_id = auth.tenant_id
-    if payload.client_ref is None:
-        # Online-only create (no client-supplied ref) — no dedup; every call is a
-        # fresh row. Unchanged pre-#65 behavior.
+    if not payload.client_ref:
+        # No client-supplied ref (absent, or empty-string from a client bug) — no
+        # dedup; every call is a fresh row. Unchanged pre-#65 behavior. Treating ""
+        # as "no ref" (not as the key "{device_id}:") avoids both a 422 on a real
+        # expense and silently collapsing distinct creates into one.
         return _insert_manual_expense(
             db,
             payload,
