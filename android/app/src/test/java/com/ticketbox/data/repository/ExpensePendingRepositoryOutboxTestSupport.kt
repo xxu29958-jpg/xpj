@@ -209,7 +209,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         // ADR-0042 Slice C: per-expense-id overrides so a fan-out test can mix
         // outcomes (id 1 → Success, id 2 → IOException, id 3 → 409) in one batch.
         // Falls back to ``updateExpenseResult`` for ids not in the map.
-        private val updateExpenseResultById: Map<Long, ApiResult> = emptyMap(),
+        private val updateExpenseResultById: Map<String, ApiResult> = emptyMap(),
         private val confirmExpenseResult: ApiResult = ApiResult.Throw(
             IllegalStateException("confirmExpense not configured"),
         ),
@@ -247,6 +247,10 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             private set
         var lastConfirmIdempotencyKey: String? = null
             private set
+        // issue #65 slice 3b: the expense ref (server id or local:{client_ref})
+        // the dispatcher resolved from the row targetId and sent as the path param.
+        var lastConfirmId: String? = null
+            private set
         var lastRejectIdempotencyKey: String? = null
             private set
         var lastMarkNotDuplicateIdempotencyKey: String? = null
@@ -261,7 +265,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             private set
 
         override suspend fun updateExpense(
-            id: Long,
+            id: String,
             request: ExpenseUpdateRequest,
             idempotencyKey: String?,
         ): ExpenseDto {
@@ -274,11 +278,12 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         }
 
         override suspend fun confirmExpense(
-            id: Long,
+            id: String,
             request: ExpenseStateTokenRequest,
             idempotencyKey: String?,
         ): ExpenseDto {
             lastConfirmIdempotencyKey = idempotencyKey
+            lastConfirmId = id
             return when (val r = confirmExpenseResult) {
                 is ApiResult.Success -> r.dto
                 is ApiResult.Throw -> throw r.exception
@@ -286,7 +291,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         }
 
         override suspend fun rejectExpense(
-            id: Long,
+            id: String,
             request: ExpenseStateTokenRequest,
             idempotencyKey: String?,
         ): ExpenseDto {
@@ -298,7 +303,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         }
 
         override suspend fun markNotDuplicate(
-            id: Long,
+            id: String,
             request: ExpenseStateTokenRequest,
             idempotencyKey: String?,
         ): ExpenseDto {
@@ -310,7 +315,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         }
 
         override suspend fun retryOcr(
-            id: Long,
+            id: String,
             request: ExpenseStateTokenRequest,
             idempotencyKey: String?,
         ): ExpenseDto {
@@ -322,7 +327,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         }
 
         override suspend fun recognizeText(
-            id: Long,
+            id: String,
             request: ExpenseRecognizeTextRequestDto,
             idempotencyKey: String?,
         ): ExpenseDto {
@@ -335,14 +340,14 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         }
 
         override suspend fun acknowledgeExpenseItemsMismatch(
-            id: Long,
+            id: String,
             request: ExpenseStateTokenRequest,
             idempotencyKey: String?,
         ): ExpenseItemsResponseDto {
             lastAcknowledgeIdempotencyKey = idempotencyKey
             acknowledgeException?.let { throw it }
             return ExpenseItemsResponseDto(
-                expenseId = id,
+                expenseId = id.toLongOrNull() ?: 0L,
                 rowVersion = 1L,
                 parentAmountCents = 12345L,
                 itemsTotalAmountCents = 10000L,

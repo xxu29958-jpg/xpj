@@ -339,7 +339,7 @@ internal class ExpenseRepositoryCore(
      * (there is no queue to respect).
      */
     suspend fun hasUnresolvedQueuedMutationsFor(expenseId: Long): Boolean =
-        outbox?.activeForTarget("expense:$expenseId")?.isNotEmpty() ?: false
+        outbox?.activeForTarget(expenseTargetId(expenseId))?.isNotEmpty() ?: false
 
     /**
      * Whether [enqueueStateTransition] CAN enqueue for this expense —
@@ -397,7 +397,7 @@ internal class ExpenseRepositoryCore(
         bound.requireStillActive()
         outboxRef.enqueue(
             type = type,
-            targetId = "expense:${expense.id}",
+            targetId = expenseTargetId(expense.id),
             payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L)),
             expectedRowVersion = expense.rowVersion,
             idempotencyKey = idempotencyKey,

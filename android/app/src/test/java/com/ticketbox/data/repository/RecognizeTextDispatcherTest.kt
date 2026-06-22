@@ -93,7 +93,7 @@ class RecognizeTextDispatcherTest {
             private set
 
         override suspend fun recognizeText(
-            id: Long,
+            id: String,
             request: ExpenseRecognizeTextRequestDto,
             idempotencyKey: String?,
         ): ExpenseDto {

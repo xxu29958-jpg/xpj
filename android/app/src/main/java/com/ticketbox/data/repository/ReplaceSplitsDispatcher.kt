@@ -34,7 +34,7 @@ class ReplaceSplitsDispatcher(
     override val type: PendingMutationType = PendingMutationType.ReplaceSplits
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val expenseId = parseExpenseId(row.targetId)
+        val expenseRef = parseExpenseTargetRef(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
 
         // ADR-0042: a ReplaceSplits row MUST carry an idempotency key (every
@@ -61,7 +61,7 @@ class ReplaceSplitsDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical splits) instead of false-409ing on the stale row_version.
-            val response = apiProvider().replaceExpenseSplits(expenseId, request, idempotencyKey)
+            val response = apiProvider().replaceExpenseSplits(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
@@ -101,12 +101,6 @@ class ReplaceSplitsDispatcher(
             422 -> DispatchResult.Failure(message)
             else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
         }
-    }
-
-    private fun parseExpenseId(targetId: String): Long? {
-        val prefix = "expense:"
-        if (!targetId.startsWith(prefix)) return null
-        return targetId.removePrefix(prefix).toLongOrNull()
     }
 
     private fun extractServerMessage(body: String): String? {

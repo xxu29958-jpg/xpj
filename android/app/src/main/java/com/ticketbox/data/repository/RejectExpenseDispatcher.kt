@@ -25,7 +25,7 @@ class RejectExpenseDispatcher(
     override val type: PendingMutationType = PendingMutationType.RejectExpense
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val expenseId = parseExpenseId(row.targetId)
+        val expenseRef = parseExpenseTargetRef(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
 
         // ADR-0042: a RejectExpense row MUST carry an idempotency key (every
@@ -53,7 +53,7 @@ class RejectExpenseDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val rejected = apiProvider().rejectExpense(expenseId, request, idempotencyKey)
+            val rejected = apiProvider().rejectExpense(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = rejected.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
@@ -96,12 +96,6 @@ class RejectExpenseDispatcher(
             422 -> DispatchResult.Failure(message)
             else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
         }
-    }
-
-    private fun parseExpenseId(targetId: String): Long? {
-        val prefix = "expense:"
-        if (!targetId.startsWith(prefix)) return null
-        return targetId.removePrefix(prefix).toLongOrNull()
     }
 
     private fun extractServerMessage(body: String): String? {

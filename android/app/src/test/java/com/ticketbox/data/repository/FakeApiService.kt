@@ -84,14 +84,14 @@ internal class FakeApiService(
     val merchantAliasPatchTargets = mutableListOf<String>()
     val merchantAliasDeleteTargets = mutableListOf<String>()
     val itemFetchIds = mutableListOf<Long>()
-    val itemReplaceIds = mutableListOf<Long>()
+    val itemReplaceIds = mutableListOf<String>()
     val itemReplaceRequests = mutableListOf<ExpenseItemReplaceRequestDto>()
     val splitFetchIds = mutableListOf<Long>()
-    val splitReplaceIds = mutableListOf<Long>()
+    val splitReplaceIds = mutableListOf<String>()
     val splitReplaceRequests = mutableListOf<ExpenseSplitReplaceRequestDto>()
     val expenseFetchIds = mutableListOf<Long>()
-    val confirmExpenseIds = mutableListOf<Long>()
-    val markNotDuplicateIds = mutableListOf<Long>()
+    val confirmExpenseIds = mutableListOf<String>()
+    val markNotDuplicateIds = mutableListOf<String>()
     // suspend so a test can mutate the (suspend-API) FakeExpenseDao from the
     // hook — e.g. simulate a row being confirmed-and-cached mid-fetch.
     var onConfirmedRequest: (suspend () -> Unit)? = null
@@ -211,7 +211,7 @@ internal class FakeApiService(
     }
 
     override suspend fun updateExpense(
-        id: Long,
+        id: String,
         request: ExpenseUpdateRequest,
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
@@ -222,7 +222,7 @@ internal class FakeApiService(
     }
 
     override suspend fun replaceExpenseItems(
-        id: Long,
+        id: String,
         request: ExpenseItemReplaceRequestDto,
         idempotencyKey: String?,
     ): ExpenseItemsResponseDto {
@@ -232,7 +232,7 @@ internal class FakeApiService(
     }
 
     override suspend fun acknowledgeExpenseItemsMismatch(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseItemsResponseDto {
@@ -297,7 +297,7 @@ internal class FakeApiService(
     }
 
     override suspend fun replaceExpenseSplits(
-        id: Long,
+        id: String,
         request: ExpenseSplitReplaceRequestDto,
         idempotencyKey: String?,
     ): ExpenseSplitsResponseDto {
@@ -307,7 +307,7 @@ internal class FakeApiService(
     }
 
     override suspend fun confirmExpense(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto {
@@ -317,7 +317,7 @@ internal class FakeApiService(
     }
 
     override suspend fun rejectExpense(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
@@ -328,13 +328,13 @@ internal class FakeApiService(
     ): ExpenseDto = unsupported()
 
     override suspend fun retryOcr(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
 
     override suspend fun recognizeText(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto,
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
@@ -350,7 +350,7 @@ internal class FakeApiService(
     ): StatusDto = unsupported()
 
     override suspend fun markNotDuplicate(
-        id: Long,
+        id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto {

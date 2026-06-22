@@ -49,7 +49,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
         var directIdempotencyKey: String? = null
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun recognizeText(
-                id: Long,
+                id: String,
                 request: ExpenseRecognizeTextRequestDto,
                 idempotencyKey: String?,
             ): ExpenseDto {
@@ -97,7 +97,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
         val outbox = OutboxRepository(dao = dao)
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun recognizeText(
-                id: Long,
+                id: String,
                 request: ExpenseRecognizeTextRequestDto,
                 idempotencyKey: String?,
             ): ExpenseDto = successExpenseDto()

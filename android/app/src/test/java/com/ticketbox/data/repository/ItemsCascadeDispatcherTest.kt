@@ -41,22 +41,22 @@ class ItemsCascadeDispatcherTest {
         val delegate = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         return object : ApiService by delegate {
             override suspend fun replaceExpenseItems(
-                id: Long,
+                id: String,
                 request: ExpenseItemReplaceRequestDto,
                 idempotencyKey: String?,
             ): ExpenseItemsResponseDto = itemsResponseWithParentRowVersion(id)
 
             override suspend fun acknowledgeExpenseItemsMismatch(
-                id: Long,
+                id: String,
                 request: ExpenseStateTokenRequest,
                 idempotencyKey: String?,
             ): ExpenseItemsResponseDto = itemsResponseWithParentRowVersion(id)
         }
     }
 
-    private fun itemsResponseWithParentRowVersion(id: Long): ExpenseItemsResponseDto =
+    private fun itemsResponseWithParentRowVersion(id: String): ExpenseItemsResponseDto =
         ExpenseItemsResponseDto(
-            expenseId = id,
+            expenseId = id.toLongOrNull() ?: 0L,
             rowVersion = parentRowVersion,
             parentAmountCents = 0L,
             itemsTotalAmountCents = 0L,

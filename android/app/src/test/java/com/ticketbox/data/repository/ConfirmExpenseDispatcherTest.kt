@@ -22,12 +22,12 @@ import kotlin.test.assertTrue
  */
 internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
 
-    private fun confirmRow(idempotencyKey: String?): OutboxRow = OutboxRow(
+    private fun confirmRow(idempotencyKey: String?, targetId: String = "expense:42"): OutboxRow = OutboxRow(
         id = 1L,
         serverUrl = "https://api.example.com",
         ledgerId = "owner",
         type = PendingMutationType.ConfirmExpense,
-        targetId = "expense:42",
+        targetId = targetId,
         payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java)
             .toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L)),
         expectedRowVersion = 1L,
@@ -52,6 +52,19 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val result = dispatcherFor(stub).dispatch(confirmRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastConfirmIdempotencyKey, "dispatcher must send the row's key")
+        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+    }
+
+    @Test
+    fun `dispatch sends a device-local ref straight to the API instead of discarding it`() = runTest {
+        // issue #65 slice 3b: before the str-ref widening, a local:{client_ref}
+        // targetId failed toLongOrNull() and was Discarded; now it dispatches.
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(successExpenseDto()))
+
+        val result = dispatcherFor(stub)
+            .dispatch(confirmRow(idempotencyKey = "key-abc", targetId = "expense:local:abc-123"))
+
+        assertEquals("local:abc-123", stub.lastConfirmId, "the local ref must reach the API path param")
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
     }
 

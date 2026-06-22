@@ -34,7 +34,7 @@ class ReplaceItemsDispatcher(
     override val type: PendingMutationType = PendingMutationType.ReplaceItems
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val expenseId = parseExpenseId(row.targetId)
+        val expenseRef = parseExpenseTargetRef(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
 
         // ADR-0042: a ReplaceItems row MUST carry an idempotency key (every
@@ -61,7 +61,7 @@ class ReplaceItemsDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical items) instead of false-409ing on the stale row_version.
-            val response = apiProvider().replaceExpenseItems(expenseId, request, idempotencyKey)
+            val response = apiProvider().replaceExpenseItems(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
@@ -101,12 +101,6 @@ class ReplaceItemsDispatcher(
             422 -> DispatchResult.Failure(message)
             else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
         }
-    }
-
-    private fun parseExpenseId(targetId: String): Long? {
-        val prefix = "expense:"
-        if (!targetId.startsWith(prefix)) return null
-        return targetId.removePrefix(prefix).toLongOrNull()
     }
 
     private fun extractServerMessage(body: String): String? {

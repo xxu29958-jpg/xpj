@@ -34,7 +34,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         var directIdempotencyKey: String? = null
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseItems(
-                id: Long,
+                id: String,
                 request: ExpenseItemReplaceRequestDto,
                 idempotencyKey: String?,
             ): ExpenseItemsResponseDto {
@@ -85,7 +85,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         var directAttempted = false
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseItems(
-                id: Long,
+                id: String,
                 request: ExpenseItemReplaceRequestDto,
                 idempotencyKey: String?,
             ): ExpenseItemsResponseDto {
@@ -122,7 +122,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         val outbox = OutboxRepository(dao = dao)
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseItems(
-                id: Long,
+                id: String,
                 request: ExpenseItemReplaceRequestDto,
                 idempotencyKey: String?,
             ): ExpenseItemsResponseDto = ExpenseItemsResponseDto(

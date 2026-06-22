@@ -44,7 +44,7 @@ internal class ExpenseDetailRepository(
         val bound = core.ledgerRequestGuard.bind()
         val updated = bound.call {
             it.replaceExpenseItems(
-                id,
+                id.toString(),
                 ExpenseItemReplaceRequestDto(
                     expectedRowVersion = expectedRowVersion,
                     items = items.map { item -> item.toRequest() },
@@ -69,7 +69,7 @@ internal class ExpenseDetailRepository(
         // stale "原小票如此" clicks against a peer-edited row.
         bound.call {
             it.acknowledgeExpenseItemsMismatch(
-                id,
+                id.toString(),
                 com.ticketbox.data.remote.dto.ExpenseStateTokenRequest(
                     expectedRowVersion = expectedRowVersion,
                 ),
@@ -128,7 +128,7 @@ internal class ExpenseDetailRepository(
         try {
             val items = bound.call {
                 it.acknowledgeExpenseItemsMismatch(
-                    expense.id,
+                    expense.id.toString(),
                     ExpenseStateTokenRequest(expectedRowVersion = expense.rowVersion),
                     idempotencyKey,
                 )
@@ -186,7 +186,7 @@ internal class ExpenseDetailRepository(
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we saved.
-            val saved = bound.call { it.replaceExpenseItems(expense.id, request, idempotencyKey) }.toDomain()
+            val saved = bound.call { it.replaceExpenseItems(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ReplaceItemsOutcome.Synced(saved)
         }
         if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
@@ -195,7 +195,7 @@ internal class ExpenseDetailRepository(
             return@safeCall ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items))
         }
         try {
-            val saved = bound.call { it.replaceExpenseItems(expense.id, request, idempotencyKey) }.toDomain()
+            val saved = bound.call { it.replaceExpenseItems(expense.id.toString(), request, idempotencyKey) }.toDomain()
             ReplaceItemsOutcome.Synced(saved) as ReplaceItemsOutcome
         } catch (networkError: IOException) {
             enqueueReplaceItems(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
@@ -221,7 +221,7 @@ internal class ExpenseDetailRepository(
         bound.requireStillActive()
         outbox.enqueue(
             type = PendingMutationType.ReplaceItems,
-            targetId = "expense:$expenseId",
+            targetId = expenseTargetId(expenseId),
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
             expectedRowVersion = token,
             idempotencyKey = idempotencyKey,
@@ -299,7 +299,7 @@ internal class ExpenseDetailRepository(
         val bound = core.ledgerRequestGuard.bind()
         val updated = bound.call {
             it.replaceExpenseSplits(
-                id,
+                id.toString(),
                 ExpenseSplitReplaceRequestDto(
                     expectedRowVersion = expectedRowVersion,
                     splits = splits.map { split -> split.toRequest() },
@@ -349,7 +349,7 @@ internal class ExpenseDetailRepository(
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we saved.
-            val saved = bound.call { it.replaceExpenseSplits(expense.id, request, idempotencyKey) }.toDomain()
+            val saved = bound.call { it.replaceExpenseSplits(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ReplaceSplitsOutcome.Synced(saved)
         }
         if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
@@ -358,7 +358,7 @@ internal class ExpenseDetailRepository(
             return@safeCall ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits))
         }
         try {
-            val saved = bound.call { it.replaceExpenseSplits(expense.id, request, idempotencyKey) }.toDomain()
+            val saved = bound.call { it.replaceExpenseSplits(expense.id.toString(), request, idempotencyKey) }.toDomain()
             ReplaceSplitsOutcome.Synced(saved) as ReplaceSplitsOutcome
         } catch (networkError: IOException) {
             enqueueReplaceSplits(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
@@ -384,7 +384,7 @@ internal class ExpenseDetailRepository(
         bound.requireStillActive()
         outbox.enqueue(
             type = PendingMutationType.ReplaceSplits,
-            targetId = "expense:$expenseId",
+            targetId = expenseTargetId(expenseId),
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
             expectedRowVersion = token,
             idempotencyKey = idempotencyKey,
@@ -444,7 +444,7 @@ internal class ExpenseDetailRepository(
         val bound = core.ledgerRequestGuard.bind()
         // ADR-0042: single-use key — direct-only path, no replay.
         val retried = bound.call {
-            it.retryOcr(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
+            it.retryOcr(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
         }
         retried.toDomain()
     }
@@ -476,7 +476,7 @@ internal class ExpenseDetailRepository(
             }
             try {
                 val retried = bound.call {
-                    it.retryOcr(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
+                    it.retryOcr(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 }
                 ExpenseStateOutcome.Synced(retried.toDomain()) as ExpenseStateOutcome
             } catch (networkError: IOException) {
@@ -530,7 +530,7 @@ internal class ExpenseDetailRepository(
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we recognised.
-            val recognized = bound.call { it.recognizeText(expense.id, request, idempotencyKey) }.toDomain()
+            val recognized = bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ExpenseStateOutcome.Synced(recognized)
         }
         if (core.hasUnresolvedQueuedMutationsFor(expense.id)) {
@@ -539,7 +539,7 @@ internal class ExpenseDetailRepository(
             return@safeCall ExpenseStateOutcome.Queued(expense)
         }
         try {
-            val recognized = bound.call { it.recognizeText(expense.id, request, idempotencyKey) }.toDomain()
+            val recognized = bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }.toDomain()
             ExpenseStateOutcome.Synced(recognized) as ExpenseStateOutcome
         } catch (networkError: IOException) {
             // Queued is the expense UNCHANGED — the server does the parsing.
@@ -567,7 +567,7 @@ internal class ExpenseDetailRepository(
         bound.requireStillActive()
         outbox.enqueue(
             type = PendingMutationType.RecognizeText,
-            targetId = "expense:$expenseId",
+            targetId = expenseTargetId(expenseId),
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
             expectedRowVersion = token,
             idempotencyKey = idempotencyKey,

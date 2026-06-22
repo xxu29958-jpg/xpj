@@ -382,7 +382,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
             confirmedFailuresRemaining = 0,
         ) {
             override suspend fun confirmExpense(
-                id: Long,
+                id: String,
                 request: ExpenseStateTokenRequest,
                 idempotencyKey: String?,
             ): com.ticketbox.data.remote.dto.ExpenseDto {

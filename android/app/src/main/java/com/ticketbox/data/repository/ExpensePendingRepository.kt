@@ -112,7 +112,7 @@ internal class ExpensePendingRepository(
         // one whose replay actually reuses the key.)
         val updated = core.cacheIfConfirmed(
             bound.call {
-                it.updateExpense(id, draft.toRequest(baseline = baseline), UUID.randomUUID().toString())
+                it.updateExpense(id.toString(), draft.toRequest(baseline = baseline), UUID.randomUUID().toString())
             },
             bound.ledgerId,
         )
@@ -197,7 +197,7 @@ internal class ExpensePendingRepository(
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we saved.
             val updated = core.cacheIfConfirmed(
-                bound.call { it.updateExpense(id, request, idempotencyKey) },
+                bound.call { it.updateExpense(id.toString(), request, idempotencyKey) },
                 bound.ledgerId,
             )
             return SaveOutcome.Synced(updated.toDomain())
@@ -215,7 +215,7 @@ internal class ExpensePendingRepository(
             // Direct PATCH first — fast path when online. Returns
             // Synced with the server's canonical Expense.
             val updated = core.cacheIfConfirmed(
-                bound.call { it.updateExpense(id, request, idempotencyKey) },
+                bound.call { it.updateExpense(id.toString(), request, idempotencyKey) },
                 bound.ledgerId,
             )
             SaveOutcome.Synced(updated.toDomain())
@@ -263,7 +263,7 @@ internal class ExpensePendingRepository(
         bound.requireStillActive()
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
-            targetId = "expense:$id",
+            targetId = expenseTargetId(id),
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
             expectedRowVersion = token,
             // Same key as the direct attempt would have used — see the rationale
@@ -308,7 +308,7 @@ internal class ExpensePendingRepository(
             bound.call {
                 // ADR-0042: this DIRECT path never enqueues, so the key is
                 // single-use — it only satisfies the server's mandatory header.
-                it.confirmExpense(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
+                it.confirmExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
             },
             bound.ledgerId,
         )
@@ -322,7 +322,7 @@ internal class ExpensePendingRepository(
         val bound = core.ledgerRequestGuard.bind()
         val rejected = bound.call {
             // ADR-0042: single-use key — direct-only path, no replay.
-            it.rejectExpense(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
+            it.rejectExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
         }
         rejected.toDomain()
     }
@@ -347,7 +347,7 @@ internal class ExpensePendingRepository(
         val updated = core.cacheIfConfirmed(
             bound.call {
                 // ADR-0042: single-use key — direct-only path, no replay.
-                it.markNotDuplicate(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
+                it.markNotDuplicate(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
             },
             bound.ledgerId,
         )
@@ -381,7 +381,7 @@ internal class ExpensePendingRepository(
         try {
             val confirmed = core.cacheIfConfirmed(
                 bound.call {
-                    it.confirmExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
+                    it.confirmExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },
                 bound.ledgerId,
             )
@@ -418,7 +418,7 @@ internal class ExpensePendingRepository(
         }
         try {
             val rejected = bound.call {
-                it.rejectExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
+                it.rejectExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
             }
             ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
@@ -454,7 +454,7 @@ internal class ExpensePendingRepository(
         try {
             val updated = core.cacheIfConfirmed(
                 bound.call {
-                    it.markNotDuplicate(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
+                    it.markNotDuplicate(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },
                 bound.ledgerId,
             )

@@ -58,7 +58,7 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
         var directIdempotencyKey: String? = null
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseSplits(
-                id: Long,
+                id: String,
                 request: ExpenseSplitReplaceRequestDto,
                 idempotencyKey: String?,
             ): ExpenseSplitsResponseDto {
@@ -106,7 +106,7 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
         val outbox = OutboxRepository(dao = dao)
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseSplits(
-                id: Long,
+                id: String,
                 request: ExpenseSplitReplaceRequestDto,
                 idempotencyKey: String?,
             ): ExpenseSplitsResponseDto = ExpenseSplitsResponseDto(

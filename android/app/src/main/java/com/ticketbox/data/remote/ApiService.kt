@@ -167,7 +167,8 @@ interface ApiService {
 
     @PATCH("api/expenses/{id}")
     suspend fun updateExpense(
-        @Path("id") id: Long,
+        // issue #65 slice 3: server-id-or-``local:{client_ref}`` string ref.
+        @Path("id") id: String,
         @Body request: ExpenseUpdateRequest,
         // ADR-0042: intent-time idempotency key. A committed-but-unseen replay
         // (direct PATCH commits server-side but the response is lost, then the
@@ -183,7 +184,7 @@ interface ApiService {
 
     @PUT("api/expenses/{id}/items")
     suspend fun replaceExpenseItems(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: ExpenseItemReplaceRequestDto,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
@@ -192,7 +193,7 @@ interface ApiService {
 
     @POST("api/expenses/{id}/items/acknowledge-mismatch")
     suspend fun acknowledgeExpenseItemsMismatch(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
@@ -235,7 +236,7 @@ interface ApiService {
 
     @PUT("api/expenses/{id}/splits")
     suspend fun replaceExpenseSplits(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: ExpenseSplitReplaceRequestDto,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
@@ -244,7 +245,7 @@ interface ApiService {
 
     @POST("api/expenses/{id}/confirm")
     suspend fun confirmExpense(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
@@ -253,7 +254,7 @@ interface ApiService {
 
     @POST("api/expenses/{id}/reject")
     suspend fun rejectExpense(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
@@ -280,7 +281,7 @@ interface ApiService {
 
     @POST("api/expenses/{id}/ocr/retry")
     suspend fun retryOcr(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
@@ -292,7 +293,7 @@ interface ApiService {
     // provider on the stored image). Body-carrying like replaceExpenseItems.
     @POST("api/expenses/{id}/recognize-text")
     suspend fun recognizeText(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
@@ -313,7 +314,7 @@ interface ApiService {
 
     @POST("api/expenses/{id}/mark-not-duplicate")
     suspend fun markNotDuplicate(
-        @Path("id") id: Long,
+        @Path("id") id: String,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
