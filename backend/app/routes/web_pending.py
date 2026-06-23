@@ -7,7 +7,9 @@ modules under the 280-line budget. Business logic lives in
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
@@ -20,12 +22,15 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _with_ledger,
     _web_redirect,
+    parse_form_row_version_token,
     templates,
 )
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
     list_pending,
+    undo_reject_expense,
 )
 from app.services.pending_review_bulk_service import (
     ALLOWED_ACTIONS,
@@ -75,6 +80,45 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
     return True
 
 
+def _resolve_single_undo(
+    db: Session, *, selected_id: str, undo: str | None
+) -> tuple[int | None, int | None]:
+    # ADR-0038/0041: a stale or cross-ledger query param only disables the
+    # affordance. The POST route remains the source of truth.
+    if not undo or not undo.isdigit():
+        return None, None
+    candidate = int(undo)
+    row_version = fetch_expense_row_version_in_status(
+        db, expense_id=candidate, tenant_id=selected_id, status="rejected"
+    )
+    if row_version is None:
+        return None, None
+    return candidate, row_version
+
+
+def _resolve_batch_undo_items(
+    db: Session,
+    *,
+    selected_id: str,
+    undo_ids: list[int],
+    undo_tokens: list[str],
+) -> list[dict[str, int]]:
+    if not undo_ids or len(undo_ids) != len(undo_tokens):
+        return []
+
+    items: list[dict[str, int]] = []
+    for expense_id, raw_token in zip(undo_ids, undo_tokens, strict=True):
+        parsed = parse_form_row_version_token(raw_token)
+        if parsed is None:
+            continue
+        row_version = fetch_expense_row_version_in_status(
+            db, expense_id=expense_id, tenant_id=selected_id, status="rejected"
+        )
+        if row_version == parsed:
+            items.append({"id": expense_id, "row_version": parsed})
+    return items
+
+
 @router.get("/pending", response_class=HTMLResponse)
 def web_pending(
     request: Request,
@@ -82,6 +126,8 @@ def web_pending(
     filter: str | None = None,
     msg: str | None = None,
     undo: str | None = None,
+    undo_id: list[int] = Query(default=[]),
+    undo_rv: list[str] = Query(default=[]),
     flash_type: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -123,22 +169,14 @@ def web_pending(
     # bookmark replay) won't render a misleading "可撤销" banner — the route
     # itself is the source of truth (atomic UPDATE WHERE tenant_id, status), but
     # the page also stops lying.
-    undo_expense_id: int | None = None
-    undo_expected_row_version: int | None = None
-    if undo and undo.isdigit():
-        candidate = int(undo)
-        # ADR-0041: also fetch the rejected row's ``row_version`` so the
-        # banner's hidden form field can carry the OCC token. One query for
-        # "is it still rejected?" + "what's its token?" keeps the predicate and
-        # token read in the same snapshot (no TOCTOU between two separate fetches).
-        row_version = fetch_expense_row_version_in_status(
-            db, expense_id=candidate, tenant_id=selected_id, status="rejected"
-        )
-        if row_version is not None:
-            undo_expense_id = candidate
-            undo_expected_row_version = row_version
+    undo_expense_id, undo_expected_row_version = _resolve_single_undo(
+        db, selected_id=selected_id, undo=undo
+    )
     ctx["undo_expense_id"] = undo_expense_id
     ctx["undo_expected_row_version"] = undo_expected_row_version
+    ctx["undo_items"] = _resolve_batch_undo_items(
+        db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv
+    )
     ctx["needs_amount_count"] = sum(1 for it in raw_items if it["needs_amount"])
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
@@ -156,6 +194,28 @@ def web_pending(
 
 def _pending_redirect(selected_id: str, *, filter: str, msg: str) -> RedirectResponse:
     return _web_redirect("/web/pending", selected_id, filter=filter or "all", msg=msg)
+
+
+def _pending_redirect_with_batch_undo(
+    selected_id: str, *, filter: str, msg: str, result: BulkResult
+) -> RedirectResponse:
+    url = _with_ledger(
+        "/web/pending",
+        selected_id,
+        filter=filter or "all",
+        msg=msg,
+        flash_type="success",
+    )
+    undo_pairs: list[tuple[str, str]] = []
+    for expense_id in result.success_ids:
+        row_version = result.undo_row_versions.get(expense_id)
+        if row_version is None:
+            continue
+        undo_pairs.append(("undo_id", str(expense_id)))
+        undo_pairs.append(("undo_rv", str(row_version)))
+    if undo_pairs:
+        url = f"{url}&{urlencode(undo_pairs)}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 _SUCCESS_VERBS = {
@@ -190,13 +250,21 @@ def _bulk_fragment_json(action: str, result: BulkResult) -> JSONResponse:
     the same summary the redirect path flashes. ``removed_ids`` is authoritative
     — confirm_ready skips non-ready rows, so the client must not assume every
     selected row left the queue."""
-    return JSONResponse(
-        {
-            "removed_ids": list(result.success_ids),
-            "message": _format_bulk_message(action, result),
-            "flash_type": "success",
-        }
-    )
+    body = {
+        "removed_ids": list(result.success_ids),
+        "message": _format_bulk_message(action, result),
+        "flash_type": "success",
+    }
+    if action == "reject":
+        body["undo_items"] = [
+            {
+                "id": expense_id,
+                "expected_row_version": result.undo_row_versions[expense_id],
+            }
+            for expense_id in result.success_ids
+            if expense_id in result.undo_row_versions
+        ]
+    return JSONResponse(body)
 
 
 def _bulk_error_json(message: str) -> JSONResponse:
@@ -247,8 +315,60 @@ def web_pending_batch_reject(
     result = _reject_pending_rows(db, selected_id=selected_id, expense_ids=expense_ids)
     if fragment:
         return _bulk_fragment_json("reject", result)
-    return _pending_redirect(
-        selected_id, filter=filter, msg=_format_bulk_message("reject", result)
+    return _pending_redirect_with_batch_undo(
+        selected_id, filter=filter, msg=_format_bulk_message("reject", result), result=result
+    )
+
+
+@router.post("/pending/batch-undo", response_class=HTMLResponse)
+def web_pending_batch_undo(
+    request: Request,
+    ledger_id: str = Form(default=""),
+    expense_ids: list[int] = Form(default=[]),
+    expected_row_version: list[str] = Form(default=[]),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    if not expense_ids:
+        return _web_redirect(
+            "/web/pending", selected_id, msg="没有可撤销的账单。", flash_type="error"
+        )
+    if len(expense_ids) != len(expected_row_version):
+        return _web_redirect(
+            "/web/pending",
+            selected_id,
+            msg="页面已过期，请刷新后重新操作。",
+            flash_type="error",
+        )
+
+    restored = 0
+    skipped = 0
+    for expense_id, raw_token in zip(expense_ids, expected_row_version, strict=True):
+        parsed = parse_form_row_version_token(raw_token)
+        if parsed is None:
+            skipped += 1
+            continue
+        try:
+            undo_reject_expense(db, expense_id, selected_id, parsed)
+            restored += 1
+        except AppError:
+            skipped += 1
+
+    parts: list[str] = []
+    if restored:
+        parts.append(f"已撤销 {restored} 条")
+    if skipped:
+        parts.append(f"跳过 {skipped} 条：无法撤销")
+    if not parts:
+        parts.append("没有可撤销的账单")
+    return _web_redirect(
+        "/web/pending",
+        selected_id,
+        msg="；".join(parts) + "。",
+        flash_type="success" if restored else "error",
     )
 
 

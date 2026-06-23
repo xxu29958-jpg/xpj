@@ -136,7 +136,7 @@
       return null; // set_category / set_merchant → native full-page POST
     }
 
-    function flashBanner(message, type) {
+    function flashBanner(message, type, undoItems) {
       if (!message) return;
       const content = document.querySelector("main.content");
       if (!content) return;
@@ -153,8 +153,45 @@
       // Reuse the server flash classes (alert.css) so the look matches the no-JS
       // redirect banner — no new CSS, no hardcoded values.
       banner.className = "dt-alert" +
-        (type === "success" ? " success" : type === "error" ? " danger" : "");
-      banner.textContent = message;
+        (type === "success" ? " success" : type === "error" ? " danger" : "") +
+        (undoItems && undoItems.length ? " undo-banner" : "");
+      banner.textContent = "";
+      const text = document.createElement("span");
+      text.textContent = message;
+      banner.appendChild(text);
+      if (undoItems && undoItems.length) {
+        const undoForm = document.createElement("form");
+        undoForm.method = "post";
+        undoForm.action = "/web/pending/batch-undo";
+        undoForm.className = "undo-banner-action";
+        const ledger = form.querySelector('input[name="ledger_id"]');
+        if (ledger) {
+          const ledgerInput = document.createElement("input");
+          ledgerInput.type = "hidden";
+          ledgerInput.name = "ledger_id";
+          ledgerInput.value = ledger.value;
+          undoForm.appendChild(ledgerInput);
+        }
+        undoItems.forEach(function (item) {
+          const idInput = document.createElement("input");
+          idInput.type = "hidden";
+          idInput.name = "expense_ids";
+          idInput.value = item.id;
+          undoForm.appendChild(idInput);
+
+          const tokenInput = document.createElement("input");
+          tokenInput.type = "hidden";
+          tokenInput.name = "expected_row_version";
+          tokenInput.value = item.expected_row_version;
+          undoForm.appendChild(tokenInput);
+        });
+        const button = document.createElement("button");
+        button.type = "submit";
+        button.className = "dt-btn";
+        button.textContent = "撤销 " + undoItems.length + " 条";
+        undoForm.appendChild(button);
+        banner.appendChild(undoForm);
+      }
     }
 
     // Mirror drawer.js's count drift policy: decrement the active filter tab and
@@ -189,7 +226,11 @@
       });
       clearSelection();
       decrementFilterCounts(removed);
-      flashBanner(data && data.message, (data && data.flash_type) || "success");
+      flashBanner(
+        data && data.message,
+        (data && data.flash_type) || "success",
+        data && data.undo_items
+      );
     }
 
     function setBulkBusy(busy) {

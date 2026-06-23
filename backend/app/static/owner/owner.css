@@ -8,6 +8,8 @@
     /* Owner 比 /web 更紧凑：稍小圆角和更轻阴影 */
     --radius-card: 8px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.08);
+    /* Owner-only 一次性密钥框刻意保留终端绿；它不是 success 状态语义色。 */
+    --owner-secret-fg: #a3e635;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -141,7 +143,7 @@ tr[aria-selected="true"] td:first-child {
 
 .secret-box {
     background: var(--surface-nav);
-    color: #a3e635;
+    color: var(--owner-secret-fg);
     font-family: monospace;
     font-size: 13px;
     padding: 16px;

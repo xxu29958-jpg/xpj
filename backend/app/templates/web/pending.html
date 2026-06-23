@@ -21,9 +21,19 @@
    error → 红色(undo 失败:超窗 / 不属于当前 ledger / 已恢复)。flash_type 为空 fallback
    到默认 info 样式(蓝色)。undo-banner 修饰只在能撤销时加上,触发 CSS 5s auto-dismiss
    动画(_components/alert.css)。 #}
-<div class="dt-alert{% if flash_type == 'success' %} success{% elif flash_type == 'error' %} danger{% endif %}{% if undo_expense_id %} undo-banner{% endif %}">
+<div class="dt-alert{% if flash_type == 'success' %} success{% elif flash_type == 'error' %} danger{% endif %}{% if undo_items or undo_expense_id %} undo-banner{% endif %}">
   <span>{{ flash_message }}</span>
-  {% if undo_expense_id %}
+  {% if undo_items %}
+  <form method="post" action="/web/pending/batch-undo" class="undo-banner-action">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    {% for item in undo_items %}
+    <input type="hidden" name="expense_ids" value="{{ item.id }}">
+    <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+    {% endfor %}
+    <button type="submit" class="dt-btn">撤销 {{ undo_items|length }} 条</button>
+  </form>
+  {% elif undo_expense_id %}
   {# csrf_token explicit so the form works even if csrf.js fails to load —
      belt-and-braces vs the JS auto-injection in /static/shared/csrf.js. #}
   <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">

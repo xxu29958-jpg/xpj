@@ -381,6 +381,8 @@ def test_web_batch_reject_fragment_returns_removed_ids(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert set(body["removed_ids"]) == {first, second}
+    assert {item["id"] for item in body["undo_items"]} == {first, second}
+    assert all(item["expected_row_version"] > 0 for item in body["undo_items"])
     assert body["flash_type"] == "success"
     assert "已忽略 2 条" in body["message"]
     pending = web_client.get("/web/pending?ledger_id=owner")
@@ -432,4 +434,6 @@ def test_bulk_bar_js_has_fetch_partial_mechanism() -> None:
     assert 'body.append("fragment", "1");' in js
     assert "function removalKind" in js
     assert "removed_ids" in js
+    assert "undo_items" in js
+    assert "/web/pending/batch-undo" in js
     assert "data-native-fallback" in js  # offline → native full-page fallback
