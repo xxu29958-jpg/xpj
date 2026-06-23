@@ -197,8 +197,8 @@
 /* legacy .ledger-role-chip shell 覆盖已删除 —— _ledger_switcher.html 用了同名 class,
    但其基础样式由 web.css 顶部的 .ledger-role-chip 定义,shell 内不需再覆盖。 */
 
-/* legacy .reports-export-dialog shell 覆盖已删除 —— element 由 reports.js 按 id
-   动态控制,reports.html 当前未渲染对应节点,样式为 dead code。 */
+/* legacy .reports-export-dialog(复数) 已删除 —— reports 页实际导出弹窗由
+   pages/reports.css 的 .report-export-dialog(单数) 接管。 */
 
 /* legacy empty-state / pagination / meta — 字色 */
 .desktop-shell-active .empty-state-title { color: var(--text-default); }

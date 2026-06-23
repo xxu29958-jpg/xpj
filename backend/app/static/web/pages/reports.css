@@ -148,12 +148,16 @@
 
 /* 趋势图 PNG 导出 dialog */
 .report-export-dialog {
-    border: none;
-    border-radius: 12px;
+    width: min(920px, calc(100vw - 32px));
+    border: 0;
+    border-radius: var(--radius-card);
     padding: 18px;
     max-width: 90vw;
-    background: var(--surface-card, #fff);
+    background: var(--surface-card);
+    color: var(--text-default);
+    box-shadow: var(--shadow-raised);
 }
+.report-export-dialog::backdrop { background: var(--drawer-overlay-bg); }
 .report-export-dialog__head {
     display: flex;
     justify-content: space-between;
@@ -163,8 +167,11 @@
 }
 .report-export-dialog__image {
     max-width: min(80vw, 720px);
+    max-height: 62vh;
     height: auto;
     border-radius: 8px;
+    border: 1px solid var(--border-card);
+    background: var(--surface-card);
     display: block;
 }
 
