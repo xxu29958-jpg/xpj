@@ -249,13 +249,36 @@ def revoke_device(
         link_update = link_update.where(UploadLink.ledger_id.in_(ledger_ids))
     db.execute(token_update.values(revoked_at=now))
     db.execute(link_update.values(revoked_at=now))
-    if device.revoked_at is None and not _active_device_dependents_exist(
-        db,
-        device.id,
-        ledger_ids=ledger_ids,
-        outside_scope=True,
-    ):
-        device.revoked_at = now
+    if device.revoked_at is None and ledger_ids is not None:
+        # This scoped revoke just killed the device's in-scope credentials; mark
+        # the device itself revoked ONLY if it has no active credential left in
+        # any OTHER ledger. Device.revoked_at is a device-GLOBAL auth gate
+        # (identity_service/_auth.py 401s every token of a revoked device, in
+        # every ledger), so do the check-and-set in ONE statement. An unlocked
+        # read-then-set let a token concurrently issued in an out-of-scope ledger
+        # slip into the gap between the check and the set, and the set would then
+        # 401 that other ledger's live session — a cross-tenant liveness/DoS race.
+        # This mirrors cleanup_revoked_devices' single-statement re-assert below.
+        outside_active_token = (
+            exists()
+            .where(AuthToken.device_id == device.id)
+            .where(AuthToken.revoked_at.is_(None))
+            .where(AuthToken.ledger_id.not_in(ledger_ids))
+        )
+        outside_active_link = (
+            exists()
+            .where(UploadLink.device_id == device.id)
+            .where(UploadLink.revoked_at.is_(None))
+            .where(UploadLink.ledger_id.not_in(ledger_ids))
+        )
+        db.execute(
+            Device.__table__.update()
+            .where(Device.id == device.id)
+            .where(Device.revoked_at.is_(None))
+            .where(~outside_active_token)
+            .where(~outside_active_link)
+            .values(revoked_at=now)
+        )
     db.commit()
     db.refresh(device)
     return _device_with_relations(db, device, ledger_ids=ledger_ids)
@@ -287,10 +310,16 @@ def delete_device(
 ) -> None:
     """Permanently remove a device row and its dependents.
 
-    Only allowed for devices that have been revoked first; the active admin
-    device cannot be deleted. Cascade-deletes :class:`AuthToken` and
-    :class:`UploadLink` rows referencing this device. ``Expense`` has no FK
-    to :class:`Device` and is left untouched.
+    The active caller device can never be deleted. Beyond that the precondition
+    depends on scope: an unscoped admin (``ledger_ids is None``) may only delete
+    a device that was revoked first, while a scoped owner (``ledger_ids`` set)
+    may delete once the device has no ACTIVE dependent in the owned ledger(s) —
+    an unrevoked device whose only in-scope bindings are already revoked still
+    qualifies, and out-of-scope bindings neither block nor are touched. Deletes
+    are scoped to ``ledger_ids``; the :class:`Device` row itself is dropped only
+    when no dependent remains anywhere. Cascade-deletes the in-scope
+    :class:`AuthToken` and :class:`UploadLink` rows; ``Expense`` has no FK to
+    :class:`Device` and is left untouched.
     """
     if public_id == current_device_public_id:
         raise AppError(
