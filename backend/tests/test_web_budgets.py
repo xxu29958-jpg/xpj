@@ -63,6 +63,9 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     assert "未配置" in response.text
     assert "/web/budgets?ledger_id=owner" in response.text
     assert 'name="total_amount_yuan"' in response.text
+    assert 'for="budget-total-amount-yuan"' in response.text
+    assert 'id="budget-total-amount-yuan"' in response.text
+    assert 'aria-label="分类预算金额"' in response.text
     assert "保存预算" in response.text
 
 

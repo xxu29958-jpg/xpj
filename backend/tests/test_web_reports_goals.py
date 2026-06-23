@@ -203,6 +203,7 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     script = client.get("/static/web/vendor/echarts.min.js")
     license_file = client.get("/static/web/vendor/echarts.LICENSE")
     reports_js = client.get("/static/web/reports.js")
+    pending_css = client.get("/static/web/pages/pending.css")
 
     assert script.status_code == 200
     assert "Apache Software Foundation" in script.text[:5000]
@@ -211,6 +212,10 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert "Apache License" in license_file.text
     assert reports_js.status_code == 200
     assert "reports-overview-data" in reports_js.text
+    assert "rgba(15,23,42" not in reports_js.text
+    assert pending_css.status_code == 200
+    assert "#d6e3ee" not in pending_css.text
+    assert "#d1e5d3" not in pending_css.text
     assert "cdn.jsdelivr" not in reports_js.text
     assert "unpkg.com" not in reports_js.text
 

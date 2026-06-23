@@ -8,6 +8,24 @@
  * 鼠标点击不会出现描边；颜色来自 shared/tokens.css 的 --brand-focus-ring，
  * paper / mono / midnight 三主题自动适配。
  */
+.skip-link {
+    position: fixed;
+    top: var(--space-5);
+    left: var(--space-5);
+    z-index: var(--z-toast);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    color: var(--text-default);
+    box-shadow: var(--shadow-raised);
+    transform: translateY(calc(-100% - var(--space-8)));
+    transition: transform var(--motion-fast) var(--ease-standard);
+}
+.skip-link:focus-visible {
+    transform: translateY(0);
+}
+
 :focus-visible {
     outline: 2px solid var(--brand-focus-ring);
     outline-offset: 2px;

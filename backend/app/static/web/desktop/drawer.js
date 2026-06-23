@@ -36,12 +36,41 @@
     if (!drawer || !scrim) return;
 
     let currentRow = null;
+    let restoreFocusTo = null;
 
     function close() {
       drawer.classList.remove("on");
       scrim.classList.remove("on");
       drawer.innerHTML = "";
       currentRow = null;
+      restoreFocus();
+    }
+
+    function rememberFocus(row) {
+      if (drawer.classList.contains("on")) return;
+      const active = document.activeElement;
+      restoreFocusTo =
+        active && active !== document.body && document.contains(active)
+          ? active
+          : row;
+    }
+
+    function restoreFocus() {
+      const target = restoreFocusTo;
+      restoreFocusTo = null;
+      if (target && document.contains(target) && typeof target.focus === "function") {
+        target.focus({ preventScroll: true });
+      }
+    }
+
+    function focusDrawer() {
+      const target = drawer.querySelector(
+        "[data-drawer-close], input:not([type=hidden]):not([disabled]), " +
+        "textarea:not([disabled]), select:not([disabled]), button:not([disabled]), a[href]"
+      ) || drawer;
+      if (target && typeof target.focus === "function") {
+        target.focus({ preventScroll: true });
+      }
     }
 
     function bindFragment() {
@@ -59,6 +88,7 @@
       if (!row) return;
       const url = row.getAttribute("data-fragment-url");
       if (!url) return;
+      rememberFocus(row);
       currentRow = row;
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
@@ -68,6 +98,7 @@
           scrim.classList.add("on");
           markSelected(row);
           bindFragment();
+          focusDrawer();
         })
         .catch(function () {
           window.location.href = row.getAttribute("href");
@@ -81,7 +112,7 @@
       const url = currentRow.getAttribute("data-fragment-url");
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
-        .then(function (html) { drawer.innerHTML = html; bindFragment(); })
+        .then(function (html) { drawer.innerHTML = html; bindFragment(); focusDrawer(); })
         .catch(function () { /* leave the drawer as-is; the row is unchanged */ });
     }
 
@@ -176,6 +207,7 @@
           return res.text().then(function (html) {
             drawer.innerHTML = html;
             bindFragment();
+            focusDrawer();
           });
         })
         .catch(function () {

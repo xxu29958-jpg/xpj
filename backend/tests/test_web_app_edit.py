@@ -187,6 +187,8 @@ def test_web_edit_renders_category_datalist_with_used_category(
 
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert detail.status_code == 200
+    assert f'for="expense-{expense_id}-amount-yuan"' in detail.text
+    assert f'id="expense-{expense_id}-amount-yuan"' in detail.text
     assert 'list="category-options"' in detail.text
     assert '<datalist id="category-options">' in detail.text
     assert '<option value="测试专属分类">' in detail.text  # the ledger's own
@@ -196,6 +198,8 @@ def test_web_edit_renders_category_datalist_with_used_category(
         f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
     )
     assert drawer.status_code == 200
+    assert f'for="drawer-expense-{expense_id}-amount-yuan"' in drawer.text
+    assert f'id="drawer-expense-{expense_id}-amount-yuan"' in drawer.text
     assert 'list="category-options-drawer"' in drawer.text
     assert 'name="expense_time"' in drawer.text
     assert 'name="tags"' in drawer.text
@@ -427,3 +431,8 @@ def test_web_edit_drawer_default_submit_is_save_not_reject(
     assert reject_buttons
     for btn in reject_buttons:
         assert "data-confirm" in btn
+
+    drawer_js = web_client.get("/static/web/desktop/drawer.js")
+    assert drawer_js.status_code == 200
+    assert "restoreFocusTo" in drawer_js.text
+    assert "focusDrawer()" in drawer_js.text

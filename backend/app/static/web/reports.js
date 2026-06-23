@@ -117,7 +117,7 @@
       backgroundColor: colors.tooltipBg,
       borderWidth: 0,
       textStyle: { color: colors.tooltipFg, fontSize: 12 },
-      extraCssText: 'box-shadow:0 8px 24px rgba(15,23,42,.22);border-radius:8px;',
+      extraCssText: 'box-shadow:0 8px 24px rgba(0,0,0,.22);border-radius:8px;',
     };
   }
 

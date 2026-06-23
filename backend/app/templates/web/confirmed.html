@@ -166,9 +166,9 @@
   <input type="hidden" name="page" value="{{ page }}">
   <span class="count" data-bulk-count>0</span>
   <span class="label">已选中</span>
-  <input class="bulk-field" name="category" maxlength="64" placeholder="分类">
+  <input class="bulk-field" name="category" maxlength="64" placeholder="分类" aria-label="批量修改分类">
   <button class="dt-btn" type="submit" name="action" value="set_category">改分类</button>
-  <input class="bulk-field" name="tags" maxlength="500" placeholder="标签，逗号分隔">
+  <input class="bulk-field" name="tags" maxlength="500" placeholder="标签，逗号分隔" aria-label="批量修改标签">
   <button class="dt-btn primary" type="submit" name="action" value="set_tags">改标签</button>
 </form>
 {% endif %}

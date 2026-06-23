@@ -51,14 +51,14 @@
 }
 .exp-thumb-alipay {
     background:
-        linear-gradient(180deg, #d6e3ee 0 14px, transparent 14px),
+        linear-gradient(180deg, var(--state-info-bg) 0 14px, transparent 14px),
         repeating-linear-gradient(180deg, transparent 0 5px,
             rgba(0,0,0,0.06) 5px, rgba(0,0,0,0.06) 6px),
         var(--surface-card);
 }
 .exp-thumb-wechat {
     background:
-        linear-gradient(180deg, #d1e5d3 0 12px, transparent 12px),
+        linear-gradient(180deg, var(--state-success-bg) 0 12px, transparent 12px),
         repeating-linear-gradient(180deg, transparent 0 5px,
             rgba(0,0,0,0.06) 5px, rgba(0,0,0,0.06) 6px),
         var(--surface-card);

@@ -51,7 +51,7 @@
           <a href="/owner/ledgers/{{ row.ledger_id }}/members" class="btn btn-secondary btn--compact ml-2">成员/邀请</a>
           {% if row.role == 'owner' and not row.is_default %}
           {% set archive_confirm = '归档账本「' ~ row.name ~ '」？该账本将从所有活跃界面（账本列表、登录、配对、邀请）隐藏，已绑定设备的会话随即失效。数据完整保留，可在下方「已归档账本」中恢复。' %}
-          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/archive" class="inline-form" onsubmit='return confirm({{ archive_confirm | tojson }});'>
+          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/archive" class="inline-form" data-confirm="{{ archive_confirm }}">
             <button type="submit" class="btn btn-danger btn--compact ml-2">归档</button>
           </form>
           {% endif %}
@@ -106,7 +106,7 @@
         <td>{{ row.confirmed_count }}</td>
         <td>
           {% set unarchive_confirm = '恢复账本「' ~ row.name ~ '」？它将重新出现在「当前账本」列表中。' %}
-          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/unarchive" class="inline-form" onsubmit='return confirm({{ unarchive_confirm | tojson }});'>
+          <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/unarchive" class="inline-form" data-confirm="{{ unarchive_confirm }}">
             <button type="submit" class="btn btn-secondary btn--compact">恢复</button>
           </form>
         </td>
