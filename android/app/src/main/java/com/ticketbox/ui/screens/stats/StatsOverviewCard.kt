@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DailySpend
@@ -85,16 +87,21 @@ internal fun StatsOverviewCard(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            verticalAlignment = Alignment.Bottom,
-        ) {
+        // hero 金额独占整行、永远拿满宽度满 38sp（本屏唯一焦点数字，不与 delta 抢空间，
+        // 故不会再被挤成「¥1,04…」）；delta 对比（绝对降幅 + 百分比）紧贴金额下方单独一行，
+        // 镜像 /web 的堆叠 KPI 布局。intra-gap 用 miniGap，使 delta 明显归属金额而非下方指标行。
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 text = formatDisplayAmount(stats.totalAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
+                // 兜底：极端宽金额（多币种 / 超大额）下自适应缩字号而非截断；常态满 38sp。
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 22.sp,
+                    maxFontSize = AppAmountRole.Hero.role.size,
+                    stepSize = 1.sp,
+                ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
