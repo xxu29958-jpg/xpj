@@ -33,6 +33,10 @@ def live_provider_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("BUDGET_ADVISOR_API_KEY", "test-key")
     monkeypatch.setenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "0")
     monkeypatch.setenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "0")
+    # 不让开发机 .env 的 BUDGET_ADVISOR_OWNER_CONFIRMED 泄漏进来：依赖"未确认"
+    # 默认的用例（如 without_owner_confirm_returns_403）否则会在本地放过 gate、
+    # 真打 live provider。需要"已确认"的用例各自显式 setenv 覆盖。
+    monkeypatch.delenv("BUDGET_ADVISOR_OWNER_CONFIRMED", raising=False)
     reset_settings_cache()
     yield monkeypatch
     reset_settings_cache()
