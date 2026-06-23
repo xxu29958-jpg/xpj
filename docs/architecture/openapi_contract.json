@@ -1787,6 +1787,33 @@
         "title": "Body_web_pending_batch_reject_web_pending_batch_reject_post",
         "type": "object"
       },
+      "Body_web_pending_batch_undo_web_pending_batch_undo_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Row Version",
+            "type": "array"
+          },
+          "expense_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Expense Ids",
+            "type": "array"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_pending_batch_undo_web_pending_batch_undo_post",
+        "type": "object"
+      },
       "Body_web_recurring_archive_web_recurring__public_id__archive_post": {
         "properties": {
           "ledger_id": {
@@ -28265,6 +28292,32 @@
           },
           {
             "in": "query",
+            "name": "undo_id",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Undo Id",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undo_rv",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Undo Rv",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
             "name": "flash_type",
             "required": false,
             "schema": {
@@ -28343,6 +28396,46 @@
           }
         },
         "summary": "Web Pending Batch Reject",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/pending/batch-undo": {
+      "post": {
+        "operationId": "web_pending_batch_undo_web_pending_batch_undo_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_pending_batch_undo_web_pending_batch_undo_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Pending Batch Undo",
         "tags": [
           "web"
         ]
