@@ -208,6 +208,7 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     reports_css = client.get("/static/web/pages/reports.css")
     reports_feature_css = client.get("/static/web/features/_reports_goals.css")
     pending_css = client.get("/static/web/pages/pending.css")
+    bulk_bar_css = client.get("/static/web/components/bulk-bar.css")
 
     assert script.status_code == 200
     assert "Apache Software Foundation" in script.text[:5000]
@@ -225,6 +226,12 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert pending_css.status_code == 200
     assert "#d6e3ee" not in pending_css.text
     assert "#d1e5d3" not in pending_css.text
+    assert "@media (max-width: 900px)" in pending_css.text
+    assert "grid-template-columns: 24px 56px minmax(0, 1fr) auto" in pending_css.text
+    assert bulk_bar_css.status_code == 200
+    assert "@media (max-width: 720px)" in bulk_bar_css.text
+    assert ".bulk-bar .bulk-field" in bulk_bar_css.text
+    assert "flex-basis: 100%" in bulk_bar_css.text
     assert "cdn.jsdelivr" not in reports_js.text
     assert "unpkg.com" not in reports_js.text
 

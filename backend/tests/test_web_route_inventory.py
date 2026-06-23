@@ -164,6 +164,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Pending
     ("GET", "/web/pending"): "local-only-rendering",
     ("POST", "/web/pending/batch-reject"): "writer-only",
+    ("POST", "/web/pending/batch-undo"): "writer-only",
     ("POST", "/web/review/bulk"): "writer-only",
     # Recurring
     ("GET", "/web/recurring"): "local-only-rendering",

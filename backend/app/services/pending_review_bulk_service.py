@@ -48,13 +48,16 @@ class BulkResult:
     # which of the selected rows actually left the pending list.
     success_ids: list[int] = field(default_factory=list)
     skipped_reasons: dict[str, int] = field(default_factory=dict)
+    undo_row_versions: dict[int, int] = field(default_factory=dict)
 
     @property
     def success_count(self) -> int:
         return len(self.success_ids)
 
-    def record_success(self, row_id: int) -> None:
+    def record_success(self, row_id: int, *, undo_row_version: int | None = None) -> None:
         self.success_ids.append(row_id)
+        if undo_row_version is not None:
+            self.undo_row_versions[row_id] = undo_row_version
 
     def bump(self, label: str) -> None:
         self.skipped_reasons[label] = self.skipped_reasons.get(label, 0) + 1
@@ -171,8 +174,10 @@ def _apply_reject(db: Session, row, tenant_id: str, result: BulkResult) -> None:
     try:
         # ADR-0038 PR-2b: 服务端 bulk handler 已经读到 row.updated_at，
         # 直接喂给 reject_expense；不让外层管线携带 token。
-        reject_expense(db, row.id, tenant_id, expected_row_version=row.row_version)
-        result.record_success(row.id)
+        rejected = reject_expense(
+            db, row.id, tenant_id, expected_row_version=row.row_version
+        )
+        result.record_success(row.id, undo_row_version=rejected.row_version)
     except AppError:
         result.bump("忽略失败")
 
