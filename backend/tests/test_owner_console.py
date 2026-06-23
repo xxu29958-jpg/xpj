@@ -134,6 +134,16 @@ def test_owner_devices_html_no_token_hash(local_client: TestClient) -> None:
     assert matches == [], f"token_hash in /owner/devices: {matches[:1]}"
 
 
+def test_owner_devices_page_links_to_pairing(local_client: TestClient) -> None:
+    # issue #65 slice 7: the device-management page surfaces the add-device flow
+    # so an owner can discover how to pair a new phone right where they manage the
+    # existing ones (the dedicated multi-ledger pairing page stays the generator).
+    resp = local_client.get("/owner/devices")
+    assert resp.status_code == 200
+    assert "添加设备" in resp.text
+    assert 'href="/owner/pairing"' in resp.text
+
+
 def test_owner_pairing_page_opens(local_client: TestClient) -> None:
     resp = local_client.get("/owner/pairing")
     assert resp.status_code == 200
