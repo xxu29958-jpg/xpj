@@ -6,9 +6,13 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.DeviceRenameRequestDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.ErrorDto
+import com.ticketbox.data.remote.dto.MyDeviceDto
+import com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto
+import com.ticketbox.data.remote.dto.PairingCodeResponseDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
@@ -18,6 +22,8 @@ import com.ticketbox.data.remote.dto.LedgerAuditDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
+import com.ticketbox.domain.model.AccountDevice
+import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.InvitationPreview
@@ -241,6 +247,56 @@ class LedgerRepository(
     }
 
     /**
+     * issue #65 slice 6b: list the devices that can access [ledgerId]. Backend
+     * (slice 6a) scopes to the active ledger + owner role (403 兜底); the UI
+     * hides the screen for non-owners only as an experience nicety.
+     */
+    suspend fun refreshDevices(
+        ledgerId: String? = activeLedgerId(),
+    ): Result<List<AccountDevice>> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        api().ledgerDevices(targetLedgerId).devices.map { it.toAccountDevice() }
+    }
+
+    suspend fun renameDevice(
+        publicId: String,
+        deviceName: String,
+        ledgerId: String? = activeLedgerId(),
+    ): Result<AccountDevice> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        val cleanName = deviceName.trim()
+        require(cleanName.isNotEmpty()) { "设备名称不能为空。" }
+        api().renameLedgerDevice(
+            ledgerId = targetLedgerId,
+            publicId = publicId,
+            request = DeviceRenameRequestDto(deviceName = cleanName),
+        ).toAccountDevice()
+    }
+
+    suspend fun revokeDevice(
+        publicId: String,
+        ledgerId: String? = activeLedgerId(),
+    ): Result<AccountDevice> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        api().revokeLedgerDevice(targetLedgerId, publicId).toAccountDevice()
+    }
+
+    /**
+     * issue #65 slice 6b: mint a one-time device pairing code for the active
+     * ledger. The plaintext code is returned ONCE for the user to enter on the
+     * new device; the server stores only its hash.
+     */
+    suspend fun createDevicePairingCode(
+        ledgerId: String? = activeLedgerId(),
+    ): Result<DevicePairingCode> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        api().createLedgerDevicePairingCode(
+            ledgerId = targetLedgerId,
+            request = PairingCodeCreateRequestDto(),
+        ).toDevicePairingCode()
+    }
+
+    /**
      * Preview a family-ledger invitation. [serverUrlOverride] is the cold-start
      * (unbound device) entry: the URL is normalized/validated through the same
      * [validateServerUrlInput] rules as pairing-code binding and the call goes
@@ -451,6 +507,22 @@ internal fun LedgerAuditDto.toLedgerAuditEntry(): LedgerAuditEntry = LedgerAudit
     newRole = newRole?.takeIf { it.isNotBlank() },
     result = result,
     createdAt = createdAt,
+)
+
+internal fun MyDeviceDto.toAccountDevice(): AccountDevice = AccountDevice(
+    publicId = publicId,
+    deviceName = deviceName.ifBlank { "未命名设备" },
+    platform = platform,
+    lastSeenAt = lastSeenAt,
+    createdAt = createdAt,
+    revokedAt = revokedAt,
+    isCurrent = isCurrent,
+)
+
+private fun PairingCodeResponseDto.toDevicePairingCode(): DevicePairingCode = DevicePairingCode(
+    pairingCode = pairingCode,
+    ledgerName = ledgerName,
+    expiresAt = expiresAt,
 )
 
 private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(

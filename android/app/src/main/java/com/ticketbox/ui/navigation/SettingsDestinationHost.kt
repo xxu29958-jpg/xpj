@@ -47,6 +47,7 @@ import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.MerchantAliasesScreen
+import com.ticketbox.ui.screens.settings.MyDevicesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
@@ -63,6 +64,7 @@ import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 import com.ticketbox.viewmodel.MerchantAliasUiState
+import com.ticketbox.viewmodel.MyDevicesViewModel
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 import com.ticketbox.viewmodel.SettingsUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
@@ -72,6 +74,7 @@ import com.ticketbox.viewmodel.familyMembersViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
+import com.ticketbox.viewmodel.myDevicesViewModelFactory
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 import com.ticketbox.viewmodel.tagManagementViewModelFactory
 
@@ -193,6 +196,7 @@ internal fun SettingsDestinationHost(
             onOpenSecurity = { route = SettingsDestination.SecurityPrivacy },
             onOpenLedgers = { route = SettingsDestination.Ledgers },
             onOpenFamilyMembers = { route = SettingsDestination.FamilyMembers },
+            onOpenMyDevices = { route = SettingsDestination.MyDevices },
             onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
             onOpenBillSplits = { route = SettingsDestination.BillSplits },
             onOpenBackgroundTasks = { route = SettingsDestination.BackgroundTasks },
@@ -384,6 +388,18 @@ internal fun SettingsDestinationHost(
                 currentRole = states.settings.role,
                 onBack = { route = SettingsDestination.Root },
                 onMembershipChanged = actions.onBindingChanged,
+            )
+        }
+
+        SettingsDestination.MyDevices -> {
+            val vm: MyDevicesViewModel = viewModel(
+                key = "my-devices",
+                factory = myDevicesViewModelFactory(repositories.ledgerRepository),
+            )
+            MyDevicesScreen(
+                viewModel = vm,
+                activeLedgerId = repositories.activeLedgerId,
+                onBack = { route = SettingsDestination.Root },
             )
         }
 

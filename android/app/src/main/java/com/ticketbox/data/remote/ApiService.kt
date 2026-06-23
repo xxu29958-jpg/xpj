@@ -30,10 +30,15 @@ import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
+import com.ticketbox.data.remote.dto.DeviceRenameRequestDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
+import com.ticketbox.data.remote.dto.MyDeviceDto
+import com.ticketbox.data.remote.dto.MyDeviceListResponseDto
+import com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto
+import com.ticketbox.data.remote.dto.PairingCodeResponseDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
@@ -862,6 +867,31 @@ interface ApiService {
     suspend fun acceptInvitation(
         @Body request: InvitationAcceptRequestDto,
     ): InvitationAcceptResponseDto
+
+    // issue #65 slice 6b: owner "My Devices" (backend slice 6a; owner-only,
+    // path-ledger-bound). list / rename / revoke + mint a pairing code to add a
+    // device (the new device then pairs via the existing bind flow).
+    @GET("api/ledgers/{ledgerId}/devices")
+    suspend fun ledgerDevices(@Path("ledgerId") ledgerId: String): MyDeviceListResponseDto
+
+    @POST("api/ledgers/{ledgerId}/devices/{publicId}/rename")
+    suspend fun renameLedgerDevice(
+        @Path("ledgerId") ledgerId: String,
+        @Path("publicId") publicId: String,
+        @Body request: DeviceRenameRequestDto,
+    ): MyDeviceDto
+
+    @POST("api/ledgers/{ledgerId}/devices/{publicId}/revoke")
+    suspend fun revokeLedgerDevice(
+        @Path("ledgerId") ledgerId: String,
+        @Path("publicId") publicId: String,
+    ): MyDeviceDto
+
+    @POST("api/ledgers/{ledgerId}/devices/pairing-codes")
+    suspend fun createLedgerDevicePairingCode(
+        @Path("ledgerId") ledgerId: String,
+        @Body request: PairingCodeCreateRequestDto,
+    ): PairingCodeResponseDto
 
     // ADR-0030 background tasks
     @GET("api/tasks")

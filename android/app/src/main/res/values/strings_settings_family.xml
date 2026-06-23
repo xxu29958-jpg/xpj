@@ -132,4 +132,42 @@
     <string name="notification_preferences_section_privacy">隐私边界</string>
     <string name="notification_preferences_privacy_title">通知原文不会上传到小票夹服务。</string>
     <string name="notification_preferences_privacy_body">支付通知只在本机解析，上传字段限定为来源、金额、商家、分类和时间。系统授权和 App 开关任一关闭，都会停止自动草稿。</string>
+
+    <!-- MyDevicesScreen：设置→我的设备 屏（issue #65 slice 6b，owner-only） -->
+    <string name="my_devices_page_title">我的设备</string>
+    <string name="my_devices_page_subtitle_manage">查看并管理可访问本账本的设备。重命名、停用或添加新设备。</string>
+    <string name="my_devices_page_subtitle_view">查看可访问本账本的设备。只有拥有者能管理设备。</string>
+    <string name="my_devices_section_devices">可访问的设备</string>
+    <string name="my_devices_empty">还没有可显示的设备。</string>
+    <string name="my_devices_refresh">刷新设备列表</string>
+    <string name="my_devices_refresh_loading">刷新中…</string>
+    <string name="my_devices_row_current_badge">本机</string>
+    <string name="my_devices_row_platform_last_seen">%1$s · 最近活跃 %2$s</string>
+    <string name="my_devices_row_revoked_at">已停用 · %1$s</string>
+    <string name="my_devices_platform_android">安卓</string>
+    <string name="my_devices_platform_web">网页</string>
+    <string name="my_devices_platform_iphone">iPhone</string>
+    <string name="my_devices_action_rename">重命名</string>
+    <string name="my_devices_action_revoke">停用</string>
+    <string name="my_devices_section_add">添加设备</string>
+    <string name="my_devices_add_intro">生成一次性配对码，在新设备上输入即可加入本账本。配对码只显示一次。</string>
+    <string name="my_devices_add_create">生成配对码</string>
+    <string name="my_devices_add_creating">生成中…</string>
+    <string name="my_devices_add_code_title">配对码（只显示一次）</string>
+    <string name="my_devices_add_code_expires_at">有效期至 %1$s</string>
+    <string name="my_devices_add_code_once_hint">服务器只保存它的哈希，收起后无法再次查看。请立即在新设备上使用。</string>
+    <string name="my_devices_add_code_copy">复制配对码</string>
+    <string name="my_devices_add_code_dismiss">收起</string>
+    <string name="my_devices_rename_dialog_title">重命名设备</string>
+    <string name="my_devices_rename_dialog_label">设备名称</string>
+    <string name="my_devices_rename_dialog_confirm">保存</string>
+    <string name="my_devices_revoke_dialog_title">停用设备？</string>
+    <string name="my_devices_revoke_dialog_text">停用「%1$s」后，它将无法再访问本账本，需重新配对才能恢复。</string>
+    <string name="my_devices_revoke_dialog_confirm">停用</string>
+    <string name="my_devices_message_load_failed">加载设备列表失败，请稍后再试。</string>
+    <string name="my_devices_message_action_failed">操作失败，请稍后再试。</string>
+    <string name="my_devices_message_name_required">设备名称不能为空。</string>
+    <string name="my_devices_message_renamed">已重命名为「%1$s」。</string>
+    <string name="my_devices_message_revoked">已停用「%1$s」。</string>
+    <string name="my_devices_message_pairing_failed">生成配对码失败，请稍后再试。</string>
 </resources>

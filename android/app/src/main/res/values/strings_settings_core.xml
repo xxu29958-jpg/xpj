@@ -36,6 +36,8 @@
     <string name="settings_root_section_alerts_appearance">提醒与外观</string>
     <string name="settings_root_entry_family_members_title">家庭成员</string>
     <string name="settings_root_entry_family_members_subtitle">查看当前账本成员、角色和状态</string>
+    <string name="settings_root_entry_my_devices_title">我的设备</string>
+    <string name="settings_root_entry_my_devices_subtitle">查看并管理可访问本账本的设备</string>
     <string name="settings_root_entry_join_family_title">加入家庭账本</string>
     <string name="settings_root_entry_join_family_subtitle">使用本机管理后台生成的邀请明文</string>
     <string name="settings_root_entry_bill_splits_title">拆账</string>

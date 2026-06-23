@@ -111,6 +111,19 @@ internal class StubApi(
     var onListLedgers: (() -> Unit)? = null
     var onAcceptInvitation: (() -> Unit)? = null
 
+    // issue #65 slice 6b device routes (body-level so the baselined ctor stays put).
+    var devicesResult: com.ticketbox.data.remote.dto.MyDeviceListResponseDto? = null
+    var devicesError: Throwable? = null
+    var renameDeviceResult: com.ticketbox.data.remote.dto.MyDeviceDto? = null
+    var revokeDeviceResult: com.ticketbox.data.remote.dto.MyDeviceDto? = null
+    var pairingCodeResult: com.ticketbox.data.remote.dto.PairingCodeResponseDto? = null
+    var pairingCodeError: Throwable? = null
+    val deviceListRequests: MutableList<String> = mutableListOf()
+    val renameDeviceTargets: MutableList<Pair<String, String>> = mutableListOf()
+    val renameDeviceRequests: MutableList<com.ticketbox.data.remote.dto.DeviceRenameRequestDto> = mutableListOf()
+    val revokeDeviceTargets: MutableList<Pair<String, String>> = mutableListOf()
+    val pairingCodeTargets: MutableList<String> = mutableListOf()
+
     override suspend fun listLedgers(): LedgerListResponseDto {
         listLedgersError?.let { throw it }
         onListLedgers?.invoke()
@@ -501,6 +514,42 @@ internal class StubApi(
     override suspend fun cancelBackgroundTask(
         publicId: String,
     ): com.ticketbox.data.remote.dto.BackgroundTaskDto = ledgerUnsupported()
+
+    // issue #65 slice 6b: device routes (records call + returns configured result).
+    override suspend fun ledgerDevices(
+        ledgerId: String,
+    ): com.ticketbox.data.remote.dto.MyDeviceListResponseDto {
+        deviceListRequests += ledgerId
+        devicesError?.let { throw it }
+        return devicesResult ?: error("Unexpected devices call")
+    }
+
+    override suspend fun renameLedgerDevice(
+        ledgerId: String,
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.DeviceRenameRequestDto,
+    ): com.ticketbox.data.remote.dto.MyDeviceDto {
+        renameDeviceTargets += ledgerId to publicId
+        renameDeviceRequests += request
+        return renameDeviceResult ?: error("Unexpected rename device call")
+    }
+
+    override suspend fun revokeLedgerDevice(
+        ledgerId: String,
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.MyDeviceDto {
+        revokeDeviceTargets += ledgerId to publicId
+        return revokeDeviceResult ?: error("Unexpected revoke device call")
+    }
+
+    override suspend fun createLedgerDevicePairingCode(
+        ledgerId: String,
+        request: com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.PairingCodeResponseDto {
+        pairingCodeTargets += ledgerId
+        pairingCodeError?.let { throw it }
+        return pairingCodeResult ?: error("Unexpected pairing code call")
+    }
 }
 
 internal class LedgerFakeSettingsStore : TicketboxSettingsStore {

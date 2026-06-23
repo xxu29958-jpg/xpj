@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DashboardCustomize
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.Group
@@ -84,6 +85,7 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.appearance.AppearanceDefaults
 import com.ticketbox.ui.appearance.BackgroundCatalog
@@ -124,6 +126,7 @@ fun SettingsRootScreen(
     onOpenSecurity: () -> Unit,
     onOpenLedgers: () -> Unit = {},
     onOpenFamilyMembers: () -> Unit = {},
+    onOpenMyDevices: () -> Unit = {},
     onOpenJoinFamilyLedger: () -> Unit = {},
     onOpenBillSplits: () -> Unit = {},
     onOpenBackgroundTasks: () -> Unit = {},
@@ -173,6 +176,17 @@ fun SettingsRootScreen(
                     icon = Icons.Filled.Group,
                     onClick = onOpenFamilyMembers,
                 )
+                // My devices is an owner-only management surface (backend slice 6a
+                // gates the list on manager context → 403/404), so the entry is
+                // shown to owners only; non-owners never see a dead-ending row.
+                if (state.role == LEDGER_ROLE_OWNER) {
+                    SettingsEntryRow(
+                        title = stringResource(R.string.settings_root_entry_my_devices_title),
+                        subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
+                        icon = Icons.Filled.Devices,
+                        onClick = onOpenMyDevices,
+                    )
+                }
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_join_family_title),
                     subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),
