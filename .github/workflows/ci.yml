@@ -252,7 +252,7 @@ jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: android
@@ -432,28 +432,39 @@ jobs:
         run: |
           set +e            # capture the exit code manually; errexit would skip the lines below
           set -o pipefail
-          # Bound the NVD download/scan so a slow or hung NVD source FAILS FAST instead of
-          # hanging to the job's 40-min wall-clock limit — which cancels the job and SKIPS
-          # the Enforce gate, leaving the Android job red with no adjudication. `-k 1m`
-          # makes it a HARD bound: send TERM at 12m and, if a wedged JVM ignores/blocks it,
-          # SIGKILL 1m later — so control always returns here (worst case ~13m, still under
-          # timeout-minutes: 40 with the ~20m build).
+          # Split NVD data update from offline analysis so the Enforce gate can
+          # distinguish an external NVD data-source outage from a real scanner failure.
+          # Both phases are bounded so a wedged JVM returns control before the 45m job
+          # timeout can cancel the job and skip adjudication.
           #
-          # Timeout exit codes: 124 = TERM sent at the 12m deadline (only `timeout`
+          # Timeout exit codes: 124 = TERM sent at the deadline (only `timeout`
           # produces it → unambiguous timeout). 137 = SIGKILL, which is AMBIGUOUS: it's the
           # post-timeout `-k` KILL (tolerable) OR an OOM/external kill of a broken scanner
           # BEFORE the deadline (must NOT be tolerated). Disambiguate by elapsed time —
-          # only a 137 at/after the 12m (720s) deadline is the post-timeout KILL; an earlier
-          # 137 stays unmarked so the Enforce gate fails safe instead of treating a crashed
-          # scanner as a tolerated timeout. The marker is what the Enforce gate tolerates.
+          # only a 137 at/after the phase deadline is the post-timeout KILL; an earlier
+          # 137 stays unmarked so the Enforce gate fails safe instead of treating a crash
+          # as a tolerated timeout.
+          : > owasp-output.log
+
           start=$(date +%s)
-          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee owasp-output.log
-          rc=${PIPESTATUS[0]}
+          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckUpdate -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
+          update_rc=${PIPESTATUS[0]}
           elapsed=$(( $(date +%s) - start ))
-          if [ "$rc" -eq 124 ] || { [ "$rc" -eq 137 ] && [ "$elapsed" -ge 720 ]; }; then
-            echo "OWASP_SCAN_TIMED_OUT_124 (dependency-check exceeded the 12m NVD bound; rc=$rc elapsed=${elapsed}s)" | tee -a owasp-output.log
+          if [ "$update_rc" -eq 124 ] || { [ "$update_rc" -eq 137 ] && [ "$elapsed" -ge 720 ]; }; then
+            echo "OWASP_NVD_UPDATE_TIMED_OUT (dependency-check update exceeded the 12m NVD bound; rc=$update_rc elapsed=${elapsed}s)" | tee -a owasp-output.log
           fi
-          exit "$rc"
+          if [ "$update_rc" -ne 0 ]; then
+            exit "$update_rc"
+          fi
+
+          start=$(date +%s)
+          timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PdependencyCheckAutoUpdate=false -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
+          analyze_rc=${PIPESTATUS[0]}
+          elapsed=$(( $(date +%s) - start ))
+          if [ "$analyze_rc" -eq 124 ] || { [ "$analyze_rc" -eq 137 ] && [ "$elapsed" -ge 600 ]; }; then
+            echo "OWASP_ANALYZE_TIMED_OUT (dependency-check offline analysis exceeded the 10m bound; rc=$analyze_rc elapsed=${elapsed}s)" | tee -a owasp-output.log
+          fi
+          exit "$analyze_rc"
 
       - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
         if: ${{ env.NVD_API_KEY != '' }}
@@ -464,10 +475,11 @@ jobs:
         # run AFTER analysis, the fatal data error throws BEFORE:
         #   real finding       -> "...vulnerabilities that have a CVSS score greater than..."
         #   NVD data empty      -> "No documents exist" / "NoDataException" (Lucene CVE index empty)
-        # Tolerate ONLY the NVD-data-empty signatures (NOT the generic "Analysis failed"
-        # wrapper, which also fronts corrupt-DB / parser / analyzer fatals); fail-safe
-        # (red) on a real finding and on every other / unrecognized failure so nothing
-        # — a real CVE or a broken scanner — is silently swallowed.
+        #   NVD update timeout  -> timeout marker from the isolated dependencyCheckUpdate phase
+        # Tolerate ONLY those NVD-data-source signatures (NOT the generic "Analysis
+        # failed" wrapper, which also fronts corrupt-DB / parser / analyzer fatals);
+        # fail-safe (red) on a real finding and on every other / unrecognized failure
+        # so nothing — a real CVE or a broken scanner — is silently swallowed.
         run: |
           if [ "${{ steps.owasp.outcome }}" = "success" ]; then
             echo "OWASP scan completed with no findings at/above the failBuildOnCVSS threshold."
@@ -493,24 +505,15 @@ jobs:
             echo "Removed the empty dependency-check data dir to avoid caching a poisoned NVD DB. Re-run once NVD is reachable to restore coverage."
             exit 0
           fi
-          if [ -f "$log" ] && grep -q "OWASP_SCAN_TIMED_OUT_124" "$log"; then
-            # FAIL SAFE (red) on the bounded timeout — owner's security-posture decision.
-            # A real CI run proved dependency-check's gradle output emits NO phase-progress
-            # logs (only the one-line "Checking for updates and analyzing dependencies for
-            # vulnerabilities" banner, then silence), so a slow NVD fetch (tolerable) is
-            # INDISTINGUISHABLE from a slow analysis that could be hiding a CVSS>=7 dependency
-            # not yet emitted as a failBuildOnCVSS line. Rather than fail OPEN on that
-            # ambiguity, we fail CLOSED: a scan that can't complete in 12m reds the job. The
-            # 12m bound still eliminates the original 40-min wall-clock HANG (which skipped
-            # this gate and tied up the runner) — a timeout now reds fast at ~13m. (The
-            # unambiguous NVD-data-empty outage above — "No documents exist" — stays tolerated
-            # because an empty CVE store makes a finding impossible.) Re-run when NVD is
-            # responsive; OWASP is non-gating here (no required checks), so this doesn't block
-            # merge-on-substantive-gates.
-            echo "::error::OWASP dependency-check was killed at the 12m bound before completing (slow/unreachable NVD source, or slow/wedged analysis). Failing safe (red): with no phase logs we cannot prove this was an NVD outage vs a slow analysis hiding a real finding, so we fail closed. The 12m bound still prevents the 40-min job hang; re-run when NVD is responsive."
+          if [ -f "$log" ] && grep -q "OWASP_NVD_UPDATE_TIMED_OUT" "$log"; then
             # A timed-out fetch can leave a PARTIAL H2 DB — drop it so an incomplete NVD DB
             # isn't cached and the next run rebuilds from scratch.
             rm -rf "${HOME}/.gradle/dependency-check-data" || true
+            echo "::warning::OWASP dependency-check timed out while updating the NVD CVE data. Tolerated as an external NVD-data outage; substantive Android gates already ran, and the partial dependency-check data dir was removed to avoid caching a poisoned DB."
+            exit 0
+          fi
+          if [ -f "$log" ] && grep -q "OWASP_ANALYZE_TIMED_OUT" "$log"; then
+            echo "::error::OWASP dependency-check offline analysis exceeded its 10m bound after NVD update succeeded. Failing safe (red): this is not an NVD data-source outage and could hide a real finding."
             exit 1
           fi
           echo "::error::OWASP step failed and the log is neither a CVE finding nor a known NVD-data-empty outage (could be a corrupt cache DB, parser/analyzer fatal, scan timeout, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
