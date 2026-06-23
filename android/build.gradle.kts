@@ -19,6 +19,11 @@ val nvdApiKey: String? =
         .orElse(providers.environmentVariable("ORG_GRADLE_PROJECT_nvdApiKey"))
         .orNull
 
+val dependencyCheckAutoUpdate =
+    providers.gradleProperty("dependencyCheckAutoUpdate")
+        .map { it.toBoolean() }
+        .orElse(true)
+
 // CI 提速 + 治本 NVD 520/524 flake(#26/#27 都栽在这):把 NVD H2 库放进 Gradle user home 下
 // 的固定目录,让 CI 能缓存它(见 .github/workflows/ci.yml 的 "Cache OWASP NVD database" step)。
 val dependencyCheckDataDir =
@@ -39,6 +44,10 @@ dependencyCheck {
     // 缓存 + 24h 有效期:命中缓存(<24h)时插件直接跳过 NVD 更新调用,不再每次去 NVD 拉整库
     // (~7min 全量下载正是 520/524 网关超时 flake 的根源)。rerun/同日多跑 = 零 NVD 调用 = 不再被坑;
     // 仅首跑(空缓存)或跨日(>24h)做一次增量更新。CVE 数据日级新鲜对自用财务 App 足够。
+    // CI 先单独跑 dependencyCheckUpdate; update 成功后再用
+    // -PdependencyCheckAutoUpdate=false 做离线 dependencyCheckAnalyze, 让 NVD 数据源超时
+    // 和真实扫描失败可以被 Enforce step 精确区分。
+    autoUpdate = dependencyCheckAutoUpdate.get()
     nvd.validForHours = 24
     data.directory = dependencyCheckDataDir
 }
