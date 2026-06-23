@@ -79,6 +79,16 @@ class OpenApiContractGateTest {
         Pairing(InvitationCreateRequestDto::class, "InvitationCreateRequest"),
         Pairing(InvitationSummaryDto::class, "InvitationSummaryResponse"),
         Pairing(InvitationCreateResponseDto::class, "InvitationCreateResponse"),
+        // issue #65 slice 6b owner "My Devices" surface. Rename body reuses the
+        // backend AdminDeviceRenameRequest; the pairing-code response carries the
+        // one-time plaintext code — a field drift = the add-device link silently
+        // breaks. The two request bodies are additionalProperties=false (forward
+        // check = the forbid protection).
+        Pairing(MyDeviceDto::class, "MyDeviceResponse"),
+        Pairing(MyDeviceListResponseDto::class, "MyDeviceListResponse"),
+        Pairing(DeviceRenameRequestDto::class, "AdminDeviceRenameRequest"),
+        Pairing(PairingCodeCreateRequestDto::class, "PairingCodeCreateRequest"),
+        Pairing(PairingCodeResponseDto::class, "PairingCodeResponse"),
         // ADR-0049 §6 (slice 7) debt_repayment goal surface. GoalDto was previously
         // ungated — slice 6 widened GoalResponse (the spend fields became nullable +
         // a nested debt_repayment block) so bring it under the gate now, along with

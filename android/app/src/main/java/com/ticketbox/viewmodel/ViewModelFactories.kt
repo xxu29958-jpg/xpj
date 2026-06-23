@@ -223,6 +223,15 @@ fun familyMembersViewModelFactory(
 }
 
 @Suppress("UNCHECKED_CAST")
+fun myDevicesViewModelFactory(
+    repository: LedgerRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return MyDevicesViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 fun joinFamilyLedgerViewModelFactory(
     repository: LedgerRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {

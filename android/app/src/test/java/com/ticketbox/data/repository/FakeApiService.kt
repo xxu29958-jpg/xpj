@@ -705,6 +705,26 @@ internal class FakeApiService(
         limit: Int,
     ): com.ticketbox.data.remote.dto.LedgerAuditListResponseDto = unsupported()
 
+    override suspend fun ledgerDevices(
+        ledgerId: String,
+    ): com.ticketbox.data.remote.dto.MyDeviceListResponseDto = unsupported()
+
+    override suspend fun renameLedgerDevice(
+        ledgerId: String,
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.DeviceRenameRequestDto,
+    ): com.ticketbox.data.remote.dto.MyDeviceDto = unsupported()
+
+    override suspend fun revokeLedgerDevice(
+        ledgerId: String,
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.MyDeviceDto = unsupported()
+
+    override suspend fun createLedgerDevicePairingCode(
+        ledgerId: String,
+        request: com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.PairingCodeResponseDto = unsupported()
+
     override suspend fun updateLedgerMemberRole(
         ledgerId: String,
         memberId: Long,
