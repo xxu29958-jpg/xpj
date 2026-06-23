@@ -3,9 +3,13 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -62,7 +66,9 @@ internal data class ExpenseEditActionBarActions(
  *  - message 校验/状态提示锚在按钮上沿，"点确认→缺金额"永远在视野内。
  *
  * 软键盘 inset 由外层 [com.ticketbox.ui.components.AppPageScaffold] 的
- * `imePadding()` 统一处理，本栏只补导航栏 inset（镜像 AppBottomNav）。
+ * `imePadding()` 统一处理。本栏底部补「导航栏 ∖ 键盘」(navigationBars.exclude(ime))：
+ * 键盘收起时补满导航栏高度（浮在系统导航栏之上）；键盘弹出时键盘已覆盖导航栏区域，
+ * 这段归零——否则导航栏 inset 会与外层 imePadding 叠加，把底栏顶离键盘、留出空隙。
  */
 @Composable
 internal fun ExpenseEditActionBar(
@@ -73,7 +79,7 @@ internal fun ExpenseEditActionBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime))
             .padding(
                 horizontal = AppSpacing.cardGap,
                 vertical = AppSpacing.smallGap,
