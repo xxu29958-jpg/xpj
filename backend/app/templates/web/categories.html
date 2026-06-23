@@ -19,7 +19,7 @@
   <form method="get" action="/web/categories" class="form-inline">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <label>月份
-      <input type="month" name="month" value="{{ target_month }}">
+      <input type="month" name="month" value="{{ target_month }}" aria-label="选择分类月份">
     </label>
     <button type="submit" class="dt-btn">查询</button>
   </form>

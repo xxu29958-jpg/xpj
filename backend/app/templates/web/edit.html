@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}编辑账单 — 小票夹{% endblock %}
 {% block content %}
+{% set form_prefix = 'expense-' ~ expense.id %}
 <h1 class="page-title page-title--compact">编辑账单 #{{ expense.id }}</h1>
 
 {% if error %}
@@ -29,33 +30,33 @@
       <input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <div class="dt-form-row">
-        <label>金额 ({{ expense.original_currency_code }})</label>
-        <input type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
+        <label for="{{ form_prefix }}-amount-yuan">金额 ({{ expense.original_currency_code }})</label>
+        <input id="{{ form_prefix }}-amount-yuan" type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
         {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
       </div>
       <div class="dt-form-row">
-        <label>商家</label>
-        <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家" {% if not can_write %}disabled{% endif %}>
+        <label for="{{ form_prefix }}-merchant">商家</label>
+        <input id="{{ form_prefix }}-merchant" type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家" {% if not can_write %}disabled{% endif %}>
       </div>
       <div class="dt-form-row">
-        <label>消费时间</label>
-        <input type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if not can_write %}disabled{% endif %}>
+        <label for="{{ form_prefix }}-expense-time">消费时间</label>
+        <input id="{{ form_prefix }}-expense-time" type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if not can_write %}disabled{% endif %}>
         <div class="meta">留空表示不修改时间。</div>
       </div>
       <div class="dt-form-row">
-        <label>分类</label>
-        <input type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" list="category-options" {% if not can_write %}disabled{% endif %}>
+        <label for="{{ form_prefix }}-category">分类</label>
+        <input id="{{ form_prefix }}-category" type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" list="category-options" {% if not can_write %}disabled{% endif %}>
         <datalist id="category-options">
           {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
         </datalist>
       </div>
       <div class="dt-form-row">
-        <label>标签</label>
-        <input type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if not can_write %}disabled{% endif %}>
+        <label for="{{ form_prefix }}-tags">标签</label>
+        <input id="{{ form_prefix }}-tags" type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if not can_write %}disabled{% endif %}>
       </div>
       <div class="dt-form-row">
-        <label>备注</label>
-        <textarea name="note" rows="3" {% if not can_write %}disabled{% endif %}>{{ expense.note }}</textarea>
+        <label for="{{ form_prefix }}-note">备注</label>
+        <textarea id="{{ form_prefix }}-note" name="note" rows="3" {% if not can_write %}disabled{% endif %}>{{ expense.note }}</textarea>
       </div>
       <div class="dt-form-row">
         <span class="meta">

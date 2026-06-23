@@ -105,21 +105,21 @@
     <input type="hidden" name="month" value="{{ month }}">
     <div class="dt-form-grid">
       <div class="dt-form-row">
-        <label>月度总预算（元）</label>
-        <input class="dt-input" type="text" name="total_amount_yuan" value="{{ budget.total_yuan if budget.configured else '' }}" inputmode="decimal" required>
+        <label for="budget-total-amount-yuan">月度总预算（元）</label>
+        <input id="budget-total-amount-yuan" class="dt-input" type="text" name="total_amount_yuan" value="{{ budget.total_yuan if budget.configured else '' }}" inputmode="decimal" required>
       </div>
       <div class="dt-form-row">
-        <label>结转金额（元）</label>
-        <input class="dt-input" type="text" name="rollover_amount_yuan" value="{{ budget.rollover_yuan if budget.configured else '' }}" inputmode="decimal">
+        <label for="budget-rollover-amount-yuan">结转金额（元）</label>
+        <input id="budget-rollover-amount-yuan" class="dt-input" type="text" name="rollover_amount_yuan" value="{{ budget.rollover_yuan if budget.configured else '' }}" inputmode="decimal">
       </div>
       <div class="dt-form-row">
-        <label>非月度预留（元）</label>
-        <input class="dt-input" type="text" name="non_monthly_amount_yuan" value="{{ budget.non_monthly_yuan if budget.configured else '' }}" inputmode="decimal">
+        <label for="budget-non-monthly-amount-yuan">非月度预留（元）</label>
+        <input id="budget-non-monthly-amount-yuan" class="dt-input" type="text" name="non_monthly_amount_yuan" value="{{ budget.non_monthly_yuan if budget.configured else '' }}" inputmode="decimal">
       </div>
     </div>
     <div class="dt-form-row">
-      <label>排除分类</label>
-      <textarea class="dt-input" name="excluded_categories" rows="2" placeholder="医疗, 报销">{{ budget.excluded_categories_text }}</textarea>
+      <label for="budget-excluded-categories">排除分类</label>
+      <textarea id="budget-excluded-categories" class="dt-input" name="excluded_categories" rows="2" placeholder="医疗, 报销">{{ budget.excluded_categories_text }}</textarea>
       <div class="hint">逗号分隔,这些分类的支出不计入"已花"。</div>
     </div>
 
@@ -137,8 +137,8 @@
         <tbody>
           {% for row in budget.category_rows %}
           <tr>
-            <td><input class="dt-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮"></td>
-            <td><input class="dt-input" type="text" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" inputmode="decimal" placeholder="1000.00"></td>
+            <td><input class="dt-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类"></td>
+            <td><input class="dt-input" type="text" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" inputmode="decimal" placeholder="1000.00" aria-label="分类预算金额"></td>
             <td class="amount">{{ home_currency_symbol ~ row.spent_yuan if not row.is_blank else '—' }}</td>
             <td class="amount {{ 'text-over' if row.overspent_yuan != '0.00' and not row.is_blank else '' }}">
               {{ home_currency_symbol ~ row.remaining_yuan if not row.is_blank else '—' }}

@@ -146,9 +146,9 @@
   <span class="count" data-bulk-count>0</span>
   <span class="label">已选中</span>
   <div class="spacer"></div>
-  <input class="bulk-field" type="text" name="category" maxlength="64" placeholder="分类">
+  <input class="bulk-field" type="text" name="category" maxlength="64" placeholder="分类" aria-label="批量设置分类">
   <button class="dt-btn" type="submit" name="action" value="set_category">设置分类</button>
-  <input class="bulk-field" type="text" name="merchant" maxlength="120" placeholder="商家">
+  <input class="bulk-field" type="text" name="merchant" maxlength="120" placeholder="商家" aria-label="批量设置商家">
   <button class="dt-btn" type="submit" name="action" value="set_merchant">设置商家</button>
   <button class="dt-btn" type="submit" formaction="/web/pending/batch-reject"
           data-confirm="确认忽略已选账单？">批量忽略</button>
@@ -159,5 +159,5 @@
 
 {% block drawer %}
 <div class="scrim" id="drawer-scrim"></div>
-<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="编辑账单"></aside>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="编辑账单" tabindex="-1"></aside>
 {% endblock %}

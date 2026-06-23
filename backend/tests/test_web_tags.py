@@ -68,6 +68,8 @@ def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient, *, id
     assert "Owner Shared" in owner_page.text
     assert "Owner Other" not in owner_page.text
     assert "Gray Shared" not in owner_page.text
+    assert 'aria-label="批量修改分类"' in owner_page.text
+    assert 'aria-label="批量修改标签"' in owner_page.text
 
     gray_page = web_client.get(
         "/web/confirmed?ledger_id=tester_1&month=2026-05&tag=Shared"

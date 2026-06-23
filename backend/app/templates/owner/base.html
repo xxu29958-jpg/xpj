@@ -19,9 +19,10 @@
   <script defer src="/static/owner/upload-link-handoff.js?v={{ backend_version }}"></script>
 </head>
 <body class="owner-shell">
+<a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="owner-app">
   {% include "_sidebar_nav.html" %}
-  <main class="owner-main">
+  <main class="owner-main" id="main-content" tabindex="-1">
     {% block content %}{% endblock %}
   </main>
 </div>

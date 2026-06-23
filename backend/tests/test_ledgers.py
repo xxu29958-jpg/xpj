@@ -194,6 +194,8 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     assert listing.status_code == 200
     assert "我的小票夹" in listing.text
     assert "灰度用户1" in listing.text
+    assert 'class="skip-link" href="#main-content"' in listing.text
+    assert 'class="owner-main" id="main-content" tabindex="-1"' in listing.text
     # Console shows the current household-management advisory banner.
     assert "v0.5" in listing.text
     assert "家庭成员邀请、角色调整和拥有者转让" in listing.text
@@ -202,12 +204,30 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     # Each ledger row exposes a "打开账本" link carrying its ledger_id.
     assert 'href="/web?ledger_id=owner"' in listing.text
     assert "打开账本" in listing.text
+    assert 'data-confirm="归档账本' in listing.text
+    assert "return confirm(" not in listing.text
 
     create = local_client.post("/owner/ledgers", data={"name": "家庭账本"})
     assert create.status_code in (200, 303)
 
     after = local_client.get("/owner/ledgers")
     assert "家庭账本" in after.text
+    assert 'data-confirm="归档账本' in after.text
+    import re
+
+    archive_action = (
+        r"<tr>.*?家庭账本.*?"
+        r'action="/owner/ledgers/([^"]+)/archive"'
+    )
+    match = re.search(archive_action, after.text, re.S)
+    assert match is not None
+    archive = local_client.post(f"/owner/ledgers/{match.group(1)}/archive")
+    assert archive.status_code in (200, 303)
+
+    archived = local_client.get("/owner/ledgers")
+    assert archived.status_code == 200
+    assert 'data-confirm="恢复账本' in archived.text
+    assert "return confirm(" not in archived.text
 
 
 def test_owner_ledgers_no_secret_leak(local_client: TestClient, *, identity) -> None:

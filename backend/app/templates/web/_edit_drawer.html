@@ -4,6 +4,7 @@
      expense, receipt_items, split_rows, split_members, ledger_options, ...
 #}
 {% set e = expense %}
+{% set form_prefix = 'drawer-expense-' ~ e.id %}
 <section class="drawer-receipt">
   <div class="card-title card-title--flat">小票原件</div>
   <div class="meta">
@@ -83,50 +84,50 @@
     <input type="hidden" name="return_to" value="pending">
     {# 隐式提交守卫：tree-order 首个 submit 是浏览器 Enter 的默认按钮。没有这个
        shim 时首个 submit 是「忽略草稿」(formaction=/reject)——在输入框按 Enter
-       会直接软删。shim 无 formaction,Enter 走表单自身 action(/save),载荷与
+      会直接软删。shim 无 formaction,Enter 走表单自身 action(/save),载荷与
        点「保存草稿」一致。#}
     {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
     <div class="field-row">
       <div class="field field--amount">
-        <div class="field-label">
+        <label class="field-label" for="{{ form_prefix }}-amount-yuan">
           <span>金额</span>
           {% if e.needs_amount %}<span class="hint text-danger">未识别，请填写</span>{% endif %}
-        </div>
+        </label>
         <div class="input-wrap">
           <span class="input-prefix">{{ e.amount_symbol }}</span>
-          <input class="dt-input large with-prefix" type="text" inputmode="decimal" name="amount_yuan"
+          <input id="{{ form_prefix }}-amount-yuan" class="dt-input large with-prefix" type="text" inputmode="decimal" name="amount_yuan"
                  value="{{ e.original_amount_value }}" placeholder="0.00" {% if not can_write %}disabled{% endif %}>
         </div>
         {% if e.fx_meta %}<div class="hint">{{ e.fx_meta }}</div>{% endif %}
       </div>
       <div class="field field--currency">
-        <div class="field-label"><span>币种</span></div>
-        <input class="dt-input" value="{{ e.original_currency_code }}" disabled>
+        <label class="field-label" for="{{ form_prefix }}-currency"><span>币种</span></label>
+        <input id="{{ form_prefix }}-currency" class="dt-input" value="{{ e.original_currency_code }}" disabled>
       </div>
     </div>
 
     <div class="field">
-      <div class="field-label">
+      <label class="field-label" for="{{ form_prefix }}-merchant">
         <span>商家</span>
-      </div>
-      <input class="dt-input" type="text" name="merchant" value="{{ e.merchant }}"
+      </label>
+      <input id="{{ form_prefix }}-merchant" class="dt-input" type="text" name="merchant" value="{{ e.merchant }}"
              placeholder="例如：盒马鲜生 · 望京店" {% if not can_write %}disabled{% endif %}>
     </div>
 
     <div class="field">
-      <div class="field-label">
+      <label class="field-label" for="{{ form_prefix }}-expense-time">
         <span>消费时间</span>
         <span class="hint">留空表示不修改</span>
-      </div>
-      <input class="dt-input" type="datetime-local" name="expense_time"
+      </label>
+      <input id="{{ form_prefix }}-expense-time" class="dt-input" type="datetime-local" name="expense_time"
              value="{{ e.expense_time_local }}" {% if not can_write %}disabled{% endif %}>
     </div>
 
     <div class="field">
-      <div class="field-label">
+      <label class="field-label" for="{{ form_prefix }}-category">
         <span>分类</span>
-      </div>
-      <input class="dt-input" type="text" name="category" value="{{ e.category }}"
+      </label>
+      <input id="{{ form_prefix }}-category" class="dt-input" type="text" name="category" value="{{ e.category }}"
              list="category-options-drawer" {% if not can_write %}disabled{% endif %}>
       <datalist id="category-options-drawer">
         {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
@@ -134,16 +135,16 @@
     </div>
 
     <div class="field">
-      <div class="field-label">
+      <label class="field-label" for="{{ form_prefix }}-tags">
         <span>标签</span>
-      </div>
-      <input class="dt-input" type="text" name="tags" value="{{ e.tags }}" maxlength="500"
+      </label>
+      <input id="{{ form_prefix }}-tags" class="dt-input" type="text" name="tags" value="{{ e.tags }}" maxlength="500"
              placeholder="用逗号分隔，例如 报销, 出差" {% if not can_write %}disabled{% endif %}>
     </div>
 
     <div class="field">
-      <div class="field-label"><span>备注</span></div>
-      <textarea class="dt-input" name="note" rows="3"
+      <label class="field-label" for="{{ form_prefix }}-note"><span>备注</span></label>
+      <textarea id="{{ form_prefix }}-note" class="dt-input" name="note" rows="3"
                 placeholder="可选 · 仅自己可见" {% if not can_write %}disabled{% endif %}>{{ e.note }}</textarea>
     </div>
 

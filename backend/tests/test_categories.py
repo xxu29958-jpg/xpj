@@ -103,6 +103,7 @@ def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
     # Page heading + nav active marker.
     assert "分类账本" in resp.text
     assert 'href="/web/rules?ledger_id=owner"' in resp.text
+    assert 'aria-label="选择分类月份"' in resp.text
 
 
 def test_web_categories_counts_pending_uncategorized(web_client: TestClient, *, identity) -> None:

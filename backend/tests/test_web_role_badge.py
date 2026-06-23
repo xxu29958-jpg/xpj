@@ -69,10 +69,15 @@ def test_web_pending_shows_owner_role_chip_by_default(web_client: TestClient) ->
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     assert "ledger-role-chip" in resp.text
+    assert 'class="skip-link" href="#main-content"' in resp.text
+    assert 'class="content" id="main-content" tabindex="-1"' in resp.text
+    assert 'id="drawer" role="dialog" aria-modal="true" aria-label="编辑账单" tabindex="-1"' in resp.text
     assert "拥有者" in resp.text
     assert "个人账本" in resp.text
     # owner can write → bulk-actions visible.
     assert "批量确认" in resp.text
+    assert 'aria-label="批量设置分类"' in resp.text
+    assert 'aria-label="批量设置商家"' in resp.text
 
 
 def test_web_pending_viewer_hides_bulk_actions(web_client: TestClient, *, identity) -> None:
