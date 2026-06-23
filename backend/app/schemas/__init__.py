@@ -173,6 +173,8 @@ from app.schemas._identity import (
     LedgerMemberRoleUpdateRequest,
     LedgerResponse,
     LedgerSwitchResponse,
+    MyDeviceListResponse,
+    MyDeviceResponse,
     OwnerTransferResponse,
     PairingCodeCreateRequest,
     PairingCodeResponse,
@@ -255,6 +257,8 @@ from app.schemas._tags import (
 __all__ = [
     "AdminDeviceRenameRequest",
     "AdminDeviceResponse",
+    "MyDeviceListResponse",
+    "MyDeviceResponse",
     "AdminUploadLinkCreateRequest",
     "AdminUploadLinkResponse",
     "AdminUploadLinkSecretResponse",

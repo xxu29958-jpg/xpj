@@ -29,6 +29,7 @@ from app.routes import (
     dashboard,
     debt_bills,
     debts,
+    devices,
     duplicates,
     exchange_rates,
     expenses,
@@ -283,6 +284,7 @@ app.include_router(exchange_rates.router)
 app.include_router(duplicates.router)
 app.include_router(ledgers.router)
 app.include_router(invitations.router)
+app.include_router(devices.router)
 app.include_router(recurring.router)
 app.include_router(budgets.router)
 app.include_router(budget_advisor.router)

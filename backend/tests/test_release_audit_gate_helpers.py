@@ -93,16 +93,16 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
 
 
 def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
-    # ⑥ debt 账单 OCR slice 1 re-points the single in-flight grandfather to 115 -> 116
-    # (POST /api/debts/parse-bill read_only_compute exemption). The prior 113 -> 115 hop
-    # is dead history — main sits at 115, so no future pr-delta has base 113.
+    # issue #65 slice 6a re-points the single in-flight grandfather to 116 -> 119
+    # (+3 owner "My Devices" mutating routes). The prior 115 -> 116 hop is dead
+    # history — main sits at 116, so no future pr-delta has base 115.
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 116
+    baseline["mutate_token_exempted"] = 119
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 115}
+        {"mutate_token_exempted": 116}
     )
 
     assert violations == []
@@ -111,9 +111,9 @@ def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> 
 def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
 
-    # Non-grandfathered transitions still fail: the 115 -> 116 exception is exact, so
-    # neither a different hop (114 -> 115) nor an overshoot (115 -> 117) is waved through.
-    for base_count, current_count in ((114, 115), (115, 117)):
+    # Non-grandfathered transitions still fail: the 116 -> 119 exception is exact, so
+    # neither a different hop (115 -> 116) nor an overshoot (116 -> 120) is waved through.
+    for base_count, current_count in ((115, 116), (116, 120)):
         baseline = dict(mod.STRICT_EQUALITY_BASELINE)
         baseline["mutate_token_exempted"] = current_count
         monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
