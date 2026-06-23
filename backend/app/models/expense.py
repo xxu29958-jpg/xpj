@@ -70,6 +70,15 @@ class Expense(Base):
             "items_sum_status IN ('matched', 'mismatch_known', 'mismatch_acknowledged', 'no_items')",
             name="ck_expenses_items_sum_status_valid",
         ),
+        # ADR-0041 OCC token is server-controlled: server_default=1, monotonic +1 per
+        # update, never sourced from a client (0 is only the transient
+        # FIRST_WRITE_ROW_VERSION request sentinel, never persisted). A stored row is
+        # therefore always >= 1; pin that invariant so a bad migration / manual edit
+        # can't silently land a 0/negative OCC token.
+        CheckConstraint(
+            "row_version >= 1",
+            name="ck_expenses_row_version_positive",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
