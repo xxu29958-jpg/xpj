@@ -123,6 +123,8 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     assert "商家排行" in response.text
     assert "/static/web/vendor/echarts.min.js" in response.text
     assert "/static/web/desktop.js" in response.text
+    assert 'style="' not in response.text
+    assert 'class="report-export-dialog"' in response.text
 
 
 def test_web_reports_absorbs_stats_top_expenses_and_seg_controls(
@@ -203,6 +205,8 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     script = client.get("/static/web/vendor/echarts.min.js")
     license_file = client.get("/static/web/vendor/echarts.LICENSE")
     reports_js = client.get("/static/web/reports.js")
+    reports_css = client.get("/static/web/pages/reports.css")
+    reports_feature_css = client.get("/static/web/features/_reports_goals.css")
     pending_css = client.get("/static/web/pages/pending.css")
 
     assert script.status_code == 200
@@ -213,6 +217,11 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert reports_js.status_code == 200
     assert "reports-overview-data" in reports_js.text
     assert "rgba(15,23,42" not in reports_js.text
+    assert reports_css.status_code == 200
+    assert ".report-export-dialog::backdrop" in reports_css.text
+    assert ".reports-export-dialog" not in reports_css.text
+    assert reports_feature_css.status_code == 200
+    assert ".reports-export-dialog" not in reports_feature_css.text
     assert pending_css.status_code == 200
     assert "#d6e3ee" not in pending_css.text
     assert "#d1e5d3" not in pending_css.text
