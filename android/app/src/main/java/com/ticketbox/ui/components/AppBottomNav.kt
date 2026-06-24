@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,7 +91,8 @@ fun AppBottomNav(
                     val selected = item.key == selectedKey
                     Box(
                         modifier = Modifier
-                            .weight(if (selected) AppBottomNavLayout.SelectedWeight else 1f)
+                            // 选中胶囊按内容自适应宽度(裹住图标+完整标签),未选中均分剩余;旧版固定 weight 太小→3 字「待确认」被截成「待...」。
+                            .then(if (selected) Modifier.wrapContentWidth() else Modifier.weight(1f))
                             .height(AppBottomNavLayout.ItemHeight)
                             // clip 必须在 clickable 之前：把点按 ripple 裁进胶囊圆角，
                             // 否则未裁切的方形点击区会露出方角高亮（UI/UX P0：底部导航黑框）。
@@ -135,7 +137,8 @@ private fun AppBottomNavItemView(
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            // 选中态胶囊裹内容(wrap),未选中态填满格子让图标居中(fillMaxWidth + 外层 wrap 会互相打架,故按 selected 分流)。
+            .then(if (selected) Modifier.wrapContentWidth() else Modifier.fillMaxWidth())
             .height(AppBottomNavLayout.PillHeight)
             .clip(RoundedCornerShape(AppRadius.large))
             .background(background)
@@ -176,5 +179,4 @@ private object AppBottomNavLayout {
     val PillHeight: Dp = 40.dp
     val PillVerticalPadding: Dp = 6.dp
     val IconSize: Dp = 17.dp
-    const val SelectedWeight: Float = 1.14f
 }
