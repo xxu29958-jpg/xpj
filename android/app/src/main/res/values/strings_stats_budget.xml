@@ -70,6 +70,8 @@
     <string name="stats_recent_trend_title">最近 7 天趋势</string>
     <string name="stats_recent_trend_source">本地账本</string>
     <string name="stats_recent_trend_empty">手机里还没有最近支出，更新后会显示每日变化。</string>
+    <!-- Per-bar TalkBack description: date + daily amount (the bar height is not readable). -->
+    <string name="stats_recent_trend_bar_a11y">%1$s %2$s</string>
     <string name="stats_recent_upload_title">最近上传</string>
     <string name="stats_recent_upload_empty">还没有上传记录</string>
     <string name="stats_recent_upload_hint">用于确认手机端和电脑端最近一次上传状态。</string>
@@ -142,14 +144,19 @@
     <string name="debt_goal_state_in_progress">进行中</string>
     <string name="debt_goal_state_achieved">已达成</string>
     <string name="debt_goal_state_not_evaluable">待复核</string>
+    <!-- P4 (model-invariant hardening): a future server-added value degrades to a neutral,
+         read-only 未知 label rather than being optimistically rendered as 进行中/未结清/应付. -->
+    <string name="debt_goal_state_unknown">未知</string>
     <string name="debt_link_status_open">未结清</string>
     <string name="debt_link_status_cleared">已结清</string>
     <string name="debt_link_status_voided">已作废</string>
+    <string name="debt_link_status_unknown">未知</string>
     <!-- ADR-0049 direction is owner_account_id-relative; the goal list is tenant-scoped
          and a non-owner member may view it, so use viewer-neutral 应付/应收 (payable/
          receivable from the ledger's books) rather than first-person 我欠/欠我. -->
     <string name="debt_direction_i_owe">应付</string>
     <string name="debt_direction_owed_to_me">应收</string>
+    <string name="debt_direction_unknown">未知</string>
     <string name="debt_goal_counterparty_member">家庭成员</string>
     <string name="debt_goal_counterparty_external">外部欠款</string>
     <string name="debt_goal_load_failed">还债目标加载失败，请稍后再试。</string>

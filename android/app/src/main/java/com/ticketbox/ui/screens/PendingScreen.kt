@@ -154,6 +154,8 @@ fun PendingScreen(
         missingAmountSkip = needsAmountCount,
         duplicateSkip = duplicateCount,
         bulkRunning = state.bulkConfirm.running,
+        bulkConfirmed = state.bulkConfirm.succeeded,
+        bulkTotal = state.bulkConfirm.total,
         reviewRemaining = state.reviewRemaining,
         // 连续审阅：保存失败时把状态文案钉进 sheet 内（镜像批 9）。成功保存会推进/
         // 关闭并清掉文案，故 sheet 内实际只在失败留守时出现这条。
