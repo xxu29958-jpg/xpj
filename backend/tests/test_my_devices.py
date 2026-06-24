@@ -136,6 +136,42 @@ def test_owner_revokes_another_members_device_in_the_ledger(client: TestClient, 
     assert response.json()["is_current"] is False
 
 
+def test_delete_revoked_device_removes_it(client: TestClient, *, identity) -> None:
+    # A device must be revoked first (no active in-scope binding), then deleting
+    # it returns 204 and drops it from the owner's device list.
+    member_device = _seed_member_device("owner")
+    revoke = client.post(
+        f"/api/ledgers/owner/devices/{member_device}/revoke", headers=identity.app_headers
+    )
+    assert revoke.status_code == 200, revoke.text
+    delete = client.post(
+        f"/api/ledgers/owner/devices/{member_device}/delete", headers=identity.app_headers
+    )
+    assert delete.status_code == 204, delete.text
+    assert not delete.content, "204 carries no body"
+    remaining = [d["public_id"] for d in _devices(client, identity.app_headers)]
+    assert member_device not in remaining, "the deleted device is gone from the list"
+
+
+def test_cannot_delete_the_current_device(client: TestClient, *, identity) -> None:
+    current = [d for d in _devices(client, identity.app_headers) if d["is_current"]][0]
+    response = client.post(
+        f"/api/ledgers/owner/devices/{current['public_id']}/delete",
+        headers=identity.app_headers,
+    )
+    assert response.status_code == 409, response.text
+
+
+def test_cannot_delete_an_active_device(client: TestClient, *, identity) -> None:
+    # An unrevoked device with an ACTIVE token in the ledger must be revoked
+    # before delete (409 "请先停用"), so a live binding can't be deleted by mistake.
+    member_device = _seed_member_device("owner")
+    response = client.post(
+        f"/api/ledgers/owner/devices/{member_device}/delete", headers=identity.app_headers
+    )
+    assert response.status_code == 409, response.text
+
+
 def test_create_pairing_code_returns_a_code(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/ledgers/owner/devices/pairing-codes",
@@ -153,6 +189,7 @@ def test_my_device_routes_require_auth(client: TestClient, *, identity) -> None:
     assert client.get("/api/ledgers/owner/devices").status_code == 401
     assert client.post("/api/ledgers/owner/devices/some-id/rename", json={"device_name": "x"}).status_code == 401
     assert client.post("/api/ledgers/owner/devices/some-id/revoke").status_code == 401
+    assert client.post("/api/ledgers/owner/devices/some-id/delete").status_code == 401
     assert client.post("/api/ledgers/owner/devices/pairing-codes", json={}).status_code == 401
 
 
@@ -163,6 +200,7 @@ def test_my_device_routes_reject_a_viewer(client: TestClient, *, identity) -> No
         "/api/ledgers/owner/devices/some-id/rename", headers=viewer, json={"device_name": "x"}
     ).status_code == 403
     assert client.post("/api/ledgers/owner/devices/some-id/revoke", headers=viewer).status_code == 403
+    assert client.post("/api/ledgers/owner/devices/some-id/delete", headers=viewer).status_code == 403
     assert client.post("/api/ledgers/owner/devices/pairing-codes", headers=viewer, json={}).status_code == 403
 
 
@@ -171,3 +209,8 @@ def test_my_device_routes_reject_wrong_ledger(client: TestClient, *, identity) -
     # ledger path must 404 (path-ledger binding), not leak another ledger.
     response = client.get("/api/ledgers/tester_1/devices", headers=identity.app_headers)
     assert response.status_code == 404, response.text
+    # The delete route is path-ledger-bound too: deleting via a ledger the owner
+    # token isn't bound to must 404, never reaching the service.
+    assert client.post(
+        "/api/ledgers/tester_1/devices/some-id/delete", headers=identity.app_headers
+    ).status_code == 404

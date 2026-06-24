@@ -83,6 +83,30 @@ def revoke_my_device(db: Session, auth: AuthContext, *, public_id: str) -> MyDev
     return _as_my_device(summary, current)
 
 
+def delete_my_device(db: Session, auth: AuthContext, *, public_id: str) -> None:
+    """Permanently remove a (already-revoked) device from the owner's ledger.
+
+    Mirrors :func:`revoke_my_device`: an owner-appropriate self-delete guard
+    (the shared admin copy mentions admin-only devices, §10 jargon for a normal
+    owner) then delegates to the ledger-scoped :func:`admin_service.delete_device`,
+    which itself re-asserts the precondition — a device may only be deleted once
+    it has no ACTIVE in-scope binding (i.e. revoke it first), 409 otherwise.
+    """
+    current = _current_public_id(db, auth)
+    if public_id == current:
+        raise AppError(
+            "invalid_request",
+            "不能删除当前正在使用的设备。请在另一台设备上操作。",
+            status_code=409,
+        )
+    admin_service.delete_device(
+        db,
+        public_id=public_id,
+        current_device_public_id=current,
+        ledger_ids=_ledger_scope(auth),
+    )
+
+
 def create_my_pairing_code(
     db: Session, auth: AuthContext, *, device_name_hint: str | None, ttl_minutes: int
 ) -> PairingCodeResult:

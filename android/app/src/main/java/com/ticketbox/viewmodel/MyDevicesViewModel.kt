@@ -80,6 +80,18 @@ class MyDevicesViewModel(
         }
     }
 
+    /** Permanently remove an already-revoked device, then re-list. Owner-gated
+     * (backend 403/404 兜底); the screen only offers this on revoked rows. */
+    fun delete(device: AccountDevice, activeLedgerId: String?) {
+        if (!deviceIsOwner()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(busyDeviceId = device.publicId, message = null) }
+            repository.deleteDevice(device.publicId, activeLedgerId)
+                .onSuccess { applyMutationSuccess(activeLedgerId, UiText.res(R.string.my_devices_message_deleted, device.deviceName)) }
+                .onFailure { err -> finishWithError(err) }
+        }
+    }
+
     /** Re-list (so the row reflects the new state) BEFORE surfacing [success] —
      * the reload must not clobber the message the user just earned. */
     private suspend fun applyMutationSuccess(activeLedgerId: String?, success: UiText) {

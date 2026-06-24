@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,27 @@ import com.ticketbox.viewmodel.MyDevicesUiState
 import com.ticketbox.viewmodel.MyDevicesViewModel
 import com.valentinilk.shimmer.shimmer
 
+/** A row's management affordances, bundled so [DeviceListSection] / [DeviceRow]
+ * stay within the detekt parameter budget once delete (slice A) joins rename/revoke.
+ * `@Immutable` + a `remember`ed instance keep the rows skippable under strong skipping
+ * (a fresh holder per recomposition would otherwise defeat per-row skipping). */
+@Immutable
+private class DeviceRowActions(
+    val onRename: (AccountDevice) -> Unit,
+    val onRevoke: (AccountDevice) -> Unit,
+    val onDelete: (AccountDevice) -> Unit,
+)
+
+/** Which device-management dialog is open. A single nullable state keeps
+ * [MyDevicesScreen] compact and enforces one-dialog-at-a-time. */
+private sealed interface DeviceDialog {
+    val device: AccountDevice
+
+    data class Rename(override val device: AccountDevice) : DeviceDialog
+    data class Revoke(override val device: AccountDevice) : DeviceDialog
+    data class Remove(override val device: AccountDevice) : DeviceDialog
+}
+
 @Composable
 fun MyDevicesScreen(
     viewModel: MyDevicesViewModel,
@@ -52,31 +74,36 @@ fun MyDevicesScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val canManage = viewModel.deviceIsOwner()
-    var renameTarget by remember { mutableStateOf<AccountDevice?>(null) }
-    var revokeTarget by remember { mutableStateOf<AccountDevice?>(null) }
+    var dialog by remember { mutableStateOf<DeviceDialog?>(null) }
+    // Remembered so rows stay skippable: the lambdas only touch the stable `dialog` setter.
+    val rowActions = remember {
+        DeviceRowActions(
+            onRename = { dialog = DeviceDialog.Rename(it) },
+            onRevoke = { dialog = DeviceDialog.Revoke(it) },
+            onDelete = { dialog = DeviceDialog.Remove(it) },
+        )
+    }
 
     LaunchedEffect(activeLedgerId) { viewModel.refresh(activeLedgerId) }
     DisposableEffect(viewModel) { onDispose { viewModel.dismissPairingCode() } }
 
-    renameTarget?.let { device ->
-        RenameDeviceDialog(
-            device = device,
-            onConfirm = { name ->
-                viewModel.rename(device, name, activeLedgerId)
-                renameTarget = null
-            },
-            onDismiss = { renameTarget = null },
+    when (val open = dialog) {
+        is DeviceDialog.Rename -> RenameDeviceDialog(
+            device = open.device,
+            onConfirm = { name -> viewModel.rename(open.device, name, activeLedgerId); dialog = null },
+            onDismiss = { dialog = null },
         )
-    }
-    revokeTarget?.let { device ->
-        RevokeDeviceDialog(
-            device = device,
-            onConfirm = {
-                viewModel.revoke(device, activeLedgerId)
-                revokeTarget = null
-            },
-            onDismiss = { revokeTarget = null },
+        is DeviceDialog.Revoke -> RevokeDeviceDialog(
+            device = open.device,
+            onConfirm = { viewModel.revoke(open.device, activeLedgerId); dialog = null },
+            onDismiss = { dialog = null },
         )
+        is DeviceDialog.Remove -> DeleteDeviceDialog(
+            device = open.device,
+            onConfirm = { viewModel.delete(open.device, activeLedgerId); dialog = null },
+            onDismiss = { dialog = null },
+        )
+        null -> Unit
     }
 
     SettingsPageFrame(
@@ -93,8 +120,7 @@ fun MyDevicesScreen(
             state = state,
             canManage = canManage,
             onRefresh = { viewModel.refresh(activeLedgerId) },
-            onRename = { renameTarget = it },
-            onRevoke = { revokeTarget = it },
+            actions = rowActions,
         )
         if (canManage) {
             AddDeviceSection(
@@ -112,8 +138,7 @@ private fun DeviceListSection(
     state: MyDevicesUiState,
     canManage: Boolean,
     onRefresh: () -> Unit,
-    onRename: (AccountDevice) -> Unit,
-    onRevoke: (AccountDevice) -> Unit,
+    actions: DeviceRowActions,
 ) {
     SettingsSection(
         title = stringResource(R.string.my_devices_section_devices),
@@ -139,8 +164,7 @@ private fun DeviceListSection(
                         device = device,
                         canManage = canManage,
                         busy = state.busyDeviceId == device.publicId,
-                        onRename = { onRename(device) },
-                        onRevoke = { onRevoke(device) },
+                        actions = actions,
                     )
                 }
                 OutlinedButton(
@@ -166,8 +190,7 @@ private fun DeviceRow(
     device: AccountDevice,
     canManage: Boolean,
     busy: Boolean,
-    onRename: () -> Unit,
-    onRevoke: () -> Unit,
+    actions: DeviceRowActions,
 ) {
     val platformLabel = when (device.platform) {
         "android" -> stringResource(R.string.my_devices_platform_android)
@@ -216,9 +239,12 @@ private fun DeviceRow(
             DeviceActionRow(
                 showRevoke = !device.isCurrent,
                 busy = busy,
-                onRename = onRename,
-                onRevoke = onRevoke,
+                onRename = { actions.onRename(device) },
+                onRevoke = { actions.onRevoke(device) },
             )
+        } else if (canManage && device.isRevoked) {
+            // Already-deactivated rows can be permanently removed (slice A).
+            DeviceRemoveButton(busy = busy, onDelete = { actions.onDelete(device) })
         }
     }
 }
@@ -250,6 +276,17 @@ private fun DeviceActionRow(
                 Text(stringResource(R.string.my_devices_action_revoke))
             }
         }
+    }
+}
+
+@Composable
+private fun DeviceRemoveButton(busy: Boolean, onDelete: () -> Unit) {
+    OutlinedButton(
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !busy,
+        onClick = onDelete,
+    ) {
+        Text(stringResource(R.string.my_devices_action_delete))
     }
 }
 
@@ -387,6 +424,32 @@ private fun RevokeDeviceDialog(
             TextButton(onClick = onConfirm) {
                 Text(
                     stringResource(R.string.my_devices_revoke_dialog_confirm),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun DeleteDeviceDialog(
+    device: AccountDevice,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.my_devices_delete_dialog_title)) },
+        text = { Text(stringResource(R.string.my_devices_delete_dialog_text, device.deviceName)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(
+                    stringResource(R.string.my_devices_delete_dialog_confirm),
                     color = MaterialTheme.colorScheme.error,
                 )
             }

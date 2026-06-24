@@ -199,6 +199,61 @@ class MyDevicesViewModelTest {
     }
 
     @Test
+    fun deleteAsOwnerCallsApiThenRefreshes() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply {
+                // After removal only the current device remains in the re-listed result.
+                devicesResult = MyDeviceListResponseDto(listOf(deviceDto("d1", "本机", isCurrent = true)))
+            }
+            val vm = harness(api)
+
+            vm.delete(accountDevice("d2", "旧平板"), ledger)
+            // message is set LAST (after the re-list), so it is the settle signal.
+            val state = vm.uiState.first { it.message != null }
+
+            assertEquals(ledger to "d2", api.deleteDeviceTargets.single())
+            assertEquals(ledger, api.deviceListRequests.single())
+            assertEquals(listOf("d1"), state.devices.map { it.publicId })
+            assertNull(state.busyDeviceId)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun deleteAsNonOwnerIsNoOp() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi()
+            val vm = harness(api, role = "member")
+
+            vm.delete(accountDevice("d2"), ledger)
+
+            assertTrue(api.deleteDeviceTargets.isEmpty())
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun deleteFailureSurfacesMessageAndClearsBusy() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply { deleteDeviceError = RuntimeException("boom") }
+            val vm = harness(api)
+
+            vm.delete(accountDevice("d2", "旧平板"), ledger)
+            val state = vm.uiState.first { it.message != null }
+
+            assertEquals(ledger to "d2", api.deleteDeviceTargets.single())
+            assertNull(state.busyDeviceId)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun createPairingCodeFailureSurfacesMessageAndClearsBusy() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {

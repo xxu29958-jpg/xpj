@@ -887,6 +887,13 @@ interface ApiService {
         @Path("publicId") publicId: String,
     ): MyDeviceDto
 
+    // 204 No Content; Retrofit's built-in Unit converter consumes the empty body.
+    @POST("api/ledgers/{ledgerId}/devices/{publicId}/delete")
+    suspend fun deleteLedgerDevice(
+        @Path("ledgerId") ledgerId: String,
+        @Path("publicId") publicId: String,
+    )
+
     @POST("api/ledgers/{ledgerId}/devices/pairing-codes")
     suspend fun createLedgerDevicePairingCode(
         @Path("ledgerId") ledgerId: String,

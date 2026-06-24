@@ -122,6 +122,8 @@ internal class StubApi(
     val renameDeviceTargets: MutableList<Pair<String, String>> = mutableListOf()
     val renameDeviceRequests: MutableList<com.ticketbox.data.remote.dto.DeviceRenameRequestDto> = mutableListOf()
     val revokeDeviceTargets: MutableList<Pair<String, String>> = mutableListOf()
+    var deleteDeviceError: Throwable? = null
+    val deleteDeviceTargets: MutableList<Pair<String, String>> = mutableListOf()
     val pairingCodeTargets: MutableList<String> = mutableListOf()
 
     override suspend fun listLedgers(): LedgerListResponseDto {
@@ -540,6 +542,11 @@ internal class StubApi(
     ): com.ticketbox.data.remote.dto.MyDeviceDto {
         revokeDeviceTargets += ledgerId to publicId
         return revokeDeviceResult ?: error("Unexpected revoke device call")
+    }
+
+    override suspend fun deleteLedgerDevice(ledgerId: String, publicId: String) {
+        deleteDeviceTargets += ledgerId to publicId
+        deleteDeviceError?.let { throw it }
     }
 
     override suspend fun createLedgerDevicePairingCode(

@@ -282,6 +282,19 @@ class LedgerRepository(
     }
 
     /**
+     * issue #65 slice A: permanently remove an already-revoked device from the
+     * ledger. The backend (204) re-asserts the revoked-first precondition; the
+     * client surfaces "移除" only on already-revoked rows as an experience nicety.
+     */
+    suspend fun deleteDevice(
+        publicId: String,
+        ledgerId: String? = activeLedgerId(),
+    ): Result<Unit> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        api().deleteLedgerDevice(targetLedgerId, publicId)
+    }
+
+    /**
      * issue #65 slice 6b: mint a one-time device pairing code for the active
      * ledger. The plaintext code is returned ONCE for the user to enter on the
      * new device; the server stores only its hash.

@@ -195,6 +195,13 @@ ALLOWLIST: dict[str, Exempt] = {
     # revoked_at, pairing-codes mints a new row — none is fold-changing.
     "POST /api/ledgers/{ledger_id}/devices/{public_id}/rename": Exempt("admin_single_writer", "identity", ("devices",)),
     "POST /api/ledgers/{ledger_id}/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"),
+    # issue #65 slice A: owner-facing app-token twin of the loopback
+    # /owner/devices/{public_id}/delete entry below. Hard-deletes a REVOKED
+    # device + its in-scope auth_tokens AND upload_links (delete_device purges
+    # links too — hence _DEVICE_CLEANUP, not revoke's _DEVICE_REVOKE). Device
+    # has no row_version; the revoked-first precondition is re-asserted at delete
+    # time, so there is no fold to fence → exempt.
+    "POST /api/ledgers/{ledger_id}/devices/{public_id}/delete": Exempt("terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"),
     "POST /api/ledgers/{ledger_id}/devices/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
     "POST /api/merchants/aliases": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /api/merchants/aliases/{public_id}/undo": Exempt(

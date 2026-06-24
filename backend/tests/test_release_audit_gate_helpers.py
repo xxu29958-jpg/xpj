@@ -93,16 +93,16 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
 
 
 def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
-    # issue #65 slice 6a re-points the single in-flight grandfather to 116 -> 119
-    # (+3 owner "My Devices" mutating routes). The prior 115 -> 116 hop is dead
-    # history — main sits at 116, so no future pr-delta has base 115.
+    # issue #65 slice A re-points the single in-flight grandfather to 119 -> 120
+    # (+1 owner "My Devices" delete route). The prior 116 -> 119 hop is dead
+    # history — main sits at 119, so no future pr-delta has base 116.
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 119
+    baseline["mutate_token_exempted"] = 120
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 116}
+        {"mutate_token_exempted": 119}
     )
 
     assert violations == []
@@ -111,9 +111,9 @@ def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> 
 def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
 
-    # Non-grandfathered transitions still fail: the 116 -> 119 exception is exact, so
-    # neither a different hop (115 -> 116) nor an overshoot (116 -> 120) is waved through.
-    for base_count, current_count in ((115, 116), (116, 120)):
+    # Non-grandfathered transitions still fail: the 119 -> 120 exception is exact, so
+    # neither the now-dead hop (116 -> 119) nor an overshoot (119 -> 121) is waved through.
+    for base_count, current_count in ((116, 119), (119, 121)):
         baseline = dict(mod.STRICT_EQUALITY_BASELINE)
         baseline["mutate_token_exempted"] = current_count
         monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)

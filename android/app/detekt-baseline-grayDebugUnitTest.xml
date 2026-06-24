@@ -48,6 +48,7 @@
     <ID>TooManyFunctions:LedgerViewModelTest.kt:LedgerViewModelTest</ID>
     <ID>TooManyFunctions:MemberRepaymentProposalViewModelTest.kt:MemberRepaymentProposalViewModelTest</ID>
     <ID>TooManyFunctions:MerchantRepositoryOutboxFallbackTest.kt:MerchantRepositoryOutboxFallbackTest</ID>
+    <ID>TooManyFunctions:MyDevicesViewModelTest.kt:MyDevicesViewModelTest</ID>
     <ID>TooManyFunctions:NetworkErrorMapperTest.kt:NetworkErrorMapperTest</ID>
     <ID>TooManyFunctions:OutboxDrainEngineTest.kt:OutboxDrainEngineTest</ID>
     <ID>TooManyFunctions:OutboxDrainWorkerTest.kt:OutboxDrainWorkerTest</ID>
