@@ -190,10 +190,7 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 刷新": "preview sample data, not shipped UI",
     "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 外观与主题": "preview sample data, not shipped UI",
     "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 主题皮肤、自定义背景、沉浸强度": "preview sample data, not shipped UI",
-    "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 待确认": "preview sample data, not shipped UI (bottom nav)",
-    "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 账本": "preview sample data, not shipped UI (bottom nav)",
-    "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 统计": "preview sample data, not shipped UI (bottom nav)",
-    "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 设置": "preview sample data, not shipped UI (bottom nav)",
+    # bottom-nav preview 标签已改走 stringResource(R.string.nav_tab_*),不再硬编码——allowlist 缩 4 条。
     "android/app/src/main/java/com/ticketbox/ui/components/DuplicateNotice.kt :: 图片 hash": "internal keyword match on server duplicate-reason",
     "android/app/src/main/java/com/ticketbox/ui/components/DuplicateNotice.kt :: 金额": "internal keyword match on server duplicate-reason",
     "android/app/src/main/java/com/ticketbox/ui/components/DuplicateNotice.kt :: 商家": "internal keyword match on server duplicate-reason",
