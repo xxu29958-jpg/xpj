@@ -18976,6 +18976,76 @@
         ]
       }
     },
+    "/api/ledgers/{ledger_id}/devices/{public_id}/delete": {
+      "post": {
+        "operationId": "delete_my_device_endpoint_api_ledgers__ledger_id__devices__public_id__delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Delete My Device Endpoint",
+        "tags": [
+          "my-devices"
+        ]
+      }
+    },
     "/api/ledgers/{ledger_id}/devices/{public_id}/rename": {
       "post": {
         "operationId": "rename_my_device_endpoint_api_ledgers__ledger_id__devices__public_id__rename_post",

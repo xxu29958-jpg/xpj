@@ -720,6 +720,8 @@ internal class FakeApiService(
         publicId: String,
     ): com.ticketbox.data.remote.dto.MyDeviceDto = unsupported()
 
+    override suspend fun deleteLedgerDevice(ledgerId: String, publicId: String): Unit = unsupported()
+
     override suspend fun createLedgerDevicePairingCode(
         ledgerId: String,
         request: com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto,

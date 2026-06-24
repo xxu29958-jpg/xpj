@@ -3,6 +3,8 @@
 * ``GET  /api/ledgers/{ledger_id}/devices`` — owner lists the ledger's devices
 * ``POST /api/ledgers/{ledger_id}/devices/{public_id}/rename`` — owner renames
 * ``POST /api/ledgers/{ledger_id}/devices/{public_id}/revoke`` — owner revokes
+* ``POST /api/ledgers/{ledger_id}/devices/{public_id}/delete`` — owner removes a
+  revoked device permanently (204; must be revoked first)
 * ``POST /api/ledgers/{ledger_id}/devices/pairing-codes`` — owner mints a code
   for "add a device" (the new device then pairs via the existing join flow)
 
@@ -15,7 +17,7 @@ path-ledger-bound, owner role) gives 401 (no token) / 403 (viewer/member) / 404
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_member_manager_context
@@ -86,6 +88,20 @@ def revoke_my_device_endpoint(
 ) -> MyDeviceResponse:
     device = owner_device_service.revoke_my_device(db, auth, public_id=public_id)
     return _to_response(device)
+
+
+@router.post(
+    "/api/ledgers/{ledger_id}/devices/{public_id}/delete",
+    status_code=204,
+)
+def delete_my_device_endpoint(
+    ledger_id: str,
+    public_id: str,
+    auth: AuthContext = Depends(get_current_member_manager_context),
+    db: Session = Depends(get_db),
+) -> Response:
+    owner_device_service.delete_my_device(db, auth, public_id=public_id)
+    return Response(status_code=204)
 
 
 @router.post(
