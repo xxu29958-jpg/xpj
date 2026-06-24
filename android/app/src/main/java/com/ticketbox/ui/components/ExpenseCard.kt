@@ -201,12 +201,13 @@ fun ExpenseCard(
                             active = true,
                         )
                         if (expense.amountCents == null) {
-                            StatusPill(text = stringResource(R.string.components_expense_card_pill_amount_missing), active = false)
+                            // Needs-attention pills carry the warn tone (was inert gray); duplicate is informational.
+                            StatusPill(text = stringResource(R.string.components_expense_card_pill_amount_missing), tone = LocalStateTokens.current.warn)
                         } else if ((expense.confidence ?: 1.0) < 0.62) {
-                            StatusPill(text = stringResource(R.string.components_expense_card_pill_review), active = false)
+                            StatusPill(text = stringResource(R.string.components_expense_card_pill_review), tone = LocalStateTokens.current.warn)
                         }
                         if (expense.duplicateStatus == "suspected") {
-                            StatusPill(text = stringResource(R.string.components_expense_card_pill_duplicate), active = false)
+                            StatusPill(text = stringResource(R.string.components_expense_card_pill_duplicate), tone = LocalStateTokens.current.info)
                         }
                     }
                 }

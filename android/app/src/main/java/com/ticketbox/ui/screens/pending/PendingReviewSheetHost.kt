@@ -41,6 +41,8 @@ internal fun PendingReviewSheetHost(
     missingAmountSkip: Int,
     duplicateSkip: Int,
     bulkRunning: Boolean,
+    bulkConfirmed: Int,
+    bulkTotal: Int,
     reviewRemaining: Int,
     statusMessage: String?,
     onSaveQuickCategory: (Long, String) -> Unit,
@@ -104,6 +106,8 @@ internal fun PendingReviewSheetHost(
                 missingAmountSkipCount = missingAmountSkip,
                 duplicateSkipCount = duplicateSkip,
                 inProgress = bulkRunning,
+                confirmedCount = bulkConfirmed,
+                totalCount = bulkTotal,
                 onConfirmReady = onConfirmReady,
                 onDismiss = onDismiss,
             )

@@ -161,6 +161,7 @@
     <string name="pending_bulk_sheet_stat_skip_duplicate">疑似重复跳过</string>
     <string name="pending_bulk_sheet_stat_skip_duplicate_count">%1$d 条（请单独二次确认）</string>
     <string name="pending_bulk_sheet_in_progress">确认中…</string>
+    <string name="pending_bulk_sheet_progress">已确认 %1$d/%2$d</string>
     <string name="pending_bulk_sheet_confirm_button">确认 %1$d 条</string>
 
     <!-- DuplicateConfirmSheet -->

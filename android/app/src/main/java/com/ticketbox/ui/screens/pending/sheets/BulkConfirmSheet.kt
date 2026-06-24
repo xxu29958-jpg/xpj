@@ -37,6 +37,8 @@ internal fun BulkConfirmSheetContent(
     missingAmountSkipCount: Int,
     duplicateSkipCount: Int,
     inProgress: Boolean,
+    confirmedCount: Int,
+    totalCount: Int,
     onConfirmReady: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -91,10 +93,23 @@ internal fun BulkConfirmSheetContent(
                 enabled = !inProgress && readyCount > 0,
                 onClick = onConfirmReady,
             ) {
-                Text(if (inProgress) stringResource(R.string.pending_bulk_sheet_in_progress) else stringResource(R.string.pending_bulk_sheet_confirm_button, readyCount))
+                Text(confirmButtonLabel(inProgress, confirmedCount, totalCount, readyCount))
             }
         }
     }
+}
+
+/** Confirm-button label: live "已确认 N/M" progress over the run total, else the count CTA. */
+@Composable
+private fun confirmButtonLabel(
+    inProgress: Boolean,
+    confirmedCount: Int,
+    totalCount: Int,
+    readyCount: Int,
+): String = when {
+    inProgress && totalCount > 0 -> stringResource(R.string.pending_bulk_sheet_progress, confirmedCount, totalCount)
+    inProgress -> stringResource(R.string.pending_bulk_sheet_in_progress)
+    else -> stringResource(R.string.pending_bulk_sheet_confirm_button, readyCount)
 }
 
 @Composable

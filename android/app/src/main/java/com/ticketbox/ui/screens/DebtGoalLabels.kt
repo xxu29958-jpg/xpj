@@ -23,15 +23,17 @@ import com.ticketbox.viewmodel.DebtAction
 
 /**
  * ADR-0049 §6 (slice 7): backend debt string values → localized labels + state tones.
- * Pure `@StringRes` mappers (testable, mirroring `expenseSourceLabelRes`); a degraded
- * fallback keeps an unknown backend value rendering rather than crashing.
+ * Pure `@StringRes` mappers (testable, mirroring `expenseSourceLabelRes`). P4
+ * (model-invariant hardening): an unknown/future backend value degrades to a NEUTRAL,
+ * read-only label (未知) + neutral tone — never optimistically rendered as an actionable
+ * 进行中/未结清/应付 — so a server-added state can't be silently shown as operable.
  */
 @StringRes
 internal fun debtGoalEvaluationLabelRes(state: String): Int = when (state) {
     DebtGoalEvaluationStates.IN_PROGRESS -> R.string.debt_goal_state_in_progress
     DebtGoalEvaluationStates.ACHIEVED -> R.string.debt_goal_state_achieved
     DebtGoalEvaluationStates.NOT_EVALUABLE -> R.string.debt_goal_state_not_evaluable
-    else -> R.string.debt_goal_state_in_progress
+    else -> R.string.debt_goal_state_unknown
 }
 
 @StringRes
@@ -39,14 +41,14 @@ internal fun debtLinkStatusLabelRes(status: String): Int = when (status) {
     DebtLinkStatuses.OPEN -> R.string.debt_link_status_open
     DebtLinkStatuses.CLEARED -> R.string.debt_link_status_cleared
     DebtLinkStatuses.VOIDED -> R.string.debt_link_status_voided
-    else -> R.string.debt_link_status_open
+    else -> R.string.debt_link_status_unknown
 }
 
 @StringRes
 internal fun debtDirectionLabelRes(direction: String): Int = when (direction) {
     DebtDirections.I_OWE -> R.string.debt_direction_i_owe
     DebtDirections.OWED_TO_ME -> R.string.debt_direction_owed_to_me
-    else -> R.string.debt_direction_i_owe
+    else -> R.string.debt_direction_unknown
 }
 
 /** Counterparty display: the explicit label, else a type-based fallback. */
@@ -77,7 +79,9 @@ internal fun debtGoalEvaluationTone(state: String): StateTone {
     return when (state) {
         DebtGoalEvaluationStates.ACHIEVED -> tokens.success
         DebtGoalEvaluationStates.NOT_EVALUABLE -> tokens.warn
-        else -> tokens.info
+        DebtGoalEvaluationStates.IN_PROGRESS -> tokens.info
+        // P4: an unknown/future state is read-only (neutral), not active (info).
+        else -> tokens.neutral
     }
 }
 

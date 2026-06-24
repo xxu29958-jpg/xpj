@@ -16,12 +16,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
@@ -127,9 +130,11 @@ private fun DailyTrendBar(
     } else {
         visuals.chipUnselected.copy(alpha = 0.72f)
     }
+    // WCAG 1.1.1: the bar height is the only amount cue; give TalkBack the date + amount.
+    val barA11y = stringResource(R.string.stats_recent_trend_bar_a11y, day.label, formatAmount(day.amountCents))
 
     Column(
-        modifier = modifier,
+        modifier = modifier.semantics(mergeDescendants = true) { contentDescription = barA11y },
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
     ) {
         Box(
