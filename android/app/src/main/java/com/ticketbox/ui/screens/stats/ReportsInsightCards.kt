@@ -30,12 +30,16 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisLabelComponent
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisLineComponent
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.columnSeries
@@ -222,6 +226,11 @@ private fun ReportsTrendColumnChart(points: List<ReportTrendChartPoint>) {
         }
     }
 
+    // Skin-themed axes (was M3 default): consume the ChartTokens axis/axisLabel
+    // (previously dead) so axis line + labels match the active skin's chart palette.
+    val axisLineComponent = rememberAxisLineComponent(fill = Fill(chartTokens.axis))
+    val axisLabelComponent = rememberAxisLabelComponent(style = TextStyle(color = chartTokens.axisLabel, fontSize = 12.sp))
+
     CartesianChartHost(
         chart = rememberCartesianChart(
             rememberColumnCartesianLayer(
@@ -232,8 +241,8 @@ private fun ReportsTrendColumnChart(points: List<ReportTrendChartPoint>) {
                     ),
                 ),
             ),
-            startAxis = VerticalAxis.rememberStart(valueFormatter = startAxisValueFormatter),
-            bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = bottomAxisValueFormatter),
+            startAxis = VerticalAxis.rememberStart(line = axisLineComponent, label = axisLabelComponent, valueFormatter = startAxisValueFormatter),
+            bottomAxis = HorizontalAxis.rememberBottom(line = axisLineComponent, label = axisLabelComponent, valueFormatter = bottomAxisValueFormatter),
         ),
         modelProducer = modelProducer,
         modifier = Modifier
@@ -332,6 +341,9 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
         }
     }
 
+    val axisLineComponent = rememberAxisLineComponent(fill = Fill(chartTokens.axis))
+    val axisLabelComponent = rememberAxisLabelComponent(style = TextStyle(color = chartTokens.axisLabel, fontSize = 12.sp))
+
     CartesianChartHost(
         chart = rememberCartesianChart(
             rememberColumnCartesianLayer(
@@ -340,8 +352,8 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
                     rememberLineComponent(fill = Fill(previousColor), thickness = 8.dp),
                 ),
             ),
-            startAxis = VerticalAxis.rememberStart(valueFormatter = startAxisValueFormatter),
-            bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = bottomAxisValueFormatter),
+            startAxis = VerticalAxis.rememberStart(line = axisLineComponent, label = axisLabelComponent, valueFormatter = startAxisValueFormatter),
+            bottomAxis = HorizontalAxis.rememberBottom(line = axisLineComponent, label = axisLabelComponent, valueFormatter = bottomAxisValueFormatter),
         ),
         modelProducer = modelProducer,
         modifier = Modifier
