@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
@@ -201,11 +203,18 @@ private fun CategoryDonut(
     totalAmountCents: Long,
 ) {
     val colors = statsCategoryColors()
-    Canvas(modifier = Modifier.size(92.dp)) {
+    val emptyTrack = LocalChartTokens.current.empty
+    Canvas(
+        // 装饰性:环形占比与右侧标题 + 下方各分类条(名称/金额/百分比)信息完全重复,
+        // 显式清空语义让 TalkBack 跳过这张图,避免重复播报。
+        modifier = Modifier
+            .size(92.dp)
+            .clearAndSetSemantics {},
+    ) {
         val stroke = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
         if (totalAmountCents <= 0L || categories.isEmpty()) {
             drawArc(
-                color = Color.LightGray.copy(alpha = 0.28f),
+                color = emptyTrack,
                 startAngle = -90f,
                 sweepAngle = 360f,
                 useCenter = false,
