@@ -60,6 +60,7 @@ import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import kotlinx.coroutines.delay
@@ -342,6 +343,8 @@ private fun EmptyStateCard() {
                 .padding(AppSpacing.sectionGap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            MascotEmptyIllustration()
+            Spacer(Modifier.size(AppSpacing.smallGap))
             Text(
                 stringResource(R.string.income_plan_empty_title),
                 style = MaterialTheme.typography.titleMedium,

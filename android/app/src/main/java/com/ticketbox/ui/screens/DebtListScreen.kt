@@ -57,6 +57,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
 import kotlinx.coroutines.delay
@@ -248,6 +249,8 @@ private fun DebtEmptyStateCard() {
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.sectionGap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            MascotEmptyIllustration()
+            Spacer(Modifier.size(AppSpacing.smallGap))
             Text(
                 stringResource(R.string.debt_list_empty_title),
                 style = MaterialTheme.typography.titleMedium,
