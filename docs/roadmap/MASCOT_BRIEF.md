@@ -182,7 +182,9 @@ v1 落地优先级仍按原计划：`idle_sleep` / `empty_welcome` / `confirm_su
 
 ## 8. Rive 绑骨交付清单（产 `.riv` 的人照这张做）
 
-> 这是 Rive era 的**唯一硬瓶颈**：`.riv` 只能人在 Rive 编辑器（SaaS GUI）里绑骨导出，代码 / agent / CI 产不出。原画 + 三端 token + 状态机 + 配色单源在仓里**全部就绪**（[ADR-0048 实施补充](../DECISIONS/0048-rive-mascot-animation.md)已把技术裁决定稿），就差有人坐进 Rive 编辑器走完下面这张表。工程侧（依赖 + `RiveAnimationView` wrapper + `res/raw`）等这个 `.riv` 一到就作为一个可眼验切片接上，接线形态见 ADR。
+> ⚠️ **作废（2026-06-25）**：**Rive 已放弃**——`.riv` 导出撞订阅付费墙（$9/seat/mo），见 [ADR-0048 撤回](../DECISIONS/0048-rive-mascot-animation.md)。吉祥物动画改走**原生 Compose**（已落地 PR #108）。本节连同 Rive 拆层/状态机/色属性清单仅作历史参考，不再执行。**§1-§7 的角色设计（造型、可爱公式、三主题 token 映射、10 态语义）仍是有效设计准绳**——原生 Compose 实现照它来。
+
+> （以下为放弃前的历史内容，保留作参考）这是 Rive era 的**唯一硬瓶颈**：`.riv` 只能人在 Rive 编辑器（SaaS GUI）里绑骨导出，代码 / agent / CI 产不出。原画 + 三端 token + 状态机 + 配色单源在仓里**全部就绪**（[ADR-0048 实施补充](../DECISIONS/0048-rive-mascot-animation.md)已把技术裁决定稿），就差有人坐进 Rive 编辑器走完下面这张表。工程侧（依赖 + `RiveAnimationView` wrapper + `res/raw`）等这个 `.riv` 一到就作为一个可眼验切片接上，接线形态见 ADR。
 
 **视觉源（不可偏离）**：描摹 [`docs/design_reference/jiajia-mascot-character-sheet-final-reference-lock.png`](../design_reference/jiajia-mascot-character-sheet-final-reference-lock.png)（v4，SHA256 锁定）。验收用 [`jiajia-v4-reference-crops/`](../design_reference/jiajia-mascot-v4-tracing-underlay.svg) 九裁片做轮廓/五官/夹口对齐。**只复用** `*-rive-source-sheet.svg` / `*-expression-sheet-rive.svg` 的**图层命名/结构**，**不要**直接矢量化它们——`rive-polished-master.svg` 已被产品否决（「和参考图一点也不像」）。
 

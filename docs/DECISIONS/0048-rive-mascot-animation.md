@@ -1,7 +1,17 @@
 # ADR-0048: 吉祥物动画技术栈采用 Rive
 
-- 状态：accepted（2026-06-25，用户「去上 rive era / 自主自己去弄」拍板进场；技术细节经穷尽调查定稿，见末「实施补充」。原 proposed 2026-06-13）
-- 关联：[MASCOT_BRIEF.md](../roadmap/MASCOT_BRIEF.md)（角色「夹夹」设计真相源 + §8 绑骨交付清单）、[[0044]]（string-resourcing）、ENGINEERING_RULES §9 依赖治理 / §14 三端视觉同步 / §13 反扩
+- 状态：**rejected / 放弃（2026-06-25，用户拍板）** —— Rive 的 `.riv` **导出被付费墙挡死**（Rive 编辑器 `Publish → To .riv` 要 `Cadet $9/seat/mo` 订阅；运行时虽 MIT 免费，但**没有 `.riv` 就没东西可运行**）。为一只吉祥物的导出包月 + 按座位收费 + 绑一个 SaaS 创作工具，不值。吉祥物动画改走**原生 Compose**（见下「撤回」段）。曾短暂 accepted（2026-06-25）、原 proposed（2026-06-13）。
+- 关联：[MASCOT_BRIEF.md](../roadmap/MASCOT_BRIEF.md)（角色「夹夹」设计真相源——**角色设计仍有效**，仅 §8 Rive 绑骨清单作废）、[[0044]]、ENGINEERING_RULES §9 / §14 / §13
+
+## 撤回（2026-06-25）
+
+> 决策反转。本 ADR 正文（采用 Rive）连同「实施补充」自此**仅作历史记录**，不再执行。
+
+- **为什么放弃**：实操踩到本 ADR 写作时未知的硬约束——Rive 编辑器**导出 `.riv` 是订阅付费功能**（$9/seat/mo 起）。Codex 已在 Rive 桌面正式版把夹夹完整做出（artboard `JiajiaMascot` 512×512、12+ 部件、`JiajiaStateMachine` 11 态 / 362 关键帧、`JiajiaMascatModel` Data Binding 28 色节点、`milestone_celebrate`=3.6s、Problems 面板 0 报错）——但 `Publish → To .riv` 撞 `Upgrade to export`，**导不出来**。MCP 也无本地保存 `.riv` 接口。这份 Rive 工作量因付费墙**搁浅、不可取回**（除非付费），不作为仓库资产依赖。
+- **改走什么**：吉祥物动画用**原生 Jetpack Compose Canvas**（已落地 PR [#108](https://github.com/xxu29958-jpg/xpj/pull/108) `f2d13875`：占位画布加呼吸脉动 + 打盹 zzz）。本 ADR 当初否决「Compose 原生」的理由是「10 态难手写 + 三端各写一份」——但那是相对 Rive 的取舍；Rive 既因付费墙出局，**原生 Compose 成为最优可行解**：零依赖、零订阅、离线、运行时换色随手（直接喂 `MascotPalette` 的 Compose `Color`，无需 `.riv` 色属性那套）、完全自控、可真机眼验。代价 = 富动画要手写、web/owner 端动画另写（CSS/SVG）——接受。
+- **保留有效的部分**：① 角色设计真相源 MASCOT_BRIEF §1-§7（夹夹造型、可爱公式、三主题 token 映射、10 态语义）**仍是设计准绳**；② 本 ADR「为什么不是 Lottie / 静态 SVG」的横向比较仍可参考；③ `MascotStateMachine`（11 态纯 Kotlin）+ `mascotPalette`（三主题单源）+ `MascotPlaceholder`（现在是**正式渲染器**不再是占位）继续用。
+- **作废的部分**：rive-android / `@rive-app/canvas` 依赖（不引入）、`res/raw/mascot.riv`（不会有）、`.gitattributes *.riv binary`（不需要）、MASCOT_BRIEF §8 Rive 绑骨交付清单。
+- **后续若要更丰富的吉祥物动画**：原生 Compose 扩展事件态（confirm 蹦 / milestone 撒花等），不另开付费工具;真要换动画运行时须新开 ADR。
 
 ## 背景与问题
 
