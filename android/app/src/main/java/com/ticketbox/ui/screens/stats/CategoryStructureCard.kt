@@ -33,6 +33,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
@@ -201,11 +202,13 @@ private fun CategoryDonut(
     totalAmountCents: Long,
 ) {
     val colors = statsCategoryColors()
+    // 空态环走 ChartTokens.empty(每皮肤一套),此前硬编码 Color.LightGray 在 midnight 深底卡上是刺眼浅环。
+    val emptyRingColor = LocalChartTokens.current.empty
     Canvas(modifier = Modifier.size(92.dp)) {
         val stroke = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
         if (totalAmountCents <= 0L || categories.isEmpty()) {
             drawArc(
-                color = Color.LightGray.copy(alpha = 0.28f),
+                color = emptyRingColor,
                 startAngle = -90f,
                 sweepAngle = 360f,
                 useCenter = false,

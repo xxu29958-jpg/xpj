@@ -82,8 +82,10 @@ EXEMPT_FILES = (
 # in the SAME diff whenever a residual migrates to an AppAlpha tier. Seeded
 # 2026-06-12 with the post-(5-site demo) actual; 2026-06-25 lowered 119→117 when
 # the mascot empty-state slice deleted LedgerEmptyIllustration (its two ad-hoc
-# .copy(alpha=0.14f/0.66f) tints went away with the hand-drawn receipt icon).
-BASELINE = 117
+# .copy(alpha=0.14f/0.66f) tints went away with the hand-drawn receipt icon);
+# 2026-06-25 lowered 117→116 when the stats CategoryDonut empty ring migrated its
+# Color.LightGray.copy(alpha=0.28f) to the themed ChartTokens.empty token.
+BASELINE = 116
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT
