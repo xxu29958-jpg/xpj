@@ -6614,6 +6614,21 @@
         "title": "GoalResponse",
         "type": "object"
       },
+      "GoalTokenRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0051 recycle-bin restore: ``POST /api/goals/{public_id}/restore`` body.\n\nCarries the client's last-seen optimistic-concurrency token so a stale\nrestore against a concurrently-modified goal is rejected with 409\n``state_conflict`` instead of silently un-archiving. Mirror of\n:class:`IncomePlanTokenRequest`; archive stays keyless (one-way soft-delete)\nwhile restore is OCC-gated like the recurring pause/resume toggle pair.",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "GoalTokenRequest",
+        "type": "object"
+      },
       "GoalUpdateRequest": {
         "additionalProperties": false,
         "description": "ADR-0038 PR-2j: ``PATCH /api/goals/{public_id}`` body (spending_limit edits).\n\n``expected_row_version`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, updated_at = expected`` and returns 409 ``state_conflict``\non stale snapshot. Debt_repayment goals do NOT change month/category/\ntarget through this body — their linked Debt set changes via\n``POST /api/goals/{public_id}/debt-links`` (a new goal version).",
@@ -17455,6 +17470,100 @@
         ]
       }
     },
+    "/api/goals/{public_id}/restore": {
+      "post": {
+        "operationId": "post_goal_restore_api_goals__public_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timezone",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Goal Restore",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
     "/api/goals/{public_id}/target-date": {
       "post": {
         "operationId": "post_goal_target_date_api_goals__public_id__target_date_post",
@@ -21236,6 +21345,84 @@
           }
         },
         "summary": "Post Recurring Pause",
+        "tags": [
+          "recurring"
+        ]
+      }
+    },
+    "/api/recurring/items/{public_id}/restore": {
+      "post": {
+        "operationId": "post_recurring_restore_api_recurring_items__public_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringItemTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Recurring Restore",
         "tags": [
           "recurring"
         ]

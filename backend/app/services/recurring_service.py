@@ -397,6 +397,47 @@ def resume_recurring_item(
     raise AppError("state_conflict", status_code=409)
 
 
+def restore_recurring_item(
+    db: Session, *, tenant_id: str, public_id: str, expected_row_version: int
+) -> RecurringItem:
+    """ADR-0051 recycle-bin restore: reactivate an archived recurring item.
+
+    Inverse of :func:`archive_recurring_item` but OCC-gated like the
+    :func:`resume_recurring_item` toggle: the atomic ``UPDATE ... WHERE
+    status='archived', row_version=expected`` only matches a still-archived row
+    carrying the client's last-seen token. ``paused_at`` is cleared so a
+    restored item lands cleanly ``active`` (mirrors candidate reactivation).
+    Idempotent on an already-active item (404 only when absent); a stale token
+    against an archived item is 409 ``state_conflict``.
+    """
+    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    if item.status != "archived":
+        return item  # not in the recycle bin — nothing to restore
+    now = now_utc()
+    result = db.execute(
+        update(RecurringItem)
+        .where(RecurringItem.tenant_id == tenant_id)
+        .where(RecurringItem.public_id == public_id)
+        .where(RecurringItem.status == "archived")
+        .where(RecurringItem.row_version == expected_row_version)
+        .values(
+            status="active",
+            archived_at=None,
+            paused_at=None,
+            updated_at=now,
+            row_version=RecurringItem.row_version + 1,
+        )
+    )
+    if result.rowcount:
+        db.commit()
+        return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    db.rollback()
+    current = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    if current.status != "archived":
+        return current  # raced into active — idempotent restore
+    raise AppError("state_conflict", status_code=409)
+
+
 def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
     now = now_utc()
     result = db.execute(

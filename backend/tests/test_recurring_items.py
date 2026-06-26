@@ -219,6 +219,60 @@ def test_confirm_candidate_reactivates_archived_item(client: TestClient, *, iden
     assert [entry["public_id"] for entry in listed.json()["items"]] == [public_id]
 
 
+def test_recurring_item_restore_reactivates_archived(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
+    public_id = item["public_id"]
+
+    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=identity.app_headers)
+    assert archived.status_code == 200, archived.json()
+    assert archived.json()["status"] == "archived"
+
+    restored = client.post(
+        f"/api/recurring/items/{public_id}/restore",
+        headers=identity.app_headers,
+        json={"expected_row_version": archived.json()["row_version"]},
+    )
+    assert restored.status_code == 200, restored.json()
+    assert restored.json()["status"] == "active"
+    assert restored.json()["archived_at"] is None
+    assert restored.json()["paused_at"] is None
+
+    listed = client.get("/api/recurring/items", headers=identity.app_headers)
+    assert listed.status_code == 200, listed.json()
+    assert [entry["public_id"] for entry in listed.json()["items"]] == [public_id]
+
+
+def test_recurring_item_restore_stale_token_returns_409(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
+    public_id = item["public_id"]
+    stale_token = item["row_version"]
+
+    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=identity.app_headers)
+    assert archived.status_code == 200, archived.json()
+    # archive bumped row_version, so the pre-archive token is stale for the
+    # now-archived row → restore must 409 rather than flip it.
+    stale = client.post(
+        f"/api/recurring/items/{public_id}/restore",
+        headers=identity.app_headers,
+        json={"expected_row_version": stale_token},
+    )
+    assert stale.status_code == 409, stale.json()
+    assert stale.json()["error"] == "state_conflict"
+
+
+def test_recurring_item_restore_without_token_returns_422(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
+    public_id = item["public_id"]
+    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=identity.app_headers)
+    assert archived.status_code == 200, archived.json()
+    response = client.post(
+        f"/api/recurring/items/{public_id}/restore",
+        headers=identity.app_headers,
+        json={},
+    )
+    assert response.status_code == 422, response.json()
+
+
 def test_viewer_cannot_mutate_recurring_items(client: TestClient, *, identity) -> None:
     item = _confirm_candidate(client, identity=identity)
     public_id = item["public_id"]
@@ -239,6 +293,7 @@ def test_viewer_cannot_mutate_recurring_items(client: TestClient, *, identity) -
     for label, path in (
         ("pause", f"/api/recurring/items/{public_id}/pause"),
         ("resume", f"/api/recurring/items/{public_id}/resume"),
+        ("restore", f"/api/recurring/items/{public_id}/restore"),
         ("archive", f"/api/recurring/items/{public_id}/archive"),
     ):
         _assert_permission_denied(client.post(path, headers=identity.app_headers), label=label)

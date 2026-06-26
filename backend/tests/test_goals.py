@@ -279,6 +279,14 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
         client.post(f"/api/goals/{owner_public_id}/archive", headers=identity.app_headers),
         label="viewer goal archive",
     )
+    _assert_permission_denied(
+        client.post(
+            f"/api/goals/{owner_public_id}/restore",
+            headers=identity.app_headers,
+            json={"expected_row_version": 1},
+        ),
+        label="viewer goal restore",
+    )
 
 
 def test_goals_update_archive_and_validation(client: TestClient, *, identity) -> None:
@@ -363,3 +371,36 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
     )
     assert archived_patch.status_code == 409
     assert archived_patch.json()["error"] == "invalid_request"
+
+
+def test_goal_restore_into_taken_slot_returns_409(client: TestClient, *, identity) -> None:
+    """ADR-0051 restore: a spending_limit goal cannot restore into a (month,
+    category) slot a peer active goal now occupies — the partial-unique
+    active-scope index can't hold two. The friendly duplicate 409 fires
+    (pre-check) rather than a raw IntegrityError."""
+    first = client.post(
+        "/api/goals",
+        headers=identity.app_headers,
+        json={"name": "餐饮甲", "month": "2026-05", "category": "餐饮", "target_amount_cents": 3000},
+    )
+    assert first.status_code == 201, first.json()
+    first_id = first.json()["public_id"]
+
+    archived = client.post(f"/api/goals/{first_id}/archive", headers=identity.app_headers)
+    assert archived.status_code == 200, archived.json()
+
+    # A new active goal now holds the (2026-05, 餐饮) slot the archived one vacated.
+    second = client.post(
+        "/api/goals",
+        headers=identity.app_headers,
+        json={"name": "餐饮乙", "month": "2026-05", "category": "餐饮", "target_amount_cents": 4000},
+    )
+    assert second.status_code == 201, second.json()
+
+    blocked = client.post(
+        f"/api/goals/{first_id}/restore",
+        headers=identity.app_headers,
+        json={"expected_row_version": archived.json()["row_version"]},
+    )
+    assert blocked.status_code == 409, blocked.json()
+    assert blocked.json()["error"] == "invalid_request"

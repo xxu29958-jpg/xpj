@@ -146,6 +146,7 @@ from app.schemas._goals import (
     GoalCreateRequest,
     GoalListResponse,
     GoalResponse,
+    GoalTokenRequest,
     GoalUpdateRequest,
 )
 from app.schemas._identity import (
@@ -342,6 +343,7 @@ __all__ = [
     "GoalCreateRequest",
     "GoalListResponse",
     "GoalResponse",
+    "GoalTokenRequest",
     "GoalUpdateRequest",
     "HealthResponse",
     "IncomePlanCreateRequest",

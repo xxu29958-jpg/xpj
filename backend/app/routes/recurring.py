@@ -19,6 +19,7 @@ from app.services.recurring_service import (
     pause_recurring_item,
     recurring_amount_anomalies,
     recurring_item_response,
+    restore_recurring_item,
     resume_recurring_item,
 )
 from app.tenants import AuthContext
@@ -128,3 +129,20 @@ def post_recurring_archive(
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
     return recurring_item_response(archive_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id))
+
+
+@router.post("/items/{public_id}/restore", response_model=RecurringItemResponse)
+def post_recurring_restore(
+    public_id: str,
+    payload: RecurringItemTokenRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> RecurringItemResponse:
+    # ADR-0051 recycle-bin restore: OCC-gated reactivate (stale token → 409),
+    # mirror of the pause/resume toggle. Archive stays keyless (one-way).
+    return recurring_item_response(restore_recurring_item(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_row_version=payload.expected_row_version,
+    ))

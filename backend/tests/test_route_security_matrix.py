@@ -96,6 +96,7 @@ from fastapi.testclient import TestClient
             {"json": {"receiver_account_id": 1, "amount_cents": 100}},
         ),
         ("POST", "/api/goals/goal_missing/archive", {}),
+        ("POST", "/api/goals/goal_missing/restore", {"json": {"expected_row_version": 1}}),
         (
             "POST",
             "/api/imports/csv",
@@ -135,6 +136,7 @@ from fastapi.testclient import TestClient
         ),
         ("POST", "/api/recurring/items/item_missing/archive", {}),
         ("POST", "/api/recurring/items/item_missing/pause", {}),
+        ("POST", "/api/recurring/items/item_missing/restore", {"json": {"expected_row_version": 1}}),
         ("POST", "/api/recurring/items/item_missing/resume", {}),
         ("POST", "/api/rules/applications/batch_missing/rollback", {}),
         ("POST", "/api/rules/apply-confirmed", {"json": {"confirm": True}}),

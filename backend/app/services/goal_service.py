@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -10,8 +9,9 @@ from app.models import Goal
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services import goal_debt_repayment_service
 from app.services.category_service import normalize_category
+from app.services.goal_spending_response import goal_response, month_spend_totals
 from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
-from app.services.spending_contract_service import clean_month, confirmed_amount_query
+from app.services.spending_contract_service import clean_month
 from app.services.time_service import now_utc
 
 # ADR-0049 §6 slice 6 adds ``debt_repayment``; this module stays the facade — the
@@ -20,12 +20,6 @@ from app.services.time_service import now_utc
 # code path unchanged.
 VALID_GOAL_TYPES = {"spending_limit", "debt_repayment"}
 VALID_PERIODS = {"monthly"}
-
-
-class GoalSpendTotals:
-    def __init__(self, total_amount_cents: int, by_category: dict[str, int]) -> None:
-        self.total_amount_cents = total_amount_cents
-        self.by_category = by_category
 
 
 def _clean_month(month: str) -> str:
@@ -69,72 +63,6 @@ def _clean_target_amount(value: int) -> int:
     if amount <= 0:
         raise AppError("invalid_request", status_code=422)
     return amount
-
-
-def _month_spend_totals(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str,
-    timezone_name: str | None = None,
-) -> GoalSpendTotals:
-    filtered = confirmed_amount_query(
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
-    ).subquery()
-    rows = db.execute(
-        select(
-            filtered.c.category,
-            func.coalesce(func.sum(filtered.c.amount_cents), 0),
-        )
-        .select_from(filtered)
-        .group_by(filtered.c.category)
-    )
-    total_amount_cents = 0
-    by_category: dict[str, int] = {}
-    for category_raw, amount_value in rows:
-        amount = int(amount_value or 0)
-        total_amount_cents += amount
-        category = normalize_category(category_raw)
-        by_category[category] = by_category.get(category, 0) + amount
-    return GoalSpendTotals(total_amount_cents, by_category)
-
-
-def _progress_state(goal: Goal, spent_amount_cents: int) -> str:
-    if goal.status == "archived":
-        return "archived"
-    if spent_amount_cents <= 0:
-        return "not_started"
-    if spent_amount_cents >= goal.target_amount_cents:
-        return "over_limit"
-    if spent_amount_cents * 100 >= goal.target_amount_cents * 80:
-        return "near_limit"
-    return "on_track"
-
-
-def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
-    spent = totals.by_category.get(goal.category, 0) if goal.category else totals.total_amount_cents
-    target = int(goal.target_amount_cents)
-    return GoalResponse(
-        public_id=goal.public_id,
-        ledger_id=goal.tenant_id,
-        name=goal.name,
-        goal_type=goal.goal_type,
-        period=goal.period,
-        month=goal.month,
-        category=goal.category,
-        target_amount_cents=target,
-        spent_amount_cents=spent,
-        remaining_amount_cents=target - spent,
-        progress_percent=(spent * 100) // target,
-        progress_state=_progress_state(goal, spent),
-        status=goal.status,
-        created_at=goal.created_at,
-        updated_at=goal.updated_at,
-        row_version=goal.row_version,
-        archived_at=goal.archived_at,
-    )
 
 
 def _goal_by_public_id(db: Session, *, tenant_id: str, public_id: str) -> Goal | None:
@@ -217,7 +145,7 @@ def list_goals(
         Goal.id.asc(),
     )
     goals = list(db.scalars(statement))
-    totals = _month_spend_totals(
+    totals = month_spend_totals(
         db,
         tenant_id=tenant_id,
         month=month,
@@ -241,7 +169,7 @@ def get_goal_response(
         return goal_debt_repayment_service.build_debt_repayment_goal_response(
             db, goal, persist_achievement=persist_achievement
         )
-    totals = _month_spend_totals(
+    totals = month_spend_totals(
         db,
         tenant_id=tenant_id,
         month=goal.month,
@@ -307,7 +235,7 @@ def create_goal(
         db.rollback()
         _raise_duplicate_goal()
     db.refresh(goal)
-    totals = _month_spend_totals(
+    totals = month_spend_totals(
         db,
         tenant_id=tenant_id,
         month=goal.month,
@@ -414,9 +342,34 @@ def update_goal(
     # the re-read below reflects the UPDATE (whether committed or only flushed).
     db.expire_all()
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
-    totals = _month_spend_totals(
+    totals = month_spend_totals(
         db,
         tenant_id=tenant_id,
+        month=goal.month,
+        timezone_name=timezone_name,
+    )
+    return goal_response(goal, totals)
+
+
+def _goal_response_by_type(
+    db: Session, goal: Goal, *, timezone_name: str | None
+) -> GoalResponse:
+    """Serialize an already-loaded goal, dispatched by ``goal_type``.
+
+    A debt_repayment goal has a NULL ``target_amount_cents`` — the spending
+    response builder crashes on ``int(None)`` — so it goes through the debt
+    evaluator instead. ``persist_achievement=False``: archive / restore are not
+    achievement-evaluation reads. Shared by :func:`archive_goal` and
+    :func:`restore_goal` (lifecycle flips that only differ in the status they
+    set, not in how the result serialises).
+    """
+    if goal.goal_type == "debt_repayment":
+        return goal_debt_repayment_service.build_debt_repayment_goal_response(
+            db, goal, persist_achievement=False
+        )
+    totals = month_spend_totals(
+        db,
+        tenant_id=goal.tenant_id,
         month=goal.month,
         timezone_name=timezone_name,
     )
@@ -439,18 +392,67 @@ def archive_goal(
         bump_row_version(goal)
         db.commit()
         db.refresh(goal)
-    if goal.goal_type == "debt_repayment":
-        # ADR-0049 §6: a debt goal has a NULL target — the spending response
-        # builder would crash on int(None). The archive flip above is goal-type
-        # agnostic; only the response build differs. persist_achievement=False:
-        # archiving is not an achievement-evaluation read.
-        return goal_debt_repayment_service.build_debt_repayment_goal_response(
-            db, goal, persist_achievement=False
-        )
-    totals = _month_spend_totals(
+    return _goal_response_by_type(db, goal, timezone_name=timezone_name)
+
+
+def restore_goal(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    expected_row_version: int,
+    timezone_name: str | None = None,
+) -> GoalResponse:
+    """ADR-0051 recycle-bin restore: reactivate an archived goal. OCC-gated.
+
+    Inverse of :func:`archive_goal` but carries ``expected_row_version`` so a
+    stale restore against a concurrently-modified row is rejected. Atomic
+    ``UPDATE goals SET status='active', archived_at=NULL, updated_at=now WHERE
+    id, tenant_id, status='archived', row_version=expected`` via
+    :func:`claim_row_with_token`. Idempotent on an already-active goal (404 only
+    when absent); a stale token against an archived goal is 409 ``state_conflict``.
+
+    A ``spending_limit`` goal cannot restore into a (month, scope) slot a peer
+    active goal already holds — the partial-unique active-scope index would
+    reject it, so the pre-check raises the friendly duplicate 409 first (the
+    ``IntegrityError`` catch is the race backstop). ``debt_repayment`` goals have
+    a NULL month and no such uniqueness, so they skip the pre-check.
+    """
+    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    if goal.status != "archived":
+        return _goal_response_by_type(db, goal, timezone_name=timezone_name)
+    if goal.goal_type == "spending_limit" and _active_goal_conflict_exists(
         db,
         tenant_id=tenant_id,
         month=goal.month,
-        timezone_name=timezone_name,
-    )
-    return goal_response(goal, totals)
+        category=goal.category,
+        goal_type=goal.goal_type,
+        period=goal.period,
+        exclude_public_id=goal.public_id,
+    ):
+        _raise_duplicate_goal()
+    now = now_utc()
+    try:
+        rowcount = claim_row_with_token(
+            db,
+            Goal,
+            pk_id=goal.id,
+            tenant_id=tenant_id,
+            expected_row_version=expected_row_version,
+            set_values={"status": "active", "archived_at": None, "updated_at": now},
+            extra_where=(Goal.status == "archived",),
+            synchronize_session=False,
+        )
+    except IntegrityError:
+        db.rollback()
+        _raise_duplicate_goal()
+    if rowcount != 1:
+        db.rollback()
+        current = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+        if current.status != "archived":
+            return _goal_response_by_type(db, current, timezone_name=timezone_name)
+        raise AppError("state_conflict", status_code=409)
+    db.commit()
+    db.expire_all()
+    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    return _goal_response_by_type(db, goal, timezone_name=timezone_name)
