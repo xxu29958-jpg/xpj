@@ -14,6 +14,32 @@ scripts\build_backend_exe.ps1 -Clean   # 连构建 venv 一起重建
 
 构建用**独立的 `.venv-build`**(uv 托管 Python 3.11),不污染运行时 `.venv`。**不含 OCR**(rapidocr/onnxruntime/opencv 太重且可选)——需要 OCR 的话另装 `requirements-ocr.txt` 跑源码版。
 
+## 一键安装(给自托管小白)
+
+已装好 PostgreSQL 后,把 `ticketbox-backend.exe`、`install_ticketbox.ps1`、
+`fix_table_owners.sql`(可选,属主修复兜底)放同一文件夹,右键
+`install_ticketbox.ps1` →「用 PowerShell 运行」。向导会:
+
+1. 定位 `psql.exe`(环境变量 `PG_BIN` → `PATH` → `C:\Program Files\PostgreSQL\<最高版本>\bin`);
+2. 用超级用户(装库时设的 `postgres` 口令)**只建空角色 + 空库**(`OWNER=ticketbox`);
+3. 生成 `ticketbox-data\.env`(**无 BOM**),`DATABASE_URL` 指向应用角色;
+4. **首次启动 EXE 以应用角色 `ticketbox` 连库建表**——表属主自然归位(堵 owner 错位陷阱,
+   见 [POSTGRES_MIGRATION.md](../../docs/runbook/POSTGRES_MIGRATION.md) §3),并自检非
+   `ticketbox` 属主的表为 0,异常时跑 `fix_table_owners.sql` 归位;
+5. 经一次性 HTTP bootstrap 创建 owner 身份,凭证 + **Android 配对码**写入
+   `ticketbox-data\owner-bootstrap.txt`,随后清掉 `.env` 里的一次性 bootstrap 开关;
+6. 注册开机自启任务计划(`-SkipScheduledTask` 可跳过)。
+
+```
+powershell -ExecutionPolicy Bypass -File install_ticketbox.ps1
+# 可选参数:-Port 8000 -DbPort 5432 -PublicBaseUrl https://api.example.com
+#           -SuperPassword <postgres口令>（不传则交互询问;trust 模式传 ""）
+#           -DbPassword <已存在 ticketbox 角色的口令>（重跑既有安装时)
+```
+
+红线:建角色/建库才用超级用户,**建表只能由应用角色连接**;`.env` 不带 BOM;不依赖
+Docker/WSL/PS7。**当前档 A 假设本机已装 PostgreSQL 服务**(免装 PG 的捆绑方案 = 档 B,待 ADR)。
+
 ## 运行与数据
 
 双击 `ticketbox-backend.exe`,默认监听 `127.0.0.1:8000`。
