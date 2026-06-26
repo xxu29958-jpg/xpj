@@ -405,3 +405,32 @@ def test_archive_debt_goal_hides_from_list(client: TestClient, *, identity) -> N
         "/api/goals?goal_type=debt_repayment&include_archived=true", headers=identity.app_headers
     )
     assert [g["public_id"] for g in all_list.json()["items"]] == [goal["public_id"]]
+
+
+def test_restore_debt_goal_dispatches_without_crash(client: TestClient, *, identity) -> None:
+    """ADR-0051 restore on a debt_repayment goal: it has a NULL target, so the
+    response MUST go through the debt evaluator — a naive spending serialise
+    would crash int(None) (the same trap archive_goal guards). Restore returns
+    200 with the debt_repayment block and the goal reappears in the active list."""
+    a = _create_external_debt(client, identity.app_headers)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="可恢复还债目标", debt_public_ids=[a["public_id"]]
+    ).json()
+    archived = client.post(
+        f"/api/goals/{goal['public_id']}/archive", headers=identity.app_headers
+    )
+    assert archived.status_code == 200, archived.json()
+
+    restored = client.post(
+        f"/api/goals/{goal['public_id']}/restore",
+        headers=identity.app_headers,
+        json={"expected_row_version": archived.json()["row_version"]},
+    )
+    assert restored.status_code == 200, restored.json()
+    assert restored.json()["status"] == "active"
+    assert restored.json()["goal_type"] == "debt_repayment"
+    assert restored.json()["debt_repayment"] is not None
+    assert restored.json()["target_amount_cents"] is None
+
+    active_list = client.get("/api/goals?goal_type=debt_repayment", headers=identity.app_headers)
+    assert [g["public_id"] for g in active_list.json()["items"]] == [goal["public_id"]]

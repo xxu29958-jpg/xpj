@@ -13,6 +13,7 @@ from app.schemas import (
     GoalCreateRequest,
     GoalListResponse,
     GoalResponse,
+    GoalTokenRequest,
     GoalUpdateRequest,
 )
 from app.services.goal_debt_repayment_service import (
@@ -21,7 +22,14 @@ from app.services.goal_debt_repayment_service import (
     replace_debt_repayment_goal_links,
     set_debt_goal_target_date,
 )
-from app.services.goal_service import archive_goal, create_goal, get_goal_response, list_goals, update_goal
+from app.services.goal_service import (
+    archive_goal,
+    create_goal,
+    get_goal_response,
+    list_goals,
+    restore_goal,
+    update_goal,
+)
 from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
@@ -164,6 +172,28 @@ def post_goal_archive(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
+        timezone_name=timezone_name,
+    )
+
+
+@router.post("/{public_id}/restore", response_model=GoalResponse)
+def post_goal_restore(
+    public_id: str,
+    payload: GoalTokenRequest,
+    timezone: str | None = None,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> GoalResponse:
+    # ADR-0051 recycle-bin restore: OCC-gated reactivate (stale token → 409;
+    # restoring into a peer-held active scope → duplicate 409). Archive stays
+    # keyless. restore_goal dispatches the response by goal_type so a
+    # debt_repayment goal (NULL target) doesn't crash int(None).
+    timezone_name = timezone or get_settings().ocr_default_timezone
+    return restore_goal(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_row_version=payload.expected_row_version,
         timezone_name=timezone_name,
     )
 

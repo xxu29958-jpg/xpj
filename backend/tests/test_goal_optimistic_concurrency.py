@@ -161,3 +161,48 @@ def test_goal_patch_against_archived_returns_409(
     )
     assert response.status_code == 409, response.text
     assert response.json()["error"] == "invalid_request"
+
+
+def test_goal_restore_reactivates_archived(
+    client: TestClient, *, identity
+) -> None:
+    """ADR-0051 recycle-bin restore: an archived spending_limit goal restores to
+    ``active`` and reappears in the active list."""
+    goal = _create_goal(client, identity=identity, name="Restore Me")
+    archived = client.post(
+        f"/api/goals/{goal['public_id']}/archive", headers=identity.app_headers
+    )
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["status"] == "archived"
+
+    restored = client.post(
+        f"/api/goals/{goal['public_id']}/restore",
+        headers=identity.app_headers,
+        json={"expected_row_version": archived.json()["row_version"]},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["status"] == "active"
+    assert restored.json()["archived_at"] is None
+
+    visible = client.get("/api/goals?month=2026-05", headers=identity.app_headers)
+    assert [item["public_id"] for item in visible.json()["items"]] == [goal["public_id"]]
+
+
+def test_goal_restore_with_stale_token_returns_409(
+    client: TestClient, *, identity
+) -> None:
+    goal = _create_goal(client, identity=identity, name="Stale Restore")
+    stale_token = goal["row_version"]
+    archived = client.post(
+        f"/api/goals/{goal['public_id']}/archive", headers=identity.app_headers
+    )
+    assert archived.status_code == 200, archived.text
+    # archive bumped row_version → the pre-archive token is stale for the
+    # now-archived row, so restore must 409 rather than flip it.
+    stale = client.post(
+        f"/api/goals/{goal['public_id']}/restore",
+        headers=identity.app_headers,
+        json={"expected_row_version": stale_token},
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["error"] == "state_conflict"

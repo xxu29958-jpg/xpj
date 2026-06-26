@@ -29,6 +29,7 @@ __all__ = [
     "GoalCreateRequest",
     "GoalListResponse",
     "GoalResponse",
+    "GoalTokenRequest",
     "GoalUpdateRequest",
 ]
 
@@ -71,6 +72,21 @@ class GoalUpdateRequest(BaseModel):
     month: str | None = Field(default=None, min_length=7, max_length=7)
     category: str | None = Field(default=None, max_length=64)
     target_amount_cents: int | None = Field(default=None, gt=0)
+
+
+class GoalTokenRequest(BaseModel):
+    """ADR-0051 recycle-bin restore: ``POST /api/goals/{public_id}/restore`` body.
+
+    Carries the client's last-seen optimistic-concurrency token so a stale
+    restore against a concurrently-modified goal is rejected with 409
+    ``state_conflict`` instead of silently un-archiving. Mirror of
+    :class:`IncomePlanTokenRequest`; archive stays keyless (one-way soft-delete)
+    while restore is OCC-gated like the recurring pause/resume toggle pair.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
 
 
 class DebtGoalLinksReplaceRequest(BaseModel):
