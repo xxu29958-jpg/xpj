@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.auth import get_current_app_context
 from app.config import get_settings
-from app.database import init_db
+from app.database import init_db, wait_for_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
 from app.middleware.cloudflare_access import cloudflare_access_guard
 from app.middleware.csrf import csrf_loopback_form_guard
@@ -138,6 +138,11 @@ def _assert_admin_api_gate_safe() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _assert_admin_api_gate_safe()
+    # ADR-0047 §3: under the Windows-service model the SCM can mark the PostgreSQL
+    # service RUNNING before it accepts connections, so block (bounded) until the
+    # DB is reachable before init_db()'s first connection. No-op when the DB is
+    # already up (dev/test); prevents the "die after 4 seconds" startup race.
+    wait_for_db()
     init_db()
     # ADR-0031 binary↔DB compatibility check (refuse to start a binary
     # older than the DB's schema_min_compatible).
