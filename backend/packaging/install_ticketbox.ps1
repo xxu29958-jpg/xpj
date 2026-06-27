@@ -38,12 +38,21 @@ function Write-Step([string]$msg) { Write-Host ""; Write-Host "==> $msg" -Foregr
 function Write-Ok([string]$msg) { Write-Host "    $msg" -ForegroundColor Green }
 
 # ── EXE + 数据目录 ──────────────────────────────────────────────────────────
+# 冻结后端是 onedir 形态（ADR-0047 §8）：EXE 在 ticketbox-backend\ 子文件夹里
+# （旁边是 _internal\）。优先找子文件夹，兼容历史的单文件平铺布局。
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if ($ExePath.Trim().Length -eq 0) { $ExePath = Join-Path $ScriptDir "ticketbox-backend.exe" }
+if ($ExePath.Trim().Length -eq 0) {
+    $onedir = Join-Path $ScriptDir "ticketbox-backend\ticketbox-backend.exe"
+    $flat = Join-Path $ScriptDir "ticketbox-backend.exe"
+    if (Test-Path -LiteralPath $onedir) { $ExePath = $onedir } else { $ExePath = $flat }
+}
 if (-not (Test-Path -LiteralPath $ExePath)) {
-    throw "未找到后端程序：$ExePath。请把本脚本和 ticketbox-backend.exe 放在同一个文件夹，或用 -ExePath 指定。"
+    throw "未找到后端程序：$ExePath。请把本脚本和 ticketbox-backend\ 文件夹（含 ticketbox-backend.exe）放在同一个目录，或用 -ExePath 指定 exe 路径。"
 }
 $ExePath = (Resolve-Path -LiteralPath $ExePath).Path
+# 数据目录跟随 EXE 所在目录（onedir 下即 ticketbox-backend\ 内），与 launch.py 的
+# _resolve_writable_data_dir() 默认（未设 TICKETBOX_DATA_DIR 时 = EXE 旁 ticketbox-data\）
+# 保持一致，否则向导写的 .env 与运行时找的目录会错位。
 $ExeDir = Split-Path -Parent $ExePath
 $DataDir = Join-Path $ExeDir "ticketbox-data"
 $EnvPath = Join-Path $DataDir ".env"
@@ -188,7 +197,8 @@ for ($i = 0; $i -lt 60; $i++) {
 }
 if (-not $healthy) {
     try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
-    throw "后端启动超时（60s 内 $baseUrl/api/health 未就绪）。查看 EXE 控制台输出排查。"
+    # 冻结后端是窗口化（console=False），无控制台输出；日志写在数据目录的 logs\backend.log。
+    throw "后端启动超时（60s 内 $baseUrl/api/health 未就绪）。查看日志排查：$(Join-Path $DataDir 'logs\backend.log')。"
 }
 Write-Ok "后端已就绪：$baseUrl"
 
@@ -273,6 +283,7 @@ Write-Host "后端地址（本机）: http://127.0.0.1:$Port"
 Write-Host "管理台（仅本机）: http://127.0.0.1:$Port/owner"
 Write-Host "数据目录       : $DataDir"
 Write-Host "配置文件       : $EnvPath（含数据库口令，请勿外泄）"
+Write-Host "运行日志       : $(Join-Path $DataDir 'logs\backend.log')（窗口化运行无控制台，排查看这里）"
 if ($pairingCode.Trim().Length -gt 0) {
     Write-Host ""
     Write-Host "用 Android App 连接：在 App 里输入服务器地址，再填配对码：" -ForegroundColor Cyan

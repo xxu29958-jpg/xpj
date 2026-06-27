@@ -10,8 +10,13 @@ config there via env vars BEFORE importing ``app.*``, because :mod:`app.config`
 resolves paths relative to its own location, which in a frozen build is the
 throwaway extraction dir (``sys._MEIPASS``).
 
-Run (frozen):   double-click ticketbox-backend.exe
+Run (frozen):   double-click ticketbox-backend/ticketbox-backend.exe (onedir folder)
 Run (dev):      python packaging/launch.py            (cwd = backend/)
+
+The frozen build is windowed (``console=False``, ADR-0047 §8), so a running
+service has no stdout/stderr. ``main()`` configures logging to a rotating file
+under ``<data>/logs/`` BEFORE importing the app and tells uvicorn not to re-point
+its handlers at ``sys.stdout`` — see :func:`_build_log_config`.
 """
 
 from __future__ import annotations
@@ -85,10 +90,79 @@ def configure_environment() -> Path:
     return data_dir
 
 
+def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:
+    """Build a ``logging.config.dictConfig`` for the frozen backend.
+
+    Everything — uvicorn's loggers plus the app/middleware loggers via the root
+    logger — goes to a size-bounded rotating file under the writable data dir.
+    This is what makes the windowed ``console=False`` service build (ADR-0047 §8)
+    viable: there ``sys.stdout``/``sys.stderr`` are ``None``, so uvicorn's default
+    config (which streams to ``ext://sys.stdout``) and Python's lastResort stderr
+    handler would both crash on ``None.write`` — and a service with no console
+    would die with no diagnostics. Routing to a file gives the service real logs.
+
+    When a usable console exists (dev / source run) logs also echo to stdout.
+    ``console`` defaults to whether ``sys.stdout`` is a real stream; tests pass it
+    explicitly to exercise both shapes without mutating the global stream.
+    """
+    if console is None:
+        console = sys.stdout is not None
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    handlers: dict[str, dict] = {
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(log_dir / "backend.log"),
+            # Bounded so a long-running self-hosted service can't grow logs
+            # without limit (ENGINEERING_RULES §12): ~5 MB × 3 backups.
+            "maxBytes": 5_000_000,
+            "backupCount": 3,
+            "encoding": "utf-8",
+            "formatter": "plain",
+            "level": "INFO",
+        }
+    }
+    active = ["file"]
+    if console:
+        handlers["console"] = {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "plain",
+            "level": "INFO",
+        }
+        active.append("console")
+
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "plain": {"format": "%(asctime)s %(levelname)s [%(name)s] %(message)s"},
+        },
+        "handlers": handlers,
+        # Root catches the app + middleware loggers (they have no own handlers).
+        "root": {"handlers": active, "level": "INFO"},
+        "loggers": {
+            # uvicorn ships its own handlers; repoint them at ours and stop
+            # propagation so its lines aren't also re-emitted via the root logger.
+            "uvicorn": {"handlers": active, "level": "INFO", "propagate": False},
+            "uvicorn.error": {"handlers": active, "level": "INFO", "propagate": False},
+            "uvicorn.access": {"handlers": active, "level": "INFO", "propagate": False},
+        },
+    }
+
+
 def main() -> None:
+    import logging.config
+
     data_dir = configure_environment()
     host = os.getenv("TICKETBOX_HOST", "127.0.0.1")
     port = int(os.getenv("TICKETBOX_PORT", "8000"))
+
+    # Configure logging to a rotating file under the data dir BEFORE importing the
+    # app, so the console=False service build (sys.stdout/stderr None) never falls
+    # through to logging's lastResort stderr handler, and startup/import-time
+    # diagnostics are captured. See _build_log_config + ADR-0047 §8.
+    logging.config.dictConfig(_build_log_config(data_dir / "logs"))
 
     # Import the app object directly (not the "app.main:app" string form):
     # uvicorn's string import re-resolves the module via importlib, which is
@@ -101,8 +175,8 @@ def main() -> None:
 
     # console=False (ADR-0047 §8 service build) gives a windowed PyInstaller
     # process no stdout/stderr — ``sys.stdout`` is None and ``.write`` would
-    # raise before uvicorn ever starts. Guard so the same entrypoint is safe in
-    # both the current console build and the future windowed-service build.
+    # raise. Guard so the same entrypoint is safe in both the console build and
+    # the windowed-service build (the file log records startup either way).
     if sys.stdout is not None:
         print(f"Ticketbox backend  ·  data: {data_dir}  ·  http://{host}:{port}", flush=True)
 
@@ -117,6 +191,10 @@ def main() -> None:
         port=port,
         log_level="info",
         access_log=False,
+        # Logging is already configured above (file + optional console). Pass
+        # None so uvicorn does NOT re-apply its default config, which streams to
+        # ext://sys.stdout and would crash under console=False.
+        log_config=None,
         timeout_graceful_shutdown=shutdown_timeout,
     )
 

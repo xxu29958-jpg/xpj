@@ -1,4 +1,5 @@
-﻿# Freeze the Ticketbox backend into dist\ticketbox-backend.exe (one-file).
+﻿# Freeze the Ticketbox backend into the onedir folder dist\ticketbox-backend\
+# (ticketbox-backend.exe + _internal\), windowed/console=False — ADR-0047 §8.
 #
 #   scripts\build_backend_exe.ps1          # incremental
 #   scripts\build_backend_exe.ps1 -Clean   # rebuild the build venv too
@@ -24,10 +25,11 @@ uv pip install --python $PyBuild -r requirements-build.txt
 Write-Host "Freezing ..."
 & (Join-Path $BuildVenv "Scripts\pyinstaller.exe") --noconfirm --clean packaging\ticketbox-backend.spec
 
-$Exe = Join-Path $BackendRoot "dist\ticketbox-backend.exe"
+$Dir = Join-Path $BackendRoot "dist\ticketbox-backend"
+$Exe = Join-Path $Dir "ticketbox-backend.exe"
 if (Test-Path $Exe) {
-    $sizeMb = [math]::Round((Get-Item $Exe).Length / 1MB, 1)
-    Write-Host "OK  ->  $Exe  ($sizeMb MB)"
+    $sizeMb = [math]::Round(((Get-ChildItem -Recurse -File $Dir | Measure-Object Length -Sum).Sum) / 1MB, 1)
+    Write-Host "OK  ->  $Dir  (folder $sizeMb MB)"
 } else {
     throw "build finished but $Exe is missing"
 }
