@@ -22,6 +22,7 @@ from app.database._core import (
     engine,
     get_db,
     settings,
+    wait_for_db,
 )
 from app.database._seed import (
     BASELINE_MIGRATION_NAME,
@@ -49,6 +50,7 @@ __all__ = [
     "seed_identity_data",
     "seed_runtime_data",
     "settings",
+    "wait_for_db",
 ]
 
 

@@ -21,33 +21,55 @@ import sys
 from pathlib import Path
 
 
-def _app_root() -> Path:
-    """Directory that holds the writable data folder.
+def _bundle_dir() -> Path:
+    """Directory the EXE was launched from (read-only program root when frozen).
 
-    Frozen: the folder the user dropped the EXE in (``sys.executable``).
-    Dev:    the backend/ project root (two levels up from this file).
+    Frozen: the folder the user dropped the EXE in (``sys.executable``). Used
+    ONLY to locate the *default* writable folder — never to write into when an
+    installer/service has pre-set ``TICKETBOX_DATA_DIR`` (the EXE may sit in a
+    read-only ``Program Files``). Dev: the backend/ project root (two levels up).
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[1]
 
 
+def _resolve_writable_data_dir() -> Path:
+    """Writable data root for files the backend *creates* (uploads, .env, backups).
+
+    Honors an installer/service-preset ``TICKETBOX_DATA_DIR`` — the ADR-0047
+    service deployment points it at ``C:\\ProgramData\\Ticketbox\\app`` because the
+    onedir EXE lives in a read-only/locked location. Only when it is unset/blank
+    do we fall back to a ``ticketbox-data/`` folder next to the EXE (dev / the
+    single-folder 档 A install). Resolving a preset HERE — instead of computing
+    the EXE-adjacent default and unconditionally overwriting the preset later —
+    is what lets the service run from a read-only ``Program Files`` install.
+    """
+    preset = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
+    if preset:
+        return Path(preset).resolve()
+    return _bundle_dir() / "ticketbox-data"
+
+
 def configure_environment() -> Path:
     """Point the app at a writable data dir; return that dir.
 
-    Order matters: a user-supplied ``ticketbox-data/.env`` wins (override=True),
-    and the data-dir defaults only fill what the user did not set
-    (``setdefault``). ``DATABASE_URL`` is NOT defaulted here — the backend is
-    PostgreSQL-only, so it falls through to ``app.config``'s local-PostgreSQL
-    default unless the user's ``.env`` sets it.
+    A preset ``TICKETBOX_DATA_DIR`` (installer / service) wins; otherwise data
+    lives next to the EXE. A user-supplied ``<data>/.env`` then wins for the
+    values it sets (override=True). ``DATABASE_URL`` is NOT defaulted here — the
+    backend is PostgreSQL-only, so it falls through to ``app.config``'s
+    local-PostgreSQL default unless the ``.env`` sets it.
     """
-    data_dir = _app_root() / "ticketbox-data"
+    data_dir = _resolve_writable_data_dir()
     (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
 
     # Anchor app.config.DATA_ROOT here so writable files the backend *creates*
     # (Owner Console settings .env, PostgreSQL backups) persist in this folder
-    # rather than the frozen build's throwaway _MEIPASS extraction dir. Set
-    # before the .env load and before main() imports app.* so app.config reads it.
+    # rather than the frozen build's throwaway _MEIPASS extraction dir. We
+    # normalize the (possibly preset) value before the .env load and before
+    # main() imports app.* so app.config reads the same resolved path we just
+    # mkdir'd. This assignment is now idempotent with a preset (data_dir == the
+    # resolved preset), so it normalizes rather than clobbering a service path.
     os.environ["TICKETBOX_DATA_DIR"] = str(data_dir)
 
     env_file = data_dir / ".env"
@@ -77,9 +99,34 @@ def main() -> None:
 
     from app.main import app as fastapi_app
 
-    print(f"Ticketbox backend  ·  data: {data_dir}  ·  http://{host}:{port}", flush=True)
-    uvicorn.run(fastapi_app, host=host, port=port, log_level="info", access_log=False)
+    # console=False (ADR-0047 §8 service build) gives a windowed PyInstaller
+    # process no stdout/stderr — ``sys.stdout`` is None and ``.write`` would
+    # raise before uvicorn ever starts. Guard so the same entrypoint is safe in
+    # both the current console build and the future windowed-service build.
+    if sys.stdout is not None:
+        print(f"Ticketbox backend  ·  data: {data_dir}  ·  http://{host}:{port}", flush=True)
+
+    # ADR-0047 §1: when run as a Windows service, Shawl stops the process by
+    # sending Ctrl-C (uvicorn → SIGINT → clean lifespan shutdown). Bound the
+    # graceful drain so a stuck request can't hang service stop forever; Shawl's
+    # --stop-timeout should be set >= this so it doesn't hard-kill first.
+    shutdown_timeout = int(os.getenv("TICKETBOX_SHUTDOWN_TIMEOUT_SECONDS", "25"))
+    uvicorn.run(
+        fastapi_app,
+        host=host,
+        port=port,
+        log_level="info",
+        access_log=False,
+        timeout_graceful_shutdown=shutdown_timeout,
+    )
 
 
 if __name__ == "__main__":
+    import multiprocessing
+
+    # PyInstaller hardening (ADR-0047 §8): a frozen build that ever spawns a
+    # child process (e.g. a future multi-worker uvicorn) would otherwise
+    # re-execute the bootloader and recursively launch the app. No-op today
+    # (workers=1, app object passed directly), required before any spawn lands.
+    multiprocessing.freeze_support()
     main()
