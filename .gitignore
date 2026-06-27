@@ -53,6 +53,9 @@ release_audit.log
 # Backend EXE packaging + venv build/rollback artifacts (regenerable; never committed)
 backend/dist/
 backend/build/
+# Vendored native bundle binaries (PG / Shawl) for ADR-0047 Option D — regenerable
+# via backend/packaging/build_pg_bundle.ps1 (PG) + GitHub release (Shawl); never committed.
+backend/packaging/vendor/
 backend/.venv-build/
 backend/.venv-old/
 backend/ticketbox-data/
