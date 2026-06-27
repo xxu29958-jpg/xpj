@@ -33,6 +33,13 @@ $IgnoredDirectories = @(
     ".claude", ".git", ".gradle", ".gradle-user", ".idea", ".pytest_cache", ".ruff_cache", ".toolchains",
     ".venv", ".venv-build", ".ci-venv", "build", "__pycache__"
 )
+# 按「相对仓库根的路径前缀」忽略（区别于上面的目录名段匹配）：捆绑 PG/Shawl 原生二进制目录
+# 含 PG tsearch 词典等**非 UTF-8** 文本，本地存在时不应误触发编码门（gitignore 忽略、永不进
+# CI 检出）。用前缀而非裸 "vendor" 段——后者会误伤 backend/app/static/*/vendor 的受跟踪资产。
+# 见 ADR-0047 Slice 2-C。
+$IgnoredPathPrefixes = @(
+    "backend/packaging/vendor"
+)
 
 function Get-RelativePath {
     param([Parameter(Mandatory = $true)][System.IO.FileInfo]$File)
@@ -48,7 +55,13 @@ function Get-RelativePath {
 function Test-IgnoredPath {
     param([Parameter(Mandatory = $true)][System.IO.FileInfo]$File)
 
-    $parts = (Get-RelativePath -File $File) -split "/"
+    $relative = Get-RelativePath -File $File
+    foreach ($prefix in $IgnoredPathPrefixes) {
+        if ($relative.StartsWith($prefix + "/", [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    $parts = $relative -split "/"
     foreach ($part in $parts) {
         if ($IgnoredDirectories -contains $part) {
             return $true
