@@ -12,6 +12,7 @@ schema changes from v1.1 onward should ship as Alembic revisions.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from logging.config import fileConfig
@@ -32,7 +33,17 @@ from app.config import get_settings  # noqa: E402
 from app.database._core import Base  # noqa: E402
 
 config = context.config
-if config.config_file_name is not None:
+# Only let Alembic configure logging when it owns the process — i.e. the
+# standalone ``alembic`` CLI, where nothing has set up logging yet. When
+# migrations run programmatically (``command.upgrade`` from ``init_db`` at app
+# startup) the host has already configured logging, and ``fileConfig``'s default
+# ``disable_existing_loggers=True`` + alembic.ini's stderr handler would tear it
+# down. In the windowed ``console=False`` frozen build (ADR-0047 §8) that
+# replaces the launcher's rotating file handler with a dead stderr handler, so
+# the service loses every log line after its first startup migration. Skipping
+# fileConfig when handlers already exist preserves the source/CLI behavior
+# (root has no handlers there) while keeping the frozen service's file logging.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata

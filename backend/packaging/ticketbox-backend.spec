@@ -4,12 +4,18 @@
 #     .venv-build\Scripts\pyinstaller.exe packaging\ticketbox-backend.spec
 # (scripts/build_backend_exe.ps1 wraps this with a clean build venv.)
 #
+# Output (ADR-0047 §8): onedir + windowed (console=False). The build produces a
+# FOLDER dist\ticketbox-backend\ (ticketbox-backend.exe + _internal\), not a
+# single self-extracting file. onedir starts faster (no per-launch temp
+# extraction), keeps psycopg's native DLLs on disk, and is the form the Shawl
+# service wrapper + Inno installer expect.
+#
 # All paths are absolute (derived from SPECPATH = this file's dir) so the build
 # is cwd-independent. Layout note: app/config.py and app/database resolve paths
-# via Path(__file__).parents[N], which at runtime points at the extraction dir
-# (sys._MEIPASS). So alembic.ini and migrations/ are bundled at the bundle ROOT
-# (dest "." / "migrations") to match backend_root; static/templates stay under
-# app/ to match Path(app/...).parent.
+# via Path(__file__).parents[N], which at runtime points at the bundle root
+# (sys._MEIPASS — the _internal\ dir in onedir). So alembic.ini and migrations/
+# are bundled at the bundle ROOT (dest "." / "migrations") to match backend_root;
+# static/templates stay under app/ to match Path(app/...).parent.
 
 import os
 
@@ -63,17 +69,35 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,  # onedir: binaries go into COLLECT below, not the EXE.
     name="ticketbox-backend",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=True,
+    # ADR-0047 §8 service build: windowed (no console). Under a Windows service
+    # there is no TTY, so sys.stdout/stderr are None. launch.py guards its startup
+    # print and routes uvicorn + app logging to a rotating file under the data dir
+    # (DATA_ROOT/logs), so the service has diagnostics and never crashes on a
+    # None.write. Launching from a terminal still works — it just won't show a
+    # console window.
+    console=False,
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+# onedir (ADR-0047 §8): collect the binaries + datas next to the EXE into
+# dist/ticketbox-backend/ (ticketbox-backend.exe + _internal/) instead of folding
+# everything into a single self-extracting file.
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="ticketbox-backend",
 )

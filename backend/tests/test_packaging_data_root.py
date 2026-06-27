@@ -87,6 +87,46 @@ def test_configure_environment_mkdirs_preset_not_exe_adjacent(monkeypatch, tmp_p
     assert os.environ["TICKETBOX_DATA_DIR"] == str(preset.resolve())
 
 
+def test_build_log_config_routes_to_rotating_file(tmp_path):
+    """uvicorn + app logs must land in a rotating file under the data dir, and the
+    log dir must be created — the only diagnostics a windowed service has."""
+    launch = _load_launch_module()
+    log_dir = tmp_path / "logs"
+    cfg = launch._build_log_config(log_dir, console=False)
+
+    assert log_dir.is_dir()  # created as a side effect
+    file_handler = cfg["handlers"]["file"]
+    assert file_handler["class"] == "logging.handlers.RotatingFileHandler"
+    assert file_handler["filename"] == str(log_dir / "backend.log")
+    # root catches the app/middleware loggers; uvicorn loggers point at the file
+    # and don't propagate (so they aren't double-logged via root).
+    assert "file" in cfg["root"]["handlers"]
+    assert cfg["loggers"]["uvicorn.error"]["handlers"] == cfg["root"]["handlers"]
+    assert cfg["loggers"]["uvicorn.error"]["propagate"] is False
+
+
+def test_build_log_config_omits_console_when_no_stdout(tmp_path):
+    """console=False frozen build: sys.stdout/stderr are None — the config must
+    attach NO stream handler, or uvicorn's first log line crashes on None.write."""
+    launch = _load_launch_module()
+    cfg = launch._build_log_config(tmp_path / "logs", console=False)
+
+    assert set(cfg["handlers"]) == {"file"}
+    for handler in cfg["handlers"].values():
+        assert "stream" not in handler  # nothing references sys.stdout/stderr
+    assert cfg["root"]["handlers"] == ["file"]
+
+
+def test_build_log_config_keeps_console_when_stdout_present(tmp_path):
+    """dev / console build keeps stdout output alongside the file."""
+    launch = _load_launch_module()
+    cfg = launch._build_log_config(tmp_path / "logs", console=True)
+
+    assert "console" in cfg["handlers"]
+    assert cfg["handlers"]["console"]["stream"] == "ext://sys.stdout"
+    assert cfg["root"]["handlers"] == ["file", "console"]
+
+
 def test_writable_dirs_follow_data_root_override(tmp_path):
     """settings .env + backups must re-anchor when DATA_ROOT is redirected.
 
@@ -108,3 +148,57 @@ def test_writable_dirs_follow_data_root_override(tmp_path):
         config.DATA_ROOT = original
         importlib.reload(importlib.import_module("app.services.backup_service"))
         importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
+
+
+def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_path):
+    """main() must configure logging itself (dictConfig with the rotating file
+    handler) AND pass log_config=None to uvicorn. If it dropped log_config=None,
+    uvicorn would re-apply its default config (which streams to ext://sys.stdout)
+    and crash on None.write under the windowed console=False build."""
+    import logging.config
+
+    import uvicorn
+
+    launch = _load_launch_module()
+    captured: dict = {}
+    monkeypatch.setattr(launch, "configure_environment", lambda: tmp_path)
+    monkeypatch.setattr(logging.config, "dictConfig", lambda cfg: captured.__setitem__("dictconfig", cfg))
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: captured.__setitem__("run_kwargs", kwargs))
+
+    launch.main()
+
+    assert captured["dictconfig"]["handlers"]["file"]["filename"] == str(tmp_path / "logs" / "backend.log")
+    assert captured["run_kwargs"]["log_config"] is None
+
+
+def test_alembic_env_skips_fileconfig_when_logging_already_configured():
+    """ADR-0047 §8 guard (migrations/env.py): when a host has already configured
+    logging (root has handlers — the launcher's dictConfig, or pytest), Alembic
+    must NOT run fileConfig. fileConfig's default disable_existing_loggers=True +
+    alembic.ini's stderr handler would tear down the launcher's rotating file
+    handler, so the windowed console=False service loses every log line after its
+    first startup migration. A sentinel handler installed on root must survive a
+    command.upgrade (which loads env.py); it would be removed if env.py
+    reconfigured logging — exactly the regression this guard prevents."""
+    import logging
+
+    from alembic import command
+    from alembic.config import Config
+
+    from app.config import BACKEND_ROOT
+    from app.database import engine
+
+    sentinel = logging.NullHandler()
+    root = logging.getLogger()
+    root.addHandler(sentinel)
+    try:
+        cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
+        cfg.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+        with engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "head")  # no-op at head, but loads env.py and runs the guard
+        assert sentinel in root.handlers, (
+            "env.py ran fileConfig despite pre-existing handlers and tore down host logging"
+        )
+    finally:
+        root.removeHandler(sentinel)
