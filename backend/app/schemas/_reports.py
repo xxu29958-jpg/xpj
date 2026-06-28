@@ -7,7 +7,7 @@ reference inside the schemas package — kept here rather than duplicated.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas._expense import ExpenseResponse
 
@@ -66,3 +66,5 @@ class LifestyleStatsResponse(BaseModel):
     max_expense: ExpenseResponse | None
     recent_7_days_amount_cents: int
     frequent_merchants: list[dict[str, int | str]]
+    best_value_expenses: list[ExpenseResponse] = Field(default_factory=list)
+    most_regretted_expenses: list[ExpenseResponse] = Field(default_factory=list)

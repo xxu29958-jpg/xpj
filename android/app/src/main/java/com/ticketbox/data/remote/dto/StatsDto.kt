@@ -51,6 +51,10 @@ data class LifestyleStatsDto(
     val recent7DaysAmountCents: Long,
     @param:Json(name = "frequent_merchants")
     val frequentMerchants: List<FrequentMerchantDto>,
+    @param:Json(name = "best_value_expenses")
+    val bestValueExpenses: List<ExpenseDto> = emptyList(),
+    @param:Json(name = "most_regretted_expenses")
+    val mostRegrettedExpenses: List<ExpenseDto> = emptyList(),
 )
 
 data class FrequentMerchantDto(

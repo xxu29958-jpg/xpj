@@ -357,6 +357,8 @@ fun LifestyleStatsDto.toDomain(): LifestyleStats = LifestyleStats(
     maxExpense = maxExpense?.toDomain(),
     recent7DaysAmountCents = recent7DaysAmountCents,
     frequentMerchants = frequentMerchants.map { it.toDomain() },
+    bestValueExpenses = bestValueExpenses.map { it.toDomain() },
+    mostRegrettedExpenses = mostRegrettedExpenses.map { it.toDomain() },
 )
 
 fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(

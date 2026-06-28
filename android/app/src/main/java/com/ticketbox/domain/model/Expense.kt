@@ -306,6 +306,8 @@ data class LifestyleStats(
     val maxExpense: Expense?,
     val recent7DaysAmountCents: Long,
     val frequentMerchants: List<FrequentMerchant>,
+    val bestValueExpenses: List<Expense> = emptyList(),
+    val mostRegrettedExpenses: List<Expense> = emptyList(),
 )
 
 data class CategoryRule(

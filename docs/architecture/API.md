@@ -193,7 +193,7 @@ Authorization: Bearer <admin_token>
 | `/api/rules/applications/{public_id}/rollback` | POST | `backend/app/routes/rules.py` | `rollbackRuleApplication(publicId)` | path `public_id` | `RuleApplicationRollbackResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 回滚未被手动改过的批次变更 |
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/tag/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
-| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
+| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_stats_lifestyle_rankings.py` | gray/internal |
 | `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/merchant_category/ranking_metric/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比；viewer 可读 |
 | `/api/reports/overview.csv` | GET | `backend/app/routes/reports.py` | v0.9 Reports Export | query 同 `/api/reports/overview` | streaming `text/csv` | Session Token | `backend/tests/test_reports.py` | v0.9 结构化报表 CSV；viewer 可读 |
 | `/api/dashboard/cards` | GET | `backend/app/routes/dashboard.py` | v0.9 Dashboard Cards | query `surface=android|web` | `DashboardCardsResponse` | Session Token | `backend/tests/test_dashboard_cards.py` | v0.9 Dashboard 卡片顺序和显隐；viewer 可读 |
@@ -1586,9 +1586,38 @@ timezone=Asia/Shanghai
       "merchant": "OpenAI",
       "count": 1
     }
+  ],
+  "best_value_expenses": [
+    {
+      "id": 42,
+      "public_id": "expense_42",
+      "amount_cents": 2000,
+      "merchant": "OpenAI",
+      "category": "AI订阅",
+      "value_score": 5,
+      "regret_score": 1,
+      "status": "confirmed"
+    }
+  ],
+  "most_regretted_expenses": [
+    {
+      "id": 43,
+      "public_id": "expense_43",
+      "amount_cents": 8800,
+      "merchant": "后悔桌搭",
+      "category": "数码",
+      "value_score": 1,
+      "regret_score": 5,
+      "status": "confirmed"
+    }
   ]
 }
 ```
+
+规则：
+
+- `best_value_expenses` / `most_regretted_expenses` 只取当前账本、目标月份内、已确认且金额已结算的账单。
+- 两个榜单最多各 5 笔，分别按 `value_score` / `regret_score` 降序，同分按金额降序、统计时间倒序。
 
 ## 报表
 
