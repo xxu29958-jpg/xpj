@@ -1,6 +1,6 @@
-# 小票夹后端 · EXE 打包
+# 小票夹后端 · EXE / Inno 打包
 
-把 FastAPI 后端冻结成**绿色 EXE**,让不懂命令行的亲友也能自托管——每人跑自己的实例(隐私优先,不共享服务器),用自己的 Android App 连。
+把 FastAPI 后端冻结成 onedir EXE,并可进一步打成 ADR-0047 的 Windows 安装器:捆绑 PostgreSQL + 后端服务,每台机器跑自己的实例(隐私优先,不共享服务器),用自己的 Android App 连。
 
 ## 构建
 
@@ -14,7 +14,47 @@ scripts\build_backend_exe.ps1 -Clean   # 连构建 venv 一起重建
 
 构建用**独立的 `.venv-build`**(uv 托管 Python 3.11),不污染运行时 `.venv`。**不含 OCR**(rapidocr/onnxruntime/opencv 太重且可选)——需要 OCR 的话另装 `requirements-ocr.txt` 跑源码版。
 
-## 一键安装(给自托管小白)
+## 档 B:Inno 捆绑安装器(ADR-0047)
+
+档 B 是正式分发路线:安装器把程序放进 `C:\Program Files\Ticketbox`,把数据放进 `C:\ProgramData\Ticketbox`,并注册两个 Windows 服务:
+
+| 服务 | 账户 | 说明 |
+|---|---|---|
+| `TicketboxPg` | `NT SERVICE\TicketboxPg` | 捆绑 PostgreSQL 17,簇在 `...\pgdata` |
+| `TicketboxBackend` | `NT SERVICE\TicketboxBackend` | Shawl 包 frozen backend,依赖 `TicketboxPg` |
+
+构建前置:
+
+1. 已生成 frozen backend:`backend\dist\ticketbox-backend\ticketbox-backend.exe`。
+2. 已裁出捆绑 PG:`backend\packaging\vendor\pg\bin\pg_ctl.exe`。
+3. 已放好 Shawl:`backend\packaging\vendor\shawl\shawl.exe`。
+4. 构建机安装 Inno Setup 6,或用 `-InnoCompiler` 指定 `ISCC.exe`。
+
+命令:
+
+```
+cd backend
+packaging\build_inno_installer.ps1 -CheckInputsOnly   # 无 Inno 时只校验输入
+packaging\build_inno_installer.ps1                    # 输出 dist\installer\Ticketbox-Setup-<version>.exe
+```
+
+安装行为:
+
+- 首次安装默认使用 `C:\ProgramData\Ticketbox\pgdata` + `C:\ProgramData\Ticketbox\app`。
+- `app\.env` 由脚本写成 UTF-8 no BOM,`DATABASE_URL` 指向应用角色 `ticketbox`。
+- 服务启动前会对既有数据库做 `pg_dump -Fc` 升级前快照,写入 `app\backups\ticketbox-pre-upgrade-installer-*.dump`;备份或校验失败则拒绝启动新后端。
+- 首次安装会通过一次性 HTTP bootstrap 创建 owner,凭证写入 `app\owner-bootstrap.txt`,随后从 `.env` 清掉 bootstrap 开关。
+- 卸载默认只删除服务和程序文件,**保留 ProgramData 数据**。只有手动运行 `uninstall_bundled_services.ps1 -DeleteData` 才删除数据目录。
+
+高级命令行参数(传给安装器 EXE):
+
+```
+Ticketbox-Setup-1.2.0.exe /TicketboxDataRoot="D:\TicketboxData" /TicketboxBackendPort=8000 /TicketboxPgPort=5432
+```
+
+注意:当前安装包未签名,Windows SmartScreen 可能提示未知发布者。这不影响本地服务模型,但正式给亲友分发前建议走代码签名/Trusted Signing。
+
+## 档 A:本机 PostgreSQL 一键安装(legacy)
 
 已装好 PostgreSQL 后,把 `ticketbox-backend\` 文件夹、`install_ticketbox.ps1`、
 `fix_table_owners.sql`(可选,属主修复兜底)放同一目录,右键
@@ -38,13 +78,13 @@ powershell -ExecutionPolicy Bypass -File install_ticketbox.ps1
 ```
 
 红线:建角色/建库才用超级用户,**建表只能由应用角色连接**;`.env` 不带 BOM;不依赖
-Docker/WSL/PS7。**当前档 A 假设本机已装 PostgreSQL 服务**(免装 PG 的捆绑方案 = 档 B,待 ADR)。
+Docker/WSL/PS7。档 A 仍假设本机已装 PostgreSQL 服务,主要用于老用户/开发机临时安装;新分发优先用上面的档 B。
 
 ## 运行与数据
 
 双击 `ticketbox-backend\ticketbox-backend.exe`,默认监听 `127.0.0.1:8000`(窗口化,不弹控制台窗口)。
 
-所有**可写数据**放在 EXE 旁的 `ticketbox-data/`(onedir 程序文件夹内、与 `_internal\` 同级;冻结的 bundle 本身只读/临时):
+档 A/直接双击时,所有**可写数据**放在 EXE 旁的 `ticketbox-data/`(onedir 程序文件夹内、与 `_internal\` 同级;冻结的 bundle 本身只读/临时):
 
 ```
 ticketbox-backend/
@@ -57,7 +97,9 @@ ticketbox-backend/
     └── .env                可选：用户覆盖配置（DATABASE_URL / PUBLIC_BASE_URL / OCR_* / 端口 等）
 ```
 
-`launch.py` 在 import `app.*` 之前把 `UPLOAD_DIR` 指向这个目录、并把 uvicorn + app 日志配到 `logs/backend.log`(windowed `console=False` 无 stdout,改写文件);若存在 `ticketbox-data/.env` 则**优先**采用其中的值(`override=True`)。`DATABASE_URL` 不在这里默认——后端是 PostgreSQL-only,要么在 `.env` 里设、要么回落到 `app.config` 的本机 PostgreSQL 默认(EXE 假设本机已装 PostgreSQL 服务)。
+档 B/服务安装器会通过 Shawl 设置 `TICKETBOX_DATA_DIR=C:\ProgramData\Ticketbox\app`,所以同一套 `launch.py` 会把 `.env`、uploads、logs、backups 都落在 ProgramData,不会写入 Program Files。
+
+`launch.py` 在 import `app.*` 之前把 `UPLOAD_DIR` 指向数据目录、并把 uvicorn + app 日志配到 `logs/backend.log`(windowed `console=False` 无 stdout,改写文件);若存在 `<data>\.env` 则**优先**采用其中的值(`override=True`)。`DATABASE_URL` 不在这里默认——后端是 PostgreSQL-only,要么在 `.env` 里设、要么回落到 `app.config` 的本机 PostgreSQL 默认(EXE 假设本机已装 PostgreSQL 服务)。
 
 可用环境变量(或写进 `ticketbox-data/.env`):
 
