@@ -65,16 +65,29 @@ begin
   Result := True;
 end;
 
+function ServiceExists(ServiceName: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\sc.exe'), 'query ' + ServiceName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := ResultCode = 0;
+end;
+
 procedure StopServiceIfPresent(ServiceName: String);
 var
   ResultCode: Integer;
 begin
-  Exec(ExpandConstant('{sys}\sc.exe'), 'stop ' + ServiceName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if ServiceExists(ServiceName) then
+  begin
+    Exec(ExpandConstant('{sys}\sc.exe'), 'stop ' + ServiceName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(30000);
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   StopServiceIfPresent('TicketboxBackend');
+  StopServiceIfPresent('TicketboxPg');
   Result := '';
 end;
 
