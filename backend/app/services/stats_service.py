@@ -289,6 +289,26 @@ def top_expenses_for_month(
     )
 
 
+def _ranked_scored_expenses(
+    expenses: list[Expense],
+    *,
+    score_attr: str,
+    limit: int = 5,
+) -> list[Expense]:
+    def sort_key(expense: Expense) -> tuple[int, int, float, int]:
+        stat_time = _stat_time(expense)
+        timestamp = stat_time.timestamp() if stat_time is not None else 0.0
+        return (
+            -(getattr(expense, score_attr) or 0),
+            -(expense.amount_cents or 0),
+            -timestamp,
+            -(expense.id or 0),
+        )
+
+    scored = [item for item in expenses if getattr(item, score_attr) is not None]
+    return sorted(scored, key=sort_key)[:limit]
+
+
 def monthly_stats(
     db: Session,
     month: str,
@@ -408,4 +428,10 @@ def lifestyle_stats(
         "max_expense": max_expense,
         "recent_7_days_amount_cents": recent_7_days_amount_cents,
         "frequent_merchants": frequent_merchants,
+        "best_value_expenses": _ranked_scored_expenses(
+            month_expenses, score_attr="value_score"
+        ),
+        "most_regretted_expenses": _ranked_scored_expenses(
+            month_expenses, score_attr="regret_score"
+        ),
     }

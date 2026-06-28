@@ -84,6 +84,11 @@
     <string name="stats_lifestyle_max_expense_value">%1$s · %2$s</string>
     <string name="stats_lifestyle_merchant_fallback">未填写商家</string>
     <string name="stats_lifestyle_empty">还没有特别统计项。</string>
+    <string name="stats_value_regret_title">真香 / 后悔榜</string>
+    <string name="stats_value_regret_value_section">真香榜</string>
+    <string name="stats_value_regret_regret_section">后悔榜</string>
+    <string name="stats_value_regret_value_score">值 %1$d/5</string>
+    <string name="stats_value_regret_regret_score">悔 %1$d/5</string>
     <string name="stats_frequent_merchants_title">高频商家</string>
     <string name="stats_frequent_merchants_count">%1$d 笔</string>
 

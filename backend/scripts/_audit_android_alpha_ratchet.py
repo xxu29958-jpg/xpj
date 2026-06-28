@@ -85,7 +85,9 @@ EXEMPT_FILES = (
 # .copy(alpha=0.14f/0.66f) tints went away with the hand-drawn receipt icon);
 # 2026-06-26 lowered 117→116 when CategoryDonut's empty-ring
 # Color.LightGray.copy(alpha=0.28f) migrated to the themed ChartTokens.empty token.
-BASELINE = 116
+# 2026-06-28 lowered 116→115 when stats LifestyleCard dividers migrated to
+# AppAlpha tiers while adding value/regret rankings.
+BASELINE = 115
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

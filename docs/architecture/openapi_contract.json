@@ -7842,6 +7842,13 @@
             "title": "Ai Subscription Amount Cents",
             "type": "integer"
           },
+          "best_value_expenses": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseResponse"
+            },
+            "title": "Best Value Expenses",
+            "type": "array"
+          },
           "digital_amount_cents": {
             "title": "Digital Amount Cents",
             "type": "integer"
@@ -7876,6 +7883,13 @@
           "month": {
             "title": "Month",
             "type": "string"
+          },
+          "most_regretted_expenses": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseResponse"
+            },
+            "title": "Most Regretted Expenses",
+            "type": "array"
           },
           "recent_7_days_amount_cents": {
             "title": "Recent 7 Days Amount Cents",

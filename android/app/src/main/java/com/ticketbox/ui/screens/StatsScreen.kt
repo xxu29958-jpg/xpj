@@ -70,6 +70,7 @@ import com.ticketbox.ui.screens.stats.ReportsInsightCard
 import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.TagStatsCard
+import com.ticketbox.ui.screens.stats.ValueRegretRankingsCard
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.StatsUiState
@@ -285,6 +286,17 @@ fun StatsScreen(
                     item { RecentUploadCard(state.lastUploadAt) }
                     state.lifestyleStats?.let { lifestyle ->
                         item { LifestyleCard(lifestyle) }
+                        if (
+                            lifestyle.bestValueExpenses.isNotEmpty() ||
+                            lifestyle.mostRegrettedExpenses.isNotEmpty()
+                        ) {
+                            item {
+                                ValueRegretRankingsCard(
+                                    bestValueExpenses = lifestyle.bestValueExpenses,
+                                    mostRegrettedExpenses = lifestyle.mostRegrettedExpenses,
+                                )
+                            }
+                        }
                         if (lifestyle.frequentMerchants.isNotEmpty()) {
                             item { FrequentMerchantsCard(lifestyle.frequentMerchants) }
                         }
