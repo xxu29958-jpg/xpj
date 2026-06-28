@@ -52,6 +52,14 @@ packaging\build_inno_installer.ps1                    # 输出 dist\installer\Ti
 Ticketbox-Setup-1.2.0.exe /TicketboxDataRoot="D:\TicketboxData" /TicketboxBackendPort=8000 /TicketboxPgPort=5432
 ```
 
+开发机若已有本机 PostgreSQL/源码后端占用默认 `5432/8000`,不要双击默认安装。改用隔离目录和端口:
+
+```
+Ticketbox-Setup-1.2.0.exe /DIR="C:\Program Files\Ticketbox-Dev" /TicketboxDataRoot="C:\ProgramData\Ticketbox-Dev" /TicketboxPgPort=5440 /TicketboxBackendPort=8001
+```
+
+安装器会在首次安装前检测所选端口;若端口已被占用,会直接中止并提示换端口,避免复制文件后后置服务脚本失败。
+
 注意:当前安装包未签名,Windows SmartScreen 可能提示未知发布者。这不影响本地服务模型,但正式给亲友分发前建议走代码签名/Trusted Signing。
 
 ## 档 A:本机 PostgreSQL 一键安装(legacy)

@@ -31,7 +31,7 @@ Source: "install_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignor
 Source: "uninstall_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 
 [Registry]
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekeyifempty
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "DataRoot"; ValueData: "{param:TicketboxDataRoot|{commonappdata}\Ticketbox}"; Flags: uninsdeletevalue
 Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "BackendPort"; ValueData: "{param:TicketboxBackendPort|8000}"; Flags: uninsdeletevalue
 Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgPort"; ValueData: "{param:TicketboxPgPort|5432}"; Flags: uninsdeletevalue
@@ -73,6 +73,61 @@ begin
   Result := ResultCode = 0;
 end;
 
+function IsPortListening(Port: String): Boolean;
+var
+  ResultCode: Integer;
+  Params: String;
+begin
+  Params := '-NoProfile -ExecutionPolicy Bypass -Command ' +
+    Quote('if (Get-NetTCPConnection -State Listen -LocalPort ' + Port + ' -ErrorAction SilentlyContinue) { exit 1 } exit 0');
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := False;
+    exit;
+  end;
+  Result := ResultCode <> 0;
+end;
+
+function FreshInstallPortError(): String;
+var
+  PgPort: String;
+  BackendPort: String;
+  DataRoot: String;
+  BusyPorts: String;
+begin
+  Result := '';
+  DataRoot := ExpandConstant('{param:TicketboxDataRoot|{commonappdata}\Ticketbox}');
+  if ServiceExists('TicketboxPg') or DirExists(DataRoot + '\pgdata') then
+  begin
+    exit;
+  end;
+
+  PgPort := ExpandConstant('{param:TicketboxPgPort|5432}');
+  BackendPort := ExpandConstant('{param:TicketboxBackendPort|8000}');
+  BusyPorts := '';
+
+  if IsPortListening(PgPort) then
+  begin
+    BusyPorts := 'PostgreSQL port ' + PgPort;
+  end;
+  if IsPortListening(BackendPort) then
+  begin
+    if BusyPorts <> '' then
+    begin
+      BusyPorts := BusyPorts + ', ';
+    end;
+    BusyPorts := BusyPorts + 'backend port ' + BackendPort;
+  end;
+
+  if BusyPorts <> '' then
+  begin
+    Result :=
+      'Ticketbox cannot use the selected ports because they are already in use: ' + BusyPorts + '.' + #13#10 + #13#10 +
+      'Close the processes using those ports, or run the installer with another port pair, for example:' + #13#10 +
+      'Ticketbox-Setup.exe /TicketboxPgPort=5440 /TicketboxBackendPort=8001';
+  end;
+end;
+
 procedure StopServiceIfPresent(ServiceName: String);
 var
   ResultCode: Integer;
@@ -88,7 +143,7 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   StopServiceIfPresent('TicketboxBackend');
   StopServiceIfPresent('TicketboxPg');
-  Result := '';
+  Result := FreshInstallPortError();
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
