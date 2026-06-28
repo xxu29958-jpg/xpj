@@ -60,6 +60,9 @@ function Find-Iscc {
         return $cmd.Source
     }
     $candidates = @()
+    if ($env:LOCALAPPDATA) {
+        $candidates += (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe")
+    }
     if (${env:ProgramFiles(x86)}) {
         $candidates += (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe")
     }
