@@ -180,10 +180,10 @@ def main() -> None:
     if sys.stdout is not None:
         print(f"Ticketbox backend  ·  data: {data_dir}  ·  http://{host}:{port}", flush=True)
 
-    # ADR-0047 §1: when run as a Windows service, Shawl stops the process by
-    # sending Ctrl-C (uvicorn → SIGINT → clean lifespan shutdown). Bound the
-    # graceful drain so a stuck request can't hang service stop forever; Shawl's
-    # --stop-timeout should be set >= this so it doesn't hard-kill first.
+    # ADR-0047 §Confirmation: keep a bounded drain for service builds. Slice 2-D
+    # verified the current console=False Shawl service build does not receive
+    # Ctrl-C/SIGINT and falls back to Shawl's stop-timeout kill; the app writes
+    # no business state during lifespan shutdown, while PG keeps durability.
     shutdown_timeout = int(os.getenv("TICKETBOX_SHUTDOWN_TIMEOUT_SECONDS", "25"))
     uvicorn.run(
         fastapi_app,
