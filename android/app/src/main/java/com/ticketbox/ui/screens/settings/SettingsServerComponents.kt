@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -104,10 +105,14 @@ import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.mascot.MascotPlaceholder
+import com.ticketbox.ui.mascot.MascotState
+import com.ticketbox.ui.mascot.mascotPalette
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -169,6 +174,17 @@ internal fun AccountStatusCard(
                     ledgerScope?.let { AccountLedgerScopePill(text = it) }
                     StatusPill(connected = serverSettings != null)
                 }
+            }
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                MascotPlaceholder(
+                    state = MascotState.Neutral,
+                    palette = mascotPalette(LocalThemeVisuals.current, LocalStateTokens.current),
+                    modifier = Modifier.clearAndSetSemantics {},
+                    size = 104.dp,
+                )
             }
             AccountInfoLine(text = stringResource(R.string.settings_account_account_line, displayAccount))
             AccountInfoLine(text = stringResource(R.string.settings_account_device_line, displayDevice))

@@ -8,9 +8,8 @@ package com.ticketbox.ui.mascot
  *   [Searching] 搜索无果举放大镜 / [Neutral] 默认清醒。
  * - **一次性反应**(one-shot,事件触发、播完自动回落环境态):其余全部。
  *
- * 本层是纯 Kotlin、零依赖(不 import Rive/Compose/Android):后续 Rive 集成
- * ([[ADR-0048]],等原画与 accept)把这里的状态映射为 Rive 状态机 input;在那之前
- * 这层先行可测,也是降级方案(静态主题化空态)共用的事件→状态真相源。
+ * 本层是纯 Kotlin、零依赖(不 import Compose/Android):事件→状态先行可测,
+ * 也是原生 Compose 渲染器共用的状态真相源。
  */
 enum class MascotState {
     Neutral,
@@ -61,7 +60,7 @@ sealed interface MascotEvent {
 
 /**
  * 事件→状态的纯 reducer。时间全部由调用方注入([onEvent]/[onTick] 的 nowMillis),
- * 自身不取时钟,便于单测与未来接 Compose frame clock / Rive advance。
+ * 自身不取时钟,便于单测与未来接 Compose frame clock。
  *
  * 规则(全部有测试钉住):
  * 1. one-shot 在播期间,同名事件忽略(动画播完整,连续审阅快速确认不抖动);
@@ -117,7 +116,7 @@ class MascotStateMachine {
     }
 
     companion object {
-        /** one-shot 播放时长(毫秒)。Rive 侧动画时长以此为准对齐(brief §4)。 */
+        /** one-shot 播放时长(毫秒)。渲染侧动画节奏以此为准对齐(brief §4)。 */
         val ONE_SHOT_DURATION_MS: Map<MascotState, Long> = mapOf(
             MascotState.Greeting to 2_400L,
             MascotState.ClampCheer to 1_800L,
@@ -136,9 +135,9 @@ class MascotStateMachine {
         }
 
         /**
-         * MascotState → Rive 状态机 state 名,命名真相源 = MASCOT_BRIEF.md §7.3。
+         * MascotState → 动画状态语义名,命名真相源 = MASCOT_BRIEF.md §7.3。
          * [MascotState.Neutral] 是表里没有的隐含清醒基线,命名对齐 idle_sleep 取
-         * `idle_awake`。绑定层(ADR-0048 集成 PR)只做这张表的查表,不再自创名字。
+         * `idle_awake`。字段名保留 Rive 时代的历史命名,但现在作为稳定语义表使用。
          */
         val RIVE_STATE_NAME: Map<MascotState, String> = mapOf(
             MascotState.Neutral to "idle_awake",
