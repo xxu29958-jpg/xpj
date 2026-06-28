@@ -90,6 +90,22 @@ function Resolve-Version {
     return $m.Groups[1].Value
 }
 
+function Resolve-VersionInfoVersion([string]$Value) {
+    $m = [regex]::Match($Value, '^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?')
+    if (-not $m.Success) {
+        return "0.0.0.0"
+    }
+
+    $parts = @($m.Groups[1].Value, $m.Groups[2].Value, $m.Groups[3].Value)
+    if ($m.Groups[4].Success) {
+        $parts += $m.Groups[4].Value
+    }
+    else {
+        $parts += "0"
+    }
+    return ($parts -join ".")
+}
+
 Write-Step "校验 Inno 安装器输入"
 Assert-File $IssPath "Inno 脚本"
 Assert-Dir $BackendDist "冻结后端 onedir"
@@ -105,6 +121,8 @@ Write-Ok "输入齐备。"
 
 $resolvedVersion = Resolve-Version
 Write-Ok "安装包版本：$resolvedVersion"
+$resolvedVersionInfo = Resolve-VersionInfoVersion $resolvedVersion
+Write-Ok "Windows 文件版本：$resolvedVersionInfo"
 
 if ($CheckInputsOnly) {
     Write-Host ""
@@ -121,7 +139,7 @@ $outDir = Join-Path $BackendRoot "dist\installer"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 Write-Step "调用 ISCC.exe"
-& $iscc "/DAppVersion=$resolvedVersion" $IssPath
+& $iscc "/DAppVersion=$resolvedVersion" "/DAppVersionInfo=$resolvedVersionInfo" $IssPath
 if ($LASTEXITCODE -ne 0) {
     throw "ISCC.exe 编译失败（exit=$LASTEXITCODE）。"
 }

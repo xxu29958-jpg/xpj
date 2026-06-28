@@ -40,25 +40,21 @@ packaging\build_inno_installer.ps1                    # 输出 dist\installer\Ti
 
 安装行为:
 
+- 安装包使用小票夹图标和“小票夹后端服务”显示名,开始菜单会创建“打开小票夹 Web”和“数据目录”快捷方式。
+- 安装向导会先让用户确认程序目录、数据目录和本机服务端口;若默认 `5432/8000` 被占用,会自动预填开发机常用隔离端口 `5440/8001`,也可以在界面中改成其它空闲端口。
 - 首次安装默认使用 `C:\ProgramData\Ticketbox\pgdata` + `C:\ProgramData\Ticketbox\app`。
 - `app\.env` 由脚本写成 UTF-8 no BOM,`DATABASE_URL` 指向应用角色 `ticketbox`。
 - 服务启动前会对既有数据库做 `pg_dump -Fc` 升级前快照,写入 `app\backups\ticketbox-pre-upgrade-installer-*.dump`;备份或校验失败则拒绝启动新后端。
 - 首次安装会通过一次性 HTTP bootstrap 创建 owner,凭证写入 `app\owner-bootstrap.txt`,随后从 `.env` 清掉 bootstrap 开关。
 - 卸载默认只删除服务和程序文件,**保留 ProgramData 数据**。只有手动运行 `uninstall_bundled_services.ps1 -DeleteData` 才删除数据目录。
 
-高级命令行参数(传给安装器 EXE):
+高级命令行参数仍可用于自动化安装(传给安装器 EXE):
 
 ```
 Ticketbox-Setup-1.2.0.exe /TicketboxDataRoot="D:\TicketboxData" /TicketboxBackendPort=8000 /TicketboxPgPort=5432
 ```
 
-开发机若已有本机 PostgreSQL/源码后端占用默认 `5432/8000`,不要双击默认安装。改用隔离目录和端口:
-
-```
-Ticketbox-Setup-1.2.0.exe /DIR="C:\Program Files\Ticketbox-Dev" /TicketboxDataRoot="C:\ProgramData\Ticketbox-Dev" /TicketboxPgPort=5440 /TicketboxBackendPort=8001
-```
-
-安装器会在首次安装前检测所选端口;若端口已被占用,会直接中止并提示换端口,避免复制文件后后置服务脚本失败。
+开发机若已有本机 PostgreSQL/源码后端占用默认 `5432/8000`,直接双击安装器即可在“服务端口”页面看到自动预填的 `5440/8001`。安装器会在正式复制文件前检测所选端口;若端口已被占用,会停在向导页提示换端口,避免复制文件后后置服务脚本失败。
 
 注意:当前安装包未签名,Windows SmartScreen 可能提示未知发布者。这不影响本地服务模型,但正式给亲友分发前建议走代码签名/Trusted Signing。
 
