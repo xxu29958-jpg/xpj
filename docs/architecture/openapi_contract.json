@@ -1189,6 +1189,44 @@
             "title": "Amount Yuan",
             "type": "string"
           },
+          "frequency": {
+            "default": "one_time",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "income_month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Month"
+          },
+          "income_month_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Month Number"
+          },
+          "income_month_year": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Month Year"
+          },
           "label": {
             "default": "",
             "title": "Label",
@@ -4740,11 +4778,17 @@
             "minimum": 0.0,
             "title": "Savings Target Cents",
             "type": "integer"
+          },
+          "spent_amount_cents": {
+            "minimum": 0.0,
+            "title": "Spent Amount Cents",
+            "type": "integer"
           }
         },
         "required": [
           "monthly_income_cents",
           "fixed_expenses_cents",
+          "spent_amount_cents",
           "savings_target_cents",
           "reserved_buffer_cents",
           "discretionary_cents"
@@ -5526,6 +5570,21 @@
           "expected_row_version"
         ],
         "title": "ExpenseRejectRequest",
+        "type": "object"
+      },
+      "ExpenseRepaymentDraftCreateRequest": {
+        "additionalProperties": false,
+        "description": "Create a repayment-draft review item from a confirmed Expense snapshot.",
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "ExpenseRepaymentDraftCreateRequest",
         "type": "object"
       },
       "ExpenseResponse": {
@@ -6814,6 +6873,27 @@
             "title": "Amount Cents",
             "type": "integer"
           },
+          "frequency": {
+            "default": "monthly",
+            "enum": [
+              "monthly",
+              "one_time"
+            ],
+            "title": "Frequency",
+            "type": "string"
+          },
+          "income_month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Month"
+          },
           "label": {
             "maxLength": 64,
             "minLength": 1,
@@ -6891,6 +6971,25 @@
             ],
             "title": "Created At"
           },
+          "frequency": {
+            "enum": [
+              "monthly",
+              "one_time"
+            ],
+            "title": "Frequency",
+            "type": "string"
+          },
+          "income_month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Month"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -6935,6 +7034,8 @@
           "public_id",
           "label",
           "source_type",
+          "frequency",
+          "income_month",
           "amount_cents",
           "pay_day",
           "status",
@@ -6980,6 +7081,33 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "enum": [
+                  "monthly",
+                  "one_time"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "income_month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Month"
           },
           "label": {
             "anyOf": [
@@ -12594,6 +12722,25 @@
         "operationId": "get_discretionary_api_budget_discretionary_get",
         "parameters": [
           {
+            "description": "Accounting month used for one-time income.",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Accounting month used for one-time income.",
+              "title": "Month"
+            }
+          },
+          {
             "in": "query",
             "name": "savings_target_cents",
             "required": false,
@@ -16284,6 +16431,84 @@
         ]
       }
     },
+    "/api/expenses/{expense_id}/repayment-draft": {
+      "post": {
+        "operationId": "post_expense_repayment_draft_api_expenses__expense_id__repayment_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseRepaymentDraftCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepaymentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Expense Repayment Draft",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
     "/api/expenses/{expense_id}/split-invite": {
       "post": {
         "operationId": "create_split_invite_api_expenses__expense_id__split_invite_post",
@@ -18121,6 +18346,25 @@
               "pattern": "^(active|archived|all)$",
               "title": "Status",
               "type": "string"
+            }
+          },
+          {
+            "description": "Accounting month used for the active total.",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Accounting month used for the active total.",
+              "title": "Month"
             }
           },
           {
