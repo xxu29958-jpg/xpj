@@ -38,6 +38,7 @@ from app.schemas import (
     TagsResponse,
 )
 from app.services.cleanup_service import cleanup_after_confirm
+from app.services.debt_service import repayment_draft_response
 from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
@@ -62,7 +63,6 @@ from app.services.expense_service import (
     undo_reject_expense,
     update_expense,
 )
-from app.services.debt_service import repayment_draft_response
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.idempotency import (
     claim_idempotent_request,

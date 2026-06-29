@@ -7,7 +7,7 @@ shape-of-response contract that the Android / web client will consume.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -268,7 +268,7 @@ def test_discretionary_subtracts_income_minus_fixed_minus_user_params(
 def test_discretionary_late_salary_backfill_offsets_existing_spend(
     client: TestClient, *, identity
 ) -> None:  # noqa: ARG001
-    spent_at = datetime(2026, 6, 12, 4, tzinfo=timezone.utc)
+    spent_at = datetime(2026, 6, 12, 4, tzinfo=UTC)
     with SessionLocal() as db:
         db.add(
             Expense(

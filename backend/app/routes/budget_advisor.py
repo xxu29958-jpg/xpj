@@ -22,8 +22,8 @@ from app.services.budget_advisor_service import (
 )
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
-    total_confirmed_spent_cents,
     total_active_recurring_monthly_cents,
+    total_confirmed_spent_cents,
 )
 from app.services.income_plan_service import total_monthly_income_cents
 from app.services.spending_contract_service import current_accounting_month

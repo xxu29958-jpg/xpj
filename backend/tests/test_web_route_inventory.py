@@ -172,6 +172,9 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/recurring/{public_id}/pause"): "writer-only",
     ("POST", "/web/recurring/{public_id}/resume"): "writer-only",
     ("POST", "/web/recurring/{public_id}/archive"): "writer-only",
+    # Recycle bin
+    ("GET", "/web/recycle-bin"): "local-only-rendering",
+    ("POST", "/web/recycle-bin/restore"): "writer-only",
     # Reports
     ("GET", "/web/reports"): "local-only-rendering",
     ("GET", "/web/reports/export.csv"): "local-only-rendering",
