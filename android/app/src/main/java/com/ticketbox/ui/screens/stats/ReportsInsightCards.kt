@@ -281,7 +281,7 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.body.weight,
         )
-        // 轴3 双柱对比:本月 vs 上月 grouped columns 给「形状」,下面的行制保留精确值。
+        // 轴3 三柱对比:本月 vs 上月 vs 去年同月 grouped columns 给「形状」,下面的行制保留精确值。
         // 两月皆零的行画不出对比,纯函数已过滤;全被滤光时只剩行制(不画空图)。
         val chartRows = remember(rows) { categoryComparisonChartRows(rows) }
         if (chartRows.size >= 2) {
@@ -290,9 +290,15 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
         }
         rows.forEach { row ->
             val deltaText = when {
-                row.deltaAmountCents > 0L -> stringResource(R.string.stats_reports_category_delta_more, formatAmount(row.deltaAmountCents))
-                row.deltaAmountCents < 0L -> stringResource(R.string.stats_reports_category_delta_less, formatAmount(abs(row.deltaAmountCents)))
-                else -> stringResource(R.string.stats_reports_category_delta_flat)
+                row.yearOverYearDeltaAmountCents > 0L -> stringResource(
+                    R.string.stats_reports_category_yoy_more,
+                    formatAmount(row.yearOverYearDeltaAmountCents),
+                )
+                row.yearOverYearDeltaAmountCents < 0L -> stringResource(
+                    R.string.stats_reports_category_yoy_less,
+                    formatAmount(abs(row.yearOverYearDeltaAmountCents)),
+                )
+                else -> stringResource(R.string.stats_reports_category_yoy_flat)
             }
             AmountBarRow(
                 label = row.category,
@@ -306,8 +312,8 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
 }
 
 /**
- * 轴3 双柱对比:本月/上月两 series 的 grouped column chart(Vico 多 series 列层默认分组)。
- * x=分类索引,bottom 轴标分类名;series 色取 chart tokens 前两槽(与图例同源)。
+ * 轴3 三柱对比:本月/上月/去年同月三 series 的 grouped column chart(Vico 多 series 列层默认分组)。
+ * x=分类索引,bottom 轴标分类名;series 色取 chart tokens 前三槽(与图例同源)。
  */
 @Composable
 private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow>) {
@@ -322,13 +328,15 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
     }
     val currentColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
     val previousColor = chartTokens.series.getOrElse(1) { MaterialTheme.colorScheme.secondary }
+    val yearOverYearColor = chartTokens.series.getOrElse(2) { MaterialTheme.colorScheme.tertiary }
 
-    // WCAG 1.1.1:同趋势图,给双柱对比补文本替代——逐分类朗读「分类 本月X 上月Y」,
-    // 「本月/上月」复用图例同源串,金额走 formatAmount。
+    // WCAG 1.1.1:同趋势图,给三柱对比补文本替代——逐分类朗读「分类 本月X 上月Y 去年同月Z」,
+    // 三个图例标签复用图例同源串,金额走 formatAmount。
     val thisMonthLabel = stringResource(R.string.stats_reports_legend_current_month)
     val lastMonthLabel = stringResource(R.string.stats_reports_legend_previous_month)
-    val comparisonA11yBody = remember(rows, thisMonthLabel, lastMonthLabel) {
-        comparisonChartA11yBody(rows, thisMonthLabel, lastMonthLabel)
+    val yearOverYearLabel = stringResource(R.string.stats_reports_legend_year_over_year_month)
+    val comparisonA11yBody = remember(rows, thisMonthLabel, lastMonthLabel, yearOverYearLabel) {
+        comparisonChartA11yBody(rows, thisMonthLabel, lastMonthLabel, yearOverYearLabel)
     }
     val comparisonA11y = stringResource(R.string.stats_reports_comparison_a11y, comparisonA11yBody)
 
@@ -337,6 +345,7 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
             columnSeries {
                 series(x = rows.indices.map { it }, y = rows.map { it.currentAmountCents })
                 series(x = rows.indices.map { it }, y = rows.map { it.previousAmountCents })
+                series(x = rows.indices.map { it }, y = rows.map { it.yearOverYearAmountCents })
             }
         }
     }
@@ -350,6 +359,7 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
                 columnProvider = ColumnCartesianLayer.ColumnProvider.series(
                     rememberLineComponent(fill = Fill(currentColor), thickness = 8.dp),
                     rememberLineComponent(fill = Fill(previousColor), thickness = 8.dp),
+                    rememberLineComponent(fill = Fill(yearOverYearColor), thickness = 8.dp),
                 ),
             ),
             startAxis = VerticalAxis.rememberStart(line = axisLineComponent, label = axisLabelComponent, valueFormatter = startAxisValueFormatter),
@@ -364,18 +374,23 @@ private fun CategoryComparisonGroupedChart(rows: List<CategoryComparisonChartRow
     )
 }
 
-/** 图例:两色点+「本月/上月」,与 grouped chart 的 series 色同源(chart tokens 前两槽)。 */
+/** 图例:三色点+「本月/上月/去年同月」,与 grouped chart 的 series 色同源(chart tokens 前三槽)。 */
 @Composable
 private fun ComparisonLegend() {
     val chartTokens = LocalChartTokens.current
     val currentColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
     val previousColor = chartTokens.series.getOrElse(1) { MaterialTheme.colorScheme.secondary }
+    val yearOverYearColor = chartTokens.series.getOrElse(2) { MaterialTheme.colorScheme.tertiary }
     Row(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LegendDot(color = currentColor, label = stringResource(R.string.stats_reports_legend_current_month))
         LegendDot(color = previousColor, label = stringResource(R.string.stats_reports_legend_previous_month))
+        LegendDot(
+            color = yearOverYearColor,
+            label = stringResource(R.string.stats_reports_legend_year_over_year_month),
+        )
     }
 }
 

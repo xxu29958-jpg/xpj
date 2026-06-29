@@ -271,9 +271,9 @@
 
     var chart = window.echarts.init(container);
     chart.setOption({
-      color: [colors.series[0], rgba(colors.series[2], 0.55)],
+      color: [colors.series[0], rgba(colors.series[2], 0.55), rgba(colors.series[4], 0.55)],
       legend: {
-        data: ['本月', '上月'],
+        data: ['本月', '上月', '去年同月'],
         top: 0,
         textStyle: { color: colors.axisLabel, fontSize: 12 },
       },
@@ -284,10 +284,14 @@
           if (!items || !items.length) return '';
           var row = rows[items[0].dataIndex];
           var delta = Number(row.delta_amount_cents || 0);
+          var yoyDelta = Number(row.year_over_year_delta_amount_cents || 0);
           var prefix = delta > 0 ? '+' : '';
+          var yoyPrefix = yoyDelta > 0 ? '+' : '';
           return row.category + '<br>本月 ' + homeMoneyCents(row.amount_cents)
             + '<br>上月 ' + homeMoneyCents(row.previous_amount_cents)
-            + '<br>环比 ' + prefix + homeMoneyCents(delta);
+            + '<br>去年同月 ' + homeMoneyCents(row.year_over_year_amount_cents)
+            + '<br>环比 ' + prefix + homeMoneyCents(delta)
+            + '<br>同比 ' + yoyPrefix + homeMoneyCents(yoyDelta);
         },
       }),
       grid: { left: 58, right: 22, top: 36, bottom: 44 },
@@ -326,6 +330,12 @@
         name: '上月',
         type: 'bar',
         data: rows.map(function (row) { return row.previous_amount_cents; }),
+        itemStyle: { borderRadius: [5, 5, 0, 0] },
+        barWidth: 14,
+      }, {
+        name: '去年同月',
+        type: 'bar',
+        data: rows.map(function (row) { return row.year_over_year_amount_cents; }),
         itemStyle: { borderRadius: [5, 5, 0, 0] },
         barWidth: 14,
       }],

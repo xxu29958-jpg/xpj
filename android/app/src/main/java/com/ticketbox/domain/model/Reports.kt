@@ -50,6 +50,10 @@ data class ReportCategoryComparison(
     val previousCount: Int,
     val deltaAmountCents: Long,
     val deltaCount: Int,
+    val yearOverYearAmountCents: Long,
+    val yearOverYearCount: Int,
+    val yearOverYearDeltaAmountCents: Long,
+    val yearOverYearDeltaCount: Int,
 )
 
 data class ReportsOverview(
@@ -61,6 +65,11 @@ data class ReportsOverview(
     val previousMonth: String,
     val previousTotalAmountCents: Long,
     val previousCount: Int,
+    val yearOverYearMonth: String,
+    val yearOverYearTotalAmountCents: Long,
+    val yearOverYearCount: Int,
+    val yearOverYearDeltaAmountCents: Long,
+    val yearOverYearDeltaCount: Int,
     val merchantCategory: String?,
     val rankingMetric: ReportRankingMetric,
     val trend: List<ReportTrendPoint>,

@@ -122,6 +122,22 @@ def test_reports_overview_trends_rankings_and_category_comparison(
         confirmed_at=datetime(2026, 4, 10, 0, 1, tzinfo=UTC),
     )
     _insert_expense(
+        amount_cents=1800,
+        merchant="去年交通",
+        category="交通",
+        status="confirmed",
+        expense_time=datetime(2025, 5, 11, 0, 0, tzinfo=UTC),
+        confirmed_at=datetime(2025, 5, 11, 0, 1, tzinfo=UTC),
+    )
+    _insert_expense(
+        amount_cents=700,
+        merchant="去年日用品",
+        category="日用品",
+        status="confirmed",
+        expense_time=datetime(2025, 5, 12, 0, 0, tzinfo=UTC),
+        confirmed_at=datetime(2025, 5, 12, 0, 1, tzinfo=UTC),
+    )
+    _insert_expense(
         amount_cents=7777,
         merchant="待确认不应统计",
         category="餐饮",
@@ -144,6 +160,11 @@ def test_reports_overview_trends_rankings_and_category_comparison(
     assert payload["previous_month"] == "2026-04"
     assert payload["previous_total_amount_cents"] == 500
     assert payload["previous_count"] == 1
+    assert payload["year_over_year_month"] == "2025-05"
+    assert payload["year_over_year_total_amount_cents"] == 2500
+    assert payload["year_over_year_count"] == 2
+    assert payload["year_over_year_delta_amount_cents"] == 1700
+    assert payload["year_over_year_delta_count"] == 1
     assert payload["merchant_category"] is None
     assert payload["ranking_metric"] == "amount"
     assert payload["trend"][0] == {
@@ -167,6 +188,10 @@ def test_reports_overview_trends_rankings_and_category_comparison(
             "previous_count": 0,
             "delta_amount_cents": 2200,
             "delta_count": 1,
+            "year_over_year_amount_cents": 1800,
+            "year_over_year_count": 1,
+            "year_over_year_delta_amount_cents": 400,
+            "year_over_year_delta_count": 0,
         },
         {
             "category": "餐饮",
@@ -176,6 +201,23 @@ def test_reports_overview_trends_rankings_and_category_comparison(
             "previous_count": 1,
             "delta_amount_cents": 1500,
             "delta_count": 1,
+            "year_over_year_amount_cents": 0,
+            "year_over_year_count": 0,
+            "year_over_year_delta_amount_cents": 2000,
+            "year_over_year_delta_count": 2,
+        },
+        {
+            "category": "日用品",
+            "amount_cents": 0,
+            "count": 0,
+            "previous_amount_cents": 0,
+            "previous_count": 0,
+            "delta_amount_cents": 0,
+            "delta_count": 0,
+            "year_over_year_amount_cents": 700,
+            "year_over_year_count": 1,
+            "year_over_year_delta_amount_cents": -700,
+            "year_over_year_delta_count": -1,
         },
     ]
 
@@ -248,8 +290,9 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     ]
     assert csv_response.text.startswith("\ufeffsection,field,value")
     assert "summary,ranking_metric,count" in csv_response.text
+    assert "summary,year_over_year_month,2025-05" in csv_response.text
     assert "merchant_ranking,1,A店,300,3" in csv_response.text
-    assert "category_comparison,交通,2000,1" in csv_response.text
+    assert "category_comparison,交通,2000,1,0,0,2000,1,0,0,2000,1" in csv_response.text
     assert "灰度报表导出不应串入" not in csv_response.text
 
 

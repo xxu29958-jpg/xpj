@@ -103,11 +103,18 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     )
     assert blob is not None
     overview = json.loads(blob.group(1))
-    assert {"trend", "merchant_ranking", "ranking_metric", "category_comparison"} <= overview.keys()
+    assert {
+        "trend",
+        "merchant_ranking",
+        "ranking_metric",
+        "category_comparison",
+        "year_over_year_month",
+    } <= overview.keys()
     assert overview["ranking_metric"] == "count"
     assert "星巴克" in [row["merchant"] for row in overview["merchant_ranking"]]
     assert "灰度账本商家" not in [row["merchant"] for row in overview["merchant_ranking"]]
-    assert "分类环比" in response.text
+    assert "分类对比" in response.text
+    assert "去年同月" in response.text
     assert "灰度账本商家" not in response.text
     assert "/web/reports/export.csv" in response.text
     assert "granularity=week" in response.text

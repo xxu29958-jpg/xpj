@@ -195,7 +195,7 @@ Authorization: Bearer <admin_token>
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/tag/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_stats_lifestyle_rankings.py` | gray/internal |
-| `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/merchant_category/ranking_metric/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比；viewer 可读 |
+| `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/merchant_category/ranking_metric/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比/同比；viewer 可读 |
 | `/api/reports/overview.csv` | GET | `backend/app/routes/reports.py` | v0.9 Reports Export | query 同 `/api/reports/overview` | streaming `text/csv` | Session Token | `backend/tests/test_reports.py` | v0.9 结构化报表 CSV；viewer 可读 |
 | `/api/dashboard/cards` | GET | `backend/app/routes/dashboard.py` | v0.9 Dashboard Cards | query `surface=android|web` | `DashboardCardsResponse` | Session Token | `backend/tests/test_dashboard_cards.py` | v0.9 Dashboard 卡片顺序和显隐；viewer 可读 |
 | `/api/dashboard/cards` | PUT | `backend/app/routes/dashboard.py` | v0.9 Dashboard Cards | query `surface=android|web`；`DashboardCardsUpdateRequest` | `DashboardCardsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_dashboard_cards.py` | v0.9 保存 Dashboard 卡片顺序和显隐 |
@@ -1646,7 +1646,7 @@ timezone=Asia/Shanghai
 
 ## 报表
 
-> v0.9 起提供服务端报表聚合。报表接口只返回结构化统计数据，不返回图表库私有格式，不做图片渲染。前端用它绘制 Android / `/web` 动态趋势、商家排行和分类环比。
+> v0.9 起提供服务端报表聚合。报表接口只返回结构化统计数据，不返回图表库私有格式，不做图片渲染。前端用它绘制 Android / `/web` 动态趋势、商家排行和分类对比/同比。
 
 ### GET /api/reports/overview
 
@@ -1673,7 +1673,7 @@ timezone=Asia/Shanghai
 - 统计时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
 - `day` / `week` 按指定 `timezone` 的本地自然日和自然周分桶；`month` 返回截至目标月的 6 个月趋势。
 - 商家排行按当前月份聚合金额和笔数，并按已启用商家别名合并展示名；`merchant_category` 只过滤商家排行，`ranking_metric` 控制按金额或笔数排序。
-- 分类对比返回当前月、上月和差额；旧分类别名会按分类归一规则合并。
+- 分类对比返回当前月、上月、去年同月、环比差额和同比差额；旧分类别名会按分类归一规则合并。
 - `viewer` 可读；接口不要求 writer 权限。
 
 返回：
@@ -1688,6 +1688,11 @@ timezone=Asia/Shanghai
   "previous_month": "2026-04",
   "previous_total_amount_cents": 500,
   "previous_count": 1,
+  "year_over_year_month": "2025-05",
+  "year_over_year_total_amount_cents": 1800,
+  "year_over_year_count": 2,
+  "year_over_year_delta_amount_cents": 2400,
+  "year_over_year_delta_count": 1,
   "merchant_category": null,
   "ranking_metric": "amount",
   "trend": [
@@ -1713,7 +1718,11 @@ timezone=Asia/Shanghai
       "previous_amount_cents": 500,
       "previous_count": 1,
       "delta_amount_cents": 1500,
-      "delta_count": 1
+      "delta_count": 1,
+      "year_over_year_amount_cents": 1800,
+      "year_over_year_count": 1,
+      "year_over_year_delta_amount_cents": 200,
+      "year_over_year_delta_count": 1
     }
   ]
 }
@@ -1731,10 +1740,10 @@ Authorization: Bearer <session_token>
 
 返回 `text/csv; charset=utf-8`，带 UTF-8 BOM 和下载文件名。CSV 分四段：
 
-- `summary`：月份、时区、粒度、总额、上月总额、商家排行过滤和排序参数。
+- `summary`：月份、时区、粒度、总额、上月总额、去年同月总额、商家排行过滤和排序参数。
 - `trend`：趋势桶、展示标签、金额、笔数。
 - `merchant_ranking`：排行名次、商家、金额、笔数。
-- `category_comparison`：分类本月、上月和差额。
+- `category_comparison`：分类本月、上月、去年同月、环比差额和同比差额。
 
 PNG 导出仍由 Android / `/web` 展示层完成；后端不渲染图表图片。
 

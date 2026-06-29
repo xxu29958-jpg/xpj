@@ -41,6 +41,10 @@ class ReportCategoryComparisonResponse(BaseModel):
     previous_count: int
     delta_amount_cents: int
     delta_count: int
+    year_over_year_amount_cents: int
+    year_over_year_count: int
+    year_over_year_delta_amount_cents: int
+    year_over_year_delta_count: int
 
 
 class ReportsOverviewResponse(BaseModel):
@@ -52,6 +56,11 @@ class ReportsOverviewResponse(BaseModel):
     previous_month: str
     previous_total_amount_cents: int
     previous_count: int
+    year_over_year_month: str
+    year_over_year_total_amount_cents: int
+    year_over_year_count: int
+    year_over_year_delta_amount_cents: int
+    year_over_year_delta_count: int
     merchant_category: str | None = None
     ranking_metric: str
     trend: list[ReportTrendPointResponse]

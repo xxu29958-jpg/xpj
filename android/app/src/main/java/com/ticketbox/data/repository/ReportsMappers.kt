@@ -39,6 +39,11 @@ fun ReportsOverviewDto.toDomain(): ReportsOverview = ReportsOverview(
     previousMonth = previousMonth,
     previousTotalAmountCents = previousTotalAmountCents,
     previousCount = previousCount,
+    yearOverYearMonth = yearOverYearMonth,
+    yearOverYearTotalAmountCents = yearOverYearTotalAmountCents,
+    yearOverYearCount = yearOverYearCount,
+    yearOverYearDeltaAmountCents = yearOverYearDeltaAmountCents,
+    yearOverYearDeltaCount = yearOverYearDeltaCount,
     merchantCategory = merchantCategory?.let(::normalizeExpenseCategory),
     rankingMetric = ReportRankingMetric.fromApiValue(rankingMetric),
     trend = trend.map { it.toDomain() },
@@ -67,6 +72,10 @@ private fun ReportCategoryComparisonDto.toDomain(): ReportCategoryComparison = R
     previousCount = previousCount,
     deltaAmountCents = deltaAmountCents,
     deltaCount = deltaCount,
+    yearOverYearAmountCents = yearOverYearAmountCents,
+    yearOverYearCount = yearOverYearCount,
+    yearOverYearDeltaAmountCents = yearOverYearDeltaAmountCents,
+    yearOverYearDeltaCount = yearOverYearDeltaCount,
 )
 
 fun GoalDto.toDomain(): Goal = Goal(

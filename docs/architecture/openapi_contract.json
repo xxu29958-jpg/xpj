@@ -10168,6 +10168,22 @@
           "previous_count": {
             "title": "Previous Count",
             "type": "integer"
+          },
+          "year_over_year_amount_cents": {
+            "title": "Year Over Year Amount Cents",
+            "type": "integer"
+          },
+          "year_over_year_count": {
+            "title": "Year Over Year Count",
+            "type": "integer"
+          },
+          "year_over_year_delta_amount_cents": {
+            "title": "Year Over Year Delta Amount Cents",
+            "type": "integer"
+          },
+          "year_over_year_delta_count": {
+            "title": "Year Over Year Delta Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -10177,7 +10193,11 @@
           "previous_amount_cents",
           "previous_count",
           "delta_amount_cents",
-          "delta_count"
+          "delta_count",
+          "year_over_year_amount_cents",
+          "year_over_year_count",
+          "year_over_year_delta_amount_cents",
+          "year_over_year_delta_count"
         ],
         "title": "ReportCategoryComparisonResponse",
         "type": "object"
@@ -10302,6 +10322,26 @@
             },
             "title": "Trend",
             "type": "array"
+          },
+          "year_over_year_count": {
+            "title": "Year Over Year Count",
+            "type": "integer"
+          },
+          "year_over_year_delta_amount_cents": {
+            "title": "Year Over Year Delta Amount Cents",
+            "type": "integer"
+          },
+          "year_over_year_delta_count": {
+            "title": "Year Over Year Delta Count",
+            "type": "integer"
+          },
+          "year_over_year_month": {
+            "title": "Year Over Year Month",
+            "type": "string"
+          },
+          "year_over_year_total_amount_cents": {
+            "title": "Year Over Year Total Amount Cents",
+            "type": "integer"
           }
         },
         "required": [
@@ -10313,6 +10353,11 @@
           "previous_month",
           "previous_total_amount_cents",
           "previous_count",
+          "year_over_year_month",
+          "year_over_year_total_amount_cents",
+          "year_over_year_count",
+          "year_over_year_delta_amount_cents",
+          "year_over_year_delta_count",
           "ranking_metric",
           "trend",
           "merchant_ranking",

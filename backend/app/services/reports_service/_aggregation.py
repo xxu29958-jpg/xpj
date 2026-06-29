@@ -47,6 +47,46 @@ def _range_amount_count(
     return int(row[0] or 0), int(row[1] or 0)
 
 
+def _range_amount_counts(
+    db: Session,
+    *,
+    tenant_id: str,
+    ranges: dict[str, tuple[datetime, datetime]],
+) -> dict[str, tuple[int, int]]:
+    if not ranges:
+        return {}
+    stat_time = _stat_time_expr()
+    columns = []
+    labels = list(ranges)
+    for index, label in enumerate(labels):
+        start_utc, end_utc = ranges[label]
+        in_range = (stat_time >= start_utc) & (stat_time < end_utc)
+        columns.extend(
+            [
+                func.coalesce(
+                    func.sum(case((in_range, Expense.amount_cents), else_=0)),
+                    0,
+                ).label(f"amount_{index}"),
+                func.coalesce(
+                    func.sum(case((in_range, 1), else_=0)),
+                    0,
+                ).label(f"count_{index}"),
+            ]
+        )
+    statement = (
+        add_ledger_scope(select(*columns), Expense, tenant_id)
+        .where(Expense.status == "confirmed")
+        .where(Expense.amount_cents.is_not(None))
+        .where(stat_time >= min(start for start, _end in ranges.values()))
+        .where(stat_time < max(end for _start, end in ranges.values()))
+    )
+    row = db.execute(statement).one()
+    return {
+        label: (int(row[index * 2] or 0), int(row[index * 2 + 1] or 0))
+        for index, label in enumerate(labels)
+    }
+
+
 def _trend_buckets(
     *,
     month: str,

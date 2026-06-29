@@ -28,11 +28,12 @@ internal data class CategoryComparisonChartRow(
     val category: String,
     val currentAmountCents: Long,
     val previousAmountCents: Long,
+    val yearOverYearAmountCents: Long,
 )
 
 /**
- * 轴3 双柱对比的图数据(纯函数,单测直测):负值钳零(图不画负柱),
- * 两月皆零的行剔除(画不出对比还占一个 x 位);保序取前 5(与行制 take(5) 同窗口)。
+ * 轴3 三柱对比的图数据(纯函数,单测直测):负值钳零(图不画负柱),
+ * 三期皆零的行剔除(画不出对比还占一个 x 位);保序取前 5(与行制 take(5) 同窗口)。
  */
 internal fun categoryComparisonChartRows(
     rows: List<ReportCategoryComparison>,
@@ -43,9 +44,14 @@ internal fun categoryComparisonChartRows(
                 category = row.category,
                 currentAmountCents = row.amountCents.coerceAtLeast(0L),
                 previousAmountCents = row.previousAmountCents.coerceAtLeast(0L),
+                yearOverYearAmountCents = row.yearOverYearAmountCents.coerceAtLeast(0L),
             )
         }
-        .filter { it.currentAmountCents > 0L || it.previousAmountCents > 0L }
+        .filter {
+            it.currentAmountCents > 0L ||
+                it.previousAmountCents > 0L ||
+                it.yearOverYearAmountCents > 0L
+        }
         .take(5)
         .toList()
 
@@ -81,14 +87,16 @@ internal fun trendChartA11y(points: List<ReportTrendChartPoint>): TrendChartA11y
     )
 }
 
-/** 双柱对比图文本替代 body:逐分类「分类 本月X 上月Y」以「；」相接;月份标签由调用方传入资源串
- *  ([currentMonthLabel]/[previousMonthLabel] 复用图例同源串)。图数据已过滤两月皆零,无需再滤。 */
+/** 三柱对比图文本替代 body:逐分类「分类 本月X 上月Y 去年同月Z」以「；」相接;月份标签由调用方传入资源串
+ *  ([currentMonthLabel]/[previousMonthLabel]/[yearOverYearLabel] 复用图例同源串)。图数据已过滤三期皆零,无需再滤。 */
 internal fun comparisonChartA11yBody(
     rows: List<CategoryComparisonChartRow>,
     currentMonthLabel: String,
     previousMonthLabel: String,
+    yearOverYearLabel: String,
 ): String =
     rows.joinToString("；") {
         "${it.category} $currentMonthLabel ${formatAmount(it.currentAmountCents)} " +
-            "$previousMonthLabel ${formatAmount(it.previousAmountCents)}"
+            "$previousMonthLabel ${formatAmount(it.previousAmountCents)} " +
+            "$yearOverYearLabel ${formatAmount(it.yearOverYearAmountCents)}"
     }

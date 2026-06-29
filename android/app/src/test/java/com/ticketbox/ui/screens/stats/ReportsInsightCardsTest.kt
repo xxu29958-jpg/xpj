@@ -46,18 +46,25 @@ class ReportsInsightCardsTest {
 
     @Test
     fun comparisonChartRowsClampNegativesAndDropBothZeroRows() {
-        // 轴3 双柱:负值钳零(图不画负柱);两月皆零的行剔除(画不出对比还占 x 位)。
+        // 轴3 三柱:负值钳零(图不画负柱);三月皆零的行剔除(画不出对比还占 x 位)。
         val rows = categoryComparisonChartRows(
             listOf(
-                comparisonRow(category = "餐饮", amountCents = 1_200L, previousAmountCents = 900L),
+                comparisonRow(
+                    category = "餐饮",
+                    amountCents = 1_200L,
+                    previousAmountCents = 900L,
+                    yearOverYearAmountCents = 1_000L,
+                ),
                 comparisonRow(category = "退款", amountCents = -500L, previousAmountCents = 0L),
                 comparisonRow(category = "交通", amountCents = 0L, previousAmountCents = 800L),
+                comparisonRow(category = "日用品", amountCents = 0L, previousAmountCents = 0L, yearOverYearAmountCents = 600L),
             ),
         )
         assertEquals(
             listOf(
-                CategoryComparisonChartRow("餐饮", 1_200L, 900L),
-                CategoryComparisonChartRow("交通", 0L, 800L),
+                CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L),
+                CategoryComparisonChartRow("交通", 0L, 800L, 0L),
+                CategoryComparisonChartRow("日用品", 0L, 0L, 600L),
             ),
             rows,
         )
@@ -106,15 +113,16 @@ class ReportsInsightCardsTest {
     fun comparisonA11yBodyInterleavesLabelsJoinedByFullwidthSemicolon() {
         val body = comparisonChartA11yBody(
             listOf(
-                CategoryComparisonChartRow("餐饮", 1_200L, 900L),
-                CategoryComparisonChartRow("交通", 0L, 800L),
+                CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L),
+                CategoryComparisonChartRow("交通", 0L, 800L, 0L),
             ),
             currentMonthLabel = "本月",
             previousMonthLabel = "上月",
+            yearOverYearLabel = "去年同月",
         )
         assertEquals(
-            "餐饮 本月 ${formatAmount(1_200L)} 上月 ${formatAmount(900L)}；" +
-                "交通 本月 ${formatAmount(0L)} 上月 ${formatAmount(800L)}",
+            "餐饮 本月 ${formatAmount(1_200L)} 上月 ${formatAmount(900L)} 去年同月 ${formatAmount(1_000L)}；" +
+                "交通 本月 ${formatAmount(0L)} 上月 ${formatAmount(800L)} 去年同月 ${formatAmount(0L)}",
             body,
         )
     }
@@ -123,6 +131,7 @@ class ReportsInsightCardsTest {
         category: String,
         amountCents: Long,
         previousAmountCents: Long,
+        yearOverYearAmountCents: Long = 0L,
     ) = ReportCategoryComparison(
         category = category,
         amountCents = amountCents,
@@ -131,5 +140,9 @@ class ReportsInsightCardsTest {
         previousCount = 1,
         deltaAmountCents = amountCents - previousAmountCents,
         deltaCount = 0,
+        yearOverYearAmountCents = yearOverYearAmountCents,
+        yearOverYearCount = if (yearOverYearAmountCents > 0L) 1 else 0,
+        yearOverYearDeltaAmountCents = amountCents - yearOverYearAmountCents,
+        yearOverYearDeltaCount = 0,
     )
 }

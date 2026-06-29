@@ -58,6 +58,7 @@
       {% else %}
       <span>上月无数据</span>
       {% endif %}
+      <span> · 同比 {{ home_currency_symbol }}{{ r.year_over_year_delta_amount_yuan }}</span>
     </div>
   </div>
   <div class="kpi-cell">
@@ -194,12 +195,12 @@
     </div>
   </div>
 
-  {# 分类环比 — reports.js renderCategory（本月 vs 上月）#}
+  {# 分类对比 — reports.js renderCategory（本月 vs 上月 vs 去年同月）#}
   <div class="col-4">
     <div class="dt-card reports-panel">
       <div class="card-head">
-        <div class="card-title">分类环比</div>
-        <div class="card-sub">本月 vs 上月</div>
+        <div class="card-title">分类对比</div>
+        <div class="card-sub">本月 vs 上月 vs 去年同月</div>
       </div>
       <div id="reports-category-chart" class="chart-canvas tall"></div>
     </div>

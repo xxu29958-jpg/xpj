@@ -30,6 +30,14 @@ data class ReportCategoryComparisonDto(
     val deltaAmountCents: Long,
     @param:Json(name = "delta_count")
     val deltaCount: Int,
+    @param:Json(name = "year_over_year_amount_cents")
+    val yearOverYearAmountCents: Long,
+    @param:Json(name = "year_over_year_count")
+    val yearOverYearCount: Int,
+    @param:Json(name = "year_over_year_delta_amount_cents")
+    val yearOverYearDeltaAmountCents: Long,
+    @param:Json(name = "year_over_year_delta_count")
+    val yearOverYearDeltaCount: Int,
 )
 
 data class ReportsOverviewDto(
@@ -45,6 +53,16 @@ data class ReportsOverviewDto(
     val previousTotalAmountCents: Long,
     @param:Json(name = "previous_count")
     val previousCount: Int,
+    @param:Json(name = "year_over_year_month")
+    val yearOverYearMonth: String,
+    @param:Json(name = "year_over_year_total_amount_cents")
+    val yearOverYearTotalAmountCents: Long,
+    @param:Json(name = "year_over_year_count")
+    val yearOverYearCount: Int,
+    @param:Json(name = "year_over_year_delta_amount_cents")
+    val yearOverYearDeltaAmountCents: Long,
+    @param:Json(name = "year_over_year_delta_count")
+    val yearOverYearDeltaCount: Int,
     @param:Json(name = "merchant_category")
     val merchantCategory: String?,
     @param:Json(name = "ranking_metric")

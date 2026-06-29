@@ -104,23 +104,27 @@
     <!-- 轴3 粒度切换（日/周两档；单月报表内「月」只有一桶无图可画，刻意不给）。 -->
     <string name="stats_reports_granularity_day">按日</string>
     <string name="stats_reports_granularity_week">按周</string>
-    <!-- 轴3 双柱对比图例（色点与 grouped chart 的 series 同源）。 -->
+    <!-- 轴3 三柱对比图例（色点与 grouped chart 的 series 同源）。 -->
     <string name="stats_reports_legend_current_month">本月</string>
     <string name="stats_reports_legend_previous_month">上月</string>
+    <string name="stats_reports_legend_year_over_year_month">去年同月</string>
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
     <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，数据还太少；多记几笔后这里会显示每日支出柱状趋势。</string>
     <!-- WCAG 1.1.1 图表文本替代（screen reader / TalkBack 用）：Vico 柱图是不透明画布，给图表节点
-         补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y」逐档拼接；
+         补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y 去年同月Z」逐档拼接；
          _with_zeros 变体把零额档汇总成「其余 N 档无支出」，避免日粒度下逐日朗读 ¥0.00。 -->
     <string name="stats_reports_chart_a11y">支出趋势，各档金额：%1$s</string>
     <string name="stats_reports_chart_a11y_with_zeros">支出趋势，各档金额：%1$s；其余 %2$d 档无支出</string>
-    <string name="stats_reports_comparison_a11y">分类环比：%1$s</string>
+    <string name="stats_reports_comparison_a11y">分类对比：%1$s</string>
     <string name="stats_reports_merchant_ranking_title">商家排行</string>
     <string name="stats_reports_merchant_fallback">未填写商家</string>
-    <string name="stats_reports_category_comparison_title">分类环比</string>
+    <string name="stats_reports_category_comparison_title">分类对比</string>
     <string name="stats_reports_category_delta_more">多 %1$s</string>
     <string name="stats_reports_category_delta_less">少 %1$s</string>
     <string name="stats_reports_category_delta_flat">持平</string>
+    <string name="stats_reports_category_yoy_more">同比多 %1$s</string>
+    <string name="stats_reports_category_yoy_less">同比少 %1$s</string>
+    <string name="stats_reports_category_yoy_flat">同比持平</string>
     <string name="stats_reports_bar_count">%1$d 笔</string>
     <string name="stats_reports_goals_title">月度目标</string>
     <string name="stats_reports_goals_empty">本月还没有目标。</string>

@@ -12,6 +12,7 @@ from app.services.category_service import normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.reports_service._aggregation import (
     _range_amount_count,
+    _range_amount_counts,
     _trend_points,
 )
 from app.services.reports_service._models import (
@@ -52,18 +53,20 @@ def reports_overview(
     current_start_utc, current_end_utc = _month_bounds(month, timezone_key)
     previous_month = _shift_month(month, -1)
     previous_start_utc, previous_end_utc = _month_bounds(previous_month, timezone_key)
-    total_amount, count = _range_amount_count(
+    year_over_year_month = _shift_month(month, -12)
+    yoy_start_utc, yoy_end_utc = _month_bounds(year_over_year_month, timezone_key)
+    range_totals = _range_amount_counts(
         db,
         tenant_id=tenant_id,
-        start_utc=current_start_utc,
-        end_utc=current_end_utc,
+        ranges={
+            "current": (current_start_utc, current_end_utc),
+            "previous": (previous_start_utc, previous_end_utc),
+            "year_over_year": (yoy_start_utc, yoy_end_utc),
+        },
     )
-    previous_total, previous_count = _range_amount_count(
-        db,
-        tenant_id=tenant_id,
-        start_utc=previous_start_utc,
-        end_utc=previous_end_utc,
-    )
+    total_amount, count = range_totals["current"]
+    previous_total, previous_count = range_totals["previous"]
+    yoy_total, yoy_count = range_totals["year_over_year"]
     return {
         "month": month,
         "timezone": timezone_key,
@@ -73,6 +76,11 @@ def reports_overview(
         "previous_month": previous_month,
         "previous_total_amount_cents": previous_total,
         "previous_count": previous_count,
+        "year_over_year_month": year_over_year_month,
+        "year_over_year_total_amount_cents": yoy_total,
+        "year_over_year_count": yoy_count,
+        "year_over_year_delta_amount_cents": total_amount - yoy_total,
+        "year_over_year_delta_count": count - yoy_count,
         "merchant_category": normalized_merchant_category,
         "ranking_metric": ranking_metric,
         "trend": _trend_points(
@@ -99,6 +107,8 @@ def reports_overview(
             current_end_utc=current_end_utc,
             previous_start_utc=previous_start_utc,
             previous_end_utc=previous_end_utc,
+            year_over_year_start_utc=yoy_start_utc,
+            year_over_year_end_utc=yoy_end_utc,
         ),
     }
 
@@ -190,6 +200,11 @@ def export_reports_overview_csv(
         "previous_month",
         "previous_total_amount_cents",
         "previous_count",
+        "year_over_year_month",
+        "year_over_year_total_amount_cents",
+        "year_over_year_count",
+        "year_over_year_delta_amount_cents",
+        "year_over_year_delta_count",
         "merchant_category",
         "ranking_metric",
     ]:
@@ -230,6 +245,10 @@ def export_reports_overview_csv(
             "previous_count",
             "delta_amount_cents",
             "delta_count",
+            "year_over_year_amount_cents",
+            "year_over_year_count",
+            "year_over_year_delta_amount_cents",
+            "year_over_year_delta_count",
         ]
     )
     for item in overview["category_comparison"]:
@@ -243,6 +262,10 @@ def export_reports_overview_csv(
                 item["previous_count"],
                 item["delta_amount_cents"],
                 item["delta_count"],
+                item["year_over_year_amount_cents"],
+                item["year_over_year_count"],
+                item["year_over_year_delta_amount_cents"],
+                item["year_over_year_delta_count"],
             ]
         )
     return output.getvalue()

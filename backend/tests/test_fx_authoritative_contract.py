@@ -102,6 +102,10 @@ def test_foreign_home_amount_drives_stats_reports_budget_and_export(
             "previous_count": 0,
             "delta_amount_cents": 86415,
             "delta_count": 1,
+            "year_over_year_amount_cents": 0,
+            "year_over_year_count": 0,
+            "year_over_year_delta_amount_cents": 86415,
+            "year_over_year_delta_count": 1,
         }
     ]
 

@@ -141,6 +141,8 @@ def _category_comparison(
     current_end_utc: datetime,
     previous_start_utc: datetime,
     previous_end_utc: datetime,
+    year_over_year_start_utc: datetime,
+    year_over_year_end_utc: datetime,
 ) -> list[dict]:
     current = _category_totals(
         db,
@@ -154,14 +156,23 @@ def _category_comparison(
         start_utc=previous_start_utc,
         end_utc=previous_end_utc,
     )
+    year_over_year = _category_totals(
+        db,
+        tenant_id=tenant_id,
+        start_utc=year_over_year_start_utc,
+        end_utc=year_over_year_end_utc,
+    )
     items: list[dict] = []
-    for category in set(current) | set(previous):
+    for category in set(current) | set(previous) | set(year_over_year):
         current_item = current.get(category, {"amount_cents": 0, "count": 0})
         previous_item = previous.get(category, {"amount_cents": 0, "count": 0})
+        yoy_item = year_over_year.get(category, {"amount_cents": 0, "count": 0})
         amount = int(current_item["amount_cents"])
         prev_amount = int(previous_item["amount_cents"])
+        yoy_amount = int(yoy_item["amount_cents"])
         count = int(current_item["count"])
         prev_count = int(previous_item["count"])
+        yoy_count = int(yoy_item["count"])
         items.append(
             {
                 "category": category,
@@ -171,6 +182,10 @@ def _category_comparison(
                 "previous_count": prev_count,
                 "delta_amount_cents": amount - prev_amount,
                 "delta_count": count - prev_count,
+                "year_over_year_amount_cents": yoy_amount,
+                "year_over_year_count": yoy_count,
+                "year_over_year_delta_amount_cents": amount - yoy_amount,
+                "year_over_year_delta_count": count - yoy_count,
             }
         )
     return sorted(
