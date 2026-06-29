@@ -10,6 +10,8 @@ Lock down:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from app.database import SessionLocal
@@ -18,6 +20,7 @@ from app.models import Account, Ledger
 from app.services.income_plan_service import (
     archive_income_plan,
     create_income_plan,
+    list_applicable_income_plans,
     list_income_plans,
     restore_income_plan,
     total_monthly_income_cents,
@@ -140,6 +143,52 @@ def test_create_income_plan_accepts_pay_day_edges(identity) -> None:  # noqa: AR
         )
     assert first.pay_day == 1
     assert last.pay_day == 31
+
+
+def test_create_one_time_income_requires_and_stores_income_month(identity) -> None:  # noqa: ARG001
+    with SessionLocal() as db:
+        plan = create_income_plan(
+            db,
+            tenant_id="owner",
+            label="项目尾款",
+            source_type="freelance",
+            amount_cents=250_000,
+            pay_day=28,
+            frequency="one_time",
+            income_month="2026-06",
+        )
+    assert plan.frequency == "one_time"
+    assert plan.income_month == "2026-06"
+
+
+def test_create_one_time_income_rejects_missing_income_month(identity) -> None:  # noqa: ARG001
+    with SessionLocal() as db, pytest.raises(AppError, match="到账月份"):
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="项目尾款",
+            source_type="freelance",
+            amount_cents=250_000,
+            pay_day=28,
+            frequency="one_time",
+            income_month=None,
+        )
+
+
+def test_monthly_income_ignores_income_month(identity) -> None:  # noqa: ARG001
+    with SessionLocal() as db:
+        plan = create_income_plan(
+            db,
+            tenant_id="owner",
+            label="工资",
+            source_type="salary",
+            amount_cents=1_000_000,
+            pay_day=10,
+            frequency="monthly",
+            income_month="2026-06",
+        )
+    assert plan.frequency == "monthly"
+    assert plan.income_month is None
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +350,75 @@ def test_total_monthly_income_only_counts_active(identity) -> None:  # noqa: ARG
         )
         total = total_monthly_income_cents(db, tenant_id="owner")
     assert total == 1_500_000
+
+
+def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) -> None:  # noqa: ARG001
+    with SessionLocal() as db:
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="salary",
+            source_type="salary",
+            amount_cents=1_000_000,
+            pay_day=10,
+        )
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="one-off June",
+            source_type="bonus",
+            amount_cents=200_000,
+            pay_day=20,
+            frequency="one_time",
+            income_month="2026-06",
+        )
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="one-off July",
+            source_type="bonus",
+            amount_cents=300_000,
+            pay_day=20,
+            frequency="one_time",
+            income_month="2026-07",
+        )
+        june_total = total_monthly_income_cents(
+            db, tenant_id="owner", month="2026-06", as_of=datetime(2026, 6, 30, tzinfo=UTC)
+        )
+        july_total = total_monthly_income_cents(
+            db, tenant_id="owner", month="2026-07", as_of=datetime(2026, 7, 31, tzinfo=UTC)
+        )
+        recurring_only = total_monthly_income_cents(db, tenant_id="owner")
+        june_rows = list_applicable_income_plans(
+            db, tenant_id="owner", month="2026-06", as_of=datetime(2026, 6, 30, tzinfo=UTC)
+        )
+    assert june_total == 1_200_000
+    assert july_total == 1_300_000
+    assert recurring_only == 1_000_000
+    assert {row.label for row in june_rows} == {"salary", "one-off June"}
+
+
+def test_current_month_income_waits_until_pay_day(identity) -> None:  # noqa: ARG001
+    with SessionLocal() as db:
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="late salary",
+            source_type="salary",
+            amount_cents=1_000_000,
+            pay_day=30,
+            frequency="one_time",
+            income_month="2026-06",
+        )
+        before_payday = total_monthly_income_cents(
+            db, tenant_id="owner", month="2026-06", as_of=datetime(2026, 6, 29, tzinfo=UTC)
+        )
+        on_payday = total_monthly_income_cents(
+            db, tenant_id="owner", month="2026-06", as_of=datetime(2026, 6, 30, tzinfo=UTC)
+        )
+
+    assert before_payday == 0
+    assert on_payday == 1_000_000
 
 
 def test_total_returns_zero_when_no_plans(identity) -> None:  # noqa: ARG001

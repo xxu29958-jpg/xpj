@@ -1,24 +1,24 @@
 {% extends "base.html" %}
-{% block title %}收入计划 · 小票夹{% endblock %}
+{% block title %}收入记录 · 小票夹{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h1 class="page-title">收入计划</h1>
-  <div class="page-sub">声明每月的收入来源、金额、发薪日。用于计算"本月可自由支配"。</div>
+  <h1 class="page-title">收入记录</h1>
+  <div class="page-sub">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</div>
 </div>
 
 {% if message %}<div class="callout-info">{{ message }}</div>{% endif %}
 {% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
 {% if not can_write %}
-<div class="callout-info">只读角色可以查看收入计划，但不能添加或修改。</div>
+<div class="callout-info">只读角色可以查看收入记录，但不能添加或修改。</div>
 {% endif %}
 
 <div class="dt-card">
-  <div class="dt-eyebrow">月度收入总额</div>
+  <div class="dt-eyebrow">截至今日已到账收入</div>
   <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
     <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ total_yuan }}</div>
   </div>
-  <div class="text-meta">来自下方所有"在用"状态的收入计划。</div>
+  <div class="text-meta">只计入今天已经到账的本月收入；月末工资到发薪日才算进来。</div>
 </div>
 
 {% if can_write %}
@@ -41,11 +41,33 @@
       </select>
     </div>
     <div class="dt-form-row">
-      <label>金额（元 / 月）</label>
+      <label>入账方式</label>
+      <select class="dt-input" name="frequency">
+        <option value="one_time" selected>实际到账</option>
+        <option value="monthly">每月固定</option>
+      </select>
+    </div>
+    <div class="dt-form-row">
+      <label>到账月份（单笔收入填写）</label>
+      <div class="dt-inline-fields">
+        <select class="dt-input" name="income_month_year">
+          {% for year in income_year_options %}
+          <option value="{{ year }}" {% if year|string == income_default_year %}selected{% endif %}>{{ year }} 年</option>
+          {% endfor %}
+        </select>
+        <select class="dt-input" name="income_month_number">
+          {% for month in range(1, 13) %}
+          <option value="{{ month }}" {% if month|string == income_default_month %}selected{% endif %}>{{ month }} 月</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="dt-form-row">
+      <label>金额（元）</label>
       <input class="dt-input" type="number" name="amount_yuan" step="0.01" min="0" required>
     </div>
     <div class="dt-form-row">
-      <label>发薪日（1-31）</label>
+      <label>发薪日 / 到账日（1-31）</label>
       <input class="dt-input" type="number" name="pay_day" min="1" max="31" required value="10">
     </div>
     <div class="dt-actions">
@@ -64,7 +86,7 @@
         <th>名称</th>
         <th>类型</th>
         <th class="amount">金额</th>
-        <th>发薪日</th>
+        <th>入账方式 / 日期</th>
         {% if can_write %}<th></th>{% endif %}
       </tr>
     </thead>
@@ -74,7 +96,13 @@
         <td>{{ plan.label }}</td>
         <td>{{ plan.source_type }}</td>
         <td class="amount">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
-        <td>{{ plan.pay_day }} 号</td>
+        <td>
+          {% if plan.frequency == 'one_time' %}
+            实际到账 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号
+          {% else %}
+            每月固定 · {{ plan.pay_day }} 号
+          {% endif %}
+        </td>
         {% if can_write %}
         <td>
           <form method="post" action="/web/income-plans/{{ plan.public_id }}/archive" class="dt-inline-form">
@@ -92,7 +120,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="text-meta">还没有收入计划。添加第一笔后，"本月可自由支配"才能算出来。</div>
+  <div class="text-meta">还没有收入记录。补录一笔工资或其它到账后，"本月可自由支配"会扣掉已有花销重新计算。</div>
   {% endif %}
 </div>
 

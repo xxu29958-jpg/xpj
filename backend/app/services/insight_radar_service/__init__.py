@@ -25,7 +25,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Expense, MonthlyIncomePlan
+from app.models import Expense
+from app.services.income_plan_service import total_monthly_income_cents
 from app.services.spending_contract_service import (
     accounting_timezone_key,
     month_bounds_utc,
@@ -119,22 +120,14 @@ def cashflow_radar(
         if key in months:
             expense_by_month[key] += int(expense.amount_cents or 0)
 
-    income_rows = db.scalars(
-        select(MonthlyIncomePlan)
-        .where(MonthlyIncomePlan.tenant_id == tenant_id)
-        .where(MonthlyIncomePlan.status == "active")
-    ).all()
-    # MonthlyIncomePlan is a "recurring income hint" — its monthly
-    # cents apply across every month in the lookback unless the plan
-    # was explicitly archived.
-    monthly_income_cents = sum(
-        int(plan.amount_cents or 0) for plan in income_rows
-    )
-
     return [
         CashflowMonth(
             year_month=month,
-            income_cents=monthly_income_cents,
+            income_cents=total_monthly_income_cents(
+                db,
+                tenant_id=tenant_id,
+                month=month,
+            ),
             expense_cents=int(expense_by_month.get(month, 0)),
         )
         for month in months

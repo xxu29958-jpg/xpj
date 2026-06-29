@@ -23,6 +23,7 @@ class DiscretionaryResponse(BaseModel):
 
     monthly_income_cents: int = Field(ge=0)
     fixed_expenses_cents: int = Field(ge=0)
+    spent_amount_cents: int = Field(ge=0)
     savings_target_cents: int = Field(ge=0)
     reserved_buffer_cents: int = Field(ge=0)
     discretionary_cents: int = Field(ge=0)

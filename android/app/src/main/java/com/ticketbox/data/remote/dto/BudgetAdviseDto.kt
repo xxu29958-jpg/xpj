@@ -10,6 +10,7 @@ import com.squareup.moshi.Json
 data class DiscretionaryResponseDto(
     @param:Json(name = "monthly_income_cents") val monthlyIncomeCents: Long,
     @param:Json(name = "fixed_expenses_cents") val fixedExpensesCents: Long,
+    @param:Json(name = "spent_amount_cents") val spentAmountCents: Long = 0L,
     @param:Json(name = "savings_target_cents") val savingsTargetCents: Long,
     @param:Json(name = "reserved_buffer_cents") val reservedBufferCents: Long,
     @param:Json(name = "discretionary_cents") val discretionaryCents: Long,

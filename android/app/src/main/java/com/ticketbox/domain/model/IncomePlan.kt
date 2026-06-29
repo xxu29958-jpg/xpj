@@ -8,6 +8,8 @@ data class IncomePlan(
     val publicId: String,
     val label: String,
     val sourceType: IncomeSourceType,
+    val frequency: IncomeFrequency,
+    val incomeMonth: String?,
     val amountCents: Long,
     val payDay: Int,
     val status: IncomePlanStatus,
@@ -18,6 +20,18 @@ data class IncomePlan(
 ) {
     val isActive: Boolean get() = status == IncomePlanStatus.ACTIVE
     val isArchived: Boolean get() = status == IncomePlanStatus.ARCHIVED
+}
+
+enum class IncomeFrequency(val wireValue: String, val displayName: String) {
+    MONTHLY("monthly", "每月固定"),
+    ONE_TIME("one_time", "实际到账"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): IncomeFrequency =
+            entries.firstOrNull { it.wireValue.equals(value, ignoreCase = true) }
+                ?: MONTHLY
+    }
 }
 
 /**

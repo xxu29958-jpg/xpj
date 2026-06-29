@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Restore
@@ -43,10 +45,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.MessageTone
@@ -57,12 +61,16 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.IncomePlanViewModel
+import com.ticketbox.viewmodel.updateDraftAmount
+import com.ticketbox.viewmodel.updateDraftLabel
+import com.ticketbox.viewmodel.updateDraftPayDay
 import kotlinx.coroutines.delay
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
@@ -151,6 +159,9 @@ fun IncomePlanScreen(
                 state = state,
                 onLabel = viewModel::updateDraftLabel,
                 onSourceType = viewModel::updateDraftSource,
+                onFrequency = viewModel::updateDraftFrequency,
+                onPreviousIncomeMonth = { viewModel.shiftDraftIncomeMonth(-1L) },
+                onNextIncomeMonth = { viewModel.shiftDraftIncomeMonth(1L) },
                 onAmount = viewModel::updateDraftAmount,
                 onPayDay = viewModel::updateDraftPayDay,
                 onSubmit = { viewModel.submitDraft() },
@@ -158,6 +169,45 @@ fun IncomePlanScreen(
                     showAddSheet = false
                     viewModel.resetDraft()
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun IncomeMonthPicker(
+    value: String,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+) {
+    Text(
+        stringResource(R.string.income_plan_sheet_label_income_month),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.size(AppSpacing.miniGap))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        IconButton(onClick = onPrevious) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = stringResource(R.string.income_plan_month_previous),
+            )
+        }
+        Text(
+            text = displayMonthLabel(value),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onNext) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = stringResource(R.string.income_plan_month_next),
             )
         }
     }
@@ -288,35 +338,7 @@ private fun IncomePlanCard(
                 .padding(AppSpacing.cardPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    plan.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.size(AppSpacing.miniGap))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        plan.sourceType.displayName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(AppSpacing.smallGap))
-                    Box(
-                        modifier = Modifier
-                            .size(width = 1.dp, height = 12.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant),
-                    )
-                    Spacer(Modifier.width(AppSpacing.smallGap))
-                    Text(
-                        stringResource(R.string.income_plan_card_payday, plan.payDay),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            IncomePlanCardSummary(plan = plan, dimmed = dimmed, modifier = Modifier.weight(1f))
             Text(
                 formatDisplayAmount(plan.amountCents, currency),
                 style = MaterialTheme.typography.titleLarge.tabularNum(),
@@ -330,6 +352,51 @@ private fun IncomePlanCard(
                     Icon(trailingIcon, contentDescription = trailingDescription)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun IncomePlanCardSummary(
+    plan: IncomePlan,
+    dimmed: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Text(
+            plan.label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.size(AppSpacing.miniGap))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                plan.sourceType.displayName,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(AppSpacing.smallGap))
+            Box(
+                modifier = Modifier
+                    .size(width = 1.dp, height = 12.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+            Spacer(Modifier.width(AppSpacing.smallGap))
+            Text(
+                if (plan.frequency == IncomeFrequency.ONE_TIME) {
+                    stringResource(
+                        R.string.income_plan_card_one_time_day,
+                        displayMonthLabel(plan.incomeMonth.orEmpty()),
+                        plan.payDay,
+                    )
+                } else {
+                    stringResource(R.string.income_plan_card_payday, plan.payDay)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -365,6 +432,9 @@ private fun AddIncomePlanSheet(
     state: IncomePlanUiState,
     onLabel: (String) -> Unit,
     onSourceType: (IncomeSourceType) -> Unit,
+    onFrequency: (IncomeFrequency) -> Unit,
+    onPreviousIncomeMonth: () -> Unit,
+    onNextIncomeMonth: () -> Unit,
     onAmount: (String) -> Unit,
     onPayDay: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -410,10 +480,45 @@ private fun AddIncomePlanSheet(
         }
         Spacer(Modifier.size(AppSpacing.compactGap))
 
+        Text(
+            stringResource(R.string.income_plan_sheet_label_frequency),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(AppSpacing.miniGap))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf(IncomeFrequency.ONE_TIME, IncomeFrequency.MONTHLY).forEach { frequency ->
+                FilterChip(
+                    selected = draft.frequency == frequency,
+                    onClick = { onFrequency(frequency) },
+                    label = { Text(frequency.displayName) },
+                    modifier = Modifier.padding(end = AppSpacing.miniGap),
+                )
+            }
+        }
+        Spacer(Modifier.size(AppSpacing.compactGap))
+
+        if (draft.frequency == IncomeFrequency.ONE_TIME) {
+            IncomeMonthPicker(
+                value = draft.incomeMonthInput,
+                onPrevious = onPreviousIncomeMonth,
+                onNext = onNextIncomeMonth,
+            )
+            Spacer(Modifier.size(AppSpacing.compactGap))
+        }
+
         OutlinedTextField(
             value = draft.amountYuanInput,
             onValueChange = onAmount,
-            label = { Text(stringResource(R.string.income_plan_sheet_label_amount)) },
+            label = {
+                Text(
+                    if (draft.frequency == IncomeFrequency.ONE_TIME) {
+                        stringResource(R.string.income_plan_sheet_label_amount_one_time)
+                    } else {
+                        stringResource(R.string.income_plan_sheet_label_amount_monthly)
+                    },
+                )
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
@@ -423,7 +528,15 @@ private fun AddIncomePlanSheet(
         OutlinedTextField(
             value = draft.payDayInput,
             onValueChange = onPayDay,
-            label = { Text(stringResource(R.string.income_plan_sheet_label_payday)) },
+            label = {
+                Text(
+                    if (draft.frequency == IncomeFrequency.ONE_TIME) {
+                        stringResource(R.string.income_plan_sheet_label_arrival_day)
+                    } else {
+                        stringResource(R.string.income_plan_sheet_label_payday)
+                    },
+                )
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),

@@ -35,6 +35,8 @@ class UpdateIncomePlanDispatcherTest {
         publicId = "plan-1",
         label = "工资",
         sourceType = "salary",
+        frequency = "monthly",
+        incomeMonth = null,
         amountCents = 1500000,
         payDay = 15,
         status = "active",

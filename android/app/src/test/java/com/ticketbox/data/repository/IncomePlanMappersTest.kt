@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.IncomePlanDto
+import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.IncomeSourceType
 import kotlin.test.Test
@@ -15,6 +16,8 @@ class IncomePlanMappersTest {
             publicId = "abc-123",
             label = "我的工资",
             sourceType = "salary",
+            frequency = "monthly",
+            incomeMonth = null,
             amountCents = 1_000_000,
             payDay = 10,
             status = "active",
@@ -29,6 +32,8 @@ class IncomePlanMappersTest {
         assertEquals("abc-123", plan.publicId)
         assertEquals("我的工资", plan.label)
         assertEquals(IncomeSourceType.SALARY, plan.sourceType)
+        assertEquals(IncomeFrequency.MONTHLY, plan.frequency)
+        assertNull(plan.incomeMonth)
         assertEquals(1_000_000L, plan.amountCents)
         assertEquals(10, plan.payDay)
         assertEquals(IncomePlanStatus.ACTIVE, plan.status)
@@ -53,12 +58,16 @@ class IncomePlanMappersTest {
         val draft = IncomePlanDraft(
             label = "  我的副业  ",
             sourceType = IncomeSourceType.FREELANCE,
+            frequency = IncomeFrequency.ONE_TIME,
+            incomeMonth = "2026-06",
             amountCents = 300_000,
             payDay = 20,
         )
         val request = draft.toCreateRequest()
         assertEquals("我的副业", request.label) // whitespace trimmed
         assertEquals("freelance", request.sourceType)
+        assertEquals("one_time", request.frequency)
+        assertEquals("2026-06", request.incomeMonth)
         assertEquals(300_000L, request.amountCents)
         assertEquals(20, request.payDay)
     }
@@ -67,6 +76,8 @@ class IncomePlanMappersTest {
     fun patchSerialisesOnlyProvidedFields() {
         val patch = IncomePlanPatch(
             expectedRowVersion = 1L,
+            frequency = IncomeFrequency.ONE_TIME,
+            incomeMonth = "2026-06",
             amountCents = 555_000,
             payDay = 15,
         )
@@ -74,6 +85,8 @@ class IncomePlanMappersTest {
         assertEquals(1L, request.expectedRowVersion)
         assertNull(request.label)
         assertNull(request.sourceType)
+        assertEquals("one_time", request.frequency)
+        assertEquals("2026-06", request.incomeMonth)
         assertEquals(555_000L, request.amountCents)
         assertEquals(15, request.payDay)
     }
@@ -93,6 +106,8 @@ class IncomePlanMappersTest {
         publicId = "x",
         label = "y",
         sourceType = "salary",
+        frequency = "monthly",
+        incomeMonth = null,
         amountCents = 100,
         payDay = 1,
         status = "active",

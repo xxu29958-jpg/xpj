@@ -22,6 +22,7 @@ from app.services.budget_advisor_service import run_budget_advisor
 from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
+    total_confirmed_spent_cents,
     total_active_recurring_monthly_cents,
 )
 from app.services.income_plan_service import total_monthly_income_cents
@@ -95,13 +96,24 @@ def _render_budget_advise(
     provider_name = canonical_provider_name(settings.budget_advisor_provider)
 
     month_label = month or current_accounting_month()
-    income = total_monthly_income_cents(db, tenant_id=selected)
+    income = total_monthly_income_cents(
+        db,
+        tenant_id=selected,
+        month=month_label,
+    )
     fixed = total_active_recurring_monthly_cents(db, tenant_id=selected)
+    spent = total_confirmed_spent_cents(
+        db,
+        tenant_id=selected,
+        month=month_label,
+        timezone_name="Asia/Shanghai",
+    )
     savings_cents = int(round(savings_target_yuan * 100))
     reserved_cents = int(round(reserved_buffer_yuan * 100))
     breakdown = compute_monthly_discretionary(
         monthly_income_cents=income,
         fixed_expenses_cents=fixed,
+        spent_amount_cents=spent,
         savings_target_cents=savings_cents,
         reserved_buffer_cents=reserved_cents,
     )
@@ -142,6 +154,7 @@ def _render_budget_advise(
         provider_enabled=provider_name != "empty",
         income_yuan=_amount_yuan(breakdown.monthly_income_cents),
         fixed_yuan=_amount_yuan(breakdown.fixed_expenses_cents),
+        spent_yuan=_amount_yuan(breakdown.spent_amount_cents),
         savings_yuan=_amount_yuan(breakdown.savings_target_cents),
         reserved_yuan=_amount_yuan(breakdown.reserved_buffer_cents),
         discretionary_yuan=_amount_yuan(breakdown.discretionary_cents),

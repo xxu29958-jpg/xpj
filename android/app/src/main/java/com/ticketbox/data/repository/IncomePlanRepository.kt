@@ -5,6 +5,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -233,12 +234,20 @@ class IncomePlanRepository(
      * values (NOT server-confirmed tokens).
      */
     private fun projectOptimisticPlan(baseline: IncomePlan, patch: IncomePlanPatch): IncomePlan =
-        baseline.copy(
-            label = patch.label?.trim()?.takeIf { it.isNotBlank() } ?: baseline.label,
-            sourceType = patch.sourceType ?: baseline.sourceType,
-            amountCents = patch.amountCents ?: baseline.amountCents,
-            payDay = patch.payDay ?: baseline.payDay,
-        )
+        (patch.frequency ?: baseline.frequency).let { nextFrequency ->
+            baseline.copy(
+                label = patch.label?.trim()?.takeIf { it.isNotBlank() } ?: baseline.label,
+                sourceType = patch.sourceType ?: baseline.sourceType,
+                frequency = nextFrequency,
+                incomeMonth = when {
+                    nextFrequency == IncomeFrequency.MONTHLY -> null
+                    patch.incomeMonth != null -> patch.incomeMonth
+                    else -> baseline.incomeMonth
+                },
+                amountCents = patch.amountCents ?: baseline.amountCents,
+                payDay = patch.payDay ?: baseline.payDay,
+            )
+        }
 
     override suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
         if (!canModifyLedger()) {

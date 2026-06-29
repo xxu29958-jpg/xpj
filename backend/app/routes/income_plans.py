@@ -34,6 +34,7 @@ from app.services.income_plan_service import (
     total_monthly_income_cents,
     update_income_plan,
 )
+from app.services.spending_contract_service import current_accounting_month
 from app.tenants import AuthContext
 
 if TYPE_CHECKING:
@@ -49,6 +50,8 @@ def _to_response(plan: MonthlyIncomePlan) -> IncomePlanResponse:
         public_id=plan.public_id,
         label=plan.label,
         source_type=plan.source_type,
+        frequency=plan.frequency,
+        income_month=plan.income_month,
         amount_cents=plan.amount_cents,
         pay_day=plan.pay_day,
         status=plan.status,
@@ -62,15 +65,21 @@ def _to_response(plan: MonthlyIncomePlan) -> IncomePlanResponse:
 @router.get("", response_model=IncomePlanListResponse)
 def list_plans(
     status: str = Query(default="active", pattern="^(active|archived|all)$"),
+    month: str | None = Query(
+        default=None,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        description="Accounting month used for the active total.",
+    ),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanListResponse:
     status_filter = None if status == "all" else status
+    month_label = month or current_accounting_month()
     plans = list_income_plans(db, tenant_id=auth.tenant_id, status=status_filter)
     return IncomePlanListResponse(
         items=[_to_response(p) for p in plans],
         total_active_amount_cents=total_monthly_income_cents(
-            db, tenant_id=auth.tenant_id
+            db, tenant_id=auth.tenant_id, month=month_label
         ),
     )
 
@@ -86,6 +95,8 @@ def create_plan(
         tenant_id=auth.tenant_id,
         label=payload.label,
         source_type=payload.source_type,
+        frequency=payload.frequency,
+        income_month=payload.income_month,
         amount_cents=payload.amount_cents,
         pay_day=payload.pay_day,
     )
@@ -127,6 +138,9 @@ def update_plan(
         expected_row_version=payload.expected_row_version,
         label=payload.label,
         source_type=payload.source_type,
+        frequency=payload.frequency,
+        income_month=payload.income_month,
+        income_month_provided="income_month" in payload.model_fields_set,
         amount_cents=payload.amount_cents,
         pay_day=payload.pay_day,
         commit=False,

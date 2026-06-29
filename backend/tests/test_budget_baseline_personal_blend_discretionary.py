@@ -255,11 +255,13 @@ def test_discretionary_basic_subtraction() -> None:
     b = compute_monthly_discretionary(
         monthly_income_cents=1_000_000_00,
         fixed_expenses_cents=400_000_00,
+        spent_amount_cents=100_000_00,
         savings_target_cents=200_000_00,
     )
-    assert b.discretionary_cents == 400_000_00
+    assert b.discretionary_cents == 300_000_00
     assert b.monthly_income_cents == 1_000_000_00
     assert b.fixed_expenses_cents == 400_000_00
+    assert b.spent_amount_cents == 100_000_00
 
 
 def test_discretionary_with_buffer() -> None:
@@ -288,6 +290,7 @@ def test_discretionary_breakdown_is_inspectable_dataclass() -> None:
         monthly_income_cents=1_000_000_00,
         fixed_expenses_cents=300_000_00,
     )
+    assert b.spent_amount_cents == 0
     assert b.savings_target_cents == 0
     assert b.reserved_buffer_cents == 0
     assert b.discretionary_cents == 700_000_00

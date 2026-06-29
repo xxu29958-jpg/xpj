@@ -34,8 +34,8 @@ def test_income_plans_page_renders_empty(web_client: TestClient, *, identity) ->
     resp = web_client.get("/web/income-plans")
     assert resp.status_code == 200
     body = resp.text
-    assert "收入计划" in body
-    assert "还没有收入计划" in body
+    assert "收入记录" in body
+    assert "还没有收入记录" in body
 
 
 def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
@@ -55,8 +55,34 @@ def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> No
     assert list_resp.status_code == 200
     body = list_resp.text
     assert "我的工资" in body
+    assert "实际到账" in body
     # 10000 元 should render somewhere
     assert "10000.00" in body or "10,000.00" in body or "10000" in body
+
+
+def test_income_plans_one_time_month_is_user_facing(
+    web_client: TestClient, *, identity
+) -> None:  # noqa: ARG001
+    create_resp = web_client.post(
+        "/web/income-plans/create",
+        data={
+            "label": "项目尾款",
+            "source_type": "freelance",
+            "frequency": "one_time",
+            "income_month_year": "2026",
+            "income_month_number": "6",
+            "amount_yuan": "2500",
+            "pay_day": "28",
+        },
+        follow_redirects=False,
+    )
+    assert create_resp.status_code == 303
+
+    body = web_client.get("/web/income-plans").text
+    assert "项目尾款" in body
+    assert "2026年6月" in body
+    assert "2026-06" not in body
+    assert "YYYY-MM" not in body
 
 
 def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -> None:  # noqa: ARG001

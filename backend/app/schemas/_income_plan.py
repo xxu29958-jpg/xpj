@@ -23,6 +23,11 @@ class IncomePlanCreateRequest(BaseModel):
 
     label: str = Field(min_length=1, max_length=64)
     source_type: str = Field(default="salary", min_length=1, max_length=32)
+    frequency: Literal["monthly", "one_time"] = "monthly"
+    income_month: str | None = Field(
+        default=None,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+    )
     amount_cents: int = Field(ge=0)
     pay_day: int = Field(ge=1, le=31)
 
@@ -41,6 +46,11 @@ class IncomePlanUpdateRequest(BaseModel):
     expected_row_version: int
     label: str | None = Field(default=None, min_length=1, max_length=64)
     source_type: str | None = Field(default=None, min_length=1, max_length=32)
+    frequency: Literal["monthly", "one_time"] | None = None
+    income_month: str | None = Field(
+        default=None,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+    )
     amount_cents: int | None = Field(default=None, ge=0)
     pay_day: int | None = Field(default=None, ge=1, le=31)
 
@@ -62,6 +72,8 @@ class IncomePlanResponse(BaseModel):
     public_id: str
     label: str
     source_type: str
+    frequency: Literal["monthly", "one_time"]
+    income_month: str | None
     amount_cents: int
     pay_day: int
     status: Literal["active", "archived"]

@@ -21,7 +21,7 @@ from app.services.budget_advisor_service._models import (
     IncomePlanSnapshot,
 )
 from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
-from app.services.income_plan_service import list_income_plans
+from app.services.income_plan_service import list_applicable_income_plans
 from app.services.monthly_report_service import (
     MonthlyReport,
     compose_budget_explanation,
@@ -57,7 +57,7 @@ def build_budget_inputs(
             report=report,
             timezone_name=timezone_name,
         ),
-        income_plan=_income_plan(db, tenant_id=tenant_id),
+        income_plan=_income_plan(db, tenant_id=tenant_id, month=month),
         recurring_total_monthly_cents=_recurring_total_monthly_cents(db, tenant_id=tenant_id),
         recurring_active_count=_recurring_active_count(db, tenant_id=tenant_id),
     )
@@ -137,7 +137,7 @@ def _historical_baseline(
     return rows
 
 
-def _income_plan(db: Session, *, tenant_id: str) -> list[IncomePlanSnapshot]:
+def _income_plan(db: Session, *, tenant_id: str, month: str) -> list[IncomePlanSnapshot]:
     """Active income plans as advisor input. ``source_type`` is generalised to a
     PII-free allowlist; the free-text ``label`` is intentionally never sent."""
     return [
@@ -146,7 +146,7 @@ def _income_plan(db: Session, *, tenant_id: str) -> list[IncomePlanSnapshot]:
             amount_cents=int(plan.amount_cents),
             pay_day=int(plan.pay_day),
         )
-        for plan in list_income_plans(db, tenant_id=tenant_id, status="active")
+        for plan in list_applicable_income_plans(db, tenant_id=tenant_id, month=month)
     ]
 
 

@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.domain.model.IncomePlan
+import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.UiText
@@ -77,10 +78,46 @@ class IncomePlanViewModelTest {
         advanceUntilIdle()
         assertEquals(1, repo.createCalls)
         assertEquals(IncomeSourceType.SALARY, repo.lastDraft?.sourceType)
+        assertEquals(IncomeFrequency.ONE_TIME, repo.lastDraft?.frequency)
+        assertNotNull(repo.lastDraft?.incomeMonth)
         assertEquals(1_000_000L, repo.lastDraft?.amountCents)
         assertEquals(10, repo.lastDraft?.payDay)
         assertEquals(UiText.res(R.string.income_plan_added), viewModel.state.value.flashMessage)
         assertEquals("", viewModel.state.value.addDraft.label) // reset
+    }
+
+    @Test
+    fun submitOneTimeDraftSendsIncomeMonth() = runTest(dispatcher) {
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        viewModel.updateDraftLabel("项目尾款")
+        viewModel.updateDraftSource(IncomeSourceType.FREELANCE)
+        viewModel.updateDraftFrequency(IncomeFrequency.ONE_TIME)
+        viewModel.updateDraftIncomeMonth("2026-06")
+        viewModel.updateDraftAmount("2500")
+        viewModel.updateDraftPayDay("28")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.createCalls)
+        assertEquals(IncomeFrequency.ONE_TIME, repo.lastDraft?.frequency)
+        assertEquals("2026-06", repo.lastDraft?.incomeMonth)
+        assertEquals(250_000L, repo.lastDraft?.amountCents)
+    }
+
+    @Test
+    fun shiftDraftIncomeMonthKeepsInternalWireValue() = runTest(dispatcher) {
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        viewModel.updateDraftIncomeMonth("2026-06")
+
+        viewModel.shiftDraftIncomeMonth(-1L)
+        assertEquals("2026-05", viewModel.state.value.addDraft.incomeMonthInput)
+
+        viewModel.shiftDraftIncomeMonth(2L)
+        assertEquals("2026-07", viewModel.state.value.addDraft.incomeMonthInput)
     }
 
     @Test
@@ -200,9 +237,34 @@ class IncomePlanViewModelTest {
     }
 
     @Test
+    fun draftIncomeMonthParsing() {
+        assertEquals("2026-06", IncomePlanDraftUi(incomeMonthInput = "2026-06").parsedIncomeMonth())
+        assertEquals(null, IncomePlanDraftUi(incomeMonthInput = "2026-13").parsedIncomeMonth())
+        assertEquals(null, IncomePlanDraftUi(incomeMonthInput = "2026/06").parsedIncomeMonth())
+    }
+
+    @Test
     fun draftIsValidRequiresAllThree() {
         assertTrue(
             IncomePlanDraftUi(label = "x", amountYuanInput = "100", payDayInput = "1").isValid,
+        )
+        assertTrue(
+            IncomePlanDraftUi(
+                label = "x",
+                frequency = IncomeFrequency.ONE_TIME,
+                incomeMonthInput = "2026-06",
+                amountYuanInput = "100",
+                payDayInput = "1",
+            ).isValid,
+        )
+        assertFalse(
+            IncomePlanDraftUi(
+                label = "x",
+                frequency = IncomeFrequency.ONE_TIME,
+                incomeMonthInput = "2026-13",
+                amountYuanInput = "100",
+                payDayInput = "1",
+            ).isValid,
         )
         assertFalse(IncomePlanDraftUi(amountYuanInput = "100", payDayInput = "1").isValid)
         assertFalse(IncomePlanDraftUi(label = "x", payDayInput = "1").isValid)
@@ -219,6 +281,8 @@ class IncomePlanViewModelTest {
         publicId = id,
         label = "label-$id",
         sourceType = IncomeSourceType.SALARY,
+        frequency = IncomeFrequency.MONTHLY,
+        incomeMonth = null,
         amountCents = amountCents,
         payDay = 1,
         status = status,
@@ -269,6 +333,8 @@ class IncomePlanViewModelTest {
             publicId = id,
             label = id,
             sourceType = IncomeSourceType.SALARY,
+            frequency = IncomeFrequency.MONTHLY,
+            incomeMonth = null,
             amountCents = 100,
             payDay = 1,
             status = status,

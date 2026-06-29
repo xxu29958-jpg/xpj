@@ -3,24 +3,31 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
 
     <!-- IncomePlanScreen：收入计划 -->
-    <string name="income_plan_topbar_title">收入计划</string>
+    <string name="income_plan_topbar_title">收入记录</string>
     <string name="income_plan_topbar_back">返回</string>
     <string name="income_plan_fab_add">添加收入</string>
-    <string name="income_plan_intro_body">声明每月收入，用于算「本月可自由支配」。</string>
+    <string name="income_plan_intro_body">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</string>
     <string name="income_plan_section_active">在用</string>
     <string name="income_plan_card_archive_action">归档</string>
     <string name="income_plan_section_archived">已归档</string>
     <string name="income_plan_card_restore_action">恢复</string>
-    <string name="income_plan_total_label">月度收入总额</string>
-    <string name="income_plan_total_hint">来自下方所有「在用」状态的收入计划。</string>
+    <string name="income_plan_total_label">截至今日已到账收入</string>
+    <string name="income_plan_total_hint">只计入今天已经到账的本月收入；月末工资到发薪日才算进来。</string>
     <string name="income_plan_card_payday">每月 %1$d 号</string>
-    <string name="income_plan_empty_title">还没有收入计划</string>
-    <string name="income_plan_empty_body">点右上角「添加收入」，写好后「本月可自由支配」才能算出来。</string>
+    <string name="income_plan_card_one_time_day">%1$s · %2$d 号</string>
+    <string name="income_plan_empty_title">还没有收入记录</string>
+    <string name="income_plan_empty_body">先补一笔本月工资或其它到账，「本月可自由支配」才会扣掉已有花销重新算。</string>
     <string name="income_plan_sheet_title">添加收入</string>
     <string name="income_plan_sheet_label_name">名称</string>
     <string name="income_plan_sheet_label_type">类型</string>
-    <string name="income_plan_sheet_label_amount">金额（元 / 月）</string>
+    <string name="income_plan_sheet_label_frequency">入账方式</string>
+    <string name="income_plan_sheet_label_income_month">到账月份</string>
+    <string name="income_plan_month_previous">上个月</string>
+    <string name="income_plan_month_next">下个月</string>
+    <string name="income_plan_sheet_label_amount_monthly">金额（元 / 月）</string>
+    <string name="income_plan_sheet_label_amount_one_time">金额（元）</string>
     <string name="income_plan_sheet_label_payday">发薪日 (1-31)</string>
+    <string name="income_plan_sheet_label_arrival_day">到账日 (1-31)</string>
     <string name="income_plan_sheet_submitting">提交中…</string>
     <string name="income_plan_sheet_save">保存</string>
 
@@ -87,9 +94,9 @@
     <string name="auth_header_app_label">小票夹</string>
 
     <!-- IncomePlanViewModel：收入计划 VM 状态/结果文案（ADR-0044 wave 2） -->
-    <string name="income_plan_load_failed">加载收入计划失败。</string>
-    <string name="income_plan_validation_error">请填写名称、合法金额和 1-31 之间的发薪日。</string>
-    <string name="income_plan_added">已添加收入计划</string>
+    <string name="income_plan_load_failed">加载收入记录失败。</string>
+    <string name="income_plan_validation_error">请填写名称、合法金额、日期；单笔收入还要填到账月份。</string>
+    <string name="income_plan_added">已添加收入</string>
     <string name="income_plan_add_failed">添加失败，请稍后重试。</string>
     <string name="income_plan_archived">已归档</string>
     <string name="income_plan_restored">已恢复</string>

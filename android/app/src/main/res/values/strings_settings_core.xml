@@ -31,8 +31,8 @@
     <string name="settings_root_entry_tag_management_subtitle">重命名、合并、删除标签</string>
     <string name="settings_root_entry_notifications_title">通知与提醒</string>
     <string name="settings_root_entry_notifications_subtitle">待确认、大额和固定支出提醒开关</string>
-    <string name="settings_root_entry_income_plans_title">收入计划</string>
-    <string name="settings_root_entry_income_plans_subtitle">记录月度收入，算「本月可自由支配」</string>
+    <string name="settings_root_entry_income_plans_title">收入记录</string>
+    <string name="settings_root_entry_income_plans_subtitle">补录工资到账和固定收入，算「本月可自由支配」</string>
     <string name="settings_root_section_alerts_appearance">提醒与外观</string>
     <string name="settings_root_entry_family_members_title">家庭成员</string>
     <string name="settings_root_entry_family_members_subtitle">查看当前账本成员、角色和状态</string>
@@ -201,7 +201,7 @@
     <string name="sync_status_mutation_update_merchant_alias">修改商家别名</string>
     <string name="sync_status_mutation_delete_merchant_alias">删除商家别名</string>
     <string name="sync_status_mutation_update_goal">修改目标</string>
-    <string name="sync_status_mutation_update_income_plan">修改收入计划</string>
+    <string name="sync_status_mutation_update_income_plan">修改收入记录</string>
     <string name="sync_status_mutation_unknown">改动</string>
 
     <!-- ADR-0044 wave 2：离线同步卡 内部 marker → 用户文案（SyncStatusScreen.friendlyLastError） -->

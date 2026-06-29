@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.IncomePlanDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.domain.model.IncomePlan
+import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.IncomeSourceType
 import kotlinx.coroutines.test.runTest
@@ -33,6 +34,8 @@ class IncomePlanRepositoryOutboxFallbackTest {
         publicId = "plan-1",
         label = "工资",
         sourceType = IncomeSourceType.SALARY,
+        frequency = IncomeFrequency.MONTHLY,
+        incomeMonth = null,
         amountCents = 1500000,
         payDay = 15,
         status = IncomePlanStatus.ACTIVE,
@@ -46,6 +49,8 @@ class IncomePlanRepositoryOutboxFallbackTest {
         publicId = "plan-1",
         label = "调薪后工资",
         sourceType = "salary",
+        frequency = "monthly",
+        incomeMonth = null,
         amountCents = 1800000,
         payDay = 15,
         status = "active",

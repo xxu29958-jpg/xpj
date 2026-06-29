@@ -55,6 +55,15 @@ class MonthlyIncomePlan(Base):
             "amount_cents >= 0",
             name="ck_monthly_income_plans_amount_non_negative",
         ),
+        CheckConstraint(
+            "frequency IN ('monthly', 'one_time')",
+            name="ck_monthly_income_plans_frequency_valid",
+        ),
+        CheckConstraint(
+            "(frequency = 'monthly' AND income_month IS NULL) OR "
+            "(frequency = 'one_time' AND income_month IS NOT NULL)",
+            name="ck_monthly_income_plans_income_month_shape",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -77,6 +86,13 @@ class MonthlyIncomePlan(Base):
     # Coarse classifier for the AI advisor — value not enforced here so
     # we don't break the row when a new source type appears mid-version.
     source_type: Mapped[str] = mapped_column(String(32), default="salary", nullable=False)
+    frequency: Mapped[str] = mapped_column(
+        String(16),
+        default="monthly",
+        server_default="monthly",
+        nullable=False,
+    )
+    income_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     pay_day: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
@@ -99,4 +115,12 @@ Index(
     "ix_monthly_income_plans_tenant_status",
     MonthlyIncomePlan.tenant_id,
     MonthlyIncomePlan.status,
+)
+
+Index(
+    "ix_monthly_income_plans_tenant_status_frequency_month",
+    MonthlyIncomePlan.tenant_id,
+    MonthlyIncomePlan.status,
+    MonthlyIncomePlan.frequency,
+    MonthlyIncomePlan.income_month,
 )

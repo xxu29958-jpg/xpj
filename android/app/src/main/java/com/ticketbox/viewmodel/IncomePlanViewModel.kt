@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.domain.model.IncomePlan
+import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.isValidPayDay
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.YearMonth
 
 /**
  * v1.1 income plan screen state + actions.
@@ -46,6 +48,8 @@ data class IncomePlanUiState(
 data class IncomePlanDraftUi(
     val label: String = "",
     val sourceType: IncomeSourceType = IncomeSourceType.SALARY,
+    val frequency: IncomeFrequency = IncomeFrequency.ONE_TIME,
+    val incomeMonthInput: String = YearMonth.now().toString(),
     val amountYuanInput: String = "",
     val payDayInput: String = "10",
     val validationError: UiText? = null,
@@ -53,7 +57,8 @@ data class IncomePlanDraftUi(
     val isValid: Boolean
         get() = label.trim().isNotEmpty() &&
             parsedAmountCents() != null &&
-            parsedPayDay() != null
+            parsedPayDay() != null &&
+            (frequency == IncomeFrequency.MONTHLY || parsedIncomeMonth() != null)
 
     // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）。允许 0、拒负：极小负额（如 -0.004）在分空间
     // HALF_UP 会舍入到 0，故先按元符号拒负，保持旧「负数无效」语义、不静默当成 0 元计划。
@@ -65,6 +70,11 @@ data class IncomePlanDraftUi(
     fun parsedPayDay(): Int? {
         val day = payDayInput.trim().toIntOrNull() ?: return null
         return if (day.isValidPayDay()) day else null
+    }
+
+    fun parsedIncomeMonth(): String? {
+        val text = incomeMonthInput.trim()
+        return runCatching { YearMonth.parse(text).toString() }.getOrNull()
     }
 }
 
@@ -108,25 +118,40 @@ class IncomePlanViewModel(
         }
     }
 
-    fun updateDraftLabel(value: String) {
-        _state.update {
-            it.copy(addDraft = it.addDraft.copy(label = value, validationError = null))
-        }
-    }
-
     fun updateDraftSource(value: IncomeSourceType) {
         _state.update { it.copy(addDraft = it.addDraft.copy(sourceType = value)) }
     }
 
-    fun updateDraftAmount(value: String) {
+    fun updateDraftFrequency(value: IncomeFrequency) {
         _state.update {
-            it.copy(addDraft = it.addDraft.copy(amountYuanInput = value, validationError = null))
+            it.copy(addDraft = it.addDraft.copy(frequency = value, validationError = null))
         }
     }
 
-    fun updateDraftPayDay(value: String) {
-        _state.update {
-            it.copy(addDraft = it.addDraft.copy(payDayInput = value, validationError = null))
+    fun updateDraftField(field: IncomePlanDraftField, value: String) {
+        _state.update { state ->
+            val draft = state.addDraft
+            val nextDraft = when (field) {
+                IncomePlanDraftField.Label -> draft.copy(label = value)
+                IncomePlanDraftField.IncomeMonth -> draft.copy(incomeMonthInput = value)
+                IncomePlanDraftField.Amount -> draft.copy(amountYuanInput = value)
+                IncomePlanDraftField.PayDay -> draft.copy(payDayInput = value)
+            }
+            state.copy(addDraft = nextDraft.copy(validationError = null))
+        }
+    }
+
+    fun shiftDraftIncomeMonth(deltaMonths: Long) {
+        _state.update { state ->
+            val current = runCatching {
+                YearMonth.parse(state.addDraft.incomeMonthInput.trim())
+            }.getOrDefault(YearMonth.now())
+            state.copy(
+                addDraft = state.addDraft.copy(
+                    incomeMonthInput = current.plusMonths(deltaMonths).toString(),
+                    validationError = null,
+                ),
+            )
         }
     }
 
@@ -138,8 +163,15 @@ class IncomePlanViewModel(
         val draft = _state.value.addDraft
         val amount = draft.parsedAmountCents()
         val payDay = draft.parsedPayDay()
+        val incomeMonth = if (draft.frequency == IncomeFrequency.ONE_TIME) {
+            draft.parsedIncomeMonth()
+        } else {
+            null
+        }
         val label = draft.label.trim()
-        if (label.isEmpty() || amount == null || payDay == null) {
+        if (label.isEmpty() || amount == null || payDay == null ||
+            (draft.frequency == IncomeFrequency.ONE_TIME && incomeMonth == null)
+        ) {
             _state.update {
                 it.copy(
                     addDraft = it.addDraft.copy(
@@ -155,6 +187,8 @@ class IncomePlanViewModel(
                 IncomePlanDraft(
                     label = label,
                     sourceType = draft.sourceType,
+                    frequency = draft.frequency,
+                    incomeMonth = incomeMonth,
                     amountCents = amount,
                     payDay = payDay,
                 ),

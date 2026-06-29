@@ -61,13 +61,21 @@ def _add_expense_with_times(
         db.commit()
 
 
-def _add_income_plan(*, tenant_id: str = "owner", amount_cents: int) -> None:
+def _add_income_plan(
+    *,
+    tenant_id: str = "owner",
+    amount_cents: int,
+    frequency: str = "monthly",
+    income_month: str | None = None,
+) -> None:
     with SessionLocal() as db:
         db.add(
             MonthlyIncomePlan(
                 tenant_id=tenant_id,
                 label="pytest",
                 source_type="salary",
+                frequency=frequency,
+                income_month=income_month,
                 amount_cents=amount_cents,
                 pay_day=10,
                 status="active",
@@ -92,6 +100,23 @@ def test_cashflow_radar_emits_one_row_per_month(*, identity) -> None:
         assert by_month["2026-05"].expense_cents == 5000
         assert by_month["2026-05"].net_cents == 5000
         assert by_month["2026-06"].expense_cents == 4000
+
+
+def test_cashflow_radar_counts_one_time_income_only_in_income_month(*, identity) -> None:
+    _add_income_plan(amount_cents=10000)
+    _add_income_plan(
+        amount_cents=5000,
+        frequency="one_time",
+        income_month="2026-06",
+    )
+    now = datetime(2026, 6, 20, tzinfo=UTC)
+    with SessionLocal() as db:
+        rows = cashflow_radar(
+            db, tenant_id="owner", look_back_months=2, now=now
+        )
+    by_month = {r.year_month: r for r in rows}
+    assert by_month["2026-05"].income_cents == 10000
+    assert by_month["2026-06"].income_cents == 15000
 
 
 def test_subscription_radar_detects_regular_charges(*, identity) -> None:

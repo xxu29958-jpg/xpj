@@ -1,29 +1,38 @@
-"""User-declared monthly income plan service.
+"""User-declared income plan / income-entry service.
 
-Tenant-scoped CRUD over :class:`MonthlyIncomePlan` plus a single
-aggregate read (``total_monthly_income_cents``) consumed by the v1.1
-"本月可自由支配" formula. No detection — income arrives in too many
-shapes to infer safely; the user types each line.
+Rows in ``monthly_income_plans`` now cover two user-facing rhythms:
+
+* ``monthly``: fixed income that applies to every accounting month.
+* ``one_time``: a single income amount that applies only to ``income_month``.
+
+The table name is kept for compatibility with existing migrations and clients,
+but all aggregation entry points now accept a month when one-time income should
+be included.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import date, datetime
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import add_ledger_scope, ledger_filter, ledger_scoped_select
 from app.models import MonthlyIncomePlan
 from app.services.optimistic_concurrency import claim_row_with_token
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc, now_utc, safe_zone
 
 IncomeStatus = Literal["active", "archived"]
+IncomeFrequency = Literal["monthly", "one_time"]
 
 _LABEL_MAX_LEN = 64
 _SOURCE_TYPE_MAX_LEN = 32
+_FREQUENCIES = {"monthly", "one_time"}
+_MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 def list_income_plans(
@@ -32,14 +41,41 @@ def list_income_plans(
     tenant_id: str,
     status: IncomeStatus | None = "active",
 ) -> list[MonthlyIncomePlan]:
-    """Return income plans for the tenant. Defaults to ``active`` only;
-    pass ``status=None`` for everything (e.g. management screens)."""
+    """Return income rows for the tenant.
 
-    statement = ledger_scoped_select(MonthlyIncomePlan, tenant_id).order_by(
-        MonthlyIncomePlan.pay_day.asc(), MonthlyIncomePlan.id.asc()
-    )
+    Defaults to active rows. Pass ``status=None`` for management screens that
+    need both active and archived rows. This is intentionally not month-filtered:
+    users should still be able to see, archive, or restore old one-time income.
+    """
+
+    statement = _income_plan_base_select(tenant_id=tenant_id)
     if status is not None:
         statement = statement.where(MonthlyIncomePlan.status == status)
+    return list(db.scalars(statement))
+
+
+def list_applicable_income_plans(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    as_of: datetime | None = None,
+    timezone_name: str | None = None,
+) -> list[MonthlyIncomePlan]:
+    """Active income rows that should count for ``month``.
+
+    For the current accounting month, rows are counted only after their
+    pay/arrival day has passed. A month-end salary should not inflate
+    today's spendable amount before it actually lands.
+    """
+
+    clean_month = _normalize_month(month, field_label="月份")
+    as_of_date = _income_as_of_date(as_of=as_of, timezone_name=timezone_name)
+    statement = (
+        _income_plan_base_select(tenant_id=tenant_id)
+        .where(MonthlyIncomePlan.status == "active")
+        .where(_applicable_income_clause(clean_month, as_of_date=as_of_date))
+    )
     return list(db.scalars(statement))
 
 
@@ -51,35 +87,30 @@ def create_income_plan(
     source_type: str,
     amount_cents: int,
     pay_day: int,
+    frequency: str = "monthly",
+    income_month: str | None = None,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
-    """Insert a new active income line. Validates label / amount / pay_day
-    at the service boundary so routes don't repeat the rules."""
+    """Insert a new active income row."""
 
-    clean_label = (label or "").strip()
-    if not clean_label:
-        raise AppError("invalid_request", "请填写收入名称。", status_code=422)
-    if len(clean_label) > _LABEL_MAX_LEN:
-        raise AppError(
-            "invalid_request",
-            f"收入名称最多 {_LABEL_MAX_LEN} 个字符。",
-            status_code=422,
-        )
-    clean_source = (source_type or "salary").strip()[:_SOURCE_TYPE_MAX_LEN]
+    clean_label = _clean_label(label)
+    clean_source = _clean_source_type(source_type)
+    clean_frequency = _clean_frequency(frequency)
+    clean_income_month = _normalize_income_month(
+        frequency=clean_frequency,
+        income_month=income_month,
+    )
     if amount_cents < 0:
-        raise AppError(
-            "invalid_request", "金额不能为负数。", status_code=422
-        )
-    if not 1 <= pay_day <= 31:
-        raise AppError(
-            "invalid_request", "发薪日需在 1 到 31 之间。", status_code=422
-        )
+        raise AppError("invalid_request", "金额不能为负数。", status_code=422)
+    _validate_pay_day(pay_day)
 
     when = now or now_utc()
     row = MonthlyIncomePlan(
         tenant_id=tenant_id,
         label=clean_label,
         source_type=clean_source,
+        frequency=clean_frequency,
+        income_month=clean_income_month,
         amount_cents=amount_cents,
         pay_day=pay_day,
         status="active",
@@ -102,30 +133,19 @@ def update_income_plan(
     source_type: str | None = None,
     amount_cents: int | None = None,
     pay_day: int | None = None,
+    frequency: str | None = None,
+    income_month: str | None = None,
+    income_month_provided: bool = False,
     now: datetime | None = None,
     commit: bool = True,
 ) -> MonthlyIncomePlan:
-    """Partial update. Only fields explicitly provided are changed.
-    Archived plans cannot be edited — caller must reactivate first.
-
-    ADR-0038 PR-2j atomic optimistic-concurrency claim:
-    ``UPDATE monthly_income_plans SET ..., updated_at = now WHERE
-    id, tenant_id, status='active', updated_at = expected``.
-    ``rowcount == 0`` disambiguates: row archived in the meantime →
-    409 ``state_conflict`` (existing UX preserved); otherwise →
-    409 ``state_conflict``.
-
-    ADR-0042: ``commit=False`` lets the route commit the OCC claim together
-    with the idempotency-key success record in one transaction (§4.5); the
-    row is flushed + expired so the re-read reflects the UPDATE. The
-    OCC-conflict path always rolls back its own placeholder regardless.
-    """
+    """Partial update. Archived plans cannot be edited directly."""
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "archived":
         raise AppError(
             "state_conflict",
-            "已归档的收入计划不能直接修改，请先恢复。",
+            "已归档的收入不能直接修改，请先恢复。",
             status_code=409,
         )
 
@@ -134,30 +154,28 @@ def update_income_plan(
     new_source_type = plan.source_type
     new_amount_cents = plan.amount_cents
     new_pay_day = plan.pay_day
+    new_frequency = plan.frequency or "monthly"
+    new_income_month = plan.income_month
 
     if label is not None:
-        clean = label.strip()
-        if not clean:
-            raise AppError("invalid_request", "请填写收入名称。", status_code=422)
-        if len(clean) > _LABEL_MAX_LEN:
-            raise AppError(
-                "invalid_request",
-                f"收入名称最多 {_LABEL_MAX_LEN} 个字符。",
-                status_code=422,
-            )
-        new_label = clean
+        new_label = _clean_label(label)
     if source_type is not None:
-        new_source_type = source_type.strip()[:_SOURCE_TYPE_MAX_LEN] or "salary"
+        new_source_type = _clean_source_type(source_type)
     if amount_cents is not None:
         if amount_cents < 0:
             raise AppError("invalid_request", "金额不能为负数。", status_code=422)
         new_amount_cents = amount_cents
     if pay_day is not None:
-        if not 1 <= pay_day <= 31:
-            raise AppError(
-                "invalid_request", "发薪日需在 1 到 31 之间。", status_code=422
-            )
+        _validate_pay_day(pay_day)
         new_pay_day = pay_day
+    if frequency is not None:
+        new_frequency = _clean_frequency(frequency)
+    if income_month_provided:
+        new_income_month = income_month
+    new_income_month = _normalize_income_month(
+        frequency=new_frequency,
+        income_month=new_income_month,
+    )
 
     when = now or now_utc()
     rowcount = claim_row_with_token(
@@ -169,6 +187,8 @@ def update_income_plan(
         set_values={
             "label": new_label,
             "source_type": new_source_type,
+            "frequency": new_frequency,
+            "income_month": new_income_month,
             "amount_cents": new_amount_cents,
             "pay_day": new_pay_day,
             "updated_at": when,
@@ -182,7 +202,7 @@ def update_income_plan(
         if current.status == "archived":
             raise AppError(
                 "state_conflict",
-                "已归档的收入计划不能直接修改，请先恢复。",
+                "已归档的收入不能直接修改，请先恢复。",
                 status_code=409,
             )
         raise AppError("state_conflict", status_code=409)
@@ -190,8 +210,6 @@ def update_income_plan(
         db.commit()
     else:
         db.flush()
-    # synchronize_session=False left the identity-mapped row stale; drop it so
-    # the re-read reflects the UPDATE (whether committed or only flushed).
     db.expire_all()
     return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
@@ -204,15 +222,7 @@ def archive_income_plan(
     expected_row_version: int,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
-    """Soft-delete: status → archived. Atomic optimistic concurrency.
-
-    ADR-0038 PR-B: replaces the SELECT-then-write with an atomic
-    ``UPDATE ... SET status='archived', archived_at=now, updated_at=now
-    WHERE id, tenant_id, status='active', updated_at=expected`` via
-    :func:`claim_row_with_token`. Idempotent — an already-archived plan is
-    returned unchanged (404 only when the plan does not exist); a stale token
-    against a still-active plan is 409 ``state_conflict``.
-    """
+    """Soft-delete an income row. Atomic optimistic concurrency."""
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "archived":
@@ -247,14 +257,7 @@ def restore_income_plan(
     expected_row_version: int,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
-    """Reactivate an archived plan. Atomic optimistic concurrency.
-
-    Mirror of :func:`archive_income_plan`: atomic ``UPDATE ... SET
-    status='active', archived_at=NULL, updated_at=now WHERE id, tenant_id,
-    status='archived', updated_at=expected``. Idempotent on already-active
-    plans (404 only when absent); a stale token against an archived plan is
-    409 ``state_conflict``.
-    """
+    """Reactivate an archived income row. Atomic optimistic concurrency."""
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "active":
@@ -284,25 +287,139 @@ def restore_income_plan(
 def get_income_plan(
     db: Session, *, tenant_id: str, public_id: str
 ) -> MonthlyIncomePlan:
-    """Tenant-scoped single read (404 when absent). Public wrapper over the
-    private ``_require_plan`` so the route layer can re-serialise canonical
-    state on an ADR-0042 idempotency HIT without crossing into the model."""
+    """Tenant-scoped single read (404 when absent)."""
 
     return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
 
-def total_monthly_income_cents(db: Session, *, tenant_id: str) -> int:
-    """Sum of active income lines for the tenant. Drives the income leg
-    of the v1.1 "本月可自由支配" formula in ``budget_baseline_service``."""
+def total_monthly_income_cents(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str | None = None,
+    as_of: datetime | None = None,
+    timezone_name: str | None = None,
+) -> int:
+    """Sum active income for the monthly discretionary formula.
 
-    total = db.scalar(
-        add_ledger_scope(
-            select(func.coalesce(func.sum(MonthlyIncomePlan.amount_cents), 0)),
-            MonthlyIncomePlan,
-            tenant_id,
-        ).where(MonthlyIncomePlan.status == "active")
+    Without ``month``, only recurring monthly rows are counted. With ``month``,
+    rows are additionally gated by the local as-of date so a month-end salary is
+    not treated as available before payday.
+    """
+
+    clean_month = _normalize_month(month, field_label="月份") if month else None
+    as_of_date = (
+        _income_as_of_date(as_of=as_of, timezone_name=timezone_name)
+        if clean_month is not None
+        else None
     )
+    statement = add_ledger_scope(
+        select(func.coalesce(func.sum(MonthlyIncomePlan.amount_cents), 0)),
+        MonthlyIncomePlan,
+        tenant_id,
+    ).where(MonthlyIncomePlan.status == "active")
+    statement = statement.where(_applicable_income_clause(clean_month, as_of_date=as_of_date))
+    total = db.scalar(statement)
     return int(total or 0)
+
+
+def _income_plan_base_select(*, tenant_id: str):
+    return ledger_scoped_select(MonthlyIncomePlan, tenant_id).order_by(
+        MonthlyIncomePlan.frequency.asc(),
+        MonthlyIncomePlan.income_month.asc(),
+        MonthlyIncomePlan.pay_day.asc(),
+        MonthlyIncomePlan.id.asc(),
+    )
+
+
+def _applicable_income_clause(month: str | None, *, as_of_date: date | None = None):
+    if month is None:
+        return MonthlyIncomePlan.frequency == "monthly"
+    timing_clause = _income_timing_clause(month=month, as_of_date=as_of_date)
+    return or_(
+        and_(MonthlyIncomePlan.frequency == "monthly", timing_clause),
+        and_(
+            MonthlyIncomePlan.frequency == "one_time",
+            MonthlyIncomePlan.income_month == month,
+            timing_clause,
+        ),
+    )
+
+
+def _income_timing_clause(*, month: str, as_of_date: date | None):
+    if as_of_date is None:
+        return True
+    year_text, month_text = month.split("-", maxsplit=1)
+    target_index = int(year_text) * 12 + int(month_text)
+    as_of_index = as_of_date.year * 12 + as_of_date.month
+    if target_index < as_of_index:
+        return True
+    if target_index > as_of_index:
+        return false()
+    return MonthlyIncomePlan.pay_day <= as_of_date.day
+
+
+def _income_as_of_date(
+    *,
+    as_of: datetime | None,
+    timezone_name: str | None,
+) -> date:
+    zone = safe_zone((timezone_name or "").strip() or get_settings().ocr_default_timezone)
+    return ensure_utc(as_of or now_utc()).astimezone(zone).date()
+
+
+def _clean_label(label: str) -> str:
+    clean_label = (label or "").strip()
+    if not clean_label:
+        raise AppError("invalid_request", "请填写收入名称。", status_code=422)
+    if len(clean_label) > _LABEL_MAX_LEN:
+        raise AppError(
+            "invalid_request",
+            f"收入名称最多 {_LABEL_MAX_LEN} 个字符。",
+            status_code=422,
+        )
+    return clean_label
+
+
+def _clean_source_type(source_type: str | None) -> str:
+    return (source_type or "salary").strip()[:_SOURCE_TYPE_MAX_LEN] or "salary"
+
+
+def _clean_frequency(frequency: str | None) -> IncomeFrequency:
+    normalized = (frequency or "monthly").strip().lower()
+    if normalized not in _FREQUENCIES:
+        raise AppError(
+            "invalid_request",
+            "请选择正确的收入类型。",
+            status_code=422,
+        )
+    return normalized  # type: ignore[return-value]
+
+
+def _normalize_income_month(*, frequency: str, income_month: str | None) -> str | None:
+    if frequency == "monthly":
+        return None
+    return _normalize_month(income_month, field_label="到账月份")
+
+
+def _normalize_month(value: str | None, *, field_label: str) -> str:
+    text = (value or "").strip()
+    if not _MONTH_RE.fullmatch(text):
+        raise AppError(
+            "invalid_request",
+            f"请选择正确的{field_label}。",
+            status_code=422,
+        )
+    return text
+
+
+def _validate_pay_day(pay_day: int) -> None:
+    if not 1 <= pay_day <= 31:
+        raise AppError(
+            "invalid_request",
+            "发薪日/到账日需在 1 到 31 之间。",
+            status_code=422,
+        )
 
 
 def _require_plan(
@@ -315,15 +432,17 @@ def _require_plan(
         .limit(1)
     )
     if plan is None:
-        raise AppError("not_found", "收入计划不存在。", status_code=404)
+        raise AppError("not_found", "收入不存在。", status_code=404)
     return plan
 
 
 __all__ = [
+    "IncomeFrequency",
     "IncomeStatus",
     "archive_income_plan",
     "create_income_plan",
     "get_income_plan",
+    "list_applicable_income_plans",
     "list_income_plans",
     "restore_income_plan",
     "total_monthly_income_cents",

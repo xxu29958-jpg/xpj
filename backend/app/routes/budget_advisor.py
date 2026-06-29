@@ -22,9 +22,11 @@ from app.services.budget_advisor_service import (
 )
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
+    total_confirmed_spent_cents,
     total_active_recurring_monthly_cents,
 )
 from app.services.income_plan_service import total_monthly_income_cents
+from app.services.spending_contract_service import current_accounting_month
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/budget", tags=["budget-advisor"])
@@ -32,22 +34,40 @@ router = APIRouter(prefix="/api/budget", tags=["budget-advisor"])
 
 @router.get("/discretionary", response_model=DiscretionaryResponse)
 def get_discretionary(
+    month: str | None = Query(
+        default=None,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        description="Accounting month used for one-time income.",
+    ),
     savings_target_cents: int = Query(default=0, ge=0),
     reserved_buffer_cents: int = Query(default=0, ge=0),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DiscretionaryResponse:
-    income = total_monthly_income_cents(db, tenant_id=auth.tenant_id)
+    month_label = month or current_accounting_month()
+    income = total_monthly_income_cents(
+        db,
+        tenant_id=auth.tenant_id,
+        month=month_label,
+    )
     fixed = total_active_recurring_monthly_cents(db, tenant_id=auth.tenant_id)
+    spent = total_confirmed_spent_cents(
+        db,
+        tenant_id=auth.tenant_id,
+        month=month_label,
+        timezone_name="Asia/Shanghai",
+    )
     breakdown = compute_monthly_discretionary(
         monthly_income_cents=income,
         fixed_expenses_cents=fixed,
+        spent_amount_cents=spent,
         savings_target_cents=savings_target_cents,
         reserved_buffer_cents=reserved_buffer_cents,
     )
     return DiscretionaryResponse(
         monthly_income_cents=breakdown.monthly_income_cents,
         fixed_expenses_cents=breakdown.fixed_expenses_cents,
+        spent_amount_cents=breakdown.spent_amount_cents,
         savings_target_cents=breakdown.savings_target_cents,
         reserved_buffer_cents=breakdown.reserved_buffer_cents,
         discretionary_cents=breakdown.discretionary_cents,

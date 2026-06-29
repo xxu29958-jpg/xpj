@@ -48,6 +48,9 @@ from app.services.budget_baseline_service._personal import (
     PersonalBaseline,
     compute_personal_baseline,
 )
+from app.services.budget_baseline_service._spent_reader import (
+    total_confirmed_spent_cents,
+)
 
 __all__ = [
     "FRAMEWORK_50_30_20",
@@ -65,4 +68,5 @@ __all__ = [
     "personal_trust_weight",
     "quintile_for_monthly_income",
     "total_active_recurring_monthly_cents",
+    "total_confirmed_spent_cents",
 ]

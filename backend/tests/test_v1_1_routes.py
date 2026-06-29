@@ -7,9 +7,13 @@ shape-of-response contract that the Android / web client will consume.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+
+from app.database import SessionLocal
+from app.models import Expense
 
 # ---------------------------------------------------------------------------
 # income_plans CRUD
@@ -40,6 +44,8 @@ def test_create_income_plan_round_trip(client: TestClient, *, identity) -> None:
     assert created["label"] == "我的工资"
     assert created["amount_cents"] == 1_000_000
     assert created["pay_day"] == 10
+    assert created["frequency"] == "monthly"
+    assert created["income_month"] is None
     assert created["status"] == "active"
     pid = created["public_id"]
 
@@ -47,6 +53,55 @@ def test_create_income_plan_round_trip(client: TestClient, *, identity) -> None:
     body = list_resp.json()
     assert any(p["public_id"] == pid for p in body["items"])
     assert body["total_active_amount_cents"] == 1_000_000
+
+
+def test_create_one_time_income_counts_only_for_requested_month(
+    client: TestClient, *, identity
+) -> None:
+    create_resp = client.post(
+        "/api/income-plans",
+        headers=identity.app_headers,
+        json={
+            "label": "项目奖金",
+            "source_type": "bonus",
+            "frequency": "one_time",
+            "income_month": "2026-06",
+            "amount_cents": 250_000,
+            "pay_day": 28,
+        },
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    created = create_resp.json()
+    assert created["frequency"] == "one_time"
+    assert created["income_month"] == "2026-06"
+
+    june = client.get(
+        "/api/income-plans?month=2026-06",
+        headers=identity.app_headers,
+    ).json()
+    july = client.get(
+        "/api/income-plans?month=2026-07",
+        headers=identity.app_headers,
+    ).json()
+    assert june["total_active_amount_cents"] == 250_000
+    assert july["total_active_amount_cents"] == 0
+
+
+def test_create_one_time_income_rejects_missing_income_month(
+    client: TestClient, *, identity
+) -> None:
+    resp = client.post(
+        "/api/income-plans",
+        headers=identity.app_headers,
+        json={
+            "label": "项目奖金",
+            "source_type": "bonus",
+            "frequency": "one_time",
+            "amount_cents": 250_000,
+            "pay_day": 28,
+        },
+    )
+    assert resp.status_code == 422
 
 
 def test_create_income_plan_rejects_invalid_payload(client: TestClient, *, identity) -> None:
@@ -204,9 +259,87 @@ def test_discretionary_subtracts_income_minus_fixed_minus_user_params(
     body = resp.json()
     assert body["monthly_income_cents"] == 1_000_000
     assert body["fixed_expenses_cents"] == 0
+    assert body["spent_amount_cents"] == 0
     assert body["savings_target_cents"] == 200_000
     assert body["reserved_buffer_cents"] == 50_000
     assert body["discretionary_cents"] == 750_000
+
+
+def test_discretionary_late_salary_backfill_offsets_existing_spend(
+    client: TestClient, *, identity
+) -> None:  # noqa: ARG001
+    spent_at = datetime(2026, 6, 12, 4, tzinfo=timezone.utc)
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id="owner",
+                status="confirmed",
+                amount_cents=300_000,
+                home_currency_code="CNY",
+                original_currency_code="CNY",
+                original_amount_minor=300_000,
+                merchant="永辉超市",
+                category="购物",
+                expense_time=spent_at,
+                confirmed_at=spent_at,
+                created_at=spent_at,
+                updated_at=spent_at,
+            )
+        )
+        db.commit()
+
+    income_resp = client.post(
+        "/api/income-plans",
+        headers=identity.app_headers,
+        json={
+            "label": "六月工资",
+            "source_type": "salary",
+            "frequency": "one_time",
+            "income_month": "2026-06",
+            "amount_cents": 1_000_000,
+            "pay_day": 28,
+        },
+    )
+    assert income_resp.status_code == 201, income_resp.text
+
+    resp = client.get(
+        "/api/budget/discretionary?month=2026-06",
+        headers=identity.app_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["monthly_income_cents"] == 1_000_000
+    assert body["spent_amount_cents"] == 300_000
+    assert body["discretionary_cents"] == 700_000
+
+
+def test_discretionary_includes_one_time_income_only_for_query_month(
+    client: TestClient, *, identity
+) -> None:
+    client.post(
+        "/api/income-plans",
+        headers=identity.app_headers,
+        json={
+            "label": "one-off",
+            "source_type": "bonus",
+            "frequency": "one_time",
+            "income_month": "2026-06",
+            "amount_cents": 200_000,
+            "pay_day": 18,
+        },
+    )
+    june = client.get(
+        "/api/budget/discretionary?month=2026-06",
+        headers=identity.app_headers,
+    )
+    july = client.get(
+        "/api/budget/discretionary?month=2026-07",
+        headers=identity.app_headers,
+    )
+    assert june.status_code == 200
+    assert july.status_code == 200
+    assert june.json()["monthly_income_cents"] == 200_000
+    assert july.json()["monthly_income_cents"] == 0
 
 
 def test_discretionary_floors_at_zero_when_underwater(

@@ -13,6 +13,8 @@ data class IncomePlanDto(
     @param:Json(name = "public_id") val publicId: String,
     val label: String,
     @param:Json(name = "source_type") val sourceType: String,
+    val frequency: String,
+    @param:Json(name = "income_month") val incomeMonth: String?,
     @param:Json(name = "amount_cents") val amountCents: Long,
     @param:Json(name = "pay_day") val payDay: Int,
     val status: String,
@@ -30,6 +32,8 @@ data class IncomePlanListResponseDto(
 data class IncomePlanCreateRequestDto(
     val label: String,
     @param:Json(name = "source_type") val sourceType: String,
+    val frequency: String = "monthly",
+    @param:Json(name = "income_month") val incomeMonth: String? = null,
     @param:Json(name = "amount_cents") val amountCents: Long,
     @param:Json(name = "pay_day") val payDay: Int,
 )
@@ -43,6 +47,8 @@ data class IncomePlanUpdateRequestDto(
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     val label: String? = null,
     @param:Json(name = "source_type") val sourceType: String? = null,
+    val frequency: String? = null,
+    @param:Json(name = "income_month") val incomeMonth: String? = null,
     @param:Json(name = "amount_cents") val amountCents: Long? = null,
     @param:Json(name = "pay_day") val payDay: Int? = null,
 )

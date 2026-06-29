@@ -242,6 +242,45 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
     to_outbound_dict(inputs)
 
 
+def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:  # noqa: ARG001
+    with SessionLocal() as db:
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="monthly",
+            source_type="salary",
+            amount_cents=1_000_000,
+            pay_day=10,
+        )
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="june bonus",
+            source_type="bonus",
+            amount_cents=200_000,
+            pay_day=20,
+            frequency="one_time",
+            income_month="2026-06",
+        )
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="july bonus",
+            source_type="bonus",
+            amount_cents=300_000,
+            pay_day=20,
+            frequency="one_time",
+            income_month="2026-07",
+        )
+    with SessionLocal() as db:
+        inputs = build_budget_inputs(db, tenant_id="owner", month="2026-06")
+    amounts = {p.amount_cents for p in inputs.income_plan}
+    assert 1_000_000 in amounts
+    assert 200_000 in amounts
+    assert 300_000 not in amounts
+    to_outbound_dict(inputs)
+
+
 def test_builder_does_not_send_recurring_merchants(identity) -> None:  # noqa: ARG001
     _seed_minimal_data()
     with SessionLocal() as db:
