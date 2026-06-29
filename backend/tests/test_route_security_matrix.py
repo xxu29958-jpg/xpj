@@ -120,6 +120,17 @@ from fastapi.testclient import TestClient
         ("POST", "/api/maintenance/cleanup-orphans", {}),
         ("POST", "/api/maintenance/cleanup-rejected", {}),
         (
+            "POST",
+            "/api/recycle-bin/restore",
+            {
+                "json": {
+                    "kind": "income_plan",
+                    "resource_id": "missing",
+                    "expected_row_version": 1,
+                }
+            },
+        ),
+        (
             "PATCH",
             "/api/merchants/aliases/alias_missing",
             {
