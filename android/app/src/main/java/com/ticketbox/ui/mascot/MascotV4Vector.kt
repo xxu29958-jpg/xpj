@@ -22,29 +22,34 @@ internal fun DrawScope.drawJiajiaV4Vector(
     palette: MascotPalette,
     breath: Float,
     zzzPhase: Float,
+    actionPhase: Float,
 ) {
     val scale = minOf(size.width, size.height) / V4_VIEWBOX
     val left = (size.width - V4_VIEWBOX * scale) / 2f
     val top = (size.height - V4_VIEWBOX * scale) / 2f
-    val pulse = 1f + breath * 0.012f
+    val pose = v4Pose(state, breath, actionPhase)
     withTransform(
         {
             translate(left, top)
             scale(scale, scale)
-            scale(pulse, pulse, pivot = Offset(262f, 286f))
-            if (state == MascotState.Dozing) {
-                rotate(-6f, pivot = Offset(262f, 292f))
-            }
         },
     ) {
-        drawV4Shadow(palette)
-        drawV4Feet(palette)
-        drawV4TopWires(state, palette, breath)
-        drawV4Body(palette)
-        drawV4Receipt(palette)
-        drawV4Clip(palette)
-        drawV4Face(state, palette)
-        drawV4Props(state, palette, breath)
+        drawV4Shadow(palette, pose)
+        withTransform(
+            {
+                translate(pose.offsetX, pose.offsetY)
+                rotate(pose.rotation, pivot = Offset(262f, 292f))
+                scale(pose.scaleX, pose.scaleY, pivot = Offset(262f, 292f))
+            },
+        ) {
+            drawV4Feet(palette, pose)
+            drawV4TopWires(state, palette, breath, actionPhase)
+            drawV4Body(palette)
+            drawV4Receipt(state, palette, actionPhase)
+            drawV4Clip(state, palette, actionPhase)
+            drawV4Face(state, palette)
+            drawV4Props(state, palette, actionPhase)
+        }
     }
     if (state == MascotState.Dozing) {
         withTransform(
@@ -58,56 +63,53 @@ internal fun DrawScope.drawJiajiaV4Vector(
     }
 }
 
-private fun DrawScope.drawV4Shadow(palette: MascotPalette) {
-    drawOval(
-        color = palette.outline.copy(alpha = 0.12f),
-        topLeft = Offset(72f, 476f),
-        size = Size(368f, 39f),
-    )
+private fun DrawScope.drawV4Shadow(palette: MascotPalette, pose: V4Pose) {
+    withTransform({ scale(pose.shadowScale, 1f, pivot = Offset(256f, 496f)) }) {
+        drawOval(
+            color = palette.outline.copy(alpha = pose.shadowAlpha),
+            topLeft = Offset(72f, 476f),
+            size = Size(368f, 39f),
+        )
+    }
 }
 
-private fun DrawScope.drawV4Feet(palette: MascotPalette) {
-    drawV4Foot(172f, palette)
-    drawV4Foot(352f, palette)
+private fun DrawScope.drawV4Feet(palette: MascotPalette, pose: V4Pose) {
+    drawV4Foot(172f, palette, pose.footLift)
+    drawV4Foot(352f, palette, pose.footLift)
 }
 
-private fun DrawScope.drawV4Foot(centerX: Float, palette: MascotPalette) {
-    val topLeft = Offset(centerX - 31f, 434f)
+private fun DrawScope.drawV4Foot(centerX: Float, palette: MascotPalette, lift: Float) {
+    val topLeft = Offset(centerX - 31f, 434f - lift)
     val footSize = Size(62f, 40f)
     drawOval(palette.bodyFill, topLeft, footSize)
     drawOval(palette.outline, topLeft, footSize, style = Stroke(width = 7f))
-    drawOval(palette.bodyHighlight.copy(alpha = 0.4f), Offset(centerX - 18f, 440f), Size(36f, 12f))
+    drawOval(palette.bodyHighlight.copy(alpha = 0.4f), Offset(centerX - 18f, 440f - lift), Size(36f, 12f))
 }
 
-private fun DrawScope.drawV4TopWires(state: MascotState, palette: MascotPalette, phase: Float) {
-    val wobble = (phase - 0.5f) * 6f
-    val leftAngle = -4f + when (state) {
-        MascotState.Greeting -> -7f - wobble
-        MascotState.Tickled -> -wobble
-        MascotState.Dozing -> 7f
-        else -> 0f
-    }
-    val rightAngle = 4f + when (state) {
-        MascotState.Greeting -> 5f + wobble
-        MascotState.Tickled -> wobble
-        MascotState.Celebrating -> 4f
-        MascotState.Dozing -> -7f
-        else -> 0f
-    }
-    val lift = when (state) {
-        MascotState.Stretching,
-        MascotState.Celebrating,
-        MascotState.ClampCheer,
-        -> -12f
-        MascotState.Dozing -> 8f
-        else -> 0f
-    }
-    drawV4Loop(184f, leftAngle, lift, palette)
-    drawV4Loop(340f, rightAngle, lift, palette)
+private fun DrawScope.drawV4TopWires(
+    state: MascotState,
+    palette: MascotPalette,
+    breath: Float,
+    phase: Float,
+) {
+    val arm = v4ArmPose(state, breath, phase)
+    drawV4Loop(184f, arm.leftAngle, arm.leftLift, palette, arm.stretchY)
+    drawV4Loop(340f, arm.rightAngle, arm.rightLift, palette, arm.stretchY)
 }
 
-private fun DrawScope.drawV4Loop(centerX: Float, angle: Float, lift: Float, palette: MascotPalette) {
-    withTransform({ rotate(angle, pivot = Offset(centerX, 180f + lift)) }) {
+private fun DrawScope.drawV4Loop(
+    centerX: Float,
+    angle: Float,
+    lift: Float,
+    palette: MascotPalette,
+    stretchY: Float = 1f,
+) {
+    withTransform(
+        {
+            rotate(angle, pivot = Offset(centerX, 180f + lift))
+            scale(1f, stretchY, pivot = Offset(centerX, 160f + lift))
+        },
+    ) {
         val loop = v4Path {
             moveTo(centerX - 18f, 160f + lift)
             cubicTo(centerX - 18f, 140f + lift, centerX - 22f, 132f + lift, centerX - 36f, 118f + lift)
@@ -169,69 +171,85 @@ private fun DrawScope.drawV4Body(palette: MascotPalette) {
     )
 }
 
-private fun DrawScope.drawV4Receipt(palette: MascotPalette) {
-    drawFilledStrokePath(
-        v4Path {
-            moveTo(198f, 368f)
-            lineTo(326f, 368f)
-            lineTo(326f, 486f)
-            quadraticTo(321f, 494f, 316f, 488f)
-            quadraticTo(311f, 482f, 306f, 488f)
-            quadraticTo(301f, 494f, 296f, 488f)
-            quadraticTo(291f, 482f, 286f, 488f)
-            quadraticTo(281f, 494f, 276f, 488f)
-            quadraticTo(271f, 482f, 266f, 488f)
-            quadraticTo(261f, 494f, 256f, 488f)
-            quadraticTo(251f, 482f, 246f, 488f)
-            quadraticTo(241f, 494f, 236f, 488f)
-            quadraticTo(231f, 482f, 226f, 488f)
-            quadraticTo(221f, 494f, 216f, 488f)
-            quadraticTo(207f, 484f, 198f, 488f)
-            close()
+private fun DrawScope.drawV4Receipt(state: MascotState, palette: MascotPalette, phase: Float) {
+    val paper = v4ReceiptMotion(state, phase)
+    withTransform(
+        {
+            translate(0f, paper.offsetY)
+            rotate(paper.rotation, pivot = Offset(262f, 370f))
         },
-        fill = palette.receiptFill,
-        stroke = palette.outline,
-        strokeWidth = 5.4f,
-    )
-    listOf(406f, 434f, 460f).forEachIndexed { index, y ->
-        drawLine(
-            color = palette.receiptRule.copy(alpha = if (index == 2) 0.82f else 1f),
-            start = Offset(226f, y),
-            end = Offset(if (index == 2) 294f else 306f, y),
-            strokeWidth = 4.2f,
-            cap = StrokeCap.Round,
+    ) {
+        drawFilledStrokePath(
+            v4Path {
+                moveTo(198f, 368f)
+                lineTo(326f, 368f)
+                lineTo(326f, 486f)
+                quadraticTo(321f, 494f, 316f, 488f)
+                quadraticTo(311f, 482f, 306f, 488f)
+                quadraticTo(301f, 494f, 296f, 488f)
+                quadraticTo(291f, 482f, 286f, 488f)
+                quadraticTo(281f, 494f, 276f, 488f)
+                quadraticTo(271f, 482f, 266f, 488f)
+                quadraticTo(261f, 494f, 256f, 488f)
+                quadraticTo(251f, 482f, 246f, 488f)
+                quadraticTo(241f, 494f, 236f, 488f)
+                quadraticTo(231f, 482f, 226f, 488f)
+                quadraticTo(221f, 494f, 216f, 488f)
+                quadraticTo(207f, 484f, 198f, 488f)
+                close()
+            },
+            fill = palette.receiptFill,
+            stroke = palette.outline,
+            strokeWidth = 5.4f,
         )
+        listOf(406f, 434f, 460f).forEachIndexed { index, y ->
+            drawLine(
+                color = palette.receiptRule.copy(alpha = if (index == 2) 0.82f else 1f),
+                start = Offset(226f, y),
+                end = Offset(if (index == 2) 294f else 306f, y),
+                strokeWidth = 4.2f,
+                cap = StrokeCap.Round,
+            )
+        }
     }
 }
 
-private fun DrawScope.drawV4Clip(palette: MascotPalette) {
-    drawFilledStrokePath(
-        v4Path {
-            moveTo(243f, 350f)
-            lineTo(281f, 350f)
-            quadraticTo(287f, 350f, 287f, 356f)
-            lineTo(287f, 377f)
-            quadraticTo(284f, 386f, 276f, 386f)
-            lineTo(270f, 386f)
-            lineTo(270f, 372f)
-            lineTo(263f, 372f)
-            lineTo(263f, 386f)
-            lineTo(251f, 386f)
-            quadraticTo(239f, 386f, 239f, 377f)
-            lineTo(239f, 356f)
-            quadraticTo(239f, 350f, 243f, 350f)
-            close()
+private fun DrawScope.drawV4Clip(state: MascotState, palette: MascotPalette, phase: Float) {
+    val paper = v4ReceiptMotion(state, phase)
+    withTransform(
+        {
+            translate(0f, paper.offsetY)
+            rotate(paper.rotation, pivot = Offset(262f, 370f))
         },
-        fill = palette.clipAccent,
-        stroke = palette.outline,
-        strokeWidth = 5.6f,
-    )
-    drawRoundRect(
-        color = palette.bodyHighlight.copy(alpha = 0.30f),
-        topLeft = Offset(247f, 357f),
-        size = Size(30f, 9f),
-        cornerRadius = CornerRadius(5f, 5f),
-    )
-    drawLine(palette.outline.copy(alpha = 0.36f), Offset(255f, 354f), Offset(255f, 377f), 3.5f, StrokeCap.Round)
-    drawLine(palette.outline.copy(alpha = 0.36f), Offset(269f, 354f), Offset(269f, 377f), 3.5f, StrokeCap.Round)
+    ) {
+        drawFilledStrokePath(
+            v4Path {
+                moveTo(243f, 350f)
+                lineTo(281f, 350f)
+                quadraticTo(287f, 350f, 287f, 356f)
+                lineTo(287f, 377f)
+                quadraticTo(284f, 386f, 276f, 386f)
+                lineTo(270f, 386f)
+                lineTo(270f, 372f)
+                lineTo(263f, 372f)
+                lineTo(263f, 386f)
+                lineTo(251f, 386f)
+                quadraticTo(239f, 386f, 239f, 377f)
+                lineTo(239f, 356f)
+                quadraticTo(239f, 350f, 243f, 350f)
+                close()
+            },
+            fill = palette.clipAccent,
+            stroke = palette.outline,
+            strokeWidth = 5.6f,
+        )
+        drawRoundRect(
+            color = palette.bodyHighlight.copy(alpha = 0.30f),
+            topLeft = Offset(247f, 357f),
+            size = Size(30f, 9f),
+            cornerRadius = CornerRadius(5f, 5f),
+        )
+        drawLine(palette.outline.copy(alpha = 0.36f), Offset(255f, 354f), Offset(255f, 377f), 3.5f, StrokeCap.Round)
+        drawLine(palette.outline.copy(alpha = 0.36f), Offset(269f, 354f), Offset(269f, 377f), 3.5f, StrokeCap.Round)
+    }
 }

@@ -1,6 +1,7 @@
 package com.ticketbox.ui.mascot
 
 import android.os.SystemClock
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -90,11 +91,34 @@ fun MascotPlaceholder(
         ),
         label = "zzz",
     )
+    val actionPhase = remember { Animatable(0f) }
+    LaunchedEffect(state) {
+        actionPhase.snapTo(0f)
+        while (isActive) {
+            actionPhase.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(mascotActionDurationMillis(state), easing = LinearEasing),
+            )
+            actionPhase.snapTo(0f)
+        }
+    }
     Canvas(modifier = modifier.size(size)) {
-        drawJiajiaV4Vector(state, palette, breath, zzzPhase)
+        drawJiajiaV4Vector(state, palette, breath, zzzPhase, actionPhase.value)
     }
 }
 
 private const val MASCOT_TICK_MS = 200L
 private const val MASCOT_BREATH_MS = 2400
 private const val MASCOT_ZZZ_MS = 2800
+
+private fun mascotActionDurationMillis(state: MascotState): Int = when (state) {
+    MascotState.Dozing -> 3200
+    MascotState.Neutral -> 2600
+    MascotState.Celebrating -> 900
+    MascotState.ClampCheer,
+    MascotState.Tickled,
+    -> 760
+    MascotState.Stretching -> 1000
+    MascotState.Juggling -> 1100
+    else -> 1400
+}
