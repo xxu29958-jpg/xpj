@@ -1,29 +1,46 @@
-"""ADR-0038 软删除保留窗口策略(单一真相源)。
+"""Soft-delete retention policy.
 
-软删除的 alias / rule 在 SOFT_DELETE_RETENTION_MINUTES 后由 cleanup 永久 purge;在此之前
-undo/restore 可恢复。purge(cleanup)与 restore(undo)必须共用**同一个**窗口——否则 cleanup
-滞后时超期行仍能被 undo 恢复(codex P1)。本模块把窗口 + 判定收到一处,两侧都引用。
+ADR-0038 的原始 undo banner 仍是 5 分钟语义；ADR-0051 回收站把“显式进入回收站后
+可恢复”解耦为天级保留。默认撤销入口继续用短窗，回收站入口和 purge 用天级窗口，
+避免清理任务在用户还有机会从回收站恢复时提前硬删。
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from app.config import get_settings
 from app.services.time_service import ensure_utc, now_utc
 
-# 服务端保留窗口:软删除行被永久 purge 前的宽限期。客户端 undo banner 是更短的 UX
-# 窗口(~5s);这是服务端 grace period,过后行就没了。
+# ADR-0038 undo banner 的服务端短窗。保持常量名兼容既有测试/调用点。
 SOFT_DELETE_RETENTION_MINUTES = 5
 SOFT_DELETE_RETENTION = timedelta(minutes=SOFT_DELETE_RETENTION_MINUTES)
 
 
 def is_within_undo_window(deleted_at: datetime | None) -> bool:
-    """软删除行是否仍在 undo 保留窗口内。
+    """Soft-deleted row is still restorable from the short undo banner."""
+    return _is_within_window(deleted_at, SOFT_DELETE_RETENTION)
 
-    ``None``(未软删除)→ False。naive datetime 视为 UTC(SQLite 存 naive)。undo/restore
-    路径用它挡住「超期但 cleanup 还没 purge」的行,使恢复语义与 purge 一致。
-    """
+
+def recycle_bin_retention_days() -> int:
+    return max(1, int(get_settings().recycle_bin_retention_days))
+
+
+def recycle_bin_retention_delta() -> timedelta:
+    return timedelta(days=recycle_bin_retention_days())
+
+
+def recycle_bin_retention_label() -> str:
+    return f"{recycle_bin_retention_days()} 天内可恢复"
+
+
+def is_within_recycle_bin_window(deleted_at: datetime | None) -> bool:
+    """Soft-deleted row is still available from the explicit recycle bin."""
+    return _is_within_window(deleted_at, recycle_bin_retention_delta())
+
+
+def _is_within_window(deleted_at: datetime | None, window: timedelta) -> bool:
     aware = ensure_utc(deleted_at)
     if aware is None:
         return False
-    return now_utc() - aware <= SOFT_DELETE_RETENTION
+    return now_utc() - aware <= window

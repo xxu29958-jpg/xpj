@@ -12,7 +12,10 @@ from app.services.optimistic_concurrency import (
     claim_row_with_token,
 )
 from app.services.resource_audit import record_resource_action
-from app.services.soft_delete_policy import is_within_undo_window
+from app.services.soft_delete_policy import (
+    is_within_recycle_bin_window,
+    is_within_undo_window,
+)
 from app.services.time_service import now_utc
 
 
@@ -65,9 +68,9 @@ def _get_alias_by_key(
 
     Uniqueness intentionally spans soft-deleted rows: the DB keeps the
     ``(tenant_id, alias_key)`` unique constraint, so a soft-deleted key stays
-    reserved during its undo window. Creating it again returns 409 until the
-    row is undone or purged — which also guarantees undo never resurrects a
-    duplicate key.
+    reserved until the row is restored or purged after recycle-bin retention.
+    Creating it again returns 409 during that period, which also guarantees
+    undo never resurrects a duplicate key.
     """
     return db.scalar(
         ledger_scoped_select(MerchantAlias, tenant_id)
@@ -248,10 +251,10 @@ def delete_merchant_alias(
 
     ``UPDATE merchant_aliases SET deleted_at = now, updated_at = now WHERE id,
     tenant_id, updated_at = expected``. The row is hidden from every read but
-    recoverable via :func:`undo_delete_merchant_alias` until cleanup purges it
-    past the retention window. ``rowcount == 0`` disambiguates 404 vs 409
-    exactly like the hard delete it replaces; the ``ObjectDeletedError`` guard
-    handles a concurrent-delete race.
+    recoverable through the short undo endpoint or explicit recycle-bin restore
+    until cleanup purges it past recycle-bin retention. ``rowcount == 0``
+    disambiguates 404 vs 409 exactly like the hard delete it replaces; the
+    ``ObjectDeletedError`` guard handles a concurrent-delete race.
     """
     try:
         item_id = item.id
@@ -287,22 +290,28 @@ def undo_delete_merchant_alias(
     tenant_id: str,
     public_id: str,
     actor_account_id: int | None = None,
+    use_recycle_bin_window: bool = False,
 ) -> MerchantAlias:
-    """ADR-0038 undo: restore a soft-deleted alias within its retention window.
+    """Restore a soft-deleted alias within the selected restore window.
 
     Clears ``deleted_at`` and appends a ``ledger_audit_logs`` ``action='undo'``
     row. 404 if the alias isn't currently soft-deleted (never existed, already
-    live, or already purged). Because create is blocked while a soft-deleted
-    holder reserves the key, no live row can hold the same key at undo time;
-    the live-holder guard below is defensive belt-and-braces.
+    live, already purged, or outside the selected restore window). Because
+    create is blocked while a soft-deleted holder reserves the key, no live row
+    can hold the same key at undo time; the live-holder guard below is
+    defensive belt-and-braces.
     """
     item = _get_soft_deleted_alias_by_public_id(
         db, tenant_id=tenant_id, public_id=public_id
     )
     if item is None:
         raise AppError("merchant_alias_not_found", status_code=404)
-    if not is_within_undo_window(item.deleted_at):
-        # 超过保留窗口:逻辑上应已被 cleanup purge,即使 purge 滞后也不再可恢复(与 purge 语义一致)。
+    window_check = (
+        is_within_recycle_bin_window if use_recycle_bin_window else is_within_undo_window
+    )
+    if not window_check(item.deleted_at):
+        # Outside the selected restore window: normal undo stays short-lived,
+        # while recycle-bin restore opts into the longer window.
         raise AppError("merchant_alias_not_found", status_code=404)
     live_holder = db.scalar(
         ledger_scoped_select(MerchantAlias, tenant_id)

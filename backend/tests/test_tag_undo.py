@@ -180,11 +180,11 @@ def test_purge_removes_expired_snapshot_keeps_in_window(client: TestClient, *, i
                 TagMutationUndoGroup.mutation_public_id == expired["mutation_public_id"]
             )
         )
-        group.created_at = now_utc() - timedelta(minutes=10)
+        group.created_at = now_utc() - timedelta(days=31)
         tag_row = db.scalar(
             select(Tag).where(Tag.tenant_id == "owner").where(Tag.public_id == expired_tag["public_id"])
         )
-        tag_row.deleted_at = now_utc() - timedelta(minutes=10)
+        tag_row.deleted_at = now_utc() - timedelta(days=31)
         expired_group_id = group.id
         db.commit()
 

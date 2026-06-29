@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
   <h1 class="page-title">回收站</h1>
-  <div class="page-sub">查看当前账本里已归档或仍在短窗内可恢复的项目。</div>
+  <div class="page-sub">查看当前账本里已归档或仍在回收站保留期内可恢复的项目。</div>
 </div>
 
 {% if message %}<div class="callout-info">{{ message }}</div>{% endif %}
@@ -19,8 +19,8 @@
     <div class="val">{{ recycle_bin.items|length }}</div>
   </div>
   <div class="text-meta">
-    长期归档项目会持续显示；分类规则、商家别名和标签只在原有短窗内可恢复。
-    {% if recycle_bin.short_window_count %}当前短窗项目 {{ recycle_bin.short_window_count }} 条。{% endif %}
+    长期归档项目会持续显示；分类规则、商家别名和标签会在回收站保留期内可恢复。
+    {% if recycle_bin.short_window_count %}当前限期保留项目 {{ recycle_bin.short_window_count }} 条。{% endif %}
   </div>
 </div>
 
@@ -45,7 +45,7 @@
           <div class="text-meta">{{ row.detail }}</div>
         </td>
         <td>
-          {% if row.retention_label == '短窗可恢复' %}
+          {% if row.retention_label != '长期保留' %}
             <span class="pill pill-warn">{{ row.retention_label }}</span>
           {% else %}
             <span class="pill pill-ok">{{ row.retention_label }}</span>

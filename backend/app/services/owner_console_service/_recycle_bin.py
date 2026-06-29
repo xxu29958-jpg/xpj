@@ -1,9 +1,9 @@
 """Unified recycle-bin view-models for Owner Console.
 
-ADR-0051 first implementation deliberately keeps the retention semantics that
-already exist: archived rows stay visible until restored, while short-window
-soft-deletes only appear while their undo window is still valid. This module
-aggregates those resource-specific lifecycles into one owner-only surface.
+Archived rows stay visible until restored. Soft-deleted rows use ADR-0051's
+explicit recycle-bin retention window, while the original undo endpoints keep
+their short 5-minute banner window. This module aggregates those
+resource-specific lifecycles into one owner-only surface.
 """
 
 from __future__ import annotations
@@ -37,7 +37,10 @@ from app.services.owner_console_service._ledger_console import (
     list_manageable_console_ledgers,
 )
 from app.services.recurring_service import restore_recurring_item
-from app.services.soft_delete_policy import is_within_undo_window
+from app.services.soft_delete_policy import (
+    is_within_recycle_bin_window,
+    recycle_bin_retention_label,
+)
 from app.services.tag_undo_service import undo_tag_mutation
 
 
@@ -77,7 +80,7 @@ def get_recycle_bin_vm(db: Session) -> RecycleBinVM:
     return RecycleBinVM(
         rows=rows,
         ledger_count=len(ledger_names),
-        short_window_count=sum(1 for row in rows if row.retention_label == "短窗可恢复"),
+        short_window_count=sum(1 for row in rows if row.retention_label != "长期保留"),
     )
 
 
@@ -134,6 +137,7 @@ def restore_recycle_bin_item(
             tenant_id=clean_ledger_id,
             rule_id=int(clean_resource_id),
             actor_account_id=owner_id,
+            use_recycle_bin_window=True,
         )
         return "分类规则已恢复。"
     if clean_kind == "merchant_alias":
@@ -142,6 +146,7 @@ def restore_recycle_bin_item(
             tenant_id=clean_ledger_id,
             public_id=clean_resource_id,
             actor_account_id=owner_id,
+            use_recycle_bin_window=True,
         )
         return "商家别名已恢复。"
     if clean_kind == "tag_mutation":
@@ -151,6 +156,7 @@ def restore_recycle_bin_item(
             mutation_public_id=clean_resource_id,
             expected_row_version=_require_token(expected_row_version),
             actor_account_id=owner_id,
+            use_recycle_bin_window=True,
         )
         if result.skipped:
             return f"标签已恢复；恢复 {result.applied} 笔，跳过 {result.skipped} 笔已变更账单。"
@@ -303,7 +309,7 @@ def _soft_deleted_rule_rows(
             .where(CategoryRule.deleted_at.is_not(None))
             .order_by(CategoryRule.deleted_at.desc(), CategoryRule.id.desc())
         )
-        if is_within_undo_window(item.deleted_at)
+        if is_within_recycle_bin_window(item.deleted_at)
     ]
     return [
         RecycleBinItemVM(
@@ -315,7 +321,7 @@ def _soft_deleted_rule_rows(
             title=item.keyword,
             detail=f"匹配后分类为 {item.category}",
             removed_at=item.deleted_at,
-            retention_label="短窗可恢复",
+            retention_label=recycle_bin_retention_label(),
             expected_row_version=None,
         )
         for item in rows
@@ -333,7 +339,7 @@ def _soft_deleted_alias_rows(
             .where(MerchantAlias.deleted_at.is_not(None))
             .order_by(MerchantAlias.deleted_at.desc(), MerchantAlias.id.desc())
         )
-        if is_within_undo_window(item.deleted_at)
+        if is_within_recycle_bin_window(item.deleted_at)
     ]
     return [
         RecycleBinItemVM(
@@ -345,7 +351,7 @@ def _soft_deleted_alias_rows(
             title=item.alias,
             detail=f"恢复为 {item.canonical_merchant} 的别名",
             removed_at=item.deleted_at,
-            retention_label="短窗可恢复",
+            retention_label=recycle_bin_retention_label(),
             expected_row_version=None,
         )
         for item in rows
@@ -369,7 +375,7 @@ def _tag_undo_rows(
         .order_by(TagMutationUndoGroup.created_at.desc(), TagMutationUndoGroup.id.desc())
     ).all()
     for group, tag in query_rows:
-        if not is_within_undo_window(group.created_at):
+        if not is_within_recycle_bin_window(group.created_at):
             continue
         detail = "删除标签"
         if group.op == "merge" and group.target_tag_name:
@@ -384,7 +390,7 @@ def _tag_undo_rows(
                 title=group.source_tag_name,
                 detail=detail,
                 removed_at=group.created_at,
-                retention_label="短窗可恢复",
+                retention_label=recycle_bin_retention_label(),
                 expected_row_version=tag.row_version,
             )
         )

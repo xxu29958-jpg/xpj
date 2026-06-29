@@ -1,6 +1,6 @@
-# ADR-0051: 统一回收站（owner console 首片已落地）
+# ADR-0051: 统一回收站
 
-- 状态：accepted / partially implemented（2026-06-29：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站）
+- 状态：accepted / partially implemented（2026-06-29：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站；短窗软删的回收站天级 retention）
 - 关联：ENGINEERING_RULES §6（持久化/同步/恢复）/ §12（保留天数预算）/ §13（反扩）、[[0038]]（`deleted_at` 软删 tombstone）、[[0043]]（tag mutation-undo）、[[0046]]（Android 周期 worker 边界）、[[0049]]（债务域 append-only，**排除在回收站外**）
 
 ## 2026-06-29 首片落地
@@ -20,17 +20,27 @@
 - 普通端只看当前 session token 对应账本，不列已归档账本本身；已归档账本仍只在 owner console 恢复。
 - 纳入实体同首片中“账本以外”的可恢复项：收入记录、固定支出、目标、分类规则、商家别名、标签 undo group。
 - `viewer` 可读不可恢复；恢复仍要求 `owner/member`，并委托各实体既有 restore/undo service。
-- 仍不新增天级 retention，不改 purge，不做 master 删除。
+- 该片当时尚未新增天级 retention、不改 purge、不做 master 删除；第三片见下方 retention 解耦。
+
+## 2026-06-29 后端 retention 解耦
+
+第三片选择决策轴 ①(c)：**普通撤销条仍是 5 分钟，显式回收站默认保留 30 天**。
+
+- 新增配置 `RECYCLE_BIN_RETENTION_DAYS`（默认 30，最小 1），作为分类规则、商家别名、标签 delete/merge undo group 的回收站保留窗口。
+- `SOFT_DELETE_RETENTION_MINUTES=5` 继续只代表原撤销 API / banner 的短窗；`/api/*/undo` 与 `/web/*/undo` 默认不放宽，超过 5 分钟仍返回原来的 not_found。
+- `/owner/recycle-bin/restore` 与 `/api/recycle-bin/restore` 显式使用回收站窗口，可恢复已超过 5 分钟但未超过 `RECYCLE_BIN_RETENTION_DAYS` 的软删项。
+- `soft_delete_purge_scheduler` 继续 opt-in 且复用既有清理路径，但默认硬删 cutoff 改为回收站天级窗口；仍可通过函数参数覆盖分钟窗口用于测试/手动定向清理。
+- 本片不新增 per-row retention 字段：当前三类短窗实体已有 `deleted_at` / `created_at` 作为 retention 锚点，且窗口是全局产品策略；master 删除仍必须走独立 ADR。
 
 ## 背景与问题
 
 用户问「没有回收吗」，指向一个真实缺口：当前删除/恢复是**碎片化、按实体各自实现**的，无统一回收站。现状三种正交「软删」语义并存：
 
-- **`deleted_at` 短窗软删**（merchant_alias / category_rule / tag，[[0038]]）：5 分钟保留窗后被 `soft_delete_purge_scheduler` 永久 purge；
+- **`deleted_at` 软删**（merchant_alias / category_rule / tag，[[0038]]）：普通撤销条 5 分钟；显式回收站默认 30 天，过期后由 `soft_delete_purge_scheduler` 永久 purge；
 - **`archived_at` 永久归档**（recurring / goal / income_plan / ledger）：永不清理，可从 owner 回收站集中恢复；
 - **`status='rejected'`**（expense，复用同一 5min undo 窗）。
 
-剩余不对称与硬缺口：**category / budget / merchant master 完全没有删除入口**；天级独立 retention 尚未实现。结果：owner 端与普通 web/Android 已有统一「已删/已归档」面，但短窗项仍只在原 5 分钟窗口内可恢复。
+剩余不对称与硬缺口：**category / budget / merchant master 完全没有删除入口**。结果：owner 端与普通 web/Android 已有统一「已删/已归档」面，短窗软删项也已从 5 分钟撤销条解耦为默认 30 天回收站保留。
 
 ## 决策驱动
 
@@ -47,7 +57,7 @@
 - (a) 维持各自短窗，回收站只是「当前可恢复项」的统一只读视图，不改 retention（零架构改动）。
 - (b) 把 `SOFT_DELETE_RETENTION_MINUTES` 抬到天级（牵动 alias/rule/tag purge 时机，§6 改动，要回滚演练）。
 - (c) **回收站自带独立 retention（天级），与 5min undo 窗解耦**——undo banner 仍即时 5min，回收站另设 N 天保留。
-- **首片选择 (a)**：先不动 retention / purge / schema；(c) 保留为后续扩展方向。undo banner（临时悬浮）与回收站（显式可浏览）仍应长期解耦。
+- **首片选择 (a)**：先不动 retention / purge / schema；第三片已落地 (c)。undo banner（临时悬浮）与回收站（显式可浏览）现在按两个窗口长期解耦。
 
 **② scope（哪些实体可进回收站）**
 - (a) 仅现有可恢复的软删/归档（alias/rule/tag/income_plan/recurring/goal），并**补 recurring/goal 的 restore**。
@@ -60,16 +70,16 @@
 - **首片选择 (b)**：owner 现成参照 + 内网收敛，先把统一入口和 restore 闭环跑通，再铺三端（工作量不对称：web 从零、Android 加二级页、owner 最接近）。
 
 **④ purge 机制**
-- **首片不改 purge**：继续复用现有 `soft_delete_purge_scheduler` 处理短窗软删；后续若实现天级 retention，再扩展既有调度，不引 Celery/RQ（守 §13）。
+- **首片不改 purge；第三片扩展 purge cutoff**：继续复用现有 `soft_delete_purge_scheduler`，默认 cutoff 改为 `RECYCLE_BIN_RETENTION_DAYS`，不引 Celery/RQ（守 §13）。
 
 ## 后果
 
 - **好**：补上「回收/恢复」体验缺口；recurring/goal restore 对称化；统一「已删/已归档」可浏览面。
-- **代价**：retention 若选 (c) 要新增字段（§6 三步走迁移）+ purge 扩展；三端铺面工作量不对称；恢复 collision 规则要逐实体定。
+- **代价**：retention 选择 (c) 后，purge 与 restore 需要区分 undo 短窗/回收站窗口；三端铺面工作量不对称；恢复 collision 规则要逐实体定。
 - **中性**：先 owner-only 落地，再扩三端，分多片渐进。
 
 ## 切片划分 + 回收条件
 
-1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 字段（若选 (c)）。4.（独立 ADR）master 软删 + voided debt 只读展示。
+1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 解耦（已完成：配置型全局窗口，未新增 per-row 字段）。4.（独立 ADR）master 软删 + voided debt 只读展示。
 
 回收条件：任一轴落地后若 retention/scope 判断变化，回此 ADR 修订；master 删除与债务展示须各自新开 ADR，不在本 scope 隐式扩张。

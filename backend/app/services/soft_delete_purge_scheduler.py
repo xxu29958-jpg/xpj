@@ -1,10 +1,9 @@
 """ADR-0038 undo: optional periodic purge of soft-deleted rows past retention.
 
 Opt-in via ``SOFT_DELETE_PURGE_AUTO_ENABLED`` (default off), matching the other
-cleanup schedulers. Soft-deleted rows are hidden from every read the moment
-they are deleted, so the sweep cadence only bounds storage lag — never the undo
-window or correctness. Interval-based (not daily-at) because the undo retention
-window is short; a coarse interval still keeps storage bounded.
+cleanup schedulers. Soft-deleted rows are hidden from every read the moment they
+are deleted, so the sweep cadence only bounds storage lag; the purge cutoff is
+the explicit recycle-bin retention window, not the short undo-banner window.
 """
 
 from __future__ import annotations

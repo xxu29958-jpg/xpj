@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import MonthlyIncomePlan
+from app.models import CategoryRule, MonthlyIncomePlan
 from app.services.classify_service import create_rule, delete_rule
 from app.services.income_plan_service import archive_income_plan, create_income_plan
+from app.services.time_service import now_utc
 
 
 def _seed_archived_income(
@@ -51,6 +54,14 @@ def _seed_deleted_rule() -> int:
         return rule_id
 
 
+def _age_deleted_rule_past_undo_window(rule_id: int) -> None:
+    with SessionLocal() as db:
+        rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id))
+        assert rule is not None
+        rule.deleted_at = now_utc() - timedelta(minutes=10)
+        db.commit()
+
+
 def test_recycle_bin_api_lists_current_ledger_only(
     client: TestClient, *, identity
 ) -> None:
@@ -67,6 +78,34 @@ def test_recycle_bin_api_lists_current_ledger_only(
     assert "回收站规则" in titles
     assert "其它账本收入" not in titles
     assert body["short_window_count"] == 1
+
+
+def test_recycle_bin_api_restores_deleted_rule_after_undo_window(
+    client: TestClient, *, identity
+) -> None:
+    rule_id = _seed_deleted_rule()
+    _age_deleted_rule_past_undo_window(rule_id)
+
+    listed = client.get("/api/recycle-bin", headers=identity.app_headers)
+
+    assert listed.status_code == 200
+    assert "回收站规则" in [item["title"] for item in listed.json()["items"]]
+    assert any(
+        item["retention_label"] == "30 天内可恢复" for item in listed.json()["items"]
+    )
+
+    restored = client.post(
+        "/api/recycle-bin/restore",
+        headers=identity.app_headers,
+        json={"kind": "category_rule", "resource_id": str(rule_id)},
+    )
+
+    assert restored.status_code == 200
+    with SessionLocal() as db:
+        deleted_at = db.scalar(
+            select(CategoryRule.deleted_at).where(CategoryRule.id == rule_id)
+        )
+    assert deleted_at is None
 
 
 def test_recycle_bin_api_restores_archived_income(

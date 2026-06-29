@@ -190,7 +190,7 @@ Authorization: Bearer <admin_token>
 | `/api/tags/{public_id}/merge` | POST | `backend/app/routes/tags.py` | `mergeTag(publicId,request)` | `TagMergeRequest`（源 `expected_row_version` + `target_public_id` + `target_row_version`，**双 OCC token**） | `TagMutationDto` | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py` | ADR-0043 合并；任一 token 陈旧→409 |
 | `/api/tags/mutations/{mutation_public_id}/undo` | POST | `backend/app/routes/tags.py` | `undoTagMutation(mutationPublicId,request)` | `TagUndoRequest`（`expected_row_version` = undo handle token） | `TagUndoDto`（`applied`/`skipped`） | Session Token，owner/member 写权限 | `backend/tests/test_tag_undo.py` | ADR-0043 5 分钟窗口内撤销 delete/merge（契约 2/4）；复活后该 delete 不再可撤（契约 4） |
 | 标签管理写面 | — | — | — | — | — | — | — | 5 路由均**不声明 Idempotency-Key**（online-only，非 outbox 重放面，契约 7）；幂等由 OCC `row_version` 保证 |
-| `/api/recycle-bin` | GET | `backend/app/routes/recycle_bin.py` | `recycleBin()` | 无 | `RecycleBinListResponseDto` | Session Token；viewer 可读 | `backend/tests/test_recycle_bin.py`, `RecycleBinViewModelTest` | ADR-0051 当前账本回收站；列已归档收入/固定支出/目标与短窗内规则/商家别名/标签 |
+| `/api/recycle-bin` | GET | `backend/app/routes/recycle_bin.py` | `recycleBin()` | 无 | `RecycleBinListResponseDto` | Session Token；viewer 可读 | `backend/tests/test_recycle_bin.py`, `RecycleBinViewModelTest` | ADR-0051 当前账本回收站；列已归档收入/固定支出/目标与回收站保留期内规则/商家别名/标签 |
 | `/api/recycle-bin/restore` | POST | `backend/app/routes/recycle_bin.py` | `restoreRecycleBinItem(request)` | `RecycleBinRestoreRequest`（`kind/resource_id/expected_row_version`） | `RecycleBinRestoreResponse` | Session Token，owner/member 写权限 | `backend/tests/test_recycle_bin.py`, `RecycleBinViewModelTest` | ADR-0051 统一恢复入口；复用各实体原 restore/undo 服务 |
 | `/api/rules/applications` | GET | `backend/app/routes/rules.py` | `ruleApplications(limit)` | query `limit` | `RuleApplicationListResponse` | Session Token | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 最近规则应用批次 |
 | `/api/rules/applications/{public_id}/rollback` | POST | `backend/app/routes/rules.py` | `rollbackRuleApplication(publicId)` | path `public_id` | `RuleApplicationRollbackResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 回滚未被手动改过的批次变更 |
@@ -1515,7 +1515,7 @@ ADR-0051 当前账本回收站。普通 API 只看当前 session token 对应的
 当前纳入：
 
 - 长期归档：收入记录、固定支出、目标。
-- 短窗恢复：分类规则、商家别名、标签 delete/merge undo group；仍沿用各自原 5 分钟短窗，不新增天级 retention。
+- 限期恢复：分类规则、商家别名、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
 - 明确不纳入：已确认账单、债务还款事实、category/budget/merchant master 删除。
 
 ### GET /api/recycle-bin
@@ -1546,11 +1546,11 @@ Authorization: Bearer <session_token>
 }
 ```
 
-`expected_row_version` 为恢复该行所需的 OCC token；分类规则、商家别名等短窗 undo 项可能为 `null`，因为其原 undo 端点不使用 row_version。
+`expected_row_version` 为恢复该行所需的 OCC token；分类规则、商家别名等限期恢复项可能为 `null`，因为其原 undo 端点不使用 row_version。`short_window_count` 是兼容旧客户端的字段名，当前表示“非长期保留”的限期恢复项数量。
 
 ### POST /api/recycle-bin/restore
 
-仅 `owner` / `member` 可调用，`viewer` 返回 `permission_denied`。恢复逻辑复用各实体已有 `restore` / `undo` service，因此冲突、过期、跨账本隔离仍按原实体契约返回。
+仅 `owner` / `member` 可调用，`viewer` 返回 `permission_denied`。恢复逻辑复用各实体已有 `restore` / `undo` service；回收站入口显式使用天级回收站窗口，普通撤销 API 仍按 5 分钟 undo 短窗返回过期。
 
 请求体：
 

@@ -4,7 +4,7 @@
 <h1>回收站</h1>
 <details class="page-help">
   <summary>这是什么</summary>
-  <p>这里把各处“已归档 / 刚删除”的可恢复项目集中放在一起。长期归档项会一直保留；分类规则、商家别名和标签属于短窗恢复，过了窗口会由清理任务永久移除。</p>
+  <p>这里把各处“已归档 / 已删除”的可恢复项目集中放在一起。长期归档项会一直保留；分类规则、商家别名和标签会在回收站保留期内可恢复，过了窗口会由清理任务永久移除。</p>
 </details>
 
 {% if flash_message %}
@@ -20,7 +20,7 @@
       <h2>可恢复项目</h2>
       <p class="text-meta">
         覆盖 {{ recycle_bin.ledger_count }} 个当前 owner 管理的活跃账本；
-        当前短窗项目 {{ recycle_bin.short_window_count }} 条。
+        当前限期保留项目 {{ recycle_bin.short_window_count }} 条。
       </p>
     </div>
     <span class="badge badge-off">ADR-0051</span>
@@ -52,7 +52,7 @@
           </td>
           <td>{{ row.removed_at|owner_datetime }}</td>
           <td>
-            {% if row.retention_label == '短窗可恢复' %}
+            {% if row.retention_label != '长期保留' %}
               <span class="badge badge-warn">{{ row.retention_label }}</span>
             {% else %}
               <span class="badge badge-ok">{{ row.retention_label }}</span>

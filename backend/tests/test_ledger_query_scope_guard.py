@@ -86,7 +86,7 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
             "ADR-0043 契约 6: same system-wide purge sweep as MerchantAlias/"
             "CategoryRule above — the soft-deleted tag delete is intentionally "
             "all-tenant, gated only on `deleted_at < retention cutoff`, freeing "
-            "the reserved (tenant_id, key) once past the undo window. The undo "
+            "the reserved (tenant_id, key) once past recycle-bin retention. The undo "
             "read path (tag_undo_service) is tenant-scoped."
         ),
     ),

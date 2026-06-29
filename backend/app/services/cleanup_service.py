@@ -22,7 +22,7 @@ from app.services.file_service import (
     upload_reference_for_path,
 )
 from app.services.optimistic_concurrency import bump_row_version
-from app.services.soft_delete_policy import SOFT_DELETE_RETENTION_MINUTES
+from app.services.soft_delete_policy import recycle_bin_retention_days
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -360,16 +360,20 @@ def purge_expired_soft_deleted_merchant_aliases(
     db: Session,
     tenant_id: str,
     *,
-    retention_minutes: int = SOFT_DELETE_RETENTION_MINUTES,
+    retention_days: int | None = None,
+    retention_minutes: int | None = None,
     now: datetime | None = None,
 ) -> int:
-    """ADR-0038 undo: permanently delete merchant_aliases soft-deleted past the
-    retention window. Returns the number of rows purged.
+    """Permanently delete merchant_aliases soft-deleted past retention.
 
     Tenant-scoped so an admin/maintenance call cannot purge other ledgers.
-    Rows still inside the window stay recoverable via the undo endpoint.
+    Rows still inside the window stay recoverable via the recycle bin.
     """
-    cutoff = (now or now_utc()) - timedelta(minutes=retention_minutes)
+    cutoff = _soft_delete_purge_cutoff(
+        now=now,
+        retention_days=retention_days,
+        retention_minutes=retention_minutes,
+    )
     result = db.execute(
         delete(MerchantAlias)
         .where(MerchantAlias.tenant_id == tenant_id)
@@ -383,20 +387,24 @@ def purge_expired_soft_deleted_merchant_aliases(
 def purge_expired_soft_deletes(
     db: Session,
     *,
-    retention_minutes: int = SOFT_DELETE_RETENTION_MINUTES,
+    retention_days: int | None = None,
+    retention_minutes: int | None = None,
     now: datetime | None = None,
 ) -> int:
-    """ADR-0038 undo: global (all-tenant) purge of soft-deleted rows past the
-    retention window, for the periodic purge scheduler. Returns rows purged.
+    """Global (all-tenant) purge of soft-deleted rows past recycle retention.
 
     Covers every resource that participates in soft-delete undo:
     ``merchant_aliases``, ``category_rules``, and the ADR-0043 tag-mutation undo
     snapshots (``tag_mutation_undo_groups`` + ``_items``) plus the soft-deleted
     ``tags`` they anchor. Rows are hidden from every read the moment they are
-    soft-deleted, so the sweep cadence only bounds storage lag, never
-    correctness or the undo window.
+    soft-deleted, so the sweep cadence only bounds storage lag, never read
+    correctness or the short undo window.
     """
-    cutoff = (now or now_utc()) - timedelta(minutes=retention_minutes)
+    cutoff = _soft_delete_purge_cutoff(
+        now=now,
+        retention_days=retention_days,
+        retention_minutes=retention_minutes,
+    )
     alias_result = db.execute(
         delete(MerchantAlias)
         .where(MerchantAlias.deleted_at.is_not(None))
@@ -432,3 +440,20 @@ def purge_expired_soft_deletes(
         + int(group_result.rowcount or 0)
         + int(tag_result.rowcount or 0)
     )
+
+
+def _soft_delete_purge_cutoff(
+    *,
+    now: datetime | None,
+    retention_days: int | None,
+    retention_minutes: int | None,
+) -> datetime:
+    base = now or now_utc()
+    if retention_minutes is not None:
+        return base - timedelta(minutes=max(0, int(retention_minutes)))
+    keep_days = (
+        recycle_bin_retention_days()
+        if retention_days is None
+        else max(0, int(retention_days))
+    )
+    return base - timedelta(days=keep_days)

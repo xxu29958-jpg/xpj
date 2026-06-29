@@ -4,8 +4,8 @@ Covers the Undo invariants this slice lands:
 - DELETE soft-deletes (row hidden from reads, kept in DB).
 - POST .../undo restores it and writes a ``ledger_audit_logs action='undo'`` row.
 - undo of a live / unknown alias → 404.
-- a soft-deleted key is reserved during its window (recreate → 409), and undo
-  still restores the original.
+- a soft-deleted key is reserved until restore or purge (recreate → 409), and
+  undo still restores the original.
 - cleanup purges aged soft-deletes, spares fresh ones, and frees the key.
 """
 
@@ -114,7 +114,7 @@ def test_recreate_while_soft_deleted_conflicts_then_undo_restores(client: TestCl
     created = _create(client, identity.app_headers)
     _delete(client, identity.app_headers, created)
 
-    # The soft-deleted key is reserved during its undo window.
+    # The soft-deleted key is reserved until restore or purge.
     recreate = client.post(
         "/api/merchants/aliases",
         headers=identity.app_headers,
@@ -132,10 +132,7 @@ def test_recreate_while_soft_deleted_conflicts_then_undo_restores(client: TestCl
 
 
 def test_undo_past_retention_window_returns_404(client: TestClient, *, identity) -> None:
-    """codex P1: a soft-deleted row aged past the retention window must NOT be
-    undoable even when cleanup's purge has not run yet — restore semantics must
-    match purge, otherwise an expired row could be resurrected during purge lag.
-    """
+    """Ordinary undo remains limited to the 5-minute banner window."""
     created = _create(client, identity.app_headers)
     _delete(client, identity.app_headers, created)
 
@@ -166,7 +163,7 @@ def test_purge_removes_aged_soft_deletes_and_spares_fresh(client: TestClient, *,
         row = db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == aged["public_id"]))
         assert row is not None
         tenant_id = row.tenant_id
-        row.deleted_at = now_utc() - timedelta(minutes=10)
+        row.deleted_at = now_utc() - timedelta(days=31)
         db.commit()
 
     with SessionLocal() as db:
@@ -187,8 +184,7 @@ def test_purge_removes_aged_soft_deletes_and_spares_fresh(client: TestClient, *,
 
 
 def test_global_purge_removes_aged_spares_fresh(client: TestClient, *, identity) -> None:
-    """ADR-0038 undo: the scheduler's tenant-less global purge sweeps aged
-    soft-deletes and leaves rows still inside the window."""
+    """The scheduler's tenant-less purge uses recycle-bin retention by default."""
     aged = _create(client, identity.app_headers, alias="AGED 全局")
     fresh = _create(client, identity.app_headers, alias="FRESH 全局")
     _delete(client, identity.app_headers, aged)
@@ -197,7 +193,7 @@ def test_global_purge_removes_aged_spares_fresh(client: TestClient, *, identity)
     with SessionLocal() as db:
         row = db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == aged["public_id"]))
         assert row is not None
-        row.deleted_at = now_utc() - timedelta(minutes=10)
+        row.deleted_at = now_utc() - timedelta(days=31)
         db.commit()
 
     with SessionLocal() as db:

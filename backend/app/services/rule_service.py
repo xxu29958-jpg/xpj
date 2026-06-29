@@ -18,7 +18,10 @@ from app.services.optimistic_concurrency import (
     claim_row_with_token,
 )
 from app.services.resource_audit import record_resource_action
-from app.services.soft_delete_policy import is_within_undo_window
+from app.services.soft_delete_policy import (
+    is_within_recycle_bin_window,
+    is_within_undo_window,
+)
 from app.services.tag_service import parse_tags, tag_key
 from app.services.time_service import now_utc
 
@@ -333,11 +336,11 @@ def delete_rule(
     WHERE id, tenant_id, updated_at = expected`` and treats ``rowcount == 0``
     the same way :func:`update_rule` does — 404 if the row vanished, 409 if it
     was mutated by a concurrent writer. The row is then hidden from every read
-    (classify / list / get) but recoverable via :func:`undo_delete_rule` until
-    cleanup purges it past the retention window. Unlike merchant_alias there is
-    no unique constraint, so undo never risks a duplicate-key clash. The DB
-    predicate is the authoritative check; the caller's ORM instance need not be
-    fresh.
+    (classify / list / get) but recoverable through the short undo endpoint or
+    explicit recycle-bin restore until cleanup purges it past recycle-bin
+    retention. Unlike merchant_alias there is no unique constraint, so undo
+    never risks a duplicate-key clash. The DB predicate is the authoritative
+    check; the caller's ORM instance need not be fresh.
     """
     try:
         rule_id = rule.id
@@ -370,19 +373,25 @@ def undo_delete_rule(
     tenant_id: str,
     rule_id: int,
     actor_account_id: int | None = None,
+    use_recycle_bin_window: bool = False,
 ) -> CategoryRule:
-    """ADR-0038 undo: restore a soft-deleted rule within its retention window.
+    """Restore a soft-deleted rule within the selected restore window.
 
     Clears ``deleted_at`` and appends a ``ledger_audit_logs`` ``action='undo'``
     row. 404 ``rule_not_found`` if the rule isn't currently soft-deleted (never
-    existed, already live, or already purged). category_rules has no unique
-    constraint, so restoring never collides with a live row.
+    existed, already live, already purged, or outside the selected restore
+    window). category_rules has no unique constraint, so restoring never
+    collides with a live row.
     """
     rule = _find_soft_deleted_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
     if rule is None:
         raise AppError("rule_not_found", status_code=404)
-    if not is_within_undo_window(rule.deleted_at):
-        # 超过保留窗口:逻辑上应已被 cleanup purge,即使 purge 滞后也不再可恢复(与 purge 语义一致)。
+    window_check = (
+        is_within_recycle_bin_window if use_recycle_bin_window else is_within_undo_window
+    )
+    if not window_check(rule.deleted_at):
+        # Outside the selected restore window: normal undo stays short-lived,
+        # while recycle-bin restore opts into the longer window.
         raise AppError("rule_not_found", status_code=404)
     # ADR-0038 PR-B: atomic restore (UPDATE WHERE deleted_at IS NOT NULL) so two
     # concurrent undos can't both clear it + double-write the audit log; rowcount

@@ -11,5 +11,5 @@ data class RecycleBinItem(
     val expectedRowVersion: Int?,
 ) {
     val isShortWindow: Boolean
-        get() = retentionLabel == "短窗可恢复"
+        get() = retentionLabel != "长期保留"
 }

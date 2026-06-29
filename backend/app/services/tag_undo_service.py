@@ -22,12 +22,20 @@ from app.models import Expense, ExpenseTag, Tag, TagMutationUndoGroup, TagMutati
 from app.services._tag_results import TagUndoResult
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.resource_audit import record_resource_action
-from app.services.soft_delete_policy import is_within_undo_window
+from app.services.soft_delete_policy import (
+    is_within_recycle_bin_window,
+    is_within_undo_window,
+)
 from app.services.time_service import now_utc
 
 
 def _claim_undo_group(
-    db: Session, *, tenant_id: str, mutation_public_id: str, now: datetime
+    db: Session,
+    *,
+    tenant_id: str,
+    mutation_public_id: str,
+    now: datetime,
+    use_recycle_bin_window: bool,
 ) -> TagMutationUndoGroup:
     """① soft-claim the group via ``consumed_at`` (rowcount=1 guard → mutual
     exclusion vs a concurrent undo / purge). 404 if missing / consumed / past
@@ -38,7 +46,10 @@ def _claim_undo_group(
         .where(TagMutationUndoGroup.consumed_at.is_(None))
         .limit(1)
     )
-    if group is None or not is_within_undo_window(group.created_at):
+    window_check = (
+        is_within_recycle_bin_window if use_recycle_bin_window else is_within_undo_window
+    )
+    if group is None or not window_check(group.created_at):
         raise AppError("tag_undo_not_found", status_code=404)
     claimed = db.execute(
         sa_update(TagMutationUndoGroup)
@@ -162,12 +173,19 @@ def undo_tag_mutation(
     mutation_public_id: str,
     expected_row_version: int,
     actor_account_id: int | None = None,
+    use_recycle_bin_window: bool = False,
 ) -> TagUndoResult:
     """Undo a delete/merge in one ordered transaction (契约 2). Returns
     applied/skipped so partial undo is visible. A revived tag's delete is no
     longer token-undoable (契约 4) — step ② returns 409 once the token is stale."""
     now = now_utc()
-    group = _claim_undo_group(db, tenant_id=tenant_id, mutation_public_id=mutation_public_id, now=now)
+    group = _claim_undo_group(
+        db,
+        tenant_id=tenant_id,
+        mutation_public_id=mutation_public_id,
+        now=now,
+        use_recycle_bin_window=use_recycle_bin_window,
+    )
     group_id = group.id
     source_public_id = group.source_tag_public_id
 

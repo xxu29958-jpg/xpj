@@ -84,6 +84,7 @@ class Settings:
     budget_advisor_audit_cleanup_timezone: str
     # ADR-0038 undo: opt-in periodic purge of soft-deleted rows past retention.
     soft_delete_purge_auto_enabled: bool
+    recycle_bin_retention_days: int
     budget_advisor_live_min_interval_seconds: int
     budget_advisor_live_daily_call_limit: int
     tenants_json: str
@@ -348,6 +349,10 @@ def get_settings() -> Settings:
         soft_delete_purge_auto_enabled=_bool_env(
             "SOFT_DELETE_PURGE_AUTO_ENABLED",
             False,
+        ),
+        recycle_bin_retention_days=max(
+            1,
+            int(os.getenv("RECYCLE_BIN_RETENTION_DAYS", "30")),
         ),
         budget_advisor_live_min_interval_seconds=max(
             0,

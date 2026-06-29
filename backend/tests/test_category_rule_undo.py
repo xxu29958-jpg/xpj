@@ -1,10 +1,11 @@
 """ADR-0038 undo for category_rules (soft-delete + restore).
 
 DELETE now soft-deletes (sets ``deleted_at``); the row is hidden from every
-read — the rule list, the classifier matcher, and the apply/preview engines —
-but recoverable via ``POST /api/rules/categories/{id}/undo`` until cleanup
-purges it past the retention window. The most important guarantee is the
-classifier one: a soft-deleted rule must stop matching immediately.
+read — the rule list, the classifier matcher, and the apply/preview engines.
+The ordinary undo endpoint remains short-lived, while the explicit recycle-bin
+restore path can use the longer recycle-bin retention window. The most
+important guarantee is the classifier one: a soft-deleted rule must stop
+matching immediately.
 
 Unlike merchant_alias, category_rules has no unique constraint, so undo can
 never collide with a live row.
@@ -140,10 +141,7 @@ def test_undo_live_or_missing_rule_returns_404(client: TestClient, *, identity) 
 
 
 def test_undo_past_retention_window_returns_404(client: TestClient, *, identity) -> None:
-    """codex P1: a rule soft-deleted past the retention window must not be
-    undoable even before cleanup's purge runs — restore must match purge so a
-    lapsed row can never be resurrected during purge lag.
-    """
+    """Ordinary undo remains limited to the 5-minute banner window."""
     rule = _create_rule(client, identity=identity, keyword=f"{_KW}Stale")
     _soft_delete(client, identity=identity, rule=rule)
 
@@ -164,6 +162,23 @@ def test_undo_past_retention_window_returns_404(client: TestClient, *, identity)
     # And it stays gone from the list (the soft-delete still hides it).
     listing = client.get("/api/rules/categories", headers=identity.app_headers)
     assert all(r["id"] != rule["id"] for r in listing.json())
+
+
+def test_default_purge_keeps_rows_after_short_undo_window(
+    client: TestClient, *, identity
+) -> None:
+    rule = _create_rule(client, identity=identity, keyword=f"{_KW}RecycleKeep")
+    _soft_delete(client, identity=identity, rule=rule)
+
+    with SessionLocal() as db:
+        row = db.get(CategoryRule, rule["id"])
+        assert row is not None
+        row.deleted_at = now_utc() - timedelta(minutes=10)
+        db.commit()
+
+    with SessionLocal() as db:
+        purge_expired_soft_deletes(db)
+        assert db.get(CategoryRule, rule["id"]) is not None
 
 
 def test_purge_removes_soft_deleted_past_retention(client: TestClient, *, identity) -> None:

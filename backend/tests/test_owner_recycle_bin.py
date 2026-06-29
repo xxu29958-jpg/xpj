@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Goal, MonthlyIncomePlan, RecurringItem
+from app.models import CategoryRule, Goal, MonthlyIncomePlan, RecurringItem
 from app.routes.owner_console import _require_local
 from app.services.classify_service import create_rule, delete_rule, find_rule_for_tenant
 from app.services.goal_service import archive_goal
@@ -123,6 +125,14 @@ def _seed_deleted_rule() -> int:
         return rule_id
 
 
+def _age_deleted_rule_past_undo_window(rule_id: int) -> None:
+    with SessionLocal() as db:
+        rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id))
+        assert rule is not None
+        rule.deleted_at = now_utc() - timedelta(minutes=10)
+        db.commit()
+
+
 def _seed_deleted_alias() -> str:
     with SessionLocal() as db:
         alias = create_merchant_alias(
@@ -159,7 +169,7 @@ def test_owner_recycle_bin_lists_supported_items(
     assert "目标回收测试" in body
     assert "规则回收测试" in body
     assert "别名回收测试" in body
-    assert "短窗可恢复" in body
+    assert "30 天内可恢复" in body
     assert "长期保留" in body
 
 
@@ -193,6 +203,7 @@ def test_owner_recycle_bin_restores_deleted_rule(
     local_client: TestClient, *, identity
 ) -> None:
     rule_id = _seed_deleted_rule()
+    _age_deleted_rule_past_undo_window(rule_id)
 
     response = local_client.post(
         "/owner/recycle-bin/restore",
