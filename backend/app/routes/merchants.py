@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -11,6 +11,11 @@ from app.schemas import (
     MerchantAliasListResponse,
     MerchantAliasResponse,
     MerchantAliasUpdateRequest,
+    MerchantCatalogCreateRequest,
+    MerchantCatalogDeleteRequest,
+    MerchantCatalogListResponse,
+    MerchantCatalogResponse,
+    MerchantCatalogUpdateRequest,
     StatusResponse,
 )
 from app.services.idempotency import (
@@ -25,12 +30,79 @@ from app.services.merchant_alias_service import (
     undo_delete_merchant_alias,
     update_merchant_alias,
 )
+from app.services.merchant_catalog_service import (
+    create_merchant_catalog,
+    delete_merchant_catalog,
+    list_merchant_catalog,
+    update_merchant_catalog,
+)
 from app.tenants import AuthContext
 
 router = APIRouter(
     prefix="/api/merchants",
     tags=["merchants"],
 )
+
+
+@router.get("/catalog", response_model=MerchantCatalogListResponse)
+def get_merchant_catalog(
+    include_hidden: bool = Query(default=True),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> MerchantCatalogListResponse:
+    return MerchantCatalogListResponse(
+        items=list_merchant_catalog(
+            db,
+            tenant_id=auth.tenant_id,
+            include_hidden=include_hidden,
+        )
+    )
+
+
+@router.post("/catalog", response_model=MerchantCatalogResponse, status_code=201)
+def post_merchant_catalog(
+    payload: MerchantCatalogCreateRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MerchantCatalogResponse:
+    return create_merchant_catalog(
+        db,
+        tenant_id=auth.tenant_id,
+        display_name=payload.display_name,
+        status=payload.status,
+    )
+
+
+@router.patch("/catalog/{public_id}", response_model=MerchantCatalogResponse)
+def patch_merchant_catalog(
+    public_id: str,
+    payload: MerchantCatalogUpdateRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MerchantCatalogResponse:
+    return update_merchant_catalog(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_row_version=payload.expected_row_version,
+        display_name=payload.display_name,
+        status=payload.status,
+    )
+
+
+@router.delete("/catalog/{public_id}", response_model=MerchantCatalogResponse)
+def delete_merchant_catalog_route(
+    public_id: str,
+    payload: MerchantCatalogDeleteRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MerchantCatalogResponse:
+    return delete_merchant_catalog(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_row_version=payload.expected_row_version,
+    )
 
 
 @router.get("/aliases", response_model=MerchantAliasListResponse)

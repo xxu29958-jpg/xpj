@@ -157,6 +157,21 @@ from fastapi.testclient import TestClient
         ),
         (
             "POST",
+            "/api/merchants/catalog",
+            {"json": {"display_name": "Store"}},
+        ),
+        (
+            "PATCH",
+            "/api/merchants/catalog/catalog_missing",
+            {"json": {"expected_row_version": 1, "status": "hidden"}},
+        ),
+        (
+            "DELETE",
+            "/api/merchants/catalog/catalog_missing",
+            {"json": {"expected_row_version": 1}},
+        ),
+        (
+            "POST",
             "/api/recurring/from-candidate",
             {"json": {"merchant": "Store", "amount_cents": 1200}},
         ),

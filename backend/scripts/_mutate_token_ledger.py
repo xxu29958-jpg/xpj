@@ -141,6 +141,7 @@ _OWNER_TRANSFER = ("ledger_members", "ledgers")
 _ALGO_DECISIONS = ("algorithm_decisions",)
 _INCOME_PLAN = ("monthly_income_plans",)
 _RECURRING = ("recurring_items",)
+_MERCHANT_CATALOG = ("merchant_catalog",)
 _BILL_SPLIT = ("bill_split_invitations",)
 _DASHBOARD = ("dashboard_card_preferences",)
 _DEBTS = ("debts",)
@@ -204,6 +205,7 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/ledgers/{ledger_id}/devices/{public_id}/delete": Exempt("terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"),
     "POST /api/ledgers/{ledger_id}/devices/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
     "POST /api/merchants/aliases": Exempt("create_row", "merchants", ("merchant_aliases",)),
+    "POST /api/merchants/catalog": Exempt("create_row", "merchants", _MERCHANT_CATALOG),
     "POST /api/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")
     ),

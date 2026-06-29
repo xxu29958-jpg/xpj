@@ -43,7 +43,7 @@ https://api.我的域名.com
 - **乐观并发（OCC）**：所有写操作携带 `expected_row_version`（整数 `row_version`，ADR-0041 起取代旧的 `expected_updated_at` 时间戳 token；`updated_at` 仅用于展示/排序）。服务端做原子 `UPDATE … WHERE row_version = expected`，不匹配返回 `409 state_conflict`，客户端刷新拿到最新 `row_version` 后再重试。批量端点用 `expected_row_version_by_id`（`{id: row_version}`）。
 - **请求幂等键（Idempotency-Key，ADR-0042）**：经 Android 离线 outbox 重放的写路由必须带 `Idempotency-Key` 请求头（intent 发生时生成的 UUID v4，直发与重放共用同一值），让"提交成功但响应丢失"后的重放安全地返回规范结果而不是因 stale token 误报 409。该幂等键先于 OCC claim 认领（§4.4）。覆盖的路由（非"仅 PATCH"）：
   - `PATCH /api/expenses/{id}`、`POST /api/expenses/{id}/confirm`、`POST /api/expenses/{id}/reject`、`POST /api/expenses/{id}/mark-not-duplicate`、`POST /api/expenses/{id}/ocr/retry`、`POST /api/expenses/{id}/recognize-text`、`POST /api/expenses/{id}/items/acknowledge-mismatch`、`PUT /api/expenses/{id}/items`、`PUT /api/expenses/{id}/splits`
-  - `PATCH /api/rules/categories/{id}`、`DELETE /api/rules/categories/{id}`、`PATCH /api/merchants/aliases/{public_id}`、`DELETE /api/merchants/aliases/{public_id}`
+  - `PATCH /api/rules/categories/{id}`、`DELETE /api/rules/categories/{id}`、`PATCH /api/merchants/aliases/{public_id}`、`DELETE /api/merchants/aliases/{public_id}`、`PATCH /api/merchants/catalog/{public_id}`、`DELETE /api/merchants/catalog/{public_id}`
   - 缺头 → `422 idempotency_key_required`；同 key 并发在途 → `409 idempotency_key_in_progress`；同 key 用于内容不同的请求（fingerprint 不符）→ `422 idempotency_key_reused`。
   - 注：OpenAPI snapshot 把这些路由的 `Idempotency-Key` header 标记为 `required: true`（契约要求），但 handler 仍声明为可选 header，以便缺失时返回上述结构化 `{error, message}` 而非 FastAPI 默认校验错误体；不属于 outbox 重放面的写路由（如 `POST /api/expenses/confirmed/batch-update` 原子批处理）不带该头。
 
@@ -153,6 +153,10 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/categories/preferences` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `CategoryPreferenceListResponse` | Session Token | `backend/tests/test_categories.py` | ADR-0052 自定义分类偏好列表 |
 | `/api/expenses/categories/preferences/{public_id}/delete` | POST | `backend/app/routes/expenses.py` | 无 | `CategoryPreferenceTokenRequest` | `CategoryPreferenceResponse` | Session Token，owner/member 写权限 | `backend/tests/test_categories.py` | 软删自定义分类选项；不改历史账单 |
 | `/api/expenses/categories/preferences/{public_id}/restore` | POST | `backend/app/routes/expenses.py` | 无 | `CategoryPreferenceTokenRequest` | `CategoryPreferenceResponse` | Session Token，owner/member 写权限 | `backend/tests/test_categories.py`, `backend/tests/test_recycle_bin.py` | 恢复自定义分类选项 |
+| `/api/merchants/catalog` | GET | `backend/app/routes/merchants.py` | 无 | query `include_hidden=true` | `MerchantCatalogListResponse` | Session Token；viewer 可读 | `backend/tests/test_merchant_catalog.py` | ADR-0053 商家目录列表；只读当前账本 |
+| `/api/merchants/catalog` | POST | `backend/app/routes/merchants.py` | 无 | `MerchantCatalogCreateRequest` | `MerchantCatalogResponse` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py` | 创建商家目录项；不改写历史账单商家事实 |
+| `/api/merchants/catalog/{public_id}` | PATCH | `backend/app/routes/merchants.py` | 无 | `MerchantCatalogUpdateRequest`（`expected_row_version`） | `MerchantCatalogResponse` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py` | 更新显示名或 `active/hidden` 状态；stale → `409 state_conflict` |
+| `/api/merchants/catalog/{public_id}` | DELETE | `backend/app/routes/merchants.py` | 无 | `MerchantCatalogDeleteRequest`（`expected_row_version`） | `MerchantCatalogResponse` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `backend/tests/test_recycle_bin.py` | 软删商家目录项；启用别名/active 或 paused 固定支出阻止删除，历史账单不阻止 |
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/tag/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, smoke | gray/internal 导出 |
@@ -193,7 +197,7 @@ Authorization: Bearer <admin_token>
 | `/api/tags/{public_id}/merge` | POST | `backend/app/routes/tags.py` | `mergeTag(publicId,request)` | `TagMergeRequest`（源 `expected_row_version` + `target_public_id` + `target_row_version`，**双 OCC token**） | `TagMutationDto` | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py` | ADR-0043 合并；任一 token 陈旧→409 |
 | `/api/tags/mutations/{mutation_public_id}/undo` | POST | `backend/app/routes/tags.py` | `undoTagMutation(mutationPublicId,request)` | `TagUndoRequest`（`expected_row_version` = undo handle token） | `TagUndoDto`（`applied`/`skipped`） | Session Token，owner/member 写权限 | `backend/tests/test_tag_undo.py` | ADR-0043 5 分钟窗口内撤销 delete/merge（契约 2/4）；复活后该 delete 不再可撤（契约 4） |
 | 标签管理写面 | — | — | — | — | — | — | — | 5 路由均**不声明 Idempotency-Key**（online-only，非 outbox 重放面，契约 7）；幂等由 OCC `row_version` 保证 |
-| `/api/recycle-bin` | GET | `backend/app/routes/recycle_bin.py` | `recycleBin()` | 无 | `RecycleBinListResponseDto` | Session Token；viewer 可读 | `backend/tests/test_recycle_bin.py`, `RecycleBinViewModelTest` | ADR-0051 当前账本回收站；列已归档收入/固定支出/目标与回收站保留期内规则/商家别名/标签 |
+| `/api/recycle-bin` | GET | `backend/app/routes/recycle_bin.py` | `recycleBin()` | 无 | `RecycleBinListResponseDto` | Session Token；viewer 可读 | `backend/tests/test_recycle_bin.py`, `RecycleBinViewModelTest` | ADR-0051 当前账本回收站；列已归档收入/固定支出/目标与回收站保留期内规则/商家别名/商家目录/标签 |
 | `/api/recycle-bin/restore` | POST | `backend/app/routes/recycle_bin.py` | `restoreRecycleBinItem(request)` | `RecycleBinRestoreRequest`（`kind/resource_id/expected_row_version`） | `RecycleBinRestoreResponse` | Session Token，owner/member 写权限 | `backend/tests/test_recycle_bin.py`, `RecycleBinViewModelTest` | ADR-0051 统一恢复入口；复用各实体原 restore/undo 服务 |
 | `/api/rules/applications` | GET | `backend/app/routes/rules.py` | `ruleApplications(limit)` | query `limit` | `RuleApplicationListResponse` | Session Token | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 最近规则应用批次 |
 | `/api/rules/applications/{public_id}/rollback` | POST | `backend/app/routes/rules.py` | `rollbackRuleApplication(publicId)` | path `public_id` | `RuleApplicationRollbackResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 回滚未被手动改过的批次变更 |
@@ -846,6 +850,22 @@ Content-Type: application/json
 ### POST /api/expenses/categories/preferences/{public_id}/restore
 
 请求体同 delete。恢复 soft-deleted 自定义分类偏好，使其重新出现在 `/api/expenses/categories` 选项中；历史账单事实不变。超过回收站保留窗口或已被 purge 时返回 `404 not_found`。
+
+### GET /api/merchants/catalog
+
+读取当前账本的商家目录项。`include_hidden=false` 时只返回 `active` 项；默认包含 `hidden` 但不包含已软删项。响应项包含 `public_id/display_name/merchant_key/status/usage_count/row_version/deleted_at`。
+
+### POST /api/merchants/catalog
+
+创建当前账本内的商家目录项。`display_name` 会归一出 `merchant_key`，同账本内重复 key 返回 `409 state_conflict`；不同账本可使用同名商家。创建不回写任何历史 `Expense.merchant`。
+
+### PATCH /api/merchants/catalog/{public_id}
+
+用 `expected_row_version` 更新 `display_name` 或 `status=active|hidden`。`merged` 状态保留给后续合并切片，本接口暂不接受。stale token 返回 `409 state_conflict`；跨账本或已软删项返回 `404 not_found`。
+
+### DELETE /api/merchants/catalog/{public_id}
+
+用 `expected_row_version` 软删商家目录项。启用的商家别名若以该 `merchant_key` 为 canonical target，或 active/paused 固定支出配置引用该 key，返回 `409 state_conflict`；历史账单事实不阻止删除，也不会被改写。删除后的行进入 `/api/recycle-bin`，统一恢复使用 `kind=merchant_catalog`。
 
 ### GET /api/expenses/tags
 
@@ -1577,8 +1597,8 @@ ADR-0051 当前账本回收站。普通 API 只看当前 session token 对应的
 当前纳入：
 
 - 长期归档：月度预算配置、收入记录、固定支出、目标。
-- 限期恢复：自定义分类偏好、分类规则、商家别名、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
-- 明确不纳入：已确认账单、债务还款事实、历史 `Expense.category` / `Expense.merchant` 字符串、merchant master 删除。merchant catalog 边界见 ADR-0053：未来只恢复 / 隐藏真实目录行，不把历史商家字符串伪装成回收站 item。
+- 限期恢复：自定义分类偏好、分类规则、商家别名、商家目录、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
+- 明确不纳入：已确认账单、债务还款事实、历史 `Expense.category` / `Expense.merchant` 字符串；商家目录只恢复 / 隐藏真实 `merchant_catalog` 行，不把历史商家字符串伪装成回收站 item。
 
 ### GET /api/recycle-bin
 

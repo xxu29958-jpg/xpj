@@ -13,6 +13,7 @@ from app.models import (
     CategoryRule,
     Expense,
     MerchantAlias,
+    MerchantCatalog,
     Tag,
     TagMutationUndoGroup,
     TagMutationUndoItem,
@@ -395,7 +396,7 @@ def purge_expired_soft_deletes(
     """Global (all-tenant) purge of soft-deleted rows past recycle retention.
 
     Covers every resource that participates in soft-delete undo:
-    ``merchant_aliases``, ``category_rules``, and the ADR-0043 tag-mutation undo
+    ``merchant_aliases``, ``merchant_catalog``, ``category_rules``, and the ADR-0043 tag-mutation undo
     snapshots (``tag_mutation_undo_groups`` + ``_items``), the soft-deleted
     ``tags`` they anchor, and ADR-0052 custom category preferences. Rows are hidden
     from every read the moment they are
@@ -422,6 +423,11 @@ def purge_expired_soft_deletes(
         .where(CategoryPreference.deleted_at.is_not(None))
         .where(CategoryPreference.deleted_at < cutoff)
     )
+    merchant_catalog_result = db.execute(
+        delete(MerchantCatalog)
+        .where(MerchantCatalog.deleted_at.is_not(None))
+        .where(MerchantCatalog.deleted_at < cutoff)
+    )
     # ADR-0043 契约 6: snapshot retention anchors on the GROUP's own created_at.
     # Items first (composite FK → groups), then groups, then the still-soft-
     # deleted tags whose own deleted_at is past the window. The snapshot tables
@@ -445,6 +451,7 @@ def purge_expired_soft_deletes(
         int(alias_result.rowcount or 0)
         + int(rule_result.rowcount or 0)
         + int(category_result.rowcount or 0)
+        + int(merchant_catalog_result.rowcount or 0)
         + int(group_result.rowcount or 0)
         + int(tag_result.rowcount or 0)
     )

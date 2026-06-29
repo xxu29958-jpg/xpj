@@ -21,6 +21,11 @@ __all__ = [
     "MerchantAliasListResponse",
     "MerchantAliasResponse",
     "MerchantAliasUpdateRequest",
+    "MerchantCatalogCreateRequest",
+    "MerchantCatalogDeleteRequest",
+    "MerchantCatalogListResponse",
+    "MerchantCatalogResponse",
+    "MerchantCatalogUpdateRequest",
     "RuleApplicationBatchResponse",
     "RuleApplicationListResponse",
     "RuleApplicationRollbackResponse",
@@ -159,6 +164,50 @@ class MerchantAliasResponse(BaseModel):
 
 class MerchantAliasListResponse(BaseModel):
     items: list[MerchantAliasResponse]
+
+
+class MerchantCatalogCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str = Field(min_length=1, max_length=255)
+    status: str = Field(default="active", min_length=1, max_length=16)
+
+
+class MerchantCatalogUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    status: str | None = Field(default=None, min_length=1, max_length=16)
+
+
+class MerchantCatalogDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+
+
+class MerchantCatalogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: str
+    display_name: str
+    merchant_key: str
+    status: str
+    merged_into_public_id: str | None = None
+    usage_count: int
+    created_at: datetime
+    updated_at: datetime
+    row_version: int
+    deleted_at: datetime | None = None
+
+    @field_serializer("created_at", "updated_at", "deleted_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class MerchantCatalogListResponse(BaseModel):
+    items: list[MerchantCatalogResponse]
 
 
 # v0.4-alpha3 — Rules Engine

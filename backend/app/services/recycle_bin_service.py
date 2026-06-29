@@ -9,6 +9,7 @@ audit behaviour.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -23,6 +24,7 @@ from app.models import (
     CategoryRule,
     Goal,
     MerchantAlias,
+    MerchantCatalog,
     MonthlyIncomePlan,
     RecurringItem,
     Tag,
@@ -34,6 +36,7 @@ from app.services.classify_service import undo_delete_rule
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
 from app.services.merchant_alias_service import undo_delete_merchant_alias
+from app.services.merchant_catalog_service import restore_merchant_catalog
 from app.services.recurring_service import restore_recurring_item
 from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
@@ -64,6 +67,7 @@ def list_recycle_bin_items(db: Session, *, tenant_id: str) -> RecycleBinListing:
     rows: list[RecycleBinItem] = []
     rows.extend(_archived_budget_rows(db, tenant_id))
     rows.extend(_soft_deleted_category_preference_rows(db, tenant_id))
+    rows.extend(_soft_deleted_merchant_catalog_rows(db, tenant_id))
     rows.extend(_archived_income_rows(db, tenant_id))
     rows.extend(_archived_recurring_rows(db, tenant_id))
     rows.extend(_archived_goal_rows(db, tenant_id))
@@ -91,38 +95,27 @@ def restore_recycle_bin_item(
     if not clean_kind or not clean_resource_id:
         raise AppError("invalid_request", "恢复参数不完整。", status_code=422)
 
-    if clean_kind == "income_plan":
-        return _restore_income_plan_item(
-            db, tenant_id, clean_resource_id, expected_row_version
+    public_id_restore = {
+        "income_plan": (restore_income_plan, "收入记录已恢复。"),
+        "category_preference": (restore_category_preference, "分类已恢复。"),
+        "merchant_catalog": (restore_merchant_catalog, "商家已恢复。"),
+        "recurring_item": (restore_recurring_item, "固定支出已恢复。"),
+        "goal": (restore_goal, "目标已恢复。"),
+    }.get(clean_kind)
+    if public_id_restore is not None:
+        restore_func, message = public_id_restore
+        return _restore_public_id_item(
+            db,
+            tenant_id=tenant_id,
+            public_id=clean_resource_id,
+            expected_row_version=expected_row_version,
+            restore_func=restore_func,
+            message=message,
         )
     if clean_kind == "monthly_budget":
-        restore_monthly_budget(
-            db,
-            tenant_id=tenant_id,
-            month=clean_resource_id,
-            expected_row_version=_require_token(expected_row_version),
-        )
-        return "月度预算已恢复。"
-    if clean_kind == "category_preference":
-        return _restore_category_preference_item(
+        return _restore_monthly_budget_item(
             db, tenant_id, clean_resource_id, expected_row_version
         )
-    if clean_kind == "recurring_item":
-        restore_recurring_item(
-            db,
-            tenant_id=tenant_id,
-            public_id=clean_resource_id,
-            expected_row_version=_require_token(expected_row_version),
-        )
-        return "固定支出已恢复。"
-    if clean_kind == "goal":
-        restore_goal(
-            db,
-            tenant_id=tenant_id,
-            public_id=clean_resource_id,
-            expected_row_version=_require_token(expected_row_version),
-        )
-        return "目标已恢复。"
     if clean_kind == "category_rule":
         undo_delete_rule(
             db,
@@ -162,34 +155,37 @@ def _require_token(value: int | None) -> int:
     return int(value)
 
 
-def _restore_income_plan_item(
+def _restore_public_id_item(
     db: Session,
+    *,
     tenant_id: str,
     public_id: str,
     expected_row_version: int | None,
+    restore_func: Callable[..., object],
+    message: str,
 ) -> str:
-    restore_income_plan(
+    restore_func(
         db,
         tenant_id=tenant_id,
         public_id=public_id,
         expected_row_version=_require_token(expected_row_version),
     )
-    return "收入记录已恢复。"
+    return message
 
 
-def _restore_category_preference_item(
+def _restore_monthly_budget_item(
     db: Session,
     tenant_id: str,
-    public_id: str,
+    month: str,
     expected_row_version: int | None,
 ) -> str:
-    restore_category_preference(
+    restore_monthly_budget(
         db,
         tenant_id=tenant_id,
-        public_id=public_id,
+        month=month,
         expected_row_version=_require_token(expected_row_version),
     )
-    return "分类已恢复。"
+    return "月度预算已恢复。"
 
 
 def _parse_rule_id(value: str) -> int:
@@ -261,6 +257,34 @@ def _soft_deleted_category_preference_rows(
             resource_id=item.public_id,
             title=item.name,
             detail="自定义分类选项",
+            removed_at=item.deleted_at,
+            retention_label=recycle_bin_retention_label(),
+            expected_row_version=item.row_version,
+        )
+        for item in rows
+    ]
+
+
+def _soft_deleted_merchant_catalog_rows(
+    db: Session, tenant_id: str
+) -> list[RecycleBinItem]:
+    rows = [
+        item
+        for item in db.scalars(
+            select(MerchantCatalog)
+            .where(MerchantCatalog.tenant_id == tenant_id)
+            .where(MerchantCatalog.deleted_at.is_not(None))
+            .order_by(MerchantCatalog.deleted_at.desc(), MerchantCatalog.id.desc())
+        )
+        if is_within_recycle_bin_window(item.deleted_at)
+    ]
+    return [
+        RecycleBinItem(
+            kind="merchant_catalog",
+            kind_label="商家",
+            resource_id=item.public_id,
+            title=item.display_name,
+            detail="商家目录项",
             removed_at=item.deleted_at,
             retention_label=recycle_bin_retention_label(),
             expected_row_version=item.row_version,
