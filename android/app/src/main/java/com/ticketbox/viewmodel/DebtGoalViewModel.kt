@@ -104,9 +104,9 @@ class DebtGoalViewModel(
             }
             result.fold(
                 onSuccess = { goals ->
-                    // Do NOT derive selectedGoal from the list: the list path is read-only
-                    // (it never latches an all-cleared debt goal — only GET /api/goals/{id}
-                    // does), so re-latch the open detail via the detail endpoint below.
+                    // The backend list now evaluates and writer-latches debt goals in one
+                    // request. When detail is open, still refresh that one selected row so the
+                    // pane stays canonical and the witnessed in_progress -> achieved edge fires.
                     _state.update { current ->
                         current.copy(
                             isLoading = false,
@@ -115,18 +115,7 @@ class DebtGoalViewModel(
                             error = null,
                         )
                     }
-                    if (_state.value.selectedGoal == null) {
-                        val refreshed = refreshedDebtGoalList(repository, goals)
-                        if (gen != loadGeneration) return@launch
-                        val refreshedById = refreshed.associateBy { it.publicId }
-                        _state.update { current ->
-                            if (current.selectedGoal != null) {
-                                current
-                            } else {
-                                current.copy(goals = current.goals.map { refreshedById[it.publicId] ?: it })
-                            }
-                        }
-                    } else {
+                    if (_state.value.selectedGoal != null) {
                         latchSelectedDetail(gen)
                     }
                 },
@@ -140,11 +129,9 @@ class DebtGoalViewModel(
     }
 
     /**
-     * Re-fetch the open detail through the latching detail endpoint after a list load.
-     * The list path does not persist achievement (ADR-0049 §6: writer-gated latch lives
-     * only on GET /api/goals/{id}), so syncing an achieved detail from the list would show
-     * an unlatched "achieved" — a later reopen/void would then never have recorded
-     * achieved_version, breaking sticky achievement. Generation-guarded like the others.
+     * Re-fetch the open detail after a list load. The list endpoint already performs the
+     * writer-gated latch, so this is only one canonical detail refresh for the selected pane
+     * and for the witnessed achievement-edge celebration. Generation-guarded like the others.
      */
     private suspend fun latchSelectedDetail(gen: Long) {
         val selected = _state.value.selectedGoal ?: return
@@ -166,8 +153,7 @@ class DebtGoalViewModel(
 
     /**
      * Open the detail page. Selects optimistically from the list copy, then re-fetches
-     * the single goal: a writer GET latches achievement server-side (ADR-0049 §6), so
-     * opening the detail is the trigger. A failed re-fetch keeps the list copy.
+     * the single goal so the pane uses the canonical row. A failed re-fetch keeps the list copy.
      */
     fun openDetail(goal: Goal) {
         val gen = ++loadGeneration
@@ -183,9 +169,8 @@ class DebtGoalViewModel(
                     current
                 }
             }
-            // The list copy never latches (only the writer GET does); so opening a goal whose
-            // list copy is in_progress but whose fresh detail just turned achieved is a
-            // witnessed cross-edge. An already-achieved list copy → no edge (no spurious replay).
+            // Opening a goal whose list copy is in_progress but whose fresh detail just turned
+            // achieved is a witnessed cross-edge. An already-achieved list copy -> no replay.
             celebrationController.onGoalApplied(old = goal, new = fresh)?.let { flash ->
                 _state.update { it.copy(flashMessage = flash) }
             }
@@ -314,14 +299,6 @@ class DebtGoalViewModel(
         celebrationController.consume()
     }
 }
-
-/**
- * The list endpoint is read-only and intentionally does not persist a freshly completed
- * debt_repayment goal. Fetch listed goals through the detail endpoint once so a fully repaid plan
- * reflects as achieved in the list without requiring the user to open every goal manually.
- */
-private suspend fun refreshedDebtGoalList(repository: ReportsActions, listedGoals: List<Goal>): List<Goal> =
-    listedGoals.map { goal -> repository.goal(goal.publicId).getOrNull() ?: goal }
 
 /**
  * ADR-0049 §6.6 计划达成撒花的边沿判定 + 去重 + 撒花信号的窄职责协作者（从 [DebtGoalViewModel] 抽出，

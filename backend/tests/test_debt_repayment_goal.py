@@ -309,6 +309,38 @@ def test_viewer_read_computes_achieved_without_latching(client: TestClient, *, i
     # The viewer read wrote nothing to the Goal row.
     assert _goal_latch_state(goal["public_id"]) == (None, None)
 
+    viewer_list = client.get("/api/goals?goal_type=debt_repayment", headers=identity.app_headers)
+    assert viewer_list.status_code == 200, viewer_list.json()
+    list_block = viewer_list.json()["items"][0]["debt_repayment"]
+    assert list_block["evaluation_state"] == "achieved"
+    assert list_block["achieved_version"] is None
+    assert list_block["achieved_at"] is None
+    # The viewer list path is also read-only.
+    assert _goal_latch_state(goal["public_id"]) == (None, None)
+
+
+def test_writer_list_latches_completed_debt_goals(client: TestClient, *, identity) -> None:
+    # Android refresh uses this list endpoint; it must return the sticky, latched state
+    # without forcing the app to GET every goal detail one by one.
+    a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    goal = _create_debt_goal(
+        client, identity.app_headers, name="列表锁存", debt_public_ids=[a["public_id"]]
+    ).json()
+    _clear_debt(client, identity.app_headers, a)
+    assert _goal_latch_state(goal["public_id"]) == (None, None)
+
+    response = client.get("/api/goals?goal_type=debt_repayment", headers=identity.app_headers)
+    assert response.status_code == 200, response.json()
+    item = response.json()["items"][0]
+    block = item["debt_repayment"]
+    assert item["public_id"] == goal["public_id"]
+    assert block["evaluation_state"] == "achieved"
+    assert block["achieved_version"] == 1
+    assert block["achieved_at"] is not None
+    achieved_at, achieved_version = _goal_latch_state(goal["public_id"])
+    assert achieved_version == 1
+    assert achieved_at is not None
+
 
 def test_not_evaluable_recovers_via_link_replace(client: TestClient, *, identity) -> None:
     # §6 / F13: a voided linked Debt is not_evaluable + needs_review, and the user

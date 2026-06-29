@@ -458,9 +458,18 @@ def set_debt_goal_target_date(
 
 
 def list_debt_repayment_goals(
-    db: Session, *, tenant_id: str, include_archived: bool = False
+    db: Session,
+    *,
+    tenant_id: str,
+    include_archived: bool = False,
+    persist_achievement: bool = False,
 ) -> list[GoalResponse]:
-    """List a tenant's debt_repayment goals (read-only — never latches achievement)."""
+    """List a tenant's debt_repayment goals.
+
+    Default stays read-only because owner-health and /web reuse this service for
+    passive status checks. The authenticated API list passes ``persist_achievement=True``
+    for writer roles so Android can refresh the list without N per-goal detail GETs.
+    """
     statement = ledger_scoped_select(Goal, tenant_id).where(Goal.goal_type == GOAL_TYPE)
     if not include_archived:
         statement = statement.where(Goal.status != "archived")
@@ -469,7 +478,9 @@ def list_debt_repayment_goals(
     )
     goals = list(db.scalars(statement))
     return [
-        build_debt_repayment_goal_response(db, goal, persist_achievement=False)
+        build_debt_repayment_goal_response(
+            db, goal, persist_achievement=persist_achievement
+        )
         for goal in goals
     ]
 

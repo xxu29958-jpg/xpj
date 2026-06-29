@@ -201,7 +201,7 @@ Authorization: Bearer <admin_token>
 | `/api/dashboard/cards` | PUT | `backend/app/routes/dashboard.py` | v0.9 Dashboard Cards | query `surface=android|web`；`DashboardCardsUpdateRequest` | `DashboardCardsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_dashboard_cards.py` | v0.9 保存 Dashboard 卡片顺序和显隐 |
 | `/api/me/ui-preferences` | GET | `backend/app/routes/user_preferences.py` | Android/Web UI preferences | none | `UserUiPreferencesResponse` | Session Token | Android settings/theme sync | v0.10 cross-surface UI preferences |
 | `/api/me/ui-preferences` | PUT | `backend/app/routes/user_preferences.py` | Android/Web UI preferences | `UserUiPreferencesUpdateRequest` | `UserUiPreferencesResponse` | Session Token, owner/member write permission | Android settings/theme sync | v0.10 cross-surface UI preferences |
-| `/api/goals` | GET | `backend/app/routes/goals.py` | v0.9 Goals | query `month/include_archived/timezone` | `GoalListResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标列表和进度；viewer 可读 |
+| `/api/goals` | GET | `backend/app/routes/goals.py` | v0.9 Goals | query `month/include_archived/goal_type/timezone` | `GoalListResponse` | Session Token | `backend/tests/test_goals.py`, `backend/tests/test_debt_repayment_goal.py` | v0.9 目标列表和进度；`goal_type=debt_repayment` 返回还债目标；viewer 可读 |
 | `/api/goals` | POST | `backend/app/routes/goals.py` | v0.9 Goals | `GoalCreateRequest`；query `timezone` | `GoalResponse` | Session Token，owner/member 写权限 | `backend/tests/test_goals.py` | v0.9 创建月度支出目标 |
 | `/api/goals/{public_id}` | GET | `backend/app/routes/goals.py` | v0.9 Goals | path `public_id`；query `timezone` | `GoalResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标详情和进度；viewer 可读 |
 | `/api/goals/{public_id}` | PATCH | `backend/app/routes/goals.py` | v0.9 Goals | `GoalUpdateRequest`；query `timezone` | `GoalResponse` | Session Token，owner/member 写权限 | `backend/tests/test_goals.py` | v0.9 更新目标配置 |
@@ -1808,6 +1808,7 @@ Authorization: Bearer <session_token>
 ```text
 month=2026-05
 include_archived=false
+goal_type=debt_repayment
 timezone=Asia/Shanghai
 ```
 
@@ -1815,6 +1816,7 @@ timezone=Asia/Shanghai
 
 - 只读取当前账本目标。
 - `viewer` 可读。
+- 默认返回 `spending_limit` 月度目标；`goal_type=debt_repayment` 返回无月份的还债目标及其 `debt_repayment` 评价块。`owner` / `member` 读取还债目标列表时会补写刚达成目标的 `achieved_version` latch；`viewer` 只计算响应、不写数据库。
 - 进度只统计当前账本、指定月份、`confirmed` 账单。
 - 统计时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
 - `category` 为空表示总支出目标；有值时只统计该分类，分类按现有归一规则处理。

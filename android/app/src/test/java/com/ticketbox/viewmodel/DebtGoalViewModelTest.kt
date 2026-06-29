@@ -87,17 +87,15 @@ class DebtGoalViewModelTest {
     }
 
     @Test
-    fun listRefreshRelatchesCompletedGoalsWithoutOpeningDetail() = runTest(dispatcher) {
-        val listed = debtGoal(evaluationState = "in_progress", links = listOf(externalLink("open")))
+    fun listRefreshUsesServerLatchedGoalsWithoutPerGoalDetailFetch() = runTest(dispatcher) {
         val latched = debtGoal(evaluationState = "achieved", links = listOf(externalLink("cleared")))
         val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(listed)),
-            goalResult = Result.success(latched),
+            debtGoalsResult = Result.success(listOf(latched)),
         )
         val viewModel = DebtGoalViewModel(repo)
         advanceUntilIdle()
 
-        assertEquals(listOf("debt-goal-1"), repo.goalCalls)
+        assertTrue(repo.goalCalls.isEmpty())
         assertNull(viewModel.state.value.selectedGoal)
         assertEquals("achieved", viewModel.state.value.goals.single().debtRepayment?.evaluationState)
     }
@@ -220,7 +218,7 @@ class DebtGoalViewModelTest {
 
     @Test
     fun refreshRelatchesOpenDetailViaDetailEndpoint() = runTest(dispatcher) {
-        // the list path is read-only; an open detail must be re-latched via goal().
+        // An open detail still gets one canonical detail refresh after the list load.
         val listSnapshot = debtGoal(evaluationState = "in_progress")
         val latchedDetail = debtGoal(evaluationState = "achieved")
         val repo = FakeReportsActions(
