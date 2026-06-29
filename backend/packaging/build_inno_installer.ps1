@@ -21,6 +21,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendRoot = (Resolve-Path -LiteralPath (Join-Path $ScriptDir "..")).Path
 $IssPath = Join-Path $ScriptDir "ticketbox-installer.iss"
+$ChineseLanguageFile = Join-Path $ScriptDir "languages\ChineseSimplified.isl"
 $BackendDist = Join-Path $BackendRoot "dist\ticketbox-backend"
 $PgBundle = Join-Path $ScriptDir "vendor\pg"
 $ShawlExe = Join-Path $ScriptDir "vendor\shawl\shawl.exe"
@@ -108,6 +109,7 @@ function Resolve-VersionInfoVersion([string]$Value) {
 
 Write-Step "校验 Inno 安装器输入"
 Assert-File $IssPath "Inno 脚本"
+Assert-File $ChineseLanguageFile "Inno 简体中文语言文件"
 Assert-Dir $BackendDist "冻结后端 onedir"
 Assert-File (Join-Path $BackendDist "ticketbox-backend.exe") "ticketbox-backend.exe"
 Assert-Dir $PgBundle "捆绑 PostgreSQL"

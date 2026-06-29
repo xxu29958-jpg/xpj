@@ -34,6 +34,10 @@ VersionInfoProductName={#AppName}
 VersionInfoProductVersion={#AppVersion}
 VersionInfoVersion={#AppVersionInfo}
 CloseApplications=no
+ShowLanguageDialog=no
+
+[Languages]
+Name: "chinesesimp"; MessagesFile: "languages\ChineseSimplified.isl"
 
 [Files]
 Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion

@@ -29,6 +29,7 @@ scripts\build_backend_exe.ps1 -Clean   # 连构建 venv 一起重建
 2. 已裁出捆绑 PG:`backend\packaging\vendor\pg\bin\pg_ctl.exe`。
 3. 已放好 Shawl:`backend\packaging\vendor\shawl\shawl.exe`。
 4. 构建机安装 Inno Setup 6,或用 `-InnoCompiler` 指定 `ISCC.exe`。
+5. 仓库内置 Inno 简体中文语言文件:`backend\packaging\languages\ChineseSimplified.isl`。
 
 命令:
 
@@ -41,6 +42,7 @@ packaging\build_inno_installer.ps1                    # 输出 dist\installer\Ti
 安装行为:
 
 - 安装包使用小票夹图标和“小票夹后端服务”显示名,开始菜单会创建“打开小票夹 Web”和“数据目录”快捷方式。
+- 安装器标准页面和按钮使用内置简体中文语言文件;自定义数据目录/端口页面也保持中文。
 - 安装向导会先让用户确认程序目录、数据目录和本机服务端口;若默认 `5432/8000` 被占用,会自动预填开发机常用隔离端口 `5440/8001`,也可以在界面中改成其它空闲端口。
 - 首次安装默认使用 `C:\ProgramData\Ticketbox\pgdata` + `C:\ProgramData\Ticketbox\app`。
 - `app\.env` 由脚本写成 UTF-8 no BOM,`DATABASE_URL` 指向应用角色 `ticketbox`。
@@ -56,7 +58,7 @@ Ticketbox-Setup-1.2.0.exe /TicketboxDataRoot="D:\TicketboxData" /TicketboxBacken
 
 开发机若已有本机 PostgreSQL/源码后端占用默认 `5432/8000`,直接双击安装器即可在“服务端口”页面看到自动预填的 `5440/8001`。安装器会在正式复制文件前检测所选端口;若端口已被占用,会停在向导页提示换端口,避免复制文件后后置服务脚本失败。
 
-注意:当前安装包未签名,Windows SmartScreen 可能提示未知发布者。这不影响本地服务模型,但正式给亲友分发前建议走代码签名/Trusted Signing。
+注意:当前发布工程明确不做代码签名,Windows SmartScreen 可能提示未知发布者;发布验收只保留未签名安装器的 SmartScreen walkthrough。
 
 ## 档 A:本机 PostgreSQL 一键安装(legacy)
 

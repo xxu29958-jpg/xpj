@@ -96,7 +96,7 @@ Reversibility：卸载 = 停删两服务（**数据目录默认保留** + 明示
 * Slice 3：主机管理器 EXE（服务起停 / 状态 / LAN mDNS + 二维码〔短期 pairing code〕/ `NsdManager` 重发现 / serve APK / bootstrap owner 走 loopback API / 引导式网络面板：LAN 默认 + Tailscale 引导 + named tunnel 进阶 / 高级改数据位置 + 迁移流程）。
 * Slice 4：Inno Setup（注册两服务 + 虚拟账户 + ACL / 默认 ProgramData + 高级改位置 / 覆盖升级先 `pre_upgrade` 快照 / 卸载留数据）+ 干净机全链验收 + graceful-shutdown 验证 + 未签名向导 SmartScreen walkthrough。
 
-Slice 4 落地状态（2026-06-28）：仓库已有 Inno `.iss`、`build_inno_installer.ps1`、正式 `install_bundled_services.ps1` / `uninstall_bundled_services.ps1`。本片覆盖打包输入校验、ProgramData 数据根、服务注册、虚拟服务账户、ACL、首次 owner bootstrap、升级前 `pg_dump -Fc` 快照、卸载默认留数据。仍待在装有 Inno 的干净 Windows 机上执行完整安装/升级/卸载与 SmartScreen walkthrough。
+Slice 4 落地状态（2026-06-29）：仓库已有 Inno `.iss`、内置简体中文语言文件、`build_inno_installer.ps1`、正式 `install_bundled_services.ps1` / `uninstall_bundled_services.ps1`。本片覆盖打包输入校验、ProgramData 数据根、服务注册、虚拟服务账户、ACL、首次 owner bootstrap、升级前 `pg_dump -Fc` 快照、卸载默认留数据。当前发布工程明确不做代码签名，仍待在装有 Inno 的干净 Windows 机上执行完整安装/升级/卸载与未签名 SmartScreen walkthrough。
 
 ## Non-goals
 
