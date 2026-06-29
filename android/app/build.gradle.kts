@@ -37,6 +37,12 @@ fun ticketboxBooleanEnvOrLocal(envName: String, propertyName: String): Boolean {
     return raw == "1" || raw == "true" || raw == "yes"
 }
 
+val ticketboxAllowRealDeviceConnectedTest: Boolean =
+    ticketboxBooleanEnvOrLocal(
+        "TICKETBOX_ALLOW_REAL_DEVICE_CONNECTED_TEST",
+        "ticketbox.allowRealDeviceConnectedTest",
+    )
+
 data class TicketboxDebugSigning(
     val keystorePath: String,
     val keyAlias: String,
@@ -603,4 +609,63 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
             "(base=$baseBaseline; ratchet UP OK)."
         )
     }
+}
+
+fun ticketboxAdbExecutable(): File? {
+    val sdkDir = ticketboxLocalProperty("sdk.dir")
+        ?: System.getenv("ANDROID_HOME")?.trim()?.takeIf { it.isNotBlank() }
+        ?: System.getenv("ANDROID_SDK_ROOT")?.trim()?.takeIf { it.isNotBlank() }
+    val adbName = if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+        "adb.exe"
+    } else {
+        "adb"
+    }
+    return sdkDir
+        ?.let { File(it, "platform-tools/$adbName") }
+        ?.takeIf { it.exists() }
+}
+
+fun ticketboxReadyDeviceSerials(): List<String> {
+    val adb = ticketboxAdbExecutable() ?: return emptyList()
+    val process = ProcessBuilder(adb.absolutePath, "devices", "-l")
+        .directory(rootProject.rootDir)
+        .redirectErrorStream(true)
+        .start()
+    if (!process.waitFor(30, TimeUnit.SECONDS) || process.exitValue() != 0) {
+        return emptyList()
+    }
+    return process.inputStream.bufferedReader().readLines()
+        .drop(1)
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .mapNotNull { line ->
+            val parts = line.split(Regex("\\s+"))
+            parts.firstOrNull()?.takeIf { parts.getOrNull(1) == "device" }
+        }
+}
+
+val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
+    group = "verification"
+    description = "Refuse connected Android tests on physical devices unless explicitly opted in."
+
+    doLast {
+        if (ticketboxAllowRealDeviceConnectedTest) {
+            return@doLast
+        }
+        val physicalDevices = ticketboxReadyDeviceSerials()
+            .filterNot { it.startsWith("emulator-", ignoreCase = true) }
+        if (physicalDevices.isNotEmpty()) {
+            throw GradleException(
+                "Refusing to run connected Android tests on physical device(s): " +
+                    physicalDevices.joinToString(", ") + ". These tasks can install test APKs " +
+                    "and disturb a bound daily-use app. Use an emulator, or explicitly set " +
+                    "TICKETBOX_ALLOW_REAL_DEVICE_CONNECTED_TEST=true / " +
+                    "ticketbox.allowRealDeviceConnectedTest=true after confirming app data loss is acceptable.",
+            )
+        }
+    }
+}
+
+tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEach {
+    dependsOn(guardConnectedAndroidTestEmulatorOnly)
 }
