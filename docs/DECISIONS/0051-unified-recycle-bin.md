@@ -1,7 +1,7 @@
 # ADR-0051: 统一回收站
 
 - 状态：accepted / partially implemented（2026-06-29：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站；短窗软删的回收站天级 retention）
-- 关联：ENGINEERING_RULES §6（持久化/同步/恢复）/ §12（保留天数预算）/ §13（反扩）、[[0038]]（`deleted_at` 软删 tombstone）、[[0043]]（tag mutation-undo）、[[0046]]（Android 周期 worker 边界）、[[0049]]（债务域 append-only，**排除在回收站外**）
+- 关联：ENGINEERING_RULES §6（持久化/同步/恢复）/ §12（保留天数预算）/ §13（反扩）、[[0038]]（`deleted_at` 软删 tombstone）、[[0043]]（tag mutation-undo）、[[0046]]（Android 周期 worker 边界）、[[0049]]（债务域 append-only，**排除在回收站外**）、[[0052]]（主数据删除边界）
 
 ## 2026-06-29 首片落地
 
@@ -30,7 +30,7 @@
 - `SOFT_DELETE_RETENTION_MINUTES=5` 继续只代表原撤销 API / banner 的短窗；`/api/*/undo` 与 `/web/*/undo` 默认不放宽，超过 5 分钟仍返回原来的 not_found。
 - `/owner/recycle-bin/restore` 与 `/api/recycle-bin/restore` 显式使用回收站窗口，可恢复已超过 5 分钟但未超过 `RECYCLE_BIN_RETENTION_DAYS` 的软删项。
 - `soft_delete_purge_scheduler` 继续 opt-in 且复用既有清理路径，但默认硬删 cutoff 改为回收站天级窗口；仍可通过函数参数覆盖分钟窗口用于测试/手动定向清理。
-- 本片不新增 per-row retention 字段：当前三类短窗实体已有 `deleted_at` / `created_at` 作为 retention 锚点，且窗口是全局产品策略；master 删除仍必须走独立 ADR。
+- 本片不新增 per-row retention 字段：当前三类短窗实体已有 `deleted_at` / `created_at` 作为 retention 锚点，且窗口是全局产品策略；master 删除边界见 [[0052]]。
 
 ## 背景与问题
 
@@ -62,7 +62,7 @@
 **② scope（哪些实体可进回收站）**
 - (a) 仅现有可恢复的软删/归档（alias/rule/tag/income_plan/recurring/goal），并**补 recurring/goal 的 restore**。
 - (b) (a) + 给 master（category/budget/merchant）加软删字段 + 删除路由（新 surface，更大）。
-- **首片选择 (a) 先**，并额外纳入账本归档恢复；master 删除作为后续 ADR/切片；**债务 void/forgive 按 [[0049]] 排除**（voided debt 可见但只读，不当「可恢复删除」）。
+- **首片选择 (a) 先**，并额外纳入账本归档恢复；master 删除边界见 [[0052]]；**债务 void/forgive 按 [[0049]] 排除**（voided debt 可见但只读，不当「可恢复删除」）。
 
 **③ 恢复 UX 落点**
 - (a) 三端各加用户级统一回收站入口（Android nav 二级页 / web 单页 / owner 单页）。
@@ -80,6 +80,6 @@
 
 ## 切片划分 + 回收条件
 
-1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 解耦（已完成：配置型全局窗口，未新增 per-row 字段）。4.（独立 ADR）master 软删 + voided debt 只读展示。
+1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 解耦（已完成：配置型全局窗口，未新增 per-row 字段）。4. master 删除边界见 [[0052]]；债务 voided 只读展示如需要另开债务展示 ADR。
 
-回收条件：任一轴落地后若 retention/scope 判断变化，回此 ADR 修订；master 删除与债务展示须各自新开 ADR，不在本 scope 隐式扩张。
+回收条件：任一轴落地后若 retention/scope 判断变化，回此 ADR 修订；master 删除以 [[0052]] 为准，债务展示另开 ADR，不在本 scope 隐式扩张。
