@@ -186,6 +186,34 @@ class RepaymentDraftInboxViewModelTest {
     }
 
     @Test
+    fun reloadWithFocusedDraftPinsItFirst() = runTest(dispatcher) {
+        val draftsRepo = FakeRepaymentDraftActions(
+            listResult = Result.success(
+                listOf(
+                    draft("old-a"),
+                    draft("from-expense", suggestedDebtPublicId = "card"),
+                    draft("old-b"),
+                ),
+            ),
+        )
+        val debtsRepo = FakeRepayableDebtActions(
+            listResult = Result.success(listOf(debt("card"))),
+        )
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+
+        viewModel.reload(focusedDraftPublicId = "from-expense")
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("from-expense", "old-a", "old-b"),
+            viewModel.state.value.drafts.map { it.publicId },
+        )
+        assertEquals("from-expense", viewModel.state.value.focusedDraftPublicId)
+        assertEquals("card", viewModel.state.value.suggestedDebtByDraftId["from-expense"]?.publicId)
+    }
+
+    @Test
     fun suggestionResolvesToFeasibleRepayableDebtWithLocalRowVersion() = runTest(dispatcher) {
         // §杠杆③ 3b: the server suggests a Debt by public_id; the VM resolves it against the local
         // repayable list so the row_version (the §2.1 OCC token) comes from the same fetch.

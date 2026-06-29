@@ -80,8 +80,8 @@ internal fun MainNavGraph(
                     shellState.markExpenseEditCompleted()
                     navController.popBackStack()
                 },
-                onOpenRepaymentDrafts = {
-                    shellState.openStatsSecondary(StatsSecondaryPage.RepaymentDrafts)
+                onOpenRepaymentDrafts = { draftPublicId ->
+                    shellState.openRepaymentDrafts(draftPublicId)
                     navController.popBackStack()
                 },
             )
@@ -188,6 +188,8 @@ private fun MainRouteContent(
             // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱规划二级页。
             StatsSecondaryPage.RepaymentDrafts -> RepaymentDraftRoute(
                 screenFactory = screenFactory,
+                focusedDraftPublicId = shellState.focusedRepaymentDraftPublicId,
+                onFocusConsumed = shellState::clearFocusedRepaymentDraft,
                 onBack = shellState::closeStatsSecondaryPage,
             )
 

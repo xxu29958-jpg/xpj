@@ -29,6 +29,7 @@ data class RepaymentDraftInboxUiState(
     val canModify: Boolean = true,
     val drafts: List<RepaymentDraft> = emptyList(),
     val targetDebts: List<Debt> = emptyList(),
+    val focusedDraftPublicId: String? = null,
     /**
      * §杠杆③ 3b：每条草稿的服务端建议欠款（draft.publicId → 已解析的 [Debt]），仅含「服务端 suggested_debt_public_id
      * 命中本地 [targetDebts] 且按本地剩余金额仍可还得起」的项。UI 据此预选/高亮，并允许一键「确认还到这笔」。
@@ -60,12 +61,13 @@ class RepaymentDraftInboxViewModel(
     }
 
     /** 进入 overlay 时调用：先清上一账本残留再拉，避免在新账本下短暂看到旧账本的草稿（账本隔离）。 */
-    fun reload() {
+    fun reload(focusedDraftPublicId: String? = null) {
         _state.update {
             it.copy(
                 drafts = emptyList(),
                 targetDebts = emptyList(),
                 suggestedDebtByDraftId = emptyMap(),
+                focusedDraftPublicId = focusedDraftPublicId,
                 error = null,
                 canModify = drafts.canModifyLedger(),
             )
@@ -84,16 +86,21 @@ class RepaymentDraftInboxViewModel(
             _state.update { current ->
                 draftResult.fold(
                     onSuccess = { pending ->
+                        val focused = current.focusedDraftPublicId
+                        val orderedDrafts = prioritizeFocusedDraft(pending, focused)
                         current.copy(
                             isLoading = false,
                             canModify = drafts.canModifyLedger(),
-                            drafts = pending,
+                            drafts = orderedDrafts,
+                            focusedDraftPublicId = focused?.takeIf { id ->
+                                pending.any { it.publicId == id }
+                            },
                             // debt 拉取失败(repayable==null)时**清空**候选——绝不保留陈旧的 row_version,否则
                             // 下次对同一债 confirm 会用陈旧 OCC token 触发确定性 409;并报错让用户下拉刷新,
                             // 也避免空候选被误读成「没有欠款」（拉取成功但无可还款债时 repayable 是空列表、不报错）。
                             targetDebts = repayable ?: emptyList(),
                             // 用本地拉到的欠款解析服务端建议（拉取失败 → 空建议，与清空候选一致）。
-                            suggestedDebtByDraftId = resolveSuggestions(pending, repayable ?: emptyList()),
+                            suggestedDebtByDraftId = resolveSuggestions(orderedDrafts, repayable ?: emptyList()),
                             error = if (repayable == null) {
                                 UiText.res(R.string.repayment_draft_debts_load_failed)
                             } else {
@@ -173,4 +180,13 @@ private fun resolveSuggestions(
         if (debt.remainingAmountCents < draft.amountCents) return@mapNotNull null
         draft.publicId to debt
     }.toMap()
+}
+
+private fun prioritizeFocusedDraft(
+    drafts: List<RepaymentDraft>,
+    focusedDraftPublicId: String?,
+): List<RepaymentDraft> {
+    val focused = focusedDraftPublicId?.takeIf { it.isNotBlank() } ?: return drafts
+    val target = drafts.firstOrNull { it.publicId == focused } ?: return drafts
+    return listOf(target) + drafts.filterNot { it.publicId == focused }
 }

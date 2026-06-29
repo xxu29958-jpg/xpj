@@ -63,6 +63,9 @@ internal class MainShellState {
     var statsSecondaryPage by mutableStateOf<StatsSecondaryPage?>(null)
         private set
 
+    var focusedRepaymentDraftPublicId by mutableStateOf<String?>(null)
+        private set
+
     var dashboardCardsRevision by mutableStateOf(0)
         private set
 
@@ -87,7 +90,19 @@ internal class MainShellState {
         statsSecondaryPage = page
     }
 
+    fun openRepaymentDrafts(focusedDraftPublicId: String? = null) {
+        focusedRepaymentDraftPublicId = focusedDraftPublicId
+        openStatsSecondary(StatsSecondaryPage.RepaymentDrafts)
+    }
+
+    fun clearFocusedRepaymentDraft() {
+        focusedRepaymentDraftPublicId = null
+    }
+
     fun closeStatsSecondaryPage() {
+        if (statsSecondaryPage == StatsSecondaryPage.RepaymentDrafts) {
+            focusedRepaymentDraftPublicId = null
+        }
         statsSecondaryPage = null
     }
 

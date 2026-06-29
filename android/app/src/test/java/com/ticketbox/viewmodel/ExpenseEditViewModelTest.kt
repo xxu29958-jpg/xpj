@@ -376,9 +376,9 @@ internal class ExpenseEditViewModelTest {
         assertEquals(confirmed, fake.repaymentDraftExpense)
         assertFalse(state.repaymentDraftCreating)
         assertNotNull(state.message)
-        assertTrue(state.openRepaymentDrafts)
-        assertTrue(vm.consumeOpenRepaymentDrafts())
-        assertFalse(vm.consumeOpenRepaymentDrafts())
+        assertEquals("rd-1", state.openRepaymentDraftPublicId)
+        assertEquals("rd-1", vm.consumeOpenRepaymentDraftPublicId())
+        assertNull(vm.consumeOpenRepaymentDraftPublicId())
     }
 
     @Test
@@ -389,7 +389,7 @@ internal class ExpenseEditViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, fake.repaymentDraftCalls)
-        assertFalse(vm.uiState.value.openRepaymentDrafts)
+        assertNull(vm.uiState.value.openRepaymentDraftPublicId)
         assertNotNull(vm.uiState.value.message)
     }
 

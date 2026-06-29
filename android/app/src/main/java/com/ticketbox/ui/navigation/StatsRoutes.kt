@@ -13,6 +13,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -385,8 +386,11 @@ internal fun ReceivablesRoute(
 @Composable
 internal fun RepaymentDraftRoute(
     screenFactory: MainScreenFactory,
+    focusedDraftPublicId: String? = null,
+    onFocusConsumed: () -> Unit = {},
     onBack: () -> Unit,
 ) {
+    val launchFocusedDraftPublicId = remember { focusedDraftPublicId }
     val viewModel: RepaymentDraftInboxViewModel = viewModel(
         key = RepaymentDraftInboxViewModelKey,
         factory = repaymentDraftInboxViewModelFactory(
@@ -394,7 +398,10 @@ internal fun RepaymentDraftRoute(
             debts = screenFactory.debtRepository,
         ),
     )
-    LaunchedEffect(Unit) { viewModel.reload() }
+    LaunchedEffect(Unit) {
+        viewModel.reload(launchFocusedDraftPublicId)
+        onFocusConsumed()
+    }
     RepaymentDraftInboxScreen(
         viewModel = viewModel,
         currency = LocalCurrencyDisplay.current,
@@ -461,7 +468,7 @@ internal fun StatsRoute(
         onOpenDebtGoals = { shellState.openStatsSecondary(StatsSecondaryPage.DebtGoals) },
         onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
         onOpenReceivables = { shellState.openStatsSecondary(StatsSecondaryPage.Receivables) },
-        onOpenRepaymentDrafts = { shellState.openStatsSecondary(StatsSecondaryPage.RepaymentDrafts) },
+        onOpenRepaymentDrafts = { shellState.openRepaymentDrafts() },
         // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
         // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
         onDrillToLedger = { category ->

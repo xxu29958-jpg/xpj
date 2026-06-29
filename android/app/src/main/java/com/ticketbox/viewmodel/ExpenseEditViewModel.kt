@@ -93,7 +93,7 @@ data class ExpenseEditUiState(
     val billSplitInviteMessage: UiText? = null,
     val recognizeTextDialogOpen: Boolean = false,
     val repaymentDraftCreating: Boolean = false,
-    val openRepaymentDrafts: Boolean = false,
+    val openRepaymentDraftPublicId: String? = null,
     val message: UiText? = null,
     val done: Boolean = false,
 )
@@ -497,16 +497,16 @@ class ExpenseEditViewModel(
             _uiState.update {
                 it.copy(
                     repaymentDraftCreating = true,
-                    openRepaymentDrafts = false,
+                    openRepaymentDraftPublicId = null,
                     message = null,
                 )
             }
             repository.createRepaymentDraftFromExpense(expense)
-                .onSuccess {
+                .onSuccess { draft ->
                     _uiState.update {
                         it.copy(
                             repaymentDraftCreating = false,
-                            openRepaymentDrafts = true,
+                            openRepaymentDraftPublicId = draft.publicId,
                             message = UiText.res(R.string.expense_edit_repayment_draft_created),
                         )
                     }
@@ -530,12 +530,12 @@ class ExpenseEditViewModel(
         return wasDone
     }
 
-    fun consumeOpenRepaymentDrafts(): Boolean {
-        val shouldOpen = _uiState.value.openRepaymentDrafts
-        if (shouldOpen) {
-            _uiState.update { it.copy(openRepaymentDrafts = false) }
+    fun consumeOpenRepaymentDraftPublicId(): String? {
+        val publicId = _uiState.value.openRepaymentDraftPublicId
+        if (publicId != null) {
+            _uiState.update { it.copy(openRepaymentDraftPublicId = null) }
         }
-        return shouldOpen
+        return publicId
     }
 
     private fun blockReadOnlyWrite(): Boolean {

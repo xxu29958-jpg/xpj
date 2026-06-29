@@ -53,7 +53,7 @@ internal fun ExpenseEditRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onCompleted: () -> Unit,
-    onOpenRepaymentDrafts: () -> Unit,
+    onOpenRepaymentDrafts: (String) -> Unit,
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
         key = "expense-edit-$expenseId",
@@ -121,11 +121,12 @@ internal fun ExpenseEditRoute(
 private fun RepaymentDraftOpenEffect(
     state: ExpenseEditUiState,
     viewModel: ExpenseEditViewModel,
-    onOpenRepaymentDrafts: () -> Unit,
+    onOpenRepaymentDrafts: (String) -> Unit,
 ) {
-    LaunchedEffect(state.openRepaymentDrafts) {
-        if (state.openRepaymentDrafts && viewModel.consumeOpenRepaymentDrafts()) {
-            onOpenRepaymentDrafts()
+    LaunchedEffect(state.openRepaymentDraftPublicId) {
+        val draftPublicId = viewModel.consumeOpenRepaymentDraftPublicId()
+        if (draftPublicId != null) {
+            onOpenRepaymentDrafts(draftPublicId)
         }
     }
 }
