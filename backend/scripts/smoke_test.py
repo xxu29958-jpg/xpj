@@ -7,6 +7,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +28,12 @@ UPLOAD_PATH = ""
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
+)
+SERVER_LOG_PATH = Path(
+    os.environ.get(
+        "SMOKE_SERVER_LOG_PATH",
+        str(Path(tempfile.gettempdir()) / f"xpj-smoke-server-{os.getpid()}.log"),
+    )
 )
 
 
@@ -149,7 +156,9 @@ def start_server(port: int) -> subprocess.Popen:
             "XPJ_EXTRA_LOOPBACK_HOSTS": f"{HOST}:{port}",
         }
     )
-    return subprocess.Popen(
+    SERVER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    server_log = SERVER_LOG_PATH.open("w", encoding="utf-8", errors="replace")
+    process = subprocess.Popen(
         [
             sys.executable,
             "-m",
@@ -163,19 +172,35 @@ def start_server(port: int) -> subprocess.Popen:
         ],
         cwd=BACKEND_ROOT,
         env=env,
-        stdout=subprocess.PIPE,
+        stdout=server_log,
         stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
     )
+    process.smoke_server_log = server_log  # type: ignore[attr-defined]
+    return process
+
+
+def server_log_tail() -> str:
+    if not SERVER_LOG_PATH.exists():
+        return ""
+    lines = SERVER_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-80:])
+
+
+def cleanup_server_log() -> None:
+    for _ in range(20):
+        try:
+            SERVER_LOG_PATH.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            time.sleep(0.1)
 
 
 def wait_for_server(base_url: str, process: subprocess.Popen) -> None:
-    deadline = time.time() + 20
+    timeout_seconds = float(os.environ.get("SMOKE_SERVER_READY_TIMEOUT_SECONDS", "60"))
+    deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         if process.poll() is not None:
-            output = process.stdout.read() if process.stdout else ""
+            output = server_log_tail()
             raise RuntimeError(f"server exited early:\n{output}")
         try:
             result = request("GET", f"{base_url}/api/health")
@@ -184,7 +209,10 @@ def wait_for_server(base_url: str, process: subprocess.Popen) -> None:
         except urllib.error.URLError:
             pass
         time.sleep(0.2)
-    raise TimeoutError("server did not become ready")
+    output = server_log_tail()
+    if output:
+        raise TimeoutError(f"server did not become ready within {timeout_seconds:g}s:\n{output}")
+    raise TimeoutError(f"server did not become ready within {timeout_seconds:g}s")
 
 
 def upload(base_url: str, filename: str, content_type: str, content: bytes) -> ApiResult:
@@ -843,6 +871,10 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        server_log = getattr(process, "smoke_server_log", None)
+        if server_log:
+            server_log.close()
+        cleanup_server_log()
         clean_smoke_runtime()
 
 
