@@ -72,6 +72,9 @@ import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
+import com.ticketbox.data.remote.dto.RecycleBinListResponseDto
+import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
+import com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
@@ -914,6 +917,14 @@ interface ApiService {
         @Path("ledgerId") ledgerId: String,
         @Body request: PairingCodeCreateRequestDto,
     ): PairingCodeResponseDto
+
+    @GET("api/recycle-bin")
+    suspend fun recycleBin(): RecycleBinListResponseDto
+
+    @POST("api/recycle-bin/restore")
+    suspend fun restoreRecycleBinItem(
+        @Body request: RecycleBinRestoreRequestDto,
+    ): RecycleBinRestoreResponseDto
 
     // ADR-0030 background tasks
     @GET("api/tasks")

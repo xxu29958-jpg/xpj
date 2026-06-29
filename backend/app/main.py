@@ -44,6 +44,7 @@ from app.routes import (
     owner_console,
     owner_ledgers,
     recurring,
+    recycle_bin,
     repayment_drafts,
     reports,
     rules,
@@ -76,6 +77,7 @@ from app.routes import (
     web_receivables,
     web_recurring,
     web_repayment_drafts,
+    web_recycle_bin,
     web_reports,
     web_search,
     web_tags,
@@ -291,6 +293,7 @@ app.include_router(ledgers.router)
 app.include_router(invitations.router)
 app.include_router(devices.router)
 app.include_router(recurring.router)
+app.include_router(recycle_bin.router)
 app.include_router(budgets.router)
 app.include_router(budget_advisor.router)
 app.include_router(income_plans.router)
@@ -338,6 +341,7 @@ app.include_router(web_data_quality.router)
 app.include_router(web_debts.router)
 app.include_router(web_debt_goals.router)
 app.include_router(web_repayment_drafts.router)
+app.include_router(web_recycle_bin.router)
 app.include_router(web_receivables.router)
 app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)

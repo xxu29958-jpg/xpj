@@ -49,6 +49,7 @@ import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.MerchantAliasesScreen
 import com.ticketbox.ui.screens.settings.MyDevicesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
+import com.ticketbox.ui.screens.settings.RecycleBinScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
@@ -66,6 +67,7 @@ import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 import com.ticketbox.viewmodel.MerchantAliasUiState
 import com.ticketbox.viewmodel.MyDevicesViewModel
 import com.ticketbox.viewmodel.OutboxStatusViewModel
+import com.ticketbox.viewmodel.RecycleBinViewModel
 import com.ticketbox.viewmodel.SettingsUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
 import com.ticketbox.viewmodel.backgroundTasksViewModelFactory
@@ -76,6 +78,7 @@ import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
 import com.ticketbox.viewmodel.myDevicesViewModelFactory
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
+import com.ticketbox.viewmodel.recycleBinViewModelFactory
 import com.ticketbox.viewmodel.tagManagementViewModelFactory
 
 internal data class SettingsRouteStates(
@@ -191,6 +194,7 @@ internal fun SettingsDestinationHost(
             onOpenCategoryRules = { route = SettingsDestination.CategoryRules },
             onOpenMerchantAliases = { route = SettingsDestination.MerchantAliases },
             onOpenTagManagement = { route = SettingsDestination.TagManagement },
+            onOpenRecycleBin = { route = SettingsDestination.RecycleBin },
             onOpenDataExport = { route = SettingsDestination.DataExport },
             onOpenNotifications = { route = SettingsDestination.NotificationPreferences },
             onOpenSecurity = { route = SettingsDestination.SecurityPrivacy },
@@ -336,6 +340,16 @@ internal fun SettingsDestinationHost(
                 // signal so the stats tab re-pulls its tag list (drops the dead chip)
                 // on next show — same validated channel as dashboard-card edits.
                 onTagsChanged = actions.onDashboardCardsChanged,
+            )
+        }
+
+        SettingsDestination.RecycleBin -> {
+            val vm: RecycleBinViewModel = viewModel(
+                factory = recycleBinViewModelFactory(repositories.ledgerRepository),
+            )
+            RecycleBinScreen(
+                viewModel = vm,
+                onBack = { route = SettingsDestination.Root },
             )
         }
 

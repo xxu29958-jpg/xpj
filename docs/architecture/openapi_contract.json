@@ -1051,6 +1051,34 @@
         "title": "Body_owner_pairing_post_owner_pairing_post",
         "type": "object"
       },
+      "Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource_id"
+        ],
+        "title": "Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post",
+        "type": "object"
+      },
       "Body_owner_rename_device_owner_devices__public_id__rename_post": {
         "properties": {
           "device_name": {
@@ -1283,6 +1311,38 @@
           "file"
         ],
         "title": "Body_post_parse_debt_bill_api_debts_parse_bill_post",
+        "type": "object"
+      },
+      "Body_post_restore_recycle_bin_web_recycle_bin_restore_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
+          },
+          "resource_id": {
+            "default": "",
+            "title": "Resource Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_post_restore_recycle_bin_web_recycle_bin_restore_post",
         "type": "object"
       },
       "Body_post_restore_web_income_plans__public_id__restore_post": {
@@ -9524,6 +9584,136 @@
           "expected_row_version"
         ],
         "title": "RecurringItemTokenRequest",
+        "type": "object"
+      },
+      "RecycleBinItemResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Row Version"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "removed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed At"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "retention_label": {
+            "title": "Retention Label",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "kind_label",
+          "resource_id",
+          "title",
+          "detail",
+          "removed_at",
+          "retention_label",
+          "expected_row_version"
+        ],
+        "title": "RecycleBinItemResponse",
+        "type": "object"
+      },
+      "RecycleBinListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecycleBinItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "short_window_count": {
+            "title": "Short Window Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "short_window_count"
+        ],
+        "title": "RecycleBinListResponse",
+        "type": "object"
+      },
+      "RecycleBinRestoreRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Row Version"
+          },
+          "kind": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Resource Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource_id"
+        ],
+        "title": "RecycleBinRestoreRequest",
+        "type": "object"
+      },
+      "RecycleBinRestoreResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "RecycleBinRestoreResponse",
         "type": "object"
       },
       "RefreshSessionResponse": {
@@ -21809,6 +21999,134 @@
         ]
       }
     },
+    "/api/recycle-bin": {
+      "get": {
+        "operationId": "list_recycle_bin_api_recycle_bin_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecycleBinListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "List Recycle Bin",
+        "tags": [
+          "recycle-bin"
+        ]
+      }
+    },
+    "/api/recycle-bin/restore": {
+      "post": {
+        "operationId": "restore_recycle_bin_api_recycle_bin_restore_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecycleBinRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecycleBinRestoreResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Restore Recycle Bin",
+        "tags": [
+          "recycle-bin"
+        ]
+      }
+    },
     "/api/repayment-drafts": {
       "get": {
         "operationId": "get_repayment_drafts_api_repayment_drafts_get",
@@ -25157,6 +25475,100 @@
         "summary": "Owner Pairing Post",
         "tags": [
           "owner-console"
+        ]
+      }
+    },
+    "/owner/recycle-bin": {
+      "get": {
+        "operationId": "owner_recycle_bin_get_owner_recycle_bin_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Msg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Error",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Recycle Bin Get",
+        "tags": [
+          "owner"
+        ]
+      }
+    },
+    "/owner/recycle-bin/restore": {
+      "post": {
+        "operationId": "owner_recycle_bin_restore_owner_recycle_bin_restore_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Recycle Bin Restore",
+        "tags": [
+          "owner"
         ]
       }
     },
@@ -29320,6 +29732,125 @@
           }
         },
         "summary": "Web Recurring Resume",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/recycle-bin": {
+      "get": {
+        "operationId": "page_recycle_bin_web_recycle_bin_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "message",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Page Recycle Bin",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/recycle-bin/restore": {
+      "post": {
+        "operationId": "post_restore_recycle_bin_web_recycle_bin_restore_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_restore_recycle_bin_web_recycle_bin_restore_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Restore Recycle Bin",
         "tags": [
           "web"
         ]

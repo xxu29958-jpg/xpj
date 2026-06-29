@@ -58,7 +58,8 @@
 > ADR-0028 通过 Cloudflare allowlist + Access（生产建议）+ 后端
 > `__Host-session` Web cookie 访问。v0.4-alpha1 起本机 Owner Console 增加
 > `/owner/ledgers` 多账本管理入口；v0.10 起 `/owner/recycle-bin` 提供
-> 归档/短窗删除统一恢复入口；`/owner` **仍只允许 loopback 访问**，
+> 归档/短窗删除统一恢复入口；v0.10 起 `/api/recycle-bin` 与
+> `/web/recycle-bin` 提供当前账本维度的普通端回收站；`/owner` **仍只允许 loopback 访问**，
 > 不通过 Cloudflare Tunnel 暴露到公网，也不是商业 Web 后台。
 
 ## 2. 总体流程

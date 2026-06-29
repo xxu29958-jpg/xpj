@@ -17,6 +17,7 @@ Internal layout (one submodule per business domain):
 - ``_dashboard``— dashboard card visibility / ordering
 - ``_rules``    — category rules, merchant aliases, rule-engine apply/preview
 - ``_recurring``— recurring candidates and v0.6 formal recurring items
+- ``_recycle_bin`` — current-ledger unified recycle bin
 - ``_budgets``  — monthly budget dashboard
 - ``_admin``    — data quality, maintenance, server settings, user prefs
 """
@@ -198,6 +199,12 @@ from app.schemas._recurring import (
     RecurringItemListResponse,
     RecurringItemResponse,
     RecurringItemTokenRequest,
+)
+from app.schemas._recycle_bin import (
+    RecycleBinItemResponse,
+    RecycleBinListResponse,
+    RecycleBinRestoreRequest,
+    RecycleBinRestoreResponse,
 )
 from app.schemas._repayment_drafts import (
     RepaymentDraftConfirmRequest,
@@ -409,6 +416,10 @@ __all__ = [
     "RecurringItemListResponse",
     "RecurringItemResponse",
     "RecurringItemTokenRequest",
+    "RecycleBinItemResponse",
+    "RecycleBinListResponse",
+    "RecycleBinRestoreRequest",
+    "RecycleBinRestoreResponse",
     "ReportCategoryComparisonResponse",
     "ReportMerchantRankingResponse",
     "ReportTrendPointResponse",

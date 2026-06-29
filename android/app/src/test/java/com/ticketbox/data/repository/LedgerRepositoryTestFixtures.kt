@@ -125,6 +125,12 @@ internal class StubApi(
     var deleteDeviceError: Throwable? = null
     val deleteDeviceTargets: MutableList<Pair<String, String>> = mutableListOf()
     val pairingCodeTargets: MutableList<String> = mutableListOf()
+    var recycleBinResult: com.ticketbox.data.remote.dto.RecycleBinListResponseDto? = null
+    var recycleBinError: Throwable? = null
+    var recycleBinRestoreResult: com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto? = null
+    var recycleBinRestoreError: Throwable? = null
+    val recycleBinRefreshCount = mutableListOf<Unit>()
+    val recycleBinRestoreRequests: MutableList<com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto> = mutableListOf()
 
     override suspend fun listLedgers(): LedgerListResponseDto {
         listLedgersError?.let { throw it }
@@ -563,6 +569,20 @@ internal class StubApi(
         pairingCodeTargets += ledgerId
         pairingCodeError?.let { throw it }
         return pairingCodeResult ?: error("Unexpected pairing code call")
+    }
+
+    override suspend fun recycleBin(): com.ticketbox.data.remote.dto.RecycleBinListResponseDto {
+        recycleBinRefreshCount += Unit
+        recycleBinError?.let { throw it }
+        return recycleBinResult ?: error("Unexpected recycle bin call")
+    }
+
+    override suspend fun restoreRecycleBinItem(
+        request: com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto,
+    ): com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto {
+        recycleBinRestoreRequests += request
+        recycleBinRestoreError?.let { throw it }
+        return recycleBinRestoreResult ?: error("Unexpected recycle bin restore call")
     }
 }
 

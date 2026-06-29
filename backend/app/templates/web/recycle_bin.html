@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}回收站 · 小票夹{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">回收站</h1>
+  <div class="page-sub">查看当前账本里已归档或仍在短窗内可恢复的项目。</div>
+</div>
+
+{% if message %}<div class="callout-info">{{ message }}</div>{% endif %}
+{% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
+{% if not can_write %}
+<div class="callout-info">只读角色可以查看回收站，但不能恢复项目。</div>
+{% endif %}
+
+<div class="dt-card">
+  <div class="dt-eyebrow">当前账本</div>
+  <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
+    <div class="val">{{ recycle_bin.items|length }}</div>
+  </div>
+  <div class="text-meta">
+    长期归档项目会持续显示；分类规则、商家别名和标签只在原有短窗内可恢复。
+    {% if recycle_bin.short_window_count %}当前短窗项目 {{ recycle_bin.short_window_count }} 条。{% endif %}
+  </div>
+</div>
+
+<div class="dt-card">
+  <div class="dt-eyebrow">可恢复项目</div>
+  {% if recycle_bin.items %}
+  <table class="dt-table">
+    <thead>
+      <tr>
+        <th>类型</th>
+        <th>项目</th>
+        <th>状态</th>
+        {% if can_write %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in recycle_bin.items %}
+      <tr>
+        <td>{{ row.kind_label }}</td>
+        <td>
+          <strong>{{ row.title }}</strong>
+          <div class="text-meta">{{ row.detail }}</div>
+        </td>
+        <td>
+          {% if row.retention_label == '短窗可恢复' %}
+            <span class="pill pill-warn">{{ row.retention_label }}</span>
+          {% else %}
+            <span class="pill pill-ok">{{ row.retention_label }}</span>
+          {% endif %}
+        </td>
+        {% if can_write %}
+        <td>
+          <form method="post" action="/web/recycle-bin/restore" class="dt-inline-form" data-confirm="恢复「{{ row.title }}」？">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="kind" value="{{ row.kind }}">
+            <input type="hidden" name="resource_id" value="{{ row.resource_id }}">
+            <input type="hidden" name="expected_row_version" value="{{ row.expected_row_version or '' }}">
+            <button class="dt-btn ghost" type="submit">恢复</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="text-meta">回收站是空的。归档的收入、固定支出、目标，或刚删除的规则、商家别名、标签会出现在这里。</div>
+  {% endif %}
+</div>
+{% endblock %}

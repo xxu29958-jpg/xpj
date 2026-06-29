@@ -735,6 +735,12 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto,
     ): com.ticketbox.data.remote.dto.PairingCodeResponseDto = unsupported()
 
+    override suspend fun recycleBin(): com.ticketbox.data.remote.dto.RecycleBinListResponseDto = unsupported()
+
+    override suspend fun restoreRecycleBinItem(
+        request: com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto,
+    ): com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto = unsupported()
+
     override suspend fun updateLedgerMemberRole(
         ledgerId: String,
         memberId: Long,

@@ -214,7 +214,7 @@
   </details>
 
   {# 原 open 条件漏了 /tags(标签页时组不展开)——拆组顺手修上。 #}
-  <details class="nav-group nav-group-collapsible" {% if '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/tags' in _p or '/data-quality' in _p %}open{% endif %}>
+  <details class="nav-group nav-group-collapsible" {% if '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/tags' in _p or '/recycle-bin' in _p or '/data-quality' in _p %}open{% endif %}>
     <summary class="nav-group-title">治理</summary>
     <a class="nav-item {% if '/categories' in _p %}active{% endif %}" href="/web/categories{{ q }}">
       <span class="nav-icon">
@@ -254,6 +254,18 @@
         </svg>
       </span>
       <span>标签</span>
+    </a>
+    <a class="nav-item {% if '/recycle-bin' in _p %}active{% endif %}" href="/web/recycle-bin{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"/>
+          <path d="M8 6V4h8v2"/>
+          <path d="M6 6l1 14h10l1-14"/>
+          <path d="M10 11v5"/><path d="M14 11v5"/>
+        </svg>
+      </span>
+      <span>回收站</span>
     </a>
     <a class="nav-item {% if '/data-quality' in _p %}active{% endif %}" href="/web/data-quality{{ q }}">
       <span class="nav-icon">

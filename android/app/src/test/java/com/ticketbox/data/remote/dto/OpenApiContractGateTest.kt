@@ -89,6 +89,13 @@ class OpenApiContractGateTest {
         Pairing(DeviceRenameRequestDto::class, "AdminDeviceRenameRequest"),
         Pairing(PairingCodeCreateRequestDto::class, "PairingCodeCreateRequest"),
         Pairing(PairingCodeResponseDto::class, "PairingCodeResponse"),
+        // ADR-0051 current-ledger recycle bin. Restore body is
+        // additionalProperties=false (forward check = forbid protection);
+        // response message is server-authored copy surfaced by the VM.
+        Pairing(RecycleBinItemDto::class, "RecycleBinItemResponse"),
+        Pairing(RecycleBinListResponseDto::class, "RecycleBinListResponse"),
+        Pairing(RecycleBinRestoreRequestDto::class, "RecycleBinRestoreRequest"),
+        Pairing(RecycleBinRestoreResponseDto::class, "RecycleBinRestoreResponse"),
         // ADR-0049 §6 (slice 7) debt_repayment goal surface. GoalDto was previously
         // ungated — slice 6 widened GoalResponse (the spend fields became nullable +
         // a nested debt_repayment block) so bring it under the gate now, along with

@@ -121,6 +121,7 @@ fun SettingsRootScreen(
     onOpenCategoryRules: () -> Unit,
     onOpenMerchantAliases: () -> Unit,
     onOpenTagManagement: () -> Unit,
+    onOpenRecycleBin: () -> Unit = {},
     onOpenDataExport: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSecurity: () -> Unit,
@@ -218,6 +219,12 @@ fun SettingsRootScreen(
                     subtitle = stringResource(R.string.settings_root_entry_tag_management_subtitle),
                     icon = Icons.AutoMirrored.Filled.Label,
                     onClick = onOpenTagManagement,
+                )
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_recycle_bin_title),
+                    subtitle = stringResource(R.string.settings_root_entry_recycle_bin_subtitle),
+                    icon = Icons.Filled.DeleteOutline,
+                    onClick = onOpenRecycleBin,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_dashboard_cards_title),

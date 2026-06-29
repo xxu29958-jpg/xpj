@@ -13,6 +13,8 @@ import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.MyDeviceDto
 import com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto
 import com.ticketbox.data.remote.dto.PairingCodeResponseDto
+import com.ticketbox.data.remote.dto.RecycleBinItemDto
+import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
@@ -30,8 +32,10 @@ import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.OwnerTransferResult
+import com.ticketbox.domain.model.RecycleBinItem
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
+import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +125,8 @@ class LedgerRepository(
         ?: settingsStore.ledgerName()
 
     fun currentLedgerRole(): String? = settingsStore.role()
+
+    fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
     fun activeLedgerId(): String? = settingsStore.activeLedgerId()
 
@@ -307,6 +313,22 @@ class LedgerRepository(
             ledgerId = targetLedgerId,
             request = PairingCodeCreateRequestDto(),
         ).toDevicePairingCode()
+    }
+
+    suspend fun refreshRecycleBin(): Result<List<RecycleBinItem>> = wrap {
+        requireActiveLedger(activeLedgerId())
+        api().recycleBin().items.map { it.toRecycleBinItem() }
+    }
+
+    suspend fun restoreRecycleBinItem(item: RecycleBinItem): Result<String> = wrap {
+        requireActiveLedger(activeLedgerId())
+        api().restoreRecycleBinItem(
+            RecycleBinRestoreRequestDto(
+                kind = item.kind,
+                resourceId = item.resourceId,
+                expectedRowVersion = item.expectedRowVersion,
+            ),
+        ).message
     }
 
     /**
@@ -536,6 +558,17 @@ private fun PairingCodeResponseDto.toDevicePairingCode(): DevicePairingCode = De
     pairingCode = pairingCode,
     ledgerName = ledgerName,
     expiresAt = expiresAt,
+)
+
+private fun RecycleBinItemDto.toRecycleBinItem(): RecycleBinItem = RecycleBinItem(
+    kind = kind,
+    kindLabel = kindLabel,
+    resourceId = resourceId,
+    title = title.ifBlank { kindLabel },
+    detail = detail,
+    removedAt = removedAt,
+    retentionLabel = retentionLabel,
+    expectedRowVersion = expectedRowVersion,
 )
 
 private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(

@@ -29,6 +29,8 @@
     <string name="settings_root_entry_merchant_aliases_subtitle">把不同写法归到同一商家</string>
     <string name="settings_root_entry_tag_management_title">标签管理</string>
     <string name="settings_root_entry_tag_management_subtitle">重命名、合并、删除标签</string>
+    <string name="settings_root_entry_recycle_bin_title">回收站</string>
+    <string name="settings_root_entry_recycle_bin_subtitle">恢复已归档或短窗内可撤回的项目</string>
     <string name="settings_root_entry_notifications_title">通知与提醒</string>
     <string name="settings_root_entry_notifications_subtitle">待确认、大额和固定支出提醒开关</string>
     <string name="settings_root_entry_income_plans_title">收入记录</string>
