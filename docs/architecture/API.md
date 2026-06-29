@@ -216,6 +216,7 @@ Authorization: Bearer <admin_token>
 | `/api/recurring/items/{public_id}/archive` | POST | `backend/app/routes/recurring.py` | `archiveRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 归档固定支出 |
 | `/api/budgets/monthly` | GET | `backend/app/routes/budgets.py` | Android / `/web` / `/owner` 预算状态 | query `month/timezone` | `BudgetMonthlyResponse` | Session Token | `backend/tests/test_budgets.py` | v0.8 月度预算 Dashboard；viewer 可读 |
 | `/api/budgets/monthly/{month}` | PUT | `backend/app/routes/budgets.py` | Android / `/web` 预算配置 | `BudgetMonthlyUpdateRequest`；query `timezone` | `BudgetMonthlyResponse` | Session Token，owner/member 写权限 | `backend/tests/test_budgets.py` | v0.8 月度预算配置；预算只提示不阻断记账 |
+| `/api/budgets/monthly/{month}` | DELETE | `backend/app/routes/budgets.py` | 无 | `BudgetMonthlyArchiveRequest` | `BudgetMonthlyArchiveResponse` | Session Token，owner/member 写权限 | `backend/tests/test_budgets.py` | ADR-0052 月度预算配置归档；归档后进入回收站 |
 | `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
 | `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
 | `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
@@ -1514,9 +1515,9 @@ ADR-0051 当前账本回收站。普通 API 只看当前 session token 对应的
 
 当前纳入：
 
-- 长期归档：收入记录、固定支出、目标。
+- 长期归档：月度预算配置、收入记录、固定支出、目标。
 - 限期恢复：分类规则、商家别名、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
-- 明确不纳入：已确认账单、债务还款事实、category/budget/merchant master 删除（边界见 ADR-0052；尚未新增删除 API）。
+- 明确不纳入：已确认账单、债务还款事实、category/merchant master 删除（边界见 ADR-0052；merchant catalog 尚未定义）。
 
 ### GET /api/recycle-bin
 
@@ -1556,8 +1557,8 @@ Authorization: Bearer <session_token>
 
 ```json
 {
-  "kind": "income_plan",
-  "resource_id": "income-public-id",
+  "kind": "monthly_budget",
+  "resource_id": "2026-05",
   "expected_row_version": 3
 }
 ```
@@ -2001,6 +2002,7 @@ timezone=Asia/Shanghai
   "ledger_id": "owner",
   "month": "2026-05",
   "configured": true,
+  "row_version": 3,
   "total_amount_cents": 100000,
   "rollover_amount_cents": 5000,
   "fixed_amount_cents": 6800,
@@ -2038,6 +2040,7 @@ timezone=Asia/Shanghai
 - `excluded_categories` 对应分类的 confirmed 金额进入 `excluded_amount_cents` / `excluded_breakdown`，不计入顶层 `spent_amount_cents`。
 - `remaining_amount_cents = total_amount_cents + rollover_amount_cents - spent_amount_cents`。
 - `flex_budget_cents = max(total_amount_cents + rollover_amount_cents - fixed_amount_cents - non_monthly_amount_cents, 0)`。
+- `row_version` 是归档该月预算配置所需的 OCC token；未配置或已归档月份返回 `null`。
 
 ### PUT /api/budgets/monthly/{month}
 
@@ -2067,6 +2070,29 @@ timezone=Asia/Shanghai
 - `month` 必须是 `YYYY-MM` 且月份有效。
 - 金额字段使用分，`total_amount_cents`、`non_monthly_amount_cents`、分类预算金额不能为负；`rollover_amount_cents` 允许为负，用于表达上月超支带入。
 - 分类会按现有分类归一规则处理；归一后重复的分类预算返回 `invalid_request`。
+- 已归档月份不能直接覆盖，返回 `409 state_conflict`；需先从回收站恢复再修改。
+
+### DELETE /api/budgets/monthly/{month}
+
+仅 `owner` / `member` 可调用；`viewer` 返回 `permission_denied`。语义是归档该月预算配置，不清除历史消费，也不删除 `category_budgets` 子配置。归档后默认预算读取把该月视为未配置；普通回收站和 owner 回收站会以 `monthly_budget` 项展示并可恢复。
+
+请求体：
+
+```json
+{
+  "expected_row_version": 3
+}
+```
+
+`expected_row_version` 来自最近一次 `GET /api/budgets/monthly` 或 `PUT /api/budgets/monthly/{month}` 响应；过期返回 `409 state_conflict`。未配置月份返回 `404 budget_not_found`。
+
+返回：
+
+```json
+{
+  "message": "月度预算已移入回收站。"
+}
+```
 
 ## 固定支出
 

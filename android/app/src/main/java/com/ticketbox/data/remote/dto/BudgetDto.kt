@@ -71,4 +71,6 @@ data class BudgetMonthlyDto(
     val categoryBudgets: List<BudgetCategoryDto>,
     @param:Json(name = "updated_at")
     val updatedAt: String?,
+    @param:Json(name = "row_version")
+    val rowVersion: Long? = null,
 )

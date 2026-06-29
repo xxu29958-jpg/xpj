@@ -2877,6 +2877,33 @@
         "title": "BudgetExcludedCategoryResponse",
         "type": "object"
       },
+      "BudgetMonthlyArchiveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "BudgetMonthlyArchiveRequest",
+        "type": "object"
+      },
+      "BudgetMonthlyArchiveResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "BudgetMonthlyArchiveResponse",
+        "type": "object"
+      },
       "BudgetMonthlyResponse": {
         "properties": {
           "category_budgets": {
@@ -2939,6 +2966,17 @@
           "rollover_amount_cents": {
             "title": "Rollover Amount Cents",
             "type": "integer"
+          },
+          "row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Version"
           },
           "spent_amount_cents": {
             "title": "Spent Amount Cents",
@@ -13137,6 +13175,82 @@
       }
     },
     "/api/budgets/monthly/{month}": {
+      "delete": {
+        "operationId": "delete_budget_monthly_api_budgets_monthly__month__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetMonthlyArchiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetMonthlyArchiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Delete Budget Monthly",
+        "tags": [
+          "budgets"
+        ]
+      },
       "put": {
         "operationId": "put_budget_monthly_api_budgets_monthly__month__put",
         "parameters": [

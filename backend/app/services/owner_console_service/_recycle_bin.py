@@ -11,11 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import (
+    Budget,
+    BudgetCategory,
     CategoryRule,
     Goal,
     Ledger,
@@ -26,6 +28,7 @@ from app.models import (
     Tag,
     TagMutationUndoGroup,
 )
+from app.services.budget_service import list_archived_budgets, restore_monthly_budget
 from app.services.classify_service import undo_delete_rule
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
@@ -70,6 +73,7 @@ def get_recycle_bin_vm(db: Session) -> RecycleBinVM:
     rows: list[RecycleBinItemVM] = []
     rows.extend(_archived_ledger_rows(db))
     if ledger_names:
+        rows.extend(_archived_budget_rows(db, ledger_names))
         rows.extend(_archived_income_rows(db, ledger_names))
         rows.extend(_archived_recurring_rows(db, ledger_names))
         rows.extend(_archived_goal_rows(db, ledger_names))
@@ -115,6 +119,14 @@ def restore_recycle_bin_item(
             expected_row_version=_require_token(expected_row_version),
         )
         return "收入记录已恢复。"
+    if clean_kind == "monthly_budget":
+        restore_monthly_budget(
+            db,
+            tenant_id=clean_ledger_id,
+            month=clean_resource_id,
+            expected_row_version=_require_token(expected_row_version),
+        )
+        return "月度预算已恢复。"
     if clean_kind == "recurring_item":
         restore_recurring_item(
             db,
@@ -244,6 +256,29 @@ def _archived_income_rows(
         )
         for item in rows
     ]
+
+
+def _archived_budget_rows(
+    db: Session, ledger_names: dict[str, str]
+) -> list[RecycleBinItemVM]:
+    rows: list[RecycleBinItemVM] = []
+    for ledger_id, ledger_name in ledger_names.items():
+        for item in list_archived_budgets(db, tenant_id=ledger_id):
+            rows.append(
+                RecycleBinItemVM(
+                    kind="monthly_budget",
+                    kind_label="预算",
+                    ledger_id=item.tenant_id,
+                    ledger_name=ledger_name,
+                    resource_id=item.month,
+                    title=f"{item.month} 月度预算",
+                    detail=_budget_detail(db, item),
+                    removed_at=item.archived_at,
+                    retention_label="长期保留",
+                    expected_row_version=item.row_version,
+                )
+            )
+    return rows
 
 
 def _archived_recurring_rows(
@@ -407,6 +442,18 @@ def _goal_detail(item: Goal) -> str:
         return "还债目标"
     scope = item.category or "总支出"
     return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents or 0)}"
+
+
+def _budget_detail(db: Session, item: Budget) -> str:
+    category_count = db.scalar(
+        select(func.count(BudgetCategory.id))
+        .where(BudgetCategory.tenant_id == item.tenant_id)
+        .where(BudgetCategory.month == item.month)
+    )
+    return (
+        f"总预算 {_money(item.total_amount_cents)} · "
+        f"分类预算 {int(category_count or 0)} 项"
+    )
 
 
 def _money(amount_cents: int) -> str:

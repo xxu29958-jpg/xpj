@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import CategoryRule, MonthlyIncomePlan
+from app.models import Budget, CategoryRule, MonthlyIncomePlan
+from app.schemas import BudgetCategoryRequest, BudgetMonthlyUpdateRequest
+from app.services.budget_service import archive_monthly_budget, upsert_monthly_budget
 from app.services.classify_service import create_rule, delete_rule
 from app.services.income_plan_service import archive_income_plan, create_income_plan
 from app.services.time_service import now_utc
@@ -37,6 +39,28 @@ def _seed_archived_income(
             expected_row_version=plan.row_version,
         )
         return archived.public_id, archived.row_version
+
+
+def _seed_archived_budget() -> tuple[str, int]:
+    with SessionLocal() as db:
+        budget = upsert_monthly_budget(
+            db,
+            tenant_id="owner",
+            month="2026-07",
+            payload=BudgetMonthlyUpdateRequest(
+                total_amount_cents=66000,
+                category_budgets=[
+                    BudgetCategoryRequest(category="交通", amount_cents=12000)
+                ],
+            ),
+        )
+        archived = archive_monthly_budget(
+            db,
+            tenant_id="owner",
+            month=budget.month,
+            expected_row_version=budget.row_version or 1,
+        )
+        return archived.month, archived.row_version
 
 
 def _seed_deleted_rule() -> int:
@@ -165,3 +189,34 @@ def test_web_recycle_bin_lists_and_restores_income(
             )
         )
     assert status == "active"
+
+
+def test_web_recycle_bin_lists_and_restores_budget(
+    web_client: TestClient, *, identity
+) -> None:
+    month, row_version = _seed_archived_budget()
+
+    list_response = web_client.get("/web/recycle-bin")
+
+    assert list_response.status_code == 200
+    assert f"{month} 月度预算" in list_response.text
+    assert f'value="{row_version}"' in list_response.text
+
+    restore_response = web_client.post(
+        "/web/recycle-bin/restore",
+        data={
+            "kind": "monthly_budget",
+            "resource_id": month,
+            "expected_row_version": str(row_version),
+        },
+        follow_redirects=False,
+    )
+
+    assert restore_response.status_code == 303
+    with SessionLocal() as db:
+        archived_at = db.scalar(
+            select(Budget.archived_at)
+            .where(Budget.tenant_id == "owner")
+            .where(Budget.month == month)
+        )
+    assert archived_at is None

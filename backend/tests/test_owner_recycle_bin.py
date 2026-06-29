@@ -10,8 +10,10 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import CategoryRule, Goal, MonthlyIncomePlan, RecurringItem
+from app.models import Budget, BudgetCategory, CategoryRule, Goal, MonthlyIncomePlan, RecurringItem
 from app.routes.owner_console import _require_local
+from app.schemas import BudgetCategoryRequest, BudgetMonthlyUpdateRequest
+from app.services.budget_service import archive_monthly_budget, upsert_monthly_budget
 from app.services.classify_service import create_rule, delete_rule, find_rule_for_tenant
 from app.services.goal_service import archive_goal
 from app.services.income_plan_service import archive_income_plan, create_income_plan
@@ -55,6 +57,28 @@ def _seed_archived_income() -> tuple[str, int]:
             expected_row_version=plan.row_version,
         )
         return archived.public_id, archived.row_version
+
+
+def _seed_archived_budget() -> tuple[str, int]:
+    with SessionLocal() as db:
+        budget = upsert_monthly_budget(
+            db,
+            tenant_id="owner",
+            month="2026-07",
+            payload=BudgetMonthlyUpdateRequest(
+                total_amount_cents=88000,
+                category_budgets=[
+                    BudgetCategoryRequest(category="餐饮", amount_cents=22000)
+                ],
+            ),
+        )
+        archived = archive_monthly_budget(
+            db,
+            tenant_id="owner",
+            month=budget.month,
+            expected_row_version=budget.row_version or 1,
+        )
+        return archived.month, archived.row_version
 
 
 def _seed_archived_recurring() -> tuple[str, int]:
@@ -153,6 +177,7 @@ def test_owner_recycle_bin_lists_supported_items(
     with SessionLocal() as db:
         archive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id)
     _seed_archived_income()
+    _seed_archived_budget()
     _seed_archived_recurring()
     _seed_archived_goal()
     _seed_deleted_rule()
@@ -165,6 +190,7 @@ def test_owner_recycle_bin_lists_supported_items(
     assert "回收站" in body
     assert "灰度用户1" in body
     assert "收入回收测试" in body
+    assert "2026-07 月度预算" in body
     assert "固定支出回收测试" in body
     assert "目标回收测试" in body
     assert "规则回收测试" in body
@@ -197,6 +223,37 @@ def test_owner_recycle_bin_restores_archived_income(
             )
         )
     assert status == "active"
+
+
+def test_owner_recycle_bin_restores_archived_budget(
+    local_client: TestClient, *, identity
+) -> None:
+    month, row_version = _seed_archived_budget()
+
+    response = local_client.post(
+        "/owner/recycle-bin/restore",
+        data={
+            "kind": "monthly_budget",
+            "ledger_id": "owner",
+            "resource_id": month,
+            "expected_row_version": str(row_version),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    with SessionLocal() as db:
+        budget = db.scalar(
+            select(Budget).where(Budget.tenant_id == "owner").where(Budget.month == month)
+        )
+        assert budget is not None
+        assert budget.archived_at is None
+        category_row = db.scalar(
+            select(BudgetCategory)
+            .where(BudgetCategory.tenant_id == "owner")
+            .where(BudgetCategory.month == month)
+        )
+    assert category_row is not None
 
 
 def test_owner_recycle_bin_restores_deleted_rule(

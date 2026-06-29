@@ -33,6 +33,7 @@ data class BudgetMonthly(
     val excludedBreakdown: List<BudgetExcludedCategory>,
     val categoryBudgets: List<BudgetCategoryBudget>,
     val updatedAt: String?,
+    val rowVersion: Long? = null,
 ) {
     val availableAmountCents: Long = totalAmountCents + rolloverAmountCents
     val isOverBudget: Boolean = overspentAmountCents > 0L || remainingAmountCents < 0L

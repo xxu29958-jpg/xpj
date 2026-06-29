@@ -5,8 +5,17 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
-from app.schemas import BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
-from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
+from app.schemas import (
+    BudgetMonthlyArchiveRequest,
+    BudgetMonthlyArchiveResponse,
+    BudgetMonthlyResponse,
+    BudgetMonthlyUpdateRequest,
+)
+from app.services.budget_service import (
+    archive_monthly_budget,
+    get_monthly_budget,
+    upsert_monthly_budget,
+)
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -45,3 +54,19 @@ def put_budget_monthly(
         payload=payload,
         timezone_name=timezone,
     )
+
+
+@router.delete("/monthly/{month}", response_model=BudgetMonthlyArchiveResponse)
+def delete_budget_monthly(
+    month: str,
+    payload: BudgetMonthlyArchiveRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> BudgetMonthlyArchiveResponse:
+    archive_monthly_budget(
+        db,
+        tenant_id=auth.tenant_id,
+        month=month,
+        expected_row_version=payload.expected_row_version,
+    )
+    return BudgetMonthlyArchiveResponse(message="月度预算已移入回收站。")

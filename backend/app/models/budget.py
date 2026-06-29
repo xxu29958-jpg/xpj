@@ -50,6 +50,10 @@ class Budget(Base):
     excluded_categories: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    row_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class BudgetCategory(Base):
@@ -78,6 +82,7 @@ class BudgetCategory(Base):
 
 
 Index("ix_budgets_tenant_month", Budget.tenant_id, Budget.month)
+Index("ix_budgets_tenant_archived", Budget.tenant_id, Budget.archived_at)
 Index("ix_budget_categories_tenant_month", BudgetCategory.tenant_id, BudgetCategory.month)
 Index("ix_budget_categories_tenant_category", BudgetCategory.tenant_id, BudgetCategory.category)
 

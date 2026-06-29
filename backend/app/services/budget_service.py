@@ -17,6 +17,7 @@ from app.schemas import (
     BudgetMonthlyUpdateRequest,
 )
 from app.services.category_service import normalize_category
+from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
 from app.services.spending_contract_service import (
     clean_month,
     confirmed_amount_query,
@@ -98,8 +99,24 @@ def _get_budget(db: Session, *, tenant_id: str, month: str) -> Budget | None:
     return db.scalar(
         ledger_scoped_select(Budget, tenant_id)
         .where(Budget.month == month)
+        .where(Budget.archived_at.is_(None))
         .limit(1)
     )
+
+
+def _get_any_budget(db: Session, *, tenant_id: str, month: str) -> Budget | None:
+    return db.scalar(
+        ledger_scoped_select(Budget, tenant_id)
+        .where(Budget.month == month)
+        .limit(1)
+    )
+
+
+def _require_budget(db: Session, *, tenant_id: str, month: str) -> Budget:
+    budget = _get_any_budget(db, tenant_id=tenant_id, month=month)
+    if budget is None:
+        raise AppError("budget_not_found", "没有找到这月预算。", status_code=404)
+    return budget
 
 
 def _list_category_budgets(db: Session, *, tenant_id: str, month: str) -> list[BudgetCategory]:
@@ -108,6 +125,16 @@ def _list_category_budgets(db: Session, *, tenant_id: str, month: str) -> list[B
             ledger_scoped_select(BudgetCategory, tenant_id)
             .where(BudgetCategory.month == month)
             .order_by(BudgetCategory.category.asc(), BudgetCategory.id.asc())
+        )
+    )
+
+
+def list_archived_budgets(db: Session, *, tenant_id: str) -> list[Budget]:
+    return list(
+        db.scalars(
+            ledger_scoped_select(Budget, tenant_id)
+            .where(Budget.archived_at.is_not(None))
+            .order_by(Budget.archived_at.desc(), Budget.id.desc())
         )
     )
 
@@ -220,7 +247,11 @@ def _budget_response(
     timezone_name: str | None,
 ) -> BudgetMonthlyResponse:
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
-    category_rows = _list_category_budgets(db, tenant_id=tenant_id, month=month)
+    category_rows = (
+        _list_category_budgets(db, tenant_id=tenant_id, month=month)
+        if budget is not None
+        else []
+    )
     spend_by_category = _month_spend_by_category(
         db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
     )
@@ -256,6 +287,7 @@ def _budget_response(
         ledger_id=tenant_id,
         month=month,
         configured=budget is not None,
+        row_version=budget.row_version if budget else None,
         total_amount_cents=total_amount_cents,
         rollover_amount_cents=rollover_amount_cents,
         fixed_amount_cents=fixed_amount_cents,
@@ -305,7 +337,7 @@ def upsert_monthly_budget(
     category_budget_rows = _clean_category_budget_rows(payload.category_budgets)
     now = now_utc()
 
-    budget = _get_budget(db, tenant_id=tenant_id, month=clean_month)
+    budget = _get_any_budget(db, tenant_id=tenant_id, month=clean_month)
     if budget is None:
         budget = Budget(
             tenant_id=tenant_id,
@@ -313,6 +345,14 @@ def upsert_monthly_budget(
             created_at=now,
         )
         db.add(budget)
+    elif budget.archived_at is not None:
+        raise AppError(
+            "state_conflict",
+            "这月预算已在回收站，请先恢复后再修改。",
+            status_code=409,
+        )
+    else:
+        bump_row_version(budget)
     budget.total_amount_cents = int(payload.total_amount_cents)
     budget.non_monthly_amount_cents = int(payload.non_monthly_amount_cents)
     budget.rollover_amount_cents = int(payload.rollover_amount_cents)
@@ -354,3 +394,69 @@ def upsert_monthly_budget(
         db.rollback()
         raise
     return response
+
+
+def archive_monthly_budget(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    expected_row_version: int,
+) -> Budget:
+    clean_month = _clean_month(month)
+    budget = _require_budget(db, tenant_id=tenant_id, month=clean_month)
+    if budget.archived_at is not None:
+        return budget
+    now = now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        Budget,
+        pk_id=budget.id,
+        tenant_id=tenant_id,
+        expected_row_version=expected_row_version,
+        set_values={"archived_at": now, "updated_at": now},
+        extra_where=(Budget.archived_at.is_(None),),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = _require_budget(db, tenant_id=tenant_id, month=clean_month)
+        if current.archived_at is not None:
+            return current
+        raise AppError("state_conflict", status_code=409)
+    db.commit()
+    db.expire_all()
+    return _require_budget(db, tenant_id=tenant_id, month=clean_month)
+
+
+def restore_monthly_budget(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    expected_row_version: int,
+) -> Budget:
+    clean_month = _clean_month(month)
+    budget = _require_budget(db, tenant_id=tenant_id, month=clean_month)
+    if budget.archived_at is None:
+        return budget
+    now = now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        Budget,
+        pk_id=budget.id,
+        tenant_id=tenant_id,
+        expected_row_version=expected_row_version,
+        set_values={"archived_at": None, "updated_at": now},
+        extra_where=(Budget.archived_at.is_not(None),),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = _require_budget(db, tenant_id=tenant_id, month=clean_month)
+        if current.archived_at is None:
+            return current
+        raise AppError("state_conflict", status_code=409)
+    db.commit()
+    db.expire_all()
+    return _require_budget(db, tenant_id=tenant_id, month=clean_month)

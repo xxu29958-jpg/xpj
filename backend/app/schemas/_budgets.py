@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from app.services.time_service import to_iso
 
 __all__ = [
+    "BudgetMonthlyArchiveRequest",
+    "BudgetMonthlyArchiveResponse",
     "BudgetCategoryRequest",
     "BudgetCategoryResponse",
     "BudgetExcludedCategoryResponse",
@@ -35,6 +37,16 @@ class BudgetMonthlyUpdateRequest(BaseModel):
     category_budgets: list[BudgetCategoryRequest] = Field(default_factory=list)
 
 
+class BudgetMonthlyArchiveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+
+
+class BudgetMonthlyArchiveResponse(BaseModel):
+    message: str
+
+
 class BudgetCategoryResponse(BaseModel):
     category: str
     amount_cents: int
@@ -53,6 +65,7 @@ class BudgetMonthlyResponse(BaseModel):
     ledger_id: str
     month: str
     configured: bool
+    row_version: int | None = None
     total_amount_cents: int
     rollover_amount_cents: int
     fixed_amount_cents: int

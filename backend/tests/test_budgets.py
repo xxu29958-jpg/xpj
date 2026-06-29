@@ -297,6 +297,108 @@ def test_monthly_budget_upsert_replaces_category_rows_without_duplicates(
     assert category_count == 1
 
 
+def test_monthly_budget_archive_hides_budget_and_blocks_overwrite_until_restore(
+    client: TestClient, *, identity,
+) -> None:
+    created = client.put(
+        "/api/budgets/monthly/2026-05",
+        headers=identity.app_headers,
+        json={
+            "total_amount_cents": 80000,
+            "category_budgets": [{"category": "餐饮", "amount_cents": 20000}],
+        },
+    )
+    assert created.status_code == 200, created.json()
+    row_version = created.json()["row_version"]
+
+    archived = client.request(
+        "DELETE",
+        "/api/budgets/monthly/2026-05",
+        headers=identity.app_headers,
+        json={"expected_row_version": row_version},
+    )
+
+    assert archived.status_code == 200, archived.json()
+    assert archived.json()["message"] == "月度预算已移入回收站。"
+    hidden = client.get("/api/budgets/monthly?month=2026-05", headers=identity.app_headers)
+    assert hidden.status_code == 200, hidden.json()
+    assert hidden.json()["configured"] is False
+    assert hidden.json()["row_version"] is None
+    assert hidden.json()["category_budgets"] == []
+
+    overwrite = client.put(
+        "/api/budgets/monthly/2026-05",
+        headers=identity.app_headers,
+        json={"total_amount_cents": 90000},
+    )
+    assert overwrite.status_code == 409, overwrite.json()
+    assert overwrite.json()["error"] == "state_conflict"
+
+    recycle = client.get("/api/recycle-bin", headers=identity.app_headers)
+    assert recycle.status_code == 200, recycle.json()
+    monthly_budget = next(
+        item for item in recycle.json()["items"] if item["kind"] == "monthly_budget"
+    )
+    assert monthly_budget["resource_id"] == "2026-05"
+    assert monthly_budget["expected_row_version"] == row_version + 1
+    assert monthly_budget["retention_label"] == "长期保留"
+
+    restored = client.post(
+        "/api/recycle-bin/restore",
+        headers=identity.app_headers,
+        json={
+            "kind": "monthly_budget",
+            "resource_id": "2026-05",
+            "expected_row_version": monthly_budget["expected_row_version"],
+        },
+    )
+    assert restored.status_code == 200, restored.json()
+    assert restored.json()["message"] == "月度预算已恢复。"
+
+    visible = client.get("/api/budgets/monthly?month=2026-05", headers=identity.app_headers)
+    assert visible.status_code == 200, visible.json()
+    assert visible.json()["configured"] is True
+    assert visible.json()["total_amount_cents"] == 80000
+    assert visible.json()["category_budgets"][0]["category"] == "餐饮"
+
+    with SessionLocal() as db:
+        category_count = db.scalar(
+            select(func.count(BudgetCategory.id))
+            .where(BudgetCategory.tenant_id == "owner")
+            .where(BudgetCategory.month == "2026-05")
+        )
+    assert category_count == 1
+
+
+def test_monthly_budget_archive_rejects_stale_row_version(
+    client: TestClient, *, identity,
+) -> None:
+    first = client.put(
+        "/api/budgets/monthly/2026-05",
+        headers=identity.app_headers,
+        json={"total_amount_cents": 80000},
+    )
+    assert first.status_code == 200, first.json()
+    old_version = first.json()["row_version"]
+
+    second = client.put(
+        "/api/budgets/monthly/2026-05",
+        headers=identity.app_headers,
+        json={"total_amount_cents": 90000},
+    )
+    assert second.status_code == 200, second.json()
+    assert second.json()["row_version"] == old_version + 1
+
+    stale = client.request(
+        "DELETE",
+        "/api/budgets/monthly/2026-05",
+        headers=identity.app_headers,
+        json={"expected_row_version": old_version},
+    )
+    assert stale.status_code == 409, stale.json()
+    assert stale.json()["error"] == "state_conflict"
+
+
 def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient, *, identity) -> None:
     _set_owner_ledger_role("member")
     member_response = client.put(
@@ -313,6 +415,13 @@ def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient, *
         json={"total_amount_cents": 60000},
     )
     _assert_permission_denied(viewer_write, label="viewer budget update")
+    viewer_archive = client.request(
+        "DELETE",
+        "/api/budgets/monthly/2026-05",
+        headers=identity.app_headers,
+        json={"expected_row_version": member_response.json()["row_version"]},
+    )
+    _assert_permission_denied(viewer_archive, label="viewer budget archive")
 
     viewer_read = client.get("/api/budgets/monthly?month=2026-05", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()

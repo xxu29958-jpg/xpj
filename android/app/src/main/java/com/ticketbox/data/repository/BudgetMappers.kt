@@ -29,6 +29,7 @@ fun BudgetMonthlyDto.toDomain(): BudgetMonthly = BudgetMonthly(
     excludedBreakdown = excludedBreakdown.map { it.toDomain() },
     categoryBudgets = categoryBudgets.map { it.toDomain() },
     updatedAt = updatedAt,
+    rowVersion = rowVersion,
 )
 
 private fun BudgetCategoryDto.toDomain(): BudgetCategoryBudget = BudgetCategoryBudget(

@@ -19,6 +19,7 @@ class BudgetDtoContractTest {
                   "ledger_id": "owner",
                   "month": "2026-05",
                   "configured": true,
+                  "row_version": 3,
                   "total_amount_cents": 500000,
                   "rollover_amount_cents": -20000,
                   "fixed_amount_cents": 98000,
@@ -58,6 +59,7 @@ class BudgetDtoContractTest {
 
         assertEquals("owner", dto.ledgerId)
         assertEquals("2026-05", dto.month)
+        assertEquals(3L, dto.rowVersion)
         assertEquals(352000L, dto.flexBudgetCents)
         assertEquals(-20000L, dto.rolloverAmountCents)
         assertEquals("医疗", dto.excludedBreakdown.single().category)

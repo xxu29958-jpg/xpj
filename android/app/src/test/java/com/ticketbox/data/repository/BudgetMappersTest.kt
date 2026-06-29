@@ -37,10 +37,12 @@ class BudgetMappersTest {
                 ),
             ),
             updatedAt = "2026-05-13T00:00:00Z",
+            rowVersion = 4,
         ).toDomain()
 
         assertEquals("owner", budget.ledgerId)
         assertEquals(-20000L, budget.rolloverAmountCents)
+        assertEquals(4L, budget.rowVersion)
         assertEquals(-40000L, budget.remainingAmountCents)
         assertTrue(budget.isOverBudget)
         assertEquals(listOf("餐饮", "医疗"), budget.excludedCategories)

@@ -1,6 +1,6 @@
 # ADR-0052: 主数据删除与回收站边界
 
-- 状态：accepted target contract（2026-06-29；implementation pending）
+- 状态：accepted / partially implemented（2026-06-29；Slice 2 月度预算配置归档/恢复已落地）
 - 关联：ENGINEERING_RULES §0（裁决顺序）/ §6（持久化、同步、隔离）/ §13（反扩）、[[0013]]（分类目录与旧分类兼容）、[[0038]]（软删 tombstone）、[[0041]]（Postgres + row_version）、[[0043]]（标签管理）、[[0049]]（债务 append-only）、[[0051]]（统一回收站）
 
 ## 背景
@@ -38,6 +38,7 @@ ADR-0051 已经把现有可恢复项集中到 owner / web / Android 回收站，
 - 恢复预算只清父行归档标记，原 category budget 子项原样恢复。
 - 对已归档月份再次 `PUT /api/budgets/monthly/{month}` 应返回 `409 state_conflict` 并提示先恢复，避免静默覆盖回收站里的配置快照。
 - 月度预算配置轻量且会影响历史复盘，先按长期保留项处理，不进入 30 天 purge。
+- 2026-06-29 落地形态：`Budget` 增加 `row_version` 与 `archived_at`；`GET /api/budgets/monthly` 只读取未归档配置并返回归档所需 `row_version`；`DELETE /api/budgets/monthly/{month}` 用 `expected_row_version` 归档；`/api/recycle-bin/restore` 与 `/owner/recycle-bin/restore` 通过 `monthly_budget` 恢复。
 
 **4. Merchant master 删除暂不实现**
 
@@ -58,7 +59,7 @@ ADR-0051 已经把现有可恢复项集中到 owner / web / Android 回收站，
 ## 切片
 
 1. 本 ADR：定边界，不改运行时代码。
-2. Budget 月度配置归档 / 恢复：最小可实现，因为已有真实 `Budget` 行和稳定月度 API。
+2. Budget 月度配置归档 / 恢复：已完成；已有真实 `Budget` 行和稳定月度 API，归档父行并保留 `BudgetCategory` 子项。
 3. Category 自定义目录 / 偏好：新增轻量表与迁移，分类选项改为默认目录 + active custom preferences + 历史已用兜底。
 4. Merchant catalog：另开 ADR 后再实现，不与别名软删混在同片。
 

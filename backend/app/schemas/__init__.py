@@ -64,6 +64,8 @@ from app.schemas._budgets import (
     BudgetCategoryRequest,
     BudgetCategoryResponse,
     BudgetExcludedCategoryResponse,
+    BudgetMonthlyArchiveRequest,
+    BudgetMonthlyArchiveResponse,
     BudgetMonthlyResponse,
     BudgetMonthlyUpdateRequest,
 )
@@ -292,6 +294,8 @@ __all__ = [
     "BudgetSuggestionDto",
     "BudgetCategoryResponse",
     "BudgetExcludedCategoryResponse",
+    "BudgetMonthlyArchiveRequest",
+    "BudgetMonthlyArchiveResponse",
     "BudgetMonthlyResponse",
     "BudgetMonthlyUpdateRequest",
     "CategoriesResponse",
