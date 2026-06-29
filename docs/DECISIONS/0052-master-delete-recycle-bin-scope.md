@@ -1,6 +1,6 @@
 # ADR-0052: 主数据删除与回收站边界
 
-- 状态：accepted / partially implemented（2026-06-29；Slice 2 月度预算配置归档/恢复已落地）
+- 状态：accepted / partially implemented（2026-06-30；Slice 2 月度预算配置归档/恢复、Slice 3 自定义分类偏好已落地）
 - 关联：ENGINEERING_RULES §0（裁决顺序）/ §6（持久化、同步、隔离）/ §13（反扩）、[[0013]]（分类目录与旧分类兼容）、[[0038]]（软删 tombstone）、[[0041]]（Postgres + row_version）、[[0043]]（标签管理）、[[0049]]（债务 append-only）、[[0051]]（统一回收站）
 
 ## 背景
@@ -28,6 +28,7 @@ ADR-0051 已经把现有可恢复项集中到 owner / web / Android 回收站，
 - 历史 expense 引用该分类不阻止删除，也不被改写。
 - 若仍有 active `CategoryRule`、预算分类配置、目标配置等会继续产生该分类的配置引用，删除应返回 `state_conflict` / `category_in_use`，要求用户先处理配置或走未来 merge/rename 流程。
 - 分类 merge/rename 不是本 ADR 首片：它会跨 expense、rule、budget、goal 批量改写，必须另做 OCC、审计、回滚和三端 UX。
+- 2026-06-30 落地形态：新增 `category_preferences`（当前仅 `kind=custom`），账单创建 / 编辑使用非默认分类时自动物化 active 偏好；`GET /api/expenses/categories` 返回默认目录 + active custom preferences + 历史已用兜底；软删 custom preference 后从选项中隐藏并压住同 key 的历史兜底，但不改写历史 `Expense.category`。删除 / 恢复走 `expected_row_version`，并接入普通 / owner 回收站 `category_preference`。
 
 **3. Budget 删除按「月度预算配置归档」处理**
 
@@ -60,7 +61,7 @@ ADR-0051 已经把现有可恢复项集中到 owner / web / Android 回收站，
 
 1. 本 ADR：定边界，不改运行时代码。
 2. Budget 月度配置归档 / 恢复：已完成；已有真实 `Budget` 行和稳定月度 API，归档父行并保留 `BudgetCategory` 子项。
-3. Category 自定义目录 / 偏好：新增轻量表与迁移，分类选项改为默认目录 + active custom preferences + 历史已用兜底。
+3. Category 自定义目录 / 偏好：已完成；新增轻量表与迁移，分类选项改为默认目录 + active custom preferences + 历史已用兜底，custom 偏好软删后纳入回收站。
 4. Merchant catalog：另开 ADR 后再实现，不与别名软删混在同片。
 
 ## 后果

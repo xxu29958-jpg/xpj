@@ -18,6 +18,7 @@ from app.errors import AppError
 from app.models import (
     Budget,
     BudgetCategory,
+    CategoryPreference,
     CategoryRule,
     Goal,
     Ledger,
@@ -29,6 +30,7 @@ from app.models import (
     TagMutationUndoGroup,
 )
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
+from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
@@ -74,6 +76,7 @@ def get_recycle_bin_vm(db: Session) -> RecycleBinVM:
     rows.extend(_archived_ledger_rows(db))
     if ledger_names:
         rows.extend(_archived_budget_rows(db, ledger_names))
+        rows.extend(_soft_deleted_category_rows(db, ledger_names))
         rows.extend(_archived_income_rows(db, ledger_names))
         rows.extend(_archived_recurring_rows(db, ledger_names))
         rows.extend(_archived_goal_rows(db, ledger_names))
@@ -127,6 +130,12 @@ def restore_recycle_bin_item(
             expected_row_version=_require_token(expected_row_version),
         )
         return "月度预算已恢复。"
+    if clean_kind == "category_preference":
+        restore_category_preference(
+            db, tenant_id=clean_ledger_id, public_id=clean_resource_id,
+            expected_row_version=_require_token(expected_row_version),
+        )
+        return "分类已恢复。"
     if clean_kind == "recurring_item":
         restore_recurring_item(
             db,
@@ -279,6 +288,28 @@ def _archived_budget_rows(
                 )
             )
     return rows
+
+
+def _soft_deleted_category_rows(db: Session, ledger_names: dict[str, str]) -> list[RecycleBinItemVM]:
+    items = db.scalars(
+        select(CategoryPreference)
+        .where(CategoryPreference.tenant_id.in_(list(ledger_names)))
+        .where(CategoryPreference.deleted_at.is_not(None))
+        .order_by(CategoryPreference.deleted_at.desc(), CategoryPreference.id.desc())
+    )
+    return [
+        RecycleBinItemVM(
+            kind="category_preference", kind_label="分类",
+            ledger_id=item.tenant_id, ledger_name=ledger_names[item.tenant_id],
+            resource_id=item.public_id,
+            title=item.name,
+            detail="自定义分类选项", removed_at=item.deleted_at,
+            retention_label=recycle_bin_retention_label(),
+            expected_row_version=item.row_version,
+        )
+        for item in items
+        if is_within_recycle_bin_window(item.deleted_at)
+    ]
 
 
 def _archived_recurring_rows(

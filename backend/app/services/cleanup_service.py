@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import (
+    CategoryPreference,
     CategoryRule,
     Expense,
     MerchantAlias,
@@ -395,8 +396,9 @@ def purge_expired_soft_deletes(
 
     Covers every resource that participates in soft-delete undo:
     ``merchant_aliases``, ``category_rules``, and the ADR-0043 tag-mutation undo
-    snapshots (``tag_mutation_undo_groups`` + ``_items``) plus the soft-deleted
-    ``tags`` they anchor. Rows are hidden from every read the moment they are
+    snapshots (``tag_mutation_undo_groups`` + ``_items``), the soft-deleted
+    ``tags`` they anchor, and ADR-0052 custom category preferences. Rows are hidden
+    from every read the moment they are
     soft-deleted, so the sweep cadence only bounds storage lag, never read
     correctness or the short undo window.
     """
@@ -414,6 +416,11 @@ def purge_expired_soft_deletes(
         delete(CategoryRule)
         .where(CategoryRule.deleted_at.is_not(None))
         .where(CategoryRule.deleted_at < cutoff)
+    )
+    category_result = db.execute(
+        delete(CategoryPreference)
+        .where(CategoryPreference.deleted_at.is_not(None))
+        .where(CategoryPreference.deleted_at < cutoff)
     )
     # ADR-0043 契约 6: snapshot retention anchors on the GROUP's own created_at.
     # Items first (composite FK → groups), then groups, then the still-soft-
@@ -437,6 +444,7 @@ def purge_expired_soft_deletes(
     return (
         int(alias_result.rowcount or 0)
         + int(rule_result.rowcount or 0)
+        + int(category_result.rowcount or 0)
         + int(group_result.rowcount or 0)
         + int(tag_result.rowcount or 0)
     )

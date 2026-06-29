@@ -150,6 +150,9 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/tag/timezone` | `PaginatedExpensesDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
 | `/api/expenses/confirmed/batch-update` | POST | `backend/app/routes/expenses.py` | 无 | `ConfirmedExpenseBatchUpdateRequest` | `ConfirmedExpenseBatchUpdateResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expenses_manual_update.py`, `backend/tests/test_confirmed_batch_update_optimistic_concurrency.py` | 已入账账单分类/标签批处理 |
 | `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
+| `/api/expenses/categories/preferences` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `CategoryPreferenceListResponse` | Session Token | `backend/tests/test_categories.py` | ADR-0052 自定义分类偏好列表 |
+| `/api/expenses/categories/preferences/{public_id}/delete` | POST | `backend/app/routes/expenses.py` | 无 | `CategoryPreferenceTokenRequest` | `CategoryPreferenceResponse` | Session Token，owner/member 写权限 | `backend/tests/test_categories.py` | 软删自定义分类选项；不改历史账单 |
+| `/api/expenses/categories/preferences/{public_id}/restore` | POST | `backend/app/routes/expenses.py` | 无 | `CategoryPreferenceTokenRequest` | `CategoryPreferenceResponse` | Session Token，owner/member 写权限 | `backend/tests/test_categories.py`, `backend/tests/test_recycle_bin.py` | 恢复自定义分类选项 |
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/tag/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, smoke | gray/internal 导出 |
@@ -776,7 +779,7 @@ Content-Type: application/json
 Authorization: Bearer <session_token>
 ```
 
-返回标准默认分类和数据库中已有分类。旧版 `吃饭` 会兼容归一到 `餐饮`。
+返回标准默认分类、active 自定义分类偏好，以及当前账本历史已用分类兜底。旧版 `吃饭` 会兼容归一到 `餐饮`。已软删的自定义分类偏好会从选项中隐藏，即便历史账单仍保留该分类事实。
 
 返回：
 
@@ -785,6 +788,64 @@ Authorization: Bearer <session_token>
   "items": ["餐饮", "交通", "购物", "娱乐", "医疗", "教育", "住房", "通讯", "AI订阅", "数码", "游戏", "生活", "其他"]
 }
 ```
+
+### GET /api/expenses/categories/preferences
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+返回当前账本 active 自定义分类偏好。分类偏好不是历史账单事实；它只控制分类选项面。用户在账单创建 / 编辑中实际使用非默认分类时，服务端会自动物化对应偏好行。
+
+返回：
+
+```json
+{
+  "items": [
+    {
+      "public_id": "4ec9f5f4-4d51-4b33-b2c8-f331a00d4cf8",
+      "name": "咖啡",
+      "kind": "custom",
+      "usage_count": 3,
+      "row_version": 1,
+      "created_at": "2026-06-30T10:15:00Z",
+      "updated_at": "2026-06-30T10:15:00Z",
+      "deleted_at": null
+    }
+  ]
+}
+```
+
+### POST /api/expenses/categories/preferences/{public_id}/delete
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "expected_row_version": 1
+}
+```
+
+规则：
+
+- 仅 `owner` / `member` 可调用；`viewer` 返回 `permission_denied`。
+- 只允许删除 `kind=custom` 的分类偏好；默认分类不可删除。
+- 删除只隐藏分类选项，不改写历史 `Expense.category`。
+- 若仍有 active 分类规则、未归档预算分类 / 排除项、active 支出目标引用该分类，返回 `409 state_conflict`。
+- 删除后的行进入普通回收站和 owner 回收站，`kind=category_preference`。
+
+### POST /api/expenses/categories/preferences/{public_id}/restore
+
+请求体同 delete。恢复 soft-deleted 自定义分类偏好，使其重新出现在 `/api/expenses/categories` 选项中；历史账单事实不变。超过回收站保留窗口或已被 purge 时返回 `404 not_found`。
 
 ### GET /api/expenses/tags
 
@@ -1516,8 +1577,8 @@ ADR-0051 当前账本回收站。普通 API 只看当前 session token 对应的
 当前纳入：
 
 - 长期归档：月度预算配置、收入记录、固定支出、目标。
-- 限期恢复：分类规则、商家别名、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
-- 明确不纳入：已确认账单、债务还款事实、category/merchant master 删除（边界见 ADR-0052；merchant catalog 尚未定义）。
+- 限期恢复：自定义分类偏好、分类规则、商家别名、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
+- 明确不纳入：已确认账单、债务还款事实、历史 `Expense.category` / `Expense.merchant` 字符串、merchant master 删除（边界见 ADR-0052；merchant catalog 尚未定义）。
 
 ### GET /api/recycle-bin
 

@@ -20,6 +20,9 @@ ItemsSumStatus = Literal["matched", "mismatch_known", "mismatch_acknowledged", "
 __all__ = [
     "ConfirmedExpenseBatchUpdateRequest",
     "ConfirmedExpenseBatchUpdateResponse",
+    "CategoryPreferenceListResponse",
+    "CategoryPreferenceResponse",
+    "CategoryPreferenceTokenRequest",
     "ExpenseConfirmRequest",
     "ExpenseItemRequest",
     "ExpenseItemReplaceRequest",
@@ -203,6 +206,31 @@ class ConfirmedExpenseBatchUpdateResponse(BaseModel):
     updated_count: int
     skipped_not_found: int
     skipped_not_confirmed: int
+
+
+class CategoryPreferenceTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+
+
+class CategoryPreferenceResponse(BaseModel):
+    public_id: str
+    name: str
+    kind: str
+    usage_count: int
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None = None
+
+    @field_serializer("created_at", "updated_at", "deleted_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class CategoryPreferenceListResponse(BaseModel):
+    items: list[CategoryPreferenceResponse]
 
 
 class ExpenseRecognizeTextRequest(BaseModel):

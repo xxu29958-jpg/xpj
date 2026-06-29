@@ -11,6 +11,9 @@ from app.database import get_db
 from app.errors import AppError
 from app.schemas import (
     CategoriesResponse,
+    CategoryPreferenceListResponse,
+    CategoryPreferenceResponse,
+    CategoryPreferenceTokenRequest,
     ConfirmedExpenseBatchUpdateRequest,
     ConfirmedExpenseBatchUpdateResponse,
     ExpenseAcknowledgeItemsMismatchRequest,
@@ -36,6 +39,12 @@ from app.schemas import (
     RepaymentDraftResponse,
     StatusResponse,
     TagsResponse,
+)
+from app.services.category_preference_service import (
+    CategoryPreferenceView,
+    delete_category_preference,
+    list_category_preferences,
+    restore_category_preference,
 )
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.debt_service import repayment_draft_response
@@ -177,6 +186,57 @@ def get_expense_categories(
     db: Session = Depends(get_db),
 ) -> CategoriesResponse:
     return CategoriesResponse(items=list_categories(db, auth.tenant_id))
+
+
+@router.get("/categories/preferences", response_model=CategoryPreferenceListResponse)
+def get_expense_category_preferences(
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> CategoryPreferenceListResponse:
+    return CategoryPreferenceListResponse(
+        items=[
+            _category_preference_response(item)
+            for item in list_category_preferences(db, tenant_id=auth.tenant_id)
+        ]
+    )
+
+
+@router.post(
+    "/categories/preferences/{public_id}/delete",
+    response_model=CategoryPreferenceResponse,
+)
+def post_delete_expense_category_preference(
+    public_id: str,
+    payload: CategoryPreferenceTokenRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> CategoryPreferenceResponse:
+    item = delete_category_preference(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_row_version=payload.expected_row_version,
+    )
+    return _category_preference_response(item)
+
+
+@router.post(
+    "/categories/preferences/{public_id}/restore",
+    response_model=CategoryPreferenceResponse,
+)
+def post_restore_expense_category_preference(
+    public_id: str,
+    payload: CategoryPreferenceTokenRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> CategoryPreferenceResponse:
+    item = restore_category_preference(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_row_version=payload.expected_row_version,
+    )
+    return _category_preference_response(item)
 
 
 @router.get("/tags", response_model=TagsResponse)
@@ -826,3 +886,18 @@ def _expense_response_with_suggestions(
         for item in suggestions.duplicate_candidates
     ]
     return dto
+
+
+def _category_preference_response(
+    item: CategoryPreferenceView,
+) -> CategoryPreferenceResponse:
+    return CategoryPreferenceResponse(
+        public_id=item.public_id,
+        name=item.name,
+        kind=item.kind,
+        usage_count=item.usage_count,
+        row_version=item.row_version,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        deleted_at=item.deleted_at,
+    )

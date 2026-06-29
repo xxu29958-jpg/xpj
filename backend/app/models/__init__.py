@@ -34,6 +34,7 @@ from app.models.budget import (
     Goal,
 )
 from app.models.catalog import (
+    CategoryPreference,
     DuplicateIgnore,
     ExpenseTag,
     MerchantAlias,
@@ -95,6 +96,7 @@ __all__ = [
     "BudgetAdvisorAuditLog",
     "BudgetAdvisorQuotaLock",
     "BudgetCategory",
+    "CategoryPreference",
     "CategoryRule",
     "CsvImportBatch",
     "CsvImportRow",

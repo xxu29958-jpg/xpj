@@ -60,6 +60,45 @@ class MerchantAlias(Base):
     )
 
 
+class CategoryPreference(Base):
+    """Ledger-level category option preference (ADR-0052).
+
+    Expense.category remains a historical fact string. This row only controls
+    whether a custom category is offered in current option surfaces.
+    """
+
+    __tablename__ = "category_preferences"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_category_preferences_tenant_key"),
+        CheckConstraint("kind IN ('custom')", name="ck_category_preferences_kind_valid"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_category_preferences_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(
+        String(16), default="custom", server_default="custom", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    row_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+
 class Tag(Base):
     __tablename__ = "tags"
     __table_args__ = (
@@ -230,6 +269,9 @@ class DuplicateIgnore(Base):
 
 Index("ix_merchant_aliases_tenant_canonical", MerchantAlias.tenant_id, MerchantAlias.canonical_key)
 Index("ix_merchant_aliases_tenant_alias_key", MerchantAlias.tenant_id, MerchantAlias.alias_key)
+Index("ix_category_preferences_tenant_key", CategoryPreference.tenant_id, CategoryPreference.key)
+Index("ix_category_preferences_tenant_name", CategoryPreference.tenant_id, CategoryPreference.name)
+Index("ix_category_preferences_tenant_deleted", CategoryPreference.tenant_id, CategoryPreference.deleted_at)
 Index("ix_tags_tenant_key", Tag.tenant_id, Tag.key)
 Index("ix_tags_tenant_name", Tag.tenant_id, Tag.name)
 Index("ix_tags_tenant_deleted", Tag.tenant_id, Tag.deleted_at)

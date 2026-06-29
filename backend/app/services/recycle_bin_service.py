@@ -19,6 +19,7 @@ from app.errors import AppError
 from app.models import (
     Budget,
     BudgetCategory,
+    CategoryPreference,
     CategoryRule,
     Goal,
     MerchantAlias,
@@ -28,6 +29,7 @@ from app.models import (
     TagMutationUndoGroup,
 )
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
+from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
@@ -61,6 +63,7 @@ class RecycleBinListing:
 def list_recycle_bin_items(db: Session, *, tenant_id: str) -> RecycleBinListing:
     rows: list[RecycleBinItem] = []
     rows.extend(_archived_budget_rows(db, tenant_id))
+    rows.extend(_soft_deleted_category_preference_rows(db, tenant_id))
     rows.extend(_archived_income_rows(db, tenant_id))
     rows.extend(_archived_recurring_rows(db, tenant_id))
     rows.extend(_archived_goal_rows(db, tenant_id))
@@ -89,13 +92,9 @@ def restore_recycle_bin_item(
         raise AppError("invalid_request", "恢复参数不完整。", status_code=422)
 
     if clean_kind == "income_plan":
-        restore_income_plan(
-            db,
-            tenant_id=tenant_id,
-            public_id=clean_resource_id,
-            expected_row_version=_require_token(expected_row_version),
+        return _restore_income_plan_item(
+            db, tenant_id, clean_resource_id, expected_row_version
         )
-        return "收入记录已恢复。"
     if clean_kind == "monthly_budget":
         restore_monthly_budget(
             db,
@@ -104,6 +103,10 @@ def restore_recycle_bin_item(
             expected_row_version=_require_token(expected_row_version),
         )
         return "月度预算已恢复。"
+    if clean_kind == "category_preference":
+        return _restore_category_preference_item(
+            db, tenant_id, clean_resource_id, expected_row_version
+        )
     if clean_kind == "recurring_item":
         restore_recurring_item(
             db,
@@ -159,6 +162,36 @@ def _require_token(value: int | None) -> int:
     return int(value)
 
 
+def _restore_income_plan_item(
+    db: Session,
+    tenant_id: str,
+    public_id: str,
+    expected_row_version: int | None,
+) -> str:
+    restore_income_plan(
+        db,
+        tenant_id=tenant_id,
+        public_id=public_id,
+        expected_row_version=_require_token(expected_row_version),
+    )
+    return "收入记录已恢复。"
+
+
+def _restore_category_preference_item(
+    db: Session,
+    tenant_id: str,
+    public_id: str,
+    expected_row_version: int | None,
+) -> str:
+    restore_category_preference(
+        db,
+        tenant_id=tenant_id,
+        public_id=public_id,
+        expected_row_version=_require_token(expected_row_version),
+    )
+    return "分类已恢复。"
+
+
 def _parse_rule_id(value: str) -> int:
     try:
         return int(value)
@@ -205,6 +238,34 @@ def _archived_budget_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
             expected_row_version=item.row_version,
         )
         for item in list_archived_budgets(db, tenant_id=tenant_id)
+    ]
+
+
+def _soft_deleted_category_preference_rows(
+    db: Session, tenant_id: str
+) -> list[RecycleBinItem]:
+    rows = [
+        item
+        for item in db.scalars(
+            select(CategoryPreference)
+            .where(CategoryPreference.tenant_id == tenant_id)
+            .where(CategoryPreference.deleted_at.is_not(None))
+            .order_by(CategoryPreference.deleted_at.desc(), CategoryPreference.id.desc())
+        )
+        if is_within_recycle_bin_window(item.deleted_at)
+    ]
+    return [
+        RecycleBinItem(
+            kind="category_preference",
+            kind_label="分类",
+            resource_id=item.public_id,
+            title=item.name,
+            detail="自定义分类选项",
+            removed_at=item.deleted_at,
+            retention_label=recycle_bin_retention_label(),
+            expected_row_version=item.row_version,
+        )
+        for item in rows
     ]
 
 

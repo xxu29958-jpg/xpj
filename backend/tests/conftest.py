@@ -134,6 +134,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_alembic_expense_draft_request_fingerprint_migration.py::",  # issue #65 slice 1 add expenses.draft_request_fingerprint (nullable) alembic round-trip via engine.begin DDL
     "tests/test_alembic_expense_row_version_check_migration.py::",  # finding-三摊 Slice B add ck_expenses_row_version_positive CHECK alembic round-trip via engine.begin DDL
     "tests/test_alembic_income_frequency_migration.py::",  # 20260629 income monthly/one_time fields alembic round-trip via engine.begin DDL
+    "tests/test_alembic_category_preferences_migration.py::",  # ADR-0052 slice 3 category_preferences alembic round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",

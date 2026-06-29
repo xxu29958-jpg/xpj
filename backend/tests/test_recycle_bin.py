@@ -8,9 +8,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Budget, CategoryRule, MonthlyIncomePlan
+from app.models import Budget, CategoryPreference, CategoryRule, MonthlyIncomePlan
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyUpdateRequest
 from app.services.budget_service import archive_monthly_budget, upsert_monthly_budget
+from app.services.category_preference_service import (
+    delete_category_preference,
+    ensure_category_preference_for_name,
+)
 from app.services.classify_service import create_rule, delete_rule
 from app.services.income_plan_service import archive_income_plan, create_income_plan
 from app.services.time_service import now_utc
@@ -61,6 +65,23 @@ def _seed_archived_budget() -> tuple[str, int]:
             expected_row_version=budget.row_version or 1,
         )
         return archived.month, archived.row_version
+
+
+def _seed_deleted_category_preference() -> tuple[str, int]:
+    with SessionLocal() as db:
+        item = ensure_category_preference_for_name(
+            db, tenant_id="owner", name="回收分类"
+        )
+        assert item is not None
+        db.flush()
+        public_id = item.public_id
+        deleted = delete_category_preference(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            expected_row_version=item.row_version,
+        )
+        return public_id, deleted.row_version
 
 
 def _seed_deleted_rule() -> int:
@@ -156,6 +177,32 @@ def test_recycle_bin_api_restores_archived_income(
             )
         )
     assert status == "active"
+
+
+def test_recycle_bin_api_restores_deleted_category_preference(
+    client: TestClient, *, identity
+) -> None:
+    public_id, row_version = _seed_deleted_category_preference()
+
+    response = client.post(
+        "/api/recycle-bin/restore",
+        headers=identity.app_headers,
+        json={
+            "kind": "category_preference",
+            "resource_id": public_id,
+            "expected_row_version": row_version,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "分类已恢复。"
+    with SessionLocal() as db:
+        deleted_at = db.scalar(
+            select(CategoryPreference.deleted_at).where(
+                CategoryPreference.public_id == public_id
+            )
+        )
+    assert deleted_at is None
 
 
 def test_web_recycle_bin_lists_and_restores_income(

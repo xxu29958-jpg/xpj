@@ -17,6 +17,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
+from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload
@@ -56,6 +57,12 @@ __all__ = [
 ]
 
 
+def _materialize_category_preference(db: Session, expense: Expense) -> None:
+    ensure_category_preference_for_name(
+        db, tenant_id=expense.tenant_id, name=expense.category
+    )
+
+
 def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
     if not expense.thumbnail_path:
         expense.thumbnail_path = _try_generate_thumbnail(
@@ -72,6 +79,7 @@ def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
         _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text)
     if expense.category == "其他":
         classify_expense(db, expense)
+    _materialize_category_preference(db, expense)
     if (
         expense.amount_cents is not None
         or expense.merchant
@@ -176,6 +184,7 @@ def enrich_pending_expense(
                 )
             if expense.category == "其他":
                 classify_expense(db, expense)
+            _materialize_category_preference(db, expense)
             if (
                 expense.amount_cents is not None
                 or expense.merchant
@@ -283,6 +292,7 @@ def _insert_manual_expense(
         expense.confirmed_at = None
     if expense.category == "其他":
         classify_expense(db, expense)
+    _materialize_category_preference(db, expense)
     db.add(expense)
     db.flush()
     sync_expense_tags(db, expense)
@@ -403,6 +413,7 @@ def create_notification_draft(
         raise
     if expense.category == "其他":
         classify_expense(db, expense)
+    _materialize_category_preference(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
         mark_duplicate_status(db, expense)
     expense.updated_at = now_utc()

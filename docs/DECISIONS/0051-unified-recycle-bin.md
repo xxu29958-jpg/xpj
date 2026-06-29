@@ -1,6 +1,6 @@
 # ADR-0051: 统一回收站
 
-- 状态：accepted / partially implemented（2026-06-29：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站；短窗软删的回收站天级 retention；ADR-0052 月度预算配置归档/恢复）
+- 状态：accepted / partially implemented（2026-06-30：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站；短窗软删的回收站天级 retention；ADR-0052 月度预算配置归档/恢复与自定义分类偏好）
 - 关联：ENGINEERING_RULES §6（持久化/同步/恢复）/ §12（保留天数预算）/ §13（反扩）、[[0038]]（`deleted_at` 软删 tombstone）、[[0043]]（tag mutation-undo）、[[0046]]（Android 周期 worker 边界）、[[0049]]（债务域 append-only，**排除在回收站外**）、[[0052]]（主数据删除边界）
 
 ## 2026-06-29 首片落地
@@ -18,7 +18,7 @@
 第二片继续维持同一低风险边界：新增当前账本维度 `GET /api/recycle-bin`、`POST /api/recycle-bin/restore`，并在 `/web/recycle-bin` 与 Android 设置二级页展示/恢复。
 
 - 普通端只看当前 session token 对应账本，不列已归档账本本身；已归档账本仍只在 owner console 恢复。
-- 纳入实体同首片中“账本以外”的可恢复项：收入记录、固定支出、目标、分类规则、商家别名、标签 undo group；ADR-0052 Slice 2 后增加月度预算配置 `monthly_budget`。
+- 纳入实体同首片中“账本以外”的可恢复项：收入记录、固定支出、目标、分类规则、商家别名、标签 undo group；ADR-0052 Slice 2 后增加月度预算配置 `monthly_budget`，Slice 3 后增加自定义分类偏好 `category_preference`。
 - `viewer` 可读不可恢复；恢复仍要求 `owner/member`，并委托各实体既有 restore/undo service。
 - 该片当时尚未新增天级 retention、不改 purge、不做 master 删除；第三片见下方 retention 解耦。
 
@@ -40,7 +40,7 @@
 - **`archived_at` 永久归档**（recurring / goal / income_plan / ledger）：永不清理，可从 owner 回收站集中恢复；
 - **`status='rejected'`**（expense，复用同一 5min undo 窗）。
 
-剩余不对称与硬缺口：**category / merchant master 完全没有删除入口**；budget 已按 ADR-0052 处理为月度配置归档/恢复。结果：owner 端与普通 web/Android 已有统一「已删/已归档」面，短窗软删项也已从 5 分钟撤销条解耦为默认 30 天回收站保留。
+剩余不对称与硬缺口：**merchant master 仍没有删除入口**；budget 已按 ADR-0052 处理为月度配置归档/恢复，custom category preference 已处理为账本级选项软删/恢复。结果：owner 端与普通 web/Android 已有统一「已删/已归档」面，短窗软删项也已从 5 分钟撤销条解耦为默认 30 天回收站保留。
 
 ## 决策驱动
 
@@ -80,6 +80,6 @@
 
 ## 切片划分 + 回收条件
 
-1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 解耦（已完成：配置型全局窗口，未新增 per-row 字段）。4. master 删除边界见 [[0052]]；其中预算月度配置归档/恢复已完成，分类偏好目录和 merchant catalog 后续另片；债务 voided 只读展示如需要另开债务展示 ADR。
+1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 解耦（已完成：配置型全局窗口，未新增 per-row 字段）。4. master 删除边界见 [[0052]]；其中预算月度配置归档/恢复与自定义分类偏好已完成，merchant catalog 后续另片；债务 voided 只读展示如需要另开债务展示 ADR。
 
 回收条件：任一轴落地后若 retention/scope 判断变化，回此 ADR 修订；master 删除以 [[0052]] 为准，债务展示另开 ADR，不在本 scope 隐式扩张。

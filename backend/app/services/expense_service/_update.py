@@ -15,6 +15,7 @@ from app.schemas import (
     ExpenseUpdateRequest,
 )
 from app.services.bill_split_service import assert_no_immutable_field_changes
+from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.duplicate_service import (
@@ -106,6 +107,7 @@ def batch_update_confirmed_expenses(
             raise AppError("state_conflict", status_code=409)
         if category_provided:
             expense.category = _clean_category(category)
+            ensure_category_preference_for_name(db, tenant_id=tenant_id, name=expense.category)
         if tags_provided:
             expense.tags = normalized_tags
             sync_expense_tags(db, expense)
@@ -203,6 +205,7 @@ def update_expense(
         expense.merchant = _clean_optional_text(updates["merchant"])
     if "category" in updates and updates["category"]:
         expense.category = _clean_category(updates["category"])
+        ensure_category_preference_for_name(db, tenant_id=tenant_id, name=expense.category)
     if "note" in updates:
         expense.note = _clean_text(updates["note"])
     if "spent_at" in updates:
@@ -235,6 +238,7 @@ def update_expense(
     )
     if should_auto_classify:
         classify_expense(db, expense)
+        ensure_category_preference_for_name(db, tenant_id=tenant_id, name=expense.category)
 
     if any(
         field in updates

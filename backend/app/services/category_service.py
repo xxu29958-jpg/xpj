@@ -14,6 +14,11 @@ from app.services.category_common import (
     category_filter_values,
     normalize_category,
 )
+from app.services.category_preference_service import (
+    category_key_for_existing,
+    category_preference_option_state,
+    default_category_keys,
+)
 from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
 
 # Re-exports — existing callers do
@@ -34,8 +39,22 @@ def category_sort_key(value: str) -> tuple[int, int | str]:
     return (1, normalized)
 
 
-def merge_categories(values: list[str]) -> list[str]:
-    categories = {normalize_category(item) for item in values if item and item.strip()}
+def merge_categories(
+    values: list[str],
+    *,
+    suppressed_keys: set[str] | None = None,
+) -> list[str]:
+    suppressed = suppressed_keys or set()
+    defaults = default_category_keys()
+    categories = {
+        normalize_category(item)
+        for item in values
+        if item and item.strip()
+        and (
+            (key := category_key_for_existing(item)) is not None
+            and (key not in suppressed or key in defaults)
+        )
+    }
     categories.update(DEFAULT_CATEGORIES)
     return sorted(categories, key=category_sort_key)
 
@@ -49,13 +68,21 @@ def list_ledger_category_options(db: Session, *, tenant_id: str) -> list[str]:
     fills blanks, ENGINEERING_RULES §8). The datalist just curbs spelling drift
     (餐饮 vs 餐厅) at the input.
     """
-    used = db.scalars(
-        select(Expense.category)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.category.is_not(None))
-        .distinct()
-    ).all()
-    return merge_categories([str(value) for value in used])
+    used = list(
+        db.scalars(
+            select(Expense.category)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.category.is_not(None))
+            .distinct()
+        )
+    )
+    active_names, deleted_keys = category_preference_option_state(
+        db, tenant_id=tenant_id
+    )
+    return merge_categories(
+        [str(value) for value in used] + active_names,
+        suppressed_keys=deleted_keys,
+    )
 
 
 def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense, ExpenseTag, Tag
-from app.services.category_service import merge_categories, normalize_category
+from app.services.category_service import list_ledger_category_options, normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.spending_contract_service import (
     canonical_merchant_display,
@@ -131,15 +131,7 @@ def _filtered_confirmed(
 
 
 def list_categories(db: Session, tenant_id: str) -> list[str]:
-    return merge_categories(
-        list(
-            db.scalars(
-                select(Expense.category)
-                .where(Expense.tenant_id == tenant_id)
-                .distinct()
-            )
-        )
-    )
+    return list_ledger_category_options(db, tenant_id=tenant_id)
 
 
 def list_months(

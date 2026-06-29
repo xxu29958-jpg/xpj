@@ -50,6 +50,16 @@ from fastapi.testclient import TestClient
         ),
         (
             "POST",
+            "/api/expenses/categories/preferences/category_missing/delete",
+            {"json": {"expected_row_version": 1}},
+        ),
+        (
+            "POST",
+            "/api/expenses/categories/preferences/category_missing/restore",
+            {"json": {"expected_row_version": 1}},
+        ),
+        (
+            "POST",
             "/api/expenses/notification-drafts",
             {"json": {"source": "android-notification", "amount_cents": 1200}},
         ),

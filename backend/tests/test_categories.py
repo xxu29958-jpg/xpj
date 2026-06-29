@@ -20,10 +20,12 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Expense
+from app.models import CategoryRule, Expense
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.category_service import list_category_summary
 from app.services.merchant_service import display_merchant, normalize_merchant
+from app.services.time_service import now_utc
 from tests._infra.env import BACKEND_ROOT
 
 # ── Fixtures (mirror tests/test_web_app.py setup) ───────────────────────────
@@ -73,6 +75,35 @@ def _save_pending(
         },
     )
     assert resp.status_code in {303, 307}, resp.text
+
+
+def _create_manual_category(
+    client: TestClient,
+    *,
+    identity,
+    category: str,
+    client_ref: str,
+) -> None:
+    resp = client.post(
+        "/api/expenses/manual",
+        headers=identity.app_headers,
+        json={
+            "amount_cents": 1200,
+            "merchant": "分类测试",
+            "category": category,
+            "client_ref": client_ref,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def _category_preference(client: TestClient, *, identity, name: str) -> dict:
+    resp = client.get(
+        "/api/expenses/categories/preferences",
+        headers=identity.app_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    return next(item for item in resp.json()["items"] if item["name"] == name)
 
 
 # ── T10: merchant_service.normalize_merchant ───────────────────────────────
@@ -195,6 +226,125 @@ def test_category_summary_uses_accounting_timezone_month_bounds(
 
     assert any(item.category == "Boundary" for item in shanghai.summaries)
     assert all(item.category != "Boundary" for item in utc.summaries)
+
+
+def test_custom_category_preference_delete_restore_controls_options(
+    client: TestClient, *, identity
+) -> None:
+    _create_manual_category(
+        client, identity=identity, category="咖啡", client_ref="cat-pref-coffee"
+    )
+    preference = _category_preference(client, identity=identity, name="咖啡")
+    assert preference["usage_count"] == 1
+    categories = client.get("/api/expenses/categories", headers=identity.app_headers)
+    assert "咖啡" in categories.json()["items"]
+
+    deleted = client.post(
+        f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
+        headers=identity.app_headers,
+        json={"expected_row_version": preference["row_version"]},
+    )
+    assert deleted.status_code == 200, deleted.text
+    hidden = client.get("/api/expenses/categories", headers=identity.app_headers)
+    assert "咖啡" not in hidden.json()["items"]
+
+    recycle = client.get("/api/recycle-bin", headers=identity.app_headers)
+    assert recycle.status_code == 200
+    assert any(
+        item["kind"] == "category_preference" and item["title"] == "咖啡"
+        for item in recycle.json()["items"]
+    )
+
+    restored = client.post(
+        f"/api/expenses/categories/preferences/{preference['public_id']}/restore",
+        headers=identity.app_headers,
+        json={"expected_row_version": deleted.json()["row_version"]},
+    )
+    assert restored.status_code == 200, restored.text
+    visible = client.get("/api/expenses/categories", headers=identity.app_headers)
+    assert "咖啡" in visible.json()["items"]
+
+
+def test_deleted_preference_suppresses_historical_fallback_only_for_that_key(
+    client: TestClient, *, identity
+) -> None:
+    _create_manual_category(
+        client, identity=identity, category="咖啡", client_ref="cat-pref-hide"
+    )
+    preference = _category_preference(client, identity=identity, name="咖啡")
+    deleted = client.post(
+        f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
+        headers=identity.app_headers,
+        json={"expected_row_version": preference["row_version"]},
+    )
+    assert deleted.status_code == 200, deleted.text
+    with SessionLocal() as db:
+        now = now_utc()
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=900,
+                merchant="历史手作",
+                category="手作",
+                status="confirmed",
+                expense_time=now,
+                confirmed_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+
+    categories = client.get("/api/expenses/categories", headers=identity.app_headers)
+    assert categories.status_code == 200
+    assert "咖啡" not in categories.json()["items"]
+    assert "手作" in categories.json()["items"]
+
+
+def test_default_category_usage_does_not_create_custom_preference(
+    client: TestClient, *, identity
+) -> None:
+    _create_manual_category(
+        client, identity=identity, category="吃饭", client_ref="cat-pref-default"
+    )
+    resp = client.get(
+        "/api/expenses/categories/preferences",
+        headers=identity.app_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+def test_delete_category_preference_rejects_active_rule_reference(
+    client: TestClient, *, identity
+) -> None:
+    _create_manual_category(
+        client, identity=identity, category="咖啡", client_ref="cat-pref-rule"
+    )
+    preference = _category_preference(client, identity=identity, name="咖啡")
+    with SessionLocal() as db:
+        now = now_utc()
+        ensure_category_preference_for_name(db, tenant_id="owner", name="咖啡")
+        db.add(
+            CategoryRule(
+                tenant_id="owner",
+                keyword="coffee",
+                category="咖啡",
+                enabled=True,
+                priority=10,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+
+    deleted = client.post(
+        f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
+        headers=identity.app_headers,
+        json={"expected_row_version": preference["row_version"]},
+    )
+    assert deleted.status_code == 409
+    assert deleted.json()["error"] == "state_conflict"
 
 
 def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, identity) -> None:
