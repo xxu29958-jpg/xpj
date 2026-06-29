@@ -1,6 +1,8 @@
 package com.ticketbox.data.remote
 
 import java.net.InetAddress
+import java.net.Socket
+import javax.net.SocketFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -31,6 +33,24 @@ class ApiClientNetworkResilienceTest {
         assertFalse(shouldRetryGetIOException(method = "POST", attempt = 0, maxRetries = 2))
         assertFalse(shouldRetryGetIOException(method = "PATCH", attempt = 0, maxRetries = 2))
         assertFalse(shouldRetryGetIOException(method = "DELETE", attempt = 0, maxRetries = 2))
+    }
+
+    @Test
+    fun dynamicSocketFactoryFallsBackToDefaultFactoryWhenNoBypassNetworkExists() {
+        val defaultFactory = CountingSocketFactory()
+        val factory = DynamicNetworkSocketFactory(networkProvider = null, defaultFactory = defaultFactory)
+
+        factory.createSocket()
+
+        assertEquals(1, defaultFactory.createdSockets)
+    }
+
+    @Test
+    fun localDevelopmentUrlsDoNotUseVpnBypassRouting() {
+        assertTrue(isLocalDevelopmentBaseUrl("http://127.0.0.1:8000"))
+        assertTrue(isLocalDevelopmentBaseUrl("http://localhost:8000"))
+        assertTrue(isLocalDevelopmentBaseUrl("http://10.0.2.2:8000"))
+        assertFalse(isLocalDevelopmentBaseUrl("https://api.example.com"))
     }
 
     // ENGINEERING_RULES §7: exponential backoff + jitter + termination
@@ -75,5 +95,36 @@ class ApiClientNetworkResilienceTest {
         val tinyBase = 1L
         val tinyAttempt = retryBackoffMs(attempt = 0, baseDelayMs = tinyBase, random = { 0.0 })
         assertTrue(tinyAttempt >= 1L)
+    }
+}
+
+private class CountingSocketFactory : SocketFactory() {
+    var createdSockets: Int = 0
+        private set
+
+    override fun createSocket(): Socket {
+        createdSockets += 1
+        return Socket()
+    }
+
+    override fun createSocket(host: String, port: Int): Socket {
+        return createSocket()
+    }
+
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
+        return createSocket()
+    }
+
+    override fun createSocket(host: InetAddress, port: Int): Socket {
+        return createSocket()
+    }
+
+    override fun createSocket(
+        address: InetAddress,
+        port: Int,
+        localAddress: InetAddress,
+        localPort: Int,
+    ): Socket {
+        return createSocket()
     }
 }

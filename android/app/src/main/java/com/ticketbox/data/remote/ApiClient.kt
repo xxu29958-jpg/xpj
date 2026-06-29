@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
@@ -21,12 +20,13 @@ import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.Proxy
+import java.net.Socket
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import javax.net.SocketFactory
 
 class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
     private companion object {
-        const val LOG_TAG = "TicketboxNetwork"
         const val USER_AGENT = "TicketBox/1.0 Android"
         val RETRYABLE_GET_STATUS_CODES = setOf(502, 503, 504)
         const val GET_IO_RETRY_COUNT = 2
@@ -66,6 +66,9 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
         refreshController: SessionRefreshController?,
         tokenStore: SessionTokenStore? = null,
     ): ApiService {
+        val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+        val routeProvider = nonVpnNetworkProvider
+            ?.takeUnless { isLocalDevelopmentBaseUrl(normalizedBaseUrl) }
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
             // Never let bearer tokens or session cookies appear in logcat,
@@ -75,13 +78,10 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
             redactHeader("Cookie")
             redactHeader("Set-Cookie")
         }
-        val directNetwork = nonVpnNetworkProvider
-            ?.takeIf { it.hasActiveVpnNetwork() }
-            ?.validatedNonVpnNetwork()
-
         val clientBuilder = OkHttpClient.Builder()
             .retryOnConnectionFailure(true)
-            .dns(directNetwork?.let(::NetworkDns) ?: Ipv4FirstDns)
+            .dns(DynamicNetworkDns(routeProvider))
+            .socketFactory(DynamicNetworkSocketFactory(routeProvider))
             .proxy(Proxy.NO_PROXY)
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -108,7 +108,7 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
                 }
                 response
             }
-            .addInterceptor(NonVpnGetFallbackInterceptor(nonVpnNetworkProvider))
+            .addInterceptor(NonVpnGetFallbackInterceptor(routeProvider))
             .addInterceptor(GetIoRetryInterceptor(GET_IO_RETRY_COUNT, GET_IO_RETRY_DELAY_MS))
             .addInterceptor { chain ->
                 val request = chain.request()
@@ -123,12 +123,6 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
         if (BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS) {
             clientBuilder.addInterceptor(logging)
         }
-        directNetwork?.let { network ->
-            clientBuilder.socketFactory(network.socketFactory)
-            if (BuildConfig.DEBUG) {
-                Log.d(LOG_TAG, "Binding TicketBox requests to validated non-VPN network.")
-            }
-        }
         val client = clientBuilder.build()
 
         val moshi = Moshi.Builder()
@@ -136,7 +130,7 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
             .build()
 
         return Retrofit.Builder()
-            .baseUrl(normalizeBaseUrl(baseUrl))
+            .baseUrl(normalizedBaseUrl)
             .client(client)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
@@ -152,9 +146,57 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
     }
 }
 
+internal fun isLocalDevelopmentBaseUrl(baseUrl: String): Boolean {
+    val normalized = baseUrl.trim().lowercase()
+    return normalized.contains("127.0.0.1") ||
+        normalized.contains("localhost") ||
+        normalized.contains("10.0.2.2") ||
+        normalized.contains("[::1]") ||
+        normalized.contains("::1")
+}
+
 internal object Ipv4FirstDns : Dns {
     override fun lookup(hostname: String): List<InetAddress> {
         return preferIpv4First(Dns.SYSTEM.lookup(hostname))
+    }
+}
+
+internal class DynamicNetworkDns(
+    private val networkProvider: NonVpnNetworkProvider?,
+) : Dns {
+    override fun lookup(hostname: String): List<InetAddress> {
+        val addresses = networkProvider?.activeNonVpnLookup(hostname)
+            ?: Dns.SYSTEM.lookup(hostname)
+        return preferIpv4First(addresses)
+    }
+}
+
+internal class DynamicNetworkSocketFactory(
+    private val networkProvider: NonVpnNetworkProvider?,
+    private val defaultFactory: SocketFactory = SocketFactory.getDefault(),
+) : SocketFactory() {
+    private fun selectedFactory(): SocketFactory {
+        return networkProvider?.activeNonVpnSocketFactory() ?: defaultFactory
+    }
+
+    override fun createSocket(): Socket {
+        return selectedFactory().createSocket()
+    }
+
+    override fun createSocket(host: String, port: Int): Socket {
+        return selectedFactory().createSocket(host, port)
+    }
+
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
+        return selectedFactory().createSocket(host, port, localHost, localPort)
+    }
+
+    override fun createSocket(host: InetAddress, port: Int): Socket {
+        return selectedFactory().createSocket(host, port)
+    }
+
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket {
+        return selectedFactory().createSocket(address, port, localAddress, localPort)
     }
 }
 
@@ -296,5 +338,24 @@ internal class NonVpnNetworkProvider(context: Context) {
                     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             }
         }.getOrNull()
+    }
+
+    fun activeNonVpnNetwork(): Network? {
+        if (!hasActiveVpnNetwork()) {
+            return null
+        }
+        return validatedNonVpnNetwork()
+    }
+
+    fun activeNonVpnLookup(hostname: String): List<InetAddress>? {
+        return activeNonVpnNetwork()?.let { network ->
+            runCatching {
+                network.getAllByName(hostname).toList()
+            }.getOrNull()
+        }
+    }
+
+    fun activeNonVpnSocketFactory(): SocketFactory? {
+        return activeNonVpnNetwork()?.socketFactory
     }
 }
