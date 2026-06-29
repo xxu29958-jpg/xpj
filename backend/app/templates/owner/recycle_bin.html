@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}回收站 - 小票夹 本机管理后台{% endblock %}
+{% block content %}
+<h1>回收站</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>这里把各处“已归档 / 刚删除”的可恢复项目集中放在一起。长期归档项会一直保留；分类规则、商家别名和标签属于短窗恢复，过了窗口会由清理任务永久移除。</p>
+</details>
+
+{% if flash_message %}
+<div class="alert alert-info mb-5">{{ flash_message }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger mb-5">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head-row">
+    <div>
+      <h2>可恢复项目</h2>
+      <p class="text-meta">
+        覆盖 {{ recycle_bin.ledger_count }} 个当前 owner 管理的活跃账本；
+        当前短窗项目 {{ recycle_bin.short_window_count }} 条。
+      </p>
+    </div>
+    <span class="badge badge-off">ADR-0051</span>
+  </div>
+
+  {% if not recycle_bin.rows %}
+    <p class="empty-note mt-4">回收站是空的。已归档账本、收入、固定支出、目标，或刚删除的规则/商家别名/标签会出现在这里。</p>
+  {% else %}
+  <div class="table-scroll mt-4">
+    <table>
+      <thead>
+        <tr>
+          <th>类型</th>
+          <th>所属账本</th>
+          <th>内容</th>
+          <th>移入时间</th>
+          <th>保留</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in recycle_bin.rows %}
+        <tr>
+          <td><span class="status-chip status-muted">{{ row.kind_label }}</span></td>
+          <td class="text-break">{{ row.ledger_name }}</td>
+          <td>
+            <div class="text-break"><strong>{{ row.title }}</strong></div>
+            <div class="text-meta">{{ row.detail }}</div>
+          </td>
+          <td>{{ row.removed_at|owner_datetime }}</td>
+          <td>
+            {% if row.retention_label == '短窗可恢复' %}
+              <span class="badge badge-warn">{{ row.retention_label }}</span>
+            {% else %}
+              <span class="badge badge-ok">{{ row.retention_label }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set restore_confirm = '恢复「' ~ row.title ~ '」？' %}
+            <form method="post" action="/owner/recycle-bin/restore" class="inline-form" data-confirm="{{ restore_confirm }}">
+              <input type="hidden" name="kind" value="{{ row.kind }}">
+              <input type="hidden" name="ledger_id" value="{{ row.ledger_id }}">
+              <input type="hidden" name="resource_id" value="{{ row.resource_id }}">
+              {% if row.expected_row_version is not none %}
+              <input type="hidden" name="expected_row_version" value="{{ row.expected_row_version }}">
+              {% endif %}
+              <button type="submit" class="btn btn-secondary btn--compact">恢复</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>当前不在这里的东西</h2>
+  <p class="text-meta">
+    已入账账单、债务还款事实、预算主数据和分类/商家 master 删除不在本片范围内；债务域按事实流保留审计，不作为“删除后恢复”的对象处理。
+  </p>
+</div>
+{% endblock %}

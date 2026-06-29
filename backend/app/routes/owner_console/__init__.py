@@ -4,7 +4,7 @@ All endpoints check that the request comes from the loopback address
 (127.0.0.1 or ::1). Remote or Cloudflare-forwarded requests are rejected with
 403. This is *not* a public admin backend.
 
-The package mounts seven sub-routers (one per UI section); each holds an
+The package mounts focused sub-routers (one per UI section); each holds an
 APIRouter with the ``/owner`` prefix so the operation IDs stay rooted at
 the same path-segment they did before the split.
 
@@ -25,6 +25,8 @@ Navigation:
     GET  /owner/diagnostics         — diagnostics page
     GET  /owner/fx                  — FX rate sync status + latest rates
     POST /owner/fx/refresh          — run one FX sync now (manual trigger)
+    GET  /owner/recycle-bin         — unified archived/deleted restore surface
+    POST /owner/recycle-bin/restore — restore one recycle-bin item
     GET  /owner/settings(/*)        — runtime settings (5 endpoints)
     GET  /owner/backups             — list manual backups
     POST /owner/backups             — create new manual backup
@@ -44,6 +46,7 @@ from app.routes.owner_console import (
     _index,
     _learning_maintenance,
     _pairing,
+    _recycle_bin,
     _settings,
     _tag_cleanup,
     _upload_links,
@@ -63,6 +66,7 @@ router.include_router(_ai_advisor.router)
 router.include_router(_algorithm_versions.router)
 router.include_router(_learning_maintenance.router)
 router.include_router(_tag_cleanup.router)
+router.include_router(_recycle_bin.router)
 router.include_router(_devices.router)
 router.include_router(_pairing.router)
 router.include_router(_upload_links.router)

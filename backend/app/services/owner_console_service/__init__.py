@@ -5,13 +5,14 @@ called exclusively from :mod:`app.routes.owner_console` (plus
 ``owner_ledgers`` and ``web_common``) and must never depend on FastAPI
 Request or return HTTP responses.
 
-The package internally splits along the same 7 domain seams the Owner
-Console UI shows:
+The package internally splits along the same domain seams the Owner Console UI
+shows:
 
 - ``_common``         — module-wide helpers (logger, timezone, amount
                         formatting, owner account lookups)
 - ``_ledger_console`` — ledger discovery + management VMs
 - ``_recurring_ops``  — recurring summary VM consumed by the index card
+- ``_recycle_bin``    — unified archived/deleted restore surface
 - ``_devices``        — device CRUD wrappers scoped to managed ledgers
 - ``_upload_links``   — upload-link CRUD wrappers + public URL composer
 - ``_pairing``        — pairing code creation
@@ -71,6 +72,12 @@ from app.services.owner_console_service._recurring_ops import (
     RecurringOpsVM,
     get_recurring_ops,
 )
+from app.services.owner_console_service._recycle_bin import (
+    RecycleBinItemVM,
+    RecycleBinVM,
+    get_recycle_bin_vm,
+    restore_recycle_bin_item,
+)
 from app.services.owner_console_service._rule_audit import (
     RuleApplicationAuditRow,
     RuleApplicationAuditVM,
@@ -100,6 +107,8 @@ __all__ = [
     "OWNER_CONSOLE_TIMEZONE",
     "PairingCodeResult",
     "RecurringOpsVM",
+    "RecycleBinItemVM",
+    "RecycleBinVM",
     "RuleApplicationAuditRow",
     "RuleApplicationAuditVM",
     "UploadLinkSecret",
@@ -124,6 +133,7 @@ __all__ = [
     "get_index_vm",
     "get_owner_account_id",
     "get_recurring_ops",
+    "get_recycle_bin_vm",
     "get_rule_application_audit",
     "get_upload_links",
     "list_archived_console_ledgers",
@@ -131,4 +141,5 @@ __all__ = [
     "list_console_ledgers",
     "list_ledger_health",
     "list_manageable_console_ledgers",
+    "restore_recycle_bin_item",
 ]
