@@ -1,7 +1,7 @@
 # ADR-0052: 主数据删除与回收站边界
 
 - 状态：accepted / partially implemented（2026-06-30；Slice 2 月度预算配置归档/恢复、Slice 3 自定义分类偏好已落地）
-- 关联：ENGINEERING_RULES §0（裁决顺序）/ §6（持久化、同步、隔离）/ §13（反扩）、[[0013]]（分类目录与旧分类兼容）、[[0038]]（软删 tombstone）、[[0041]]（Postgres + row_version）、[[0043]]（标签管理）、[[0049]]（债务 append-only）、[[0051]]（统一回收站）
+- 关联：ENGINEERING_RULES §0（裁决顺序）/ §6（持久化、同步、隔离）/ §13（反扩）、[[0013]]（分类目录与旧分类兼容）、[[0038]]（软删 tombstone）、[[0041]]（Postgres + row_version）、[[0043]]（标签管理）、[[0049]]（债务 append-only）、[[0051]]（统一回收站）、[[0053]]（商家目录与删除边界）
 
 ## 背景
 
@@ -45,7 +45,7 @@ ADR-0051 已经把现有可恢复项集中到 owner / web / Android 回收站，
 
 当前没有 merchant master 行，只有 `MerchantAlias`。别名删除 / 恢复已经由 ADR-0051 回收站覆盖；历史 `Expense.merchant` 仍是事实字符串。
 
-真正的商家 master 需要另一个设计：`merchant_catalog` 的 canonical key 来源、别名归属、合并冲突、商家统计回填、历史 expense 是否重写等都必须一起定义。在该设计落地前，不提供「删除商家」入口，也不把 expense merchant 字符串塞进回收站。
+真正的商家 master 需要另一个设计：`merchant_catalog` 的 canonical key 来源、别名归属、合并冲突、商家统计回填、历史 expense 是否重写等都必须一起定义。ADR-0053 已定义该边界：merchant catalog 是账本级目录行，删除只隐藏 / 软删目录，不批量改写历史 `Expense.merchant`；merge 另片实现。在该运行时代码落地前，不提供「删除商家」入口，也不把 expense merchant 字符串塞进回收站。
 
 **5. 回收站只接入真实可恢复行**
 
@@ -62,7 +62,7 @@ ADR-0051 已经把现有可恢复项集中到 owner / web / Android 回收站，
 1. 本 ADR：定边界，不改运行时代码。
 2. Budget 月度配置归档 / 恢复：已完成；已有真实 `Budget` 行和稳定月度 API，归档父行并保留 `BudgetCategory` 子项。
 3. Category 自定义目录 / 偏好：已完成；新增轻量表与迁移，分类选项改为默认目录 + active custom preferences + 历史已用兜底，custom 偏好软删后纳入回收站。
-4. Merchant catalog：另开 ADR 后再实现，不与别名软删混在同片。
+4. Merchant catalog：边界已由 [[0053]] 定义；运行时代码仍另片实现，不与别名软删混在同片。
 
 ## 后果
 

@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0052（0018 已撤回；0032–0034 未使用，编号跳过）。
+**编号范围**：0001–0053（0018 已撤回；0032–0034 未使用，编号跳过）。
 
 ## 索引
 
@@ -57,10 +57,11 @@
 | [0050](0050-android-baseline-profile-prerelease.md) | Android Baseline Profile 预发布工具 | issue #64 A1：AGP 9.2 上稳定版 baselineprofile 报废（实证），owner 拍板采 1.5.0-alpha06；仅构建/测试期、不进运行时，回收=1.5.0 stable | accepted；[[0011]]/[[0009]]/[[0010]]；detekt alpha 同形例外 |
 | [0051](0051-unified-recycle-bin.md) | 统一回收站 | owner / web / Android 回收站；普通撤销 5 分钟与显式回收站 30 天 retention 解耦 | accepted / partially implemented；[[0038]]/[[0043]]/[[0049]] |
 | [0052](0052-master-delete-recycle-bin-scope.md) | 主数据删除与回收站边界 | category 先做偏好目录，budget 按月度配置归档，merchant master 等 catalog ADR 后再删 | accepted target contract；[[0013]]/[[0051]] |
+| [0053](0053-merchant-catalog-contract.md) | 商家目录与删除边界 | merchant catalog 是账本级目录行；删除只隐藏/软删目录，不批量改写历史 `Expense.merchant`；merge 另片 | accepted target contract；[[0051]]/[[0052]] |
 
 ## 编写新 ADR
 
-下一编号 `0053`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0054`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

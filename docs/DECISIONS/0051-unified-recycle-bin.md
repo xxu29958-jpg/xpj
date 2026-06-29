@@ -1,6 +1,6 @@
 # ADR-0051: 统一回收站
 
-- 状态：accepted / partially implemented（2026-06-30：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站；短窗软删的回收站天级 retention；ADR-0052 月度预算配置归档/恢复与自定义分类偏好）
+- 状态：accepted / partially implemented（2026-06-30：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站；短窗软删的回收站天级 retention；ADR-0052 月度预算配置归档/恢复与自定义分类偏好；ADR-0053 已定义 merchant catalog 后续边界）
 - 关联：ENGINEERING_RULES §6（持久化/同步/恢复）/ §12（保留天数预算）/ §13（反扩）、[[0038]]（`deleted_at` 软删 tombstone）、[[0043]]（tag mutation-undo）、[[0046]]（Android 周期 worker 边界）、[[0049]]（债务域 append-only，**排除在回收站外**）、[[0052]]（主数据删除边界）
 
 ## 2026-06-29 首片落地
@@ -40,7 +40,7 @@
 - **`archived_at` 永久归档**（recurring / goal / income_plan / ledger）：永不清理，可从 owner 回收站集中恢复；
 - **`status='rejected'`**（expense，复用同一 5min undo 窗）。
 
-剩余不对称与硬缺口：**merchant master 仍没有删除入口**；budget 已按 ADR-0052 处理为月度配置归档/恢复，custom category preference 已处理为账本级选项软删/恢复。结果：owner 端与普通 web/Android 已有统一「已删/已归档」面，短窗软删项也已从 5 分钟撤销条解耦为默认 30 天回收站保留。
+剩余不对称与硬缺口：**merchant master 仍没有运行时删除入口**；ADR-0053 已裁定未来 merchant catalog 只能隐藏 / 软删目录行，不能批量改写历史 `Expense.merchant`。budget 已按 ADR-0052 处理为月度配置归档/恢复，custom category preference 已处理为账本级选项软删/恢复。结果：owner 端与普通 web/Android 已有统一「已删/已归档」面，短窗软删项也已从 5 分钟撤销条解耦为默认 30 天回收站保留。
 
 ## 决策驱动
 
@@ -80,6 +80,6 @@
 
 ## 切片划分 + 回收条件
 
-1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 解耦（已完成：配置型全局窗口，未新增 per-row 字段）。4. master 删除边界见 [[0052]]；其中预算月度配置归档/恢复与自定义分类偏好已完成，merchant catalog 后续另片；债务 voided 只读展示如需要另开债务展示 ADR。
+1. 本 ADR + owner console 首片（已完成）。2. 普通 web + Android 当前账本回收站二级页（已完成）。3. 后端 retention 解耦（已完成：配置型全局窗口，未新增 per-row 字段）。4. master 删除边界见 [[0052]]；其中预算月度配置归档/恢复与自定义分类偏好已完成，merchant catalog 边界见 [[0053]]，运行时代码后续另片；债务 voided 只读展示如需要另开债务展示 ADR。
 
 回收条件：任一轴落地后若 retention/scope 判断变化，回此 ADR 修订；master 删除以 [[0052]] 为准，债务展示另开 ADR，不在本 scope 隐式扩张。

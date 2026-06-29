@@ -1578,7 +1578,7 @@ ADR-0051 当前账本回收站。普通 API 只看当前 session token 对应的
 
 - 长期归档：月度预算配置、收入记录、固定支出、目标。
 - 限期恢复：自定义分类偏好、分类规则、商家别名、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
-- 明确不纳入：已确认账单、债务还款事实、历史 `Expense.category` / `Expense.merchant` 字符串、merchant master 删除（边界见 ADR-0052；merchant catalog 尚未定义）。
+- 明确不纳入：已确认账单、债务还款事实、历史 `Expense.category` / `Expense.merchant` 字符串、merchant master 删除。merchant catalog 边界见 ADR-0053：未来只恢复 / 隐藏真实目录行，不把历史商家字符串伪装成回收站 item。
 
 ### GET /api/recycle-bin
 
