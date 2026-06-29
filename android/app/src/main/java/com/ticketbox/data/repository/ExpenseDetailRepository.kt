@@ -3,20 +3,22 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
+import com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
-import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.RepaymentDraft
 import java.io.IOException
 import java.util.UUID
 
@@ -458,6 +460,27 @@ internal class ExpenseDetailRepository(
         val created = bound.call { it.createNotificationDraft(draft.toRequest(notificationKey)) }
         created.toDomain()
     }
+
+    suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
+        core.errorHandler.safeCall {
+            if (!core.canModifyLedger()) {
+                throw RepositoryException("当前角色为只读，无法修改账本。")
+            }
+            if (expense.pendingSync || expense.id <= 0L) {
+                throw RepositoryException("这笔账单还没同步好，请稍后再处理。")
+            }
+            val amount = expense.amountCents ?: expense.homeAmountCents
+            if (expense.status != "confirmed" || amount == null || amount <= 0L) {
+                throw RepositoryException("这条账本记录还不能作为还款处理。")
+            }
+            val bound = core.ledgerRequestGuard.bind()
+            bound.call {
+                it.createRepaymentDraftFromExpense(
+                    expense.id.toString(),
+                    ExpenseRepaymentDraftCreateRequestDto(expectedRowVersion = expense.rowVersion),
+                )
+            }.toDomain()
+        }
 
     suspend fun retryOcr(id: Long, expectedRowVersion: Long): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()

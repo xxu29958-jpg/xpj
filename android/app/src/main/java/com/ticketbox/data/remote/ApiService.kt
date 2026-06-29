@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
@@ -21,6 +22,7 @@ import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
@@ -71,6 +73,7 @@ import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
@@ -326,6 +329,12 @@ interface ApiService {
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
+    @POST("api/expenses/{id}/repayment-draft")
+    suspend fun createRepaymentDraftFromExpense(
+        @Path("id") id: String,
+        @Body request: ExpenseRepaymentDraftCreateRequestDto,
+    ): RepaymentDraftDto
+
     @GET("api/expenses/{id}/image")
     @Streaming
     suspend fun expenseImage(@Path("id") id: Long): Response<ResponseBody>
@@ -569,6 +578,12 @@ interface ApiService {
         @Body request: DebtCreateRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
+
+    // ADR-0049 §D: transient debt-bill OCR/vision parser. Multipart image in, suggestion fields
+    // out; no Debt is created until the user confirms the normal create form.
+    @Multipart
+    @POST("api/debts/parse-bill")
+    suspend fun parseDebtBill(@Part file: MultipartBody.Part): DebtBillParseResponseDto
 
     // ADR-0049 §2 (slice 8c): one Debt's server-derived fold (for the detail screen). 404
     // debt_not_found; a cross-ledger participant gets the redacted shell (ledger_id null, §5.2).

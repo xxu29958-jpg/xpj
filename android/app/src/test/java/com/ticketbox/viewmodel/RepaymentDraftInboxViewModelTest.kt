@@ -4,6 +4,7 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
@@ -383,6 +384,11 @@ private class FakeRepayableDebtActions(
     }
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt(publicId))
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(debt("created"))
+    override suspend fun parseDebtBillImage(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+    ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
     override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> =
         Result.success(debt(publicId))
 

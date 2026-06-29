@@ -242,6 +242,10 @@ internal class StubApi(
         request: ExpenseUpdateRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
+    override suspend fun createRepaymentDraftFromExpense(
+        id: String,
+        request: com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = ledgerUnsupported()
     override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = ledgerUnsupported()
     override suspend fun replaceExpenseItems(
         id: String,
@@ -404,6 +408,9 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    override suspend fun parseDebtBill(
+        file: MultipartBody.Part,
+    ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = ledgerUnsupported()
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
     override suspend fun recordDebtRepayment(
         publicId: String,

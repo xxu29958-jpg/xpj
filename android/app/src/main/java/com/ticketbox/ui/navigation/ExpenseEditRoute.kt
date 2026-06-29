@@ -8,6 +8,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -52,6 +53,7 @@ internal fun ExpenseEditRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onCompleted: () -> Unit,
+    onOpenRepaymentDrafts: () -> Unit,
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
         key = "expense-edit-$expenseId",
@@ -59,6 +61,8 @@ internal fun ExpenseEditRoute(
     )
     val editState by editViewModel.uiState.collectAsStateWithLifecycle()
     val expense = editState.expense
+
+    RepaymentDraftOpenEffect(editState, editViewModel, onOpenRepaymentDrafts)
 
     if (expense == null) {
         ExpenseEditLoadingRoute(
@@ -77,6 +81,7 @@ internal fun ExpenseEditRoute(
         onReject = editViewModel::reject,
         onRetryOcr = editViewModel::retryOcr,
         onRecognizeText = editViewModel::recognizeText,
+        onCreateRepaymentDraft = editViewModel::createRepaymentDraftFromExpense,
         onOpenRecognizeText = editViewModel::openRecognizeTextDialog,
         onDismissRecognizeText = editViewModel::closeRecognizeTextDialog,
         onLoadFullImage = editViewModel::loadFullImage,
@@ -110,6 +115,19 @@ internal fun ExpenseEditRoute(
         allowConfirm = expense.status == "pending",
         allowReject = expense.status == "pending",
     )
+}
+
+@Composable
+private fun RepaymentDraftOpenEffect(
+    state: ExpenseEditUiState,
+    viewModel: ExpenseEditViewModel,
+    onOpenRepaymentDrafts: () -> Unit,
+) {
+    LaunchedEffect(state.openRepaymentDrafts) {
+        if (state.openRepaymentDrafts && viewModel.consumeOpenRepaymentDrafts()) {
+            onOpenRepaymentDrafts()
+        }
+    }
 }
 
 @Composable

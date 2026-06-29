@@ -22,6 +22,7 @@ from app.schemas import (
     ExpenseOcrRetryRequest,
     ExpenseRecognizeTextRequest,
     ExpenseRejectRequest,
+    ExpenseRepaymentDraftCreateRequest,
     ExpenseResponse,
     ExpenseSplitReplaceRequest,
     ExpenseSplitsResponse,
@@ -32,6 +33,7 @@ from app.schemas import (
     PaginatedExpensesResponse,
     PendingCategorySuggestionResponse,
     PendingDuplicateCandidateResponse,
+    RepaymentDraftResponse,
     StatusResponse,
     TagsResponse,
 )
@@ -46,6 +48,7 @@ from app.services.expense_service import (
     confirm_expense,
     create_manual_expense,
     create_notification_draft,
+    create_repayment_draft_from_expense,
     ensure_image_file,
     ensure_thumbnail_file,
     get_expense,
@@ -59,6 +62,7 @@ from app.services.expense_service import (
     undo_reject_expense,
     update_expense,
 )
+from app.services.debt_service import repayment_draft_response
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.idempotency import (
     claim_idempotent_request,
@@ -372,6 +376,34 @@ def get_expense_detail(
 ) -> ExpenseResponse:
     expense = get_expense(db, expense_id, auth.tenant_id)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+
+
+@router.post(
+    "/{expense_id}/repayment-draft",
+    response_model=RepaymentDraftResponse,
+    status_code=201,
+)
+def post_expense_repayment_draft(
+    expense_id: str,
+    payload: ExpenseRepaymentDraftCreateRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> RepaymentDraftResponse:
+    expense_pk, effective_row_version = resolve_expense_for_mutation(
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
+    )
+    draft = create_repayment_draft_from_expense(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        expense_id=expense_pk,
+        expected_row_version=effective_row_version,
+    )
+    return repayment_draft_response(draft)
 
 
 @router.get("/{expense_id}/image")

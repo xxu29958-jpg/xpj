@@ -115,7 +115,20 @@ class DebtGoalViewModel(
                             error = null,
                         )
                     }
-                    latchSelectedDetail(gen)
+                    if (_state.value.selectedGoal == null) {
+                        val refreshed = refreshedDebtGoalList(repository, goals)
+                        if (gen != loadGeneration) return@launch
+                        val refreshedById = refreshed.associateBy { it.publicId }
+                        _state.update { current ->
+                            if (current.selectedGoal != null) {
+                                current
+                            } else {
+                                current.copy(goals = current.goals.map { refreshedById[it.publicId] ?: it })
+                            }
+                        }
+                    } else {
+                        latchSelectedDetail(gen)
+                    }
                 },
                 onFailure = { err ->
                     _state.update {
@@ -301,6 +314,14 @@ class DebtGoalViewModel(
         celebrationController.consume()
     }
 }
+
+/**
+ * The list endpoint is read-only and intentionally does not persist a freshly completed
+ * debt_repayment goal. Fetch listed goals through the detail endpoint once so a fully repaid plan
+ * reflects as achieved in the list without requiring the user to open every goal manually.
+ */
+private suspend fun refreshedDebtGoalList(repository: ReportsActions, listedGoals: List<Goal>): List<Goal> =
+    listedGoals.map { goal -> repository.goal(goal.publicId).getOrNull() ?: goal }
 
 /**
  * ADR-0049 §6.6 计划达成撒花的边沿判定 + 去重 + 撒花信号的窄职责协作者（从 [DebtGoalViewModel] 抽出，

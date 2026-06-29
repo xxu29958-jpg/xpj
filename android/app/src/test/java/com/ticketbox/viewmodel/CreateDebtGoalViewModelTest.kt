@@ -8,6 +8,7 @@ import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
@@ -257,6 +258,11 @@ private class FakeCreateDebtActions(
         Result.failure(UnsupportedOperationException())
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> =
         Result.failure(UnsupportedOperationException())
+    override suspend fun parseDebtBillImage(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+    ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
     // slice 8c widened DebtActions; the create-debt-goal flow only reads listDebts for the picker.
     override suspend fun recordRepayment(

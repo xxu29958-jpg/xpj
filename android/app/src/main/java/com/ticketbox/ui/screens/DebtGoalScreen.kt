@@ -73,6 +73,7 @@ fun DebtGoalScreen(
     currency: CurrencyDisplay,
     onBack: () -> Unit,
     onCreate: () -> Unit,
+    onOpenLinkedDebt: (String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val handleBack = {
@@ -120,6 +121,7 @@ fun DebtGoalScreen(
                 state = state,
                 currency = currency,
                 viewModel = viewModel,
+                onOpenLinkedDebt = onOpenLinkedDebt,
                 callbacks = DebtGoalDetailCallbacks(
                     sortMode = sortMode,
                     onSortModeChange = { sortMode = it },
@@ -256,6 +258,7 @@ private fun LazyListScope.debtGoalDetailSection(
     state: DebtGoalUiState,
     currency: CurrencyDisplay,
     viewModel: DebtGoalViewModel,
+    onOpenLinkedDebt: (String) -> Unit,
     callbacks: DebtGoalDetailCallbacks,
 ) {
     val goal = state.selectedGoal ?: return
@@ -297,7 +300,7 @@ private fun LazyListScope.debtGoalDetailSection(
     val links =
         if (isPureExternal) evaluation.linkedDebts.sortedForPlan(callbacks.sortMode) else evaluation.linkedDebts
     items(links, key = { it.debtPublicId }) { link ->
-        DebtGoalLinkRow(link = link, currency = currency)
+        DebtGoalLinkRow(link = link, currency = currency, onClick = onOpenLinkedDebt)
     }
 }
 

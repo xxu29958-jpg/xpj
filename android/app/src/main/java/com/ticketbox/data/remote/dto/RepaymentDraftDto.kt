@@ -76,6 +76,13 @@ data class RepaymentDraftCreateRequestDto(
  * the chosen Debt's §2.1 stale-intent token + §3.6 idempotency fingerprint component (REQUIRED). The
  * route also carries an ADR-0042 `Idempotency-Key` header (supplied by the repository).
  */
+/** Body for `POST /api/expenses/{id}/repayment-draft`. */
+data class ExpenseRepaymentDraftCreateRequestDto(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+)
+
+/** Body for `POST /api/repayment-drafts/{id}/confirm`. */
 data class RepaymentDraftConfirmRequestDto(
     @param:Json(name = "target_debt_public_id")
     val targetDebtPublicId: String,

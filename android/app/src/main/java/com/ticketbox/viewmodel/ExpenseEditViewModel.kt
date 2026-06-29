@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -91,6 +92,8 @@ data class ExpenseEditUiState(
     val billSplitInviteSending: Boolean = false,
     val billSplitInviteMessage: UiText? = null,
     val recognizeTextDialogOpen: Boolean = false,
+    val repaymentDraftCreating: Boolean = false,
+    val openRepaymentDrafts: Boolean = false,
     val message: UiText? = null,
     val done: Boolean = false,
 )
@@ -479,6 +482,46 @@ class ExpenseEditViewModel(
         }
     }
 
+    fun createRepaymentDraftFromExpense() {
+        if (blockReadOnlyWrite()) return
+        val expense = _uiState.value.expense
+        if (expense == null) {
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded)) }
+            return
+        }
+        if (!expense.canCreateRepaymentDraft(_uiState.value.readOnly)) {
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_repayment_draft_unavailable)) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    repaymentDraftCreating = true,
+                    openRepaymentDrafts = false,
+                    message = null,
+                )
+            }
+            repository.createRepaymentDraftFromExpense(expense)
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            repaymentDraftCreating = false,
+                            openRepaymentDrafts = true,
+                            message = UiText.res(R.string.expense_edit_repayment_draft_created),
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            repaymentDraftCreating = false,
+                            message = error.toUiText(R.string.expense_edit_repayment_draft_failed),
+                        )
+                    }
+                }
+        }
+    }
+
     fun consumeDone(): Boolean {
         val wasDone = _uiState.value.done
         if (wasDone) {
@@ -487,12 +530,28 @@ class ExpenseEditViewModel(
         return wasDone
     }
 
+    fun consumeOpenRepaymentDrafts(): Boolean {
+        val shouldOpen = _uiState.value.openRepaymentDrafts
+        if (shouldOpen) {
+            _uiState.update { it.copy(openRepaymentDrafts = false) }
+        }
+        return shouldOpen
+    }
+
     private fun blockReadOnlyWrite(): Boolean {
         if (repository.canModifyLedger()) {
             _uiState.update { it.copy(readOnly = false) }
             return false
         }
-        _uiState.update { it.copy(readOnly = true, saving = false, ocrRunning = false, message = UiText.res(R.string.common_readonly_ledger)) }
+        _uiState.update {
+            it.copy(
+                readOnly = true,
+                saving = false,
+                ocrRunning = false,
+                repaymentDraftCreating = false,
+                message = UiText.res(R.string.common_readonly_ledger),
+            )
+        }
         return true
     }
 

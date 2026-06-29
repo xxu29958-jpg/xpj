@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.RepaymentDraft
 
 /**
  * 架构债 #5：ExpenseEditViewModel 依赖反转用接口。
@@ -61,6 +62,7 @@ interface ExpenseEditActions {
     suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome>
     suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+    suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft>
 
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems>
     suspend fun acknowledgeItemsMismatchAllowingOffline(

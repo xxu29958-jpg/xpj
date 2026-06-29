@@ -14,6 +14,27 @@ object DebtSourceTypes {
     const val BILL_SPLIT = "bill_split"
 }
 
+/**
+ * Transient suggestion from `/api/debts/parse-bill`. This is only form prefill data; saving still
+ * creates a normal manual external [Debt].
+ */
+data class DebtBillSuggestion(
+    val merchant: String?,
+    val principalAmountCents: Long?,
+    val installmentCount: Long?,
+    val installmentPeriodMonths: Long?,
+    val perPeriodAmountCents: Long?,
+    val repaymentDay: Long?,
+    val sourceText: String,
+    val confidence: Double?,
+) {
+    val hasAnyPrefill: Boolean
+        get() = !merchant.isNullOrBlank() ||
+            principalAmountCents != null ||
+            installmentCount != null ||
+            installmentPeriodMonths != null
+}
+
 data class Debt(
     val publicId: String,
     val ledgerId: String?,

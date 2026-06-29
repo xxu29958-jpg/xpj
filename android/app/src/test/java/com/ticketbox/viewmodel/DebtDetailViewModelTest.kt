@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
@@ -639,6 +640,12 @@ private class FakeDebtDetailActions(
     }
 
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(sampleDebt())
+
+    override suspend fun parseDebtBillImage(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+    ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
     override suspend fun recordRepayment(
         publicId: String,

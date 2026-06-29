@@ -29,6 +29,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
@@ -266,6 +267,9 @@ class ExpenseRepository(
         expectedLedgerId: String? = null,
         notificationKey: String? = null,
     ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedLedgerId, notificationKey)
+
+    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
+        detailRepository.createRepaymentDraftFromExpense(expense)
 
     override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         pendingRepository.confirmExpense(id, expectedRowVersion)

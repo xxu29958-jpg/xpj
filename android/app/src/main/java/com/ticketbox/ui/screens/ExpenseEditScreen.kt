@@ -21,6 +21,7 @@ import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppOutlinedButton
@@ -55,6 +56,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
+import com.ticketbox.ui.screens.expense.ExpenseRepaymentDraftPanel
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.OcrProgressCard
 import com.ticketbox.ui.screens.expense.SplitsEditorSheet
@@ -70,6 +72,7 @@ fun ExpenseEditScreen(
     onReject: () -> Unit,
     onRetryOcr: () -> Unit,
     onRecognizeText: (String) -> Unit = {},
+    onCreateRepaymentDraft: () -> Unit = {},
     onOpenRecognizeText: () -> Unit = {},
     onDismissRecognizeText: () -> Unit = {},
     onLoadFullImage: () -> Unit,
@@ -99,7 +102,7 @@ fun ExpenseEditScreen(
     allowReject: Boolean = true,
 ) {
     BackHandler {
-        if (!state.saving) {
+        if (!state.saving && !state.repaymentDraftCreating) {
             onDone()
         }
     }
@@ -422,6 +425,14 @@ fun ExpenseEditScreen(
             onEditItems = if (state.readOnly) null else onEditItems,
             onEditSplits = if (state.readOnly) null else onEditSplits,
         )
+
+        // 已入账流水进入还款复核箱；不在详情页直接抵扣欠款。
+        if (currentExpense.canCreateRepaymentDraft(state.readOnly)) {
+            ExpenseRepaymentDraftPanel(
+                creating = state.repaymentDraftCreating,
+                onCreate = onCreateRepaymentDraft,
+            )
+        }
 
         // 批 13：跨账本「找家人分摊」卡——仅已确认 + 有金额 + 非收到拆账 + 可写时出现。
         if (currentExpense.canInitiateBillSplit(state.readOnly)) {

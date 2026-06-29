@@ -81,9 +81,25 @@ class DebtGoalViewModelTest {
         viewModel.openDetail(listed)
         advanceUntilIdle()
 
-        assertEquals(listOf("debt-goal-1"), repo.goalCalls)
+        assertTrue(repo.goalCalls.contains("debt-goal-1"))
         // the writer GET latched achievement server-side — detail reflects the fresh copy.
         assertEquals("achieved", viewModel.state.value.selectedGoal?.debtRepayment?.evaluationState)
+    }
+
+    @Test
+    fun listRefreshRelatchesCompletedGoalsWithoutOpeningDetail() = runTest(dispatcher) {
+        val listed = debtGoal(evaluationState = "in_progress", links = listOf(externalLink("open")))
+        val latched = debtGoal(evaluationState = "achieved", links = listOf(externalLink("cleared")))
+        val repo = FakeReportsActions(
+            debtGoalsResult = Result.success(listOf(listed)),
+            goalResult = Result.success(latched),
+        )
+        val viewModel = DebtGoalViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(listOf("debt-goal-1"), repo.goalCalls)
+        assertNull(viewModel.state.value.selectedGoal)
+        assertEquals("achieved", viewModel.state.value.goals.single().debtRepayment?.evaluationState)
     }
 
     @Test

@@ -80,6 +80,10 @@ internal fun MainNavGraph(
                     shellState.markExpenseEditCompleted()
                     navController.popBackStack()
                 },
+                onOpenRepaymentDrafts = {
+                    shellState.openStatsSecondary(StatsSecondaryPage.RepaymentDrafts)
+                    navController.popBackStack()
+                },
             )
         }
     }

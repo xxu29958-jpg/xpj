@@ -78,6 +78,13 @@ fun Expense.canInitiateBillSplit(readOnly: Boolean): Boolean =
  * 落库的历史值，镜像 `web_stats_service.SOURCE_LABELS` 的键；展示层据此映射到
  * string 资源，未列出的值原样回显。
  */
+fun Expense.canCreateRepaymentDraft(readOnly: Boolean): Boolean =
+    status == "confirmed" &&
+        !pendingSync &&
+        id > 0L &&
+        ((amountCents ?: homeAmountCents)?.let { it > 0L } == true) &&
+        !readOnly
+
 object ExpenseSourceValues {
     const val IPHONE_SCREENSHOT = "iPhone截图"
     const val ANDROID_SCREENSHOT = "Android截图"

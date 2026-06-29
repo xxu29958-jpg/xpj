@@ -31,6 +31,7 @@ __all__ = [
     "ExpenseAcknowledgeItemsMismatchRequest",
     "ExpenseRecognizeTextRequest",
     "ExpenseRejectRequest",
+    "ExpenseRepaymentDraftCreateRequest",
     "ExpenseResponse",
     "ExpenseUndoRequest",
     "PendingCategorySuggestionResponse",
@@ -147,6 +148,14 @@ class ExpenseConfirmRequest(BaseModel):
 class ExpenseRejectRequest(BaseModel):
     """ADR-0038 PR-2b: ``POST /api/expenses/{id}/reject`` body — same
     contract as ExpenseConfirmRequest; ``rejected`` is also terminal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+
+
+class ExpenseRepaymentDraftCreateRequest(BaseModel):
+    """Create a repayment-draft review item from a confirmed Expense snapshot."""
 
     model_config = ConfigDict(extra="forbid")
 

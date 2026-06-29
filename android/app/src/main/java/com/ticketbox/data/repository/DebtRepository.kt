@@ -11,11 +11,15 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
 /**
@@ -29,6 +33,7 @@ interface DebtActions {
     suspend fun listDebts(): Result<List<Debt>>
     suspend fun getDebt(publicId: String): Result<Debt>
     suspend fun createDebt(draft: DebtDraft): Result<Debt>
+    suspend fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
     // ADR-0049 §3 (slice 8c) direct fact writes on an external/manual Debt. [expectedRowVersion]
     // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
     // (status / remaining / paid / a fresh row_version) the detail screen swaps in.
@@ -161,6 +166,27 @@ class DebtRepository(
                     // ADR-0042: single-use key — direct-only path, no offline replay.
                     idempotencyKey = UUID.randomUUID().toString(),
                 ).toDomain()
+            }
+        }
+    }
+
+    override suspend fun parseDebtBillImage(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+    ): Result<DebtBillSuggestion> {
+        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
+        if (bytes.isEmpty()) return Result.failure(RepositoryException("请选择一张账单截图。"))
+        return errorHandler.safeCall {
+            val cleanName = fileName
+                .trim()
+                .ifBlank { "ticketbox-debt-bill.jpg" }
+                .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val mediaType = (contentType?.takeIf { it.isNotBlank() } ?: "image/jpeg").toMediaTypeOrNull()
+            val body = bytes.toRequestBody(mediaType)
+            val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
+            ledgerRequestGuard.guardedCall { api ->
+                api.parseDebtBill(filePart).toDomain()
             }
         }
     }

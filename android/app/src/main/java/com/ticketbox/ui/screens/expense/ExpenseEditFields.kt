@@ -169,6 +169,47 @@ internal fun OcrProgressCard() {
 }
 
 @Composable
+internal fun ExpenseRepaymentDraftPanel(
+    creating: Boolean,
+    onCreate: () -> Unit,
+) {
+    AppSolidCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.expense_edit_repayment_draft_card_title),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(R.string.expense_edit_repayment_draft_card_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            AppOutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !creating,
+                onClick = onCreate,
+            ) {
+                Text(
+                    if (creating) {
+                        stringResource(R.string.expense_edit_repayment_draft_processing_button)
+                    } else {
+                        stringResource(R.string.expense_edit_repayment_draft_button)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 internal fun SelectableCategoryChip(
     selected: Boolean,
     label: String,

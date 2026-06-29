@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -53,6 +54,7 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -60,6 +62,12 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
+import com.ticketbox.viewmodel.updateDraftAmount
+import com.ticketbox.viewmodel.updateDraftCounterparty
+import com.ticketbox.viewmodel.updateDraftDirection
+import com.ticketbox.viewmodel.updateDraftInstallmentCount
+import com.ticketbox.viewmodel.updateDraftInstallmentPeriod
+import com.ticketbox.viewmodel.updateDraftKind
 import kotlinx.coroutines.delay
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
@@ -78,6 +86,7 @@ fun DebtListScreen(
     currency: CurrencyDisplay,
     onBack: () -> Unit,
     onOpenDebt: (Debt) -> Unit,
+    onParseBillImage: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
@@ -98,6 +107,11 @@ fun DebtListScreen(
         showAddSheet = false
         viewModel.resetDraft()
     }
+    LaunchedEffect(state.pendingBillParsePrefill) {
+        if (!state.pendingBillParsePrefill) return@LaunchedEffect
+        showAddSheet = true
+        viewModel.ackBillParsePrefill()
+    }
 
     BackHandler(onBack = onBack)
 
@@ -111,8 +125,10 @@ fun DebtListScreen(
         item {
             DebtListHeader(
                 canModify = state.canModify,
+                isParsingBill = state.isParsingBill,
                 onBack = onBack,
                 onAdd = { viewModel.resetDraft(); showAddSheet = true },
+                onParseBillImage = onParseBillImage,
             )
         }
         state.flashMessage?.let { msg ->
@@ -137,8 +153,10 @@ fun DebtListScreen(
 @Composable
 private fun DebtListHeader(
     canModify: Boolean,
+    isParsingBill: Boolean,
     onBack: () -> Unit,
     onAdd: () -> Unit,
+    onParseBillImage: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         TextButton(onClick = onBack) {
@@ -155,11 +173,26 @@ private fun DebtListHeader(
             subtitle = stringResource(R.string.debt_list_intro_body),
         ) {
             if (canModify) {
-                PrimaryCtaButton(
-                    text = stringResource(R.string.debt_list_add),
-                    icon = Icons.Default.Add,
-                    onClick = onAdd,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    QuietOutlinedButton(
+                        text = stringResource(
+                            if (isParsingBill) {
+                                R.string.debt_list_parse_bill_busy
+                            } else {
+                                R.string.debt_list_parse_bill
+                            },
+                        ),
+                        leadingIcon = Icons.Default.Search,
+                        enabled = !isParsingBill,
+                        onClick = onParseBillImage,
+                    )
+                    PrimaryCtaButton(
+                        text = stringResource(R.string.debt_list_add),
+                        icon = Icons.Default.Add,
+                        enabled = !isParsingBill,
+                        onClick = onAdd,
+                    )
+                }
             }
         }
     }

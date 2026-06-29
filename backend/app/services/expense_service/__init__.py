@@ -46,6 +46,9 @@ from app.services.expense_service._query import (
     resolve_expense,
     resolve_expense_for_mutation,
 )
+from app.services.expense_service._repayment_bridge import (
+    create_repayment_draft_from_expense,
+)
 from app.services.expense_service._update import (
     batch_update_confirmed_expenses,
     confirm_expense,
@@ -62,6 +65,7 @@ __all__ = [
     "create_manual_expense",
     "create_notification_draft",
     "create_pending_expense",
+    "create_repayment_draft_from_expense",
     "ensure_image_file",
     "ensure_thumbnail_file",
     "enrich_pending_expense",

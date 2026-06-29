@@ -216,6 +216,11 @@ internal class FakeApiService(
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
 
+    override suspend fun createRepaymentDraftFromExpense(
+        id: String,
+        request: com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = unsupported()
+
     override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
         itemFetchIds += id
         return expenseItemsResponse()
@@ -577,6 +582,9 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
+    override suspend fun parseDebtBill(
+        file: MultipartBody.Part,
+    ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = unsupported()
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun recordDebtRepayment(
         publicId: String,

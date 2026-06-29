@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
@@ -133,6 +134,80 @@ class DebtListViewModelTest {
         advanceUntilIdle()
 
         assertEquals(DebtKinds.UNSPECIFIED, repo.createDrafts.single().debtKind)
+    }
+
+    @Test
+    fun updateCounterpartyInheritsExistingTargetModel() = runTest(dispatcher) {
+        val existing = sampleDebt("huabei").copy(
+            counterpartyLabel = "花呗",
+            debtKind = DebtKinds.INSTALLMENT,
+            installmentCount = 12,
+            installmentPeriodMonths = 1,
+        )
+        val repo = FakeDebtActions(listResult = Result.success(listOf(existing)))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.updateDraftCounterparty(" 花 呗 ")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        val draft = repo.createDrafts.single()
+        assertEquals(DebtKinds.INSTALLMENT, draft.debtKind)
+        assertEquals(12, draft.installmentCount)
+        assertEquals(1, draft.installmentPeriodMonths)
+    }
+
+    @Test
+    fun ambiguousExistingTargetModelsDoNotAutoInherit() = runTest(dispatcher) {
+        val debts = listOf(
+            sampleDebt("one").copy(counterpartyLabel = "信用卡", debtKind = DebtKinds.REVOLVING),
+            sampleDebt("two").copy(counterpartyLabel = "信用卡", debtKind = DebtKinds.INSTALLMENT, installmentCount = 12),
+        )
+        val repo = FakeDebtActions(listResult = Result.success(debts))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.updateDraftCounterparty("信用卡")
+
+        assertEquals(DebtKinds.UNSPECIFIED, viewModel.state.value.addDraft.kind)
+    }
+
+    @Test
+    fun parseDebtBillPrefillsDraftAndRequestsSheetOpen() = runTest(dispatcher) {
+        val repo = FakeDebtActions(
+            parseBillResult = Result.success(
+                DebtBillSuggestion(
+                    merchant = "花呗",
+                    principalAmountCents = 120_000,
+                    installmentCount = 12,
+                    installmentPeriodMonths = 1,
+                    perPeriodAmountCents = 10_000,
+                    repaymentDay = 10,
+                    sourceText = "花呗 分期 12期",
+                    confidence = 0.8,
+                ),
+            ),
+        )
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.markBillParsePreparing())
+        viewModel.parseDebtBillImage("bill.jpg", "image/jpeg", byteArrayOf(1, 2, 3))
+        advanceUntilIdle()
+
+        val draft = viewModel.state.value.addDraft
+        assertEquals(listOf("bill.jpg"), repo.parseBillCalls)
+        assertEquals("花呗", draft.counterpartyLabel)
+        assertEquals("1200", draft.amountYuanInput)
+        assertEquals(DebtKinds.INSTALLMENT, draft.kind)
+        assertEquals("12", draft.installmentCountInput)
+        assertEquals("1", draft.installmentPeriodInput)
+        assertEquals(false, viewModel.state.value.isParsingBill)
+        assertTrue(viewModel.state.value.pendingBillParsePrefill)
+        viewModel.ackBillParsePrefill()
+        assertEquals(false, viewModel.state.value.pendingBillParsePrefill)
     }
 
     @Test
@@ -326,8 +401,10 @@ private class FakeDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
     var createResult: Result<Debt> = Result.success(sampleDebt()),
+    var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
 ) : DebtActions {
     val createDrafts = mutableListOf<DebtDraft>()
+    val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
 
     /** When set, listDebts() stalls until completed — used to interleave a slow load. */
@@ -349,6 +426,15 @@ private class FakeDebtActions(
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
         createDrafts += draft
         return createResult
+    }
+
+    override suspend fun parseDebtBillImage(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+    ): Result<DebtBillSuggestion> {
+        parseBillCalls += fileName
+        return parseBillResult
     }
 
     override suspend fun recordRepayment(
@@ -376,6 +462,17 @@ private class FakeDebtActions(
         debtKind: String,
     ): Result<Debt> = Result.success(sampleDebt(publicId))
 }
+
+private fun blankBillSuggestion(): DebtBillSuggestion = DebtBillSuggestion(
+    merchant = null,
+    principalAmountCents = null,
+    installmentCount = null,
+    installmentPeriodMonths = null,
+    perPeriodAmountCents = null,
+    repaymentDay = null,
+    sourceText = "",
+    confidence = null,
+)
 
 private fun sampleDebt(publicId: String = "debt-1"): Debt = Debt(
     publicId = publicId,

@@ -167,6 +167,48 @@ def _create_external_debt(
     return response.json()
 
 
+def _create_confirmed_expense(
+    client: TestClient,
+    identity,
+    *,
+    merchant: str = "京东",
+    category: str = "白条",
+    amount_cents: int = 391363,
+) -> dict:
+    response = client.post(
+        "/api/expenses/manual",
+        headers=identity.app_headers,
+        json={
+            "amount_cents": amount_cents,
+            "merchant": merchant,
+            "category": category,
+            "expense_time": "2026-06-28T13:13:00Z",
+        },
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["status"] == "confirmed"
+    return response.json()
+
+
+def _confirm_draft_to_debt(
+    client: TestClient,
+    identity,
+    *,
+    draft_public_id: str,
+    debt: dict,
+) -> dict:
+    response = client.post(
+        f"/api/repayment-drafts/{draft_public_id}/confirm",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "target_debt_public_id": debt["public_id"],
+            "expected_row_version": debt["row_version"],
+        },
+    )
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
 def _listed(client: TestClient, identity, *, public_id: str, status: str = "pending") -> dict:
     listing = client.get(
         f"/api/repayment-drafts?status={status}", headers=identity.app_headers
@@ -183,6 +225,108 @@ def test_list_pending_draft_carries_server_suggestion(client: TestClient, *, ide
     draft = _create_draft(client, identity, merchant_label="花呗", amount_cents=20000)
     listed = _listed(client, identity, public_id=draft["public_id"])
     assert listed["suggested_debt_public_id"] == debt["public_id"]
+
+
+def test_confirmed_expense_can_enter_repayment_draft_model(
+    client: TestClient, *, identity
+) -> None:
+    debt = _create_external_debt(
+        client,
+        identity,
+        counterparty_label="京东白条",
+        principal_amount_cents=500000,
+    )
+    expense = _create_confirmed_expense(client, identity, merchant="京东", category="白条")
+
+    response = client.post(
+        f"/api/expenses/{expense['id']}/repayment-draft",
+        headers=identity.app_headers,
+        json={"expected_row_version": expense["row_version"]},
+    )
+    assert response.status_code == 201, response.json()
+    draft = response.json()
+    assert draft["status"] == "pending"
+    assert draft["source"] == "other"
+    assert draft["amount_cents"] == expense["amount_cents"]
+    assert draft["merchant_label"] == "京东"
+
+    listed = _listed(client, identity, public_id=draft["public_id"])
+    assert listed["suggested_debt_public_id"] == debt["public_id"]
+
+
+def test_expense_repayment_draft_dedupes_same_expense(
+    client: TestClient, *, identity
+) -> None:
+    expense = _create_confirmed_expense(client, identity)
+    payload = {"expected_row_version": expense["row_version"]}
+
+    first = client.post(
+        f"/api/expenses/{expense['id']}/repayment-draft",
+        headers=identity.app_headers,
+        json=payload,
+    )
+    assert first.status_code == 201, first.json()
+    second = client.post(
+        f"/api/expenses/{expense['id']}/repayment-draft",
+        headers=identity.app_headers,
+        json=payload,
+    )
+    assert second.status_code == 201, second.json()
+    assert second.json()["public_id"] == first.json()["public_id"]
+
+    listing = client.get("/api/repayment-drafts", headers=identity.app_headers).json()
+    assert sum(1 for d in listing["items"] if d["public_id"] == first.json()["public_id"]) == 1
+
+
+def test_expense_repayment_draft_uses_existing_learning(
+    client: TestClient, *, identity
+) -> None:
+    learned_target = _create_external_debt(client, identity, counterparty_label="招商卡")
+    _create_external_debt(client, identity, counterparty_label="浦发卡")
+    learned = _create_draft(
+        client,
+        identity,
+        source="other",
+        merchant_label="账单还款",
+        amount_cents=1000,
+        notification_key="learn-expense-bridge",
+    )
+    _confirm_draft_to_debt(
+        client,
+        identity,
+        draft_public_id=learned["public_id"],
+        debt=learned_target,
+    )
+    expense = _create_confirmed_expense(
+        client,
+        identity,
+        merchant="账单还款",
+        category="其他",
+        amount_cents=1000,
+    )
+
+    created = client.post(
+        f"/api/expenses/{expense['id']}/repayment-draft",
+        headers=identity.app_headers,
+        json={"expected_row_version": expense["row_version"]},
+    )
+    assert created.status_code == 201, created.json()
+
+    listed = _listed(client, identity, public_id=created.json()["public_id"])
+    assert listed["suggested_debt_public_id"] == learned_target["public_id"]
+
+
+def test_expense_repayment_draft_rejects_stale_expense_snapshot(
+    client: TestClient, *, identity
+) -> None:
+    expense = _create_confirmed_expense(client, identity)
+    response = client.post(
+        f"/api/expenses/{expense['id']}/repayment-draft",
+        headers=identity.app_headers,
+        json={"expected_row_version": expense["row_version"] + 1},
+    )
+    assert response.status_code == 409, response.json()
+    assert response.json()["error"] == "state_conflict"
 
 
 def test_list_suggestion_absent_when_ambiguous(client: TestClient, *, identity) -> None:

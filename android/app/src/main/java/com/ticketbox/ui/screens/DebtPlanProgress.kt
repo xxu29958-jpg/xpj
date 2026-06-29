@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -234,13 +235,19 @@ private fun PlanAmountLine(evaluation: DebtRepaymentEvaluation, currency: Curren
  * 外部行走会计 meta（应付/应收 · 剩余 · 本金）——天然处理混装计划（逐行按各自类型措辞）。
  */
 @Composable
-internal fun DebtGoalLinkRow(link: DebtGoalLink, currency: CurrencyDisplay) {
+internal fun DebtGoalLinkRow(
+    link: DebtGoalLink,
+    currency: CurrencyDisplay,
+    onClick: (String) -> Unit,
+) {
     val isMember = link.counterpartyType == DebtCounterpartyTypes.MEMBER
-    val cardModifier = if (link.isVoided) {
+    val baseModifier = if (link.isVoided) {
         Modifier.fillMaxWidth().alpha(AppAlpha.opaque)
     } else {
         Modifier.fillMaxWidth()
     }
+    val cardModifier =
+        if (link.isVoided) baseModifier else baseModifier.clickable { onClick(link.debtPublicId) }
     AppGlassCard(modifier = cardModifier) {
         Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

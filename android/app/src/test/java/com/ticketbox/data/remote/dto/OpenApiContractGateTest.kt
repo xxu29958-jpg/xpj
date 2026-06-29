@@ -150,6 +150,7 @@ class OpenApiContractGateTest {
         Pairing(RepaymentDraftDto::class, "RepaymentDraftResponse"),
         Pairing(RepaymentDraftListResponseDto::class, "RepaymentDraftListResponse"),
         Pairing(RepaymentDraftCreateRequestDto::class, "RepaymentDraftCreateRequest"),
+        Pairing(ExpenseRepaymentDraftCreateRequestDto::class, "ExpenseRepaymentDraftCreateRequest"),
         Pairing(RepaymentDraftConfirmRequestDto::class, "RepaymentDraftConfirmRequest"),
         Pairing(RepaymentDraftDismissRequestDto::class, "RepaymentDraftDismissRequest"),
     )

@@ -1,9 +1,11 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtSourceTypes
@@ -35,6 +37,17 @@ fun DebtDto.toDomain(): Debt = Debt(
     rowVersion = rowVersion,
     viewerIsDebtor = viewerIsDebtor,
     isForgiven = isForgiven,
+)
+
+fun DebtBillParseResponseDto.toDomain(): DebtBillSuggestion = DebtBillSuggestion(
+    merchant = merchant,
+    principalAmountCents = principalAmountCents,
+    installmentCount = installmentCount,
+    installmentPeriodMonths = installmentPeriodMonths,
+    perPeriodAmountCents = perPeriodAmountCents,
+    repaymentDay = repaymentDay,
+    sourceText = sourceText,
+    confidence = confidence,
 )
 
 /**

@@ -98,6 +98,30 @@ data class DebtListResponseDto(
 )
 
 /**
+ * Response for `POST /api/debts/parse-bill` — transient OCR/vision suggestions for a debt bill.
+ *
+ * All fields are nullable except [sourceText]: an unconfigured provider returns an empty suggestion
+ * so the Android form can still fall back to manual entry. The suggestion is not a fact; creating a
+ * Debt still goes through [DebtCreateRequestDto].
+ */
+data class DebtBillParseResponseDto(
+    val merchant: String? = null,
+    @param:Json(name = "principal_amount_cents")
+    val principalAmountCents: Long? = null,
+    @param:Json(name = "installment_count")
+    val installmentCount: Long? = null,
+    @param:Json(name = "installment_period_months")
+    val installmentPeriodMonths: Long? = null,
+    @param:Json(name = "per_period_amount_cents")
+    val perPeriodAmountCents: Long? = null,
+    @param:Json(name = "repayment_day")
+    val repaymentDay: Long? = null,
+    @param:Json(name = "source_text")
+    val sourceText: String = "",
+    val confidence: Double? = null,
+)
+
+/**
  * Body for `POST /api/debts` — create one external/manual Debt (ADR-0049 §2 / §5.1).
  *
  * slice 8 submits the home-currency path only (`principalAmountCents`). The backend forces

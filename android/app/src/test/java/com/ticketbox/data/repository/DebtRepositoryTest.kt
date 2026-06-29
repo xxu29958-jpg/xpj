@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
@@ -22,6 +23,7 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
@@ -120,6 +122,45 @@ class DebtRepositoryTest {
 
         assertTrue(result.isFailure)
         assertTrue(handler.createCalls.isEmpty())
+    }
+
+    @Test
+    fun parseDebtBillUploadsImageAndMapsSuggestion() = runTest {
+        val handler = DebtApiHandler().apply {
+            parseBillResult = DebtBillParseResponseDto(
+                merchant = "花呗",
+                principalAmountCents = 120_000,
+                installmentCount = 12,
+                installmentPeriodMonths = 1,
+                perPeriodAmountCents = 10_000,
+                repaymentDay = 10,
+                sourceText = "花呗 分期 12期",
+                confidence = 0.8,
+            )
+        }
+
+        val suggestion = repository(handler).parseDebtBillImage(
+            fileName = """bad:name?.png""",
+            contentType = "image/png",
+            bytes = byteArrayOf(1, 2, 3),
+        ).getOrThrow()
+
+        assertEquals(1, handler.parseBillCalls.size)
+        assertEquals("花呗", suggestion.merchant)
+        assertEquals(120_000L, suggestion.principalAmountCents)
+        assertEquals(12L, suggestion.installmentCount)
+    }
+
+    @Test
+    fun parseDebtBillViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .parseDebtBillImage("bill.jpg", "image/jpeg", byteArrayOf(1))
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(handler.parseBillCalls.isEmpty())
     }
 
     @Test
@@ -701,6 +742,7 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
 
 private class DebtApiHandler : InvocationHandler {
     val createCalls = mutableListOf<CreateDebtCall>()
+    val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
     val adjustmentCalls = mutableListOf<AdjustmentCall>()
     val voidCalls = mutableListOf<VoidCall>()
@@ -720,6 +762,7 @@ private class DebtApiHandler : InvocationHandler {
     // ADR-0049 ⑤c (slice ⑤c-2) cross-ledger receivables read.
     var receivablesResult: DebtListResponseDto? = null
     var receivablesError: Throwable? = null
+    var parseBillResult: DebtBillParseResponseDto? = null
     // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
     var debtResult: DebtDto? = null
     var writeResult: DebtDto? = null
@@ -761,6 +804,10 @@ private class DebtApiHandler : InvocationHandler {
                     idempotencyKey = values[1] as String?,
                 )
                 debtDto(publicId = "created")
+            }
+            "parseDebtBill" -> {
+                parseBillCalls += values[0] as MultipartBody.Part
+                parseBillResult ?: DebtBillParseResponseDto()
             }
             "recordDebtRepayment" -> {
                 repaymentCalls += RepaymentCall(

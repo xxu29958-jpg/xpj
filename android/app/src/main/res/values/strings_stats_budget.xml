@@ -16,7 +16,7 @@
     <string name="stats_header_planning">规划</string>
     <string name="stats_header_open_budget">预算</string>
     <string name="stats_header_open_recurring">固定支出</string>
-    <string name="stats_header_open_income_plans">收入计划</string>
+    <string name="stats_header_open_income_plans">收入记录</string>
     <string name="stats_header_open_debt_goals">还债目标</string>
     <string name="stats_header_open_debts">欠款</string>
     <string name="stats_header_open_receivables">欠我的</string>
@@ -176,6 +176,8 @@
     <string name="debt_list_topbar_title">欠款</string>
     <string name="debt_list_intro_body">记录与外部对象之间的欠款，跟踪每笔的清偿进度。</string>
     <string name="debt_list_add">记一笔欠款</string>
+    <string name="debt_list_parse_bill">识别还款账单</string>
+    <string name="debt_list_parse_bill_busy">识别中…</string>
     <string name="debt_list_empty_title">还没有欠款记录</string>
     <string name="debt_list_empty_body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</string>
     <string name="debt_list_card_principal">本金 %1$s</string>
@@ -192,6 +194,9 @@
     <string name="debt_create_added">已记录欠款。</string>
     <string name="debt_create_failed">保存失败，请稍后再试。</string>
     <string name="debt_create_label_kind">还款类型（可选）</string>
+    <string name="debt_bill_parse_done">已识别并填入表单。</string>
+    <string name="debt_bill_parse_empty">暂未识别出字段，已打开表单。</string>
+    <string name="debt_bill_parse_failed">账单识别失败，请稍后再试。</string>
 
     <!-- ADR-0049 P3b / ⑤c (slice ⑤c-2) 欠我的(应收)：跨账本债权人的只读发现面。每行复用 §1A 的
          communal MemberDebtRow（返回按钮复用 debt_list_topbar_back）。文案镜像 web ⑤c-3 receivables.html

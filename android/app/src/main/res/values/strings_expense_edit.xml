@@ -250,4 +250,13 @@
     <string name="expense_edit_bill_split_send_failed">没有发出成功，请稍后再试。</string>
     <string name="expense_edit_bill_split_cancel_failed">撤回失败，请稍后再试。</string>
 
+    <!-- 已入账流水转入还款复核箱 -->
+    <string name="expense_edit_repayment_draft_card_title">关联到欠款</string>
+    <string name="expense_edit_repayment_draft_card_subtitle">把这条已入账流水放到还款待确认，再选择对应欠款。</string>
+    <string name="expense_edit_repayment_draft_button">作为还款处理</string>
+    <string name="expense_edit_repayment_draft_processing_button">处理中</string>
+    <string name="expense_edit_repayment_draft_created">已放入还款待确认。</string>
+    <string name="expense_edit_repayment_draft_failed">这笔没有转入还款待确认。</string>
+    <string name="expense_edit_repayment_draft_unavailable">这条账本记录还不能作为还款处理。</string>
+
 </resources>

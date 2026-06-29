@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -359,6 +360,39 @@ internal class ExpenseEditViewModelTest {
         assertNotNull(vm.uiState.value.message)
     }
 
+    // ── 已入账流水转入还款复核 ──
+    @Test
+    fun createRepaymentDraftFromConfirmedExpenseOpensReview() = edit { fake ->
+        val confirmed = fake.baseExpense.copy(status = "confirmed", amountCents = 391363L)
+        fake.fetchExpenseResponder = { Result.success(confirmed) }
+        fake.repaymentDraftResponder = { Result.success(fake.repaymentDraft()) }
+        val vm = viewModel(fake)
+
+        vm.createRepaymentDraftFromExpense()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(1, fake.repaymentDraftCalls)
+        assertEquals(confirmed, fake.repaymentDraftExpense)
+        assertFalse(state.repaymentDraftCreating)
+        assertNotNull(state.message)
+        assertTrue(state.openRepaymentDrafts)
+        assertTrue(vm.consumeOpenRepaymentDrafts())
+        assertFalse(vm.consumeOpenRepaymentDrafts())
+    }
+
+    @Test
+    fun createRepaymentDraftRefusesPendingExpense() = edit { fake ->
+        val vm = viewModel(fake)
+
+        vm.createRepaymentDraftFromExpense()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.repaymentDraftCalls)
+        assertFalse(vm.uiState.value.openRepaymentDrafts)
+        assertNotNull(vm.uiState.value.message)
+    }
+
     // ── 批 13 拆账发起 ──
 
     /** 一个已确认、有金额的账单 fake，作为发起拆账的前提（init 会自动拉本票已发列表）。 */
@@ -567,6 +601,21 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         senderExpenseId = senderExpenseId,
     )
 
+    fun repaymentDraft(publicId: String = "rd-1"): RepaymentDraft = RepaymentDraft(
+        publicId = publicId,
+        source = "other",
+        amountCents = 391363L,
+        homeCurrencyCode = "CNY",
+        merchantLabel = "Merchant",
+        capturedAt = "2026-06-28T13:13:00Z",
+        status = "pending",
+        suggestedDebtPublicId = null,
+        committedDebtPublicId = null,
+        committedRepaymentPublicId = null,
+        createdAt = "2026-06-28T13:14:00Z",
+        resolvedAt = null,
+    )
+
     var fetchExpenseResponder: (suspend (Long) -> Result<Expense>)? = null
     // issue #65 slice 5: the negative-id (offline-create) local-cache load path.
     var localCacheResponder: (suspend (Long) -> Result<Expense>)? = null
@@ -575,6 +624,7 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     var ackResponder: (suspend (Expense, ExpenseItems) -> Result<ItemsAckOutcome>)? = null
     var replaceItemsResponder: (suspend (Expense, List<ExpenseItemDraft>, ExpenseItems) -> Result<ReplaceItemsOutcome>)? = null
     var replaceSplitsResponder: (suspend (Expense, List<ExpenseSplitDraft>, ExpenseSplits) -> Result<ReplaceSplitsOutcome>)? = null
+    var repaymentDraftResponder: (suspend (Expense) -> Result<RepaymentDraft>)? = null
     // 批 13 拆账发起：成员花名册 / 已发列表 / 发起 / 撤回。
     var splitMembersResponder: (suspend () -> Result<List<FamilyMember>>)? = null
     var fetchBillSplitSentResponder: (suspend () -> Result<List<BillSplitSent>>)? = null
@@ -591,11 +641,15 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         private set
     var replaceSplitsCalls: Int = 0
         private set
+    var repaymentDraftCalls: Int = 0
+        private set
     var createBillSplitCalls: Int = 0
         private set
     var lastCreateBillSplitArgs: Triple<Long, Long, Long>? = null
         private set
     var confirmedExpense: Expense? = null
+        private set
+    var repaymentDraftExpense: Expense? = null
         private set
     var localCacheCalls: Int = 0
         private set
@@ -651,6 +705,13 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
 
     override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         error("markNotDuplicate not exercised in these tests")
+
+    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> {
+        repaymentDraftCalls += 1
+        repaymentDraftExpense = expense
+        return repaymentDraftResponder?.invoke(expense)
+            ?: error("repaymentDraftResponder not set")
+    }
 
     override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = Result.success(items(id))
 

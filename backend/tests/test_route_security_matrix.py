@@ -67,6 +67,11 @@ from fastapi.testclient import TestClient
         ),
         (
             "POST",
+            "/api/expenses/1/repayment-draft",
+            {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
+        ),
+        (
+            "POST",
             "/api/expenses/1/items/acknowledge-mismatch",
             {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
         ),
