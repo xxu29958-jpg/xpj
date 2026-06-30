@@ -7,8 +7,11 @@ import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.MerchantAliasSaveOutcome
 import com.ticketbox.data.repository.MerchantRepository
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MerchantCatalog
+import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
+import com.ticketbox.domain.model.MerchantCatalogMergeResult
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,8 +28,17 @@ data class MerchantAliasUiState(
     // ADR-0038 undo: the just-(soft-)deleted alias, surfaced as a 5s 撤销
     // affordance. Null when there is nothing to undo.
     val undoableAlias: MerchantAlias? = null,
+    // ADR-0054: a key-changing rename collided with an existing active merchant;
+    // the screen opens a user-confirmed merge dialog with the target preselected.
+    val mergeSuggestion: MerchantCatalogMergeSuggestion? = null,
 )
 
+data class MerchantCatalogMergeSuggestion(
+    val source: MerchantCatalog,
+    val target: MerchantCatalog,
+)
+
+@Suppress("TooManyFunctions")
 class MerchantAliasViewModel(
     private val merchantRepository: MerchantRepository,
     private val repository: ExpenseRepository,
@@ -81,6 +93,7 @@ class MerchantAliasViewModel(
     }
 
     fun toggleMerchantCatalog(item: MerchantCatalog) {
+        if (_uiState.value.busy || item.isMerged) return
         if (!canModifyCurrentLedger()) {
             _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
@@ -106,11 +119,120 @@ class MerchantAliasViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_catalog_update_failed)) } }
+                .onFailure { error -> _uiState.update { it.copy(message = catalogErrorMessage(error)) } }
+        }
+    }
+
+    fun renameMerchantCatalog(item: MerchantCatalog, displayName: String) {
+        if (_uiState.value.busy || item.isMerged) return
+        val cleanName = displayName.trim()
+        if (cleanName == item.displayName) return
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null, mergeSuggestion = null) }
+            merchantRepository.updateMerchantCatalog(
+                publicId = item.publicId,
+                expectedRowVersion = item.rowVersion,
+                displayName = cleanName,
+            )
+                .onSuccess { updated ->
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantCatalog = state.merchantCatalog
+                                .map { if (it.publicId == updated.publicId) updated else it }
+                                .sortedMerchantCatalog(),
+                            busy = false,
+                            message = UiText.res(R.string.merchant_catalog_renamed, updated.displayName),
+                        )
+                    }
+                }
+                .onFailure { error -> handleCatalogRenameFailure(error, source = item) }
+        }
+    }
+
+    private fun handleCatalogRenameFailure(error: Throwable, source: MerchantCatalog) {
+        val exception = error as? RepositoryException
+        val target = exception?.toMergeTarget(_uiState.value.merchantCatalog)
+        if (target != null) {
+            _uiState.update {
+                it.copy(
+                    busy = false,
+                    message = UiText.res(R.string.merchant_catalog_rename_conflict_merge_prompt, target.displayName),
+                    mergeSuggestion = MerchantCatalogMergeSuggestion(source, target),
+                )
+            }
+            return
+        }
+        _uiState.update { it.copy(busy = false, message = catalogErrorMessage(error)) }
+    }
+
+    /** The screen consumed the merge suggestion and opened the dialog. */
+    fun consumeMergeSuggestion() {
+        _uiState.update { it.copy(mergeSuggestion = null) }
+    }
+
+    fun mergeMerchantCatalog(
+        source: MerchantCatalog,
+        target: MerchantCatalog,
+        aliasPolicy: MerchantCatalogAliasPolicy,
+    ) {
+        if (_uiState.value.busy || source.publicId == target.publicId || source.isMerged || !target.isActive) return
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null, mergeSuggestion = null) }
+            merchantRepository.mergeMerchantCatalog(
+                sourcePublicId = source.publicId,
+                sourceRowVersion = source.rowVersion,
+                targetPublicId = target.publicId,
+                targetRowVersion = target.rowVersion,
+                aliasPolicy = aliasPolicy,
+            )
+                .onSuccess { result -> finishCatalogMerge(source, target, result, aliasPolicy) }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = catalogErrorMessage(error)) } }
+        }
+    }
+
+    private suspend fun finishCatalogMerge(
+        source: MerchantCatalog,
+        target: MerchantCatalog,
+        result: MerchantCatalogMergeResult,
+        aliasPolicy: MerchantCatalogAliasPolicy,
+    ) {
+        val refreshedAliases = if (result.createdAliasPublicId != null) {
+            merchantRepository.merchantAliases().getOrNull()?.sortedMerchantAliases()
+        } else {
+            null
+        }
+        _uiState.update { state ->
+            state.copy(
+                merchantCatalog = state.merchantCatalog
+                    .map { item ->
+                        when (item.publicId) {
+                            result.source.publicId -> result.source
+                            result.target.publicId -> result.target
+                            else -> item
+                        }
+                    }
+                    .sortedMerchantCatalog(),
+                merchantAliases = refreshedAliases ?: state.merchantAliases,
+                busy = false,
+                message = if (aliasPolicy == MerchantCatalogAliasPolicy.CreateSourceAlias) {
+                    UiText.res(R.string.merchant_catalog_merged_with_alias, source.displayName, target.displayName)
+                } else {
+                    UiText.res(R.string.merchant_catalog_merged, source.displayName, target.displayName)
+                },
+            )
         }
     }
 
     fun deleteMerchantCatalog(item: MerchantCatalog) {
+        if (_uiState.value.busy || item.isMerged) return
         if (!canModifyCurrentLedger()) {
             _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
             return
@@ -128,7 +250,9 @@ class MerchantAliasViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_catalog_delete_failed)) } }
+                .onFailure { error ->
+                    _uiState.update { it.copy(message = catalogErrorMessage(error, R.string.merchant_catalog_delete_failed)) }
+                }
         }
     }
 
@@ -265,7 +389,43 @@ private fun List<MerchantAlias>.sortedMerchantAliases(): List<MerchantAlias> =
 
 private fun List<MerchantCatalog>.sortedMerchantCatalog(): List<MerchantCatalog> =
     sortedWith(
-        compareByDescending<MerchantCatalog> { it.isActive }
+        compareBy<MerchantCatalog> { it.catalogStatusRank() }
             .thenBy { it.merchantKey }
             .thenBy { it.displayName },
     )
+
+private fun MerchantCatalog.catalogStatusRank(): Int =
+    when (status) {
+        "active" -> 0
+        "hidden" -> 1
+        "merged" -> 2
+        else -> 3
+    }
+
+private fun RepositoryException.toMergeTarget(catalog: List<MerchantCatalog>): MerchantCatalog? {
+    if (errorCode != "state_conflict") return null
+    val publicId = conflictMerchantPublicId ?: return null
+    val rowVersion = conflictMerchantRowVersion ?: return null
+    if (conflictMerchantDeleted == true) return null
+    val local = catalog.firstOrNull { it.publicId == publicId } ?: return null
+    val target = local.copy(
+        displayName = conflictMerchantDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: local.displayName,
+        status = conflictMerchantStatus?.trim()?.takeIf { it.isNotBlank() } ?: local.status,
+        rowVersion = rowVersion,
+    )
+    return target.takeIf { it.isActive }
+}
+
+private fun catalogErrorMessage(
+    error: Throwable,
+    fallback: Int = R.string.merchant_catalog_update_failed,
+): UiText {
+    val exception = error as? RepositoryException
+    if (exception?.errorCode == "state_conflict") {
+        if (exception.conflictAliasPublicId != null) {
+            return UiText.res(R.string.merchant_catalog_error_alias_conflict)
+        }
+        return UiText.res(R.string.merchant_catalog_error_state_conflict)
+    }
+    return error.toUiText(fallback)
+}

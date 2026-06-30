@@ -14,12 +14,51 @@ import android.util.Log
 class RepositoryException(
     message: String,
     val errorCode: String? = null,
+    val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
+) : RuntimeException(message) {
+    val conflictTagPublicId: String? get() = conflict.tag.publicId
+    val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion
+    val conflictMerchantPublicId: String? get() = conflict.merchant.publicId
+    val conflictMerchantRowVersion: Long? get() = conflict.merchant.rowVersion
+    val conflictMerchantDisplayName: String? get() = conflict.merchant.displayName
+    val conflictMerchantStatus: String? get() = conflict.merchant.status
+    val conflictMerchantDeleted: Boolean? get() = conflict.merchant.deleted
+    val conflictAliasPublicId: String? get() = conflict.alias.publicId
+    val conflictAliasRowVersion: Long? get() = conflict.alias.rowVersion
+    val conflictAliasEnabled: Boolean? get() = conflict.alias.enabled
+    val conflictAliasDeleted: Boolean? get() = conflict.alias.deleted
+}
+
+data class RepositoryConflictDetails(
     // ADR-0043 契约 5: present only on a `tag_conflict` — the colliding tag's fresh
     // server identity, so a rename can steer into a merge without reusing a stale
-    // local OCC token. Null for every other error.
-    val conflictTagPublicId: String? = null,
-    val conflictTagRowVersion: Long? = null,
-) : RuntimeException(message)
+    // local OCC token.
+    val tag: TagConflictDetails = TagConflictDetails(),
+    // ADR-0054: present when a merchant-catalog key collision can be resolved
+    // by a user-confirmed merge. Mirrors the flat ErrorDto fields.
+    val merchant: MerchantConflictDetails = MerchantConflictDetails(),
+    val alias: AliasConflictDetails = AliasConflictDetails(),
+)
+
+data class TagConflictDetails(
+    val publicId: String? = null,
+    val rowVersion: Long? = null,
+)
+
+data class MerchantConflictDetails(
+    val publicId: String? = null,
+    val rowVersion: Long? = null,
+    val displayName: String? = null,
+    val status: String? = null,
+    val deleted: Boolean? = null,
+)
+
+data class AliasConflictDetails(
+    val publicId: String? = null,
+    val rowVersion: Long? = null,
+    val enabled: Boolean? = null,
+    val deleted: Boolean? = null,
+)
 
 /** Maps backend error codes to user-facing Chinese strings.
  *  Shared by every Repository in this module — kept out of the per-protocol
@@ -50,6 +89,7 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         "permission_denied" -> "当前角色为只读，无法修改账本。"
         "merchant_alias_not_found" -> "商家别名不存在。"
         "merchant_alias_conflict" -> "商家别名已指向其他商家。"
+        "merchant_catalog_not_found" -> "商家不存在或已删除。"
         // ADR-0043 tag management. tag_conflict steers the user to 合并 (契约 5);
         // tag_undo_not_found is the elapsed 5-minute undo window.
         "tag_not_found" -> "标签不存在或已删除。"

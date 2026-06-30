@@ -104,6 +104,8 @@ class OpenApiContractGateTest {
         Pairing(MerchantCatalogCreateRequest::class, "MerchantCatalogCreateRequest"),
         Pairing(MerchantCatalogUpdateRequest::class, "MerchantCatalogUpdateRequest"),
         Pairing(MerchantCatalogDeleteRequest::class, "MerchantCatalogDeleteRequest"),
+        Pairing(MerchantCatalogMergeRequest::class, "MerchantCatalogMergeRequest"),
+        Pairing(MerchantCatalogMergeDto::class, "MerchantCatalogMergeResponse"),
         // ADR-0049 §6 (slice 7) debt_repayment goal surface. GoalDto was previously
         // ungated — slice 6 widened GoalResponse (the spend fields became nullable +
         // a nested debt_repayment block) so bring it under the gate now, along with

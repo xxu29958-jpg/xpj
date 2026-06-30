@@ -65,6 +65,8 @@ import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.data.remote.dto.MerchantCatalogListDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
@@ -404,6 +406,12 @@ interface ApiService {
         @Body request: MerchantCatalogDeleteRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): MerchantCatalogDto
+
+    @POST("api/merchants/catalog/{sourcePublicId}/merge")
+    suspend fun mergeMerchantCatalog(
+        @Path("sourcePublicId") sourcePublicId: String,
+        @Body request: MerchantCatalogMergeRequest,
+    ): MerchantCatalogMergeDto
 
     @GET("api/merchants/aliases")
     suspend fun merchantAliases(): MerchantAliasListDto

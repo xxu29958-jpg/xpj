@@ -2,7 +2,9 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.TagActions
+import com.ticketbox.data.repository.TagConflictDetails
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.TagMutationResult
 import com.ticketbox.domain.model.TagUndoResult
@@ -191,8 +193,12 @@ class TagManagementViewModelTest {
         repo.failNext = RepositoryException(
             "标签名已被占用，请改用合并。",
             "tag_conflict",
-            conflictTagPublicId = "b",
-            conflictTagRowVersion = 9L, // server is newer than the locally-loaded 3
+            conflict = RepositoryConflictDetails(
+                tag = TagConflictDetails(
+                    publicId = "b",
+                    rowVersion = 9L, // server is newer than the locally-loaded 3
+                ),
+            ),
         )
         vm.renameTag(tag("a", "出差", 1), "差旅")
         advanceUntilIdle()

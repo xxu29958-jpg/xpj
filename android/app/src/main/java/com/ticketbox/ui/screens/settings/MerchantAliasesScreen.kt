@@ -29,12 +29,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MerchantCatalog
+import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.viewmodel.MerchantCatalogMergeSuggestion
 import kotlinx.coroutines.delay
 
 @Composable
@@ -46,12 +48,16 @@ fun MerchantAliasesScreen(
     message: UiText?,
     onBack: () -> Unit,
     onCreateCatalog: (String) -> Unit,
+    onRenameCatalog: (MerchantCatalog, String) -> Unit,
     onToggleCatalog: (MerchantCatalog) -> Unit,
+    onMergeCatalog: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
     onDeleteCatalog: (MerchantCatalog) -> Unit,
     onCreateAlias: (String, String) -> Unit,
     onToggleAlias: (MerchantAlias) -> Unit,
     onDeleteAlias: (MerchantAlias) -> Unit,
     undoableAlias: MerchantAlias? = null,
+    mergeSuggestion: MerchantCatalogMergeSuggestion? = null,
+    onDismissMergeSuggestion: () -> Unit = {},
     onUndoDelete: () -> Unit = {},
     onDismissUndo: () -> Unit = {},
 ) {
@@ -60,12 +66,25 @@ fun MerchantAliasesScreen(
     var aliasText by remember { mutableStateOf("") }
     var catalogMessage by remember { mutableStateOf<String?>(null) }
     var aliasMessage by remember { mutableStateOf<String?>(null) }
+    val catalogDialogController = rememberMerchantCatalogDialogController()
     var deletingCatalog by remember { mutableStateOf<MerchantCatalog?>(null) }
     var deletingAlias by remember { mutableStateOf<MerchantAlias?>(null) }
     // ADR-0044: stringResource is @Composable-only, but this validation message is
     // assigned inside a non-composable onClick lambda below. Hoist the resolved string here.
     val catalogValidationMessage = stringResource(R.string.merchant_catalog_create_validation)
     val createValidationMessage = stringResource(R.string.merchant_aliases_create_validation)
+
+    MerchantCatalogDialogHost(
+        controller = catalogDialogController,
+        catalog = catalog,
+        busy = busy,
+        mergeSuggestion = mergeSuggestion,
+        actions = MerchantCatalogDialogHostActions(
+            onRename = onRenameCatalog,
+            onMerge = onMergeCatalog,
+            onDismissSuggestion = onDismissMergeSuggestion,
+        ),
+    )
 
     deletingCatalog?.let { item ->
         AlertDialog(
@@ -188,8 +207,12 @@ fun MerchantAliasesScreen(
             catalog = catalog,
             readOnly = readOnly,
             busy = busy,
-            onToggleCatalog = onToggleCatalog,
-            onDeleteCatalog = { deletingCatalog = it },
+            actions = MerchantCatalogListActions(
+                onRename = catalogDialogController::openRename,
+                onToggle = onToggleCatalog,
+                onMerge = catalogDialogController::openMerge,
+                onDelete = { deletingCatalog = it },
+            ),
         )
 
         if (!readOnly) {
@@ -270,36 +293,6 @@ private fun MerchantCatalogCreateSection(
 }
 
 @Composable
-private fun MerchantCatalogListSection(
-    catalog: List<MerchantCatalog>,
-    readOnly: Boolean,
-    busy: Boolean,
-    onToggleCatalog: (MerchantCatalog) -> Unit,
-    onDeleteCatalog: (MerchantCatalog) -> Unit,
-) {
-    SettingsSection(title = stringResource(R.string.merchant_catalog_section_list), icon = Icons.Filled.Tune) {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            if (catalog.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.merchant_catalog_list_empty),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                catalog.forEach { item ->
-                    MerchantCatalogCard(
-                        catalog = item,
-                        readOnly = readOnly,
-                        busy = busy,
-                        onToggleCatalog = { onToggleCatalog(item) },
-                        onDeleteCatalog = { onDeleteCatalog(item) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun MerchantAliasCreateSection(
     draft: MerchantAliasDraft,
     busy: Boolean,
@@ -370,97 +363,6 @@ private fun MerchantAliasListSection(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun MerchantCatalogCard(
-    catalog: MerchantCatalog,
-    readOnly: Boolean,
-    busy: Boolean,
-    onToggleCatalog: () -> Unit,
-    onDeleteCatalog: () -> Unit,
-) {
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            MerchantCatalogCardHeader(catalog)
-            if (!readOnly) {
-                MerchantCatalogCardActions(catalog, busy, onToggleCatalog, onDeleteCatalog)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MerchantCatalogCardHeader(catalog: MerchantCatalog) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-            Text(
-                text = catalog.displayName,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = stringResource(
-                    R.string.merchant_catalog_card_key_usage,
-                    catalog.merchantKey,
-                    catalog.usageCount,
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.width(AppSpacing.compactGap))
-        Text(
-            text = if (catalog.isActive) {
-                stringResource(R.string.merchant_catalog_card_status_visible)
-            } else {
-                stringResource(R.string.merchant_catalog_card_status_hidden)
-            },
-            color = if (catalog.isActive) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontWeight = AppTextHierarchy.body.weight,
-        )
-    }
-}
-
-@Composable
-private fun MerchantCatalogCardActions(
-    catalog: MerchantCatalog,
-    busy: Boolean,
-    onToggleCatalog: () -> Unit,
-    onDeleteCatalog: () -> Unit,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        OutlinedButton(
-            modifier = Modifier.weight(1f),
-            enabled = !busy,
-            onClick = onToggleCatalog,
-        ) {
-            Text(
-                if (catalog.isActive) {
-                    stringResource(R.string.merchant_catalog_card_action_hide)
-                } else {
-                    stringResource(R.string.merchant_catalog_card_action_show)
-                },
-            )
-        }
-        OutlinedButton(
-            modifier = Modifier.weight(1f),
-            enabled = !busy,
-            onClick = onDeleteCatalog,
-        ) {
-            Text(stringResource(R.string.merchant_catalog_card_action_delete))
         }
     }
 }

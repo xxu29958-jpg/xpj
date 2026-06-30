@@ -102,3 +102,23 @@ data class MerchantCatalogDeleteRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )
+
+data class MerchantCatalogMergeRequest(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+    @param:Json(name = "target_public_id")
+    val targetPublicId: String,
+    @param:Json(name = "target_row_version")
+    val targetRowVersion: Long,
+    @param:Json(name = "alias_policy")
+    val aliasPolicy: String,
+    @param:Json(name = "rewrite_historical_expenses")
+    val rewriteHistoricalExpenses: Boolean = false,
+)
+
+data class MerchantCatalogMergeDto(
+    val source: MerchantCatalogDto,
+    val target: MerchantCatalogDto,
+    @param:Json(name = "created_alias_public_id")
+    val createdAliasPublicId: String? = null,
+)

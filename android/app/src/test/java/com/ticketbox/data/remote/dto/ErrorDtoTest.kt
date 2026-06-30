@@ -28,10 +28,40 @@ class ErrorDtoTest {
     }
 
     @Test
+    fun decodesFlatMerchantConflictTokens() {
+        val dto = adapter.fromJson(
+            """{"error":"state_conflict","message":"商家名已被占用。",""" +
+                """"conflict_merchant_public_id":"merchant-abc",""" +
+                """"conflict_merchant_row_version":11,""" +
+                """"conflict_merchant_display_name":"蓝瓶咖啡",""" +
+                """"conflict_merchant_status":"active",""" +
+                """"conflict_merchant_deleted":false,""" +
+                """"conflict_alias_public_id":"alias-abc",""" +
+                """"conflict_alias_row_version":5,""" +
+                """"conflict_alias_enabled":true,""" +
+                """"conflict_alias_deleted":false}""",
+        )!!
+        assertEquals("state_conflict", dto.error)
+        assertEquals("merchant-abc", dto.conflictMerchantPublicId)
+        assertEquals(11L, dto.conflictMerchantRowVersion)
+        assertEquals("蓝瓶咖啡", dto.conflictMerchantDisplayName)
+        assertEquals("active", dto.conflictMerchantStatus)
+        assertEquals(false, dto.conflictMerchantDeleted)
+        assertEquals("alias-abc", dto.conflictAliasPublicId)
+        assertEquals(5L, dto.conflictAliasRowVersion)
+        assertEquals(true, dto.conflictAliasEnabled)
+        assertEquals(false, dto.conflictAliasDeleted)
+    }
+
+    @Test
     fun plainErrorLeavesConflictTokensNull() {
         val dto = adapter.fromJson("""{"error":"state_conflict","message":"x"}""")!!
         assertEquals("state_conflict", dto.error)
         assertNull(dto.conflictTagPublicId)
         assertNull(dto.conflictTagRowVersion)
+        assertNull(dto.conflictMerchantPublicId)
+        assertNull(dto.conflictMerchantRowVersion)
+        assertNull(dto.conflictAliasPublicId)
+        assertNull(dto.conflictAliasRowVersion)
     }
 }

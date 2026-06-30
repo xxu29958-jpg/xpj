@@ -51,6 +51,7 @@ private fun errorCodeStringRes(code: String?): Int? = when (code) {
     "permission_denied" -> R.string.error_permission_denied
     "merchant_alias_not_found" -> R.string.error_merchant_alias_not_found
     "merchant_alias_conflict" -> R.string.error_merchant_alias_conflict
+    "merchant_catalog_not_found" -> R.string.error_merchant_catalog_not_found
     "tag_not_found" -> R.string.error_tag_not_found
     "tag_conflict" -> R.string.error_tag_conflict
     "tag_undo_not_found" -> R.string.error_tag_undo_not_found

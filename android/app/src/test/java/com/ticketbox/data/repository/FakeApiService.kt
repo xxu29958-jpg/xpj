@@ -30,6 +30,8 @@ import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.data.remote.dto.MerchantCatalogListDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
@@ -91,8 +93,18 @@ internal class FakeApiService(
     val merchantCatalogCreateRequests = mutableListOf<MerchantCatalogCreateRequest>()
     val merchantCatalogUpdateRequests = mutableListOf<MerchantCatalogUpdateRequest>()
     val merchantCatalogDeleteRequests = mutableListOf<MerchantCatalogDeleteRequest>()
+    val merchantCatalogMergeRequests = mutableListOf<MerchantCatalogMergeRequest>()
     val merchantCatalogPatchTargets = mutableListOf<String>()
     val merchantCatalogDeleteTargets = mutableListOf<String>()
+    val merchantCatalogMergeTargets = mutableListOf<String>()
+    var merchantCatalogItems: List<MerchantCatalogDto> = listOf(
+        merchantCatalogDto(
+            publicId = "catalog-1",
+            displayName = "星巴克",
+            status = "active",
+        ),
+    )
+    var merchantCatalogUpdateFailure: Throwable? = null
     val itemFetchIds = mutableListOf<Long>()
     val itemReplaceIds = mutableListOf<String>()
     val itemReplaceRequests = mutableListOf<ExpenseItemReplaceRequestDto>()
@@ -397,23 +409,14 @@ internal class FakeApiService(
 
     override suspend fun undoCategoryRule(id: Long): CategoryRuleDto = unsupported()
 
-    override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto = MerchantCatalogListDto(
-        items = listOf(
-            merchantCatalogDto(
-                publicId = "catalog-1",
-                displayName = "星巴克",
-                merchantKey = "星巴克",
-                status = "active",
-            ),
-        ),
-    )
+    override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto =
+        MerchantCatalogListDto(items = merchantCatalogItems)
 
     override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
         merchantCatalogCreateRequests += request
         return merchantCatalogDto(
             publicId = "catalog-created",
             displayName = request.displayName,
-            merchantKey = request.displayName,
             status = request.status,
         )
     }
@@ -425,10 +428,10 @@ internal class FakeApiService(
     ): MerchantCatalogDto {
         merchantCatalogPatchTargets += publicId
         merchantCatalogUpdateRequests += request
+        merchantCatalogUpdateFailure?.let { throw it }
         return merchantCatalogDto(
             publicId = publicId,
             displayName = request.displayName ?: "星巴克",
-            merchantKey = request.displayName ?: "星巴克",
             status = request.status ?: "active",
         )
     }
@@ -443,9 +446,31 @@ internal class FakeApiService(
         return merchantCatalogDto(
             publicId = publicId,
             displayName = "星巴克",
-            merchantKey = "星巴克",
             status = "active",
-            deletedAt = "2026-05-13T00:10:00Z",
+        ).copy(deletedAt = "2026-05-13T00:10:00Z")
+    }
+
+    override suspend fun mergeMerchantCatalog(
+        sourcePublicId: String,
+        request: MerchantCatalogMergeRequest,
+    ): MerchantCatalogMergeDto {
+        merchantCatalogMergeTargets += sourcePublicId
+        merchantCatalogMergeRequests += request
+        return MerchantCatalogMergeDto(
+            source = merchantCatalogDto(
+                publicId = sourcePublicId,
+                displayName = "星巴克",
+                status = "merged",
+            ).copy(
+                mergedIntoPublicId = request.targetPublicId,
+                rowVersion = request.expectedRowVersion + 1,
+            ),
+            target = merchantCatalogDto(
+                publicId = request.targetPublicId,
+                displayName = "蓝瓶咖啡",
+                status = "active",
+            ).copy(rowVersion = request.targetRowVersion + 1),
+            createdAliasPublicId = if (request.aliasPolicy == "create_source_alias") "alias-created-by-merge" else null,
         )
     }
 
@@ -849,20 +874,18 @@ internal class FakeApiService(
     private fun merchantCatalogDto(
         publicId: String,
         displayName: String,
-        merchantKey: String,
         status: String,
-        deletedAt: String? = null,
     ): MerchantCatalogDto = MerchantCatalogDto(
         publicId = publicId,
         displayName = displayName,
-        merchantKey = merchantKey,
+        merchantKey = displayName,
         status = status,
         mergedIntoPublicId = null,
         usageCount = 0,
         createdAt = "2026-05-13T00:00:00Z",
         updatedAt = "2026-05-13T00:05:00Z",
         rowVersion = 1L,
-        deletedAt = deletedAt,
+        deletedAt = null,
     )
 
     private fun expenseItemsResponse(): ExpenseItemsResponseDto = ExpenseItemsResponseDto(

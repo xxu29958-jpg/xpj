@@ -9,9 +9,12 @@ import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MerchantCatalog
+import com.ticketbox.domain.model.MerchantCatalogMergeResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
 import java.io.IOException
@@ -105,6 +108,32 @@ class MerchantRepository(
                     cleanPublicId,
                     MerchantCatalogDeleteRequest(expectedRowVersion = expectedRowVersion),
                     UUID.randomUUID().toString(),
+                ).toDomain()
+            }
+        }
+
+    suspend fun mergeMerchantCatalog(
+        sourcePublicId: String,
+        sourceRowVersion: Long,
+        targetPublicId: String,
+        targetRowVersion: Long,
+        aliasPolicy: MerchantCatalogAliasPolicy,
+    ): Result<MerchantCatalogMergeResult> =
+        errorHandler.safeCall {
+            val cleanSource = sourcePublicId.trim()
+            val cleanTarget = targetPublicId.trim()
+            require(cleanSource.isNotBlank() && cleanTarget.isNotBlank()) { "请选择要合并的商家。" }
+            require(cleanSource != cleanTarget) { "不能把商家合并到自身。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.mergeMerchantCatalog(
+                    cleanSource,
+                    MerchantCatalogMergeRequest(
+                        expectedRowVersion = sourceRowVersion,
+                        targetPublicId = cleanTarget,
+                        targetRowVersion = targetRowVersion,
+                        aliasPolicy = aliasPolicy.apiValue,
+                        rewriteHistoricalExpenses = false,
+                    ),
                 ).toDomain()
             }
         }

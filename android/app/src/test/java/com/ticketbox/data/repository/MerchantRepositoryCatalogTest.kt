@@ -6,7 +6,10 @@ import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.data.remote.dto.MerchantCatalogListDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
+import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -50,8 +53,7 @@ class MerchantRepositoryCatalogTest {
                     publicId = "catalog-hidden",
                     displayName = "隐藏店",
                     status = "hidden",
-                    deletedAt = "2026-06-30T00:00:00Z",
-                ),
+                ).copy(deletedAt = "2026-06-30T00:00:00Z"),
             )
         }
 
@@ -112,6 +114,30 @@ class MerchantRepositoryCatalogTest {
         assertEquals(0, dao.rows.size, "catalog mutations remain online-only in this slice")
     }
 
+    @Test
+    fun `mergeMerchantCatalog sends dual OCC tokens and explicit alias policy`() = runTest {
+        val api = CatalogApiServiceStub()
+
+        val result = repository(api).mergeMerchantCatalog(
+            sourcePublicId = " source ",
+            sourceRowVersion = 3L,
+            targetPublicId = " target ",
+            targetRowVersion = 9L,
+            aliasPolicy = MerchantCatalogAliasPolicy.CreateSourceAlias,
+        ).getOrThrow()
+
+        assertEquals(listOf("source"), api.mergeTargets)
+        val request = api.mergeRequests.single()
+        assertEquals(3L, request.expectedRowVersion)
+        assertEquals("target", request.targetPublicId)
+        assertEquals(9L, request.targetRowVersion)
+        assertEquals("create_source_alias", request.aliasPolicy)
+        assertEquals(false, request.rewriteHistoricalExpenses)
+        assertEquals("merged", result.source.status)
+        assertEquals("target", result.source.mergedIntoPublicId)
+        assertEquals("alias-created-by-merge", result.createdAliasPublicId)
+    }
+
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
     }
@@ -132,6 +158,8 @@ class MerchantRepositoryCatalogTest {
         val deleteTargets = mutableListOf<String>()
         val deleteRequests = mutableListOf<MerchantCatalogDeleteRequest>()
         val deleteIdempotencyKeys = mutableListOf<String?>()
+        val mergeTargets = mutableListOf<String>()
+        val mergeRequests = mutableListOf<MerchantCatalogMergeRequest>()
 
         override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto {
             includeHiddenRequests += includeHidden
@@ -159,8 +187,7 @@ class MerchantRepositoryCatalogTest {
                 publicId = publicId,
                 displayName = request.displayName ?: "星巴克",
                 status = request.status ?: "active",
-                rowVersion = request.expectedRowVersion + 1,
-            )
+            ).copy(rowVersion = request.expectedRowVersion + 1)
         }
 
         override suspend fun deleteMerchantCatalog(
@@ -176,7 +203,30 @@ class MerchantRepositoryCatalogTest {
                 publicId = publicId,
                 displayName = "星巴克",
                 status = "active",
-                deletedAt = "2026-06-30T00:00:00Z",
+            ).copy(deletedAt = "2026-06-30T00:00:00Z")
+        }
+
+        override suspend fun mergeMerchantCatalog(
+            sourcePublicId: String,
+            request: MerchantCatalogMergeRequest,
+        ): MerchantCatalogMergeDto {
+            mergeTargets += sourcePublicId
+            mergeRequests += request
+            return MerchantCatalogMergeDto(
+                source = merchantCatalogDto(
+                    publicId = sourcePublicId,
+                    displayName = "星巴克",
+                    status = "merged",
+                ).copy(
+                    rowVersion = request.expectedRowVersion + 1,
+                    mergedIntoPublicId = request.targetPublicId,
+                ),
+                target = merchantCatalogDto(
+                    publicId = request.targetPublicId,
+                    displayName = "蓝瓶咖啡",
+                    status = "active",
+                ).copy(rowVersion = request.targetRowVersion + 1),
+                createdAliasPublicId = "alias-created-by-merge",
             )
         }
     }
@@ -186,8 +236,6 @@ class MerchantRepositoryCatalogTest {
             publicId: String = "catalog-1",
             displayName: String = "星巴克",
             status: String = "active",
-            rowVersion: Long = 1L,
-            deletedAt: String? = null,
         ): MerchantCatalogDto = MerchantCatalogDto(
             publicId = publicId,
             displayName = displayName,
@@ -197,8 +245,8 @@ class MerchantRepositoryCatalogTest {
             usageCount = 0,
             createdAt = "2026-05-13T00:00:00Z",
             updatedAt = "2026-05-13T00:05:00Z",
-            rowVersion = rowVersion,
-            deletedAt = deletedAt,
+            rowVersion = 1L,
+            deletedAt = null,
         )
     }
 }

@@ -44,8 +44,7 @@ internal class NetworkErrorHandler(
                 RepositoryException(
                     parsed.message,
                     parsed.errorCode,
-                    conflictTagPublicId = parsed.conflictTagPublicId,
-                    conflictTagRowVersion = parsed.conflictTagRowVersion,
+                    conflict = parsed.conflict,
                 )
             )
         } catch (error: RepositoryException) {
@@ -85,8 +84,7 @@ internal class NetworkErrorHandler(
                     return ParsedError(
                         backendErrorUserMessage(it.error, it.message),
                         it.error.trim(),
-                        conflictTagPublicId = it.conflictTagPublicId,
-                        conflictTagRowVersion = it.conflictTagRowVersion,
+                        conflict = it.toConflictDetails(),
                     )
                 }
         }
@@ -103,9 +101,15 @@ internal class NetworkErrorHandler(
     data class ParsedError(
         val message: String,
         val errorCode: String?,
-        val conflictTagPublicId: String? = null,
-        val conflictTagRowVersion: Long? = null,
-    )
+        val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
+    ) {
+        val conflictTagPublicId: String? get() = conflict.tag.publicId
+        val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion
+        val conflictMerchantPublicId: String? get() = conflict.merchant.publicId
+        val conflictMerchantRowVersion: Long? get() = conflict.merchant.rowVersion
+        val conflictAliasPublicId: String? get() = conflict.alias.publicId
+        val conflictAliasRowVersion: Long? get() = conflict.alias.rowVersion
+    }
 
     private companion object {
         // LOG_TAG used to live here; codex round-9 moved Log.w
@@ -115,3 +119,24 @@ internal class NetworkErrorHandler(
             .build()
     }
 }
+
+private fun ErrorDto.toConflictDetails(): RepositoryConflictDetails =
+    RepositoryConflictDetails(
+        tag = TagConflictDetails(
+            publicId = conflictTagPublicId,
+            rowVersion = conflictTagRowVersion,
+        ),
+        merchant = MerchantConflictDetails(
+            publicId = conflictMerchantPublicId,
+            rowVersion = conflictMerchantRowVersion,
+            displayName = conflictMerchantDisplayName,
+            status = conflictMerchantStatus,
+            deleted = conflictMerchantDeleted,
+        ),
+        alias = AliasConflictDetails(
+            publicId = conflictAliasPublicId,
+            rowVersion = conflictAliasRowVersion,
+            enabled = conflictAliasEnabled,
+            deleted = conflictAliasDeleted,
+        ),
+    )

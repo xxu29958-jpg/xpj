@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.dto.FrequentMerchantDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidateItemDto
@@ -34,6 +35,7 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MerchantCatalog
+import com.ticketbox.domain.model.MerchantCatalogMergeResult
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.RecurringCandidate
@@ -427,6 +429,12 @@ fun MerchantCatalogDto.toDomain(): MerchantCatalog = MerchantCatalog(
     updatedAt = updatedAt,
     rowVersion = rowVersion,
     deletedAt = deletedAt,
+)
+
+fun MerchantCatalogMergeDto.toDomain(): MerchantCatalogMergeResult = MerchantCatalogMergeResult(
+    source = source.toDomain(),
+    target = target.toDomain(),
+    createdAliasPublicId = createdAliasPublicId,
 )
 
 // ADR-0043 slice C — tag management DTO → domain.

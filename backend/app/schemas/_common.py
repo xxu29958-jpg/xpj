@@ -20,6 +20,15 @@ class ErrorResponse(BaseModel):
     request_id: str | None = None
     conflict_tag_public_id: str | None = None
     conflict_tag_row_version: int | None = None
+    conflict_merchant_public_id: str | None = None
+    conflict_merchant_row_version: int | None = None
+    conflict_merchant_display_name: str | None = None
+    conflict_merchant_status: str | None = None
+    conflict_merchant_deleted: bool | None = None
+    conflict_alias_public_id: str | None = None
+    conflict_alias_row_version: int | None = None
+    conflict_alias_enabled: bool | None = None
+    conflict_alias_deleted: bool | None = None
 
 
 class HealthResponse(BaseModel):

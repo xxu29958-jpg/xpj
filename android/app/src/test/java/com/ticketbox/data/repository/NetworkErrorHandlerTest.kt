@@ -28,6 +28,17 @@ class NetworkErrorHandlerTest {
     private val tagConflictBody =
         """{"error":"tag_conflict","message":"已有同名标签，可改为合并。",""" +
             """"conflict_tag_public_id":"tag-xyz","conflict_tag_row_version":7}"""
+    private val merchantConflictBody =
+        """{"error":"state_conflict","message":"商家名已被占用。",""" +
+            """"conflict_merchant_public_id":"merchant-xyz",""" +
+            """"conflict_merchant_row_version":13,""" +
+            """"conflict_merchant_display_name":"蓝瓶咖啡",""" +
+            """"conflict_merchant_status":"active",""" +
+            """"conflict_merchant_deleted":false,""" +
+            """"conflict_alias_public_id":"alias-xyz",""" +
+            """"conflict_alias_row_version":4,""" +
+            """"conflict_alias_enabled":false,""" +
+            """"conflict_alias_deleted":false}"""
 
     @Test
     fun parseErrorMessageKeepsFlatConflictTokens() {
@@ -49,11 +60,33 @@ class NetworkErrorHandlerTest {
     }
 
     @Test
+    fun safeCallMapsHttpMerchantConflictToRepositoryExceptionWithTokens() = runTest {
+        val result = handler.safeCall<Unit> { throw httpException(409, merchantConflictBody) }
+
+        assertTrue(result.isFailure)
+        val ex = result.exceptionOrNull() as RepositoryException
+        assertEquals("state_conflict", ex.errorCode)
+        assertEquals("merchant-xyz", ex.conflictMerchantPublicId)
+        assertEquals(13L, ex.conflictMerchantRowVersion)
+        assertEquals("蓝瓶咖啡", ex.conflictMerchantDisplayName)
+        assertEquals("active", ex.conflictMerchantStatus)
+        assertEquals(false, ex.conflictMerchantDeleted)
+        assertEquals("alias-xyz", ex.conflictAliasPublicId)
+        assertEquals(4L, ex.conflictAliasRowVersion)
+        assertEquals(false, ex.conflictAliasEnabled)
+        assertEquals(false, ex.conflictAliasDeleted)
+    }
+
+    @Test
     fun plainErrorCarriesNoConflictTokens() {
         val parsed = handler.parseErrorMessage(409, """{"error":"state_conflict","message":"x"}""")
         assertEquals("state_conflict", parsed.errorCode)
         assertNull(parsed.conflictTagPublicId)
         assertNull(parsed.conflictTagRowVersion)
+        assertNull(parsed.conflictMerchantPublicId)
+        assertNull(parsed.conflictMerchantRowVersion)
+        assertNull(parsed.conflictAliasPublicId)
+        assertNull(parsed.conflictAliasRowVersion)
     }
 
     private fun httpException(code: Int, body: String): HttpException {

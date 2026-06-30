@@ -98,9 +98,11 @@ class TagManagementViewModel(
             // Prefer the server's FRESH conflict token (ADR-0043 契约 5 details) over a
             // stale local-list entry so the prefilled merge doesn't immediately 409;
             // fall back to a local name match only if the backend sent no details.
-            val target = if (re.conflictTagPublicId != null && re.conflictTagRowVersion != null) {
-                _uiState.value.tags.firstOrNull { it.publicId == re.conflictTagPublicId }
-                    ?.copy(rowVersion = re.conflictTagRowVersion)
+            val conflictTagPublicId = re.conflictTagPublicId
+            val conflictTagRowVersion = re.conflictTagRowVersion
+            val target = if (conflictTagPublicId != null && conflictTagRowVersion != null) {
+                _uiState.value.tags.firstOrNull { it.publicId == conflictTagPublicId }
+                    ?.copy(rowVersion = conflictTagRowVersion)
             } else {
                 _uiState.value.tags.firstOrNull {
                     it.publicId != source.publicId && it.name.trim().equals(wanted, ignoreCase = true)

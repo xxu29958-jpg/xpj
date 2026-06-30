@@ -363,7 +363,19 @@ data class MerchantCatalog(
     val deletedAt: String?,
 ) {
     val isActive: Boolean = status == "active"
+    val isMerged: Boolean = status == "merged"
 }
+
+enum class MerchantCatalogAliasPolicy(val apiValue: String) {
+    None("none"),
+    CreateSourceAlias("create_source_alias"),
+}
+
+data class MerchantCatalogMergeResult(
+    val source: MerchantCatalog,
+    val target: MerchantCatalog,
+    val createdAliasPublicId: String?,
+)
 
 data class RuleApplicationBatch(
     val publicId: String,

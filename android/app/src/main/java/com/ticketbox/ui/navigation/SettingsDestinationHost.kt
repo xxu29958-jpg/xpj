@@ -27,6 +27,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MerchantCatalog
+import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -103,13 +104,16 @@ internal data class SettingsRouteActions(
     val onUndoRuleDelete: () -> Unit,
     val onDismissRuleUndo: () -> Unit,
     val onCreateMerchantCatalog: (String) -> Unit,
+    val onRenameMerchantCatalog: (MerchantCatalog, String) -> Unit,
     val onToggleMerchantCatalog: (MerchantCatalog) -> Unit,
+    val onMergeMerchantCatalog: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
     val onDeleteMerchantCatalog: (MerchantCatalog) -> Unit,
     val onCreateMerchantAlias: (String, String) -> Unit,
     val onToggleMerchantAlias: (MerchantAlias) -> Unit,
     val onDeleteMerchantAlias: (MerchantAlias) -> Unit,
     val onUndoMerchantAlias: () -> Unit,
     val onDismissMerchantAliasUndo: () -> Unit,
+    val onDismissMerchantCatalogMergeSuggestion: () -> Unit,
     val onPreviewApplyConfirmedRules: () -> Unit,
     val onConfirmApplyConfirmedRules: () -> Unit,
     val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
@@ -323,12 +327,16 @@ internal fun SettingsDestinationHost(
             message = states.merchant.message,
             onBack = { route = SettingsDestination.Root },
             onCreateCatalog = actions.onCreateMerchantCatalog,
+            onRenameCatalog = actions.onRenameMerchantCatalog,
             onToggleCatalog = actions.onToggleMerchantCatalog,
+            onMergeCatalog = actions.onMergeMerchantCatalog,
             onDeleteCatalog = actions.onDeleteMerchantCatalog,
             onCreateAlias = actions.onCreateMerchantAlias,
             onToggleAlias = actions.onToggleMerchantAlias,
             onDeleteAlias = actions.onDeleteMerchantAlias,
             undoableAlias = states.merchant.undoableAlias,
+            mergeSuggestion = states.merchant.mergeSuggestion,
+            onDismissMergeSuggestion = actions.onDismissMerchantCatalogMergeSuggestion,
             onUndoDelete = actions.onUndoMerchantAlias,
             onDismissUndo = actions.onDismissMerchantAliasUndo,
         )
