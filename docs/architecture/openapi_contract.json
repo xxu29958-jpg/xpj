@@ -1856,6 +1856,54 @@
         "title": "Body_web_merchant_alias_undo_web_merchants_aliases__public_id__undo_post",
         "type": "object"
       },
+      "Body_web_merchant_catalog_create_web_merchants_catalog_create_post": {
+        "properties": {
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_merchant_catalog_create_web_merchants_catalog_create_post",
+        "type": "object"
+      },
+      "Body_web_merchant_catalog_delete_web_merchants_catalog__public_id__delete_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_merchant_catalog_delete_web_merchants_catalog__public_id__delete_post",
+        "type": "object"
+      },
+      "Body_web_merchant_catalog_toggle_web_merchants_catalog__public_id__toggle_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_merchant_catalog_toggle_web_merchants_catalog__public_id__toggle_post",
+        "type": "object"
+      },
       "Body_web_pending_batch_reject_web_pending_batch_reject_post": {
         "properties": {
           "expense_ids": {
@@ -30083,6 +30131,148 @@
           }
         },
         "summary": "Web Merchant Alias Undo",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/merchants/catalog/create": {
+      "post": {
+        "operationId": "web_merchant_catalog_create_web_merchants_catalog_create_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_merchant_catalog_create_web_merchants_catalog_create_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Merchant Catalog Create",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/merchants/catalog/{public_id}/delete": {
+      "post": {
+        "operationId": "web_merchant_catalog_delete_web_merchants_catalog__public_id__delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_merchant_catalog_delete_web_merchants_catalog__public_id__delete_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Merchant Catalog Delete",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/merchants/catalog/{public_id}/toggle": {
+      "post": {
+        "operationId": "web_merchant_catalog_toggle_web_merchants_catalog__public_id__toggle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_merchant_catalog_toggle_web_merchants_catalog__public_id__toggle_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Merchant Catalog Toggle",
         "tags": [
           "web"
         ]
