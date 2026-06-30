@@ -253,6 +253,21 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             {"ledger_id": ledger_id, "expected_row_version": 999999},
         ),
         (
+            "merchant catalog rename",
+            "/web/merchants/catalog/missing/rename",
+            {"ledger_id": ledger_id, "expected_row_version": 999999, "display_name": "重命名"},
+        ),
+        (
+            "merchant catalog merge",
+            "/web/merchants/catalog/missing/merge",
+            {
+                "ledger_id": ledger_id,
+                "expected_row_version": 999999,
+                "target": "other:999999",
+                "alias_policy": "none",
+            },
+        ),
+        (
             "merchant catalog delete",
             "/web/merchants/catalog/missing/delete",
             {"ledger_id": ledger_id, "expected_row_version": 999999},

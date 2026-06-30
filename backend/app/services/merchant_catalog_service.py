@@ -139,6 +139,8 @@ def update_merchant_catalog(
     item = _live_catalog_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
     if item is None:
         raise AppError("not_found", "Merchant catalog entry was not found.", status_code=404)
+    if item.status not in _WRITABLE_STATUSES:
+        raise AppError("state_conflict", status_code=409)
 
     set_values: dict[str, object] = {"updated_at": now_utc()}
     if display_name is not None:
@@ -189,6 +191,8 @@ def delete_merchant_catalog(
     item = _live_catalog_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
     if item is None:
         raise AppError("not_found", "Merchant catalog entry was not found.", status_code=404)
+    if item.status not in _WRITABLE_STATUSES:
+        raise AppError("state_conflict", status_code=409)
     ensure_catalog_can_be_deleted(db, tenant_id=tenant_id, item=item)
 
     now = now_utc()

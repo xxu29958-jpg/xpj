@@ -158,6 +158,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Merchants
     ("GET", "/web/merchants"): "local-only-rendering",
     ("POST", "/web/merchants/catalog/create"): "writer-only",
+    ("POST", "/web/merchants/catalog/{public_id}/rename"): "writer-only",
+    ("POST", "/web/merchants/catalog/{public_id}/merge"): "writer-only",
     ("POST", "/web/merchants/catalog/{public_id}/toggle"): "writer-only",
     ("POST", "/web/merchants/catalog/{public_id}/delete"): "writer-only",
     ("POST", "/web/merchants/aliases/create"): "writer-only",

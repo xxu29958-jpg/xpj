@@ -35,10 +35,29 @@ from app.services.merchant_catalog_service import (
     delete_merchant_catalog,
     get_merchant_catalog,
     list_merchant_catalog,
+    merge_merchant_catalog,
     update_merchant_catalog,
 )
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+
+def _stale_catalog_redirect(selected_id: str) -> RedirectResponse:
+    return _web_redirect("/web/merchants", selected_id, msg="页面已过期，请刷新后重试。")
+
+
+def _catalog_conflict_message(exc: AppError) -> str:
+    if exc.error == "not_found":
+        return "商家不存在或已被删除。"
+    if exc.error != "state_conflict":
+        return exc.message
+    details = exc.details or {}
+    conflict_name = details.get("conflict_merchant_display_name")
+    if isinstance(conflict_name, str) and conflict_name:
+        return f"商家名已被「{conflict_name}」占用；如需归并请使用『合并』。"
+    if "conflict_alias_public_id" in details:
+        return "来源商家名已被现有别名占用，无法自动创建来源别名；请先处理该别名，或选择不创建别名。"
+    return "商家已在其它端被修改，或仍被启用别名/固定支出引用；请刷新后重试。"
 
 
 @router.get("/merchants", response_class=HTMLResponse)
@@ -92,6 +111,88 @@ def web_merchant_catalog_create(
     return _web_redirect("/web/merchants", selected_id, msg=msg)
 
 
+@router.post("/merchants/catalog/{public_id}/rename", response_class=HTMLResponse)
+def web_merchant_catalog_rename(
+    request: Request,
+    public_id: str,
+    display_name: str = Form(""),
+    ledger_id: str = Form(""),
+    expected_row_version: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_row_version_token(expected_row_version)
+    if parsed is None:
+        return _stale_catalog_redirect(selected_id)
+    try:
+        item = update_merchant_catalog(
+            db,
+            tenant_id=selected_id,
+            public_id=public_id,
+            expected_row_version=parsed,
+            display_name=display_name,
+        )
+        msg = f"商家已重命名为「{item.display_name}」。"
+    except AppError as exc:
+        msg = _catalog_conflict_message(exc)
+    return _web_redirect("/web/merchants", selected_id, msg=msg)
+
+
+@router.post("/merchants/catalog/{public_id}/merge", response_class=HTMLResponse)
+def web_merchant_catalog_merge(
+    request: Request,
+    public_id: str,
+    target: str = Form(""),
+    alias_policy: str = Form(""),
+    ledger_id: str = Form(""),
+    expected_row_version: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    source_rv = parse_form_row_version_token(expected_row_version)
+    target_public_id, _, target_rv_raw = target.rpartition(":")
+    target_rv = parse_form_row_version_token(target_rv_raw)
+    if (
+        source_rv is None
+        or not target_public_id
+        or target_rv is None
+        or alias_policy not in {"none", "create_source_alias"}
+    ):
+        return _stale_catalog_redirect(selected_id)
+    try:
+        result = merge_merchant_catalog(
+            db,
+            tenant_id=selected_id,
+            source_public_id=public_id,
+            expected_row_version=source_rv,
+            target_public_id=target_public_id,
+            target_row_version=target_rv,
+            alias_policy=alias_policy,
+            rewrite_historical_expenses=False,
+        )
+    except AppError as exc:
+        return _web_redirect("/web/merchants", selected_id, msg=_catalog_conflict_message(exc))
+    alias_msg = (
+        "已创建来源别名，后续规则会折叠到目标商家。"
+        if result.created_alias_public_id
+        else "未创建来源别名。"
+    )
+    return _web_redirect(
+        "/web/merchants",
+        selected_id,
+        msg=(
+            f"商家「{result.source.display_name}」已合并到「{result.target.display_name}」。"
+            f"历史账单不会改写；{alias_msg}"
+        ),
+    )
+
+
 @router.post("/merchants/catalog/{public_id}/toggle", response_class=HTMLResponse)
 def web_merchant_catalog_toggle(
     request: Request,
@@ -106,11 +207,7 @@ def web_merchant_catalog_toggle(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect(
-            "/web/merchants",
-            selected_id,
-            msg="页面已过期，请刷新后重试。",
-        )
+        return _stale_catalog_redirect(selected_id)
     try:
         item = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
         next_status = "hidden" if item.status == "active" else "active"
@@ -123,11 +220,7 @@ def web_merchant_catalog_toggle(
         )
         msg = f"商家「{updated.display_name}」{'已显示' if updated.status == 'active' else '已隐藏'}。"
     except AppError as exc:
-        msg = (
-            "商家已在其它端被修改，请刷新后重试。"
-            if exc.error == "state_conflict"
-            else exc.message
-        )
+        msg = _catalog_conflict_message(exc)
     return _web_redirect("/web/merchants", selected_id, msg=msg)
 
 
@@ -145,11 +238,7 @@ def web_merchant_catalog_delete(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect(
-            "/web/merchants",
-            selected_id,
-            msg="页面已过期，请刷新后重试。",
-        )
+        return _stale_catalog_redirect(selected_id)
     try:
         item = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
         display_name = item.display_name
@@ -160,11 +249,7 @@ def web_merchant_catalog_delete(
             expected_row_version=parsed,
         )
     except AppError as exc:
-        msg = (
-            "商家已在其它端被修改，请刷新后重试。"
-            if exc.error == "state_conflict"
-            else exc.message
-        )
+        msg = _catalog_conflict_message(exc)
         return _web_redirect("/web/merchants", selected_id, msg=msg)
     return _web_redirect(
         "/web/merchants",

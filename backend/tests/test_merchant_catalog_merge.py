@@ -64,6 +64,27 @@ def test_merchant_catalog_merge_creates_alias_and_keeps_historical_facts(
         target["public_id"]
     ]
 
+    source_after_merge = body["source"]
+    reactivate_source = client.patch(
+        f"/api/merchants/catalog/{source['public_id']}",
+        headers=identity.app_headers,
+        json={
+            "expected_row_version": source_after_merge["row_version"],
+            "status": "active",
+        },
+    )
+    assert reactivate_source.status_code == 409
+    assert reactivate_source.json()["error"] == "state_conflict"
+
+    delete_source = client.request(
+        "DELETE",
+        f"/api/merchants/catalog/{source['public_id']}",
+        headers=identity.app_headers,
+        json={"expected_row_version": source_after_merge["row_version"]},
+    )
+    assert delete_source.status_code == 409
+    assert delete_source.json()["error"] == "state_conflict"
+
 
 def test_merchant_catalog_merge_none_policy_does_not_create_alias(
     client: TestClient, *, identity

@@ -1888,6 +1888,53 @@
         "title": "Body_web_merchant_catalog_delete_web_merchants_catalog__public_id__delete_post",
         "type": "object"
       },
+      "Body_web_merchant_catalog_merge_web_merchants_catalog__public_id__merge_post": {
+        "properties": {
+          "alias_policy": {
+            "default": "",
+            "title": "Alias Policy",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_merchant_catalog_merge_web_merchants_catalog__public_id__merge_post",
+        "type": "object"
+      },
+      "Body_web_merchant_catalog_rename_web_merchants_catalog__public_id__rename_post": {
+        "properties": {
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_merchant_catalog_rename_web_merchants_catalog__public_id__rename_post",
+        "type": "object"
+      },
       "Body_web_merchant_catalog_toggle_web_merchants_catalog__public_id__toggle_post": {
         "properties": {
           "expected_row_version": {
@@ -30367,6 +30414,108 @@
           }
         },
         "summary": "Web Merchant Catalog Delete",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/merchants/catalog/{public_id}/merge": {
+      "post": {
+        "operationId": "web_merchant_catalog_merge_web_merchants_catalog__public_id__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_merchant_catalog_merge_web_merchants_catalog__public_id__merge_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Merchant Catalog Merge",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/merchants/catalog/{public_id}/rename": {
+      "post": {
+        "operationId": "web_merchant_catalog_rename_web_merchants_catalog__public_id__rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_merchant_catalog_rename_web_merchants_catalog__public_id__rename_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Merchant Catalog Rename",
         "tags": [
           "web"
         ]
