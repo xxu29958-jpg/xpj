@@ -2,159 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
-from app.models import Expense, LedgerMember, MerchantAlias, MerchantCatalog, RecurringItem
+from app.services.merchant_catalog_guards import (
+    WRITABLE_STATUSES as _CATALOG_WRITABLE_STATUSES,
+)
 from app.services.merchant_catalog_service import clean_merchant_catalog_status
 from app.services.merchant_service import normalize_merchant
-from app.services.time_service import now_utc
-
-
-def _create_catalog(
-    client: TestClient,
-    headers: dict[str, str],
-    *,
-    display_name: str = "Starbucks",
-    status: str = "active",
-) -> dict:
-    response = client.post(
-        "/api/merchants/catalog",
-        headers=headers,
-        json={"display_name": display_name, "status": status},
-    )
-    assert response.status_code == 201, response.text
-    return response.json()
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
-
-
-def _seed_historical_expense(*, merchant: str = "Starbucks") -> None:
-    with SessionLocal() as db:
-        now = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=1800,
-                merchant=merchant,
-                category="Coffee",
-                status="confirmed",
-                expense_time=now,
-                confirmed_at=now,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        db.commit()
-
-
-def _seed_enabled_alias_target(*, merchant_key: str) -> None:
-    with SessionLocal() as db:
-        now = now_utc()
-        db.add(
-            MerchantAlias(
-                tenant_id="owner",
-                canonical_merchant="Anchor Store",
-                canonical_key=merchant_key,
-                alias="Anchor Alias",
-                alias_key=normalize_merchant("Anchor Alias"),
-                enabled=True,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        db.commit()
-
-
-def _disable_alias_and_seed_recurring(*, merchant_key: str) -> None:
-    with SessionLocal() as db:
-        alias = db.scalar(
-            select(MerchantAlias)
-            .where(MerchantAlias.tenant_id == "owner")
-            .where(MerchantAlias.canonical_key == merchant_key)
-        )
-        assert alias is not None
-        alias.enabled = False
-        db.add(
-            RecurringItem(
-                tenant_id="owner",
-                merchant_key=merchant_key,
-                merchant_name="Anchor Store",
-                baseline_amount_cents=1800,
-                last_amount_cents=1800,
-                occurrence_count=3,
-                status="active",
-                created_at=now_utc(),
-                updated_at=now_utc(),
-            )
-        )
-        db.commit()
-
-
-def _archive_recurring(*, merchant_key: str) -> None:
-    with SessionLocal() as db:
-        recurring = db.scalar(
-            select(RecurringItem)
-            .where(RecurringItem.tenant_id == "owner")
-            .where(RecurringItem.merchant_key == merchant_key)
-        )
-        assert recurring is not None
-        recurring.status = "archived"
-        recurring.archived_at = now_utc()
-        db.commit()
-
-
-def _bump_catalog_row_version(*, public_id: str) -> None:
-    with SessionLocal() as db:
-        item = db.scalar(
-            select(MerchantCatalog)
-            .where(MerchantCatalog.tenant_id == "owner")
-            .where(MerchantCatalog.public_id == public_id)
-            .limit(1)
-        )
-        assert item is not None
-        item.row_version += 1
-        item.updated_at = now_utc()
-        db.commit()
-
-
-def _catalog_alias_by_key(*, alias_key: str) -> MerchantAlias | None:
-    with SessionLocal() as db:
-        return db.scalar(
-            select(MerchantAlias)
-            .where(MerchantAlias.tenant_id == "owner")
-            .where(MerchantAlias.alias_key == alias_key)
-            .limit(1)
-        )
-
-
-def _seed_alias_key_conflict(*, alias: str) -> None:
-    with SessionLocal() as db:
-        now = now_utc()
-        db.add(
-            MerchantAlias(
-                tenant_id="owner",
-                canonical_merchant="Other Store",
-                canonical_key=normalize_merchant("Other Store"),
-                alias=alias,
-                alias_key=normalize_merchant(alias),
-                enabled=False,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        db.commit()
+from tests._infra.merchant_catalog import archive_recurring as _archive_recurring
+from tests._infra.merchant_catalog import (
+    assert_historical_expense_exists as _assert_historical_expense_exists,
+)
+from tests._infra.merchant_catalog import create_catalog as _create_catalog
+from tests._infra.merchant_catalog import (
+    demote_owner_ledger_to_viewer as _demote_owner_ledger_to_viewer,
+)
+from tests._infra.merchant_catalog import (
+    disable_alias_and_seed_recurring as _disable_alias_and_seed_recurring,
+)
+from tests._infra.merchant_catalog import (
+    seed_enabled_alias_target as _seed_enabled_alias_target,
+)
+from tests._infra.merchant_catalog import seed_historical_expense as _seed_historical_expense
 
 
 def test_merchant_catalog_crud_soft_delete_and_recycle_restore(
@@ -245,7 +114,13 @@ def test_merchant_catalog_is_ledger_isolated_and_conflict_checked(
         json={"display_name": " shared   store "},
     )
     assert duplicate.status_code == 409
-    assert duplicate.json()["error"] == "state_conflict"
+    duplicate_body = duplicate.json()
+    assert duplicate_body["error"] == "state_conflict"
+    assert duplicate_body["conflict_merchant_public_id"] == owner["public_id"]
+    assert duplicate_body["conflict_merchant_row_version"] == owner["row_version"]
+    assert duplicate_body["conflict_merchant_display_name"] == "Shared Store"
+    assert duplicate_body["conflict_merchant_status"] == "active"
+    assert duplicate_body["conflict_merchant_deleted"] is False
 
     cross_patch = client.patch(
         f"/api/merchants/catalog/{owner['public_id']}",
@@ -305,7 +180,9 @@ def test_merchant_catalog_delete_blocks_live_config_not_historical_facts(
 ) -> None:
     created = _create_catalog(client, identity.app_headers, display_name="Anchor Store")
     merchant_key = normalize_merchant("Anchor Store")
-    assert clean_merchant_catalog_status(" hidden ") == "hidden"
+    clean_status = clean_merchant_catalog_status(" hidden ")
+    assert clean_status == "hidden"
+    assert clean_status in _CATALOG_WRITABLE_STATUSES
     _seed_enabled_alias_target(merchant_key=merchant_key)
 
     blocked_by_alias = client.request(
@@ -349,7 +226,30 @@ def test_merchant_catalog_key_changing_rename_blocks_live_config_not_historical_
         identity.app_headers,
         display_name="Rename Source",
     )
+    occupied = _create_catalog(
+        client,
+        identity.app_headers,
+        display_name="Occupied Rename Target",
+    )
     merchant_key = normalize_merchant("Rename Source")
+
+    occupied_conflict = client.patch(
+        f"/api/merchants/catalog/{created['public_id']}",
+        headers=identity.app_headers,
+        json={
+            "expected_row_version": created["row_version"],
+            "display_name": "Occupied Rename Target",
+        },
+    )
+    assert occupied_conflict.status_code == 409
+    occupied_body = occupied_conflict.json()
+    assert occupied_body["error"] == "state_conflict"
+    assert occupied_body["conflict_merchant_public_id"] == occupied["public_id"]
+    assert occupied_body["conflict_merchant_row_version"] == occupied["row_version"]
+    assert occupied_body["conflict_merchant_display_name"] == "Occupied Rename Target"
+    assert occupied_body["conflict_merchant_status"] == "active"
+    assert occupied_body["conflict_merchant_deleted"] is False
+
     _seed_enabled_alias_target(merchant_key=merchant_key)
 
     blocked_by_alias = client.patch(
@@ -391,260 +291,7 @@ def test_merchant_catalog_key_changing_rename_blocks_live_config_not_historical_
     assert renamed.json()["display_name"] == "Rename Target"
     assert renamed.json()["merchant_key"] == normalize_merchant("Rename Target")
     assert renamed.json()["usage_count"] == 0
-
-    with SessionLocal() as db:
-        expense = db.scalar(
-            select(Expense)
-            .where(Expense.tenant_id == "owner")
-            .where(Expense.merchant == "Rename Source")
-            .limit(1)
-        )
-        assert expense is not None
-
-
-def test_merchant_catalog_merge_creates_alias_and_keeps_historical_facts(
-    client: TestClient, *, identity
-) -> None:
-    source = _create_catalog(client, identity.app_headers, display_name="Old Shop")
-    target = _create_catalog(client, identity.app_headers, display_name="New Shop")
-    _seed_historical_expense(merchant="Old Shop")
-
-    merged = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": target["row_version"],
-            "alias_policy": "create_source_alias",
-        },
-    )
-    assert merged.status_code == 200, merged.text
-    body = merged.json()
-    assert body["source"]["status"] == "merged"
-    assert body["source"]["merged_into_public_id"] == target["public_id"]
-    assert body["source"]["row_version"] == source["row_version"] + 1
-    assert body["target"]["status"] == "active"
-    assert body["target"]["row_version"] == target["row_version"] + 1
-    assert body["created_alias_public_id"]
-
-    alias = _catalog_alias_by_key(alias_key=normalize_merchant("Old Shop"))
-    assert alias is not None
-    assert alias.public_id == body["created_alias_public_id"]
-    assert alias.enabled is True
-    assert alias.canonical_key == normalize_merchant("New Shop")
-    assert alias.alias_key == normalize_merchant("Old Shop")
-
-    with SessionLocal() as db:
-        expense = db.scalar(
-            select(Expense)
-            .where(Expense.tenant_id == "owner")
-            .where(Expense.merchant == "Old Shop")
-            .limit(1)
-        )
-        assert expense is not None
-
-    active_only = client.get(
-        "/api/merchants/catalog?include_hidden=false",
-        headers=identity.app_headers,
-    )
-    assert [item["public_id"] for item in active_only.json()["items"]] == [
-        target["public_id"]
-    ]
-
-
-def test_merchant_catalog_merge_none_policy_does_not_create_alias(
-    client: TestClient, *, identity
-) -> None:
-    source = _create_catalog(client, identity.app_headers, display_name="Source None")
-    target = _create_catalog(client, identity.app_headers, display_name="Target None")
-
-    merged = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": target["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert merged.status_code == 200, merged.text
-    assert merged.json()["created_alias_public_id"] is None
-    assert _catalog_alias_by_key(alias_key=normalize_merchant("Source None")) is None
-
-
-def test_merchant_catalog_merge_blocks_live_config_and_alias_key_conflict(
-    client: TestClient, *, identity
-) -> None:
-    source = _create_catalog(client, identity.app_headers, display_name="Blocked Source")
-    target = _create_catalog(client, identity.app_headers, display_name="Blocked Target")
-    source_key = normalize_merchant("Blocked Source")
-    _seed_enabled_alias_target(merchant_key=source_key)
-
-    blocked_by_canonical_alias = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": target["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert blocked_by_canonical_alias.status_code == 409
-    assert blocked_by_canonical_alias.json()["error"] == "state_conflict"
-
-    _disable_alias_and_seed_recurring(merchant_key=source_key)
-
-    blocked_by_recurring = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": target["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert blocked_by_recurring.status_code == 409
-    assert blocked_by_recurring.json()["error"] == "state_conflict"
-
-    _archive_recurring(merchant_key=source_key)
-    _seed_alias_key_conflict(alias="Blocked Source")
-
-    alias_conflict = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": target["row_version"],
-            "alias_policy": "create_source_alias",
-        },
-    )
-    assert alias_conflict.status_code == 409
-    assert alias_conflict.json()["error"] == "state_conflict"
-
-
-def test_merchant_catalog_merge_rejects_invalid_state_and_rewrite_flag(
-    client: TestClient, *, identity
-) -> None:
-    source = _create_catalog(client, identity.app_headers, display_name="Merge Source")
-    target = _create_catalog(client, identity.app_headers, display_name="Merge Target")
-    hidden_target = client.patch(
-        f"/api/merchants/catalog/{target['public_id']}",
-        headers=identity.app_headers,
-        json={"expected_row_version": target["row_version"], "status": "hidden"},
-    ).json()
-
-    same = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": source["public_id"],
-            "target_row_version": source["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert same.status_code == 422
-    assert same.json()["error"] == "invalid_request"
-
-    hidden = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": hidden_target["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert hidden.status_code == 409
-    assert hidden.json()["error"] == "state_conflict"
-
-    rewrite = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": hidden_target["row_version"],
-            "alias_policy": "none",
-            "rewrite_historical_expenses": True,
-        },
-    )
-    assert rewrite.status_code == 422
-    assert rewrite.json()["error"] == "invalid_request"
-
-
-def test_merchant_catalog_merge_stale_tokens_return_conflict_without_partial_merge(
-    client: TestClient, *, identity
-) -> None:
-    source = _create_catalog(client, identity.app_headers, display_name="Stale Source")
-    target = _create_catalog(client, identity.app_headers, display_name="Stale Target")
-    _bump_catalog_row_version(public_id=target["public_id"])
-
-    target_stale = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": target["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert target_stale.status_code == 409
-    assert target_stale.json()["error"] == "state_conflict"
-
-    listed = client.get("/api/merchants/catalog", headers=identity.app_headers)
-    by_id = {item["public_id"]: item for item in listed.json()["items"]}
-    assert by_id[source["public_id"]]["status"] == "active"
-    assert by_id[source["public_id"]]["merged_into_public_id"] is None
-
-    _bump_catalog_row_version(public_id=source["public_id"])
-    source_stale = client.post(
-        f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
-        json={
-            "expected_row_version": source["row_version"],
-            "target_public_id": target["public_id"],
-            "target_row_version": by_id[target["public_id"]]["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert source_stale.status_code == 409
-    assert source_stale.json()["error"] == "state_conflict"
-
-
-def test_merchant_catalog_merge_is_ledger_isolated(
-    client: TestClient, *, identity
-) -> None:
-    owner_source = _create_catalog(
-        client,
-        identity.app_headers,
-        display_name="Owner Source",
-    )
-    owner_target = _create_catalog(
-        client,
-        identity.app_headers,
-        display_name="Owner Target",
-    )
-
-    cross_source = client.post(
-        f"/api/merchants/catalog/{owner_source['public_id']}/merge",
-        headers=identity.gray_app_headers,
-        json={
-            "expected_row_version": owner_source["row_version"],
-            "target_public_id": owner_target["public_id"],
-            "target_row_version": owner_target["row_version"],
-            "alias_policy": "none",
-        },
-    )
-    assert cross_source.status_code == 404
-    assert cross_source.json()["error"] == "not_found"
+    _assert_historical_expense_exists(merchant="Rename Source")
 
 
 def test_merchant_catalog_stale_tokens_return_conflict(

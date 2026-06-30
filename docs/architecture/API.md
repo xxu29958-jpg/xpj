@@ -94,6 +94,12 @@ idempotency_key_reused
 **不是**嵌套的 `details` 对象——客户端按顶层字段解析），供客户端把重命名引导成对既有标签的合并（ADR-0043 契约 5）。
 示例：`{"error":"tag_conflict","message":"已有同名标签，可改为合并。","conflict_tag_public_id":"<uuid>","conflict_tag_row_version":<int>}`。
 
+商家目录 key 冲突仍使用通用 `409 state_conflict`，并在错误信封顶层附带 `conflict_merchant_public_id`、
+`conflict_merchant_row_version`、`conflict_merchant_display_name`、`conflict_merchant_status`、
+`conflict_merchant_deleted`。`alias_policy=create_source_alias` 的 alias-key 冲突同样使用 `state_conflict`，
+顶层附带 `conflict_alias_public_id`、`conflict_alias_row_version`、`conflict_alias_enabled`、
+`conflict_alias_deleted`；客户端不要读取嵌套 `details` 对象。
+
 ## 认证
 
 v0.3 使用可撤销凭证系统替代旧版静态 token。
@@ -858,11 +864,11 @@ Content-Type: application/json
 
 ### POST /api/merchants/catalog
 
-创建当前账本内的商家目录项。`display_name` 会归一出 `merchant_key`，同账本内重复 key 返回 `409 state_conflict`；不同账本可使用同名商家。创建不回写任何历史 `Expense.merchant`。
+创建当前账本内的商家目录项。`display_name` 会归一出 `merchant_key`，同账本内重复 key 返回 `409 state_conflict`，并在错误信封顶层带 `conflict_merchant_*` 字段；不同账本可使用同名商家。创建不回写任何历史 `Expense.merchant`。
 
 ### PATCH /api/merchants/catalog/{public_id}
 
-用 `expected_row_version` 更新 `display_name` 或 `status=active|hidden`。`merged` 状态保留给后续合并切片，本接口暂不接受。若 `display_name` 归一后改变 `merchant_key`，并且启用的商家别名仍以原 key 为 canonical target，或 active/paused 固定支出配置仍引用原 key，返回 `409 state_conflict`；历史账单事实不阻止重命名，也不会被改写。stale token 返回 `409 state_conflict`；跨账本或已软删项返回 `404 not_found`。
+用 `expected_row_version` 更新 `display_name` 或 `status=active|hidden`。`merged` 状态保留给后续合并切片，本接口暂不接受。若 `display_name` 归一后改变 `merchant_key` 且目标 key 已被同账本目录行占用，返回 `409 state_conflict`，顶层带 `conflict_merchant_*` 字段，客户端可引导用户改走 merge。若原 key 仍被启用的商家别名作为 canonical target，或仍被 active/paused 固定支出配置引用，返回 `409 state_conflict`；历史账单事实不阻止重命名，也不会被改写。stale token 返回 `409 state_conflict`；跨账本或已软删项返回 `404 not_found`。
 
 ### DELETE /api/merchants/catalog/{public_id}
 
@@ -888,7 +894,7 @@ Content-Type: application/json
 - source 必须是 live 且 `active/hidden`；target 必须是 live 且 `active`。
 - source 和 target 都要通过各自 row-version token；任一 stale 返回 `409 state_conflict`，不会留下半截 merge。
 - `alias_policy` 必须显式为 `none` 或 `create_source_alias`；`create_source_alias` 会创建 source key → target key 的 enabled `MerchantAlias`，但不迁移既有 alias 或 fixed recurring 配置。
-- 若 source key 仍被 enabled alias canonical target、active/paused 固定支出，或已有同 key alias 行占用，返回 `409 state_conflict`。
+- 若 source key 仍被 enabled alias canonical target、active/paused 固定支出，或已有同 key alias 行占用，返回 `409 state_conflict`；alias-key 冲突会在顶层带 `conflict_alias_*` 字段。
 - `rewrite_historical_expenses=true` 返回 `422 invalid_request`。历史 `Expense.merchant` 事实不改写。
 - 成功后 source 变为 `status=merged` 且 `merged_into_public_id=target_public_id`；merged source 不进入 `/api/recycle-bin`。
 - 第一版是 online-only API；不声明 `Idempotency-Key`，也不进入 Android persistent outbox。

@@ -4,18 +4,26 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Expense, MerchantAlias, MerchantCatalog, RecurringItem
+from app.models import Expense, MerchantCatalog
+from app.services.merchant_catalog_guards import (
+    WRITABLE_STATUSES as _WRITABLE_STATUSES,
+)
+from app.services.merchant_catalog_guards import (
+    claim_catalog_merge_pair,
+    create_source_alias_for_merge,
+    ensure_catalog_can_be_deleted,
+    ensure_catalog_has_no_live_config_references,
+    ensure_key_available,
+    ensure_source_alias_available,
+)
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.soft_delete_policy import is_within_recycle_bin_window
 from app.services.time_service import now_utc
-
-_WRITABLE_STATUSES = {"active", "hidden"}
 
 
 @dataclass(frozen=True)
@@ -99,7 +107,7 @@ def create_merchant_catalog(
 ) -> MerchantCatalogView:
     clean_name, key = clean_merchant_catalog_name(display_name)
     clean_status = clean_merchant_catalog_status(status)
-    _ensure_key_available(db, tenant_id=tenant_id, merchant_key=key)
+    ensure_key_available(db, tenant_id=tenant_id, merchant_key=key)
 
     now = now_utc()
     item = MerchantCatalog(
@@ -136,12 +144,12 @@ def update_merchant_catalog(
     if display_name is not None:
         clean_name, key = clean_merchant_catalog_name(display_name)
         if key != item.merchant_key:
-            _ensure_catalog_has_no_live_config_references(
+            ensure_catalog_has_no_live_config_references(
                 db,
                 tenant_id=tenant_id,
                 item=item,
             )
-        _ensure_key_available(
+        ensure_key_available(
             db,
             tenant_id=tenant_id,
             merchant_key=key,
@@ -181,7 +189,7 @@ def delete_merchant_catalog(
     item = _live_catalog_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
     if item is None:
         raise AppError("not_found", "Merchant catalog entry was not found.", status_code=404)
-    _ensure_catalog_can_be_deleted(db, tenant_id=tenant_id, item=item)
+    ensure_catalog_can_be_deleted(db, tenant_id=tenant_id, item=item)
 
     now = now_utc()
     rowcount = claim_row_with_token(
@@ -241,20 +249,20 @@ def merge_merchant_catalog(
     if source.status not in _WRITABLE_STATUSES or target.status != "active":
         raise AppError("state_conflict", status_code=409)
 
-    _ensure_catalog_has_no_live_config_references(
+    ensure_catalog_has_no_live_config_references(
         db,
         tenant_id=tenant_id,
         item=source,
     )
     if alias_policy == "create_source_alias":
-        _ensure_source_alias_available(
+        ensure_source_alias_available(
             db,
             tenant_id=tenant_id,
             source=source,
             target=target,
         )
 
-    _claim_catalog_merge_pair(
+    claim_catalog_merge_pair(
         db,
         tenant_id=tenant_id,
         source=source,
@@ -266,24 +274,13 @@ def merge_merchant_catalog(
 
     created_alias_public_id: str | None = None
     if alias_policy == "create_source_alias":
-        now = now_utc()
-        alias = MerchantAlias(
+        created_alias_public_id = create_source_alias_for_merge(
+            db,
             tenant_id=tenant_id,
-            canonical_merchant=target.display_name,
-            canonical_key=target.merchant_key,
-            alias=source.display_name,
-            alias_key=source.merchant_key,
-            enabled=True,
-            created_at=now,
-            updated_at=now,
+            source=source,
+            target=target,
+            now=now_utc(),
         )
-        db.add(alias)
-        try:
-            db.flush()
-        except IntegrityError as exc:
-            db.rollback()
-            raise AppError("state_conflict", status_code=409) from exc
-        created_alias_public_id = alias.public_id
 
     db.commit()
     db.expire_all()
@@ -362,160 +359,6 @@ def _live_catalog_by_public_id(
         .where(MerchantCatalog.deleted_at.is_(None))
         .limit(1)
     )
-
-
-def _catalog_by_key(
-    db: Session,
-    *,
-    tenant_id: str,
-    merchant_key: str,
-) -> MerchantCatalog | None:
-    return db.scalar(
-        ledger_scoped_select(MerchantCatalog, tenant_id)
-        .where(MerchantCatalog.merchant_key == merchant_key)
-        .limit(1)
-    )
-
-
-def _ensure_key_available(
-    db: Session,
-    *,
-    tenant_id: str,
-    merchant_key: str,
-    current_id: int | None = None,
-) -> None:
-    existing = _catalog_by_key(db, tenant_id=tenant_id, merchant_key=merchant_key)
-    if existing is not None and existing.id != current_id:
-        raise AppError("state_conflict", "Merchant already exists.", status_code=409)
-
-
-def _ensure_catalog_can_be_deleted(
-    db: Session,
-    *,
-    tenant_id: str,
-    item: MerchantCatalog,
-) -> None:
-    _ensure_catalog_has_no_live_config_references(
-        db,
-        tenant_id=tenant_id,
-        item=item,
-    )
-
-
-def _ensure_catalog_has_no_live_config_references(
-    db: Session,
-    *,
-    tenant_id: str,
-    item: MerchantCatalog,
-) -> None:
-    if db.scalar(
-        ledger_scoped_select(MerchantAlias, tenant_id)
-        .where(MerchantAlias.enabled.is_(True))
-        .where(MerchantAlias.deleted_at.is_(None))
-        .where(MerchantAlias.canonical_key == item.merchant_key)
-        .limit(1)
-    ):
-        raise AppError(
-            "state_conflict",
-            "Merchant is still used by an enabled alias.",
-            status_code=409,
-        )
-    if db.scalar(
-        ledger_scoped_select(RecurringItem, tenant_id)
-        .where(RecurringItem.status.in_(("active", "paused")))
-        .where(RecurringItem.merchant_key == item.merchant_key)
-        .limit(1)
-    ):
-        raise AppError(
-            "state_conflict",
-            "Merchant is still used by an active recurring item.",
-            status_code=409,
-        )
-
-
-def _ensure_source_alias_available(
-    db: Session,
-    *,
-    tenant_id: str,
-    source: MerchantCatalog,
-    target: MerchantCatalog,
-) -> None:
-    if source.merchant_key == target.merchant_key:
-        raise AppError("invalid_request", "Source and target merchants must differ.", status_code=422)
-    existing = db.scalar(
-        ledger_scoped_select(MerchantAlias, tenant_id)
-        .where(MerchantAlias.alias_key == source.merchant_key)
-        .limit(1)
-    )
-    if existing is not None:
-        raise AppError("state_conflict", status_code=409)
-
-
-def _claim_catalog_merge_pair(
-    db: Session,
-    *,
-    tenant_id: str,
-    source: MerchantCatalog,
-    target: MerchantCatalog,
-    expected_row_version: int,
-    target_row_version: int,
-    now: datetime,
-) -> None:
-    claim_specs = [
-        {
-            "item": source,
-            "public_id": source.public_id,
-            "expected_row_version": expected_row_version,
-            "set_values": {
-                "status": "merged",
-                "merged_into_public_id": target.public_id,
-                "updated_at": now,
-            },
-            "extra_where": (
-                MerchantCatalog.deleted_at.is_(None),
-                MerchantCatalog.status.in_(tuple(_WRITABLE_STATUSES)),
-            ),
-        },
-        {
-            "item": target,
-            "public_id": target.public_id,
-            "expected_row_version": target_row_version,
-            "set_values": {"updated_at": now},
-            "extra_where": (
-                MerchantCatalog.deleted_at.is_(None),
-                MerchantCatalog.status == "active",
-            ),
-        },
-    ]
-    for spec in sorted(claim_specs, key=lambda item: item["item"].id):
-        claimed = claim_row_with_token(
-            db,
-            MerchantCatalog,
-            pk_id=spec["item"].id,
-            tenant_id=tenant_id,
-            expected_row_version=spec["expected_row_version"],
-            set_values=spec["set_values"],
-            extra_where=spec["extra_where"],
-        )
-        if claimed != 1:
-            db.rollback()
-            _raise_catalog_merge_claim_error(
-                db,
-                tenant_id=tenant_id,
-                public_id=spec["public_id"],
-            )
-
-
-def _raise_catalog_merge_claim_error(
-    db: Session,
-    *,
-    tenant_id: str,
-    public_id: str,
-) -> None:
-    current = _catalog_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
-    if current is None or current.deleted_at is not None:
-        raise AppError("not_found", "Merchant catalog entry was not found.", status_code=404)
-    raise AppError("state_conflict", status_code=409)
 
 
 def _refreshed_view(

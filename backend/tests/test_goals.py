@@ -293,11 +293,7 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
     invalid_month = client.post(
         "/api/goals",
         headers=identity.app_headers,
-        json={
-            "name": "Bad Month",
-            "month": "2026-13",
-            "target_amount_cents": 1000,
-        },
+        json={"name": "Bad Month", "month": "2026-13", "target_amount_cents": 1000},
     )
     assert invalid_month.status_code == 422
     assert invalid_month.json()["error"] == "invalid_request"
