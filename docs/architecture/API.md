@@ -157,6 +157,7 @@ Authorization: Bearer <admin_token>
 | `/api/merchants/catalog` | POST | `backend/app/routes/merchants.py` | `createMerchantCatalog(request)` | `MerchantCatalogCreateRequest` / `MerchantCatalogCreateRequest` | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | 创建商家目录项；不改写历史账单商家事实 |
 | `/api/merchants/catalog/{public_id}` | PATCH | `backend/app/routes/merchants.py` | `updateMerchantCatalog(publicId,request,idempotencyKey)` | `MerchantCatalogUpdateRequest`（`expected_row_version`） | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | 更新显示名或 `active/hidden` 状态；key-changing rename 若仍被启用别名或 active/paused 固定支出引用则 `409 state_conflict`；stale → `409 state_conflict` |
 | `/api/merchants/catalog/{public_id}` | DELETE | `backend/app/routes/merchants.py` | `deleteMerchantCatalog(publicId,request,idempotencyKey)` | `MerchantCatalogDeleteRequest`（`expected_row_version`） | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `backend/tests/test_recycle_bin.py`, `OpenApiContractGateTest` | 软删商家目录项；启用别名/active 或 paused 固定支出阻止删除，历史账单不阻止 |
+| `/api/merchants/catalog/{source_public_id}/merge` | POST | `backend/app/routes/merchants.py` | 无 | `MerchantCatalogMergeRequest` | `MerchantCatalogMergeResponse` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `backend/tests/test_route_security_matrix.py` | ADR-0054 合并商家目录；双 row-version token；显式 `alias_policy`；不改写历史账单，不进入回收站 |
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/tag/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, smoke | gray/internal 导出 |
@@ -866,6 +867,31 @@ Content-Type: application/json
 ### DELETE /api/merchants/catalog/{public_id}
 
 用 `expected_row_version` 软删商家目录项。启用的商家别名若以该 `merchant_key` 为 canonical target，或 active/paused 固定支出配置引用该 key，返回 `409 state_conflict`；历史账单事实不阻止删除，也不会被改写。删除后的行进入 `/api/recycle-bin`，统一恢复使用 `kind=merchant_catalog`。
+
+### POST /api/merchants/catalog/{source_public_id}/merge
+
+按 ADR-0054 合并两个当前账本内的商家目录项。请求体：
+
+```json
+{
+  "expected_row_version": 3,
+  "target_public_id": "target-public-id",
+  "target_row_version": 7,
+  "alias_policy": "create_source_alias",
+  "rewrite_historical_expenses": false
+}
+```
+
+规则：
+
+- `source_public_id` 和 `target_public_id` 必须不同；相同返回 `422 invalid_request`。
+- source 必须是 live 且 `active/hidden`；target 必须是 live 且 `active`。
+- source 和 target 都要通过各自 row-version token；任一 stale 返回 `409 state_conflict`，不会留下半截 merge。
+- `alias_policy` 必须显式为 `none` 或 `create_source_alias`；`create_source_alias` 会创建 source key → target key 的 enabled `MerchantAlias`，但不迁移既有 alias 或 fixed recurring 配置。
+- 若 source key 仍被 enabled alias canonical target、active/paused 固定支出，或已有同 key alias 行占用，返回 `409 state_conflict`。
+- `rewrite_historical_expenses=true` 返回 `422 invalid_request`。历史 `Expense.merchant` 事实不改写。
+- 成功后 source 变为 `status=merged` 且 `merged_into_public_id=target_public_id`；merged source 不进入 `/api/recycle-bin`。
+- 第一版是 online-only API；不声明 `Idempotency-Key`，也不进入 Android persistent outbox。
 
 ### GET /api/expenses/tags
 

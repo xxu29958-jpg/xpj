@@ -14,6 +14,8 @@ from app.schemas import (
     MerchantCatalogCreateRequest,
     MerchantCatalogDeleteRequest,
     MerchantCatalogListResponse,
+    MerchantCatalogMergeRequest,
+    MerchantCatalogMergeResponse,
     MerchantCatalogResponse,
     MerchantCatalogUpdateRequest,
     StatusResponse,
@@ -34,6 +36,7 @@ from app.services.merchant_catalog_service import (
     create_merchant_catalog,
     delete_merchant_catalog,
     list_merchant_catalog,
+    merge_merchant_catalog,
     update_merchant_catalog,
 )
 from app.tenants import AuthContext
@@ -102,6 +105,28 @@ def delete_merchant_catalog_route(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
+    )
+
+
+@router.post(
+    "/catalog/{source_public_id}/merge",
+    response_model=MerchantCatalogMergeResponse,
+)
+def merge_merchant_catalog_route(
+    source_public_id: str,
+    payload: MerchantCatalogMergeRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MerchantCatalogMergeResponse:
+    return merge_merchant_catalog(
+        db,
+        tenant_id=auth.tenant_id,
+        source_public_id=source_public_id,
+        expected_row_version=payload.expected_row_version,
+        target_public_id=payload.target_public_id,
+        target_row_version=payload.target_row_version,
+        alias_policy=payload.alias_policy,
+        rewrite_historical_expenses=payload.rewrite_historical_expenses,
     )
 
 

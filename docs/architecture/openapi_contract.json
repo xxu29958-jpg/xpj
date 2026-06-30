@@ -8938,6 +8938,73 @@
         "title": "MerchantCatalogListResponse",
         "type": "object"
       },
+      "MerchantCatalogMergeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "alias_policy": {
+            "enum": [
+              "none",
+              "create_source_alias"
+            ],
+            "title": "Alias Policy",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "rewrite_historical_expenses": {
+            "default": false,
+            "title": "Rewrite Historical Expenses",
+            "type": "boolean"
+          },
+          "target_public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Target Public Id",
+            "type": "string"
+          },
+          "target_row_version": {
+            "title": "Target Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "target_public_id",
+          "target_row_version",
+          "alias_policy"
+        ],
+        "title": "MerchantCatalogMergeRequest",
+        "type": "object"
+      },
+      "MerchantCatalogMergeResponse": {
+        "properties": {
+          "created_alias_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Alias Public Id"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MerchantCatalogResponse"
+          },
+          "target": {
+            "$ref": "#/components/schemas/MerchantCatalogResponse"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "MerchantCatalogMergeResponse",
+        "type": "object"
+      },
       "MerchantCatalogResponse": {
         "properties": {
           "created_at": {
@@ -22332,6 +22399,84 @@
           }
         },
         "summary": "Patch Merchant Catalog",
+        "tags": [
+          "merchants"
+        ]
+      }
+    },
+    "/api/merchants/catalog/{source_public_id}/merge": {
+      "post": {
+        "operationId": "merge_merchant_catalog_route_api_merchants_catalog__source_public_id__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_public_id",
+            "required": true,
+            "schema": {
+              "title": "Source Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantCatalogMergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantCatalogMergeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Merge Merchant Catalog Route",
         "tags": [
           "merchants"
         ]

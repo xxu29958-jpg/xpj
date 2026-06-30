@@ -7,6 +7,7 @@ preview / apply / rollback flows for the rules engine.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -24,6 +25,8 @@ __all__ = [
     "MerchantCatalogCreateRequest",
     "MerchantCatalogDeleteRequest",
     "MerchantCatalogListResponse",
+    "MerchantCatalogMergeRequest",
+    "MerchantCatalogMergeResponse",
     "MerchantCatalogResponse",
     "MerchantCatalogUpdateRequest",
     "RuleApplicationBatchResponse",
@@ -187,6 +190,16 @@ class MerchantCatalogDeleteRequest(BaseModel):
     expected_row_version: int
 
 
+class MerchantCatalogMergeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int
+    target_public_id: str = Field(min_length=1, max_length=36)
+    target_row_version: int
+    alias_policy: Literal["none", "create_source_alias"]
+    rewrite_historical_expenses: bool = False
+
+
 class MerchantCatalogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -208,6 +221,14 @@ class MerchantCatalogResponse(BaseModel):
 
 class MerchantCatalogListResponse(BaseModel):
     items: list[MerchantCatalogResponse]
+
+
+class MerchantCatalogMergeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source: MerchantCatalogResponse
+    target: MerchantCatalogResponse
+    created_alias_public_id: str | None = None
 
 
 # v0.4-alpha3 — Rules Engine

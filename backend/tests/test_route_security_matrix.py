@@ -172,6 +172,18 @@ from fastapi.testclient import TestClient
         ),
         (
             "POST",
+            "/api/merchants/catalog/catalog_missing/merge",
+            {
+                "json": {
+                    "expected_row_version": 1,
+                    "target_public_id": "target_missing",
+                    "target_row_version": 1,
+                    "alias_policy": "none",
+                }
+            },
+        ),
+        (
+            "POST",
             "/api/recurring/from-candidate",
             {"json": {"merchant": "Store", "amount_cents": 1200}},
         ),
