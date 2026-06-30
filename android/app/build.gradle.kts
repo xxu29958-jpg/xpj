@@ -644,6 +644,15 @@ fun ticketboxReadyDeviceSerials(): List<String> {
         }
 }
 
+fun ticketboxSelectedConnectedTestEmulatorSerial(readySerials: List<String>): String? {
+    val selectedSerial = System.getenv("ANDROID_SERIAL")?.trim()?.takeIf { it.isNotBlank() }
+        ?: return null
+    return selectedSerial.takeIf { serial ->
+        serial.startsWith("emulator-", ignoreCase = true) &&
+            readySerials.any { it.equals(serial, ignoreCase = true) }
+    }
+}
+
 val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
     group = "verification"
     description = "Refuse connected Android tests on physical devices unless explicitly opted in."
@@ -652,7 +661,11 @@ val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
         if (ticketboxAllowRealDeviceConnectedTest) {
             return@doLast
         }
-        val physicalDevices = ticketboxReadyDeviceSerials()
+        val readySerials = ticketboxReadyDeviceSerials()
+        if (ticketboxSelectedConnectedTestEmulatorSerial(readySerials) != null) {
+            return@doLast
+        }
+        val physicalDevices = readySerials
             .filterNot { it.startsWith("emulator-", ignoreCase = true) }
         if (physicalDevices.isNotEmpty()) {
             throw GradleException(
