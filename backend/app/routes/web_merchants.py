@@ -1,7 +1,7 @@
 """/web merchant governance routes.
 
-The first v0.7 web slice exposes merchant aliases only. It does not merge
-historical expenses or overwrite the original merchant text.
+The web surface exposes merchant catalog management and merchant aliases. It
+does not merge historical expenses or overwrite the original merchant text.
 """
 
 from __future__ import annotations
@@ -30,6 +30,13 @@ from app.services.merchant_alias_service import (
     undo_delete_merchant_alias,
     update_merchant_alias,
 )
+from app.services.merchant_catalog_service import (
+    create_merchant_catalog,
+    delete_merchant_catalog,
+    get_merchant_catalog,
+    list_merchant_catalog,
+    update_merchant_catalog,
+)
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -45,8 +52,10 @@ def web_merchants(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    catalog = list_merchant_catalog(db, tenant_id=selected_id, include_hidden=True)
     aliases = list_merchant_aliases(db, selected_id)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx["catalog"] = catalog
     ctx["aliases"] = aliases
     ctx["flash_message"] = msg
     # ADR-0038 undo: a just-deleted alias's public_id, so the flash can offer a
@@ -57,6 +66,110 @@ def web_merchants(
         request=request,
         name="merchants.html",
         context=ctx,
+    )
+
+
+@router.post("/merchants/catalog/create", response_class=HTMLResponse)
+def web_merchant_catalog_create(
+    request: Request,
+    display_name: str = Form(""),
+    ledger_id: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    try:
+        item = create_merchant_catalog(
+            db,
+            tenant_id=selected_id,
+            display_name=display_name,
+        )
+        msg = f"已新增商家：{item.display_name}"
+    except AppError as exc:
+        msg = "新增失败：" + exc.message
+    return _web_redirect("/web/merchants", selected_id, msg=msg)
+
+
+@router.post("/merchants/catalog/{public_id}/toggle", response_class=HTMLResponse)
+def web_merchant_catalog_toggle(
+    request: Request,
+    public_id: str,
+    ledger_id: str = Form(""),
+    expected_row_version: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_row_version_token(expected_row_version)
+    if parsed is None:
+        return _web_redirect(
+            "/web/merchants",
+            selected_id,
+            msg="页面已过期，请刷新后重试。",
+        )
+    try:
+        item = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
+        next_status = "hidden" if item.status == "active" else "active"
+        updated = update_merchant_catalog(
+            db,
+            tenant_id=selected_id,
+            public_id=public_id,
+            expected_row_version=parsed,
+            status=next_status,
+        )
+        msg = f"商家「{updated.display_name}」{'已显示' if updated.status == 'active' else '已隐藏'}。"
+    except AppError as exc:
+        msg = (
+            "商家已在其它端被修改，请刷新后重试。"
+            if exc.error == "state_conflict"
+            else exc.message
+        )
+    return _web_redirect("/web/merchants", selected_id, msg=msg)
+
+
+@router.post("/merchants/catalog/{public_id}/delete", response_class=HTMLResponse)
+def web_merchant_catalog_delete(
+    request: Request,
+    public_id: str,
+    ledger_id: str = Form(""),
+    expected_row_version: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_row_version_token(expected_row_version)
+    if parsed is None:
+        return _web_redirect(
+            "/web/merchants",
+            selected_id,
+            msg="页面已过期，请刷新后重试。",
+        )
+    try:
+        item = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
+        display_name = item.display_name
+        delete_merchant_catalog(
+            db,
+            tenant_id=selected_id,
+            public_id=public_id,
+            expected_row_version=parsed,
+        )
+    except AppError as exc:
+        msg = (
+            "商家已在其它端被修改，请刷新后重试。"
+            if exc.error == "state_conflict"
+            else exc.message
+        )
+        return _web_redirect("/web/merchants", selected_id, msg=msg)
+    return _web_redirect(
+        "/web/merchants",
+        selected_id,
+        msg=f"商家「{display_name}」已移入回收站。",
     )
 
 

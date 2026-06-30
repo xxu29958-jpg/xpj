@@ -67,6 +67,21 @@ def list_merchant_catalog(
     return [_catalog_view(item, usage_counts=usage_counts) for item in rows]
 
 
+def get_merchant_catalog(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+) -> MerchantCatalogView:
+    item = _live_catalog_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
+    if item is None:
+        raise AppError("not_found", "Merchant catalog entry was not found.", status_code=404)
+    return _catalog_view(
+        item,
+        usage_counts=_usage_counts_by_merchant_key(db, tenant_id=tenant_id),
+    )
+
+
 def create_merchant_catalog(
     db: Session,
     *,

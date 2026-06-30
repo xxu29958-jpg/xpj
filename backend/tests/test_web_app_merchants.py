@@ -12,7 +12,65 @@ def test_web_merchants_local_returns_200(web_client: TestClient) -> None:
     assert "不会覆盖原始账单商家" in resp.text
 
 
-def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> None:
+def test_web_merchants_catalog_and_alias_create_toggle_delete(web_client: TestClient) -> None:
+    import re as _re
+
+    _exercise_web_catalog_create_toggle_delete(web_client, _re)
+    _exercise_web_alias_create_toggle_delete(web_client, _re)
+
+
+def _exercise_web_catalog_create_toggle_delete(web_client: TestClient, re_module) -> None:
+    catalog_created = web_client.post(
+        "/web/merchants/catalog/create",
+        data={"display_name": "星巴克", "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert catalog_created.status_code in {303, 307}
+
+    page = web_client.get("/web/merchants?ledger_id=owner")
+    assert page.status_code == 200
+    assert "商家目录（1 个）" in page.text
+    assert "星巴克" in page.text
+    assert "<code>星巴克</code>" in page.text
+
+    catalog_match = re_module.search(r"/web/merchants/catalog/([^/]+)/delete", page.text)
+    assert catalog_match, page.text[:1000]
+    catalog_public_id = catalog_match.group(1)
+    catalog_toggle_token = re_module.search(
+        rf"/web/merchants/catalog/{catalog_public_id}/toggle.*?expected_row_version\"\s*value=\"([^\"]+)\"",
+        page.text,
+        flags=re_module.DOTALL,
+    )
+    assert catalog_toggle_token, page.text[:1500]
+    hidden = web_client.post(
+        f"/web/merchants/catalog/{catalog_public_id}/toggle",
+        data={"ledger_id": "owner", "expected_row_version": catalog_toggle_token.group(1)},
+        follow_redirects=False,
+    )
+    assert hidden.status_code in {303, 307}
+    page = web_client.get("/web/merchants?ledger_id=owner")
+    assert "隐藏" in page.text
+
+    catalog_delete_token = re_module.search(
+        rf"/web/merchants/catalog/{catalog_public_id}/delete.*?expected_row_version\"\s*value=\"([^\"]+)\"",
+        page.text,
+        flags=re_module.DOTALL,
+    )
+    assert catalog_delete_token, page.text[:1500]
+    catalog_deleted = web_client.post(
+        f"/web/merchants/catalog/{catalog_public_id}/delete",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": catalog_delete_token.group(1),
+        },
+        follow_redirects=False,
+    )
+    assert catalog_deleted.status_code in {303, 307}
+    page = web_client.get("/web/merchants?ledger_id=owner")
+    assert "还没有商家目录" in page.text
+
+
+def _exercise_web_alias_create_toggle_delete(web_client: TestClient, re_module) -> None:
     created = web_client.post(
         "/web/merchants/aliases/create",
         data={
@@ -41,17 +99,16 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
     assert duplicate.status_code == 200
     assert "商家别名已指向其他商家" in duplicate.text
 
-    import re as _re
-    match = _re.search(r"/web/merchants/aliases/([^/]+)/delete", page.text)
+    match = re_module.search(r"/web/merchants/aliases/([^/]+)/delete", page.text)
     assert match, page.text[:500]
     public_id = match.group(1)
     # ADR-0038 PR-2e: /web mutate forms render the row's updated_at as a
     # hidden ``expected_row_version`` token; the page already contains it
     # so pull it out instead of fetching the API directly.
-    token_match = _re.search(
+    token_match = re_module.search(
         rf"/web/merchants/aliases/{public_id}/toggle.*?expected_row_version\"\s*value=\"([^\"]+)\"",
         page.text,
-        flags=_re.DOTALL,
+        flags=re_module.DOTALL,
     )
     assert token_match, page.text[:1000]
     token = token_match.group(1)
@@ -65,10 +122,10 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
     page = web_client.get("/web/merchants?ledger_id=owner")
     assert "停用" in page.text
 
-    delete_token_match = _re.search(
+    delete_token_match = re_module.search(
         rf"/web/merchants/aliases/{public_id}/delete.*?expected_row_version\"\s*value=\"([^\"]+)\"",
         page.text,
-        flags=_re.DOTALL,
+        flags=re_module.DOTALL,
     )
     assert delete_token_match, page.text[:1000]
     deleted = web_client.post(

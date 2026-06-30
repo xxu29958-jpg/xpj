@@ -61,6 +61,11 @@ import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasListDto
 import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogDto
+import com.ticketbox.data.remote.dto.MerchantCatalogListDto
+import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
@@ -377,6 +382,28 @@ interface ApiService {
     // restores the row the caller just deleted). Returns the restored rule.
     @POST("api/rules/categories/{id}/undo")
     suspend fun undoCategoryRule(@Path("id") id: Long): CategoryRuleDto
+
+    @GET("api/merchants/catalog")
+    suspend fun merchantCatalog(
+        @Query("include_hidden") includeHidden: Boolean = true,
+    ): MerchantCatalogListDto
+
+    @POST("api/merchants/catalog")
+    suspend fun createMerchantCatalog(@Body request: MerchantCatalogCreateRequest): MerchantCatalogDto
+
+    @PATCH("api/merchants/catalog/{publicId}")
+    suspend fun updateMerchantCatalog(
+        @Path("publicId") publicId: String,
+        @Body request: MerchantCatalogUpdateRequest,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): MerchantCatalogDto
+
+    @HTTP(method = "DELETE", path = "api/merchants/catalog/{publicId}", hasBody = true)
+    suspend fun deleteMerchantCatalog(
+        @Path("publicId") publicId: String,
+        @Body request: MerchantCatalogDeleteRequest,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): MerchantCatalogDto
 
     @GET("api/merchants/aliases")
     suspend fun merchantAliases(): MerchantAliasListDto

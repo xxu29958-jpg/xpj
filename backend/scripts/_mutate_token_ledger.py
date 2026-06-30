@@ -313,6 +313,7 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/import/confirm": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /web/import/{public_id}/apply": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /web/income-plans/create": Exempt("create_row", "budget", _INCOME_PLAN),
+    "POST /web/merchants/catalog/create": Exempt("create_row", "merchants", _MERCHANT_CATALOG),
     "POST /web/merchants/aliases/create": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")

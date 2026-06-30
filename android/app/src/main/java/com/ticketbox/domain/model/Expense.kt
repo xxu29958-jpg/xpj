@@ -350,6 +350,21 @@ data class MerchantAlias(
     val rowVersion: Long,
 )
 
+data class MerchantCatalog(
+    val publicId: String,
+    val displayName: String,
+    val merchantKey: String,
+    val status: String,
+    val mergedIntoPublicId: String?,
+    val usageCount: Int,
+    val createdAt: String,
+    val updatedAt: String,
+    val rowVersion: Long,
+    val deletedAt: String?,
+) {
+    val isActive: Boolean = status == "active"
+}
+
 data class RuleApplicationBatch(
     val publicId: String,
     val status: String,

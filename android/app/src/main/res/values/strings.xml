@@ -45,7 +45,15 @@
     <string name="biometric_state_expired">验证状态已失效，请重试。</string>
     <string name="biometric_failed">验证失败，请重试。</string>
 
-    <!-- MerchantAlias：设置→商家别名 屏的状态/结果文案 -->
+    <!-- Merchant：设置→商家管理 屏的状态/结果文案 -->
+    <string name="merchant_catalog_load_failed">商家目录暂时打不开。</string>
+    <string name="merchant_catalog_added">商家已添加</string>
+    <string name="merchant_catalog_add_failed">没有添加成功，请稍后再试。</string>
+    <string name="merchant_catalog_visible">商家已显示</string>
+    <string name="merchant_catalog_hidden">商家已隐藏</string>
+    <string name="merchant_catalog_update_failed">没有更新成功，请稍后再试。</string>
+    <string name="merchant_catalog_deleted">商家已移入回收站</string>
+    <string name="merchant_catalog_delete_failed">没有删除成功，请稍后再试。</string>
     <string name="merchant_alias_load_failed">商家别名暂时打不开。</string>
     <string name="merchant_alias_added">商家别名已添加</string>
     <string name="merchant_alias_add_failed">没有添加成功，请稍后再试。</string>

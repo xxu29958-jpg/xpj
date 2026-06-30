@@ -335,6 +335,20 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
         idempotencyKey: String?,
     ): StatusDto = ledgerUnsupported()
+    override suspend fun merchantCatalog(includeHidden: Boolean): com.ticketbox.data.remote.dto.MerchantCatalogListDto = ledgerUnsupported()
+    override suspend fun createMerchantCatalog(
+        request: com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest,
+    ): com.ticketbox.data.remote.dto.MerchantCatalogDto = ledgerUnsupported()
+    override suspend fun updateMerchantCatalog(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MerchantCatalogDto = ledgerUnsupported()
+    override suspend fun deleteMerchantCatalog(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.MerchantCatalogDto = ledgerUnsupported()
     override suspend fun merchantAliases(): MerchantAliasListDto = ledgerUnsupported()
     override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto = ledgerUnsupported()
     override suspend fun updateMerchantAlias(

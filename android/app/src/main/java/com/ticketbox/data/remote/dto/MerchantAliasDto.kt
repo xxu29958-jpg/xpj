@@ -57,3 +57,48 @@ data class MerchantAliasDeleteRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )
+
+data class MerchantCatalogDto(
+    @param:Json(name = "public_id")
+    val publicId: String,
+    @param:Json(name = "display_name")
+    val displayName: String,
+    @param:Json(name = "merchant_key")
+    val merchantKey: String,
+    val status: String,
+    @param:Json(name = "merged_into_public_id")
+    val mergedIntoPublicId: String? = null,
+    @param:Json(name = "usage_count")
+    val usageCount: Int,
+    @param:Json(name = "created_at")
+    val createdAt: String,
+    @param:Json(name = "updated_at")
+    val updatedAt: String,
+    @param:Json(name = "row_version")
+    val rowVersion: Long,
+    @param:Json(name = "deleted_at")
+    val deletedAt: String? = null,
+)
+
+data class MerchantCatalogListDto(
+    val items: List<MerchantCatalogDto>,
+)
+
+data class MerchantCatalogCreateRequest(
+    @param:Json(name = "display_name")
+    val displayName: String,
+    val status: String = "active",
+)
+
+data class MerchantCatalogUpdateRequest(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+    @param:Json(name = "display_name")
+    val displayName: String? = null,
+    val status: String? = null,
+)
+
+data class MerchantCatalogDeleteRequest(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+)

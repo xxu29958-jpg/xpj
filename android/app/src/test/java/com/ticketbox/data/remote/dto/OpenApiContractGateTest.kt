@@ -96,6 +96,14 @@ class OpenApiContractGateTest {
         Pairing(RecycleBinListResponseDto::class, "RecycleBinListResponse"),
         Pairing(RecycleBinRestoreRequestDto::class, "RecycleBinRestoreRequest"),
         Pairing(RecycleBinRestoreResponseDto::class, "RecycleBinRestoreResponse"),
+        // ADR-0053 merchant catalog Android management surface. Request bodies
+        // are additionalProperties=false; response fields include the row
+        // version used by hide/delete OCC.
+        Pairing(MerchantCatalogDto::class, "MerchantCatalogResponse"),
+        Pairing(MerchantCatalogListDto::class, "MerchantCatalogListResponse"),
+        Pairing(MerchantCatalogCreateRequest::class, "MerchantCatalogCreateRequest"),
+        Pairing(MerchantCatalogUpdateRequest::class, "MerchantCatalogUpdateRequest"),
+        Pairing(MerchantCatalogDeleteRequest::class, "MerchantCatalogDeleteRequest"),
         // ADR-0049 §6 (slice 7) debt_repayment goal surface. GoalDto was previously
         // ungated — slice 6 widened GoalResponse (the spend fields became nullable +
         // a nested debt_repayment block) so bring it under the gate now, along with

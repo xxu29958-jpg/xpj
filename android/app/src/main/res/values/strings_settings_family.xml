@@ -180,7 +180,7 @@
     <string name="recycle_bin_page_title">回收站</string>
     <string name="recycle_bin_page_subtitle">恢复已归档或仍在短窗内可撤回的项目。</string>
     <string name="recycle_bin_section_items">可恢复项目</string>
-    <string name="recycle_bin_empty">回收站是空的。归档的收入、固定支出、目标，或刚删除的规则、商家别名、标签会出现在这里。</string>
+    <string name="recycle_bin_empty">回收站是空的。归档的收入、固定支出、目标，或刚删除的规则、商家目录、商家别名、标签会出现在这里。</string>
     <string name="recycle_bin_refresh">刷新回收站</string>
     <string name="recycle_bin_refresh_loading">刷新中…</string>
     <string name="recycle_bin_row_status">%1$s · 移除时间 %2$s</string>

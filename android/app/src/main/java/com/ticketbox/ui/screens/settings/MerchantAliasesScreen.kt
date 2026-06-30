@@ -28,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppGlassCard
@@ -38,11 +39,15 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun MerchantAliasesScreen(
+    catalog: List<MerchantCatalog>,
     aliases: List<MerchantAlias>,
     busy: Boolean,
     readOnly: Boolean,
     message: UiText?,
     onBack: () -> Unit,
+    onCreateCatalog: (String) -> Unit,
+    onToggleCatalog: (MerchantCatalog) -> Unit,
+    onDeleteCatalog: (MerchantCatalog) -> Unit,
     onCreateAlias: (String, String) -> Unit,
     onToggleAlias: (MerchantAlias) -> Unit,
     onDeleteAlias: (MerchantAlias) -> Unit,
@@ -50,13 +55,47 @@ fun MerchantAliasesScreen(
     onUndoDelete: () -> Unit = {},
     onDismissUndo: () -> Unit = {},
 ) {
+    var catalogName by remember { mutableStateOf("") }
     var canonicalMerchant by remember { mutableStateOf("") }
     var aliasText by remember { mutableStateOf("") }
-    var localMessage by remember { mutableStateOf<String?>(null) }
+    var catalogMessage by remember { mutableStateOf<String?>(null) }
+    var aliasMessage by remember { mutableStateOf<String?>(null) }
+    var deletingCatalog by remember { mutableStateOf<MerchantCatalog?>(null) }
     var deletingAlias by remember { mutableStateOf<MerchantAlias?>(null) }
     // ADR-0044: stringResource is @Composable-only, but this validation message is
     // assigned inside a non-composable onClick lambda below. Hoist the resolved string here.
+    val catalogValidationMessage = stringResource(R.string.merchant_catalog_create_validation)
     val createValidationMessage = stringResource(R.string.merchant_aliases_create_validation)
+
+    deletingCatalog?.let { item ->
+        AlertDialog(
+            onDismissRequest = { deletingCatalog = null },
+            title = { Text(stringResource(R.string.merchant_catalog_delete_dialog_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.merchant_catalog_delete_dialog_text,
+                        item.displayName,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingCatalog = null
+                        onDeleteCatalog(item)
+                    },
+                ) {
+                    Text(stringResource(R.string.merchant_catalog_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingCatalog = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
 
     deletingAlias?.let { item ->
         AlertDialog(
@@ -91,7 +130,7 @@ fun MerchantAliasesScreen(
 
     SettingsPageFrame(
         title = stringResource(R.string.merchant_aliases_page_title),
-        subtitle = merchantAliasSummary(aliases),
+        subtitle = merchantAliasSummary(catalog, aliases),
         onBack = onBack,
         status = { AppStatusBanner(message = message, tone = MessageTone.Neutral) },
     ) {
@@ -123,56 +162,21 @@ fun MerchantAliasesScreen(
         }
 
         if (!readOnly) {
-            SettingsSection(title = stringResource(R.string.merchant_aliases_section_create), icon = Icons.Filled.Tune) {
-                AppGlassCard(containerAlpha = 0.96f) {
-                    Column(
-                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                    ) {
-                        OutlinedTextField(
-                            value = canonicalMerchant,
-                            onValueChange = { canonicalMerchant = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(R.string.merchant_aliases_canonical_label)) },
-                            placeholder = { Text(stringResource(R.string.merchant_aliases_canonical_placeholder)) },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            value = aliasText,
-                            onValueChange = { aliasText = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(R.string.merchant_aliases_alias_label)) },
-                            placeholder = { Text("Starbucks") },
-                            singleLine = true,
-                        )
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !busy,
-                            onClick = {
-                                if (canonicalMerchant.isBlank() || aliasText.isBlank()) {
-                                    localMessage = createValidationMessage
-                                    return@Button
-                                }
-                                localMessage = null
-                                onCreateAlias(canonicalMerchant, aliasText)
-                                canonicalMerchant = ""
-                                aliasText = ""
-                            },
-                        ) {
-                            Text(
-                                if (busy) {
-                                    stringResource(R.string.merchant_aliases_create_busy)
-                                } else {
-                                    stringResource(R.string.merchant_aliases_create_button)
-                                },
-                            )
-                        }
-                        localMessage?.let {
-                            Text(it, color = MaterialTheme.colorScheme.secondary)
-                        }
+            MerchantCatalogCreateSection(
+                catalogName = catalogName,
+                busy = busy,
+                message = catalogMessage,
+                onCatalogNameChange = { catalogName = it },
+                onSubmit = {
+                    if (catalogName.isBlank()) {
+                        catalogMessage = catalogValidationMessage
+                        return@MerchantCatalogCreateSection
                     }
-                }
-            }
+                    catalogMessage = null
+                    onCreateCatalog(catalogName)
+                    catalogName = ""
+                },
+            )
         } else {
             Text(
                 text = stringResource(R.string.common_readonly_ledger),
@@ -180,25 +184,283 @@ fun MerchantAliasesScreen(
             )
         }
 
-        SettingsSection(title = stringResource(R.string.merchant_aliases_section_list), icon = Icons.Filled.Tune) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                if (aliases.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.merchant_aliases_list_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    aliases.forEach { item ->
-                        MerchantAliasCard(
-                            alias = item,
-                            readOnly = readOnly,
-                            busy = busy,
-                            onToggleAlias = { onToggleAlias(item) },
-                            onDeleteAlias = { deletingAlias = item },
-                        )
+        MerchantCatalogListSection(
+            catalog = catalog,
+            readOnly = readOnly,
+            busy = busy,
+            onToggleCatalog = onToggleCatalog,
+            onDeleteCatalog = { deletingCatalog = it },
+        )
+
+        if (!readOnly) {
+            MerchantAliasCreateSection(
+                draft = MerchantAliasDraft(
+                    canonicalMerchant = canonicalMerchant,
+                    aliasText = aliasText,
+                ),
+                busy = busy,
+                message = aliasMessage,
+                onDraftChange = {
+                    canonicalMerchant = it.canonicalMerchant
+                    aliasText = it.aliasText
+                },
+                onSubmit = {
+                    if (canonicalMerchant.isBlank() || aliasText.isBlank()) {
+                        aliasMessage = createValidationMessage
+                        return@MerchantAliasCreateSection
                     }
+                    aliasMessage = null
+                    onCreateAlias(canonicalMerchant, aliasText)
+                    canonicalMerchant = ""
+                    aliasText = ""
+                },
+            )
+        }
+
+        MerchantAliasListSection(
+            aliases = aliases,
+            readOnly = readOnly,
+            busy = busy,
+            onToggleAlias = onToggleAlias,
+            onDeleteAlias = { deletingAlias = it },
+        )
+    }
+}
+
+private data class MerchantAliasDraft(
+    val canonicalMerchant: String,
+    val aliasText: String,
+)
+
+@Composable
+private fun MerchantCatalogCreateSection(
+    catalogName: String,
+    busy: Boolean,
+    message: String?,
+    onCatalogNameChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    SettingsSection(title = stringResource(R.string.merchant_catalog_section_create), icon = Icons.Filled.Tune) {
+        AppGlassCard(containerAlpha = 0.96f) {
+            Column(
+                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
+                OutlinedTextField(
+                    value = catalogName,
+                    onValueChange = onCatalogNameChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.merchant_catalog_name_label)) },
+                    placeholder = { Text(stringResource(R.string.merchant_catalog_name_placeholder)) },
+                    singleLine = true,
+                )
+                Button(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = onSubmit) {
+                    Text(
+                        if (busy) {
+                            stringResource(R.string.merchant_catalog_create_busy)
+                        } else {
+                            stringResource(R.string.merchant_catalog_create_button)
+                        },
+                    )
+                }
+                message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MerchantCatalogListSection(
+    catalog: List<MerchantCatalog>,
+    readOnly: Boolean,
+    busy: Boolean,
+    onToggleCatalog: (MerchantCatalog) -> Unit,
+    onDeleteCatalog: (MerchantCatalog) -> Unit,
+) {
+    SettingsSection(title = stringResource(R.string.merchant_catalog_section_list), icon = Icons.Filled.Tune) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+            if (catalog.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.merchant_catalog_list_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                catalog.forEach { item ->
+                    MerchantCatalogCard(
+                        catalog = item,
+                        readOnly = readOnly,
+                        busy = busy,
+                        onToggleCatalog = { onToggleCatalog(item) },
+                        onDeleteCatalog = { onDeleteCatalog(item) },
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MerchantAliasCreateSection(
+    draft: MerchantAliasDraft,
+    busy: Boolean,
+    message: String?,
+    onDraftChange: (MerchantAliasDraft) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    SettingsSection(title = stringResource(R.string.merchant_aliases_section_create), icon = Icons.Filled.Tune) {
+        AppGlassCard(containerAlpha = 0.96f) {
+            Column(
+                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
+                OutlinedTextField(
+                    value = draft.canonicalMerchant,
+                    onValueChange = { onDraftChange(draft.copy(canonicalMerchant = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.merchant_aliases_canonical_label)) },
+                    placeholder = { Text(stringResource(R.string.merchant_aliases_canonical_placeholder)) },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = draft.aliasText,
+                    onValueChange = { onDraftChange(draft.copy(aliasText = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.merchant_aliases_alias_label)) },
+                    placeholder = { Text(stringResource(R.string.merchant_aliases_alias_placeholder)) },
+                    singleLine = true,
+                )
+                Button(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = onSubmit) {
+                    Text(
+                        if (busy) {
+                            stringResource(R.string.merchant_aliases_create_busy)
+                        } else {
+                            stringResource(R.string.merchant_aliases_create_button)
+                        },
+                    )
+                }
+                message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MerchantAliasListSection(
+    aliases: List<MerchantAlias>,
+    readOnly: Boolean,
+    busy: Boolean,
+    onToggleAlias: (MerchantAlias) -> Unit,
+    onDeleteAlias: (MerchantAlias) -> Unit,
+) {
+    SettingsSection(title = stringResource(R.string.merchant_aliases_section_list), icon = Icons.Filled.Tune) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+            if (aliases.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.merchant_aliases_list_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                aliases.forEach { item ->
+                    MerchantAliasCard(
+                        alias = item,
+                        readOnly = readOnly,
+                        busy = busy,
+                        onToggleAlias = { onToggleAlias(item) },
+                        onDeleteAlias = { onDeleteAlias(item) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MerchantCatalogCard(
+    catalog: MerchantCatalog,
+    readOnly: Boolean,
+    busy: Boolean,
+    onToggleCatalog: () -> Unit,
+    onDeleteCatalog: () -> Unit,
+) {
+    AppGlassCard(containerAlpha = 0.98f) {
+        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+            MerchantCatalogCardHeader(catalog)
+            if (!readOnly) {
+                MerchantCatalogCardActions(catalog, busy, onToggleCatalog, onDeleteCatalog)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MerchantCatalogCardHeader(catalog: MerchantCatalog) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+            Text(
+                text = catalog.displayName,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(
+                    R.string.merchant_catalog_card_key_usage,
+                    catalog.merchantKey,
+                    catalog.usageCount,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(AppSpacing.compactGap))
+        Text(
+            text = if (catalog.isActive) {
+                stringResource(R.string.merchant_catalog_card_status_visible)
+            } else {
+                stringResource(R.string.merchant_catalog_card_status_hidden)
+            },
+            color = if (catalog.isActive) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            fontWeight = AppTextHierarchy.body.weight,
+        )
+    }
+}
+
+@Composable
+private fun MerchantCatalogCardActions(
+    catalog: MerchantCatalog,
+    busy: Boolean,
+    onToggleCatalog: () -> Unit,
+    onDeleteCatalog: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+        OutlinedButton(
+            modifier = Modifier.weight(1f),
+            enabled = !busy,
+            onClick = onToggleCatalog,
+        ) {
+            Text(
+                if (catalog.isActive) {
+                    stringResource(R.string.merchant_catalog_card_action_hide)
+                } else {
+                    stringResource(R.string.merchant_catalog_card_action_show)
+                },
+            )
+        }
+        OutlinedButton(
+            modifier = Modifier.weight(1f),
+            enabled = !busy,
+            onClick = onDeleteCatalog,
+        ) {
+            Text(stringResource(R.string.merchant_catalog_card_action_delete))
         }
     }
 }
@@ -287,11 +549,11 @@ private fun MerchantAliasCard(
 }
 
 @Composable
-private fun merchantAliasSummary(aliases: List<MerchantAlias>): String {
+private fun merchantAliasSummary(catalog: List<MerchantCatalog>, aliases: List<MerchantAlias>): String {
     val enabled = aliases.count { it.enabled }
-    return if (aliases.isEmpty()) {
+    return if (catalog.isEmpty() && aliases.isEmpty()) {
         stringResource(R.string.merchant_aliases_summary_empty)
     } else {
-        stringResource(R.string.merchant_aliases_summary_count, enabled, aliases.size)
+        stringResource(R.string.merchant_aliases_summary_count, catalog.size, enabled, aliases.size)
     }
 }

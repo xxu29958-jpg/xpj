@@ -243,6 +243,21 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             {"ledger_id": ledger_id},
         ),
         (
+            "merchant catalog create",
+            "/web/merchants/catalog/create",
+            {"ledger_id": ledger_id, "display_name": "星巴克"},
+        ),
+        (
+            "merchant catalog toggle",
+            "/web/merchants/catalog/missing/toggle",
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
+        ),
+        (
+            "merchant catalog delete",
+            "/web/merchants/catalog/missing/delete",
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
+        ),
+        (
             "merchant alias create",
             "/web/merchants/aliases/create",
             {"ledger_id": ledger_id, "canonical_merchant": "星巴克", "alias": "STARBUCKS"},

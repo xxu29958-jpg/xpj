@@ -26,6 +26,7 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -101,6 +102,9 @@ internal data class SettingsRouteActions(
     val onDeleteRule: (CategoryRule) -> Unit,
     val onUndoRuleDelete: () -> Unit,
     val onDismissRuleUndo: () -> Unit,
+    val onCreateMerchantCatalog: (String) -> Unit,
+    val onToggleMerchantCatalog: (MerchantCatalog) -> Unit,
+    val onDeleteMerchantCatalog: (MerchantCatalog) -> Unit,
     val onCreateMerchantAlias: (String, String) -> Unit,
     val onToggleMerchantAlias: (MerchantAlias) -> Unit,
     val onDeleteMerchantAlias: (MerchantAlias) -> Unit,
@@ -312,11 +316,15 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.MerchantAliases -> MerchantAliasesScreen(
+            catalog = states.merchant.merchantCatalog,
             aliases = states.merchant.merchantAliases,
             busy = states.merchant.busy,
             readOnly = !ledgerRoleCanModify(states.settings.role),
             message = states.merchant.message,
             onBack = { route = SettingsDestination.Root },
+            onCreateCatalog = actions.onCreateMerchantCatalog,
+            onToggleCatalog = actions.onToggleMerchantCatalog,
+            onDeleteCatalog = actions.onDeleteMerchantCatalog,
             onCreateAlias = actions.onCreateMerchantAlias,
             onToggleAlias = actions.onToggleMerchantAlias,
             onDeleteAlias = actions.onDeleteMerchantAlias,

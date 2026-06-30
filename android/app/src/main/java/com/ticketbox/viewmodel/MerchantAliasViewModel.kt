@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.MerchantAliasSaveOutcome
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class MerchantAliasUiState(
+    val merchantCatalog: List<MerchantCatalog> = emptyList(),
     val merchantAliases: List<MerchantAlias> = emptyList(),
     val busy: Boolean = false,
     val message: UiText? = null,
@@ -33,6 +35,7 @@ class MerchantAliasViewModel(
     val uiState: StateFlow<MerchantAliasUiState> = _uiState.asStateFlow()
 
     init {
+        loadMerchantCatalog()
         loadMerchantAliases()
     }
 
@@ -40,11 +43,92 @@ class MerchantAliasViewModel(
         return ledgerRoleCanModify(repository.currentLedgerRole())
     }
 
+    private fun loadMerchantCatalog() {
+        viewModelScope.launch {
+            merchantRepository.merchantCatalog(includeHidden = true)
+                .onSuccess { catalog -> _uiState.update { it.copy(merchantCatalog = catalog.sortedMerchantCatalog()) } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_catalog_load_failed)) } }
+        }
+    }
+
     fun loadMerchantAliases() {
         viewModelScope.launch {
             merchantRepository.merchantAliases()
                 .onSuccess { aliases -> _uiState.update { it.copy(merchantAliases = aliases.sortedMerchantAliases()) } }
                 .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_alias_load_failed)) } }
+        }
+    }
+
+    fun createMerchantCatalog(displayName: String) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger)) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null) }
+            merchantRepository.createMerchantCatalog(displayName = displayName)
+                .onSuccess { created ->
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantCatalog = (state.merchantCatalog + created).sortedMerchantCatalog(),
+                            busy = false,
+                            message = UiText.res(R.string.merchant_catalog_added),
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.toUiText(R.string.merchant_catalog_add_failed)) } }
+        }
+    }
+
+    fun toggleMerchantCatalog(item: MerchantCatalog) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
+            return
+        }
+        viewModelScope.launch {
+            val nextStatus = if (item.isActive) "hidden" else "active"
+            merchantRepository.updateMerchantCatalog(
+                publicId = item.publicId,
+                expectedRowVersion = item.rowVersion,
+                status = nextStatus,
+            )
+                .onSuccess { updated ->
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantCatalog = state.merchantCatalog
+                                .map { if (it.publicId == updated.publicId) updated else it }
+                                .sortedMerchantCatalog(),
+                            message = if (updated.isActive) {
+                                UiText.res(R.string.merchant_catalog_visible)
+                            } else {
+                                UiText.res(R.string.merchant_catalog_hidden)
+                            },
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_catalog_update_failed)) } }
+        }
+    }
+
+    fun deleteMerchantCatalog(item: MerchantCatalog) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
+            return
+        }
+        viewModelScope.launch {
+            merchantRepository.deleteMerchantCatalog(
+                publicId = item.publicId,
+                expectedRowVersion = item.rowVersion,
+            )
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantCatalog = state.merchantCatalog.filterNot { it.publicId == item.publicId },
+                            message = UiText.res(R.string.merchant_catalog_deleted),
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.merchant_catalog_delete_failed)) } }
         }
     }
 
@@ -177,4 +261,11 @@ private fun List<MerchantAlias>.sortedMerchantAliases(): List<MerchantAlias> =
         compareByDescending<MerchantAlias> { it.enabled }
             .thenBy { it.canonicalKey }
             .thenBy { it.aliasKey },
+    )
+
+private fun List<MerchantCatalog>.sortedMerchantCatalog(): List<MerchantCatalog> =
+    sortedWith(
+        compareByDescending<MerchantCatalog> { it.isActive }
+            .thenBy { it.merchantKey }
+            .thenBy { it.displayName },
     )

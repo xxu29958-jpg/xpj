@@ -234,11 +234,11 @@ STRICT_EQUALITY_BASELINE["backend_pytest_count"] = 2247  # +1 issue #65 slice 7 
 STRICT_EQUALITY_BASELINE.update({"mutate_token_carriers": 63, "backend_pytest_count": 2278})  # +1 月度 lifestyle 真香/后悔榜聚合契约测试（test_stats_lifestyle_rankings，账本隔离+排序，无新 mutate route）。 +5 ADR-0047 slice 2-B onedir+console=False (test_packaging_data_root: _build_log_config routes uvicorn+app logs to rotating file / omits stream handler when console=False〔windowed service None.write guard〕 / keeps console when stdout present; main() runs dictConfig + passes uvicorn log_config=None; env.py skips fileConfig when host already configured logging〔guard preserves launcher file handler through startup migration〕 — no new route, mutate_token_carriers unchanged). +7 ADR-0047 slice 2-A 后端服务硬化 (test_db_connect_retry ×3: wait_for_db retries-until-ready / healthy-noop-single-attempt / timeout-RuntimeError-chained; test_packaging_data_root ×4: launcher honors preset TICKETBOX_DATA_DIR / defaults next-to-bundle when unset / ignores blank / configure_environment mkdirs preset not EXE-adjacent — no new route, mutate_token_carriers unchanged). +1 /web pending batch-undo token carrier; +3 tests. +1 finding-三摊 Slice B ck_expenses_row_version_positive CHECK round-trip (test_alembic_expense_row_version_check_migration). +3 issue #65 slice A owner device delete (test_my_devices: delete-revoked→204+gone / delete-current→409 / delete-active→409; 401/403/404 fold into the existing require-auth/viewer/wrong-ledger tests). +2 ADR-0051 recycle-bin slice 1 restore symmetry: POST /api/recurring/items/{id}/restore + POST /api/goals/{id}/restore both carry expected_row_version (OCC-gated reactivate, mirror income_plan restore) — auto-detected carriers; +11 tests (security-matrix 401 ×2; recurring restore reactivates/stale-409/no-token-422 ×3 + viewer loop ±0; goal restore reactivates/stale-409 ×2; goal restore into-taken-slot-409 ×1; debt_repayment goal restore dispatches-without-int(None)-crash ×1; goal_spending_response serializer split out of goal_service for the files_over_500 gate + 2 unit tests pinning the category-vs-total spent selection).
 STRICT_EQUALITY_BASELINE.update({"mutate_token_carriers": 70, "backend_pytest_count": 2321})  # +2 ADR-0052 Slice 3 category preference delete/restore token carriers; +8 collected pytest delta for category preference lifecycle, recycle-bin restore, route inventory, and migration round-trip.
 STRICT_EQUALITY_BASELINE.update({
-    "backend_pytest_count": 2330,
-    "mutate_token_carriers": 72,
-    "mutate_token_exempted": 121,
-    "mutate_token_reason_create_row": 31,
-})  # +2 ADR-0053 merchant catalog PATCH/DELETE OCC carriers; +1 create-row exemption for POST /api/merchants/catalog; +9 collected pytest delta for catalog lifecycle, recycle-bin restore, route inventory, and migration round-trip.
+    "backend_pytest_count": 2333,
+    "mutate_token_carriers": 74,
+    "mutate_token_exempted": 122,
+    "mutate_token_reason_create_row": 32,
+})  # +2 ADR-0053 web merchant catalog hide/delete OCC carriers; +1 create-row exemption for POST /web/merchants/catalog/create; +3 collected pytest delta for viewer write-guard parameter cases.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
@@ -250,7 +250,7 @@ BASELINE_RATCHET_UP: frozenset[str] = frozenset({
 BASELINE_RATCHET_DOWN: frozenset[str] = frozenset({
     "mutate_token_exempted",
 })
-_ADR_0049_EXEMPTED_GRANDFATHER = (120, 121)  # ADR-0053 merchant catalog adds one create-row exemption (POST /api/merchants/catalog) while PATCH/DELETE carry OCC tokens. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop.
+_ADR_0049_EXEMPTED_GRANDFATHER = (121, 122)  # ADR-0053 web merchant catalog adds one create-row exemption (POST /web/merchants/catalog/create) while hide/delete carry OCC tokens. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``

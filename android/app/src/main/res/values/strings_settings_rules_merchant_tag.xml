@@ -59,14 +59,32 @@
     <string name="category_rule_rollback_dialog_text">会尽量恢复这次规则应用前的分类，已经手动改过的账单会跳过。</string>
     <string name="category_rule_rollback_dialog_confirm">回退</string>
 
-    <!-- MerchantAliasesScreen：设置→商家别名 屏（UI 标签；状态结果文案在 strings.xml 的 merchant_alias_*） -->
-    <string name="merchant_aliases_page_title">商家别名</string>
+    <!-- MerchantAliasesScreen：设置→商家管理 屏（UI 标签；状态结果文案在 strings.xml 的 merchant_*） -->
+    <string name="merchant_aliases_page_title">商家管理</string>
     <string name="merchant_aliases_undo_deleted">已删除「%1$s」</string>
     <string name="merchant_aliases_undo_button">撤销</string>
+    <string name="merchant_catalog_section_create">新增商家</string>
+    <string name="merchant_catalog_name_label">商家名称</string>
+    <string name="merchant_catalog_name_placeholder">星巴克</string>
+    <string name="merchant_catalog_create_validation">请填写商家名称。</string>
+    <string name="merchant_catalog_create_busy">处理中</string>
+    <string name="merchant_catalog_create_button">添加商家</string>
+    <string name="merchant_catalog_section_list">商家目录</string>
+    <string name="merchant_catalog_list_empty">还没有商家目录。添加常见商家后，可以隐藏或移入回收站。</string>
+    <string name="merchant_catalog_delete_dialog_title">删除这个商家？</string>
+    <string name="merchant_catalog_delete_dialog_text">「%1$s」会移入回收站；历史账单里的原始商家名不会被改写。</string>
+    <string name="merchant_catalog_delete_dialog_confirm">确定删除</string>
+    <string name="merchant_catalog_card_key_usage">标准键 %1$s · 历史 %2$d 笔</string>
+    <string name="merchant_catalog_card_status_visible">显示</string>
+    <string name="merchant_catalog_card_status_hidden">隐藏</string>
+    <string name="merchant_catalog_card_action_hide">隐藏</string>
+    <string name="merchant_catalog_card_action_show">显示</string>
+    <string name="merchant_catalog_card_action_delete">删除</string>
     <string name="merchant_aliases_section_create">新增别名</string>
     <string name="merchant_aliases_canonical_label">标准商家名</string>
     <string name="merchant_aliases_canonical_placeholder">星巴克</string>
     <string name="merchant_aliases_alias_label">别名</string>
+    <string name="merchant_aliases_alias_placeholder">Starbucks</string>
     <string name="merchant_aliases_create_validation">请填写标准商家名和别名。</string>
     <string name="merchant_aliases_create_busy">处理中</string>
     <string name="merchant_aliases_create_button">添加别名</string>
@@ -167,8 +185,8 @@
     <string name="category_rule_form_validation_priority">优先级必须是数字。</string>
 
     <!-- ADR-0044 wave 2: MerchantAliasesScreen vertical-local helper 文案（状态结果文案复用 strings.xml 的 merchant_alias_*） -->
-    <string name="merchant_aliases_summary_empty">还没有别名</string>
-    <string name="merchant_aliases_summary_count">%1$d 条启用 · 共 %2$d 条</string>
+    <string name="merchant_aliases_summary_empty">还没有商家目录或别名</string>
+    <string name="merchant_aliases_summary_count">%1$d 个商家 · %2$d 条启用别名 · 共 %3$d 条别名</string>
 
     <!-- ADR-0044 wave 2: TagManagementViewModel 用户可见状态/结果文案 + tagSummary helper -->
     <string name="tag_management_load_failed">标签暂时打不开。</string>

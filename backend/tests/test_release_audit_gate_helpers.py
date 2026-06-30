@@ -94,14 +94,14 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
 
 def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
     # The single in-flight grandfather now points at the ADR-0053 merchant
-    # catalog create-row exemption. Older up-hops are dead history.
+    # catalog web create-row exemption. Older up-hops are dead history.
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 121
+    baseline["mutate_token_exempted"] = 122
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 120}
+        {"mutate_token_exempted": 121}
     )
 
     assert violations == []
@@ -110,9 +110,9 @@ def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> 
 def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
 
-    # Non-grandfathered transitions still fail: the 120 -> 121 exception is exact, so
+    # Non-grandfathered transitions still fail: the 121 -> 122 exception is exact, so
     # neither older up-hops nor overshoots are waved through.
-    for base_count, current_count in ((116, 119), (119, 120), (120, 122)):
+    for base_count, current_count in ((116, 119), (119, 120), (120, 121), (121, 123)):
         baseline = dict(mod.STRICT_EQUALITY_BASELINE)
         baseline["mutate_token_exempted"] = current_count
         monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)

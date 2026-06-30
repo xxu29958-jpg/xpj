@@ -25,8 +25,8 @@
     <string name="settings_root_section_bookkeeping_data">记账规则与数据</string>
     <string name="settings_root_entry_category_rules_title">分类规则</string>
     <string name="settings_root_entry_category_rules_subtitle">商家关键词和自动分类建议</string>
-    <string name="settings_root_entry_merchant_aliases_title">商家别名</string>
-    <string name="settings_root_entry_merchant_aliases_subtitle">把不同写法归到同一商家</string>
+    <string name="settings_root_entry_merchant_aliases_title">商家管理</string>
+    <string name="settings_root_entry_merchant_aliases_subtitle">维护商家目录和别名归一</string>
     <string name="settings_root_entry_tag_management_title">标签管理</string>
     <string name="settings_root_entry_tag_management_subtitle">重命名、合并、删除标签</string>
     <string name="settings_root_entry_recycle_bin_title">回收站</string>

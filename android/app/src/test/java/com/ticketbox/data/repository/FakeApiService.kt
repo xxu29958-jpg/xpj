@@ -26,6 +26,11 @@ import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasListDto
 import com.ticketbox.data.remote.dto.MerchantAliasRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogDto
+import com.ticketbox.data.remote.dto.MerchantCatalogListDto
+import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
@@ -83,6 +88,11 @@ internal class FakeApiService(
         mutableListOf<com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest>()
     val merchantAliasPatchTargets = mutableListOf<String>()
     val merchantAliasDeleteTargets = mutableListOf<String>()
+    val merchantCatalogCreateRequests = mutableListOf<MerchantCatalogCreateRequest>()
+    val merchantCatalogUpdateRequests = mutableListOf<MerchantCatalogUpdateRequest>()
+    val merchantCatalogDeleteRequests = mutableListOf<MerchantCatalogDeleteRequest>()
+    val merchantCatalogPatchTargets = mutableListOf<String>()
+    val merchantCatalogDeleteTargets = mutableListOf<String>()
     val itemFetchIds = mutableListOf<Long>()
     val itemReplaceIds = mutableListOf<String>()
     val itemReplaceRequests = mutableListOf<ExpenseItemReplaceRequestDto>()
@@ -386,6 +396,58 @@ internal class FakeApiService(
     ): StatusDto = unsupported()
 
     override suspend fun undoCategoryRule(id: Long): CategoryRuleDto = unsupported()
+
+    override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto = MerchantCatalogListDto(
+        items = listOf(
+            merchantCatalogDto(
+                publicId = "catalog-1",
+                displayName = "星巴克",
+                merchantKey = "星巴克",
+                status = "active",
+            ),
+        ),
+    )
+
+    override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
+        merchantCatalogCreateRequests += request
+        return merchantCatalogDto(
+            publicId = "catalog-created",
+            displayName = request.displayName,
+            merchantKey = request.displayName,
+            status = request.status,
+        )
+    }
+
+    override suspend fun updateMerchantCatalog(
+        publicId: String,
+        request: MerchantCatalogUpdateRequest,
+        idempotencyKey: String?,
+    ): MerchantCatalogDto {
+        merchantCatalogPatchTargets += publicId
+        merchantCatalogUpdateRequests += request
+        return merchantCatalogDto(
+            publicId = publicId,
+            displayName = request.displayName ?: "星巴克",
+            merchantKey = request.displayName ?: "星巴克",
+            status = request.status ?: "active",
+        )
+    }
+
+    override suspend fun deleteMerchantCatalog(
+        publicId: String,
+        request: MerchantCatalogDeleteRequest,
+        idempotencyKey: String?,
+    ): MerchantCatalogDto {
+        merchantCatalogDeleteTargets += publicId
+        merchantCatalogDeleteRequests += request
+        return merchantCatalogDto(
+            publicId = publicId,
+            displayName = "星巴克",
+            merchantKey = "星巴克",
+            status = "active",
+            deletedAt = "2026-05-13T00:10:00Z",
+        )
+    }
 
     override suspend fun merchantAliases(): MerchantAliasListDto = MerchantAliasListDto(
         items = listOf(
@@ -782,6 +844,25 @@ internal class FakeApiService(
         createdAt = "2026-05-13T00:00:00Z",
         updatedAt = "2026-05-13T00:05:00Z",
         rowVersion = 1L,
+    )
+
+    private fun merchantCatalogDto(
+        publicId: String,
+        displayName: String,
+        merchantKey: String,
+        status: String,
+        deletedAt: String? = null,
+    ): MerchantCatalogDto = MerchantCatalogDto(
+        publicId = publicId,
+        displayName = displayName,
+        merchantKey = merchantKey,
+        status = status,
+        mergedIntoPublicId = null,
+        usageCount = 0,
+        createdAt = "2026-05-13T00:00:00Z",
+        updatedAt = "2026-05-13T00:05:00Z",
+        rowVersion = 1L,
+        deletedAt = deletedAt,
     )
 
     private fun expenseItemsResponse(): ExpenseItemsResponseDto = ExpenseItemsResponseDto(

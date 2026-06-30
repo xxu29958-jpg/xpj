@@ -7,15 +7,22 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
+import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.domain.model.MerchantAlias
+import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
 import java.io.IOException
 import java.util.UUID
 
 /**
- * Merchant-alias CRUD. Extracted from ExpenseRepository.
+ * Merchant governance CRUD. Alias outbox behavior stays here; catalog actions
+ * are online-only for this slice, so they share the guarded API/session plumbing
+ * without widening the offline mutation protocol yet.
  */
+@Suppress("TooManyFunctions")
 class MerchantRepository(
     private val apiClient: ApiServiceFactory,
     private val settingsStore: TicketboxSettingsStore,
@@ -45,6 +52,62 @@ class MerchantRepository(
     )
 
     fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+
+    suspend fun merchantCatalog(includeHidden: Boolean = true): Result<List<MerchantCatalog>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.merchantCatalog(includeHidden = includeHidden).items.map { it.toDomain() }
+            }
+        }
+
+    suspend fun createMerchantCatalog(displayName: String): Result<MerchantCatalog> =
+        errorHandler.safeCall {
+            val cleanDisplayName = displayName.trim()
+            require(cleanDisplayName.isNotBlank()) { "请输入商家名称。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.createMerchantCatalog(
+                    MerchantCatalogCreateRequest(displayName = cleanDisplayName),
+                ).toDomain()
+            }
+        }
+
+    suspend fun updateMerchantCatalog(
+        publicId: String,
+        expectedRowVersion: Long,
+        displayName: String? = null,
+        status: String? = null,
+    ): Result<MerchantCatalog> =
+        errorHandler.safeCall {
+            val cleanPublicId = publicId.trim()
+            require(cleanPublicId.isNotBlank()) { "请选择一个商家。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.updateMerchantCatalog(
+                    cleanPublicId,
+                    MerchantCatalogUpdateRequest(
+                        expectedRowVersion = expectedRowVersion,
+                        displayName = displayName?.trim()?.takeIf { it.isNotBlank() },
+                        status = status?.trim()?.takeIf { it.isNotBlank() },
+                    ),
+                    UUID.randomUUID().toString(),
+                ).toDomain()
+            }
+        }
+
+    suspend fun deleteMerchantCatalog(
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<MerchantCatalog> =
+        errorHandler.safeCall {
+            val cleanPublicId = publicId.trim()
+            require(cleanPublicId.isNotBlank()) { "请选择一个商家。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.deleteMerchantCatalog(
+                    cleanPublicId,
+                    MerchantCatalogDeleteRequest(expectedRowVersion = expectedRowVersion),
+                    UUID.randomUUID().toString(),
+                ).toDomain()
+            }
+        }
 
     suspend fun merchantAliases(): Result<List<MerchantAlias>> =
         errorHandler.safeCall {
