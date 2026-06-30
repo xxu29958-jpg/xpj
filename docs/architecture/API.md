@@ -155,7 +155,7 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/categories/preferences/{public_id}/restore` | POST | `backend/app/routes/expenses.py` | 无 | `CategoryPreferenceTokenRequest` | `CategoryPreferenceResponse` | Session Token，owner/member 写权限 | `backend/tests/test_categories.py`, `backend/tests/test_recycle_bin.py` | 恢复自定义分类选项 |
 | `/api/merchants/catalog` | GET | `backend/app/routes/merchants.py` | `merchantCatalog(includeHidden)` | query `include_hidden=true` | `MerchantCatalogListResponse` / `MerchantCatalogListDto` | Session Token；viewer 可读 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | ADR-0053 商家目录列表；只读当前账本 |
 | `/api/merchants/catalog` | POST | `backend/app/routes/merchants.py` | `createMerchantCatalog(request)` | `MerchantCatalogCreateRequest` / `MerchantCatalogCreateRequest` | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | 创建商家目录项；不改写历史账单商家事实 |
-| `/api/merchants/catalog/{public_id}` | PATCH | `backend/app/routes/merchants.py` | `updateMerchantCatalog(publicId,request,idempotencyKey)` | `MerchantCatalogUpdateRequest`（`expected_row_version`） | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | 更新显示名或 `active/hidden` 状态；stale → `409 state_conflict` |
+| `/api/merchants/catalog/{public_id}` | PATCH | `backend/app/routes/merchants.py` | `updateMerchantCatalog(publicId,request,idempotencyKey)` | `MerchantCatalogUpdateRequest`（`expected_row_version`） | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | 更新显示名或 `active/hidden` 状态；key-changing rename 若仍被启用别名或 active/paused 固定支出引用则 `409 state_conflict`；stale → `409 state_conflict` |
 | `/api/merchants/catalog/{public_id}` | DELETE | `backend/app/routes/merchants.py` | `deleteMerchantCatalog(publicId,request,idempotencyKey)` | `MerchantCatalogDeleteRequest`（`expected_row_version`） | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `backend/tests/test_recycle_bin.py`, `OpenApiContractGateTest` | 软删商家目录项；启用别名/active 或 paused 固定支出阻止删除，历史账单不阻止 |
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
@@ -861,7 +861,7 @@ Content-Type: application/json
 
 ### PATCH /api/merchants/catalog/{public_id}
 
-用 `expected_row_version` 更新 `display_name` 或 `status=active|hidden`。`merged` 状态保留给后续合并切片，本接口暂不接受。stale token 返回 `409 state_conflict`；跨账本或已软删项返回 `404 not_found`。
+用 `expected_row_version` 更新 `display_name` 或 `status=active|hidden`。`merged` 状态保留给后续合并切片，本接口暂不接受。若 `display_name` 归一后改变 `merchant_key`，并且启用的商家别名仍以原 key 为 canonical target，或 active/paused 固定支出配置仍引用原 key，返回 `409 state_conflict`；历史账单事实不阻止重命名，也不会被改写。stale token 返回 `409 state_conflict`；跨账本或已软删项返回 `404 not_found`。
 
 ### DELETE /api/merchants/catalog/{public_id}
 

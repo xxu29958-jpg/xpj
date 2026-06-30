@@ -288,6 +288,67 @@ def test_merchant_catalog_delete_blocks_live_config_not_historical_facts(
     assert deleted.json()["deleted_at"] is not None
 
 
+def test_merchant_catalog_key_changing_rename_blocks_live_config_not_historical_facts(
+    client: TestClient, *, identity
+) -> None:
+    created = _create_catalog(
+        client,
+        identity.app_headers,
+        display_name="Rename Source",
+    )
+    merchant_key = normalize_merchant("Rename Source")
+    _seed_enabled_alias_target(merchant_key=merchant_key)
+
+    blocked_by_alias = client.patch(
+        f"/api/merchants/catalog/{created['public_id']}",
+        headers=identity.app_headers,
+        json={
+            "expected_row_version": created["row_version"],
+            "display_name": "Rename Target",
+        },
+    )
+    assert blocked_by_alias.status_code == 409
+    assert blocked_by_alias.json()["error"] == "state_conflict"
+
+    _disable_alias_and_seed_recurring(merchant_key=merchant_key)
+
+    blocked_by_recurring = client.patch(
+        f"/api/merchants/catalog/{created['public_id']}",
+        headers=identity.app_headers,
+        json={
+            "expected_row_version": created["row_version"],
+            "display_name": "Rename Target",
+        },
+    )
+    assert blocked_by_recurring.status_code == 409
+    assert blocked_by_recurring.json()["error"] == "state_conflict"
+
+    _archive_recurring(merchant_key=merchant_key)
+    _seed_historical_expense(merchant="Rename Source")
+
+    renamed = client.patch(
+        f"/api/merchants/catalog/{created['public_id']}",
+        headers=identity.app_headers,
+        json={
+            "expected_row_version": created["row_version"],
+            "display_name": "Rename Target",
+        },
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["display_name"] == "Rename Target"
+    assert renamed.json()["merchant_key"] == normalize_merchant("Rename Target")
+    assert renamed.json()["usage_count"] == 0
+
+    with SessionLocal() as db:
+        expense = db.scalar(
+            select(Expense)
+            .where(Expense.tenant_id == "owner")
+            .where(Expense.merchant == "Rename Source")
+            .limit(1)
+        )
+        assert expense is not None
+
+
 def test_merchant_catalog_stale_tokens_return_conflict(
     client: TestClient, *, identity
 ) -> None:

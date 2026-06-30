@@ -127,6 +127,12 @@ def update_merchant_catalog(
     set_values: dict[str, object] = {"updated_at": now_utc()}
     if display_name is not None:
         clean_name, key = clean_merchant_catalog_name(display_name)
+        if key != item.merchant_key:
+            _ensure_catalog_has_no_live_config_references(
+                db,
+                tenant_id=tenant_id,
+                item=item,
+            )
         _ensure_key_available(
             db,
             tenant_id=tenant_id,
@@ -286,6 +292,19 @@ def _ensure_key_available(
 
 
 def _ensure_catalog_can_be_deleted(
+    db: Session,
+    *,
+    tenant_id: str,
+    item: MerchantCatalog,
+) -> None:
+    _ensure_catalog_has_no_live_config_references(
+        db,
+        tenant_id=tenant_id,
+        item=item,
+    )
+
+
+def _ensure_catalog_has_no_live_config_references(
     db: Session,
     *,
     tenant_id: str,
