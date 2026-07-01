@@ -5,17 +5,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,7 +35,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.FamilyInvitationCreated
@@ -41,12 +48,19 @@ import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.FamilyMemberAction
 import com.ticketbox.viewmodel.FamilyMembersViewModel
-import com.valentinilk.shimmer.shimmer
+
+/** Row callbacks grouped to keep member rows compact and under parameter limits. */
+@Immutable
+private class MemberRowActions(
+    val onChangeRole: (FamilyMember, String) -> Unit,
+    val onDisable: (FamilyMember) -> Unit,
+    val onTransferOwner: (FamilyMember) -> Unit,
+)
 
 @Composable
 fun FamilyMembersScreen(
@@ -59,6 +73,15 @@ fun FamilyMembersScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var pendingAction by remember { mutableStateOf<FamilyMemberAction?>(null) }
     val canManageMembers = currentRole == LEDGER_ROLE_OWNER && viewModel.deviceIsOwner()
+    val rowActions = remember {
+        MemberRowActions(
+            onChangeRole = { member, targetRole ->
+                pendingAction = FamilyMemberAction.ChangeRole(member, targetRole)
+            },
+            onDisable = { member -> pendingAction = FamilyMemberAction.Disable(member) },
+            onTransferOwner = { member -> pendingAction = FamilyMemberAction.TransferOwner(member) },
+        )
+    }
 
     LaunchedEffect(activeLedgerId) {
         viewModel.refresh(activeLedgerId, currentRole)
@@ -99,41 +122,47 @@ fun FamilyMembersScreen(
         ) {
             SettingsOpenPanel {
                 if (state.members.isEmpty() && state.loading) {
-                    Column(modifier = Modifier.shimmer()) {
-                        repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                    }
+                    SettingsInlineEmpty(
+                        title = stringResource(R.string.family_members_loading_title),
+                        body = stringResource(R.string.family_members_loading_body),
+                    )
                 } else if (state.members.isEmpty()) {
                     Text(
                         text = stringResource(R.string.family_members_members_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                state.members.forEach { member ->
+                state.members.forEachIndexed { index, member ->
                     FamilyMemberRow(
                         member = member,
                         canManageMembers = canManageMembers,
                         busy = state.busyMemberId == member.memberId,
-                        onChangeRole = { targetRole ->
-                            pendingAction = FamilyMemberAction.ChangeRole(member, targetRole)
-                        },
-                        onDisable = { pendingAction = FamilyMemberAction.Disable(member) },
-                        onTransferOwner = { pendingAction = FamilyMemberAction.TransferOwner(member) },
+                        actions = rowActions,
                     )
+                    if (index != state.members.lastIndex) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+                        )
+                    }
                 }
-                OutlinedButton(
-                    onClick = { viewModel.refresh(activeLedgerId, currentRole) },
-                    enabled = !state.loading && state.busyMemberId == null,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    Text(
-                        if (state.loading) {
-                            stringResource(R.string.family_members_refresh_loading)
-                        } else if (canManageMembers) {
-                            stringResource(R.string.family_members_refresh_members_and_audit)
-                        } else {
-                            stringResource(R.string.family_members_refresh_members)
-                        },
-                    )
+                    TextButton(
+                        onClick = { viewModel.refresh(activeLedgerId, currentRole) },
+                        enabled = !state.loading && state.busyMemberId == null,
+                    ) {
+                        Text(
+                            if (state.loading) {
+                                stringResource(R.string.family_members_refresh_loading)
+                            } else if (canManageMembers) {
+                                stringResource(R.string.family_members_refresh_members_and_audit)
+                            } else {
+                                stringResource(R.string.family_members_refresh_members)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -150,17 +179,23 @@ fun FamilyMembersScreen(
             ) {
                 SettingsOpenPanel {
                     if (state.auditItems.isEmpty() && state.auditLoading) {
-                        Column(modifier = Modifier.shimmer()) {
-                            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                        }
+                        SettingsInlineEmpty(
+                            title = stringResource(R.string.family_members_audit_loading_title),
+                            body = stringResource(R.string.family_members_audit_loading_body),
+                        )
                     } else if (state.auditItems.isEmpty()) {
                         Text(
                             text = stringResource(R.string.family_members_audit_empty),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    state.auditItems.forEach { item ->
+                    state.auditItems.forEachIndexed { index, item ->
                         LedgerAuditRow(item = item)
+                        if (index != state.auditItems.lastIndex) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+                            )
+                        }
                     }
                     if (state.auditLoading && state.auditItems.isNotEmpty()) {
                         Text(
@@ -341,13 +376,13 @@ private fun FamilyMemberRow(
     member: FamilyMember,
     canManageMembers: Boolean,
     busy: Boolean,
-    onChangeRole: (String) -> Unit,
-    onDisable: () -> Unit,
-    onTransferOwner: () -> Unit,
+    actions: MemberRowActions,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.miniGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -389,8 +424,13 @@ private fun FamilyMemberRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (member.isDisabled) {
+                    val disabledAt = if (member.disabledAt.isNullOrBlank()) {
+                        stringResource(R.string.family_members_row_disabled_time_unknown)
+                    } else {
+                        displayTime(member.disabledAt)
+                    }
                     Text(
-                        text = stringResource(R.string.family_members_row_disabled_at, displayTime(member.disabledAt)),
+                        text = stringResource(R.string.family_members_row_disabled_at, disabledAt),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -414,23 +454,35 @@ private fun FamilyMemberRow(
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
+                if (canManageMembers && member.canBeManaged) {
+                    MemberActionsMenu(member = member, busy = busy, actions = actions)
+                }
             }
         }
-        if (canManageMembers && member.canBeManaged) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-            ) {
-                val targetRole = if (member.role == LEDGER_ROLE_VIEWER) {
-                    LEDGER_ROLE_MEMBER
-                } else {
-                    LEDGER_ROLE_VIEWER
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = !busy && member.role in setOf(LEDGER_ROLE_MEMBER, LEDGER_ROLE_VIEWER),
-                    onClick = { onChangeRole(targetRole) },
-                ) {
+    }
+}
+
+@Composable
+private fun MemberActionsMenu(
+    member: FamilyMember,
+    busy: Boolean,
+    actions: MemberRowActions,
+) {
+    var expanded by remember(member.memberId) { mutableStateOf(false) }
+    val targetRole = if (member.role == LEDGER_ROLE_VIEWER) LEDGER_ROLE_MEMBER else LEDGER_ROLE_VIEWER
+    IconButton(
+        enabled = !busy,
+        onClick = { expanded = true },
+    ) {
+        Icon(
+            imageVector = Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.family_members_actions_content_description),
+        )
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        if (member.role in setOf(LEDGER_ROLE_MEMBER, LEDGER_ROLE_VIEWER)) {
+            DropdownMenuItem(
+                text = {
                     Text(
                         if (targetRole == LEDGER_ROLE_VIEWER) {
                             stringResource(R.string.family_members_action_make_viewer)
@@ -438,23 +490,27 @@ private fun FamilyMemberRow(
                             stringResource(R.string.family_members_action_make_member)
                         },
                     )
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = !busy,
-                    onClick = onTransferOwner,
-                ) {
-                    Text(stringResource(R.string.family_members_action_transfer_owner))
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = !busy,
-                    onClick = onDisable,
-                ) {
-                    Text(stringResource(R.string.family_members_action_disable))
-                }
-            }
+                },
+                onClick = {
+                    expanded = false
+                    actions.onChangeRole(member, targetRole)
+                },
+            )
         }
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.family_members_action_transfer_owner)) },
+            onClick = {
+                expanded = false
+                actions.onTransferOwner(member)
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.family_members_action_disable)) },
+            onClick = {
+                expanded = false
+                actions.onDisable(member)
+            },
+        )
     }
 }
 

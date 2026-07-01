@@ -7,11 +7,15 @@
     <string name="family_members_page_subtitle_manage">管理当前账本成员、角色和拥有者。</string>
     <string name="family_members_page_subtitle_view">查看当前账本成员和权限状态。只有拥有者能管理成员。</string>
     <string name="family_members_section_members">当前账本成员</string>
+    <string name="family_members_loading_title">正在同步成员</string>
+    <string name="family_members_loading_body">同步完成后显示最新成员和权限。</string>
     <string name="family_members_members_empty">还没有可显示的成员。</string>
     <string name="family_members_refresh_loading">刷新中…</string>
     <string name="family_members_refresh_members_and_audit">刷新成员和记录</string>
     <string name="family_members_refresh_members">刷新成员</string>
     <string name="family_members_section_audit">成员记录</string>
+    <string name="family_members_audit_loading_title">正在同步成员记录</string>
+    <string name="family_members_audit_loading_body">同步完成后显示最近变更。</string>
     <string name="family_members_audit_empty">还没有成员变更记录。</string>
     <string name="family_members_audit_refreshing">正在刷新成员记录…</string>
     <string name="family_members_audit_actor">操作者：%1$s</string>
@@ -22,8 +26,10 @@
     <string name="family_members_row_joined_unknown">加入时间：未记录</string>
     <string name="family_members_row_joined">加入时间：%1$s</string>
     <string name="family_members_row_disabled_at">已停用：%1$s</string>
+    <string name="family_members_row_disabled_time_unknown">停用时间待同步</string>
     <string name="family_members_row_status_disabled">已停用</string>
     <string name="family_members_row_status_active">活跃</string>
+    <string name="family_members_actions_content_description">成员操作</string>
     <string name="family_members_action_make_viewer">改为只读</string>
     <string name="family_members_action_make_member">改为成员</string>
     <string name="family_members_action_transfer_owner">转让拥有者</string>
@@ -154,6 +160,7 @@
     <string name="my_devices_action_rename">重命名</string>
     <string name="my_devices_action_revoke">停用</string>
     <string name="my_devices_action_delete">移除</string>
+    <string name="my_devices_actions_content_description">设备操作</string>
     <string name="my_devices_section_add">添加设备</string>
     <string name="my_devices_add_intro">生成一次性配对码，在新设备上输入即可加入本账本。配对码只显示一次。</string>
     <string name="my_devices_add_create">生成配对码</string>

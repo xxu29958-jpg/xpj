@@ -241,11 +241,14 @@ that actually ships the fix.
   appearance, and background tools.
 - Progress 2026-07-01: the Sync Status page now has a dedicated state overview
   for queued, conflict, and failed offline mutations. My Devices now uses
-  compact scan-first rows, inline device actions, resource-backed loading copy,
-  and a device-specific missing-activity label instead of the generic
-  `未填写时间`; its final true-device screenshot is still pending because the
-  physical device disconnected after install. The remaining Settings secondary
-  pages still need page-by-page state parity review.
+  compact scan-first rows, overflow device actions, resource-backed loading
+  copy, and a device-specific missing-activity label instead of the generic
+  `未填写时间`. Family Members now keeps role/status visible and moves
+  role/owner/disable actions into an overflow menu, with product loading copy
+  for members and audit records. Final true-device screenshots are still
+  pending because the phone was unplugged before the last visual pass. The
+  remaining Settings secondary pages still need page-by-page state parity
+  review.
 - Desired follow-up: make every secondary page declare loading, empty, error,
   read-only, cached/offline/direct-only, success, and destructive-confirmation
   behavior with the shared Settings skeleton.

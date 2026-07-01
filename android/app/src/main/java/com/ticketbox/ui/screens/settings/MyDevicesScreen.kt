@@ -10,8 +10,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -240,7 +245,7 @@ private fun DeviceTitleRow(
             )
         }
         if (canManage) {
-            DeviceActionsRow(device = device, busy = busy, actions = actions)
+            DeviceActionsMenu(device = device, busy = busy, actions = actions)
         }
     }
 }
@@ -278,43 +283,56 @@ private fun DeviceActivityText(device: AccountDevice) {
 }
 
 @Composable
-private fun DeviceActionsRow(
+private fun DeviceActionsMenu(
     device: AccountDevice,
     busy: Boolean,
     actions: DeviceRowActions,
 ) {
-    Row(
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
+    var expanded by remember(device.publicId) { mutableStateOf(false) }
+    IconButton(
+        enabled = !busy,
+        onClick = { expanded = true },
     ) {
-        if (!device.isRevoked) {
-            TextButton(
-                enabled = !busy,
-                onClick = { actions.onRename(device) },
-            ) {
-                Text(stringResource(R.string.my_devices_action_rename))
-            }
-            if (!device.isCurrent) {
-                TextButton(
-                    enabled = !busy,
-                    onClick = { actions.onRevoke(device) },
-                ) {
+        Icon(
+            imageVector = Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.my_devices_actions_content_description),
+        )
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.my_devices_action_rename)) },
+            onClick = {
+                expanded = false
+                actions.onRename(device)
+            },
+        )
+        if (!device.isCurrent && !device.isRevoked) {
+            DropdownMenuItem(
+                text = {
                     Text(
                         text = stringResource(R.string.my_devices_action_revoke),
                         color = MaterialTheme.colorScheme.error,
                     )
-                }
-            }
-        } else {
-            TextButton(
-                enabled = !busy,
-                onClick = { actions.onDelete(device) },
-            ) {
-                Text(
-                    text = stringResource(R.string.my_devices_action_delete),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+                },
+                onClick = {
+                    expanded = false
+                    actions.onRevoke(device)
+                },
+            )
+        }
+        if (device.isRevoked) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = stringResource(R.string.my_devices_action_delete),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    actions.onDelete(device)
+                },
+            )
         }
     }
 }
