@@ -151,18 +151,10 @@ fun SettingsRootScreen(
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
-            AccountStatusCard(
-                serverSettings = state.serverSettings,
-                accountName = state.accountName,
-                ledgerName = state.ledgerName,
-                deviceName = state.deviceName,
-                role = state.role,
-                lastUploadAt = state.lastUploadAt,
-                lastSyncAt = state.lastConfirmedSyncAt,
+            SettingsRootAccountSummary(
+                state = state,
+                onOpenConnection = onOpenServer,
             )
-            // 轴2 IA(owner 拍板 A1):17 入口由旧 5 组(账本与同步/记账设置/家庭协作/
-            // 外观与数据/安全与关于)重排为贴三域的 4 组,排序=家庭日常 → 记账配置 →
-            // 个性化 → 系统,频率递减。入口不增不减,纯重排+组重命名。
             SettingsSection(title = stringResource(R.string.settings_root_section_ledger_family), icon = Icons.Filled.Group) {
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_ledgers_title),
@@ -176,9 +168,6 @@ fun SettingsRootScreen(
                     icon = Icons.Filled.Group,
                     onClick = onOpenFamilyMembers,
                 )
-                // My devices is an owner-only management surface (backend slice 6a
-                // gates the list on manager context → 403/404), so the entry is
-                // shown to owners only; non-owners never see a dead-ending row.
                 if (state.role == LEDGER_ROLE_OWNER) {
                     SettingsEntryRow(
                         title = stringResource(R.string.settings_root_entry_my_devices_title),

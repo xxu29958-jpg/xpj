@@ -68,8 +68,7 @@ fun MerchantAliasesScreen(
     val catalogDialogController = rememberMerchantCatalogDialogController()
     var deletingCatalog by remember { mutableStateOf<MerchantCatalog?>(null) }
     var deletingAlias by remember { mutableStateOf<MerchantAlias?>(null) }
-    // ADR-0044: stringResource is @Composable-only, but this validation message is
-    // assigned inside a non-composable onClick lambda below. Hoist the resolved string here.
+    // Resolve strings before non-composable click handlers need them.
     val catalogValidationMessage = stringResource(R.string.merchant_catalog_create_validation)
     val createValidationMessage = stringResource(R.string.merchant_aliases_create_validation)
 
@@ -152,8 +151,7 @@ fun MerchantAliasesScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = message, tone = MessageTone.Neutral) },
     ) {
-        // ADR-0038 undo: a soft-deleted alias is recoverable for a 5s window.
-        // Online-only (only shown after a synced delete); auto-dismisses.
+        // Online deletes expose a short undo window.
         undoableAlias?.let { undoable ->
             LaunchedEffect(undoable.publicId) {
                 delay(5000)

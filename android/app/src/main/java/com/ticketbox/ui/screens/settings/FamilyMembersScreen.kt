@@ -138,8 +138,6 @@ fun FamilyMembersScreen(
             }
         }
         if (canManageMembers) {
-            // 轴7 发邀请:owner-only(canManageMembers 已双查 currentRole + deviceIsOwner,
-            // VM 再查一次,后端 403 兜底)。此前发邀请唯一入口在 /owner 控制台。
             InviteFamilySection(
                 creating = state.inviteCreating,
                 createdInvite = state.createdInvite,
@@ -176,11 +174,7 @@ fun FamilyMembersScreen(
     }
 }
 
-/**
- * 轴7 发邀请区(owner-only,调用方守门):两个角色按钮生成邀请,结果卡展示
- * 明文 token+复制+有效期。明文只在创建响应出现一次(服务端只存哈希),收起即不可
- * 再取;复制反馈依赖系统剪贴板浮窗(Android 13+ 自带),不另做 toast。
- */
+/** Owner-only invitation creation; the plaintext token is visible only once. */
 @Composable
 private fun InviteFamilySection(
     creating: Boolean,

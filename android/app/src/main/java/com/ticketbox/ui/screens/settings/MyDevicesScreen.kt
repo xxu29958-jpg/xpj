@@ -44,10 +44,7 @@ import com.ticketbox.viewmodel.MyDevicesUiState
 import com.ticketbox.viewmodel.MyDevicesViewModel
 import com.valentinilk.shimmer.shimmer
 
-/** A row's management affordances, bundled so [DeviceListSection] / [DeviceRow]
- * stay within the detekt parameter budget once delete (slice A) joins rename/revoke.
- * `@Immutable` + a `remember`ed instance keep the rows skippable under strong skipping
- * (a fresh holder per recomposition would otherwise defeat per-row skipping). */
+/** Row management callbacks grouped so device rows stay small and stable. */
 @Immutable
 private class DeviceRowActions(
     val onRename: (AccountDevice) -> Unit,
@@ -55,8 +52,7 @@ private class DeviceRowActions(
     val onDelete: (AccountDevice) -> Unit,
 )
 
-/** Which device-management dialog is open. A single nullable state keeps
- * [MyDevicesScreen] compact and enforces one-dialog-at-a-time. */
+/** One nullable state enforces one device-management dialog at a time. */
 private sealed interface DeviceDialog {
     val device: AccountDevice
 
@@ -74,7 +70,6 @@ fun MyDevicesScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val canManage = viewModel.deviceIsOwner()
     var dialog by remember { mutableStateOf<DeviceDialog?>(null) }
-    // Remembered so rows stay skippable: the lambdas only touch the stable `dialog` setter.
     val rowActions = remember {
         DeviceRowActions(
             onRename = { dialog = DeviceDialog.Rename(it) },
@@ -146,37 +141,37 @@ private fun DeviceListSection(
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
-                if (state.devices.isEmpty() && state.loading) {
-                    Column(modifier = Modifier.shimmer()) {
-                        repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                    }
-                } else if (state.devices.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.my_devices_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            if (state.devices.isEmpty() && state.loading) {
+                Column(modifier = Modifier.shimmer()) {
+                    repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
                 }
-                state.devices.forEach { device ->
-                    DeviceRow(
-                        device = device,
-                        canManage = canManage,
-                        busy = state.busyDeviceId == device.publicId,
-                        actions = actions,
-                    )
-                }
-                OutlinedButton(
-                    onClick = onRefresh,
-                    enabled = !state.loading && state.busyDeviceId == null,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (state.loading) {
-                            stringResource(R.string.my_devices_refresh_loading)
-                        } else {
-                            stringResource(R.string.my_devices_refresh)
-                        },
-                    )
-                }
+            } else if (state.devices.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.my_devices_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            state.devices.forEach { device ->
+                DeviceRow(
+                    device = device,
+                    canManage = canManage,
+                    busy = state.busyDeviceId == device.publicId,
+                    actions = actions,
+                )
+            }
+            OutlinedButton(
+                onClick = onRefresh,
+                enabled = !state.loading && state.busyDeviceId == null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    if (state.loading) {
+                        stringResource(R.string.my_devices_refresh_loading)
+                    } else {
+                        stringResource(R.string.my_devices_refresh)
+                    },
+                )
+            }
         }
     }
 }
@@ -239,7 +234,6 @@ private fun DeviceRow(
                 onRevoke = { actions.onRevoke(device) },
             )
         } else if (canManage && device.isRevoked) {
-            // Already-deactivated rows can be permanently removed (slice A).
             DeviceRemoveButton(busy = busy, onDelete = { actions.onDelete(device) })
         }
     }
@@ -286,10 +280,7 @@ private fun DeviceRemoveButton(busy: Boolean, onDelete: () -> Unit) {
     }
 }
 
-/**
- * Add-a-device: mint a one-time pairing code for the active ledger. The plaintext
- * code is shown once (服务端只存哈希);用户在新设备上输入它走既有绑定流程。
- */
+/** Mint a one-time pairing code; the server stores only its hash. */
 @Composable
 private fun AddDeviceSection(
     creating: Boolean,
@@ -304,27 +295,27 @@ private fun AddDeviceSection(
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
+            Text(
+                text = stringResource(R.string.my_devices_add_intro),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(
+                onClick = onCreate,
+                enabled = !creating,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(
-                    text = stringResource(R.string.my_devices_add_intro),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
+                    if (creating) {
+                        stringResource(R.string.my_devices_add_creating)
+                    } else {
+                        stringResource(R.string.my_devices_add_create)
+                    },
                 )
-                OutlinedButton(
-                    onClick = onCreate,
-                    enabled = !creating,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (creating) {
-                            stringResource(R.string.my_devices_add_creating)
-                        } else {
-                            stringResource(R.string.my_devices_add_create)
-                        },
-                    )
-                }
-                createdCode?.let { code ->
-                    CreatedPairingCodeResult(code = code, onDismissResult = onDismissResult)
-                }
+            }
+            createdCode?.let { code ->
+                CreatedPairingCodeResult(code = code, onDismissResult = onDismissResult)
+            }
         }
     }
 }

@@ -32,12 +32,6 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
 import com.valentinilk.shimmer.shimmer
 
-/**
- * ADR-0030 PR-2b — Android task list.
- *
- * Mirrors `/web/tasks` UI: same data shape, same status labels, same
- * cancel-on-running semantics. No polling; user pulls to refresh.
- */
 @Composable
 fun BackgroundTasksScreen(
     viewModel: BackgroundTasksViewModel,
@@ -59,28 +53,28 @@ fun BackgroundTasksScreen(
             SettingsOpenPanel(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
-                    if (state.tasks.isEmpty() && state.loading) {
-                        Column(modifier = Modifier.shimmer()) {
-                            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                        }
-                    } else if (state.tasks.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.background_tasks_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                if (state.tasks.isEmpty() && state.loading) {
+                    Column(modifier = Modifier.shimmer()) {
+                        repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
                     }
-                    state.tasks.forEach { task ->
-                        TaskRow(
-                            task = task,
-                            busy = state.busyTaskId == task.publicId,
-                            onCancel = { viewModel.cancel(task.publicId) },
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = { viewModel.refresh() },
-                        enabled = !state.loading && state.busyTaskId == null,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (state.loading) stringResource(R.string.background_tasks_refreshing) else stringResource(R.string.background_tasks_refresh)) }
+                } else if (state.tasks.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.background_tasks_empty),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                state.tasks.forEach { task ->
+                    TaskRow(
+                        task = task,
+                        busy = state.busyTaskId == task.publicId,
+                        onCancel = { viewModel.cancel(task.publicId) },
+                    )
+                }
+                OutlinedButton(
+                    onClick = { viewModel.refresh() },
+                    enabled = !state.loading && state.busyTaskId == null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (state.loading) stringResource(R.string.background_tasks_refreshing) else stringResource(R.string.background_tasks_refresh)) }
             }
         }
     }
@@ -140,9 +134,7 @@ private fun TaskRow(
             )
         }
         task.errorMessage?.takeIf { it.isNotBlank() }?.let { rawError ->
-            // 后端 error_message 可能是原始异常串 / 英文（str(exc) / "No handler …" /
-            // orphan 诊断），直出违反 §10。判定拆到 domain 纯函数（可单测）：诊断/英文/
-            // 超长 → 泛化文案；正常中文短消息原样展示。
+            // Keep raw backend/engine errors out of ordinary user-facing copy.
             val genericError = stringResource(R.string.background_tasks_row_error_generic)
             Text(
                 text = if (shouldGeneralizeTaskError(rawError)) genericError else rawError,

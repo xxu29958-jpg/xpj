@@ -36,11 +36,7 @@ import com.ticketbox.ui.design.AppSpacing
 fun NotificationPreferencesScreen(
     preferences: NotificationPreferences,
     readOnly: Boolean,
-    // Page-header status feedback (this screen used to render none — saving
-    // gave no on-screen signal). Owned by SettingsViewModel; the host builds an
-    // AppStatusBanner from its message + tone and passes it as this slot so the
-    // feedback lands in the same /web-flash position as the rest of the tree.
-    // A slot (not message+tone params) keeps the signature within the 5-param gate.
+    // Page-header status feedback is supplied by the settings host.
     status: (@Composable () -> Unit)? = null,
     onBack: () -> Unit,
     onSave: (NotificationPreferences) -> Unit,
@@ -64,46 +60,46 @@ fun NotificationPreferencesScreen(
             SettingsOpenPanel(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
             ) {
-                    NotificationSwitchLine(
-                        title = stringResource(R.string.notification_preferences_capture_title),
-                        subtitle = if (readOnly) {
-                            stringResource(R.string.notification_preferences_capture_subtitle_readonly)
-                        } else if (listenerAuthorized) {
-                            stringResource(R.string.notification_preferences_capture_subtitle_authorized)
-                        } else {
-                            stringResource(R.string.notification_preferences_capture_subtitle_default)
-                        },
-                        checked = preferences.autoCaptureEnabled && !readOnly,
-                        enabled = !readOnly,
-                        onCheckedChange = {
-                            update(preferences.copy(autoCaptureEnabled = it))
-                        },
-                    )
-                    Button(
-                        onClick = {
-                            context.startActivity(NotificationListenerStatus.settingsIntent())
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            if (listenerAuthorized) {
-                                stringResource(R.string.notification_preferences_grant_view)
-                            } else {
-                                stringResource(R.string.notification_preferences_grant_open)
-                            },
-                        )
-                    }
+                NotificationSwitchLine(
+                    title = stringResource(R.string.notification_preferences_capture_title),
+                    subtitle = if (readOnly) {
+                        stringResource(R.string.notification_preferences_capture_subtitle_readonly)
+                    } else if (listenerAuthorized) {
+                        stringResource(R.string.notification_preferences_capture_subtitle_authorized)
+                    } else {
+                        stringResource(R.string.notification_preferences_capture_subtitle_default)
+                    },
+                    checked = preferences.autoCaptureEnabled && !readOnly,
+                    enabled = !readOnly,
+                    onCheckedChange = {
+                        update(preferences.copy(autoCaptureEnabled = it))
+                    },
+                )
+                Button(
+                    onClick = {
+                        context.startActivity(NotificationListenerStatus.settingsIntent())
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Text(
-                        text = if (readOnly) {
-                            stringResource(R.string.notification_preferences_capture_note_readonly)
-                        } else if (preferences.autoCaptureEnabled) {
-                            stringResource(R.string.notification_preferences_capture_note_enabled)
+                        if (listenerAuthorized) {
+                            stringResource(R.string.notification_preferences_grant_view)
                         } else {
-                            stringResource(R.string.notification_preferences_capture_note_disabled)
+                            stringResource(R.string.notification_preferences_grant_open)
                         },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
                     )
+                }
+                Text(
+                    text = if (readOnly) {
+                        stringResource(R.string.notification_preferences_capture_note_readonly)
+                    } else if (preferences.autoCaptureEnabled) {
+                        stringResource(R.string.notification_preferences_capture_note_enabled)
+                    } else {
+                        stringResource(R.string.notification_preferences_capture_note_disabled)
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         SettingsSection(
@@ -122,26 +118,22 @@ fun NotificationPreferencesScreen(
             SettingsOpenPanel(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             ) {
-                    Text(
-                        text = stringResource(R.string.notification_preferences_privacy_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = stringResource(R.string.notification_preferences_privacy_body),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                Text(
+                    text = stringResource(R.string.notification_preferences_privacy_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.notification_preferences_privacy_body),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }
 }
 
-/**
- * 提醒开关卡片（通知闭环 PR-1）：任一提醒开关 off→on 且系统未授权时请求
- * POST_NOTIFICATIONS（API 33+）；拒绝后开关照存，由底部提示行说明提醒不会展示
- * （镜像上方 listenerAuthorized 状态行模式）。
- */
+/** Reminder switches request Android notification permission when the user turns one on. */
 @Composable
 private fun ReminderSwitchesCard(
     preferences: NotificationPreferences,
@@ -165,44 +157,44 @@ private fun ReminderSwitchesCard(
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
     ) {
-            NotificationSwitchLine(
-                title = stringResource(R.string.notification_preferences_reminder_pending_title),
-                subtitle = stringResource(R.string.notification_preferences_reminder_pending_subtitle),
-                checked = preferences.pendingDraftReminders,
-                onCheckedChange = { toggleReminder(it, preferences.copy(pendingDraftReminders = it)) },
-            )
-            NotificationSwitchLine(
-                title = stringResource(R.string.notification_preferences_reminder_large_amount_title),
-                subtitle = stringResource(R.string.notification_preferences_reminder_large_amount_subtitle),
-                checked = preferences.largeAmountAlerts,
-                onCheckedChange = { toggleReminder(it, preferences.copy(largeAmountAlerts = it)) },
-            )
-            NotificationSwitchLine(
-                title = stringResource(R.string.notification_preferences_reminder_recurring_title),
-                subtitle = stringResource(R.string.notification_preferences_reminder_recurring_subtitle),
-                checked = preferences.recurringReminders,
-                onCheckedChange = { toggleReminder(it, preferences.copy(recurringReminders = it)) },
-            )
-            NotificationSwitchLine(
-                title = stringResource(R.string.notification_preferences_reminder_budget_title),
-                subtitle = stringResource(R.string.notification_preferences_reminder_budget_subtitle),
-                checked = preferences.budgetOverspendAlerts,
-                onCheckedChange = { toggleReminder(it, preferences.copy(budgetOverspendAlerts = it)) },
-            )
-            NotificationSwitchLine(
-                title = stringResource(R.string.notification_preferences_reminder_backup_title),
-                subtitle = stringResource(R.string.notification_preferences_reminder_backup_subtitle),
-                checked = preferences.backupStaleAlerts,
-                onCheckedChange = { toggleReminder(it, preferences.copy(backupStaleAlerts = it)) },
-            )
-            ReminderPermissionHint(
-                preferences = preferences,
-                systemNotificationsAllowed = systemNotificationsAllowed,
-            )
+        NotificationSwitchLine(
+            title = stringResource(R.string.notification_preferences_reminder_pending_title),
+            subtitle = stringResource(R.string.notification_preferences_reminder_pending_subtitle),
+            checked = preferences.pendingDraftReminders,
+            onCheckedChange = { toggleReminder(it, preferences.copy(pendingDraftReminders = it)) },
+        )
+        NotificationSwitchLine(
+            title = stringResource(R.string.notification_preferences_reminder_large_amount_title),
+            subtitle = stringResource(R.string.notification_preferences_reminder_large_amount_subtitle),
+            checked = preferences.largeAmountAlerts,
+            onCheckedChange = { toggleReminder(it, preferences.copy(largeAmountAlerts = it)) },
+        )
+        NotificationSwitchLine(
+            title = stringResource(R.string.notification_preferences_reminder_recurring_title),
+            subtitle = stringResource(R.string.notification_preferences_reminder_recurring_subtitle),
+            checked = preferences.recurringReminders,
+            onCheckedChange = { toggleReminder(it, preferences.copy(recurringReminders = it)) },
+        )
+        NotificationSwitchLine(
+            title = stringResource(R.string.notification_preferences_reminder_budget_title),
+            subtitle = stringResource(R.string.notification_preferences_reminder_budget_subtitle),
+            checked = preferences.budgetOverspendAlerts,
+            onCheckedChange = { toggleReminder(it, preferences.copy(budgetOverspendAlerts = it)) },
+        )
+        NotificationSwitchLine(
+            title = stringResource(R.string.notification_preferences_reminder_backup_title),
+            subtitle = stringResource(R.string.notification_preferences_reminder_backup_subtitle),
+            checked = preferences.backupStaleAlerts,
+            onCheckedChange = { toggleReminder(it, preferences.copy(backupStaleAlerts = it)) },
+        )
+        ReminderPermissionHint(
+            preferences = preferences,
+            systemNotificationsAllowed = systemNotificationsAllowed,
+        )
     }
 }
 
-/** 任一提醒开关开着但系统通知不可用时的提示行。 */
+/** Shows when reminders are enabled but Android notifications are unavailable. */
 @Composable
 private fun ReminderPermissionHint(
     preferences: NotificationPreferences,

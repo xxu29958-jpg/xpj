@@ -59,8 +59,7 @@ fun DashboardCardsScreen(
     var loading by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    // ADR-0044: stringResource is @Composable-only, but the status messages below
-    // are assigned inside non-composable local functions. Hoist the resolved strings here.
+    // Resolve strings before non-composable local functions need them.
     val loadFailedMessage = stringResource(R.string.dashboard_cards_load_failed)
     val savedMessage = stringResource(R.string.dashboard_cards_saved)
     val saveFailedMessage = stringResource(R.string.dashboard_cards_save_failed)

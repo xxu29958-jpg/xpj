@@ -48,12 +48,6 @@ import com.ticketbox.ui.design.StateTone
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
-/**
- * ADR-0038 PR-2g.11: the offline-sync surface — the user-facing half
- * of the outbox. One focal status card (calm states, never an alarm
- * for plain "queued"), then only the rows that need a decision:
- * CONFLICT (keep mine / drop mine) and FAILED (retry / drop).
- */
 @Composable
 fun SyncStatusScreen(
     viewModel: OutboxStatusViewModel,
@@ -71,9 +65,7 @@ fun SyncStatusScreen(
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack)
 }
 
-/** The row-resolving callbacks of the sync-status surface, grouped so the
- *  testable [SyncStatusScreenContent] stays within the parameter budget
- *  (precedent: SettingsRouteActions). */
+/** Row callbacks grouped to keep the content API small and testable. */
 internal data class SyncStatusActions(
     val onKeepMine: (OutboxRow) -> Unit,
     val onDropMine: (OutboxRow) -> Unit,
@@ -87,8 +79,7 @@ internal fun SyncStatusScreenContent(
     actions: SyncStatusActions,
     onBack: () -> Unit,
 ) {
-    // Drop/remove discards an offline edit irreversibly — both card buttons
-    // route through an explicit confirm dialog before the VM callback fires.
+    // Dropping an offline edit is irreversible, so both paths require confirmation.
     var confirmingDropMine by remember { mutableStateOf<OutboxRow?>(null) }
     var confirmingDropFailed by remember { mutableStateOf<OutboxRow?>(null) }
 
@@ -143,9 +134,6 @@ private fun SyncStatusPageBody(
     val status = state.status
     SyncSummaryCard(status)
 
-    // The lone transient note (e.g. "keep mine" needs a re-fetch that failed):
-    // same position, unified into the shared banner form. Info-toned — it points
-    // the user at another action rather than reporting a hard failure.
     AppStatusBanner(message = state.message, tone = MessageTone.Info)
 
     if (status.conflicts.isNotEmpty()) {
@@ -175,13 +163,7 @@ private fun SyncStatusPageBody(
     }
 }
 
-/**
- * The irreversible-discard confirm. Copy branches on what is being lost: a
- * CONFLICT drop keeps the server version; a FAILED drop loses the change
- * outright; a reaper-expired FAILED row reads 移除 (it can never sync again).
- * The confirm word deliberately differs from the card button word so a
- * double-tap cannot blow through both steps.
- */
+/** Confirm wording reflects whether the app is dropping a conflict or removing an expired row. */
 @Composable
 private fun DropConfirmDialog(
     row: OutboxRow,
@@ -290,8 +272,7 @@ private fun ConflictCard(
     onKeepMine: () -> Unit,
     onDropMine: () -> Unit,
 ) {
-    // Only the expense family can re-fetch a fresh token for "keep
-    // mine" in v1; other families are drop-only here.
+    // Only expense mutations can refresh state and retry as "keep mine".
     val canKeep = row.targetId.startsWith("expense:")
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -343,10 +324,7 @@ private fun FailedCard(
     onRetry: () -> Unit,
     onDrop: () -> Unit,
 ) {
-    // ADR-0042 §4.10: a reaper-expired row can't be retried — replaying it would
-    // hit a server-purged idempotency key (and the next drain would just re-reap
-    // it), so Retry is a dead action. Offer only Drop; the message already tells
-    // the user to redo the change fresh (which mints a new key).
+    // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -397,7 +375,7 @@ private fun FailedCard(
     }
 }
 
-/** A reaper age-cap expiry (``outbox_row_expired``) is terminal — Retry can't help. */
+/** A reaper age-cap expiry is terminal; retry cannot help. */
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
@@ -422,18 +400,7 @@ private fun mutationLabel(type: PendingMutationType): String = when (type) {
     PendingMutationType.Unknown -> stringResource(R.string.sync_status_mutation_unknown)
 }
 
-/**
- * 把 outbox row.lastError 里的内部 marker 翻译成用户能看懂的中文。
- *
- * PR review #1 + #5: 此前 SyncStatusScreen 直接渲染 row.lastError, 会把 engine 内部
- * marker(`max_attempts_exceeded(N/M): ...`、`session_boundary_aborted`、`manual_retry`、
- * `no_dispatcher_registered:<wire>`、`drain cancelled mid-dispatch`、`recovered_from_stuck_in_flight`)
- * 和原始 server message(`java.net.SocketTimeoutException: ...`)直接抛给最终用户, 违反
- * ENGINEERING_RULES §10 "普通用户界面不得出现接口名 / 英文底层异常"。
- *
- * 已知 marker → 中文文案;未知 lastError → 返回 fallback(card 自带的默认描述), 不把
- * 原 lastError 透传。
- */
+/** Translate known outbox error markers; never expose raw transport or engine errors to users. */
 @Composable
 private fun friendlyLastError(raw: String?, fallback: String): String {
     val text = raw?.trim().orEmpty()
@@ -441,17 +408,11 @@ private fun friendlyLastError(raw: String?, fallback: String): String {
     return when {
         text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
         text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
-        // ADR-0042 §4.10: row sat PENDING past the age-cap → reaped to FAILED
-        // (never replayed) because its idempotency key could have expired
-        // server-side. The user must redo the action against fresh state.
         text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
-        // 抑制内部窗口期 / 用户自触发的 marker(它们对应的 row 在 PENDING 队列里,不该到
-        // FailedCard / ConflictCard 上展示;万一漂移过来也只显示通用兜底)。
         text == "session_boundary_aborted" -> fallback
         text == "manual_retry" -> fallback
         text == "drain cancelled mid-dispatch" -> fallback
         text == "recovered_from_stuck_in_flight" -> fallback
-        // 未识别的 marker(可能是未来加的、也可能是 server message): 也不透传, 仍走 fallback。
         else -> fallback
     }
 }

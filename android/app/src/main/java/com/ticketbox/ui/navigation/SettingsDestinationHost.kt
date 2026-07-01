@@ -155,8 +155,7 @@ internal fun SettingsDestinationHost(
     val backgroundImageStore = remember(context) { BackgroundImageStore(context) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
-    // ADR-0044: stringResource is @Composable-only, but these messages are used inside
-    // non-composable launcher result / runCatching lambdas. Hoist the resolved strings here.
+    // Resolve strings before launcher callbacks and runCatching handlers need them.
     val backgroundCopyFailedMessage = stringResource(R.string.settings_background_copy_failed)
     val backgroundCustomTitle = stringResource(R.string.settings_background_custom_title)
     val backgroundCropFailedMessage = stringResource(R.string.settings_background_crop_failed)

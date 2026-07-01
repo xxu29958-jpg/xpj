@@ -41,14 +41,6 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.TagManagementViewModel
 import kotlinx.coroutines.delay
 
-/**
- * ADR-0043 slice C — 标签管理 (设置 → 标签管理).
- *
- * 列表 + 使用次数 / 重命名 / 删除 / 合并 + 5s 撤销 banner。Online-only：每次操作后
- * VM 从服务端 reload 权威列表。layout 按移动端形态自决（卡片 + 对话框，不照搬 /web
- * 的表格），token 经 MaterialTheme + AppSpacing + SettingsOpenPanel 三端共享
- * ([[feedback_three_surface_visual_sync]])。
- */
 @Composable
 fun TagManagementScreen(
     viewModel: TagManagementViewModel,
@@ -62,16 +54,12 @@ fun TagManagementScreen(
     var deleting by remember { mutableStateOf<ManagedTag?>(null) }
     var preselectedMergeTarget by remember { mutableStateOf<ManagedTag?>(null) }
 
-    // P4 stale-refresh: after each committed tag mutation, tell the stats tab to
-    // re-pull its tag list so a deleted/renamed tag stops lingering in the filter
-    // chips. Keyed on the monotonic revision so it re-fires per mutation (>0 guard
-    // skips the initial composition).
+    // After a committed tag mutation, refresh stats filters that may still show old names.
     LaunchedEffect(state.tagsChangedRevision) {
         if (state.tagsChangedRevision > 0) onTagsChanged()
     }
 
-    // 契约 5: a rename key-collision against a live tag steers into the merge
-    // dialog, preselected on the colliding tag (still user-confirmed).
+    // Rename collisions become an explicit user-confirmed merge.
     LaunchedEffect(state.mergeSuggestion) {
         state.mergeSuggestion?.let { suggestion ->
             preselectedMergeTarget = suggestion.target
@@ -92,11 +80,7 @@ fun TagManagementScreen(
         )
     }
     merging?.let { source ->
-        // 契约 5: when a rename steered us here, preselectedMergeTarget carries the
-        // server's FRESH conflict token. Splice it over its stale list twin so that
-        // tapping that same row in the dialog keeps the fresh row_version (the list
-        // copy is from the pre-conflict load) — otherwise re-selecting the preselected
-        // target would reintroduce the stale token and the merge would 409 at once.
+        // Preserve the fresh conflict token returned by the server for the preselected target.
         val freshTarget = preselectedMergeTarget
         val mergeTargets = state.tags
             .filter { it.publicId != source.publicId }
@@ -153,8 +137,7 @@ fun TagManagementScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
-        // ADR-0043 undo: delete/merge are recoverable for a 5s window. Online-only
-        // (the handle only exists after a synced mutation); auto-dismisses.
+        // Online delete/merge exposes a short undo window.
         state.undoable?.let { handle ->
             LaunchedEffect(handle.mutationPublicId) {
                 delay(5000)
@@ -175,8 +158,7 @@ fun TagManagementScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(AppSpacing.compactGap))
-                    // Disabled while a mutate is in flight: a stale undo banner from
-                    // an earlier op must not fire concurrently with it (VM also gates).
+                    // Do not run undo concurrently with another mutation.
                     TextButton(enabled = !state.busy, onClick = viewModel::undo) { Text(stringResource(R.string.tag_management_undo_button)) }
                 }
             }

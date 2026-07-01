@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ADR-0044 wave 1, cluster settings_core (设置 根屏 + 服务器/连接 + 数据导出 + 安全隐私 + 关于 + 离线同步)。
-  命名/红线见 res/values/strings.xml 头部约定：每处一个 key、不按中文值去重、按 screen 分段。
-  只放用户可见中文，不建第二语言。
+  设置根屏、连接、数据导出、安全隐私、关于、离线同步。
+  只放用户可见中文；每处一个 key，不按中文值去重。
 -->
 <resources>
 
@@ -12,15 +11,14 @@
     <string name="settings_root_connection_subtitle_advanced">连接测试、联调自检、同步状态</string>
     <string name="settings_root_connection_subtitle_basic">检查连接、更新账本状态</string>
     <string name="settings_root_page_title">设置</string>
-    <string name="settings_root_page_subtitle">账本状态、外观和本机数据。</string>
-    <!-- 轴2 IA(A1): 旧 5 组(账本与同步/记账设置/家庭协作/外观与数据/安全与关于)
-         重排为贴三域的 4 组。 -->
+    <string name="settings_root_page_subtitle">账本、规则、同步与本机数据。</string>
+    <string name="settings_root_account_identity_line">%1$s · %2$s · %3$s</string>
     <string name="settings_root_section_ledger_family">账本与家庭</string>
     <string name="settings_root_entry_offline_sync_title">离线同步</string>
     <string name="settings_root_entry_offline_sync_subtitle">离线改动的同步状态，处理冲突与失败</string>
     <string name="settings_root_entry_background_tasks_title">后台任务</string>
     <string name="settings_root_entry_background_tasks_subtitle">CSV 导入 / v1.0 迁移等长任务的状态</string>
-    <string name="settings_root_entry_ledgers_title">账本 (实验)</string>
+    <string name="settings_root_entry_ledgers_title">账本</string>
     <string name="settings_root_entry_ledgers_subtitle">查看、切换、新建账本</string>
     <string name="settings_root_section_bookkeeping_data">记账规则与数据</string>
     <string name="settings_root_entry_category_rules_title">分类规则</string>
@@ -41,15 +39,15 @@
     <string name="settings_root_entry_my_devices_title">我的设备</string>
     <string name="settings_root_entry_my_devices_subtitle">查看并管理可访问本账本的设备</string>
     <string name="settings_root_entry_join_family_title">加入家庭账本</string>
-    <string name="settings_root_entry_join_family_subtitle">使用本机管理后台生成的邀请明文</string>
+    <string name="settings_root_entry_join_family_subtitle">粘贴一次性邀请，加入共享账本</string>
     <string name="settings_root_entry_bill_splits_title">拆账</string>
     <string name="settings_root_entry_bill_splits_subtitle">收到的拆账邀请与你发出的拆账</string>
     <string name="settings_root_entry_appearance_title">外观与主题</string>
     <string name="settings_root_entry_appearance_subtitle">主题皮肤、自定义背景、沉浸强度</string>
     <string name="settings_root_entry_dashboard_cards_title">首页卡片</string>
-    <string name="settings_root_entry_dashboard_cards_subtitle">调整统计页卡片显示、隐藏和排序</string>
+    <string name="settings_root_entry_dashboard_cards_subtitle">调整今日与洞察的信息模块</string>
     <string name="settings_root_entry_data_export_title">数据与导出</string>
-    <string name="settings_root_entry_data_export_subtitle">本地缓存、表格导出说明</string>
+    <string name="settings_root_entry_data_export_subtitle">本机缓存与表格导出说明</string>
     <string name="settings_root_section_connection_system">连接与系统</string>
     <string name="settings_root_entry_security_title">安全与隐私</string>
     <string name="settings_root_entry_security_subtitle_locked">本机解锁、本地数据、退出账本</string>
@@ -180,7 +178,7 @@
     <string name="sync_status_drop_dialog_confirm">确定放弃</string>
     <string name="sync_status_drop_dialog_confirm_remove">确定移除</string>
 
-    <!-- ADR-0044 wave 2：SettingsViewModel 用户可见反馈消息（连接 / 同步 / 检测 / 缓存 / 月预算 / 通知偏好），经 UiText 在 UI 层解析 -->
+    <!-- SettingsViewModel 用户可见反馈消息。 -->
     <string name="settings_vm_connection_ok">连接正常</string>
     <string name="settings_vm_connection_failed">暂时连不上小票夹，请稍后再试。</string>
     <string name="settings_vm_sync_done">更新完成</string>
@@ -194,10 +192,10 @@
     <string name="settings_vm_monthly_budget_saved">月预算已保存</string>
     <string name="settings_vm_notifications_saved">通知偏好已保存</string>
 
-    <!-- ADR-0044 wave 2：OutboxStatusViewModel 用户可见反馈消息（离线同步） -->
+    <!-- OutboxStatusViewModel 用户可见反馈消息。 -->
     <string name="sync_status_vm_keep_mine_unavailable">这条改动暂时只能放弃，或联网后在对应页面重做。</string>
 
-    <!-- ADR-0044 wave 2：离线同步卡 改动类型标签（SyncStatusScreen.mutationLabel），按 PendingMutationType 展示 -->
+    <!-- 离线同步卡改动类型标签。 -->
     <string name="sync_status_mutation_patch_expense">修改账单</string>
     <string name="sync_status_mutation_create_expense">新建账单</string>
     <string name="sync_status_mutation_confirm_expense">确认入账</string>
@@ -216,7 +214,7 @@
     <string name="sync_status_mutation_update_income_plan">修改收入记录</string>
     <string name="sync_status_mutation_unknown">改动</string>
 
-    <!-- ADR-0044 wave 2：离线同步卡 内部 marker → 用户文案（SyncStatusScreen.friendlyLastError） -->
+    <!-- 离线同步内部错误映射为用户文案。 -->
     <string name="sync_status_error_max_attempts">已连续多次同步失败,请检查网络或稍后再试。</string>
     <string name="sync_status_error_no_dispatcher">App 版本不支持此操作,请升级后再重试。</string>
     <string name="sync_status_error_expired">这笔改动太久没能同步,已过期,请重新操作。</string>

@@ -44,8 +44,7 @@ fun CategoryRulesScreen(
     rules: List<CategoryRule>,
     busy: Boolean,
     readOnly: Boolean,
-    // No default on purpose: the compiler forces every caller to wire the
-    // VM message through (this channel was silently dead before).
+    // No default: every caller must wire the ViewModel status channel.
     message: UiText?,
     onBack: () -> Unit,
     onCreateRule: (String, String, Int) -> Unit,
@@ -95,8 +94,7 @@ fun CategoryRulesScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = message, tone = MessageTone.Neutral) },
     ) {
-        // ADR-0038 undo: a soft-deleted rule is recoverable for a 5s window.
-        // Online-only (shown only after a synced delete); auto-dismisses.
+        // Online deletes expose a short undo window.
         undoableRule?.let { undoable ->
             LaunchedEffect(undoable.id) {
                 delay(5000)
