@@ -92,7 +92,10 @@ data class PendingUiState(
      * sheet / 推进 / 跳过 / 刷新后重算，Screen 只读不算。
      */
     val reviewRemaining: Int = 0,
-)
+) {
+    val showPageRefresh: Boolean
+        get() = loading && (items.isEmpty() || !hasLoadedOnce)
+}
 
 class PendingViewModel(
     internal val repository: PendingReviewActions,

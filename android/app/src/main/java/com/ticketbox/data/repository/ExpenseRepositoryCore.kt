@@ -32,6 +32,8 @@ import java.io.IOException
 import java.time.Instant
 import java.util.TimeZone
 
+private const val CONFIRMED_SYNC_PAGE_SIZE = 200
+
 internal class ExpenseRepositoryCore(
     val expenseDao: ExpenseDao,
     val settingsStore: TicketboxSettingsStore,
@@ -237,7 +239,7 @@ internal class ExpenseRepositoryCore(
         }
         val collectedDtos = mutableListOf<ExpenseDto>()
         var page = 1
-        val pageSize = 50
+        val pageSize = CONFIRMED_SYNC_PAGE_SIZE
         var total = Int.MAX_VALUE
         do {
             if (activeLedgerIdOrLegacy() != ledgerIdAtRequest) {

@@ -107,6 +107,9 @@ data class LedgerUiState(
     val isFirstSync: Boolean
         get() = items.isEmpty() && syncing && lastSyncAt == null
 
+    val showPageRefresh: Boolean
+        get() = syncing && items.isEmpty()
+
     val summary: LedgerSummaryUi
         get() = LedgerSummaryUi(
             totalAmountCents = items.sumOf { it.amountCents ?: 0L },

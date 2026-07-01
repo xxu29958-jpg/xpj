@@ -42,6 +42,22 @@ class ExpenseRepositoryConfirmedSyncTest {
     }
 
     @Test
+    fun confirmedSyncUsesLargestSupportedPageSize() = runTest {
+        val apiService = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = boundSettingsStore(),
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.syncConfirmed(month = "2026-05").getOrThrow()
+
+        assertEquals(200, apiService.lastConfirmedPageSize)
+    }
+
+    @Test
     fun fullConfirmedSyncDeletesRemoteMissingCachedRows() = runTest {
         val dao = FakeExpenseDao()
         dao.insert(cachedConfirmedEntity(serverId = 9, publicId = "remote-kept", merchant = "旧高德"))

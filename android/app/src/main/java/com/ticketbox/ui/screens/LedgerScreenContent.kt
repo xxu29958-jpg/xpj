@@ -42,7 +42,7 @@ internal fun LedgerContent(
 
     AppScrollableContent(
         role = AppPageRole.Ledger,
-        isRefreshing = state.syncing,
+        isRefreshing = state.showPageRefresh,
         onRefresh = actions.onSync,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {

@@ -507,6 +507,17 @@ class LedgerViewModelTest {
             LedgerUiState(items = emptyList(), syncing = false, lastSyncAt = null).isFirstSync,
         )
     }
+
+    @Test
+    fun pageRefreshOnlyCoversEmptyLedger() {
+        assertTrue(LedgerUiState(items = emptyList(), syncing = true).showPageRefresh)
+        assertFalse(
+            LedgerUiState(
+                items = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+                syncing = true,
+            ).showPageRefresh,
+        )
+    }
 }
 
 // Fixture expenses sit in 2026-05; tests pin monthFilter here so they stay

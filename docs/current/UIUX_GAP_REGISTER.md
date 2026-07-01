@@ -123,7 +123,7 @@ that actually ships the fix.
 
 ### ANDROID-2026-07-02-refresh-latency-priority
 
-- Surface: Android Today and Insights refresh.
+- Surface: Android Today, Pending, Ledger, and Insights refresh.
 - Status: implemented in the current frontend latency slice; true-device timing
   still needs capture.
 - Gap: refresh could feel slow because non-primary work started before the
@@ -132,8 +132,10 @@ that actually ships the fix.
   was already visible.
 - Resolution: monthly stats now start before supplemental recurring,
   candidate, data-quality, lifestyle, and confirmed-cache work; Today starts
-  the month refresh before Pending, and existing Pending content no longer keeps
-  the whole-page pull indicator active.
+  the month refresh before Pending; Today, Pending, and Ledger stop holding the
+  whole-page pull indicator once readable content is already on screen.
+  Confirmed-ledger sync now requests the backend-supported 200 rows per page
+  instead of 50 to reduce avoidable round trips on larger ledgers.
 
 ### ANDROID-2026-07-01-ledger-empty-safe-area
 
@@ -379,7 +381,7 @@ that actually ships the fix.
 
 ### ANDROID-2026-07-02-refresh-loading-latency
 
-- Surface: Android Today and Insights root refresh.
+- Surface: Android Today, Pending, Ledger, and Insights root refresh.
 - Status: implemented locally; true-device timing evidence still pending.
 - Gap: user reports frontend refresh/loading is too slow. The root cause found in
   the Android state path is that page-level loading could stay active while
@@ -389,10 +391,12 @@ that actually ships the fix.
   authoritative monthly stats response is applied. Lifestyle stats and confirmed
   cache sync continue in the background. Insights reports now release the trend
   loading state as soon as the overview response lands; goals continue as a
-  secondary background result and stale goal requests are cancelled.
-- Remaining QA: measure Today and Insights pull-to-refresh on a physical device
-  with the production backend and confirm the page does not imply fresh backend
-  truth before the primary stats response lands.
+  secondary background result and stale goal requests are cancelled. Pending and
+  Ledger now keep existing rows readable while the authority strip shows refresh
+  state, and confirmed-ledger sync uses 200 rows per page.
+- Remaining QA: measure Today, Pending, Ledger, and Insights pull-to-refresh on
+  a physical device with the production backend and confirm the page does not
+  imply fresh backend truth before the primary response lands.
 
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 

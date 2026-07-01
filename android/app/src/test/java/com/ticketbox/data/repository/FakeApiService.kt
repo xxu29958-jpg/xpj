@@ -80,6 +80,7 @@ internal class FakeApiService(
     var lastConfirmedMonth: String? = null
     var lastConfirmedCategory: String? = null
     var lastConfirmedTag: String? = null
+    var lastConfirmedPageSize: Int? = null
     val confirmedResponses = mutableMapOf<Int, PaginatedExpensesDto>()
     val applyConfirmedRequests = mutableListOf<RuleApplyConfirmedRequestDto>()
     val rollbackPublicIds = mutableListOf<String>()
@@ -146,6 +147,7 @@ internal class FakeApiService(
         lastConfirmedMonth = month
         lastConfirmedCategory = category
         lastConfirmedTag = tag
+        lastConfirmedPageSize = pageSize
         onConfirmedRequest?.invoke()
         if (confirmedFailuresRemaining > 0) {
             confirmedFailuresRemaining -= 1

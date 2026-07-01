@@ -168,7 +168,7 @@ fun PendingScreen(
 
     AppScrollableContent(
         role = AppPageRole.Pending,
-        isRefreshing = state.loading,
+        isRefreshing = state.showPageRefresh,
         onRefresh = onRefresh,
         listState = listState,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),

@@ -95,4 +95,21 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         assertFalse(vm.uiState.value.showingCachedSnapshot)
         assertTrue(vm.uiState.value.hasLoadedOnce)
     }
+
+    @Test
+    fun pageRefreshDropsWhenCachedRowsAreReadable() = review {
+        val networkResponse = CompletableDeferred<Result<List<com.ticketbox.domain.model.Expense>>>()
+        val fake = FakeReviewActions()
+        fake.cachedPending = listOf(expense(id = 1L, merchant = "Cached"))
+        fake.fetchPendingResponder = { networkResponse.await() }
+
+        val vm = PendingViewModel(fake)
+        runCurrent()
+
+        assertTrue(vm.uiState.value.loading)
+        assertFalse(vm.uiState.value.showPageRefresh)
+
+        networkResponse.complete(Result.success(listOf(expense(id = 2L, merchant = "Fresh"))))
+        advanceUntilIdle()
+    }
 }
