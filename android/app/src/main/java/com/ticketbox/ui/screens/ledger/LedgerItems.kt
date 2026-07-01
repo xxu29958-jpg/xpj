@@ -82,7 +82,7 @@ internal fun LedgerDayHeader(label: String, dayTotalCents: Long) {
                 maxLines = 1,
             )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.16f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
     }
 }
 

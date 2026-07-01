@@ -29,11 +29,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.screens.CategoryFilterRow
 import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.LedgerUiState
+import com.ticketbox.viewmodel.LedgerViewMode
 
 @Composable
 internal fun LedgerToolsSheet(
@@ -43,6 +46,7 @@ internal fun LedgerToolsSheet(
     onTagChange: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     onClearFilters: () -> Unit,
+    onViewModeChange: (LedgerViewMode) -> Unit,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
     onOpenBillSplit: () -> Unit,
@@ -69,6 +73,11 @@ internal fun LedgerToolsSheet(
             onOpenRepaymentDrafts = onOpenRepaymentDrafts,
         )
         LedgerToolDivider()
+        LedgerViewTools(
+            selectedMode = state.viewMode,
+            onViewModeChange = onViewModeChange,
+        )
+        LedgerToolDivider()
         LedgerFilterTools(
             state = state,
             onCategoryChange = onCategoryChange,
@@ -88,6 +97,32 @@ internal fun LedgerToolsSheet(
             showNoExport = state.items.isEmpty(),
             onClearFilters = onClearFilters,
             onDismiss = onDismiss,
+        )
+    }
+}
+
+@Composable
+private fun LedgerViewTools(
+    selectedMode: LedgerViewMode,
+    onViewModeChange: (LedgerViewMode) -> Unit,
+) {
+    val cardLabel = stringResource(R.string.ledger_view_mode_card)
+    val listLabel = stringResource(R.string.ledger_view_mode_list)
+    val tableLabel = stringResource(R.string.ledger_view_mode_table)
+    LedgerToolSection(title = stringResource(R.string.ledger_tools_view_title)) {
+        AppSegmentedControl(
+            options = LedgerViewMode.entries.map { mode ->
+                AppSegmentedItem(
+                    value = mode,
+                    label = when (mode) {
+                        LedgerViewMode.Card -> cardLabel
+                        LedgerViewMode.List -> listLabel
+                        LedgerViewMode.Table -> tableLabel
+                    },
+                )
+            },
+            selectedValue = selectedMode,
+            onValueChange = onViewModeChange,
         )
     }
 }

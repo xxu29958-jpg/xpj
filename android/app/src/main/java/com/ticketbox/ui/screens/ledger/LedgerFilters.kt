@@ -26,16 +26,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.domain.model.shiftLedgerMonth
-import com.ticketbox.ui.components.AppSegmentedControl
-import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerUiState
-import com.ticketbox.viewmodel.LedgerViewMode
+
+private const val LedgerQuickCategoryLimit = 4
 
 @Composable
 internal fun LedgerFilterPanel(
@@ -45,7 +45,6 @@ internal fun LedgerFilterPanel(
     onManualAdd: () -> Unit,
     onCategoryChange: (String) -> Unit,
     onMonthChange: (String) -> Unit,
-    onViewModeChange: (LedgerViewMode) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
         // 三段竖向布局：账本头（含状态 pill + KPI）→ 视图模式段 → 内联 chip 筛选。
@@ -53,10 +52,6 @@ internal fun LedgerFilterPanel(
         // 的状态 pill 和 LedgerInlineFilters 的 chip 状态又重新文字叙述一遍，纯冗余。
         // 移除后顶部垂直高度减少 ~24dp，信息密度更高且没有损失任何用户能用上的信息。
         LedgerHeader(state = state, onManualAdd = onManualAdd)
-        LedgerViewModeToggle(
-            selectedMode = state.viewMode,
-            onViewModeChange = onViewModeChange,
-        )
         LedgerInlineFilters(
             state = state,
             onOpenMonthPicker = onOpenMonthPicker,
@@ -65,28 +60,6 @@ internal fun LedgerFilterPanel(
             onMonthChange = onMonthChange,
         )
     }
-}
-
-@Composable
-private fun LedgerViewModeToggle(
-    selectedMode: LedgerViewMode,
-    onViewModeChange: (LedgerViewMode) -> Unit,
-) {
-    val cardLabel = stringResource(R.string.ledger_view_mode_card)
-    val listLabel = stringResource(R.string.ledger_view_mode_list)
-    val tableLabel = stringResource(R.string.ledger_view_mode_table)
-    AppSegmentedControl(
-        options = LedgerViewMode.entries.map { mode ->
-            val label = when (mode) {
-                LedgerViewMode.Card -> cardLabel
-                LedgerViewMode.List -> listLabel
-                LedgerViewMode.Table -> tableLabel
-            }
-            AppSegmentedItem(value = mode, label = label)
-        },
-        selectedValue = selectedMode,
-        onValueChange = onViewModeChange,
-    )
 }
 
 @Composable
@@ -99,7 +72,13 @@ private fun LedgerInlineFilters(
 ) {
     val hasQuery = state.query.isNotBlank()
     val hasTag = state.tagFilter.isNotBlank()
-    val quickCategories = remember(state.categories) { state.categories.take(2) }
+    val quickCategories = remember(state.categories, state.items, state.categoryFilter) {
+        ledgerQuickCategories(
+            categories = state.categories,
+            visibleItems = state.items,
+            selectedCategory = state.categoryFilter,
+        )
+    }
     val selectedOutsideQuick = state.categoryFilter.isNotBlank() && state.categoryFilter !in quickCategories
     // Prev/next only when a concrete month is selected; "全部月份" has no neighbor.
     val previousMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, -1L) }
@@ -208,6 +187,27 @@ private fun LedgerInlineFilters(
             }
         }
     }
+}
+
+private fun ledgerQuickCategories(
+    categories: List<String>,
+    visibleItems: List<Expense>,
+    selectedCategory: String,
+): List<String> {
+    val visibleByFrequency = visibleItems
+        .asSequence()
+        .map { it.category.trim() }
+        .filter { it.isNotBlank() }
+        .groupingBy { it }
+        .eachCount()
+        .entries
+        .sortedByDescending { it.value }
+        .map { it.key }
+    return (listOf(selectedCategory.trim()) + visibleByFrequency + categories)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+        .take(LedgerQuickCategoryLimit)
 }
 
 /**

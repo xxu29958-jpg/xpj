@@ -18,8 +18,10 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
@@ -148,6 +150,7 @@ fun LedgerScreen(
                 onTagChange = onTagChange,
                 onQueryChange = onQueryChange,
                 onClearFilters = onClearFilters,
+                onViewModeChange = onViewModeChange,
                 onSync = onSync,
                 onExportCsv = onExportCsv,
                 // 先收起工具表(否则二级页 overlay 会被 ModalBottomSheet 盖住), 再切到对应二级页。
@@ -200,7 +203,15 @@ fun LedgerScreen(
                     onManualAdd = { if (!state.readOnly) showManualSheet = true },
                     onCategoryChange = onCategoryChange,
                     onMonthChange = onMonthChange,
-                    onViewModeChange = onViewModeChange,
+                )
+            }
+        }
+        val authorityTone = ledgerAuthorityTone(state)
+        if (authorityTone != DataAuthorityTone.Backend) {
+            item {
+                AppDataAuthorityStrip(
+                    tone = authorityTone,
+                    localCacheBodyRes = R.string.components_data_authority_ledger_cache_body,
                 )
             }
         }
@@ -263,4 +274,11 @@ fun LedgerScreen(
             }
         }
     }
+}
+
+private fun ledgerAuthorityTone(state: LedgerUiState): DataAuthorityTone = when {
+    state.readOnly -> DataAuthorityTone.ReadOnly
+    state.syncing -> DataAuthorityTone.Refreshing
+    state.syncedInCurrentSession -> DataAuthorityTone.Backend
+    else -> DataAuthorityTone.LocalCache
 }

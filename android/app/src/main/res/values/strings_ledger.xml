@@ -74,13 +74,13 @@
     <string name="ledger_header_month_all">全部月份</string>
     <string name="ledger_header_status_syncing">更新中</string>
     <string name="ledger_header_status_synced">已同步 %1$s</string>
-    <string name="ledger_header_status_offline">本机缓存可看</string>
+    <string name="ledger_header_status_offline">离线数据</string>
     <string name="ledger_header_eyebrow">小票夹</string>
     <string name="ledger_header_title">账本</string>
     <string name="ledger_header_total_suffix">%1$s 支出</string>
     <string name="ledger_header_count_label">账单</string>
     <string name="ledger_header_count_value">%1$d 笔</string>
-    <string name="ledger_header_subtitle">本机缓存，刷新后以服务端为准</string>
+    <string name="ledger_header_subtitle">筛选、搜索和导出在工具里</string>
     <string name="ledger_header_add_button">记一笔</string>
 
     <!-- LedgerItems：账本条目（卡片/列表/表格） -->
@@ -90,7 +90,7 @@
 
     <!-- LedgerViewModel：账本 ViewModel 状态/结果文案（ADR-0044 wave 2，纯②：经 UiText 外置） -->
     <string name="ledger_msg_sync_done">更新完成</string>
-    <string name="ledger_msg_sync_failed">暂时更新不了，先看本机账本。</string>
+    <string name="ledger_msg_sync_failed">暂时更新不了，正在显示离线数据。</string>
     <string name="ledger_msg_export_empty">没有可导出的已确认账单。请先确认几笔账单，或重新更新后再试。</string>
     <string name="ledger_msg_export_pick_location">请选择保存位置</string>
     <string name="ledger_msg_export_failed">没有导出成功，可以换个保存位置再试。</string>
@@ -125,6 +125,7 @@
 
     <!-- LedgerToolsSheet：筛选与更新 sheet -->
     <string name="ledger_tools_title">账本工具</string>
+    <string name="ledger_tools_view_title">显示方式</string>
     <string name="ledger_tools_search_placeholder">搜索备注</string>
     <string name="ledger_tools_global_search">全局搜索</string>
     <string name="ledger_tools_exporting">导出中</string>

@@ -58,6 +58,7 @@ data class LedgerUiState(
     val viewMode: LedgerViewMode = LedgerViewMode.List,
     val lastSyncAt: String? = null,
     val syncing: Boolean = false,
+    val syncedInCurrentSession: Boolean = false,
     val exporting: Boolean = false,
     val creatingManual: Boolean = false,
     // ADR-0042 Slice C: multi-select + batch-edit state. selectionMode toggles
@@ -251,7 +252,12 @@ class LedgerViewModel(
     fun sync() {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(readOnly = !repository.canModifyLedger(), syncing = true, message = null)
+                it.copy(
+                    readOnly = !repository.canModifyLedger(),
+                    syncing = true,
+                    syncedInCurrentSession = false,
+                    message = null,
+                )
             }
             val filters = _uiState.value
             repository.syncConfirmed(
@@ -263,6 +269,7 @@ class LedgerViewModel(
                     _uiState.update {
                         it.copy(
                             syncing = false,
+                            syncedInCurrentSession = true,
                             lastSyncAt = repository.lastConfirmedSyncAt(),
                             message = UiText.res(R.string.ledger_msg_sync_done),
                         )
@@ -270,7 +277,11 @@ class LedgerViewModel(
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(syncing = false, message = error.toUiText(R.string.ledger_msg_sync_failed))
+                        it.copy(
+                            syncing = false,
+                            syncedInCurrentSession = false,
+                            message = error.toUiText(R.string.ledger_msg_sync_failed),
+                        )
                     }
                 }
         }
