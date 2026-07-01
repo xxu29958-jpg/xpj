@@ -59,7 +59,9 @@ that actually ships the fix.
   refreshing, restoring, and restore-confirm states. Data & Export now separates
   confirmed ledger records, this-device offline copy, and export scope before
   presenting update/clear-copy actions, so it no longer reads like a temporary
-  cache utility page.
+  cache utility page. Security & Privacy now uses the same open-section language
+  to separate device verification, session credentials, background privacy,
+  clearing the offline copy, and leaving the ledger.
 
 ### ANDROID-2026-07-01-settings-root-density
 

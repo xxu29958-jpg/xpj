@@ -50,8 +50,8 @@
     <string name="settings_root_entry_data_export_subtitle">离线数据与表格导出说明</string>
     <string name="settings_root_section_connection_system">连接与系统</string>
     <string name="settings_root_entry_security_title">安全与隐私</string>
-    <string name="settings_root_entry_security_subtitle_locked">本机解锁、本地数据、退出账本</string>
-    <string name="settings_root_entry_security_subtitle_unlocked">本机验证已关闭、本地数据、退出账本</string>
+    <string name="settings_root_entry_security_subtitle_locked">本机验证、离线副本、退出账本</string>
+    <string name="settings_root_entry_security_subtitle_unlocked">本机验证未开启、离线副本、退出账本</string>
     <string name="settings_root_entry_about_title">关于</string>
     <string name="settings_root_entry_about_subtitle">版本、同步和产品边界</string>
 
@@ -133,25 +133,31 @@
     <string name="settings_data_export_action_hint">重新更新会获取最新已入账记录；清除副本不会影响账本记录。</string>
 
     <!-- 安全与隐私页（SecurityPrivacyScreen） -->
-    <string name="settings_security_clear_dialog_title">清除本地数据？</string>
-    <string name="settings_security_clear_dialog_text">账本数据不会删除。之后可重新更新已入账账单。</string>
-    <string name="settings_security_clear_dialog_confirm">确定清除</string>
+    <string name="settings_security_clear_dialog_title">清除离线副本？</string>
+    <string name="settings_security_clear_dialog_text">只会移除这台设备保存的离线账本副本，不会删除已入账记录。重新更新后可再次离线查看。</string>
+    <string name="settings_security_clear_dialog_confirm">清除副本</string>
     <string name="settings_security_logout_dialog_title">退出当前账本？</string>
-    <string name="settings_security_logout_dialog_text">退出后需要重新绑定小票夹。本地口令会被清除，账本数据不会删除。</string>
+    <string name="settings_security_logout_dialog_text">退出后，这台设备会移除账本会话凭证。已入账记录不会删除，重新使用需要再次绑定。</string>
     <string name="settings_security_logout_dialog_confirm">确定退出</string>
     <string name="settings_security_page_title">安全与隐私</string>
-    <string name="settings_security_page_subtitle_locked">口令保存在本机安全区，背景图片不会上传。</string>
-    <string name="settings_security_page_subtitle_unlocked">本机验证当前关闭，会话凭证仍保存在本机安全区。</string>
-    <string name="settings_security_section_unlock_locked">本机解锁</string>
-    <string name="settings_security_section_unlock_unlocked">本机验证</string>
-    <string name="settings_security_unlock_card_title_locked">指纹 / 面容只用于本地解锁</string>
-    <string name="settings_security_unlock_card_title_unlocked">指纹、面容和锁屏密码验证已关闭</string>
-    <string name="settings_security_unlock_card_body_locked">账本访问使用绑定时保存的会话凭证。App 切到后台超过 5 分钟后会要求重新解锁。</string>
-    <string name="settings_security_unlock_card_body_unlocked">当前版本不会要求本机解锁。账本访问仍使用绑定时保存的会话凭证。</string>
-    <string name="settings_security_background_privacy">自定义背景只保存在手机私有目录，不上传到小票夹服务。</string>
-    <string name="settings_security_section_danger">危险操作</string>
-    <string name="settings_security_clear_data_icon_desc">清除手机本地数据</string>
-    <string name="settings_security_button_clear_data">清除数据</string>
+    <string name="settings_security_page_subtitle_locked">管理这台设备上的验证、会话凭证和离线副本。</string>
+    <string name="settings_security_page_subtitle_unlocked">本机验证未开启，会话凭证仍保存在这台设备的安全区。</string>
+    <string name="settings_security_section_protection">设备保护</string>
+    <string name="settings_security_local_unlock_label_locked">本机验证已开启</string>
+    <string name="settings_security_local_unlock_label_unlocked">本机验证未开启</string>
+    <string name="settings_security_local_unlock_body_locked">App 切到后台超过 5 分钟后会要求重新验证；验证只发生在这台设备。</string>
+    <string name="settings_security_local_unlock_body_unlocked">不会要求指纹、面容或锁屏密码；账本访问仍需要有效会话凭证。</string>
+    <string name="settings_security_session_label">账本访问凭证</string>
+    <string name="settings_security_session_body">绑定后保存在这台设备的安全区，用于访问当前账本；退出账本会移除此凭证。</string>
+    <string name="settings_security_background_label">自定义背景</string>
+    <string name="settings_security_background_body">仅保存在应用私有目录，不上传到小票夹服务。</string>
+    <string name="settings_security_section_danger">设备数据与退出</string>
+    <string name="settings_security_danger_clear_copy_label">离线副本</string>
+    <string name="settings_security_danger_clear_copy_body">清除这台设备保存的已入账记录副本，不影响账本记录。</string>
+    <string name="settings_security_danger_logout_label">当前账本</string>
+    <string name="settings_security_danger_logout_body">移除这台设备的会话凭证，重新使用需要再次绑定。</string>
+    <string name="settings_security_clear_data_icon_desc">清除离线副本</string>
+    <string name="settings_security_button_clear_data">清除副本</string>
     <string name="settings_security_logout_icon_desc">退出当前账本</string>
     <string name="settings_security_button_logout">退出账本</string>
 
@@ -217,7 +223,7 @@
     <string name="settings_vm_diagnostics_failed_count">连接检测发现 %1$d 个问题</string>
     <string name="settings_vm_diagnostics_incomplete">没有完成检测，请稍后再试。</string>
     <string name="settings_vm_server_settings_failed">账本状态暂时没有更新，稍后再试。</string>
-    <string name="settings_vm_cache_cleared">手机缓存已清除</string>
+    <string name="settings_vm_cache_cleared">离线副本已清除</string>
     <string name="settings_vm_monthly_budget_off">月预算已关闭</string>
     <string name="settings_vm_monthly_budget_saved">月预算已保存</string>
     <string name="settings_vm_notifications_saved">通知偏好已保存</string>
