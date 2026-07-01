@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MonthlyStatsViewModelTest {
@@ -197,6 +198,23 @@ class MonthlyStatsViewModelTest {
     }
 
     @Test
+    fun monthOptionsKeepSelectedMonthWhenBackendHasNoRowsForIt() = statsTest {
+        val stats = FakeStatsActions()
+        stats.monthList = listOf("2027-06", "2026-06", "2026-05")
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+
+        viewModel.setMonth("2026-07")
+        advanceUntilIdle()
+
+        assertTrue("2026-07" in viewModel.uiState.value.months)
+        assertEquals("2026-07", viewModel.uiState.value.months.first())
+    }
+
+    @Test
     fun localDailyTrendIsBoundedToSelectedMonth() = statsTest {
         val stats = FakeStatsActions()
         stats.confirmedFlow.value = listOf(
@@ -223,6 +241,7 @@ private class FakeStatsActions : StatsActions {
     val ledgerFlow = MutableStateFlow<String?>("owner")
     val confirmedFlow = MutableStateFlow<List<Expense>>(emptyList())
     var monthlyStatsResponder: (suspend (String?, String?) -> Result<MonthlyStats>)? = null
+    var monthList: List<String> = listOf("2026-05", "2026-04")
     var tagList: List<String> = emptyList()
 
     override fun observeActiveLedgerId(): Flow<String?> = ledgerFlow
@@ -233,7 +252,7 @@ private class FakeStatsActions : StatsActions {
 
     override fun lastUploadAt(): String? = null
 
-    override suspend fun months(): Result<List<String>> = Result.success(listOf("2026-05", "2026-04"))
+    override suspend fun months(): Result<List<String>> = Result.success(monthList)
 
     override suspend fun tags(): Result<List<String>> = Result.success(tagList)
 

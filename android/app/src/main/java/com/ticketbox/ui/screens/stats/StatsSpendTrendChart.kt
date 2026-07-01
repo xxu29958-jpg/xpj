@@ -1,0 +1,145 @@
+package com.ticketbox.ui.screens.stats
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalChartTokens
+import com.ticketbox.ui.design.LocalStatsTokens
+
+@Composable
+internal fun StatsSpendTrendChart(
+    points: List<StatsSpendChartPoint>,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    height: Dp? = null,
+) {
+    val chartTokens = LocalChartTokens.current
+    val statsTokens = LocalStatsTokens.current
+    val normalizedPoints = remember(points) {
+        points.map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }
+    }
+    val maxAmount = remember(normalizedPoints) {
+        normalizedPoints.maxOfOrNull { it.amountCents }?.coerceAtLeast(1L) ?: 1L
+    }
+    val axisLabels = remember(normalizedPoints) { trendAxisLabels(normalizedPoints) }
+    val chartStyle = remember(chartTokens, statsTokens) {
+        SpendTrendChartStyle(
+            primary = chartTokens.series.firstOrNull() ?: Color(0xff5b6ee1),
+            grid = chartTokens.grid,
+            emphasisAlpha = statsTokens.chart.emphasisAlpha,
+            quietAlpha = statsTokens.chart.quietAlpha,
+        )
+    }
+    if (normalizedPoints.isEmpty()) return
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { this.contentDescription = contentDescription },
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height ?: statsTokens.chart.monthlyHeight),
+        ) {
+            drawSpendTrendBars(
+                points = normalizedPoints,
+                maxAmount = maxAmount,
+                style = chartStyle,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (axisLabels.size == 1) {
+                Arrangement.Center
+            } else {
+                Arrangement.SpaceBetween
+            },
+        ) {
+            axisLabels.forEach { label ->
+                Text(
+                    text = label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+private data class SpendTrendChartStyle(
+    val primary: Color,
+    val grid: Color,
+    val emphasisAlpha: Float,
+    val quietAlpha: Float,
+)
+
+private fun DrawScope.drawSpendTrendBars(
+    points: List<StatsSpendChartPoint>,
+    maxAmount: Long,
+    style: SpendTrendChartStyle,
+) {
+    val top = 6.dp.toPx()
+    val bottom = size.height - 2.dp.toPx()
+    val plotHeight = (bottom - top).coerceAtLeast(1f)
+    val horizontalInset = 4.dp.toPx()
+    val bucketWidth = (size.width - horizontalInset * 2f) / points.size.coerceAtLeast(1)
+    val barWidth = (bucketWidth * 0.42f).coerceIn(5.dp.toPx(), 18.dp.toPx())
+    val maxPointAmount = points.maxOfOrNull { it.amountCents } ?: 0L
+
+    listOf(0f, 0.5f, 1f).forEach { ratio ->
+        val y = bottom - plotHeight * ratio
+        drawLine(
+            color = style.grid,
+            start = Offset(0f, y),
+            end = Offset(size.width, y),
+            strokeWidth = 1.dp.toPx(),
+        )
+    }
+
+    points.forEachIndexed { index, point ->
+        if (point.amountCents <= 0L) return@forEachIndexed
+        val ratio = point.amountCents.toFloat() / maxAmount.toFloat()
+        val barHeight = (plotHeight * ratio).coerceAtLeast(5.dp.toPx())
+        val x = horizontalInset + bucketWidth * index + (bucketWidth - barWidth) / 2f
+        val alpha = if (point.amountCents == maxPointAmount) style.emphasisAlpha else style.quietAlpha
+        drawRoundRect(
+            color = style.primary.copy(alpha = alpha),
+            topLeft = Offset(x, bottom - barHeight),
+            size = Size(barWidth, barHeight),
+            cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+        )
+    }
+}
+
+private fun trendAxisLabels(points: List<StatsSpendChartPoint>): List<String> {
+    if (points.isEmpty()) return emptyList()
+    if (points.size == 1) return listOf(points.first().label)
+    val middle = points.size / 2
+    return listOf(0, middle, points.lastIndex)
+        .distinct()
+        .map { points[it].label }
+        .filter { it.isNotBlank() }
+}

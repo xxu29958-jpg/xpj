@@ -66,60 +66,74 @@ internal fun CategoryStructureCard(
     val topCategory = topCategories.firstOrNull()
     val categoryCount = sortedCategories.size
     val topShareLabel = topCategory?.let { categoryShareLabel(it.amountCents, totalAmountCents) }
+    val topAmountLabel = topCategory?.let { formatDisplayAmount(it.amountCents, currencyDisplay) }
     val otherCount = (categoryCount - 1).coerceAtLeast(0)
     val otherAmountCents = remember(sortedCategories) { sortedCategories.drop(1).sumOf { it.amountCents } }
 
-    StatsInsightSurface {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-        ) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+            Text(
+                stringResource(R.string.stats_category_structure_title),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = AppTextHierarchy.body.weight,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CategoryDonut(
-                    categories = topCategories,
-                    totalAmountCents = totalAmountCents,
-                )
-                Column(
+                Text(
+                    text = if (topCategory != null) {
+                        stringResource(R.string.stats_category_structure_top, topCategory.category)
+                    } else {
+                        stringResource(R.string.stats_category_structure_empty)
+                    },
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-                ) {
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                topAmountLabel?.let {
                     Text(
-                        stringResource(R.string.stats_category_structure_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = AppTextHierarchy.heading.weight,
-                    )
-                    Text(
-                        text = if (topCategory != null) {
-                            stringResource(R.string.stats_category_structure_top, topCategory.category)
-                        } else {
-                            stringResource(R.string.stats_category_structure_empty)
-                        },
+                        text = it,
                         color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleSmall.tabularNum(),
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = if (topShareLabel != null) {
-                            stringResource(
-                                R.string.stats_category_structure_insight,
-                                topShareLabel,
-                                categoryCount,
-                            )
-                        } else {
-                            stringResource(R.string.stats_category_structure_count, categoryCount)
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
+            Text(
+                text = if (topShareLabel != null) {
+                    stringResource(
+                        R.string.stats_category_structure_insight,
+                        topShareLabel,
+                        categoryCount,
+                    )
+                } else {
+                    stringResource(R.string.stats_category_structure_count, categoryCount)
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CategoryDonut(
+                categories = topCategories,
+                totalAmountCents = totalAmountCents,
+            )
             if (topCategory != null && otherCount > 0 && otherAmountCents > 0L) {
                 Text(
                     text = stringResource(
@@ -127,31 +141,32 @@ internal fun CategoryStructureCard(
                         otherCount,
                         formatDisplayAmount(otherAmountCents, currencyDisplay),
                     ),
+                    modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                topCategories.forEachIndexed { index, category ->
-                    CategoryStructureBarRow(
-                        category = category,
-                        totalAmountCents = totalAmountCents,
-                        index = index,
-                        currencyDisplay = currencyDisplay,
-                        onClick = onCategoryClick?.let { handler -> { handler(category.category) } },
-                    )
-                }
-            }
-            if (visibleTags.isNotEmpty()) {
-                HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
-                TagDistributionSection(
-                    tags = visibleTags,
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+            topCategories.forEachIndexed { index, category ->
+                CategoryStructureBarRow(
+                    category = category,
                     totalAmountCents = totalAmountCents,
+                    index = index,
                     currencyDisplay = currencyDisplay,
+                    onClick = onCategoryClick?.let { handler -> { handler(category.category) } },
                 )
             }
+        }
+        if (visibleTags.isNotEmpty()) {
+            HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
+            TagDistributionSection(
+                tags = visibleTags,
+                totalAmountCents = totalAmountCents,
+                currencyDisplay = currencyDisplay,
+            )
         }
     }
 }

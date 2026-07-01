@@ -49,12 +49,13 @@ internal data class StatsOverviewTrendData(
 @Composable
 internal fun StatsOverviewCard(
     stats: MonthlyStats,
-    recent7DaysAmountCents: Long,
+    recent7DaysAmountCents: Long?,
     comparison: MonthComparison?,
     trendData: StatsOverviewTrendData = StatsOverviewTrendData(),
     statsSource: StatsSource = StatsSource.Backend,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
+    val hasCurrentConfirmedSpend = stats.count > 0 && stats.totalAmountCents > 0L
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -99,7 +100,16 @@ internal fun StatsOverviewCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            comparison?.let { MonthDeltaPill(it, currencyDisplay) }
+            when {
+                hasCurrentConfirmedSpend -> comparison?.let { MonthDeltaPill(it, currencyDisplay) }
+                comparison?.previousAmountCents != null && comparison.previousAmountCents > 0L -> Text(
+                    text = stringResource(R.string.stats_overview_empty_month_comparison_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -112,7 +122,8 @@ internal fun StatsOverviewCard(
             )
             CompactMetric(
                 label = stringResource(R.string.stats_overview_recent7_label),
-                value = formatDisplayAmount(recent7DaysAmountCents, currencyDisplay),
+                value = recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+                    ?: stringResource(R.string.stats_overview_recent7_unavailable),
                 modifier = Modifier.weight(1f),
             )
         }

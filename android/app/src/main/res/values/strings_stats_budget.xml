@@ -30,11 +30,13 @@
     <string name="stats_overview_count_label">账单</string>
     <string name="stats_overview_count_value">%1$d 笔</string>
     <string name="stats_overview_recent7_label">最近 7 天</string>
+    <string name="stats_overview_recent7_unavailable">暂不可用</string>
     <string name="stats_overview_delta_flat">持平</string>
     <string name="stats_overview_delta_up">比上月多 %1$s%2$s</string>
     <string name="stats_overview_delta_down">比上月少 %1$s%2$s</string>
     <string name="stats_overview_delta_percent_up"> · +%1$d%%</string>
     <string name="stats_overview_delta_percent_down"> · %1$d%%</string>
+    <string name="stats_overview_empty_month_comparison_hint">本月还没有确认支出，先确认账单后再和上月对比。</string>
     <string name="stats_overview_trend_title">月内走势</string>
     <string name="stats_overview_trend_peak">峰值 %1$s</string>
     <string name="stats_overview_trend_peak_amount">%1$s · %2$s</string>

@@ -63,14 +63,9 @@ internal fun ReportsTrendFlowChart(points: List<ReportTrendChartPoint>) {
         if (summary.shouldUseDominanceBreakdown) {
             ReportsTrendDominanceBreakdown(summary = summary)
         } else {
-            StatsSpendDistributionRows(
+            StatsSpendTrendChart(
                 points = visibleChartPoints,
-                spec = StatsSpendDistributionSpec(
-                    maxRows = 7,
-                    sortByAmount = false,
-                    includeZeros = false,
-                    contentDescription = trendA11y,
-                ),
+                contentDescription = trendA11y,
             )
         }
     }

@@ -54,7 +54,10 @@ internal fun EmptyLedgerState(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = AppSpacing.compactGap),
+            .padding(
+                top = AppSpacing.compactGap,
+                bottom = AppSpacing.bottomContentPadding + AppSpacing.sectionGap,
+            ),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

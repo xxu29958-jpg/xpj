@@ -51,6 +51,7 @@ internal fun ReportsInsightCard(
     onGranularityChange: (ReportGranularity) -> Unit = {},
 ) {
     val chartPoints = remember(overview.trend) { reportTrendChartPoints(overview.trend) }
+    val hasCurrentSpend = overview.count > 0 && overview.totalAmountCents > 0L
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -62,14 +63,14 @@ internal fun ReportsInsightCard(
             recentTrend = recentTrend,
             onGranularityChange = onGranularityChange,
         )
-        if (overview.merchantRanking.isNotEmpty()) {
+        if (hasCurrentSpend && overview.merchantRanking.isNotEmpty()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
             RankingBlock(
                 title = stringResource(R.string.stats_reports_merchant_ranking_title),
                 rows = overview.merchantRanking.take(5),
             )
         }
-        if (overview.categoryComparison.isNotEmpty()) {
+        if (hasCurrentSpend && overview.categoryComparison.isNotEmpty()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
             CategoryComparisonBlock(rows = overview.categoryComparison.take(5))
         }
@@ -205,7 +206,10 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
         val hasComparisonBaseline = remember(chartRows) {
             chartRows.any { it.previousAmountCents > 0L || it.yearOverYearAmountCents > 0L }
         }
-        if (chartRows.size >= 2 && hasComparisonBaseline) {
+        val hasCurrentAmount = remember(chartRows) {
+            chartRows.any { it.currentAmountCents > 0L }
+        }
+        if (chartRows.size >= 2 && hasCurrentAmount && hasComparisonBaseline) {
             CategoryComparisonGroupedChart(rows = chartRows)
             ComparisonLegend()
         }

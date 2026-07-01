@@ -87,7 +87,11 @@ class MonthlyStatsViewModel(
     private fun loadMonths() {
         viewModelScope.launch {
             repository.months()
-                .onSuccess { months -> _uiState.update { it.copy(months = months) } }
+                .onSuccess { months ->
+                    _uiState.update { state ->
+                        state.copy(months = statsMonthOptions(months, state.month))
+                    }
+                }
         }
     }
 
@@ -150,6 +154,7 @@ class MonthlyStatsViewModel(
             val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, value, it.selectedTag)
             it.copy(
                 month = value,
+                months = statsMonthOptions(it.months, value),
                 stats = localStats,
                 statsSource = if (localStats != null) StatsSource.LocalFallback else StatsSource.None,
                 dailyTrend = localDailyTrend(confirmedCache, value, it.selectedTag),
@@ -360,3 +365,28 @@ class MonthlyStatsViewModel(
         }
     }
 }
+
+private fun statsMonthOptions(authoritativeMonths: List<String>, selectedMonth: String): List<String> {
+    val requiredMonth = selectedMonth.trim().ifBlank { YearMonth.now().toString() }
+    val remainingMonths = authoritativeMonths
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .filterNot { it == requiredMonth }
+        .sortedWith(::compareStatsMonthDescending)
+    return listOf(requiredMonth) + remainingMonths
+}
+
+private fun compareStatsMonthDescending(left: String, right: String): Int {
+    val leftMonth = parseStatsMonth(left)
+    val rightMonth = parseStatsMonth(right)
+    return when {
+        leftMonth != null && rightMonth != null -> rightMonth.compareTo(leftMonth)
+        leftMonth != null -> -1
+        rightMonth != null -> 1
+        else -> left.compareTo(right)
+    }
+}
+
+private fun parseStatsMonth(value: String): YearMonth? =
+    runCatching { YearMonth.parse(value) }.getOrNull()

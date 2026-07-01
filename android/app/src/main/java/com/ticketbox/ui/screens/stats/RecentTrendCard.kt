@@ -65,14 +65,9 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
             if (summary.shouldUseDominanceBreakdown) {
                 RecentTrendDominanceBreakdown(summary = summary)
             } else {
-                StatsSpendDistributionRows(
+                StatsSpendTrendChart(
                     points = chartPoints,
-                    spec = StatsSpendDistributionSpec(
-                        maxRows = 7,
-                        sortByAmount = false,
-                        includeZeros = true,
-                        contentDescription = chartA11y,
-                    ),
+                    contentDescription = chartA11y,
                 )
             }
         }

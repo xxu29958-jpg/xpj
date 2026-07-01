@@ -120,14 +120,9 @@ private fun HeroTrendBody(
     if (summary.shouldUseDominanceBreakdown) {
         HeroTrendDominanceBreakdown(summary = summary, currencyDisplay = currencyDisplay)
     } else {
-        StatsSpendDistributionRows(
+        StatsSpendTrendChart(
             points = points,
-            spec = StatsSpendDistributionSpec(
-                maxRows = 6,
-                sortByAmount = false,
-                includeZeros = false,
-                contentDescription = chartA11y,
-            ),
+            contentDescription = chartA11y,
         )
     }
 }

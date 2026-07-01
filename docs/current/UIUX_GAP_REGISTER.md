@@ -50,3 +50,57 @@ that actually ships the fix.
   and Insights.
 - Constraint: backend remains the authority; Android Room/cache/offline creation
   is client capability, not a competing source of truth.
+
+### ANDROID-2026-07-01-insights-empty-month-authority
+
+- Surface: Android Insights overview and trend tabs.
+- Status: fixed in the current Android product-design slice; keep watching in
+  screenshot QA.
+- Gap: an empty current month could still surface a month-over-month pill and
+  historical category comparison, which read like a financial conclusion even
+  though backend-authoritative current-month confirmed spend was zero.
+- Resolution: empty current months now show an explicit "confirm bills before
+  comparison" hint, suppress historical comparison blocks until the current month
+  has spend, and keep missing backend supplemental stats as "temporarily
+  unavailable" instead of local zero.
+
+### ANDROID-2026-07-01-insights-future-month-authority
+
+- Surface: backend `/api/expenses/months` and Android Insights month filter.
+- Status: fixed in the current backend + Android product-design slice.
+- Gap: one confirmed expense had a future `expense_time` in 2027, so the
+  backend-authoritative month list exposed a future accounting month ahead of
+  the real current month. Android then rendered that server list in the month
+  picker, which made the product look untrustworthy instead of merely visually
+  rough.
+- Resolution: the backend month list now caps returned months at the current
+  accounting month for the requested timezone. Android also keeps the current
+  selected month available as a first option when the backend has no rows for
+  it, so an empty current month remains reachable without pretending the backend
+  has current-month spending.
+
+### ANDROID-2026-07-01-insights-trend-semantics
+
+- Surface: Android Insights trend charts.
+- Status: fixed in the current Android product-design slice.
+- Gap: the normal trend state briefly experimented with a chart-library
+  rendering before we had a real non-dominant screenshot to judge. The visible
+  screenshots did not show a line chart problem; they showed empty-month
+  comparison leakage and dominant-peak months that should remain factual
+  breakdowns.
+- Resolution: dominant peak months still degrade to text-backed breakdowns, while
+  normal months use a tokenized native Canvas bar trend. No new Android chart
+  dependency is currently needed; revisit a library only when tooltip/zoom,
+  multi-metric overlay, or drill-select interactions become real requirements.
+
+### ANDROID-2026-07-01-ledger-empty-safe-area
+
+- Surface: Android Ledger empty state.
+- Status: fixed in the current Android product-design slice; verify on real
+  device after install.
+- Gap: the empty-state primary actions could sit under the floating bottom nav on
+  tall real-device screenshots, making the page look unfinished and risking
+  missed taps.
+- Resolution: the empty state now adds its own bottom safety space on top of the
+  shared scroll scaffold padding, so the manual-entry/sync actions remain visibly
+  above the bottom nav.
