@@ -1,10 +1,7 @@
 package com.ticketbox.ui.screens.ledger
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,8 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,110 +55,81 @@ internal fun LedgerHeader(
         )
         else -> stringResource(R.string.ledger_header_status_offline)
     }
-    PaperLedgerPanel {
-        Column(
-            modifier = Modifier.padding(
-                horizontal = AppSpacing.cardPaddingSmall,
-                vertical = AppSpacing.cardPaddingTight,
-            ),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-                ) {
-                    Text(
-                        text = stringResource(R.string.ledger_header_eyebrow),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = AppTextHierarchy.body.weight,
-                    )
-                    Text(
-                        text = stringResource(R.string.ledger_header_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = AppTextHierarchy.heading.weight,
-                        maxLines = 1,
-                    )
-                }
-                LedgerStatusPill(text = statusText, active = summary.syncing)
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                LedgerKpiCell(
-                    label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
-                    value = formatAmount(summary.totalAmountCents),
-                    modifier = Modifier.weight(1.45f),
-                    emphasized = true,
-                )
-                LedgerKpiCell(
-                    label = stringResource(R.string.ledger_header_count_label),
-                    value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.ledger_header_subtitle),
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (!state.readOnly) {
-                    Button(
-                        modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
-                        onClick = onManualAdd,
-                        contentPadding = PaddingValues(horizontal = AppSpacing.cardPaddingTight, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
-                        Text(stringResource(R.string.ledger_header_add_button))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PaperLedgerPanel(content: @Composable () -> Unit) {
-    val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.medium)
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.98f))
-            .drawBehind {
-                drawRect(
-                    color = visuals.primary.copy(alpha = 0.42f),
-                    size = Size(width = AppSpacing.miniGap.toPx(), height = size.height),
+            .padding(vertical = AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = stringResource(R.string.ledger_header_eyebrow),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = AppTextHierarchy.body.weight,
+                )
+                Text(
+                    text = stringResource(R.string.ledger_header_title),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                    maxLines = 1,
                 )
             }
-            .border(
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.54f)),
-                shape,
-            ),
-    ) {
-        Box(modifier = Modifier.padding(start = AppSpacing.miniGap)) {
-            content()
+            LedgerStatusPill(text = statusText, active = summary.syncing)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
+            LedgerKpiCell(
+                label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
+                value = formatAmount(summary.totalAmountCents),
+                modifier = Modifier.weight(1.45f),
+                emphasized = true,
+            )
+            LedgerKpiCell(
+                label = stringResource(R.string.ledger_header_count_label),
+                value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.ledger_header_subtitle),
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!state.readOnly) {
+                Button(
+                    modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
+                    onClick = onManualAdd,
+                    contentPadding = PaddingValues(horizontal = AppSpacing.cardPaddingTight, vertical = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
+                    Text(stringResource(R.string.ledger_header_add_button))
+                }
+            }
         }
     }
 }
@@ -177,9 +143,7 @@ private fun LedgerKpiCell(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(AppRadius.small))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f))
-            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.contentGap),
+            .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Text(

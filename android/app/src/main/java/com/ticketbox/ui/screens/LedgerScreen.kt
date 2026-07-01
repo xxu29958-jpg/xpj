@@ -14,7 +14,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -22,6 +21,7 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerDayHeader
 import com.ticketbox.ui.screens.ledger.LedgerEmptyOrFirstSync
@@ -29,9 +29,9 @@ import com.ticketbox.ui.screens.ledger.LedgerExpenseCard
 import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
 import com.ticketbox.ui.screens.ledger.LedgerExpenseTableRow
 import com.ticketbox.ui.screens.ledger.LedgerFilterPanel
+import com.ticketbox.ui.screens.ledger.LedgerInlineStatusMessage
 import com.ticketbox.ui.screens.ledger.LedgerSelectionBar
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
-import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
 
@@ -52,6 +52,11 @@ fun LedgerScreen(
     onExportCsv: () -> Unit,
     // A3 IA: 从账本工具表进入「拆账中心」二级页。默认 no-op 保旧调用方/预览。
     onOpenBillSplit: () -> Unit = {},
+    // 清算 / 关系账入口从洞察移到账本工具表；默认 no-op 保旧调用方/预览。
+    onOpenDebts: () -> Unit = {},
+    onOpenReceivables: () -> Unit = {},
+    onOpenRepaymentDrafts: () -> Unit = {},
+    onOpenGlobalSearch: () -> Unit = {},
     onManualCreate: (ExpenseDraft) -> Unit,
     onViewModeChange: (LedgerViewMode) -> Unit,
     onEdit: (Expense) -> Unit,
@@ -132,6 +137,10 @@ fun LedgerScreen(
 
     if (showLedgerTools) {
         ModalBottomSheet(onDismissRequest = { showLedgerTools = false }) {
+            val openSecondaryPage: (() -> Unit) -> Unit = { open ->
+                showLedgerTools = false
+                open()
+            }
             LedgerToolsSheet(
                 state = state,
                 canExport = canExport,
@@ -141,11 +150,12 @@ fun LedgerScreen(
                 onClearFilters = onClearFilters,
                 onSync = onSync,
                 onExportCsv = onExportCsv,
-                // 先收起工具表(否则二级页 overlay 会被 ModalBottomSheet 盖住), 再切到拆账中心。
-                onOpenBillSplit = {
-                    showLedgerTools = false
-                    onOpenBillSplit()
-                },
+                // 先收起工具表(否则二级页 overlay 会被 ModalBottomSheet 盖住), 再切到对应二级页。
+                onOpenBillSplit = { openSecondaryPage(onOpenBillSplit) },
+                onOpenDebts = { openSecondaryPage(onOpenDebts) },
+                onOpenReceivables = { openSecondaryPage(onOpenReceivables) },
+                onOpenRepaymentDrafts = { openSecondaryPage(onOpenRepaymentDrafts) },
+                onOpenGlobalSearch = { openSecondaryPage(onOpenGlobalSearch) },
                 onDismiss = { showLedgerTools = false },
             )
         }
@@ -171,7 +181,7 @@ fun LedgerScreen(
         role = AppPageRole.Ledger,
         isRefreshing = state.syncing,
         onRefresh = onSync,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         item {
             if (state.selectionMode) {
@@ -195,7 +205,7 @@ fun LedgerScreen(
             }
         }
         state.message?.let { message ->
-            item { PendingMessageCard(message = message.asString()) }
+            item { LedgerInlineStatusMessage(message = message) }
         }
         if (state.items.isEmpty()) {
             // 8.4: first-ever sync (no cache + nothing synced before) shows a

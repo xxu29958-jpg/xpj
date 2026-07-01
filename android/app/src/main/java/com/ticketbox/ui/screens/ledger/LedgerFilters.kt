@@ -3,7 +3,10 @@ package com.ticketbox.ui.screens.ledger
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -101,22 +104,24 @@ private fun LedgerInlineFilters(
     // Prev/next only when a concrete month is selected; "全部月份" has no neighbor.
     val previousMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, -1L) }
     val nextMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, 1L) }
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        if (previousMonth != null) {
-            item {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        ) {
+            if (previousMonth != null) {
                 LedgerMonthArrowChip(
                     icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                     description = stringResource(R.string.ledger_inline_month_prev),
                     onClick = { onMonthChange(previousMonth) },
                 )
             }
-        }
-        item {
             AppFilterChip(
                 selected = true,
                 onClick = onOpenMonthPicker,
                 label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
                     ?: stringResource(R.string.ledger_inline_month_all),
+                modifier = Modifier.weight(1f),
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Filled.ExpandMore,
@@ -125,9 +130,7 @@ private fun LedgerInlineFilters(
                     )
                 },
             )
-        }
-        if (nextMonth != null) {
-            item {
+            if (nextMonth != null) {
                 LedgerMonthArrowChip(
                     icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     description = stringResource(R.string.ledger_inline_month_next),
@@ -135,64 +138,74 @@ private fun LedgerInlineFilters(
                 )
             }
         }
-        item {
-            SelectableFilterChip(
-                selected = state.categoryFilter.isBlank(),
-                label = stringResource(R.string.ledger_inline_category_all),
-                onClick = { onCategoryChange("") },
-            )
-        }
-        items(quickCategories, key = { it }) { category ->
-            SelectableFilterChip(
-                selected = state.categoryFilter == category,
-                label = category,
-                onClick = { onCategoryChange(category) },
-            )
-        }
-        item {
-            AppFilterChip(
-                selected = hasQuery,
-                onClick = onOpenTools,
-                label = if (hasQuery) {
-                    stringResource(R.string.ledger_inline_searched)
-                } else {
-                    stringResource(R.string.ledger_inline_search_note)
-                },
-                leadingIcon = if (hasQuery) {
-                    {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    }
-                } else {
-                    null
-                },
-            )
-        }
-        if (hasTag) {
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+            contentPadding = PaddingValues(end = AppSpacing.compactPadding),
+        ) {
+            item {
+                SelectableFilterChip(
+                    selected = state.categoryFilter.isBlank(),
+                    label = stringResource(R.string.ledger_inline_category_all),
+                    onClick = { onCategoryChange("") },
+                )
+            }
+            items(quickCategories, key = { it }) { category ->
+                SelectableFilterChip(
+                    selected = state.categoryFilter == category,
+                    label = category,
+                    onClick = { onCategoryChange(category) },
+                )
+            }
             item {
                 AppFilterChip(
-                    selected = true,
+                    selected = hasQuery,
                     onClick = onOpenTools,
-                    label = "#${state.tagFilter}",
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
+                    label = if (hasQuery) {
+                        stringResource(R.string.ledger_inline_searched)
+                    } else {
+                        stringResource(R.string.ledger_inline_search_note)
+                    },
+                    leadingIcon = if (hasQuery) {
+                        {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+                        }
+                    } else {
+                        null
                     },
                 )
             }
-        }
-        item {
-            AppFilterChip(
-                selected = selectedOutsideQuick,
-                onClick = onOpenTools,
-                label = if (selectedOutsideQuick) state.categoryFilter else stringResource(R.string.ledger_inline_more),
-            )
+            if (hasTag) {
+                item {
+                    AppFilterChip(
+                        selected = true,
+                        onClick = onOpenTools,
+                        label = "#${state.tagFilter}",
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+                        },
+                    )
+                }
+            }
+            item {
+                AppFilterChip(
+                    selected = selectedOutsideQuick,
+                    onClick = onOpenTools,
+                    label = if (selectedOutsideQuick) {
+                        state.categoryFilter
+                    } else {
+                        stringResource(R.string.ledger_inline_more)
+                    },
+                )
+            }
         }
     }
 }
@@ -229,6 +242,7 @@ internal fun LedgerInlineButton(
     modifier: Modifier,
     enabled: Boolean,
     onClick: () -> Unit,
+    icon: ImageVector? = null,
 ) {
     AppOutlinedButton(
         modifier = modifier.heightIn(min = AppSpacing.controlMinHeight),
@@ -236,8 +250,16 @@ internal fun LedgerInlineButton(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = AppSpacing.compactPadding, vertical = 0.dp),
     ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+        }
         Text(
             text = text,
+            modifier = if (icon == null) Modifier else Modifier.padding(start = AppSpacing.miniGap),
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis,

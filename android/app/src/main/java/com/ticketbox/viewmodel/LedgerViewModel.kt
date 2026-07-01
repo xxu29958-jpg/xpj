@@ -55,7 +55,7 @@ data class LedgerUiState(
     val categoryFilter: String = "",
     val tagFilter: String = "",
     val query: String = "",
-    val viewMode: LedgerViewMode = LedgerViewMode.Card,
+    val viewMode: LedgerViewMode = LedgerViewMode.List,
     val lastSyncAt: String? = null,
     val syncing: Boolean = false,
     val exporting: Boolean = false,

@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -41,9 +42,9 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.MonthPickerSheet
@@ -75,8 +76,13 @@ data class GlobalSearchActionsUi(
 fun GlobalSearchScreen(
     state: GlobalSearchUiState,
     actions: GlobalSearchActionsUi,
+    onBack: (() -> Unit)? = null,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
+
+    if (onBack != null) {
+        BackHandler(onBack = onBack)
+    }
 
     if (showMonthPicker) {
         ModalBottomSheet(onDismissRequest = { showMonthPicker = false }) {
@@ -99,10 +105,7 @@ fun GlobalSearchScreen(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         item {
-            AppPageHeader(
-                title = stringResource(R.string.global_search_header_title),
-                subtitle = stringResource(R.string.global_search_header_subtitle),
-            )
+            SearchHeader(onBack = onBack)
         }
         item {
             SearchControlCard(
@@ -116,6 +119,16 @@ fun GlobalSearchScreen(
         }
         searchBody(state = state, actions = actions)
     }
+}
+
+@Composable
+private fun SearchHeader(onBack: (() -> Unit)?) {
+    AppSecondaryPageHeader(
+        title = stringResource(R.string.global_search_header_title),
+        subtitle = stringResource(R.string.global_search_header_subtitle),
+        backText = stringResource(R.string.global_search_back),
+        onBack = onBack,
+    )
 }
 
 private fun LazyListScope.searchBody(

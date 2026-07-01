@@ -74,6 +74,10 @@ internal fun LedgerRoute(
         onSync = ledgerViewModel::sync,
         onExportCsv = ledgerViewModel::exportCsv,
         onOpenBillSplit = { shellState.openStatsSecondary(StatsSecondaryPage.BillSplits) },
+        onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
+        onOpenReceivables = { shellState.openStatsSecondary(StatsSecondaryPage.Receivables) },
+        onOpenRepaymentDrafts = { shellState.openRepaymentDrafts() },
+        onOpenGlobalSearch = { shellState.openStatsSecondary(StatsSecondaryPage.GlobalSearch) },
         onManualCreate = ledgerViewModel::createManualExpense,
         onViewModeChange = ledgerViewModel::setViewMode,
         // issue #65 slice 5: pending offline-create rows (negative local id) are

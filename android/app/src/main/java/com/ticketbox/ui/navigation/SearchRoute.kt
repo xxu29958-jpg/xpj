@@ -13,11 +13,13 @@ import com.ticketbox.viewmodel.GlobalSearchViewModel
 internal fun SearchRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
+    onBack: (() -> Unit)? = null,
 ) {
     val viewModel: GlobalSearchViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     GlobalSearchScreen(
         state = state,
+        onBack = onBack,
         actions = GlobalSearchActionsUi(
             onQueryChange = viewModel::setQuery,
             onScopeChange = viewModel::setScope,

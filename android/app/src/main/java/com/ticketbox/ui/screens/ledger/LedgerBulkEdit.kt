@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,9 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
 
 /**
@@ -44,12 +44,12 @@ internal fun LedgerSelectionBar(
     onSelectAll: () -> Unit,
     onEdit: () -> Unit,
 ) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth(), containerAlpha = 0.99f) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.smallGap),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onExit, enabled = !applying) {
@@ -63,6 +63,7 @@ internal fun LedgerSelectionBar(
             TextButton(onClick = onSelectAll, enabled = !applying) { Text(stringResource(R.string.ledger_selection_select_all)) }
             Button(onClick = onEdit, enabled = selectedCount > 0 && !applying) { Text(stringResource(R.string.ledger_selection_edit)) }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
     }
 }
 
@@ -90,8 +91,8 @@ internal fun LedgerBulkEditSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         Text(text = stringResource(R.string.ledger_bulk_title, selectedCount), style = MaterialTheme.typography.titleMedium)
 

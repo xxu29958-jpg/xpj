@@ -66,21 +66,21 @@
     <string name="ledger_inline_searched">已搜索</string>
     <string name="ledger_inline_search_note">搜索备注</string>
     <string name="ledger_inline_more">更多</string>
-    <string name="ledger_view_mode_card">卡片</string>
+    <string name="ledger_view_mode_card">摘要</string>
     <string name="ledger_view_mode_list">列表</string>
     <string name="ledger_view_mode_table">表格</string>
 
     <!-- LedgerHeader：账本头 -->
     <string name="ledger_header_month_all">全部月份</string>
     <string name="ledger_header_status_syncing">更新中</string>
-    <string name="ledger_header_status_synced">已更新 %1$s</string>
-    <string name="ledger_header_status_offline">本机账本可用</string>
-    <string name="ledger_header_eyebrow">纸本账本</string>
+    <string name="ledger_header_status_synced">已同步 %1$s</string>
+    <string name="ledger_header_status_offline">本机缓存可看</string>
+    <string name="ledger_header_eyebrow">小票夹</string>
     <string name="ledger_header_title">账本</string>
-    <string name="ledger_header_total_suffix">%1$s 合计</string>
+    <string name="ledger_header_total_suffix">%1$s 支出</string>
     <string name="ledger_header_count_label">账单</string>
     <string name="ledger_header_count_value">%1$d 笔</string>
-    <string name="ledger_header_subtitle">已确认支出 · 可离线查看</string>
+    <string name="ledger_header_subtitle">本机缓存，刷新后以服务端为准</string>
     <string name="ledger_header_add_button">记一笔</string>
 
     <!-- LedgerItems：账本条目（卡片/列表/表格） -->
@@ -124,17 +124,24 @@
     <string name="ledger_day_yesterday">昨天</string>
 
     <!-- LedgerToolsSheet：筛选与更新 sheet -->
-    <string name="ledger_tools_title">筛选与更新</string>
+    <string name="ledger_tools_title">账本工具</string>
     <string name="ledger_tools_search_placeholder">搜索备注</string>
+    <string name="ledger_tools_global_search">全局搜索</string>
     <string name="ledger_tools_exporting">导出中</string>
     <string name="ledger_tools_export">导出表格</string>
     <string name="ledger_tools_syncing">更新中</string>
     <string name="ledger_tools_update_ledger">更新账本</string>
+    <string name="ledger_tools_relationship_title">关系账与清算</string>
+    <string name="ledger_tools_filter_title">筛选与搜索</string>
+    <string name="ledger_tools_actions_title">同步与导出</string>
     <!-- 工具表入口刻意用 hub 式「拆账中心」而非短词「拆账」(屏页头 bill_split_topbar_title /
          设置入口 settings_root_entry_bill_splits_title / web 侧栏 base 用「拆账」):本入口夹在
          导出/更新等动作按钮之间,「拆账」会被读成动作(去拆一笔),「中心」点明它是收发箱目的地。
          有意的语境化文案,非三端漂移。 -->
     <string name="ledger_tools_bill_split">拆账中心</string>
+    <string name="ledger_tools_debts">欠款</string>
+    <string name="ledger_tools_receivables">欠我的</string>
+    <string name="ledger_tools_repayment_drafts">还款待确认</string>
     <string name="ledger_tools_clear_filters">清除筛选</string>
     <string name="ledger_tools_done">完成</string>
     <string name="ledger_tools_no_export">当前没有可导出的已确认账单。</string>
