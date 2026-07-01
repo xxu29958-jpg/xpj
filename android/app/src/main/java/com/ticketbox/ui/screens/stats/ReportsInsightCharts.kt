@@ -33,14 +33,10 @@ import com.ticketbox.ui.design.StatsComparisonChartTokens
 import com.ticketbox.ui.design.tabularNum
 import kotlin.math.max
 
-private object ReportsTrendLayout {
-    const val DominantPeakPercent = 75
-}
-
 @Composable
 internal fun ReportsTrendFlowChart(points: List<ReportTrendChartPoint>) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val summary = remember(points) { reportsTrendSummary(points) }
+    val summary = remember(points) { reportsTrendEvidence(points) }
     val chartPoints = remember(points) {
         points.map { point ->
             StatsSpendChartPoint(label = point.label, amountCents = point.amountCents)
@@ -73,7 +69,7 @@ internal fun ReportsTrendFlowChart(points: List<ReportTrendChartPoint>) {
 
 @Composable
 private fun ReportsTrendChartSummary(
-    summary: ReportsTrendSummary,
+    summary: ReportsTrendEvidence,
 ) {
     summary.peak?.takeIf { it.amountCents > 0L }?.let {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -101,21 +97,8 @@ private fun ReportsTrendChartSummary(
     }
 }
 
-private data class ReportsTrendSummary(
-    val peak: ReportTrendChartPoint?,
-    val totalAmountCents: Long,
-    val positiveBucketCount: Int,
-    val peakSharePercent: Int,
-    val otherPositiveBucketCount: Int,
-    val otherTotalAmountCents: Long,
-    val otherAverageAmountCents: Long,
-) {
-    val shouldUseDominanceBreakdown: Boolean =
-        positiveBucketCount >= 3 && peakSharePercent >= ReportsTrendLayout.DominantPeakPercent
-}
-
 @Composable
-private fun ReportsTrendFactStrip(summary: ReportsTrendSummary) {
+private fun ReportsTrendFactStrip(summary: ReportsTrendEvidence) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -167,7 +150,7 @@ private fun ReportsTrendFact(
 }
 
 @Composable
-private fun ReportsTrendDominanceBreakdown(summary: ReportsTrendSummary) {
+private fun ReportsTrendDominanceBreakdown(summary: ReportsTrendEvidence) {
     val currencyDisplay = LocalCurrencyDisplay.current
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         summary.peak?.takeIf { it.amountCents > 0L }?.let { peak ->
@@ -211,26 +194,6 @@ private fun ReportsTrendBreakdownRow(
             overflow = TextOverflow.Ellipsis,
         )
     }
-}
-
-private fun reportsTrendSummary(points: List<ReportTrendChartPoint>): ReportsTrendSummary {
-    val normalized = points.map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }
-    val total = normalized.sumOf { it.amountCents }
-    val peakIndex = normalized.indices.maxByOrNull { normalized[it].amountCents }
-    val peak = peakIndex?.let { normalized[it] }
-    val otherPositivePoints = normalized.filterIndexed { index, point ->
-        index != peakIndex && point.amountCents > 0L
-    }
-    val otherTotal = otherPositivePoints.sumOf { it.amountCents }
-    return ReportsTrendSummary(
-        peak = peak,
-        totalAmountCents = total,
-        positiveBucketCount = normalized.count { it.amountCents > 0L },
-        peakSharePercent = if (total > 0L) (((peak?.amountCents ?: 0L) * 100L) / total).toInt() else 0,
-        otherPositiveBucketCount = otherPositivePoints.size,
-        otherTotalAmountCents = otherTotal,
-        otherAverageAmountCents = if (otherPositivePoints.isNotEmpty()) otherTotal / otherPositivePoints.size else 0L,
-    )
 }
 
 @Composable

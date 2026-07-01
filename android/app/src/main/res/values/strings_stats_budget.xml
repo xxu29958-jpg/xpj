@@ -162,8 +162,23 @@
     <string name="stats_pending_overview_hint">去待确认页处理，整理后这里会清零。</string>
 
     <!-- ReportsInsightCards：动态图表 + 月度目标 -->
+    <string name="stats_reports_answer_title">本月结论</string>
+    <string name="stats_reports_answer_subtitle">%1$s · %2$d 笔已确认</string>
+    <string name="stats_reports_answer_previous_label">较上月</string>
+    <string name="stats_reports_answer_yoy_label">同比</string>
+    <string name="stats_reports_answer_active_label">月内活跃</string>
+    <string name="stats_reports_answer_active_value">%1$d 天</string>
+    <string name="stats_reports_answer_delta_more">多 %1$s</string>
+    <string name="stats_reports_answer_delta_less">少 %1$s</string>
+    <string name="stats_reports_answer_delta_flat">持平</string>
+    <string name="stats_reports_answer_percent">%1$d%%</string>
+    <string name="stats_reports_answer_no_previous">上月无确认支出</string>
+    <string name="stats_reports_answer_peak_caption">%1$s 占 %2$d%%</string>
+    <string name="stats_reports_answer_no_trend">暂无波动</string>
+    <string name="stats_reports_trend_title">月内变化</string>
+    <string name="stats_reports_trend_subtitle">活跃天数、峰值和非峰值均值</string>
     <string name="stats_reports_chart_title">本月支出趋势</string>
-    <string name="stats_reports_chart_subtitle">%1$s · 已同步 · %2$d 笔</string>
+    <string name="stats_reports_chart_subtitle">%1$s · %2$d 笔已确认</string>
     <string name="stats_reports_chart_peak">峰值 %1$s</string>
     <string name="stats_reports_chart_distribution_hint">峰值占 %1$d%%，非峰值日均 %2$s</string>
     <string name="stats_reports_chart_active_days">有支出</string>

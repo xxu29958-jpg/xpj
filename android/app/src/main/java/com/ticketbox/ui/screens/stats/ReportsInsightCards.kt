@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -17,9 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,8 +31,8 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.tabularNum
 import kotlin.math.abs
 
@@ -47,16 +43,17 @@ internal fun ReportsInsightCard(
     recentTrend: List<DailySpend> = emptyList(),
     onGranularityChange: (ReportGranularity) -> Unit = {},
 ) {
-    val chartPoints = remember(overview.trend) { reportTrendChartPoints(overview.trend) }
-    val hasCurrentSpend = overview.count > 0 && overview.totalAmountCents > 0L
+    val model = remember(overview) { reportsAnswerModel(overview) }
+    val hasCurrentSpend = model.count > 0 && model.totalAmountCents > 0L
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
+        ReportsAnswerHeader(model = model)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
         ReportsChartPanel(
-            overview = overview,
-            chartPoints = chartPoints,
+            model = model,
             recentTrend = recentTrend,
             onGranularityChange = onGranularityChange,
         )
@@ -76,61 +73,52 @@ internal fun ReportsInsightCard(
 
 @Composable
 private fun ReportsChartPanel(
-    overview: ReportsOverview,
-    chartPoints: List<ReportTrendChartPoint>,
+    model: ReportsAnswerModel,
     recentTrend: List<DailySpend>,
     onGranularityChange: (ReportGranularity) -> Unit,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 Text(
-                    stringResource(R.string.stats_reports_chart_title),
+                    stringResource(R.string.stats_reports_trend_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
-                    text = stringResource(R.string.stats_reports_chart_subtitle, overview.month, overview.count),
+                    text = stringResource(R.string.stats_reports_trend_subtitle),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = formatDisplayAmount(overview.totalAmountCents, currencyDisplay),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleSmall.tabularNum(),
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
         }
         AppSegmentedControl(
             options = listOf(
                 AppSegmentedItem(ReportGranularity.Day, stringResource(R.string.stats_reports_granularity_day)),
                 AppSegmentedItem(ReportGranularity.Week, stringResource(R.string.stats_reports_granularity_week)),
             ),
-            selectedValue = if (overview.granularity == ReportGranularity.Week) {
+            selectedValue = if (model.granularity == ReportGranularity.Week) {
                 ReportGranularity.Week
             } else {
                 ReportGranularity.Day
             },
             onValueChange = onGranularityChange,
         )
-        val nonZeroDays = chartPoints.count { it.amountCents > 0L }
-        when {
-            nonZeroDays == 0 -> Text(
+        when (model.trendEvidence.mode) {
+            ReportsTrendMode.Empty -> Text(
                 text = stringResource(R.string.stats_reports_chart_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
-            // 稀疏态：1–2 桶有支出时柱状信息量太低，降级成文案而非画误导图（区分 空态/稀疏态/正常态）。
-            // 周粒度天然只有 4-5 桶,2 桶以下同样按稀疏降级,口径一致。
-            nonZeroDays <= 2 -> ReportsSparseTrend(
-                points = chartPoints,
-                nonZeroDays = nonZeroDays,
+            ReportsTrendMode.Sparse -> ReportsSparseTrend(
+                points = model.trendPoints,
+                nonZeroDays = model.trendEvidence.positiveBucketCount,
             )
-            else -> ReportsTrendFlowChart(points = chartPoints)
+            ReportsTrendMode.DominantPeak,
+            ReportsTrendMode.Chart,
+            -> ReportsTrendFlowChart(points = model.trendPoints)
         }
         ReportsRecentWindowSummary(recentTrend = recentTrend)
     }
