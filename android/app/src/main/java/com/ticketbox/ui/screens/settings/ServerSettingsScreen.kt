@@ -47,7 +47,7 @@ fun ServerSettingsScreen(
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         AccountStatusCard(
-            serverSettings = state.serverSettings,
+            serverSettings = state.confirmedServerSettings(),
             serverUrl = state.serverUrl,
             accountName = state.accountName,
             ledgerName = state.ledgerName,
@@ -94,3 +94,5 @@ fun ServerSettingsScreen(
         }
     }
 }
+
+internal fun SettingsUiState.confirmedServerSettings() = serverSettings.takeIf { serverSettingsFresh }

@@ -420,11 +420,15 @@ that actually ships the fix.
 ### ANDROID-2026-07-02-connection-vpn-trust
 
 - Surface: Android Settings connection page and network error feedback.
-- Status: registered follow-up after the connection secondary-page slice.
+- Status: Android authority-state fix landed locally; VPN true-device evidence
+  still pending.
 - Gap: the connection page now makes the bound address and cache/confirmed state
   visible, but the user-observed VPN failure still needs real-device evidence and
   network-path diagnosis. A polished state page is not proof that VPN routing,
   split-tunnel behavior, DNS, or certificate interception is handled correctly.
+- Progress 2026-07-02: the Connection page now only treats server settings as
+  confirmed when `serverSettingsFresh=true`; stale settings remain a marked
+  cache fallback instead of lighting the confirmed state after refresh failure.
 - Desired follow-up: reproduce with the official package on a physical device,
   capture online, VPN-on, VPN-off, and offline states, and ensure user-facing
   copy tells the user what changed without exposing repository or transport
