@@ -3,7 +3,6 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:ApiClient.kt:ApiClient$private fun createInternal: ApiService</ID>
-    <ID>CyclomaticComplexMethod:DashboardCardsScreen.kt:@Composable fun DashboardCardsScreen</ID>
     <ID>CyclomaticComplexMethod:ErrorUiText.kt:@StringRes private fun errorCodeStringRes: Int?</ID>
     <ID>CyclomaticComplexMethod:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
@@ -45,7 +44,6 @@
     <ID>LongMethod:ChartTokens.kt:fun chartTokensForSkin: ChartTokens</ID>
     <ID>LongMethod:ComponentPreviewSamples.kt:@Preview(showBackground = true) @Composable private fun AppVisualComponentsPreview</ID>
     <ID>LongMethod:CurrencySection.kt:@Composable private fun CurrencyOptionCard</ID>
-    <ID>LongMethod:DashboardCardsScreen.kt:@Composable fun DashboardCardsScreen</ID>
     <ID>LongMethod:DataExportScreen.kt:@Composable fun DataExportScreen</ID>
     <ID>LongMethod:DuplicateConfirmSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun DuplicateConfirmSheetContent</ID>
     <ID>LongMethod:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
@@ -129,7 +127,6 @@
     <ID>LongParameterList:BudgetScreen.kt:@Composable fun BudgetScreen</ID>
     <ID>LongParameterList:BulkConfirmSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun BulkConfirmSheetContent</ID>
     <ID>LongParameterList:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>
-    <ID>LongParameterList:DashboardCardsScreen.kt:@Composable private fun DashboardCardRow</ID>
     <ID>LongParameterList:DraggableReorderColumn.kt:@Composable fun &lt;T : Any&gt; DraggableReorderColumn</ID>
     <ID>LongParameterList:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
     <ID>LongParameterList:ExpenseDetailRepository.kt:ExpenseDetailRepository$private suspend fun enqueueRecognizeText</ID>
@@ -230,7 +227,7 @@
     <ID>TooManyFunctions:PendingReviewActions.kt:PendingReviewActions</ID>
     <ID>TooManyFunctions:PendingViewModel.kt:PendingViewModel : ViewModel</ID>
     <ID>TooManyFunctions:PendingViewModelReviewActions.kt:com.ticketbox.viewmodel.PendingViewModelReviewActions.kt</ID>
-    <ID>TooManyFunctions:ReportsRepository.kt:ReportsActions</ID>
+    <ID>TooManyFunctions:ReportsRepository.kt:ReportsActions : DashboardCardsActions</ID>
     <ID>TooManyFunctions:ReportsRepository.kt:ReportsRepository : ReportsActions</ID>
     <ID>TooManyFunctions:RuleRepository.kt:RuleRepository</ID>
     <ID>TooManyFunctions:ScreenshotUploadPreprocessor.kt:com.ticketbox.upload.ScreenshotUploadPreprocessor.kt</ID>

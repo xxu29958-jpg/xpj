@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -12,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseRepository
@@ -62,6 +64,7 @@ import com.ticketbox.viewmodel.AppearanceUiState
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
 import com.ticketbox.viewmodel.BillSplitViewModel
 import com.ticketbox.viewmodel.CategoryRulesUiState
+import com.ticketbox.viewmodel.DashboardCardsViewModel
 import com.ticketbox.viewmodel.FamilyMembersViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
@@ -74,6 +77,7 @@ import com.ticketbox.viewmodel.SettingsUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
 import com.ticketbox.viewmodel.backgroundTasksViewModelFactory
 import com.ticketbox.viewmodel.billSplitViewModelFactory
+import com.ticketbox.viewmodel.dashboardCardsViewModelFactory
 import com.ticketbox.viewmodel.familyMembersViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
@@ -291,12 +295,27 @@ internal fun SettingsDestinationHost(
             },
         )
 
-        SettingsDestination.DashboardCards -> DashboardCardsScreen(
-            repository = repositories.reportsRepository,
-            readOnly = !ledgerRoleCanModify(states.settings.role),
-            onBack = { route = SettingsDestination.Root },
-            onSaved = actions.onDashboardCardsChanged,
-        )
+        SettingsDestination.DashboardCards -> {
+            val vm: DashboardCardsViewModel = viewModel(
+                key = "settings-dashboard-cards",
+                factory = dashboardCardsViewModelFactory(repositories.reportsRepository),
+            )
+            val state by vm.uiState.collectAsStateWithLifecycle()
+            LaunchedEffect(state.savedRevision) {
+                if (state.savedRevision > 0) actions.onDashboardCardsChanged()
+            }
+            DashboardCardsScreen(
+                state = state,
+                onBack = { route = SettingsDestination.Root },
+                actions = com.ticketbox.ui.screens.settings.DashboardCardsScreenActions(
+                    onMoveCard = vm::moveCard,
+                    onReorder = vm::reorderCards,
+                    onVisibleChange = vm::setVisible,
+                    onSave = vm::saveCards,
+                    onReset = vm::resetCards,
+                ),
+            )
+        }
 
         SettingsDestination.CategoryRules -> CategoryRulesScreen(
             rules = states.rules.categoryRules,

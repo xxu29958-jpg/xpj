@@ -28,8 +28,16 @@ import java.time.YearMonth
 import java.util.TimeZone
 import java.util.UUID
 
-interface ReportsActions {
+interface DashboardCardsActions {
     fun canModifyLedger(): Boolean
+    suspend fun dashboardCards(surface: DashboardSurface = DashboardSurface.Android): Result<DashboardCards>
+    suspend fun updateDashboardCards(
+        updates: List<DashboardCardUpdate>,
+        surface: DashboardSurface = DashboardSurface.Android,
+    ): Result<DashboardCards>
+}
+
+interface ReportsActions : DashboardCardsActions {
     suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<ReportsOverview>
     suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<CsvExport>
     suspend fun goals(month: String? = null, includeArchived: Boolean = false): Result<List<Goal>>
@@ -82,11 +90,6 @@ interface ReportsActions {
         expectedRowVersion: Long,
         targetDate: String?,
     ): Result<Goal>
-    suspend fun dashboardCards(surface: DashboardSurface = DashboardSurface.Android): Result<DashboardCards>
-    suspend fun updateDashboardCards(
-        updates: List<DashboardCardUpdate>,
-        surface: DashboardSurface = DashboardSurface.Android,
-    ): Result<DashboardCards>
 }
 
 class ReportsRepository(

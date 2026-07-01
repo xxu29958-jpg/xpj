@@ -44,7 +44,7 @@
     <string name="settings_root_entry_bill_splits_subtitle">收到的拆账邀请与你发出的拆账</string>
     <string name="settings_root_entry_appearance_title">外观与主题</string>
     <string name="settings_root_entry_appearance_subtitle">主题皮肤、自定义背景、沉浸强度</string>
-    <string name="settings_root_entry_dashboard_cards_title">首页卡片</string>
+    <string name="settings_root_entry_dashboard_cards_title">首页模块</string>
     <string name="settings_root_entry_dashboard_cards_subtitle">调整今日与洞察的信息模块</string>
     <string name="settings_root_entry_data_export_title">数据与导出</string>
     <string name="settings_root_entry_data_export_subtitle">离线数据与表格导出说明</string>

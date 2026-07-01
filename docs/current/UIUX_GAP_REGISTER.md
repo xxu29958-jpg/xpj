@@ -84,6 +84,24 @@ that actually ships the fix.
   crop, preview, apply, clear, dark/light, and bottom-safe states on a physical
   device with the official package.
 
+### ANDROID-2026-07-02-homepage-modules-secondary-parity
+
+- Surface: Android Settings -> Homepage Modules.
+- Status: implemented locally; true-device evidence still pending.
+- Gap: the dashboard-card configuration route existed but was not covered in
+  the Settings secondary register. Its Composable owned repository calls,
+  loading/saving state, messages, local draft ordering, and backend updates in a
+  single long function, which made the page hard to align with the shared
+  secondary-page skeleton and kept three detekt complexity baselines alive.
+- Resolution: dashboard-card read/write now lives in `DashboardCardsViewModel`
+  behind a narrow `DashboardCardsActions` contract. The screen renders a
+  scan-first module overview, then a reorder/toggle list and compact action row.
+  Draft order changes are local until the backend save succeeds; only successful
+  save/reset bumps the shell refresh signal. The visible product label is now
+  "Homepage Modules" / "首页模块" instead of reinforcing card-heavy language.
+- Remaining QA: capture populated, empty, all-hidden, read-only, load-failed,
+  save-failed, drag reorder, and bottom-safe action states on a physical device.
+
 ### ANDROID-2026-07-01-settings-root-density
 
 - Surface: Android Settings root page.
