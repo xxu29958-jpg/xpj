@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
@@ -56,9 +55,9 @@ import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.displayMonthLabel
@@ -80,7 +79,7 @@ private const val FlashDismissMillis = 4000L
  * v1.1 收入计划 — Android 生活流：KPI 卡 → 卡片列 → 页头 CTA → 底部抽屉添加。
  *
  * 收口回共享骨架：列表与下拉刷新走 [AppScrollableContent]（与 BillSplitScreen /
- * RecurringScreen 同形态——in-content 返回按钮 + [AppPageHeader]），反馈走页头位的
+ * RecurringScreen 同形态——in-content secondary header），反馈走页头位的
  * [AppStatusBanner]（flashMessage→Success / error→Danger），添加入口收编到页头的
  * [PrimaryCtaButton]。不照搬 /web 的"表 + form"，按移动端单手操作模式：每条收入是
  * 一个卡片，添加进底部抽屉。共享 design token 通过 MaterialTheme + AppSpacing +
@@ -219,27 +218,18 @@ private fun IncomePlanHeader(
     onBack: () -> Unit,
     onAdd: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        TextButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.income_plan_topbar_back),
-                modifier = Modifier.size(18.dp),
+    AppSecondaryPageHeader(
+        title = stringResource(R.string.income_plan_topbar_title),
+        subtitle = stringResource(R.string.income_plan_intro_body),
+        backText = stringResource(R.string.income_plan_topbar_back),
+        onBack = onBack,
+    ) {
+        if (canModify) {
+            PrimaryCtaButton(
+                text = stringResource(R.string.income_plan_fab_add),
+                icon = Icons.Default.Add,
+                onClick = onAdd,
             )
-            Spacer(Modifier.width(4.dp))
-            Text(stringResource(R.string.income_plan_topbar_back))
-        }
-        AppPageHeader(
-            title = stringResource(R.string.income_plan_topbar_title),
-            subtitle = stringResource(R.string.income_plan_intro_body),
-        ) {
-            if (canModify) {
-                PrimaryCtaButton(
-                    text = stringResource(R.string.income_plan_fab_add),
-                    icon = Icons.Default.Add,
-                    onClick = onAdd,
-                )
-            }
         }
     }
 }

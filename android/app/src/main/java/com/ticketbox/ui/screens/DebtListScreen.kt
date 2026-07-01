@@ -14,14 +14,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -49,9 +47,9 @@ import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.QuietOutlinedButton
@@ -75,7 +73,7 @@ private const val DebtFlashDismissMillis = 4000L
 
 /**
  * ADR-0049 §2 (slice 8) 欠款列表 + 新建外部欠款 —— Android 生活流，镜像 [IncomePlanScreen]：
- * 列表走 [AppScrollableContent]（in-content 返回按钮 + [AppPageHeader]），反馈走页头位的
+ * 列表走 [AppScrollableContent]（in-content secondary header），反馈走页头位的
  * [AppStatusBanner]，新建入口是页头的 [PrimaryCtaButton] → 底部抽屉表单。方向 / 状态标签复用
  * [DebtGoalLabels] 的 §6 映射（应付 / 应收 / 未结清…），不端内分叉。overlay 自带 [BackHandler]。
  */
@@ -158,41 +156,32 @@ private fun DebtListHeader(
     onAdd: () -> Unit,
     onParseBillImage: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        TextButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.debt_list_topbar_back),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(stringResource(R.string.debt_list_topbar_back))
-        }
-        AppPageHeader(
-            title = stringResource(R.string.debt_list_topbar_title),
-            subtitle = stringResource(R.string.debt_list_intro_body),
-        ) {
-            if (canModify) {
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                    QuietOutlinedButton(
-                        text = stringResource(
-                            if (isParsingBill) {
-                                R.string.debt_list_parse_bill_busy
-                            } else {
-                                R.string.debt_list_parse_bill
-                            },
-                        ),
-                        leadingIcon = Icons.Default.Search,
-                        enabled = !isParsingBill,
-                        onClick = onParseBillImage,
-                    )
-                    PrimaryCtaButton(
-                        text = stringResource(R.string.debt_list_add),
-                        icon = Icons.Default.Add,
-                        enabled = !isParsingBill,
-                        onClick = onAdd,
-                    )
-                }
+    AppSecondaryPageHeader(
+        title = stringResource(R.string.debt_list_topbar_title),
+        subtitle = stringResource(R.string.debt_list_intro_body),
+        backText = stringResource(R.string.debt_list_topbar_back),
+        onBack = onBack,
+    ) {
+        if (canModify) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                QuietOutlinedButton(
+                    text = stringResource(
+                        if (isParsingBill) {
+                            R.string.debt_list_parse_bill_busy
+                        } else {
+                            R.string.debt_list_parse_bill
+                        },
+                    ),
+                    leadingIcon = Icons.Default.Search,
+                    enabled = !isParsingBill,
+                    onClick = onParseBillImage,
+                )
+                PrimaryCtaButton(
+                    text = stringResource(R.string.debt_list_add),
+                    icon = Icons.Default.Add,
+                    enabled = !isParsingBill,
+                    onClick = onAdd,
+                )
             }
         }
     }

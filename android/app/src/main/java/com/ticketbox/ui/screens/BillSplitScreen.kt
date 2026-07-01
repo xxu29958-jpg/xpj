@@ -7,23 +7,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,9 +40,9 @@ import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -64,8 +57,8 @@ import com.valentinilk.shimmer.shimmer
  * ADR-0029 bill split UI: two tabs (Inbox / Sent), actions per row.
  *
  * v0.11 UI/UX P1 (structure): rendered on the shared page skeleton
- * ([AppScrollableContent]) like RecurringScreen — an in-content back button +
- * [AppPageHeader], chip tabs with counts, and one card per list with
+ * ([AppScrollableContent]) like RecurringScreen — an in-content secondary header,
+ * chip tabs with counts, and one card per list with
  * divider-separated rows plus a shimmer loading state (previously the bare
  * Material `Scaffold`/`TopAppBar` showed nothing while loading). Data, actions,
  * navigation and copy are unchanged; only the layout moves onto the design system.
@@ -97,16 +90,12 @@ fun BillSplitScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                TextButton(onClick = onBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.bill_split_topbar_back),
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.bill_split_topbar_back))
-                }
-                AppPageHeader(title = stringResource(R.string.bill_split_topbar_title))
+                AppSecondaryPageHeader(
+                    title = stringResource(R.string.bill_split_topbar_title),
+                    subtitle = null,
+                    backText = stringResource(R.string.bill_split_topbar_back),
+                    onBack = onBack,
+                )
                 BillSplitTabRow(
                     selectedTab = selectedTab,
                     onSelect = { selectedTab = it },

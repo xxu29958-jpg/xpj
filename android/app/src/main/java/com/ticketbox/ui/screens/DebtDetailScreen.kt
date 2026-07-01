@@ -11,12 +11,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -40,9 +38,9 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -61,7 +59,7 @@ private const val DebtDetailFlashDismissMillis = 4000L
 /**
  * ADR-0049 §3 (slice 8c) 欠款详情 + 记账管理 —— [DebtRoute] 内的子页（与欠款列表互斥渲染，自带
  * [BackHandler]：返回回到列表，再返回才关 overlay，[[project_overlay_screen_needs_own_backhandler]]）。
- * 镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + [AppPageHeader] + [AppGlassCard] +
+ * 镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + secondary header + [AppGlassCard] +
  * [AppStatusBanner]）。记还款 / 调整 / 作废三类直接写只对 external/manual 欠款开放（[Debt.isDirectWritable]）；
  * 成员/拆账欠款显示走对方确认流程的提示而非按钮。统一动作面板（[DebtActionSheet]）按 [DebtAction] 渲染
  * 相应字段，写成功后 ViewModel 把折叠后的欠款换入本地态。
@@ -172,26 +170,17 @@ private fun DebtDetailHeader(debt: Debt?, onBack: () -> Unit) {
     val title = debt?.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: debt?.let { stringResource(debtCounterpartyFallbackRes(it.counterpartyType)) }
         ?: stringResource(R.string.debt_detail_title)
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        TextButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.debt_detail_back),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(stringResource(R.string.debt_detail_back))
-        }
-        AppPageHeader(
-            title = title,
-            // ② 成员债副标题关系化（你帮我垫的 / 我帮你垫的 / 第三人称）；外部债仍走应付/应收。
-            subtitle = debt?.let { d ->
-                val directionRes =
-                    if (d.isMember) memberDebtDirectionRes(d.viewerIsDebtor) else debtDirectionLabelRes(d.direction)
-                stringResource(directionRes)
-            },
-        )
-    }
+    AppSecondaryPageHeader(
+        title = title,
+        // ② 成员债副标题关系化（你帮我垫的 / 我帮你垫的 / 第三人称）；外部债仍走应付/应收。
+        subtitle = debt?.let { d ->
+            val directionRes =
+                if (d.isMember) memberDebtDirectionRes(d.viewerIsDebtor) else debtDirectionLabelRes(d.direction)
+            stringResource(directionRes)
+        },
+        backText = stringResource(R.string.debt_detail_back),
+        onBack = onBack,
+    )
 }
 
 // Member debt routes to MemberSharedThingCard; this businesslike accounting card serves external

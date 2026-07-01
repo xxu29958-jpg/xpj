@@ -12,12 +12,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -42,9 +39,9 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -126,21 +123,12 @@ fun RepaymentDraftInboxScreen(
 
 @Composable
 private fun RepaymentDraftInboxHeader(onBack: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        TextButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.repayment_draft_topbar_back),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(stringResource(R.string.repayment_draft_topbar_back))
-        }
-        AppPageHeader(
-            title = stringResource(R.string.repayment_draft_topbar_title),
-            subtitle = stringResource(R.string.repayment_draft_intro_body),
-        )
-    }
+    AppSecondaryPageHeader(
+        title = stringResource(R.string.repayment_draft_topbar_title),
+        subtitle = stringResource(R.string.repayment_draft_intro_body),
+        backText = stringResource(R.string.repayment_draft_topbar_back),
+        onBack = onBack,
+    )
 }
 
 private fun LazyListScope.repaymentDraftListSection(

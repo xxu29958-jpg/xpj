@@ -7,15 +7,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -28,9 +23,9 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.ReceivablesUiState
@@ -74,21 +69,12 @@ fun ReceivablesScreen(
 
 @Composable
 private fun ReceivablesHeader(onBack: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        TextButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.debt_list_topbar_back),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(stringResource(R.string.debt_list_topbar_back))
-        }
-        AppPageHeader(
-            title = stringResource(R.string.receivables_topbar_title),
-            subtitle = stringResource(R.string.receivables_intro_body),
-        )
-    }
+    AppSecondaryPageHeader(
+        title = stringResource(R.string.receivables_topbar_title),
+        subtitle = stringResource(R.string.receivables_intro_body),
+        backText = stringResource(R.string.debt_list_topbar_back),
+        onBack = onBack,
+    )
 }
 
 private fun LazyListScope.receivablesSection(

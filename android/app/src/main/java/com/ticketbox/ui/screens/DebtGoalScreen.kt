@@ -13,13 +13,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -43,9 +41,9 @@ import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.design.AppSpacing
@@ -62,7 +60,7 @@ private const val DebtGoalFlashDismissMillis = 4000L
  * 关联欠款（未结清 / 已结清 / 已作废），并在 needs_review 时给出 §6/F13 复核两出口
  * （移除作废欠款 / 保留存档）。本切片只读 + 复核，创建还债目标随后续债务管理界面落地。
  *
- * 复用共享骨架（[AppScrollableContent] + [AppPageHeader] + [AppGlassCard] +
+ * 复用共享骨架（[AppScrollableContent] + secondary header + [AppGlassCard] +
  * [AppStatusBanner]），三端 token 同步走 MaterialTheme + AppSpacing。屏接 VM（与
  * IncomePlanScreen 同形），返回先收详情、再关 overlay（overlay 无 NavHost 回退栈，
  * 必须自带 [BackHandler] — [[project_overlay_screen_needs_own_backhandler]]）。
@@ -147,24 +145,18 @@ private fun DebtGoalHeader(
     onBack: () -> Unit,
     onCreate: (() -> Unit)?,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        TextButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.debt_goal_topbar_back),
-                modifier = Modifier.size(18.dp),
+    AppSecondaryPageHeader(
+        title = title,
+        subtitle = subtitle,
+        backText = stringResource(R.string.debt_goal_topbar_back),
+        onBack = onBack,
+    ) {
+        if (onCreate != null) {
+            PrimaryCtaButton(
+                text = stringResource(R.string.debt_goal_create_cta),
+                icon = Icons.Default.Add,
+                onClick = onCreate,
             )
-            Spacer(Modifier.width(4.dp))
-            Text(stringResource(R.string.debt_goal_topbar_back))
-        }
-        AppPageHeader(title = title, subtitle = subtitle) {
-            if (onCreate != null) {
-                PrimaryCtaButton(
-                    text = stringResource(R.string.debt_goal_create_cta),
-                    icon = Icons.Default.Add,
-                    onClick = onCreate,
-                )
-            }
         }
     }
 }

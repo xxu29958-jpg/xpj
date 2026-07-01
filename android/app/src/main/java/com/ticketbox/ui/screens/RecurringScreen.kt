@@ -6,14 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AssistChip
@@ -43,9 +40,9 @@ import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -101,20 +98,11 @@ fun RecurringScreen(
                     if (onBack == null) AppSpacing.compactGap else AppSpacing.smallGap,
                 ),
             ) {
-                onBack?.let {
-                    TextButton(onClick = it) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.recurring_back_to_stats),
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.recurring_back_to_stats))
-                    }
-                }
-                AppPageHeader(
+                AppSecondaryPageHeader(
                     title = stringResource(R.string.recurring_header_title),
                     subtitle = stringResource(R.string.recurring_header_subtitle),
+                    backText = stringResource(R.string.recurring_back_to_stats),
+                    onBack = onBack,
                 ) {
                     SafeBadge()
                 }
