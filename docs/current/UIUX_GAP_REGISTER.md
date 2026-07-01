@@ -417,6 +417,23 @@ that actually ships the fix.
   confirm the page does not imply fresh backend truth before the primary response
   lands.
 
+### ANDROID-2026-07-02-merchant-management-density
+
+- Surface: Android Settings -> Merchant Management.
+- Status: implemented locally; true-device evidence still pending.
+- Gap: Merchant Management followed the older secondary-page pattern: create
+  forms occupied the early scroll, catalog and alias rows were rendered as
+  repeated open panels, and every row exposed large inline actions. That made the
+  page read like a form stack instead of a governance surface.
+- Resolution: the page now starts with a real catalog/alias overview derived
+  from repository state, then compact catalog and alias divider rows. Rename,
+  merge, hide/show, and delete actions live behind overflow menus. Copy keeps
+  the catalog contract explicit: merge and delete do not rewrite historical bill
+  merchant text; they affect directory visibility and future/stat grouping.
+- Remaining QA: verify populated catalog/alias lists, read-only mode, conflict
+  merge steering, offline alias queue states, and catalog merge/delete failures
+  on a physical device.
+
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 
 - Surface: Android Insights merchant sections.

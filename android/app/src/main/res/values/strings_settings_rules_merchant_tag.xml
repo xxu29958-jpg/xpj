@@ -67,6 +67,18 @@
     <string name="merchant_aliases_page_title">商家管理</string>
     <string name="merchant_aliases_undo_deleted">已删除「%1$s」</string>
     <string name="merchant_aliases_undo_button">撤销</string>
+    <string name="merchant_management_readonly_title">只读模式</string>
+    <string name="merchant_management_readonly_hint">当前角色只能查看商家目录和别名，不能新增、合并、隐藏或删除。</string>
+    <string name="merchant_management_section_overview">商家概况</string>
+    <string name="merchant_management_overview_catalog_label">全部目录</string>
+    <string name="merchant_management_overview_catalog_caption">商家</string>
+    <string name="merchant_management_overview_visible_label">显示中</string>
+    <string name="merchant_management_overview_visible_caption">目录</string>
+    <string name="merchant_management_overview_alias_label">启用别名</string>
+    <string name="merchant_management_overview_alias_caption">别名</string>
+    <string name="merchant_management_overview_usage_label">历史笔数</string>
+    <string name="merchant_management_overview_usage_caption">引用</string>
+    <string name="merchant_management_overview_body">合并只调整目录关系和后续统计，历史账单商家名保持原样；已合并 %1$d 个。</string>
     <string name="merchant_catalog_section_create">新增商家</string>
     <string name="merchant_catalog_name_label">商家名称</string>
     <string name="merchant_catalog_name_placeholder">星巴克</string>
@@ -74,6 +86,7 @@
     <string name="merchant_catalog_create_busy">处理中</string>
     <string name="merchant_catalog_create_button">添加商家</string>
     <string name="merchant_catalog_section_list">商家目录</string>
+    <string name="merchant_catalog_list_empty_title">暂无商家目录</string>
     <string name="merchant_catalog_list_empty">还没有商家目录。添加常见商家后，可以隐藏或移入回收站。</string>
     <string name="merchant_catalog_delete_dialog_title">删除这个商家？</string>
     <string name="merchant_catalog_delete_dialog_text">「%1$s」会移入回收站；历史账单里的原始商家名不会被改写。</string>
@@ -88,6 +101,7 @@
     <string name="merchant_catalog_card_action_hide">隐藏</string>
     <string name="merchant_catalog_card_action_show">显示</string>
     <string name="merchant_catalog_card_action_delete">删除</string>
+    <string name="merchant_catalog_actions_content_description">商家操作</string>
     <string name="merchant_catalog_rename_dialog_title">重命名商家</string>
     <string name="merchant_catalog_rename_dialog_label">商家名称</string>
     <string name="merchant_catalog_rename_dialog_confirm">保存</string>
@@ -109,6 +123,7 @@
     <string name="merchant_aliases_create_busy">处理中</string>
     <string name="merchant_aliases_create_button">添加别名</string>
     <string name="merchant_aliases_section_list">别名列表</string>
+    <string name="merchant_aliases_list_empty_title">暂无别名</string>
     <string name="merchant_aliases_list_empty">还没有商家别名。添加后，分类规则可用标准商家命中不同写法的商家名。</string>
     <string name="merchant_aliases_delete_dialog_title">删除这个别名？</string>
     <string name="merchant_aliases_delete_dialog_text">删除后，「%1$s」不再自动归到「%2$s」。</string>
@@ -120,6 +135,7 @@
     <string name="merchant_aliases_card_action_disable">停用</string>
     <string name="merchant_aliases_card_action_enable">启用</string>
     <string name="merchant_aliases_card_action_delete">删除</string>
+    <string name="merchant_aliases_actions_content_description">别名操作</string>
 
     <!-- DashboardCardsScreen：设置→首页卡片 屏 -->
     <string name="dashboard_cards_page_title">首页卡片</string>
