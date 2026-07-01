@@ -128,15 +128,15 @@ fun SettingsEntryRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = AppSpacing.cardPaddingTight),
+                .padding(vertical = AppSpacing.contentGap),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(AppSpacing.sectionGap),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.heavy),
+                modifier = Modifier.size(AppSpacing.cardPadding),
             )
             Column(
                 modifier = Modifier.weight(1f),

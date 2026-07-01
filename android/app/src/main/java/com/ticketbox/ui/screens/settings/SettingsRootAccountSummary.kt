@@ -15,10 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
-import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppSpacing
@@ -35,7 +33,7 @@ internal fun SettingsRootAccountSummary(
 
 @Composable
 private fun settingsRootAccountSummaryData(state: SettingsUiState): SettingsRootAccountSummaryData {
-    val serverSettings = state.serverSettings
+    val serverSettings = state.serverSettings.takeIf { state.serverSettingsFresh }
     val displayAccount = firstNotBlank(serverSettings?.accountName, state.accountName)
         ?: stringResource(R.string.settings_account_default_account)
     val displayLedger = firstNotBlank(serverSettings?.ledgerName, state.ledgerName)
@@ -48,11 +46,9 @@ private fun settingsRootAccountSummaryData(state: SettingsUiState): SettingsRoot
     return SettingsRootAccountSummaryData(
         header = SettingsRootAccountHeaderData(
             ledger = displayLedger,
-            status = settingsRootAccountStatus(state.busy, serverSettings),
-            serverConfirmed = serverSettings != null,
+            status = settingsRootAccountStatus(state.busy, state.serverSettingsFresh),
+            serverConfirmed = state.serverSettingsFresh,
         ),
-        source = settingsRootAccountSource(serverSettings),
-        counters = settingsRootCounterData(serverSettings),
         identity = stringResource(R.string.settings_root_account_identity_line, displayAccount, displayRole, displayDevice),
         lastSync = settingsRootLastSyncText(state.lastConfirmedSyncAt),
     )
@@ -68,14 +64,6 @@ private fun SettingsRootAccountSummaryLayout(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         SettingsRootAccountHeader(data.header)
-        Text(
-            text = data.source,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        SettingsRootAccountCounters(data.counters)
         Text(
             text = data.identity,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -127,61 +115,11 @@ private fun SettingsRootAccountHeader(data: SettingsRootAccountHeaderData) {
 }
 
 @Composable
-private fun SettingsRootAccountCounters(counters: List<SettingsRootAccountMetricData>) {
-    if (counters.isEmpty()) return
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        counters.forEach { metric ->
-            SettingsRootAccountMetric(
-                metric = metric,
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsRootAccountMetric(
-    metric: SettingsRootAccountMetricData,
-    modifier: Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = metric.value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = metric.label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun settingsRootAccountStatus(busy: Boolean, serverSettings: ServerSettings?): String = when {
+private fun settingsRootAccountStatus(busy: Boolean, fresh: Boolean): String = when {
     busy -> stringResource(R.string.settings_account_status_updating)
-    serverSettings != null -> stringResource(R.string.settings_account_status_server_confirmed)
+    fresh -> stringResource(R.string.settings_account_status_server_confirmed)
     else -> stringResource(R.string.settings_account_status_local_cache)
 }
-
-@Composable
-private fun settingsRootAccountSource(serverSettings: ServerSettings?): String =
-    if (serverSettings != null) {
-        stringResource(R.string.settings_account_source_server)
-    } else {
-        stringResource(R.string.settings_account_source_local_cache)
-    }
 
 @Composable
 private fun settingsRootLastSyncText(lastConfirmedSyncAt: String?): String = stringResource(
@@ -190,32 +128,11 @@ private fun settingsRootLastSyncText(lastConfirmedSyncAt: String?): String = str
         ?: stringResource(R.string.settings_account_no_sync),
 )
 
-@Composable
-private fun settingsRootCounterData(serverSettings: ServerSettings?): List<SettingsRootAccountMetricData> {
-    if (serverSettings == null) return emptyList()
-    return listOf(
-        SettingsRootAccountMetricData(
-            label = stringResource(R.string.settings_account_pending_count),
-            value = serverSettings.pendingCount.toString(),
-        ),
-        SettingsRootAccountMetricData(
-            label = stringResource(R.string.settings_account_confirmed_count),
-            value = serverSettings.confirmedCount.toString(),
-        ),
-        SettingsRootAccountMetricData(
-            label = stringResource(R.string.settings_account_duplicate_count),
-            value = serverSettings.suspectedDuplicateCount.toString(),
-        ),
-    )
-}
-
 private fun firstNotBlank(vararg values: String?): String? =
     values.firstOrNull { !it.isNullOrBlank() }
 
 private data class SettingsRootAccountSummaryData(
     val header: SettingsRootAccountHeaderData,
-    val source: String,
-    val counters: List<SettingsRootAccountMetricData>,
     val identity: String,
     val lastSync: String,
 )
@@ -224,9 +141,4 @@ private data class SettingsRootAccountHeaderData(
     val ledger: String,
     val status: String,
     val serverConfirmed: Boolean,
-)
-
-private data class SettingsRootAccountMetricData(
-    val label: String,
-    val value: String,
 )

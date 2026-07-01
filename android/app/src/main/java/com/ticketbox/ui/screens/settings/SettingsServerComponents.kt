@@ -417,6 +417,7 @@ internal fun PreviewRoleCard(
     val innerShape = RoundedCornerShape(AppRadius.medium)
     val contentAlpha = resolveCardContainerAlpha(settings.immersionMode, role)
     val contentContainerColor = when (role) {
+        SurfaceRole.Today,
         SurfaceRole.Pending,
         SurfaceRole.Stats -> visuals.glassTint.copy(alpha = contentAlpha)
         SurfaceRole.Ledger,

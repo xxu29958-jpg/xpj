@@ -39,6 +39,7 @@ data class SettingsUiState(
     val monthlyBudgetCents: Long? = null,
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val serverSettings: ServerSettings? = null,
+    val serverSettingsFresh: Boolean = false,
     val diagnostics: ConnectionDiagnostics? = null,
     val lastUploadAt: String? = null,
     val lastConfirmedSyncAt: String? = null,
@@ -196,6 +197,7 @@ class SettingsViewModel(
                         } else {
                             it.copy(
                                 serverSettings = settings,
+                                serverSettingsFresh = true,
                                 accountName = settings.accountName,
                                 ledgerName = settings.ledgerName,
                                 deviceName = settings.deviceName,
@@ -212,6 +214,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             busy = if (showBusy) false else it.busy,
+                            serverSettingsFresh = false,
                             message = UiText.res(R.string.settings_vm_server_settings_failed),
                             messageTone = MessageTone.Danger,
                         )

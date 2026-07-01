@@ -96,7 +96,9 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.displayTime
@@ -150,7 +152,14 @@ fun SettingsRootScreen(
         onBack = null,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
+            val authorityTone = settingsAuthorityTone(state)
+            if (authorityTone != DataAuthorityTone.Backend) {
+                AppDataAuthorityStrip(
+                    tone = authorityTone,
+                    localCacheBodyRes = R.string.components_data_authority_settings_cache_body,
+                )
+            }
             SettingsRootAccountSummary(
                 state = state,
                 onOpenConnection = onOpenServer,
@@ -285,4 +294,10 @@ fun SettingsRootScreen(
             }
         }
     }
+}
+
+private fun settingsAuthorityTone(state: SettingsUiState): DataAuthorityTone = when {
+    state.busy -> DataAuthorityTone.Refreshing
+    state.serverSettingsFresh -> DataAuthorityTone.Backend
+    else -> DataAuthorityTone.LocalCache
 }
