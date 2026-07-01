@@ -31,6 +31,7 @@ internal fun StatsSpendTrendChart(
     contentDescription: String,
     modifier: Modifier = Modifier,
     height: Dp? = null,
+    showAllLabels: Boolean = false,
 ) {
     val chartTokens = LocalChartTokens.current
     val statsTokens = LocalStatsTokens.current
@@ -40,11 +41,12 @@ internal fun StatsSpendTrendChart(
     val maxAmount = remember(normalizedPoints) {
         normalizedPoints.maxOfOrNull { it.amountCents }?.coerceAtLeast(1L) ?: 1L
     }
-    val axisLabels = remember(normalizedPoints) { trendAxisLabels(normalizedPoints) }
+    val axisLabels = remember(normalizedPoints, showAllLabels) { trendAxisLabels(normalizedPoints, showAllLabels) }
     val chartStyle = remember(chartTokens, statsTokens) {
         SpendTrendChartStyle(
             primary = chartTokens.series.firstOrNull() ?: Color(0xff5b6ee1),
             grid = chartTokens.grid,
+            gridEmphasis = chartTokens.gridEmphasis,
             emphasisAlpha = statsTokens.chart.emphasisAlpha,
             quietAlpha = statsTokens.chart.quietAlpha,
         )
@@ -92,6 +94,7 @@ internal fun StatsSpendTrendChart(
 private data class SpendTrendChartStyle(
     val primary: Color,
     val grid: Color,
+    val gridEmphasis: Color,
     val emphasisAlpha: Float,
     val quietAlpha: Float,
 )
@@ -109,6 +112,28 @@ private fun DrawScope.drawSpendTrendBars(
     val barWidth = (bucketWidth * 0.56f).coerceIn(6.dp.toPx(), 22.dp.toPx())
     val maxPointAmount = points.maxOfOrNull { it.amountCents } ?: 0L
     val zeroDotSize = 4.dp.toPx()
+    val positivePoints = points.filter { it.amountCents > 0L }
+    val averageAmount = if (positivePoints.size > 1) {
+        positivePoints.sumOf { it.amountCents } / positivePoints.size
+    } else {
+        0L
+    }
+
+    drawLine(
+        color = style.grid,
+        start = Offset(0f, bottom - plotHeight * 0.5f),
+        end = Offset(size.width, bottom - plotHeight * 0.5f),
+        strokeWidth = 1.dp.toPx(),
+    )
+    if (averageAmount > 0L && averageAmount < maxAmount) {
+        val averageY = bottom - plotHeight * averageAmount.toFloat() / maxAmount.toFloat()
+        drawLine(
+            color = style.gridEmphasis,
+            start = Offset(horizontalInset, averageY),
+            end = Offset(size.width - horizontalInset, averageY),
+            strokeWidth = 1.dp.toPx(),
+        )
+    }
 
     drawLine(
         color = style.grid,
@@ -140,8 +165,9 @@ private fun DrawScope.drawSpendTrendBars(
     }
 }
 
-private fun trendAxisLabels(points: List<StatsSpendChartPoint>): List<String> {
+internal fun trendAxisLabels(points: List<StatsSpendChartPoint>, showAllLabels: Boolean = false): List<String> {
     if (points.isEmpty()) return emptyList()
+    if (showAllLabels) return points.map { it.label }.filter { it.isNotBlank() }
     if (points.size == 1) return listOf(points.first().label)
     val middle = points.size / 2
     return listOf(0, middle, points.lastIndex)

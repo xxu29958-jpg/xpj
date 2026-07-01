@@ -20,6 +20,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.LocalStatsTokens
 import com.ticketbox.ui.design.tabularNum
 import kotlin.math.abs
 
@@ -34,9 +35,24 @@ internal fun ReportsRecentWindowSummary(
     modifier: Modifier = Modifier,
 ) {
     val summary = remember(recentTrend) { summarizeReportsRecentWindow(recentTrend) } ?: return
+    val chartPoints = remember(recentTrend) {
+        recentTrend
+            .takeLast(ReportsRecentWindowLayout.RecentWindowDays)
+            .map { day ->
+                StatsSpendChartPoint(label = day.label.ifBlank { day.date }, amountCents = day.amountCents)
+            }
+    }
+    val currencyDisplay = LocalCurrencyDisplay.current
+    val chartA11y = remember(chartPoints, currencyDisplay) {
+        chartPoints.joinToString(separator = "\uFF0C") {
+            "${it.label} ${formatDisplayAmount(it.amountCents, currencyDisplay)}"
+        }
+    }
     ReportsRecentWindowSummaryRow(
         summary = summary,
         insight = reportsRecentWindowInsight(summary),
+        chartPoints = chartPoints,
+        chartA11y = chartA11y,
         modifier = modifier,
     )
 }
@@ -64,6 +80,8 @@ private fun reportsRecentWindowInsight(summary: ReportsRecentWindowSummaryData):
 private fun ReportsRecentWindowSummaryRow(
     summary: ReportsRecentWindowSummaryData,
     insight: String,
+    chartPoints: List<StatsSpendChartPoint>,
+    chartA11y: String,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -82,6 +100,7 @@ private fun ReportsRecentWindowSummaryRow(
                 modifier = Modifier.weight(1.4f),
             )
         }
+        ReportsRecentWindowDayChart(points = chartPoints, chartA11y = chartA11y)
         ReportsRecentWindowComparisonRows(summary = summary)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -99,6 +118,19 @@ private fun ReportsRecentWindowSummaryRow(
             )
         }
     }
+}
+
+@Composable
+private fun ReportsRecentWindowDayChart(
+    points: List<StatsSpendChartPoint>,
+    chartA11y: String,
+) {
+    StatsSpendTrendChart(
+        points = points,
+        contentDescription = chartA11y,
+        height = LocalStatsTokens.current.chart.recentHeight,
+        showAllLabels = true,
+    )
 }
 
 @Composable

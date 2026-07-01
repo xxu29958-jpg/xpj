@@ -72,6 +72,24 @@ private fun ReportsTrendChartSummary(
     summary: ReportsTrendEvidence,
 ) {
     summary.peak?.takeIf { it.amountCents > 0L }?.let {
+        Text(
+            text = if (summary.shouldUseDominanceBreakdown) {
+                stringResource(
+                    R.string.stats_reports_chart_takeaway_concentrated,
+                    it.label,
+                    summary.peakSharePercent,
+                )
+            } else {
+                stringResource(
+                    R.string.stats_reports_chart_takeaway_spread,
+                    summary.positiveBucketCount,
+                    summary.peakSharePercent,
+                )
+            },
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
                 text = stringResource(R.string.stats_reports_chart_peak, it.label),

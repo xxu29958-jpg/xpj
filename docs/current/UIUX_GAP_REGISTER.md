@@ -164,6 +164,11 @@ that actually ships the fix.
 - Progress 2026-07-02: the recent 7-day module now adds an explicit previous-3-days
   versus recent-3-days comparison row before the supporting facts, so the reader
   can see direction and scale instead of reading a flat bar strip.
+- Progress 2026-07-02 trend-expression slice: the recent 7-day view now renders
+  a full-label daily bar strip in both the standalone trend fallback and the
+  Reports recent-window summary. The month trend chart keeps native Canvas
+  rendering but adds a product takeaway, average guide, and peak emphasis before
+  the supporting facts; no new chart dependency was added.
 
 ### ANDROID-2026-07-02-refresh-latency-priority
 

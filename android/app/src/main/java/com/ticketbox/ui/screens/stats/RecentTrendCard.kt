@@ -23,6 +23,7 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.LocalStatsTokens
 import com.ticketbox.ui.design.tabularNum
 import kotlin.math.abs
 
@@ -61,27 +62,34 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
             )
         } else {
             RecentTrendComparison(summary)
-            when {
-                summary.shouldUseSparseBreakdown -> RecentTrendSparseBreakdown(
+            RecentTrendDayChart(points = chartPoints, chartA11y = chartA11y)
+            RecentTrendMetricStrip(summary)
+            if (summary.shouldUseSparseBreakdown) {
+                RecentTrendSparseBreakdown(
                     points = chartPoints,
                     positiveDayCount = summary.positiveDayCount,
                     chartA11y = chartA11y,
                 )
-                summary.shouldUseDominanceBreakdown -> {
-                    RecentTrendMetricStrip(summary)
-                    RecentTrendDominanceBreakdown(summary = summary)
-                }
-                else -> {
-                    RecentTrendMetricStrip(summary)
-                    StatsSpendTrendChart(
-                        points = chartPoints,
-                        contentDescription = chartA11y,
-                    )
-                }
+            }
+            if (summary.shouldUseDominanceBreakdown) {
+                RecentTrendDominanceBreakdown(summary = summary)
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
+}
+
+@Composable
+private fun RecentTrendDayChart(
+    points: List<StatsSpendChartPoint>,
+    chartA11y: String,
+) {
+    StatsSpendTrendChart(
+        points = points,
+        contentDescription = chartA11y,
+        height = LocalStatsTokens.current.chart.recentHeight,
+        showAllLabels = true,
+    )
 }
 
 @Composable
