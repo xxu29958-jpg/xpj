@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ADR-0044 wave 1, cluster pending. 命名/约定见 res/values/strings.xml 头部注释。 -->
+<!-- 待确认页用户可见中文。 -->
 <resources>
     <!-- PendingScreen：列表行左右滑动动作标签 -->
     <string name="pending_swipe_confirm_label">确认</string>
@@ -14,19 +14,12 @@
     <string name="pending_upload_progress_title">正在创建待确认账单</string>
     <string name="pending_upload_progress_body">上传完成后会自动刷新。新截图仍然只是草稿，不会直接入账。</string>
 
-    <!-- 空态：section header -->
-    <string name="pending_empty_header_title_loading">正在整理待确认</string>
-    <string name="pending_empty_header_title">队列状态</string>
-    <string name="pending_empty_header_subtitle_readonly">当前角色只能查看，不能新增或修改</string>
-    <string name="pending_empty_header_subtitle_loading">同步完成后，这里会立刻显示需要核对的账单</string>
-    <string name="pending_empty_header_subtitle">上传截图后，会出现在这里等你确认</string>
-
-    <!-- 空态：内容卡 -->
+    <!-- 空态：内容面板 -->
     <string name="pending_empty_card_title_loading">正在整理待确认账单</string>
-    <string name="pending_empty_card_title">队列已清空</string>
-    <string name="pending_empty_card_body_readonly">服务端当前没有待确认账单。</string>
-    <string name="pending_empty_card_body_loading">截图上传后会先进入待确认区，确认后才会入账。</string>
-    <string name="pending_empty_card_body">截图上传后会先进入待确认区。核对清楚后，再把它记到账本里。</string>
+    <string name="pending_empty_card_title">暂无待确认账单</string>
+    <string name="pending_empty_card_body_readonly">当前没有待确认账单。</string>
+    <string name="pending_empty_card_body_loading">同步中，暂显示离线数据。</string>
+    <string name="pending_empty_card_body">新截图上传后会进入这里，确认后才会入账。</string>
 
     <!-- 空态：按钮 + iPhone 引导 -->
     <string name="pending_empty_guide_collapse">收起 iPhone 方法</string>
@@ -51,10 +44,10 @@
 
     <!-- 页头 PendingTop -->
     <string name="pending_top_title">待确认</string>
-    <string name="pending_top_subtitle_has_items">服务端待核对队列</string>
-    <string name="pending_top_subtitle_empty">服务端没有待核对截图</string>
-    <string name="pending_top_subtitle_empty_readonly">服务端当前没有待核对截图</string>
-    <string name="pending_top_metric_caption">服务端待核对</string>
+    <string name="pending_top_subtitle_has_items">逐条核对后入账</string>
+    <string name="pending_top_subtitle_empty">暂无待确认账单</string>
+    <string name="pending_top_subtitle_empty_readonly">暂无待确认账单</string>
+    <string name="pending_top_metric_caption">待核对截图</string>
     <string name="pending_top_duplicate_caption">疑似重复</string>
     <string name="pending_top_cta_readonly">只读角色不能上传</string>
     <string name="pending_top_cta_uploading">正在上传截图</string>
@@ -74,19 +67,19 @@
     <string name="pending_bulk_entry_button">批量确认</string>
 
     <!-- 工具 sheet PendingToolsSheet -->
-    <string name="pending_tools_title">待处理设置</string>
-    <string name="pending_tools_subtitle">调整列表密度，或重新整理待确认截图。</string>
+    <string name="pending_tools_title">列表与刷新</string>
+    <string name="pending_tools_subtitle">调整列表密度，或重新获取待确认账单。</string>
     <string name="pending_tools_density_compact">紧凑</string>
     <string name="pending_tools_density_comfortable">舒适</string>
     <string name="pending_tools_refresh_loading">刷新中</string>
     <string name="pending_tools_refresh">刷新待确认</string>
     <string name="pending_tools_done">完成</string>
 
-    <!-- ADR-0044 wave 2：PendingViewModel 状态/结果文案（Snackbar/Toast 经 message 字段渲染） -->
+    <!-- PendingViewModel 状态/结果文案。 -->
     <string name="pending_msg_load_failed">暂时加载不了，请稍后再试。</string>
     <string name="pending_msg_upload_unreadable">这张图片暂时无法读取，请换一张试试。</string>
     <string name="pending_msg_upload_ledger_switched">账本已切换，请重新选择截图上传。</string>
-    <string name="pending_msg_upload_succeeded">截图已上传，等你确认。</string>
+    <string name="pending_msg_upload_succeeded">截图已上传，待确认后入账。</string>
     <string name="pending_msg_upload_failed">没有上传成功，请稍后再试。</string>
     <string name="pending_msg_confirmed">已确认入账</string>
     <string name="pending_msg_confirmed_offline">已离线确认，联网后同步</string>
@@ -104,7 +97,7 @@
     <string name="pending_msg_undo_window_closed">无法撤销：账单已超过 5 分钟保留窗口，或已被清理。</string>
     <string name="pending_msg_undo_failed">撤销失败，请稍后再试。</string>
 
-    <!-- ADR-0044 wave 2：review 快速操作（quick edit / bulk）结果与校验文案 -->
+    <!-- 快速操作与批量确认结果文案。 -->
     <string name="pending_review_category_updated">已更新分类</string>
     <string name="pending_review_category_save_failed">没有保存分类，请稍后再试。</string>
     <string name="pending_review_merchant_blank">请输入商家名称。</string>
@@ -124,7 +117,7 @@
     <string name="pending_review_queue_skip_button">跳过</string>
     <string name="pending_review_queue_skip_last">已是最后一条，没有更多待补账单了。</string>
 
-    <!-- ADR-0044 wave 2 tail：sheet 内 plain Composable 字面量（wave 1 漏了 sheets/ 子目录） -->
+    <!-- 待确认处理 sheet 文案。 -->
     <!-- QuickMerchantSheet -->
     <string name="pending_quick_merchant_title">补一下商家</string>
     <string name="pending_quick_merchant_hint">保存后不会自动确认。空商家不能保存。</string>
@@ -135,7 +128,7 @@
 
     <!-- MissingAmountSheet -->
     <string name="pending_missing_amount_title">补一下金额</string>
-    <string name="pending_missing_amount_hint">金额按原始币种输入，例如 12.34。保存后由后端按消费时间计算入账金额。</string>
+    <string name="pending_missing_amount_hint">金额按原始币种输入，例如 12.34。保存后会按消费时间换算入账金额。</string>
     <string name="pending_missing_amount_label">金额 (%1$s)</string>
     <string name="pending_missing_amount_placeholder_no_fraction">例如 1200</string>
     <string name="pending_missing_amount_placeholder_fraction">例如 12.34</string>

@@ -15,22 +15,13 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.duplicateNoticeBody
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.tabularNum
 
-/**
- * DuplicateConfirmSheet — slice 3 M6。
- *
- * 三选一：
- *  - 保留两笔（markNotDuplicate）
- *  - 忽略当前（rejectExpense）
- *  - 取消
- *
- * 严格不自动删除、不静默确认。
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DuplicateConfirmSheetContent(
@@ -75,7 +66,7 @@ internal fun DuplicateConfirmSheetContent(
                 )
                 expense.duplicateReason?.takeIf { it.isNotBlank() }?.let {
                     Text(
-                        text = stringResource(R.string.pending_duplicate_sheet_reason, it),
+                        text = stringResource(R.string.pending_duplicate_sheet_reason, duplicateNoticeBody(it)),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )

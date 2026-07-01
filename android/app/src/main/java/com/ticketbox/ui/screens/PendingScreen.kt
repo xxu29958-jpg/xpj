@@ -55,13 +55,6 @@ import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.viewmodel.PendingUiState
 import com.valentinilk.shimmer.shimmer
 
-/**
- * 待确认账单页面入口（slice 3 拆分后）。
- *
- * 仅负责：路由 → 状态 wiring → BottomSheet 派发 → 列表组装。
- * BottomSheet 内容与子组件分布在 `ui.screens.pending` 子包，
- * 业务事件全部经由 `PendingViewModel`（含 review action 扩展函数）。
- */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun PendingScreen(
@@ -85,8 +78,6 @@ fun PendingScreen(
     onIgnoreDuplicate: (Expense) -> Unit = {},
     onSkipReviewField: () -> Unit = {},
     onCloseSheet: () -> Unit = {},
-    // ADR-0038 undo: 撤销 snackbar 的回调,默认 no-op 兼容旧调用方。
-    // 自动消失由 VM 拥有,不再走 UI 回调。
     onUndoReject: () -> Unit = {},
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
@@ -105,10 +96,7 @@ fun PendingScreen(
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
     val haptics = rememberAppHaptics()
-    // 待确认清零庆祝：仅在「已结算」(非 loading) 帧之间从 >0 → 0 才触发 1.5s 动画。
-    // A3 首屏缓存种子会在 loading 期间先把 items 铺满、随后被空的网络响应替换；若把
-    // 这种 seed→空响应 也当「清零」，会在用户其实没清任何东西（是别端清的）时误放
-    // 庆祝。故 loading 帧一律跳过：既不比较基线也不更新基线，基线只取已结算计数。
+    // Trigger celebration only when a settled non-loading queue goes from non-empty to empty.
     var previousItemCount by remember { mutableStateOf(if (state.loading) 0 else state.items.size) }
     var showCelebration by remember { mutableStateOf(false) }
     LaunchedEffect(state.items.size, state.loading) {
@@ -151,8 +139,6 @@ fun PendingScreen(
         bulkConfirmed = state.bulkConfirm.succeeded,
         bulkTotal = state.bulkConfirm.total,
         reviewRemaining = state.reviewRemaining,
-        // 连续审阅：保存失败时把状态文案钉进 sheet 内（镜像批 9）。成功保存会推进/
-        // 关闭并清掉文案，故 sheet 内实际只在失败留守时出现这条。
         statusMessage = state.message?.asString(),
         onSaveQuickCategory = onSaveQuickCategory,
         onSaveQuickMerchant = onSaveQuickMerchant,
@@ -178,7 +164,6 @@ fun PendingScreen(
                 uploading = state.uploading,
                 readOnly = readOnly,
                 onUploadScreenshot = onUploadScreenshot,
-                // 显示模式按钮只在列表有内容时才显示——空态用 EmptyPendingState 自带 CTA
                 trailingAction = if (state.items.isNotEmpty()) {
                     {
                         PendingDisplayModeButton(
@@ -193,31 +178,27 @@ fun PendingScreen(
             )
         }
 
-        item {
-            AppDataAuthorityStrip(
-                tone = when {
-                    readOnly -> DataAuthorityTone.ReadOnly
-                    state.loading -> DataAuthorityTone.Refreshing
-                    state.showingCachedSnapshot -> DataAuthorityTone.LocalCache
-                    else -> DataAuthorityTone.Backend
-                },
-                localCacheBodyRes = R.string.components_data_authority_pending_cache_body,
-            )
+        val authorityTone = when {
+            readOnly -> DataAuthorityTone.ReadOnly
+            state.loading -> DataAuthorityTone.Refreshing
+            state.showingCachedSnapshot -> DataAuthorityTone.LocalCache
+            else -> DataAuthorityTone.Backend
+        }
+        if (authorityTone != DataAuthorityTone.Backend) {
+            item {
+                AppDataAuthorityStrip(
+                    tone = authorityTone,
+                    localCacheBodyRes = R.string.components_data_authority_pending_cache_body,
+                )
+            }
         }
 
         if (state.items.isEmpty() && !readOnly) {
             item { PendingClearCelebration(visible = showCelebration) }
         }
 
-        // ADR-0038 undo: 撤销 snackbar 排在 message 上方 — 用户看到的优先级顺序是
-        // "刚删的能撤销" > "上次操作的状态消息" > 列表内容。5s 计时由 VM 拥有
-        // (PendingViewModel.startUndoTimer),Compose 层只负责渲染。item key
-        // 用 expense id,防止 LazyColumn 因为上方 transient item 出现/消失重排时把 banner 当成"新 item"重组。
         state.undoableExpense?.let { undoable ->
             item(key = "undo-${undoable.id}") {
-                // Pass the expense so banner can show merchant/amount —
-                // disambiguates "撤的是 A 还是 B" in the
-                // Synced(A) + Queued(B) preserve-prior-banner case.
                 PendingUndoRejectBanner(expense = undoable, onUndo = onUndoReject)
             }
         }
@@ -254,7 +235,6 @@ fun PendingScreen(
             }
 
             else -> {
-                // PendingHeader 已合并到 PendingTop 的 trailingAction —— 这里直接进 filter bar。
                 item {
                     NeedsReviewFilterBar(
                         selected = needsReviewFilter,
@@ -281,8 +261,6 @@ fun PendingScreen(
                 items(filteredItems, key = { it.id }) { expense ->
                     val canSwipe = !readOnly && expense.id !in state.actionInProgressIds
                     val swipeTokens = LocalSwipeActionTokens.current
-                    // v0.10：左滑揭示 confirm 动作（沿用现有 onConfirm 的条件分支：缺金额/重复/缺分类/缺商家时跳 sheet），
-                    // 右滑揭示 ignore 动作（直接 reject）。background 颜色完全走 LocalSwipeActionTokens，深色主题下也可读。
                     val leftAction = if (canSwipe) SwipeActionConfig(
                         icon = Icons.Filled.CheckCircle,
                         label = stringResource(R.string.pending_swipe_confirm_label),

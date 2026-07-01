@@ -29,11 +29,6 @@ import com.ticketbox.ui.screens.pending.sheets.QuickMerchantSheetContent
 import com.ticketbox.ui.screens.pending.sheets.ReviewSheetChrome
 import com.ticketbox.viewmodel.PendingSheet
 
-/**
- * slice 3 M7 — Review BottomSheet 派发 + 批量确认入口卡片。
- *
- * 与 PendingScreen 分文件存放，保持 PendingScreen.kt ≤ 280 行。
- */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun PendingReviewSheetHost(
@@ -58,8 +53,7 @@ internal fun PendingReviewSheetHost(
     onConfirmReady: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // 三个快补 sheet 共享的连续审阅外壳（计数/状态/跳过 + 保存中标记）。各 sheet 的
-    // saving 取「当前票是否在 actionInProgressIds 里」，其余三项全 sheet 同值。
+    // Quick-fix sheets share the same review chrome and saving-state rule.
     fun chromeFor(expenseId: Long) = ReviewSheetChrome(
         saving = expenseId in actionInProgressIds,
         remaining = reviewRemaining,

@@ -17,18 +17,6 @@ import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-/**
- * BulkConfirm BottomSheet — slice 3 M5。
- *
- * 调用方负责传入「可直接确认」筛选下的统计：
- *  - readyCount：amount 完整、非 suspected 的可确认数量
- *  - missingAmountSkipCount：缺金额会被跳过的数量
- *  - duplicateSkipCount：疑似重复会被跳过、需单独二次确认的数量
- *
- * 操作：
- *  - 二次确认 → onConfirmReady() 触发 ViewModel.confirmReadyExpenses
- *  - 缺金额跳过，疑似重复跳过；任何失败不影响其他项
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BulkConfirmSheetContent(

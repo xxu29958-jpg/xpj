@@ -14,9 +14,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -54,20 +54,6 @@ internal fun EmptyPendingState(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        AppSectionHeader(
-            title = if (loading) {
-                stringResource(R.string.pending_empty_header_title_loading)
-            } else {
-                stringResource(R.string.pending_empty_header_title)
-            },
-            subtitle = if (readOnly) {
-                stringResource(R.string.pending_empty_header_subtitle_readonly)
-            } else if (loading) {
-                stringResource(R.string.pending_empty_header_subtitle_loading)
-            } else {
-                stringResource(R.string.pending_empty_header_subtitle)
-            },
-        )
         PendingStateTitle(
             icon = Icons.Filled.AddPhotoAlternate,
             title = if (loading) {
@@ -108,26 +94,31 @@ internal fun EmptyPendingState(
             )
         }
         if (showUploadGuide && !readOnly) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            ) {
-                Text(
-                    text = stringResource(R.string.pending_empty_guide_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-                Text(stringResource(R.string.pending_empty_guide_step1))
-                Text(stringResource(R.string.pending_empty_guide_step2))
-                Text(stringResource(R.string.pending_empty_guide_step3))
-            }
+            PendingUploadGuide()
         }
     }
 }
 
 @Composable
+private fun PendingUploadGuide() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Text(
+            text = stringResource(R.string.pending_empty_guide_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(stringResource(R.string.pending_empty_guide_step1))
+        Text(stringResource(R.string.pending_empty_guide_step2))
+        Text(stringResource(R.string.pending_empty_guide_step3))
+    }
+}
+
+@Composable
 private fun PendingStateTitle(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     body: String,
 ) {

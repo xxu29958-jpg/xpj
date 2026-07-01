@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,13 +9,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,6 +82,7 @@ data class TodayScreenState(
         get() = when {
             pending.readOnly -> DataAuthorityTone.ReadOnly
             pending.loading || monthly.loading -> DataAuthorityTone.Refreshing
+            pending.showingCachedSnapshot -> DataAuthorityTone.LocalCache
             monthly.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
             monthly.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
             else -> null
@@ -98,7 +104,7 @@ fun TodayScreen(
     actions: TodayActions,
 ) {
     AppScrollableContent(
-        role = AppPageRole.Pending,
+        role = AppPageRole.Today,
         isRefreshing = state.pending.loading || state.monthly.loading,
         onRefresh = actions.onRefresh,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
@@ -109,15 +115,21 @@ fun TodayScreen(
                 subtitle = stringResource(R.string.today_header_subtitle),
             )
         }
-        state.authorityTone?.let { tone ->
+        state.authorityTone?.takeIf { it != DataAuthorityTone.Backend }?.let { tone ->
             item {
                 AppDataAuthorityStrip(tone = tone)
             }
         }
         item { TodayOverview(state = state) }
         item { TodayActionRow(state = state, actions = actions) }
-        item { TodayWorkstream(state = state) }
-        item { TodayMonthSignals(state = state) }
+        item { TodayWorkstream(state = state, onOpenPending = actions.onOpenPending) }
+        item {
+            TodayMonthSignals(
+                state = state,
+                onOpenLedger = actions.onOpenLedger,
+                onOpenInsights = actions.onOpenInsights,
+            )
+        }
     }
 }
 
@@ -192,7 +204,7 @@ private fun TodayMonthSummary(stats: MonthlyStats?) {
                 stepSize = 1.sp,
             ),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Clip,
         )
         Text(
             text = stringResource(R.string.today_month_count, stats?.count ?: 0),
@@ -229,7 +241,10 @@ private fun TodayActionRow(
 }
 
 @Composable
-private fun TodayWorkstream(state: TodayScreenState) {
+private fun TodayWorkstream(
+    state: TodayScreenState,
+    onOpenPending: () -> Unit,
+) {
     val pendingLine = if (state.pendingCount == 0) {
         stringResource(R.string.today_pending_empty)
     } else {
@@ -240,12 +255,14 @@ private fun TodayWorkstream(state: TodayScreenState) {
             label = stringResource(R.string.today_metric_pending),
             value = stringResource(R.string.today_count_receipts, state.pendingCount),
             caption = pendingLine,
+            onClick = onOpenPending,
         )
         if (state.readyToConfirmCount > 0) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
             TodaySignalRow(
                 label = stringResource(R.string.today_metric_ready),
                 value = stringResource(R.string.today_count_receipts, state.readyToConfirmCount),
+                onClick = onOpenPending,
             )
         }
         if (state.missingAmountCount > 0 || state.duplicateCount > 0) {
@@ -277,7 +294,11 @@ private fun TodayWorkstream(state: TodayScreenState) {
 }
 
 @Composable
-private fun TodayMonthSignals(state: TodayScreenState) {
+private fun TodayMonthSignals(
+    state: TodayScreenState,
+    onOpenLedger: () -> Unit,
+    onOpenInsights: () -> Unit,
+) {
     val currencyDisplay = LocalCurrencyDisplay.current
     val topCategory = state.topCategory
     val recentUploadValue = state.monthly.lastUploadAt?.let(::displayTime)
@@ -294,6 +315,7 @@ private fun TodayMonthSignals(state: TodayScreenState) {
             label = stringResource(R.string.today_metric_top_category),
             value = topCategory?.name ?: stringResource(R.string.today_top_category_empty),
             caption = topCategory?.amountCents?.let { formatDisplayAmount(it, currencyDisplay) },
+            onClick = onOpenInsights,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
         Row(
@@ -304,6 +326,7 @@ private fun TodayMonthSignals(state: TodayScreenState) {
                 label = stringResource(R.string.today_metric_recent_upload),
                 value = recentUploadValue,
                 modifier = Modifier.weight(1f),
+                onClick = onOpenLedger,
             )
             TodayVerticalDivider()
             TodaySmallSignal(
@@ -313,111 +336,4 @@ private fun TodayMonthSignals(state: TodayScreenState) {
             )
         }
     }
-}
-
-@Composable
-private fun TodaySignalSection(
-    title: String,
-    content: @Composable () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-    ) {
-        Text(
-            text = title,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        content()
-    }
-}
-
-@Composable
-private fun TodaySignalRow(
-    label: String,
-    value: String,
-    caption: String? = null,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.miniGap),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(
-                text = label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (caption != null) {
-                Text(
-                    text = caption,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = 13.sp,
-                maxFontSize = 20.sp,
-                stepSize = 1.sp,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun TodaySmallSignal(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.padding(vertical = AppSpacing.miniGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun TodayVerticalDivider() {
-    Box(
-        modifier = Modifier
-            .width(1.dp)
-            .height(44.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
-    )
 }

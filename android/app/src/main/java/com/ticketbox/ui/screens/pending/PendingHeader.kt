@@ -17,12 +17,6 @@ import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-/**
- * 待确认页的"显示密度"枚举 + 工具 sheet。
- *
- * v0.11 重构：原 [PendingHeader] composable 被合并到 [PendingTop] 的 trailingAction，
- * 不再单独渲染"待处理"section title——避免和页头 AppPageHeader 的"待确认"重复出现。
- */
 internal enum class PendingDisplayMode {
     Compact,
     Comfortable,

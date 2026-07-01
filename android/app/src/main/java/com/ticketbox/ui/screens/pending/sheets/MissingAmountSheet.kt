@@ -30,12 +30,6 @@ import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-/**
- * MissingAmount BottomSheet — slice 3 M4。
- * 金额输入以原始币种显示，提交后由后端计算入账金额。
- * 「保存草稿」走 updateExpense，「保存并确认」走 updateExpense + confirmExpense。
- * 不允许负数；空值不可确认；不直接写 confirmed。
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MissingAmountSheetContent(

@@ -27,10 +27,6 @@ import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-/**
- * QuickCategory BottomSheet — slice 3 M2。
- * 仅触发 ViewModel.saveQuickCategory；不直接调用 Repository/API。
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun QuickCategorySheetContent(

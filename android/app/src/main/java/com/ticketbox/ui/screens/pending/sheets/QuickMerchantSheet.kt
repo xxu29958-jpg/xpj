@@ -28,10 +28,6 @@ import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-/**
- * QuickMerchant BottomSheet — slice 3 M3。
- * 仅触发 ViewModel.saveQuickMerchant；trim 空白；空字符串拒绝提交。
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun QuickMerchantSheetContent(

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="today_header_title">今日</string>
-    <string name="today_header_subtitle">待处理队列 · 本月账面</string>
+    <string name="today_header_subtitle">确认、补记和本月概览</string>
     <string name="today_ledger_label">当前账本</string>
     <string name="today_ledger_unknown">未命名账本</string>
     <string name="today_month_spend_label">本月已确认</string>
@@ -22,7 +22,7 @@
     <string name="today_top_category_empty">暂无分类</string>
     <string name="today_recent_upload_empty">暂无上传</string>
     <string name="today_sync_loading">同步中</string>
-    <string name="today_sync_local">本机估算</string>
+    <string name="today_sync_local">离线数据</string>
     <string name="today_sync_error">需要重试</string>
     <string name="today_sync_ready">已更新</string>
     <string name="today_sync_idle">待同步</string>
