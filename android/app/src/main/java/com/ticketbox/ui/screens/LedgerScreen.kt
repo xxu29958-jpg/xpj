@@ -201,7 +201,6 @@ fun LedgerScreen(
                     onOpenMonthPicker = { showMonthPicker = true },
                     onOpenTools = { showLedgerTools = true },
                     onManualAdd = { if (!state.readOnly) showManualSheet = true },
-                    onCategoryChange = onCategoryChange,
                     onMonthChange = onMonthChange,
                 )
             }

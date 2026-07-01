@@ -1,49 +1,18 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.domain.model.DASHBOARD_CARD_GOALS
@@ -80,11 +49,11 @@ import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.StatsOverviewTrendData
 import com.ticketbox.ui.screens.stats.StatsLeadInsight
+import com.ticketbox.ui.screens.stats.StatsPlanningActions
+import com.ticketbox.ui.screens.stats.StatsTopPanel
+import com.ticketbox.ui.screens.stats.StatsTopPanelActions
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalStatsTokens
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
@@ -144,13 +113,17 @@ fun StatsScreen(
                 state = state,
                 selectedTab = selectedStatsTab,
                 visibleDashboardKeys = visibleDashboardKeys,
-                onOpenMonthPicker = { showMonthPicker = true },
-                onTagChange = onTagChange,
-                onTabChange = { selectedStatsTab = it },
-                onOpenBudget = onOpenBudget,
-                onOpenRecurring = onOpenRecurring,
-                onOpenIncomePlans = onOpenIncomePlans,
-                onOpenDebtGoals = onOpenDebtGoals,
+                actions = StatsTopPanelActions(
+                    onOpenMonthPicker = { showMonthPicker = true },
+                    onTagChange = onTagChange,
+                    onTabChange = { selectedStatsTab = it },
+                    planning = StatsPlanningActions(
+                        onOpenBudget = onOpenBudget,
+                        onOpenRecurring = onOpenRecurring,
+                        onOpenIncomePlans = onOpenIncomePlans,
+                        onOpenDebtGoals = onOpenDebtGoals,
+                    ),
+                ),
             )
         }
         authorityTone?.takeIf { it != DataAuthorityTone.Backend }?.let { tone ->
@@ -339,169 +312,6 @@ fun StatsScreen(
     }
 }
 
-@Composable
-private fun StatsTopPanel(
-    state: StatsUiState,
-    selectedTab: StatsTab,
-    visibleDashboardKeys: List<String>,
-    onOpenMonthPicker: () -> Unit,
-    onTagChange: (String) -> Unit,
-    onTabChange: (StatsTab) -> Unit,
-    onOpenBudget: () -> Unit,
-    onOpenRecurring: () -> Unit,
-    onOpenIncomePlans: () -> Unit,
-    onOpenDebtGoals: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-        AppPageHeader(
-            title = stringResource(R.string.stats_header_title),
-            action = {
-                StatsPlanningMenu(
-                    onOpenBudget = onOpenBudget,
-                    onOpenRecurring = onOpenRecurring,
-                    onOpenIncomePlans = onOpenIncomePlans,
-                    onOpenDebtGoals = onOpenDebtGoals,
-                )
-            },
-        )
-        StatsFilterRow(
-            state = state,
-            onOpenMonthPicker = onOpenMonthPicker,
-            onTagChange = onTagChange,
-        )
-        StatsTabRow(
-            selectedTab = selectedTab,
-            dashboardCards = state.dashboardCards,
-            visibleDashboardKeys = visibleDashboardKeys,
-            onTabChange = onTabChange,
-        )
-    }
-}
-
-@Composable
-private fun StatsPlanningMenu(
-    onOpenBudget: () -> Unit,
-    onOpenRecurring: () -> Unit,
-    onOpenIncomePlans: () -> Unit,
-    onOpenDebtGoals: () -> Unit,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Box {
-        StatsPlanningMenuTrigger(
-            expanded = menuOpen,
-            onOpen = { menuOpen = true },
-        )
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_budget)) },
-                onClick = { menuOpen = false; onOpenBudget() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_recurring)) },
-                onClick = { menuOpen = false; onOpenRecurring() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
-                onClick = { menuOpen = false; onOpenIncomePlans() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
-                onClick = { menuOpen = false; onOpenDebtGoals() },
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatsPlanningMenuTrigger(
-    expanded: Boolean,
-    onOpen: () -> Unit,
-) {
-    val visuals = LocalThemeVisuals.current
-    val controlTokens = LocalStatsTokens.current.control
-    val menuDescription = stringResource(R.string.stats_header_menu_planning_description)
-    val menuStateDescription = stringResource(
-        if (expanded) {
-            R.string.stats_header_menu_planning_expanded
-        } else {
-            R.string.stats_header_menu_planning_collapsed
-        },
-    )
-    Row(
-        modifier = Modifier
-            .clearAndSetSemantics {
-                contentDescription = menuDescription
-                stateDescription = menuStateDescription
-                role = Role.Button
-                onClick(action = {
-                    onOpen()
-                    true
-                })
-            }
-            .height(controlTokens.height)
-            .widthIn(min = 48.dp)
-            .clip(RoundedCornerShape(AppRadius.pill))
-            .background(visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha))
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha),
-                shape = RoundedCornerShape(AppRadius.pill),
-            )
-            .clickable(role = Role.Button, onClick = onOpen)
-            .padding(horizontal = controlTokens.horizontalPadding),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.stats_header_menu_planning),
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Icon(
-            imageVector = Icons.Default.ArrowDropDown,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-        )
-    }
-}
-
-@Composable
-private fun StatsTabRow(
-    selectedTab: StatsTab,
-    dashboardCards: List<DashboardCard>,
-    visibleDashboardKeys: List<String>,
-    onTabChange: (StatsTab) -> Unit,
-) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        items(StatsTab.entries, key = { it.name }) { tab ->
-            StatsSelectablePill(
-                label = statsTabLabel(tab, dashboardCards),
-                selected = selectedTab == tab,
-                enabled = statsDashboardKeysForTab(tab, visibleDashboardKeys).isNotEmpty(),
-                onClick = { onTabChange(tab) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun statsTabLabel(
-    tab: StatsTab,
-    dashboardCards: List<DashboardCard>,
-): String {
-    val titleByKey = dashboardCards
-        .filter { it.title.isNotBlank() }
-        .associate { it.key to it.title }
-    return when (tab) {
-        StatsTab.Overview -> titleByKey[DASHBOARD_CARD_MONTHLY_SPEND] ?: stringResource(R.string.stats_tab_overview)
-        StatsTab.Trend -> titleByKey[DASHBOARD_CARD_REPORTS] ?: stringResource(R.string.stats_tab_trend)
-        StatsTab.Category -> stringResource(R.string.stats_tab_category)
-        StatsTab.Budget -> titleByKey[DASHBOARD_CARD_BUDGET] ?: stringResource(R.string.stats_tab_budget)
-        StatsTab.Goals -> titleByKey[DASHBOARD_CARD_GOALS] ?: stringResource(R.string.stats_tab_goals)
-    }
-}
-
 private fun orderedStatsDashboardKeys(keys: List<String>): List<String> {
     val preferredOrder = listOf(
         DASHBOARD_CARD_MONTHLY_SPEND,
@@ -520,121 +330,4 @@ private fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
         return state.dailyTrend.sumOf { it.amountCents.coerceAtLeast(0L) }
     }
     return state.lifestyleStats?.recent7DaysAmountCents
-}
-
-@Composable
-private fun StatsFilterRow(
-    state: StatsUiState,
-    onOpenMonthPicker: () -> Unit,
-    onTagChange: (String) -> Unit,
-) {
-    val tags = (state.tags + state.stats?.byTag.orEmpty().map { it.tag })
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .distinctBy { it.lowercase() }
-        .let { items ->
-            if (state.selectedTag.isBlank() || items.any { it.equals(state.selectedTag, ignoreCase = true) }) {
-                items
-            } else {
-                listOf(state.selectedTag) + items
-            }
-        }
-        .take(12)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        item {
-            StatsSelectablePill(
-                selected = true,
-                onClick = onOpenMonthPicker,
-                label = state.month.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
-                    ?: stringResource(R.string.stats_filter_all_months),
-                trailingIcon = { FilterTrailingIcon(Icons.Filled.ExpandMore, stringResource(R.string.stats_filter_pick_month_description)) },
-            )
-        }
-        if (tags.isNotEmpty() || state.selectedTag.isNotBlank()) {
-            item {
-                StatsSelectablePill(
-                    selected = state.selectedTag.isBlank(),
-                    onClick = { onTagChange("") },
-                    label = stringResource(R.string.stats_filter_all_tags),
-                )
-            }
-        }
-        items(tags, key = { it }) { tag ->
-            val selected = state.selectedTag.equals(tag, ignoreCase = true)
-            StatsSelectablePill(
-                selected = selected,
-                onClick = { onTagChange(if (selected) "" else tag) },
-                label = "#$tag",
-                trailingIcon = if (selected) {
-                    { FilterTrailingIcon(Icons.Filled.Close, stringResource(R.string.stats_filter_clear_tag_description)) }
-                } else {
-                    null
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatsSelectablePill(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    trailingIcon: (@Composable () -> Unit)? = null,
-) {
-    val visuals = LocalThemeVisuals.current
-    val controlTokens = LocalStatsTokens.current.control
-    val shape = RoundedCornerShape(AppRadius.pill)
-    val labelColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-        selected -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Row(
-        modifier = Modifier
-            .height(controlTokens.height)
-            .clip(shape)
-            .background(
-                if (selected) {
-                    visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha)
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = controlTokens.unselectedAlpha)
-                },
-            )
-            .border(
-                width = 1.dp,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = controlTokens.borderAlpha)
-                },
-                shape = shape,
-            )
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = controlTokens.horizontalPadding),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = labelColor,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1,
-        )
-        trailingIcon?.invoke()
-    }
-}
-
-@Composable
-private fun FilterTrailingIcon(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-) {
-    Icon(
-        imageVector = icon,
-        contentDescription = contentDescription,
-        modifier = Modifier.size(16.dp),
-    )
 }

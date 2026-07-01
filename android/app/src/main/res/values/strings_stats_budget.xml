@@ -22,6 +22,7 @@
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
+    <string name="stats_filter_tag_menu_description">选择标签</string>
     <string name="stats_filter_clear_tag_description">清除标签筛选</string>
 
     <!-- StatsOverviewCard：本月支出 hero 卡 -->
@@ -112,7 +113,7 @@
 
     <!-- RecentTrendCard / RecentUploadCard：最近趋势 + 最近上传 -->
     <string name="stats_recent_trend_title">最近 7 天趋势</string>
-    <string name="stats_recent_trend_source">离线数据</string>
+    <string name="stats_recent_trend_source">最近记录</string>
     <string name="stats_recent_trend_empty">暂无最近支出，更新后显示每日变化。</string>
     <string name="stats_recent_trend_total">7 天合计</string>
     <string name="stats_recent_trend_average">日均</string>
@@ -181,7 +182,7 @@
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
     <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，先显示发生支出的日期和金额；数据多起来后会按时间段汇总。</string>
     <string name="stats_reports_recent_window_title">最近 7 天</string>
-    <string name="stats_reports_recent_window_source">离线数据</string>
+    <string name="stats_reports_recent_window_source">最近记录</string>
     <string name="stats_reports_recent_window_peak_share">%1$s 占 7 天 %2$d%%，其余日均 %3$s</string>
     <string name="stats_reports_recent_window_active_days">有支出</string>
     <string name="stats_reports_recent_window_active_days_value">%1$d 天</string>

@@ -63,6 +63,8 @@
     <string name="ledger_inline_month_prev">上一个月</string>
     <string name="ledger_inline_month_next">下一个月</string>
     <string name="ledger_inline_category_all">全部分类</string>
+    <string name="ledger_inline_filter">筛选</string>
+    <string name="ledger_inline_filter_count">%1$d 项筛选</string>
     <string name="ledger_inline_searched">已搜索</string>
     <string name="ledger_inline_search_note">搜索备注</string>
     <string name="ledger_inline_more">更多</string>
@@ -80,7 +82,7 @@
     <string name="ledger_header_total_suffix">%1$s 支出</string>
     <string name="ledger_header_count_label">账单</string>
     <string name="ledger_header_count_value">%1$d 笔</string>
-    <string name="ledger_header_subtitle">筛选、搜索和导出在工具里</string>
+    <string name="ledger_header_subtitle">筛选、搜索、导出</string>
     <string name="ledger_header_add_button">记一笔</string>
 
     <!-- LedgerItems：账本条目（卡片/列表/表格） -->

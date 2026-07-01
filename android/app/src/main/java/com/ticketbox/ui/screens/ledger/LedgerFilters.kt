@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -20,22 +18,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.domain.model.shiftLedgerMonth
-import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerUiState
-
-private const val LedgerQuickCategoryLimit = 4
 
 @Composable
 internal fun LedgerFilterPanel(
@@ -43,7 +38,6 @@ internal fun LedgerFilterPanel(
     onOpenMonthPicker: () -> Unit,
     onOpenTools: () -> Unit,
     onManualAdd: () -> Unit,
-    onCategoryChange: (String) -> Unit,
     onMonthChange: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
@@ -56,7 +50,6 @@ internal fun LedgerFilterPanel(
             state = state,
             onOpenMonthPicker = onOpenMonthPicker,
             onOpenTools = onOpenTools,
-            onCategoryChange = onCategoryChange,
             onMonthChange = onMonthChange,
         )
     }
@@ -67,147 +60,84 @@ private fun LedgerInlineFilters(
     state: LedgerUiState,
     onOpenMonthPicker: () -> Unit,
     onOpenTools: () -> Unit,
-    onCategoryChange: (String) -> Unit,
     onMonthChange: (String) -> Unit,
 ) {
-    val hasQuery = state.query.isNotBlank()
-    val hasTag = state.tagFilter.isNotBlank()
-    val quickCategories = remember(state.categories, state.items, state.categoryFilter) {
-        ledgerQuickCategories(
-            categories = state.categories,
-            visibleItems = state.items,
-            selectedCategory = state.categoryFilter,
-        )
-    }
-    val selectedOutsideQuick = state.categoryFilter.isNotBlank() && state.categoryFilter !in quickCategories
+    val activeFilterCount = ledgerActiveFilterCount(state)
     // Prev/next only when a concrete month is selected; "全部月份" has no neighbor.
     val previousMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, -1L) }
     val nextMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, 1L) }
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        ) {
-            if (previousMonth != null) {
-                LedgerMonthArrowChip(
-                    icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    description = stringResource(R.string.ledger_inline_month_prev),
-                    onClick = { onMonthChange(previousMonth) },
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (previousMonth != null) {
+            LedgerMonthArrowChip(
+                icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                description = stringResource(R.string.ledger_inline_month_prev),
+                onClick = { onMonthChange(previousMonth) },
+            )
+        }
+        AppFilterChip(
+            selected = true,
+            onClick = onOpenMonthPicker,
+            label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                ?: stringResource(R.string.ledger_inline_month_all),
+            modifier = Modifier.weight(1f),
+            trailingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.ExpandMore,
+                    contentDescription = stringResource(R.string.ledger_inline_month_picker_description),
+                    modifier = Modifier.size(FilterChipDefaults.IconSize),
                 )
-            }
-            AppFilterChip(
-                selected = true,
-                onClick = onOpenMonthPicker,
-                label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
-                    ?: stringResource(R.string.ledger_inline_month_all),
-                modifier = Modifier.weight(1f),
-                trailingIcon = {
+            },
+        )
+        if (nextMonth != null) {
+            LedgerMonthArrowChip(
+                icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                description = stringResource(R.string.ledger_inline_month_next),
+                onClick = { onMonthChange(nextMonth) },
+            )
+        }
+        AppFilterChip(
+            selected = activeFilterCount > 0,
+            onClick = onOpenTools,
+            label = ledgerInlineFilterLabel(state, activeFilterCount),
+            leadingIcon = if (activeFilterCount > 0) {
+                {
                     Icon(
-                        imageVector = Icons.Filled.ExpandMore,
-                        contentDescription = stringResource(R.string.ledger_inline_month_picker_description),
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = null,
                         modifier = Modifier.size(FilterChipDefaults.IconSize),
                     )
-                },
-            )
-            if (nextMonth != null) {
-                LedgerMonthArrowChip(
-                    icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    description = stringResource(R.string.ledger_inline_month_next),
-                    onClick = { onMonthChange(nextMonth) },
-                )
-            }
-        }
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-            contentPadding = PaddingValues(end = AppSpacing.compactPadding),
-        ) {
-            item {
-                SelectableFilterChip(
-                    selected = state.categoryFilter.isBlank(),
-                    label = stringResource(R.string.ledger_inline_category_all),
-                    onClick = { onCategoryChange("") },
-                )
-            }
-            items(quickCategories, key = { it }) { category ->
-                SelectableFilterChip(
-                    selected = state.categoryFilter == category,
-                    label = category,
-                    onClick = { onCategoryChange(category) },
-                )
-            }
-            item {
-                AppFilterChip(
-                    selected = hasQuery,
-                    onClick = onOpenTools,
-                    label = if (hasQuery) {
-                        stringResource(R.string.ledger_inline_searched)
-                    } else {
-                        stringResource(R.string.ledger_inline_search_note)
-                    },
-                    leadingIcon = if (hasQuery) {
-                        {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(FilterChipDefaults.IconSize),
-                            )
-                        }
-                    } else {
-                        null
-                    },
-                )
-            }
-            if (hasTag) {
-                item {
-                    AppFilterChip(
-                        selected = true,
-                        onClick = onOpenTools,
-                        label = "#${state.tagFilter}",
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(FilterChipDefaults.IconSize),
-                            )
-                        },
-                    )
                 }
-            }
-            item {
-                AppFilterChip(
-                    selected = selectedOutsideQuick,
-                    onClick = onOpenTools,
-                    label = if (selectedOutsideQuick) {
-                        state.categoryFilter
-                    } else {
-                        stringResource(R.string.ledger_inline_more)
-                    },
-                )
-            }
-        }
+            } else {
+                null
+            },
+        )
     }
 }
 
-private fun ledgerQuickCategories(
-    categories: List<String>,
-    visibleItems: List<Expense>,
-    selectedCategory: String,
-): List<String> {
-    val visibleByFrequency = visibleItems
-        .asSequence()
-        .map { it.category.trim() }
-        .filter { it.isNotBlank() }
-        .groupingBy { it }
-        .eachCount()
-        .entries
-        .sortedByDescending { it.value }
-        .map { it.key }
-    return (listOf(selectedCategory.trim()) + visibleByFrequency + categories)
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .distinctBy { it.lowercase() }
-        .take(LedgerQuickCategoryLimit)
+@Composable
+private fun ledgerInlineFilterLabel(
+    state: LedgerUiState,
+    activeFilterCount: Int,
+): String {
+    return when {
+        activeFilterCount == 0 -> stringResource(R.string.ledger_inline_filter)
+        activeFilterCount > 1 -> stringResource(R.string.ledger_inline_filter_count, activeFilterCount)
+        state.categoryFilter.isNotBlank() -> state.categoryFilter
+        state.tagFilter.isNotBlank() -> "#${state.tagFilter}"
+        else -> stringResource(R.string.ledger_inline_searched)
+    }
+}
+
+private fun ledgerActiveFilterCount(state: LedgerUiState): Int {
+    var count = 0
+    if (state.categoryFilter.isNotBlank()) count += 1
+    if (state.tagFilter.isNotBlank()) count += 1
+    if (state.query.isNotBlank()) count += 1
+    return count
 }
 
 /**
