@@ -12,10 +12,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -36,10 +42,18 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.TagManagementViewModel
 import kotlinx.coroutines.delay
+
+private data class TagRowActions(
+    val onRename: (ManagedTag) -> Unit,
+    val onMerge: (ManagedTag) -> Unit,
+    val onDelete: (ManagedTag) -> Unit,
+)
 
 @Composable
 fun TagManagementScreen(
@@ -53,6 +67,16 @@ fun TagManagementScreen(
     var merging by remember { mutableStateOf<ManagedTag?>(null) }
     var deleting by remember { mutableStateOf<ManagedTag?>(null) }
     var preselectedMergeTarget by remember { mutableStateOf<ManagedTag?>(null) }
+    val actions = remember {
+        TagRowActions(
+            onRename = { tag -> renaming = tag },
+            onMerge = { tag ->
+                preselectedMergeTarget = null
+                merging = tag
+            },
+            onDelete = { tag -> deleting = tag },
+        )
+    }
 
     // After a committed tag mutation, refresh stats filters that may still show old names.
     LaunchedEffect(state.tagsChangedRevision) {
@@ -122,7 +146,10 @@ fun TagManagementScreen(
                         viewModel.deleteTag(tag)
                     },
                 ) {
-                    Text(stringResource(R.string.tag_management_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
+                    Text(
+                        text = stringResource(R.string.tag_management_delete_dialog_confirm),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             },
             dismissButton = {
@@ -137,128 +164,253 @@ fun TagManagementScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
-        // Online delete/merge exposes a short undo window.
         state.undoable?.let { handle ->
+            TagUndoPanel(handle = handle, busy = state.busy, onUndo = viewModel::undo)
             LaunchedEffect(handle.mutationPublicId) {
                 delay(5000)
                 viewModel.dismissUndo()
             }
-            SettingsOpenPanel {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = AppSpacing.miniGap),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.tag_management_undo_processed, handle.label),
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(AppSpacing.compactGap))
-                    // Do not run undo concurrently with another mutation.
-                    TextButton(enabled = !state.busy, onClick = viewModel::undo) { Text(stringResource(R.string.tag_management_undo_button)) }
-                }
-            }
         }
-
         if (readOnly) {
-            Text(
-                text = stringResource(R.string.tag_management_readonly_hint),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SettingsInlineEmpty(
+                title = stringResource(R.string.tag_management_readonly_title),
+                body = stringResource(R.string.tag_management_readonly_hint),
             )
         }
+        TagOverviewSection(tags = state.tags)
+        TagListSection(
+            tags = state.tags,
+            readOnly = readOnly,
+            busy = state.busy,
+            actions = actions,
+        )
+    }
+}
 
-        SettingsSection(title = stringResource(R.string.tag_management_section_all), icon = Icons.Filled.Tune) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                if (state.tags.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.tag_management_list_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    state.tags.forEach { tag ->
-                        TagCard(
-                            tag = tag,
-                            readOnly = readOnly,
-                            busy = state.busy,
-                            canMerge = state.tags.size > 1,
-                            onRename = { renaming = tag },
-                            onMerge = {
-                                preselectedMergeTarget = null
-                                merging = tag
-                            },
-                            onDelete = { deleting = tag },
-                        )
-                    }
-                }
+@Composable
+private fun TagUndoPanel(
+    handle: com.ticketbox.viewmodel.TagUndoHandle,
+    busy: Boolean,
+    onUndo: () -> Unit,
+) {
+    SettingsOpenPanel {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = AppSpacing.miniGap),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.tag_management_undo_processed, handle.label),
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(AppSpacing.compactGap))
+            TextButton(enabled = !busy, onClick = onUndo) {
+                Text(stringResource(R.string.tag_management_undo_button))
             }
         }
     }
 }
 
 @Composable
-private fun TagCard(
+private fun TagOverviewSection(tags: List<ManagedTag>) {
+    val summary = remember(tags) { tagManagementSummaryModel(tags) }
+    SettingsSection(
+        title = stringResource(R.string.tag_management_section_overview),
+        icon = Icons.AutoMirrored.Filled.Label,
+    ) {
+        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
+                TagOverviewMetric(
+                    label = stringResource(R.string.tag_management_overview_total_label),
+                    value = summary.totalCount,
+                    caption = stringResource(R.string.tag_management_overview_total_caption),
+                    modifier = Modifier.weight(1f),
+                )
+                TagOverviewMetric(
+                    label = stringResource(R.string.tag_management_overview_active_label),
+                    value = summary.activeCount,
+                    caption = stringResource(R.string.tag_management_overview_active_caption),
+                    modifier = Modifier.weight(1f),
+                )
+                TagOverviewMetric(
+                    label = stringResource(R.string.tag_management_overview_unused_label),
+                    value = summary.unusedCount,
+                    caption = stringResource(R.string.tag_management_overview_unused_caption),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Text(
+                text = stringResource(R.string.tag_management_overview_body),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TagOverviewMetric(
+    label: String,
+    value: Int,
+    caption: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+        )
+        Text(
+            text = value.toString(),
+            style = MaterialTheme.typography.titleMedium.tabularNum(),
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+        )
+        Text(
+            text = caption,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 2,
+        )
+    }
+}
+
+@Composable
+private fun TagListSection(
+    tags: List<ManagedTag>,
+    readOnly: Boolean,
+    busy: Boolean,
+    actions: TagRowActions,
+) {
+    SettingsSection(title = stringResource(R.string.tag_management_section_all), icon = Icons.Filled.Tune) {
+        if (tags.isEmpty()) {
+            SettingsInlineEmpty(
+                title = stringResource(R.string.tag_management_summary_empty),
+                body = stringResource(R.string.tag_management_list_empty),
+            )
+            return@SettingsSection
+        }
+        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            tags.forEachIndexed { index, tag ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+                }
+                TagRow(
+                    tag = tag,
+                    readOnly = readOnly,
+                    busy = busy,
+                    canMerge = tags.size > 1,
+                    actions = actions,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TagRow(
     tag: ManagedTag,
     readOnly: Boolean,
     busy: Boolean,
     canMerge: Boolean,
-    onRename: () -> Unit,
-    onMerge: () -> Unit,
-    onDelete: () -> Unit,
+    actions: TagRowActions,
 ) {
-    SettingsOpenPanel(
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.smallGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            Text(
+                text = tag.name,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = AppTextHierarchy.heading.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = if (tag.usageCount > 0) {
+                    stringResource(R.string.tag_management_card_usage_count, tag.usageCount)
+                } else {
+                    stringResource(R.string.tag_management_card_orphan)
+                },
+                color = if (tag.usageCount > 0) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+            )
+        }
+        if (!readOnly) {
+            TagActionMenu(tag = tag, busy = busy, canMerge = canMerge, actions = actions)
+        }
+    }
+}
+
+@Composable
+private fun TagActionMenu(
+    tag: ManagedTag,
+    busy: Boolean,
+    canMerge: Boolean,
+    actions: TagRowActions,
+) {
+    var expanded by remember(tag.publicId) { mutableStateOf(false) }
+    IconButton(
+        enabled = !busy,
+        onClick = { expanded = true },
+    ) {
+        Icon(
+            imageVector = Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.tag_management_actions_content_description),
+        )
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.tag_management_card_action_rename)) },
+            onClick = {
+                expanded = false
+                actions.onRename(tag)
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.tag_management_card_action_merge)) },
+            enabled = canMerge,
+            onClick = {
+                expanded = false
+                actions.onMerge(tag)
+            },
+        )
+        DropdownMenuItem(
+            text = {
                 Text(
-                    text = tag.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = stringResource(R.string.tag_management_card_action_delete),
+                    color = MaterialTheme.colorScheme.error,
                 )
-                Spacer(Modifier.width(AppSpacing.compactGap))
-                Text(
-                    text = if (tag.usageCount > 0) {
-                        stringResource(R.string.tag_management_card_usage_count, tag.usageCount)
-                    } else {
-                        stringResource(R.string.tag_management_card_orphan)
-                    },
-                    color = if (tag.usageCount > 0) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                    fontWeight = AppTextHierarchy.body.weight,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            if (!readOnly) {
-                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !busy,
-                        onClick = onRename,
-                    ) { Text(stringResource(R.string.tag_management_card_action_rename)) }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !busy && canMerge,
-                        onClick = onMerge,
-                    ) { Text(stringResource(R.string.tag_management_card_action_merge)) }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !busy,
-                        onClick = onDelete,
-                    ) { Text(stringResource(R.string.tag_management_card_action_delete)) }
-                }
-            }
+            },
+            onClick = {
+                expanded = false
+                actions.onDelete(tag)
+            },
+        )
     }
 }
 
@@ -304,7 +456,7 @@ private fun MergeTagDialog(
     busy: Boolean = false,
 ) {
     // Fresh per dialog open (the merging?.let block re-enters composition), so the
-    // 契约-5 preselected target seeds here without a remember key.
+    // contract preselected target seeds here without a remember key.
     var selected by remember { mutableStateOf(initialTarget) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -323,33 +475,7 @@ private fun MergeTagDialog(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.width(AppSpacing.tinyGap))
-                targets.forEach { target ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = selected?.publicId == target.publicId,
-                                onClick = { selected = target },
-                            )
-                            .padding(vertical = AppSpacing.smallGap),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = selected?.publicId == target.publicId,
-                            onClick = { selected = target },
-                        )
-                        Spacer(Modifier.width(AppSpacing.smallGap))
-                        Text(
-                            text = if (target.usageCount > 0) {
-                                stringResource(R.string.tag_management_merge_dialog_target_with_count, target.name, target.usageCount)
-                            } else {
-                                target.name
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                MergeTargetPicker(targets = targets, selected = selected, onSelected = { selected = it })
             }
         },
         confirmButton = {
@@ -365,12 +491,47 @@ private fun MergeTagDialog(
 }
 
 @Composable
+private fun MergeTargetPicker(
+    targets: List<ManagedTag>,
+    selected: ManagedTag?,
+    onSelected: (ManagedTag) -> Unit,
+) {
+    targets.forEach { target ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .selectable(
+                    selected = selected?.publicId == target.publicId,
+                    onClick = { onSelected(target) },
+                )
+                .padding(vertical = AppSpacing.smallGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = selected?.publicId == target.publicId,
+                onClick = { onSelected(target) },
+            )
+            Spacer(Modifier.width(AppSpacing.smallGap))
+            Text(
+                text = if (target.usageCount > 0) {
+                    stringResource(R.string.tag_management_merge_dialog_target_with_count, target.name, target.usageCount)
+                } else {
+                    target.name
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun tagSummary(tags: List<ManagedTag>): String {
-    if (tags.isEmpty()) return stringResource(R.string.tag_management_summary_empty)
-    val orphans = tags.count { it.usageCount == 0 }
-    return if (orphans > 0) {
-        stringResource(R.string.tag_management_summary_with_orphans, tags.size, orphans)
+    val summary = tagManagementSummaryModel(tags)
+    if (summary.totalCount == 0) return stringResource(R.string.tag_management_summary_empty)
+    return if (summary.unusedCount > 0) {
+        stringResource(R.string.tag_management_summary_with_unused, summary.totalCount, summary.unusedCount)
     } else {
-        stringResource(R.string.tag_management_summary_count, tags.size)
+        stringResource(R.string.tag_management_summary_count, summary.totalCount)
     }
 }

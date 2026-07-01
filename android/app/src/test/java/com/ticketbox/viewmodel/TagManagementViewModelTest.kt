@@ -37,11 +37,11 @@ class TagManagementViewModelTest {
 
     @Test
     fun initLoadsTagsSortedByUsageDesc() = runTest(dispatcher) {
-        val repo = FakeTagActions(listOf(tag("a", "孤儿", 0), tag("b", "餐饮", 5)))
+        val repo = FakeTagActions(listOf(tag("a", "未使用", 0), tag("b", "餐饮", 5)))
         val vm = TagManagementViewModel(repo)
         advanceUntilIdle()
         val names = vm.uiState.value.tags.map { it.name }
-        assertEquals(listOf("餐饮", "孤儿"), names) // usage desc
+        assertEquals(listOf("餐饮", "未使用"), names) // usage desc
     }
 
     @Test

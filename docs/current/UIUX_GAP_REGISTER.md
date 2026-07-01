@@ -61,7 +61,9 @@ that actually ships the fix.
   presenting update/clear-copy actions, so it no longer reads like a temporary
   cache utility page. Security & Privacy now uses the same open-section language
   to separate device verification, session credentials, background privacy,
-  clearing the offline copy, and leaving the ledger.
+  clearing the offline copy, and leaving the ledger. Tag Management now moves
+  from per-tag action cards to a scan-first overview plus divider rows with
+  overflow actions, keeping rename/merge/delete/undo as server-confirmed actions.
 
 ### ANDROID-2026-07-01-settings-root-density
 

@@ -201,7 +201,6 @@
     <ID>LongParameterList:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
     <ID>LongParameterList:SwipeableActionRow.kt:@Composable fun SwipeableActionRow</ID>
     <ID>LongParameterList:TagManagementScreen.kt:@Composable private fun MergeTagDialog</ID>
-    <ID>LongParameterList:TagManagementScreen.kt:@Composable private fun TagCard</ID>
     <ID>LongParameterList:TicketboxApp.kt:@Composable fun TicketboxApp</ID>
     <ID>LongParameterList:TicketboxApp.kt:@Composable private fun MainShell</ID>
     <ID>LongParameterList:TicketboxApp.kt:@Composable private fun TicketboxContent</ID>
