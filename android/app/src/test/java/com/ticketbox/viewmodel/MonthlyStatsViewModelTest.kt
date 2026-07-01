@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
@@ -104,6 +105,33 @@ class MonthlyStatsViewModelTest {
         advanceUntilIdle()
 
         assertEquals("2026-05", viewModel.uiState.value.lifestyleStats?.month)
+    }
+
+    @Test
+    fun duplicateRefreshForSameMonthAndTagIsCoalescedWhileInFlight() = statsTest {
+        val primaryResponse = CompletableDeferred<Result<MonthlyStats>>()
+        val stats = FakeStatsActions()
+        stats.monthlyStatsResponder = { _, _ -> primaryResponse.await() }
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        runCurrent()
+        assertTrue(viewModel.uiState.value.loading)
+        assertEquals(1, stats.monthlyStatsCalls)
+
+        viewModel.refresh()
+        runCurrent()
+
+        assertEquals(1, stats.monthlyStatsCalls)
+        primaryResponse.complete(Result.success(statsForMonth("2026-05", total = 123000)))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.loading)
+        stats.monthlyStatsResponder = null
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(2, stats.monthlyStatsCalls)
     }
 
     @Test
@@ -266,6 +294,7 @@ private class FakeStatsActions : StatsActions {
     var lifestyleStatsResponder: (suspend (String?) -> Result<LifestyleStats>)? = null
     var monthList: List<String> = listOf("2026-05", "2026-04")
     var tagList: List<String> = emptyList()
+    var monthlyStatsCalls = 0
 
     override fun observeActiveLedgerId(): Flow<String?> = ledgerFlow
 
@@ -280,6 +309,7 @@ private class FakeStatsActions : StatsActions {
     override suspend fun tags(): Result<List<String>> = Result.success(tagList)
 
     override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> {
+        monthlyStatsCalls++
         monthlyStatsResponder?.let { return it(month, tag) }
         return Result.success(statsForMonth(month ?: "2026-05"))
     }

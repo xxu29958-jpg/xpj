@@ -539,6 +539,27 @@ class LedgerViewModelTest {
             ).showPageRefresh,
         )
     }
+
+    @Test
+    fun duplicateSyncForSameFiltersIsCoalescedWhileInFlight() = ledgerTest {
+        val fake = FakeLedgerActions(expenses = emptyList())
+        val syncGate = CompletableDeferred<Unit>()
+        fake.syncGate = syncGate
+
+        val vm = LedgerViewModel(fake)
+        runCurrent()
+        assertEquals(1, fake.syncCallCount)
+
+        vm.sync()
+        runCurrent()
+        assertEquals(1, fake.syncCallCount)
+
+        syncGate.complete(Unit)
+        advanceUntilIdle()
+        vm.sync()
+        advanceUntilIdle()
+        assertEquals(2, fake.syncCallCount)
+    }
 }
 
 // Fixture expenses sit in 2026-05; tests pin monthFilter here so they stay
@@ -564,6 +585,9 @@ private class FakeLedgerActions(
         private set
     var lastBatchTags: String? = null
         private set
+    var syncCallCount = 0
+        private set
+    var syncGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
@@ -582,7 +606,11 @@ private class FakeLedgerActions(
         month: String?,
         category: String?,
         tag: String?,
-    ): Result<List<Expense>> = Result.success(confirmed)
+    ): Result<List<Expense>> {
+        syncCallCount++
+        syncGate?.await()
+        return Result.success(confirmed)
+    }
 
     override suspend fun exportConfirmedCsv(
         month: String?,

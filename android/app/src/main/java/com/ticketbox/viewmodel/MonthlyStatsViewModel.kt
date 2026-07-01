@@ -28,7 +28,10 @@ private data class MonthlyStatsRefreshSnapshot(
     val ledgerId: String?,
     val month: String,
     val selectedTag: String,
-)
+) {
+    fun matches(ledgerId: String?, month: String, selectedTag: String): Boolean =
+        this.ledgerId == ledgerId && this.month == month && this.selectedTag == selectedTag
+}
 
 class MonthlyStatsViewModel(
     private val repository: StatsActions,
@@ -40,6 +43,7 @@ class MonthlyStatsViewModel(
     private var activeLedgerId: String? = null
     private var refreshGeneration = 0L
     private var observedLedgerOnce = false
+    private var inFlightRefresh: MonthlyStatsRefreshSnapshot? = null
 
     init {
         observeLedgerChanges()
@@ -187,23 +191,29 @@ class MonthlyStatsViewModel(
     }
 
     fun refresh() {
+        val snapshot = beginRefreshSnapshot() ?: return
         viewModelScope.launch {
-            val snapshot = beginRefreshSnapshot()
-            _uiState.update {
-                it.copy(
-                    loading = true,
-                    message = null,
-                    statsLoadError = null,
-                    lastUploadAt = repository.lastUploadAt(),
-                )
+            try {
+                _uiState.update {
+                    it.copy(
+                        loading = true,
+                        message = null,
+                        statsLoadError = null,
+                        lastUploadAt = repository.lastUploadAt(),
+                    )
+                }
+                val month = snapshot.month.trim().ifBlank { null }
+                val tag = snapshot.selectedTag.trim().ifBlank { null }
+                val statsResult = runCatching {
+                    repository.monthlyStats(month = month, tag = tag)
+                }.getOrElse { Result.failure(it) }
+                if (!snapshot.isCurrent()) return@launch
+                statsResult
+                    .onSuccess { stats -> handleStatsSuccess(stats, month, tag, snapshot) }
+                    .onFailure { error -> handleStatsFailure(error, month, tag, snapshot) }
+            } finally {
+                finishRefresh(snapshot)
             }
-            val month = snapshot.month.trim().ifBlank { null }
-            val tag = snapshot.selectedTag.trim().ifBlank { null }
-            val statsResult = repository.monthlyStats(month = month, tag = tag)
-            if (!snapshot.isCurrent()) return@launch
-            statsResult
-                .onSuccess { stats -> handleStatsSuccess(stats, month, tag, snapshot) }
-                .onFailure { error -> handleStatsFailure(error, month, tag, snapshot) }
         }
     }
 
@@ -251,6 +261,7 @@ class MonthlyStatsViewModel(
                 categoryInsight = monthlyCategoryInsight(stats),
                 loading = false,
                 statsLoadError = null,
+                primaryRefreshRevision = it.primaryRefreshRevision + 1,
             )
         }
         loadSupplementalAfterPrimaryStats(month, snapshot)
@@ -335,20 +346,34 @@ class MonthlyStatsViewModel(
                 } else {
                     null
                 },
+                primaryRefreshRevision = if (visibleStats != null) {
+                    it.primaryRefreshRevision + 1
+                } else {
+                    it.primaryRefreshRevision
+                },
             )
         }
         loadSupplementalAfterPrimaryStats(month, snapshot)
     }
 
-    private fun beginRefreshSnapshot(): MonthlyStatsRefreshSnapshot {
+    private fun beginRefreshSnapshot(): MonthlyStatsRefreshSnapshot? {
         val state = _uiState.value
+        val month = state.month.ifBlank { YearMonth.now().toString() }
+        val selectedTag = state.selectedTag.trim()
+        if (inFlightRefresh?.matches(activeLedgerId, month, selectedTag) == true) return null
         refreshGeneration += 1
         return MonthlyStatsRefreshSnapshot(
             generation = refreshGeneration,
             ledgerId = activeLedgerId,
-            month = state.month.ifBlank { YearMonth.now().toString() },
-            selectedTag = state.selectedTag.trim(),
-        )
+            month = month,
+            selectedTag = selectedTag,
+        ).also { inFlightRefresh = it }
+    }
+
+    private fun finishRefresh(snapshot: MonthlyStatsRefreshSnapshot) {
+        if (inFlightRefresh == snapshot) {
+            inFlightRefresh = null
+        }
     }
 
     private fun MonthlyStatsRefreshSnapshot.isCurrent(): Boolean {

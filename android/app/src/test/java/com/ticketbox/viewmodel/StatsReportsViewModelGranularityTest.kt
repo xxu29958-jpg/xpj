@@ -103,6 +103,27 @@ class StatsReportsViewModelGranularityTest {
         advanceUntilIdle()
         assertFalse(vm.uiState.value.reportsLoading)
     }
+
+    @Test
+    fun duplicateReportRefreshForSameScopeIsCoalescedWhileInFlight() = reportsTest { repo ->
+        val overviewGate = CompletableDeferred<Result<ReportsOverview>>()
+        repo.overviewResponder = { overviewGate.await() }
+        val vm = StatsReportsViewModel(repo)
+
+        vm.refresh(month = "2026-06", selectedTag = "")
+        runCurrent()
+        assertEquals(1, repo.overviewQueries.size)
+
+        vm.refresh(month = "2026-06", selectedTag = "")
+        runCurrent()
+        assertEquals(1, repo.overviewQueries.size)
+
+        overviewGate.complete(Result.success(overview(month = "2026-06")))
+        advanceUntilIdle()
+        vm.refresh(month = "2026-06", selectedTag = "")
+        advanceUntilIdle()
+        assertEquals(2, repo.overviewQueries.size)
+    }
 }
 
 // Top-level (not nested) so the detekt TooManyFunctions baseline entry matches —
@@ -110,12 +131,14 @@ class StatsReportsViewModelGranularityTest {
 private class RecordingReportsActions : ReportsActions {
     val overviewQueries = mutableListOf<ReportsOverviewQuery>()
     var overviewResult: Result<ReportsOverview> = Result.failure(RuntimeException("overview unavailable in this fake"))
+    var overviewResponder: (suspend () -> Result<ReportsOverview>)? = null
     var goalsResponder: (suspend () -> Result<List<Goal>>)? = null
 
     override fun canModifyLedger(): Boolean = true
 
     override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
         overviewQueries += query
+        overviewResponder?.let { return it() }
         return overviewResult
     }
 

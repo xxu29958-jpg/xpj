@@ -44,7 +44,6 @@ import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
-import com.ticketbox.viewmodel.MonthlyStatsUiState
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.ReceivablesViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
@@ -428,7 +427,7 @@ internal fun StatsRoute(
             // signal). refresh() resyncs confirmed (the byTag chip source) but does
             // not re-pull the tag list, so a deleted tag would linger in the filter
             // chips — reloadTags() closes that gap.
-            reloadAllStats(monthlyStatsViewModel, budgetViewModel, reportsViewModel, monthlyState)
+            reloadAllStats(monthlyStatsViewModel, reportsViewModel)
         }
     }
 
@@ -449,6 +448,7 @@ internal fun StatsRoute(
         monthlyState.month,
         monthlyState.selectedTag,
         monthlyState.stats,
+        monthlyState.primaryRefreshRevision,
     ) {
         if (monthlyState.ledgerReady) {
             budgetViewModel.refresh(monthlyState.month, monthlyState.stats)
@@ -461,7 +461,7 @@ internal fun StatsRoute(
         state = state,
         onMonthChange = monthlyStatsViewModel::setMonth,
         onTagChange = monthlyStatsViewModel::setTag,
-        onRefresh = { reloadAllStats(monthlyStatsViewModel, budgetViewModel, reportsViewModel, monthlyState) },
+        onRefresh = { reloadAllStats(monthlyStatsViewModel, reportsViewModel) },
         onOpenBudget = { shellState.openStatsSecondary(StatsSecondaryPage.Budget) },
         onOpenRecurring = { shellState.openStatsSecondary(StatsSecondaryPage.Recurring) },
         onOpenIncomePlans = { shellState.openStatsSecondary(StatsSecondaryPage.IncomePlans) },
@@ -484,12 +484,10 @@ internal fun StatsRoute(
  */
 private fun reloadAllStats(
     monthly: MonthlyStatsViewModel,
-    budget: StatsBudgetViewModel,
     reports: StatsReportsViewModel,
-    monthlyState: MonthlyStatsUiState,
 ) {
     monthly.reloadTags()
     monthly.refresh()
-    budget.refresh(monthlyState.month, monthlyState.stats, force = true)
-    reports.refresh(monthlyState.month, monthlyState.selectedTag)
+    val state = monthly.uiState.value
+    reports.refresh(state.month, state.selectedTag)
 }

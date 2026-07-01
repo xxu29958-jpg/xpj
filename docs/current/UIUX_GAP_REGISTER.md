@@ -437,7 +437,8 @@ that actually ships the fix.
 - Gap: user reports frontend refresh/loading is too slow. The root cause found in
   the Android state path is that page-level loading could stay active while
   non-primary work continued after the main monthly stats response was already
-  available.
+  available, and some pull-to-refresh paths could start duplicate same-scope
+  requests before the first request had returned.
 - Resolution: monthly stats now clears the page loading state as soon as the
   authoritative monthly stats response is applied. Lifestyle stats and confirmed
   cache sync continue in the background. Insights reports now release the trend
@@ -450,7 +451,11 @@ that actually ships the fix.
   pages reuse the same readable-refresh rule, and confirmed-ledger sync uses 200
   rows per page. The latest frontend fix also treats an already-read empty
   Pending cache and a previously synced empty Ledger as readable states, so slow
-  network refresh no longer keeps those empty pages in whole-page loading.
+  network refresh no longer keeps those empty pages in whole-page loading. The
+  current follow-up coalesces duplicate same-month/tag monthly-stat refreshes,
+  coalesces same-scope Insights report refreshes, coalesces same-filter
+  confirmed-ledger sync, and lets Insights budget refresh after the primary
+  monthly-stats result instead of forcing an extra early request.
 - Remaining QA: measure Today, Pending, Ledger, Insights, and a sample of the
   secondary/drill pages on a physical device with the production backend and
   confirm the page does not imply fresh backend truth before the primary response

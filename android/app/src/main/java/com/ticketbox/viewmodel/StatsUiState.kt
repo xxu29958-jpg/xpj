@@ -83,6 +83,7 @@ data class MonthlyStatsUiState(
     val statsLoadError: UiText? = null,
     val ledgerReady: Boolean = false,
     val activeLedgerId: String? = null,
+    val primaryRefreshRevision: Long = 0L,
 )
 
 data class StatsBudgetUiState(

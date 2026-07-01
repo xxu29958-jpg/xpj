@@ -44,6 +44,12 @@ data class LedgerFilterUi(
     val hasFilters: Boolean = false,
 )
 
+private data class LedgerSyncKey(
+    val month: String?,
+    val category: String?,
+    val tag: String?,
+)
+
 data class LedgerUiState(
     val items: List<Expense> = emptyList(),
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
@@ -147,6 +153,7 @@ class LedgerViewModel(
     )
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
     private var allConfirmed: List<Expense> = emptyList()
+    private var inFlightSyncKey: LedgerSyncKey? = null
 
     init {
         loadCategories()
@@ -256,40 +263,59 @@ class LedgerViewModel(
     }
 
     fun sync() {
+        val key = _uiState.value.toSyncKey()
+        if (inFlightSyncKey == key) return
+        inFlightSyncKey = key
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    readOnly = !repository.canModifyLedger(),
-                    syncing = true,
-                    syncedInCurrentSession = false,
-                    message = null,
+            try {
+                _uiState.update {
+                    it.copy(
+                        readOnly = !repository.canModifyLedger(),
+                        syncing = true,
+                        syncedInCurrentSession = false,
+                        message = null,
+                    )
+                }
+                repository.syncConfirmed(
+                    month = key.month,
+                    category = key.category,
+                    tag = key.tag,
                 )
+                    .onSuccess {
+                        _uiState.update {
+                            it.copy(
+                                syncing = false,
+                                syncedInCurrentSession = true,
+                                lastSyncAt = repository.lastConfirmedSyncAt(),
+                                message = UiText.res(R.string.ledger_msg_sync_done),
+                            )
+                        }
+                    }
+                    .onFailure { error ->
+                        _uiState.update {
+                            it.copy(
+                                syncing = false,
+                                syncedInCurrentSession = false,
+                                message = error.toUiText(R.string.ledger_msg_sync_failed),
+                            )
+                        }
+                    }
+            } finally {
+                finishSync(key)
             }
-            val filters = _uiState.value
-            repository.syncConfirmed(
-                month = filters.monthFilter.trim().ifBlank { null },
-                category = filters.categoryFilter.trim().ifBlank { null },
-                tag = filters.tagFilter.trim().ifBlank { null },
-            )
-                .onSuccess {
-                    _uiState.update {
-                        it.copy(
-                            syncing = false,
-                            syncedInCurrentSession = true,
-                            lastSyncAt = repository.lastConfirmedSyncAt(),
-                            message = UiText.res(R.string.ledger_msg_sync_done),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            syncing = false,
-                            syncedInCurrentSession = false,
-                            message = error.toUiText(R.string.ledger_msg_sync_failed),
-                        )
-                    }
-                }
+        }
+    }
+
+    private fun LedgerUiState.toSyncKey(): LedgerSyncKey =
+        LedgerSyncKey(
+            month = monthFilter.trim().ifBlank { null },
+            category = categoryFilter.trim().ifBlank { null },
+            tag = tagFilter.trim().ifBlank { null },
+        )
+
+    private fun finishSync(key: LedgerSyncKey) {
+        if (inFlightSyncKey == key) {
+            inFlightSyncKey = null
         }
     }
 
@@ -310,7 +336,11 @@ class LedgerViewModel(
             )
                 .onSuccess { exportFile ->
                     _uiState.update {
-                        it.copy(exportFile = exportFile, exporting = false, message = UiText.res(R.string.ledger_msg_export_pick_location))
+                        it.copy(
+                            exportFile = exportFile,
+                            exporting = false,
+                            message = UiText.res(R.string.ledger_msg_export_pick_location)
+                        )
                     }
                 }
                 .onFailure { error ->

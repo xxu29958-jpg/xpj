@@ -18,6 +18,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 
+private data class StatsReportsRefreshKey(
+    val month: String,
+    val selectedTag: String,
+    val granularity: ReportGranularity,
+)
+
 class StatsReportsViewModel(
     private val reportsRepository: ReportsActions? = null,
     // 轨道2 [P1] 还款待确认 badge：pending 还款草稿计数源（菜单「还款待确认」项的 badge）。可空使只传
@@ -32,14 +38,13 @@ class StatsReportsViewModel(
     // 互不干扰）。被新一轮计数加载超越的旧结果按它丢弃，避免跨账本陈旧计数回灌（switch 后旧账本的慢 GET
     // 落地时已不再是最新一代）。
     private var countGeneration = 0L
+    private var inFlightRefreshKey: StatsReportsRefreshKey? = null
 
     // 轴3 粒度切换:本 VM 是粒度的唯一持有方,UI 的 selected 用服务端回显
     // (overview.granularity)而非另存 state 字段——加载中 segmented 短暂显示旧值可接受。
     private var granularity: ReportGranularity = ReportGranularity.Day
 
     fun refresh(month: String, selectedTag: String) {
-        requestGeneration += 1
-        val generation = requestGeneration
         val selectedMonth = month.trim().ifBlank { YearMonth.now().toString() }
         val cleanTag = selectedTag.trim()
         _uiState.update {
@@ -58,10 +63,16 @@ class StatsReportsViewModel(
             clearReportSlice()
             return
         }
-        loadDashboardCards(reportsRepo, generation)
+        val key = StatsReportsRefreshKey(selectedMonth, cleanTag, granularity)
+        if (inFlightRefreshKey == key) return
+        requestGeneration += 1
+        val generation = requestGeneration
+        inFlightRefreshKey = key
         if (cleanTag.isBlank()) {
-            loadReports(reportsRepo, generation, selectedMonth)
+            loadDashboardCards(reportsRepo, generation)
+            loadReports(reportsRepo, generation, key)
         } else {
+            loadDashboardCards(reportsRepo, generation, finishKey = key)
             clearReportSlice()
         }
     }
@@ -90,8 +101,11 @@ class StatsReportsViewModel(
         val state = _uiState.value
         val reportsRepo = reportsRepository ?: return
         if (state.month.isBlank() || state.selectedTag.isNotBlank()) return
+        val key = StatsReportsRefreshKey(state.month, "", granularity)
+        if (inFlightRefreshKey == key) return
         requestGeneration += 1
-        loadReports(reportsRepo, requestGeneration, state.month)
+        inFlightRefreshKey = key
+        loadReports(reportsRepo, requestGeneration, key)
     }
 
     private fun clearReportSlice() {
@@ -105,76 +119,98 @@ class StatsReportsViewModel(
         }
     }
 
-    private fun loadDashboardCards(reportsRepo: ReportsActions, generation: Long) {
+    private fun loadDashboardCards(
+        reportsRepo: ReportsActions,
+        generation: Long,
+        finishKey: StatsReportsRefreshKey? = null,
+    ) {
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    dashboardCardsLoading = true,
-                    dashboardCardsMessage = null,
-                )
+            try {
+                _uiState.update {
+                    it.copy(
+                        dashboardCardsLoading = true,
+                        dashboardCardsMessage = null,
+                    )
+                }
+                val result = reportsRepo.dashboardCards(DashboardSurface.Android)
+                if (!isCurrent(generation)) return@launch
+                result
+                    .onSuccess { cards ->
+                        _uiState.update {
+                            it.copy(
+                                dashboardCards = cards.items,
+                                dashboardCardsLoading = false,
+                                dashboardCardsMessage = null,
+                            )
+                        }
+                    }
+                    .onFailure { error ->
+                        _uiState.update {
+                            it.copy(
+                                dashboardCardsLoading = false,
+                                dashboardCardsMessage = error.toUiText(R.string.stats_message_dashboard_cards_failed),
+                            )
+                        }
+                    }
+            } finally {
+                finishKey?.let { finishRefresh(it) }
             }
-            val result = reportsRepo.dashboardCards(DashboardSurface.Android)
-            if (!isCurrent(generation)) return@launch
-            result
-                .onSuccess { cards ->
-                    _uiState.update {
-                        it.copy(
-                            dashboardCards = cards.items,
-                            dashboardCardsLoading = false,
-                            dashboardCardsMessage = null,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            dashboardCardsLoading = false,
-                            dashboardCardsMessage = error.toUiText(R.string.stats_message_dashboard_cards_failed),
-                        )
-                    }
-                }
         }
     }
 
-    private fun loadReports(reportsRepo: ReportsActions, generation: Long, month: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(reportsLoading = true, reportsMessage = null) }
-            val goalsDeferred = async { reportsRepo.goals(month = month) }
-            val overviewResult = reportsRepo.reportsOverview(
-                ReportsOverviewQuery(
-                    month = month,
-                    granularity = granularity,
-                    rankingMetric = ReportRankingMetric.Count,
-                ),
-            )
-            if (!isCurrent(generation)) {
-                goalsDeferred.cancel()
-                return@launch
-            }
-            _uiState.update {
-                it.copy(
-                    reportsOverview = overviewResult.getOrNull(),
-                    reportsLoading = false,
-                    reportsMessage = if (overviewResult.isFailure) {
-                        UiText.res(R.string.stats_message_trend_failed)
-                    } else {
-                        null
-                    },
-                )
-            }
+    private fun finishRefresh(key: StatsReportsRefreshKey) {
+        if (inFlightRefreshKey == key) {
+            inFlightRefreshKey = null
+        }
+    }
 
-            val goalsResult = goalsDeferred.await()
-            if (!isCurrent(generation)) return@launch
-            _uiState.update {
-                it.copy(
-                    reportGoals = goalsResult.getOrDefault(emptyList()),
-                    reportsMessage = when {
-                        overviewResult.isFailure && goalsResult.isFailure ->
-                            UiText.res(R.string.stats_message_reports_failed)
-                        overviewResult.isFailure -> UiText.res(R.string.stats_message_trend_failed)
-                        else -> null
-                    },
+    private fun loadReports(
+        reportsRepo: ReportsActions,
+        generation: Long,
+        key: StatsReportsRefreshKey,
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(reportsLoading = true, reportsMessage = null) }
+                val goalsDeferred = async { reportsRepo.goals(month = key.month) }
+                val overviewResult = reportsRepo.reportsOverview(
+                    ReportsOverviewQuery(
+                        month = key.month,
+                        granularity = key.granularity,
+                        rankingMetric = ReportRankingMetric.Count,
+                    ),
                 )
+                if (!isCurrent(generation)) {
+                    goalsDeferred.cancel()
+                    return@launch
+                }
+                _uiState.update {
+                    it.copy(
+                        reportsOverview = overviewResult.getOrNull(),
+                        reportsLoading = false,
+                        reportsMessage = if (overviewResult.isFailure) {
+                            UiText.res(R.string.stats_message_trend_failed)
+                        } else {
+                            null
+                        },
+                    )
+                }
+
+                val goalsResult = goalsDeferred.await()
+                if (!isCurrent(generation)) return@launch
+                _uiState.update {
+                    it.copy(
+                        reportGoals = goalsResult.getOrDefault(emptyList()),
+                        reportsMessage = when {
+                            overviewResult.isFailure && goalsResult.isFailure ->
+                                UiText.res(R.string.stats_message_reports_failed)
+                            overviewResult.isFailure -> UiText.res(R.string.stats_message_trend_failed)
+                            else -> null
+                        },
+                    )
+                }
+            } finally {
+                finishRefresh(key)
             }
         }
     }
