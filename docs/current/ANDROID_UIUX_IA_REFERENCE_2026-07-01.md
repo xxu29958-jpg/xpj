@@ -6,6 +6,10 @@ deck.
 
 ## References Reviewed
 
+Official product/help pages were re-checked on 2026-07-01 as product
+organization references only. Do not copy their brand assets, visual identity,
+or proprietary copy.
+
 - YNAB Reporting / Reflect:
   https://www.ynab.com/blog/ynab-reports-and-data and
   https://www.ynab.com/whats-new/spending-breakdown-on-mobile
@@ -24,6 +28,15 @@ deck.
 - Material Design references:
   https://m3.material.io/blog/data-visualization-accessibility and
   https://m3.material.io/foundations/design-tokens
+
+## Reference Synthesis
+
+| Reference group | What matters for XiaoPiaoJia Android | Product implication |
+| --- | --- | --- |
+| YNAB / Monarch | Reporting is framed around user questions such as spending, cash flow, progress, and reflection instead of a raw gallery of charts. | Insights should lead with a conclusion and a reason, then offer drill paths. |
+| Lunch Money | Transactions, rules, recurring items, analytics, and account context are treated as connected workflows. | Today, Pending, Ledger, Insights, and Settings should share state language, not feel like separate tools. |
+| Qianji / Shark Accounting / Suishouji | Domestic mobile bookkeeping products optimize quick entry, ledger scanning, category summaries, and repeated daily use. | Android must keep first-screen density high but readable; controls should not push the financial answer away. |
+| Material Design | Charts need accessible data expression, token discipline, and text-backed meaning. | Do not add chart shapes or dependencies unless they improve comparison, variation, selection, or accessibility. |
 
 ## Product-Level IA
 

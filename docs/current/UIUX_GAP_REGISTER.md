@@ -207,7 +207,7 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 
 - Surface: Android Insights merchant sections.
-- Status: registered follow-up in the Insights slice.
+- Status: P0 registered follow-up in the Insights slice.
 - Gap: "高频商家" must mean count-ranked merchants, not amount-ranked merchants
   wearing a frequency label. The backend has two different contracts:
   `stats/lifestyle.frequent_merchants` is count-ranked, while
@@ -217,3 +217,50 @@ that actually ships the fix.
   sorted by confirmed count, spend-ranked merchants are sorted by amount, and
   each row makes the active metric obvious with the other metric as supporting
   context.
+
+### ANDROID-2026-07-01-root-page-density
+
+- Surface: Android Today, Pending, Ledger, Insights, and Settings root pages.
+- Status: registered acceptance gate in the Android audit register.
+- Gap: the product direction is "mature daily workbench", but several screens
+  can still feel dense because summary, filters, tools, charts, and records all
+  compete near the top. Fixing one card or button does not close the page.
+- Desired follow-up: each root page needs one first-read story, a restrained
+  tool row, clear section rhythm, and fewer large rounded containers. Verify on
+  a real phone, because desktop/code review does not expose first-viewport
+  crowding, bottom-nav overlap, or narrow-width truncation.
+
+### ANDROID-2026-07-01-number-layout-truncation
+
+- Surface: Android Today, Ledger, Insights, Settings summaries, and merchant /
+  category rankings.
+- Status: registered acceptance gate in the Android audit register.
+- Gap: large money values and metric labels can lose trust instantly if the
+  important number becomes an ellipsis. The user's real data already exposed
+  this risk on Today.
+- Desired follow-up: use full-width numeric lanes, responsive text sizing,
+  stable row metrics, and true-device screenshots for large amounts. The main
+  amount/count/date on a row must remain readable before decorative text.
+
+### ANDROID-2026-07-01-product-copy-tone
+
+- Surface: Android offline/cache/error/read-only/sync copy across all pages.
+- Status: registered acceptance gate in the Android audit register.
+- Gap: fallback language can drift into casual or engineering phrasing. That
+  makes a finance app feel less trustworthy even when the data source is
+  technically correct.
+- Desired follow-up: all touched visible strings stay in resources and use
+  release-facing state language: updated, offline data, waiting to sync, sync
+  failed, read-only, retry, unavailable. Avoid casual phrases and avoid exposing
+  backend/local implementation wording to ordinary users.
+
+### ANDROID-2026-07-01-insights-drill-and-presets
+
+- Surface: Android Insights, Ledger filters, and backend report contracts.
+- Status: deferred feature gap.
+- Gap: readable charts and rankings are only half of the insight loop. A mature
+  finance product lets the user inspect the bills behind a peak, merchant,
+  category, or report view, and often save repeated report setups.
+- Desired follow-up: register and implement backend-authoritative ledger query
+  contracts before adding chart-point drill or saved report presets. Android
+  must not synthesize authoritative report results locally.

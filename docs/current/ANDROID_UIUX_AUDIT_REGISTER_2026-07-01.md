@@ -13,6 +13,19 @@ Read with:
 - `docs/current/CODE_DEBT_REGISTER.md`
 - ADR-0023, ADR-0024, ADR-0042, ADR-0044, and ADR-0055
 
+## 2026-07-01 Scope Lock
+
+The current goal is a product-design-led Android IA/UIUX refactor, not a
+surface polish pass. This register is the acceptance ledger for the five root
+pages, Settings secondaries, chart/insight data expression, and authority-state
+language.
+
+Do not mark a page done because one visible defect is fixed. A page closes only
+when its product job, data source, offline/cache behavior, layout density,
+resource-backed copy, interaction feedback, and device evidence are all recorded
+below. If a feature contract is missing, register it here or in
+`UIUX_GAP_REGISTER.md`; do not fill the gap with hardcoded Android data.
+
 ## Status Legend
 
 | Status | Meaning |
@@ -35,6 +48,8 @@ Every UIUX slice should close these gates before being called done:
 | Visual system | The page uses shared Android tokens and shell components without heavy card stacking. |
 | Copy | User-visible Android copy comes from resources and avoids engineering wording. |
 | Interaction | Primary actions, back behavior, sheets, keyboard, bottom nav, and error recovery have a closed loop. |
+| Number layout | Amounts, counts, dates, and labels fit on narrow phones without ellipsis hiding the main fact. |
+| Data expression | Charts, rankings, and summaries show a readable comparison or degrade to facts when data is sparse. |
 | Verification | Relevant unit/Compose/ViewModel tests, detekt/lint/build, and true-device or emulator evidence are recorded. |
 
 ## Page Register
@@ -55,6 +70,12 @@ Every UIUX slice should close these gates before being called done:
 | AIA-012 | Interaction closure | Registered | P0 | Confirm/reject/edit/undo/retry/read-only paths need consistent feedback across Today, Pending, Ledger, and Settings. | Every write action shows success/failure/queued/conflict and gives retry or recovery where applicable. |
 | AIA-013 | Chart dependencies | Fixed | P1 | Android Vico was previously allowed but later retired for the current chart need. Future dependency work must not be aesthetic-only. | Native Canvas/token charts remain current; new chart dependency requires ADR-0023 review, official metadata, size/accessibility impact, and fallback. |
 | AIA-014 | True-device review | Registered | P0 | The official package must be checked on a real phone after the audit-led slices, not only by code review. | Backend is started, official `com.ticketbox` is bound by pairing code, and screenshots/notes cover scroll, clipping, keyboard, nav, dark/light, and current real data. |
+| AIA-015 | Visual density | Registered | P0 | Some screens can still feel crowded because summary, tools, filters, and records compete in the same viewport. | Each root page has one first-read story, compact secondary controls, and no nested pile of large rounded cards. |
+| AIA-016 | Product copy tone | Registered | P0 | Offline/cache/error language must sound like product state, not casual chat or engineering status. | Copy uses calm states such as updated, offline data, waiting to sync, unavailable, read-only, and retry; no release copy says "backend", "local db", or casual phrases. |
+| AIA-017 | Amount and metric fitting | Registered | P0 | Large monthly amounts and merchant/category metrics must never hide the primary number behind ellipsis. | True-device screenshots show full major amounts and count/amount labels across Today, Ledger, Insights, and Settings summaries. |
+| AIA-018 | Ledger long-list efficiency | Registered | P0 | Many days of records can force endless scrolling if every day and row is expanded with card weight. | Ledger supports compact scan, day/month grouping, collapse where useful, and bottom-safe record tails. |
+| AIA-019 | Insight drill contracts | Deferred | P1 | Mature insight reading needs "why" and "show me the bills" paths, but Android cannot invent ledger query truth. | Drill targets are added only when backed by backend-authoritative query/filter contracts and tested request parameters. |
+| AIA-020 | Settings secondary inventory | Registered | P1 | Root Settings and Sync Status are not enough; every secondary page must be inspected and closed individually. | Connection, devices, members, join family, rules, merchants, tags, recycle bin, export, security, background, appearance, and about each have a recorded state pass. |
 
 ## Secondary Settings Register
 
@@ -75,14 +96,26 @@ Every UIUX slice should close these gates before being called done:
 | SET-013 | Appearance/background | Registered | Preview/crop/apply flows are bottom-safe, reversible, and not visually isolated from the product system. |
 | SET-014 | About | Registered | Version/build/support copy stays product-level and does not expose diagnostics in release-facing text. |
 
+## Functional Gap Register
+
+| ID | Surface | Status | Gap | Required handling |
+| --- | --- | --- | --- | --- |
+| FUNC-INS-001 | Insights high-frequency merchants | Registered | The high-frequency merchant section must be count-ranked; amount-ranked rows cannot wear a frequency label. | Use backend count-ranked data or request `ranking_metric=count`; show spend only as supporting context. |
+| FUNC-INS-002 | Insights spend ranking | Registered | Spend-ranked merchants/categories are useful but answer a different question from frequency. | Label as spend ranking and sort by amount; show count as secondary detail. |
+| FUNC-INS-003 | Insight chart drill-through | Deferred | Charts do not yet close the loop from visible point/bar to filtered ledger records. | Register backend query contract first, then add UI drill and tests. |
+| FUNC-INS-004 | Saved report presets | Deferred | Repeated analytical views are not first-class saved presets yet. | Add only after report query/filter contracts are explicit and server-authoritative. |
+| FUNC-LED-001 | Ledger long history | Registered | Long ledgers can become repetitive vertical scrolling. | Add grouping/folding/density improvements without hiding confirmed facts. |
+| FUNC-SET-001 | Settings secondary state parity | Registered | Secondary pages do not all expose the same loading, empty, error, read-only, cached, and destructive states. | Close one page at a time and update the Secondary Settings Register. |
+| FUNC-AUTH-001 | Offline creation and cache language | Registered | Android can create/cache offline, but must not present cache as authority. | Treat queued, syncing, failed, conflict, cached, and read-only as visible product states. |
+
 ## Slice Register
 
 | Slice | Status | Commit or target | Scope |
 | --- | --- | --- | --- |
-| S0 Audit and reference | Fixed | `a66393e3`, `0a829305` | Phase 0 audit, product references, initial gap register. |
+| S0 Audit and reference | Fixed | `a66393e3`, `0a829305`, current docs register slice | Phase 0 audit, product references, initial gap register, expanded acceptance ledger. |
 | S1 Shared shell / authority language | Needs QA | Existing Android IA commits on this branch | Shared page skeleton, source/status strip, bottom safety, card reduction. |
-| S2 Today cockpit | Needs QA | Current Today cockpit slice | First viewport hierarchy, amount fitting, real next-action priority. |
-| S3 Pending queue | Needs QA | Current Pending queue slice | Queue overview, compact review scan, batch and feedback closure. |
+| S2 Today cockpit | Needs QA | `05c4febd` plus true-device follow-up | First viewport hierarchy, amount fitting, real next-action priority. |
+| S3 Pending queue | Needs QA | `6715c74b` plus true-device follow-up | Queue overview, compact review scan, batch and feedback closure. |
 | S4 Ledger density | Needs QA | `1b8fb6bd` | Day grouping, compact record surface, long-list safety. |
 | S5 Insights answer flow | Needs QA | `575d9ebf`, `8e4e9d43` | Merchant metric split, sparse/dominant trend handling, answer-first layout. |
 | S6 Settings governance | In progress | `b61dbedd` plus next settings slices | Root governance and secondary state parity. |
@@ -93,17 +126,21 @@ Every UIUX slice should close these gates before being called done:
 
 | Check | Current state | Next requirement |
 | --- | --- | --- |
-| Documentation | Phase 0, reference pass, gap register, and this audit register exist. | Keep statuses updated after every slice. |
+| Documentation | Phase 0, reference pass, gap register, and this audit register exist; the register now includes page, functional, copy, density, and metric gates. | Keep statuses updated after every slice. |
 | Gradle compile/detekt | Today cockpit slice passes `compileGrayDebugKotlin`, `detektGrayDebug`, and `detektGrayDebugUnitTest` with the existing detekt alpha warning and 0 findings. | Rerun flavor-qualified gates after code changes. |
 | Unit tests | Today next-action priority has focused JVM tests and the Android test-count baseline is updated to `1237`. | Add focused tests only where state authority or UI decisions are risky. |
 | Lint | Required for broader Android slices. | Run before any final Android batch commit/push. |
-| True device | Prior real-device passes exist, but the current audit register still needs a final clean pass. | Bind official `com.ticketbox` to backend and capture fresh evidence after page slices. |
+| True device | Prior real-device passes exist and an ADB preflight saw a physical device available, but the current audit register still needs a final clean pass after the docs gate. | Bind official `com.ticketbox` to backend and capture fresh evidence after page slices. |
 | Screenshots | Local audit folders exist and are intentionally not auto-staged. | Commit only lightweight audit docs unless the user asks to include images. |
 
 ## Open Decisions
 
 - Today cockpit still needs true-device review with the user's real large
   monthly amount so the UI never hides the amount behind an ellipsis.
+- Product copy needs a release-facing pass. Casual fallback text and engineering
+  labels should become calm product states before a page is called done.
+- High-frequency merchants are a P0 insight metric issue: the section is not
+  acceptable until it is count-ranked and visually distinct from spend ranking.
 - Insights should not add a chart dependency until the missing interaction is
   specific: point selection, tooltip, grouped series, zoom, or export preview.
 - Settings secondary work should proceed page by page; do not call Settings done
