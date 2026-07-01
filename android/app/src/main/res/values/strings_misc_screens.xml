@@ -34,7 +34,7 @@
     <!-- GlobalSearchScreen：全局搜索 -->
     <string name="global_search_back">返回账本</string>
     <string name="global_search_header_title">搜索</string>
-    <string name="global_search_header_subtitle">从待确认和本机账本缓存里找一笔账。</string>
+    <string name="global_search_header_subtitle">搜索待确认和已确认账单。</string>
     <string name="global_search_clear_action">清空</string>
     <string name="global_search_field_label">关键词</string>
     <string name="global_search_field_placeholder">咖啡、地铁、房租</string>
@@ -103,7 +103,7 @@
     <string name="income_plan_restored">已恢复</string>
 
     <!-- GlobalSearchViewModel：全局搜索 VM 状态/命中字段标签（ADR-0044 wave 2） -->
-    <string name="global_search_pending_load_failed">待确认账单暂时加载不了，先看本机账本。</string>
+    <string name="global_search_pending_load_failed">待确认账单暂时无法加载，已显示已确认账单。</string>
     <string name="global_search_field_merchant">商家</string>
     <string name="global_search_field_category">分类</string>
     <string name="global_search_field_note">备注</string>

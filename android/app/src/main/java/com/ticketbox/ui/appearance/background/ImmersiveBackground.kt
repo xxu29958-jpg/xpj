@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 enum class SurfaceRole {
+    Today,
     Pending,
     Ledger,
     Stats,
@@ -88,6 +89,7 @@ private fun BoxScope.BottomReadabilityScrim(
         BackgroundSource.CustomImage -> shouldUseCustomBackground(settings) { path -> File(path).isFile }
     }
     val roleAlpha = when (role) {
+        SurfaceRole.Today -> 0.79f
         SurfaceRole.Pending -> 0.80f
         SurfaceRole.Stats -> 0.78f
         SurfaceRole.Ledger -> 0.86f
@@ -132,6 +134,7 @@ fun TicketboxBackgroundLayer(
     val depthScale by animateFloatAsState(
         targetValue = if (settings.enableParallax && !settings.reduceMotion) {
             when (surfaceRole) {
+                SurfaceRole.Today -> 1.04f
                 SurfaceRole.Pending -> 1.05f
                 SurfaceRole.Stats -> 1.045f
                 SurfaceRole.Ledger -> 1.015f
@@ -257,6 +260,7 @@ fun resolveBackgroundAlpha(
         ImmersionMode.Focus -> 0.32f
     }
     val roleFactor = when (role) {
+        SurfaceRole.Today -> 0.86f
         SurfaceRole.Pending -> 1.00f
         SurfaceRole.Stats -> 0.92f
         SurfaceRole.Ledger -> 0.52f
@@ -277,6 +281,7 @@ fun resolveScrimAlpha(
         ImmersionMode.Focus -> 0.48f
     }
     val roleExtra = when (role) {
+        SurfaceRole.Today -> 0.02f
         SurfaceRole.Pending -> 0.00f
         SurfaceRole.Stats -> 0.04f
         SurfaceRole.Ledger -> 0.16f
@@ -292,6 +297,11 @@ fun resolveCardContainerAlpha(
     role: SurfaceRole,
 ): Float {
     return when (role) {
+        SurfaceRole.Today -> when (mode) {
+            ImmersionMode.Atmosphere -> 0.78f
+            ImmersionMode.Balanced -> 0.86f
+            ImmersionMode.Focus -> 0.94f
+        }
         SurfaceRole.Pending -> when (mode) {
             ImmersionMode.Atmosphere -> 0.76f
             ImmersionMode.Balanced -> 0.84f
@@ -332,6 +342,7 @@ fun resolveGlobalScrim(
         resolveScrimAlpha(settings.immersionMode, role)
     } else {
         when (role) {
+            SurfaceRole.Today -> 0.03f
             SurfaceRole.Pending -> 0.02f
             SurfaceRole.Stats -> 0.04f
             SurfaceRole.Ledger -> 0.14f

@@ -136,7 +136,7 @@ internal fun rememberMainShellState(): MainShellState = remember { MainShellStat
 
 internal val BottomTab.surfaceRole: SurfaceRole
     get() = when (this) {
-        BottomTab.Today -> SurfaceRole.Pending
+        BottomTab.Today -> SurfaceRole.Today
         BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
         BottomTab.Insights -> SurfaceRole.Stats

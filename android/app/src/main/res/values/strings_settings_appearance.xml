@@ -88,7 +88,7 @@
     <string name="currency_section_title">默认记账币种</string>
     <string name="currency_section_intro">这里影响新账单录入时的默认币种，不改变历史账单金额，也不在本机重算汇总。</string>
     <string name="currency_section_rate_home">账本汇总、统计和预算按 %1$s 基准金额显示。</string>
-    <string name="currency_section_rate_foreign">%1$s 会作为新记账时的默认原始币种；汇总金额仍以后端 %2$s 结果为准。</string>
+    <string name="currency_section_rate_foreign">%1$s 会作为新记账时的默认原始币种；汇总金额以账本 %2$s 结果为准。</string>
     <string name="currency_section_option_selected_content_description">已选中</string>
 
     <!-- SettingsDestinationHost：背景图片处理失败 / 自定义背景标题（在非 composable lambda 内，用 context.getString） -->

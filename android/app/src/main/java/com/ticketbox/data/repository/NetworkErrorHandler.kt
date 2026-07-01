@@ -91,7 +91,7 @@ internal class NetworkErrorHandler(
         statusMessages[statusCode]?.let { return ParsedError(it, errorCode = null) }
         val fallback = when (statusCode) {
             401, 403 -> "绑定已失效，请重新绑定账本。"
-            else -> "连接出错（$statusCode），请稍后再试。"
+            else -> "现在连不上，稍后再试。"
         }
         return ParsedError(fallback, errorCode = null)
     }

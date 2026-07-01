@@ -1,15 +1,11 @@
 package com.ticketbox.ui.components
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Info
@@ -23,9 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import com.ticketbox.R
 import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -106,40 +105,39 @@ private fun DataAuthorityStripContent(
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
+    val separator = stringResource(R.string.components_data_authority_separator)
+    val line = buildAnnotatedString {
+        withStyle(
+            SpanStyle(
+                color = accent,
+                fontWeight = AppTextHierarchy.body.weight,
+            ),
+        ) {
+            append(title)
+        }
+        append(separator)
+        append(body)
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                color = accent.copy(alpha = AppAlpha.subtle),
-                shape = RoundedCornerShape(AppRadius.extraSmall),
-            )
-            .border(
-                width = AppSpacing.tinyGap / 2f,
-                color = accent.copy(alpha = AppAlpha.medium),
-                shape = RoundedCornerShape(AppRadius.extraSmall),
-            )
-            .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.smallGap),
+            .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.tinyGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(AppSpacing.cardPadding),
-            tint = accent,
+            modifier = Modifier.size(AppSpacing.compactGap),
+            tint = accent.copy(alpha = AppAlpha.heavy),
         )
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-            Text(
-                text = title,
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-            Text(
-                text = body,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+        Text(
+            text = line,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

@@ -10,24 +10,27 @@
     <string name="components_safe_badge_label">安全</string>
 
     <!-- AppDataAuthorityStrip：跨页面数据来源 / 缓存降级提示 -->
-    <string name="components_data_authority_backend_title">服务端快照</string>
-    <string name="components_data_authority_backend_body">当前数字来自服务端；手机缓存只用于离线查看。</string>
-    <string name="components_data_authority_refreshing_title">正在向服务端核对</string>
-    <string name="components_data_authority_refreshing_body">页面可能先显示本机缓存，刷新完成后以后端结果为准。</string>
-    <string name="components_data_authority_cache_title">本机缓存</string>
-    <string name="components_data_authority_cache_body">离线或请求失败时显示手机缓存；联网后会用服务端结果覆盖。</string>
-    <string name="components_data_authority_pending_cache_body">待确认队列先显示手机缓存，刷新完成后以后端队列为准。</string>
-    <string name="components_data_authority_readonly_title">只读账本</string>
-    <string name="components_data_authority_readonly_body">当前角色只能查看，新增、确认和修改仍由服务端权限决定。</string>
+    <string name="components_data_authority_backend_title">已更新</string>
+    <string name="components_data_authority_backend_body">可离线查看。</string>
+    <string name="components_data_authority_refreshing_title">同步中</string>
+    <string name="components_data_authority_refreshing_body">显示离线数据。</string>
+    <string name="components_data_authority_cache_title">离线数据</string>
+    <string name="components_data_authority_cache_body">可能不是最新。</string>
+    <string name="components_data_authority_pending_cache_body">可能不是最新。</string>
+    <string name="components_data_authority_ledger_cache_body">可能不是最新。</string>
+    <string name="components_data_authority_settings_cache_body">可能不是最新。</string>
+    <string name="components_data_authority_readonly_title">只读模式</string>
+    <string name="components_data_authority_readonly_body">当前角色仅可查看。</string>
+    <string name="components_data_authority_separator">，</string>
 
     <!-- ScreenHeader / AppPageHeader：页眉小标默认文案 -->
     <string name="components_page_header_eyebrow">小票夹</string>
 
     <!-- DuplicateNotice：疑似重复上传提示卡 -->
     <string name="components_duplicate_notice_title">可能重复上传</string>
-    <string name="components_duplicate_notice_image_hash">这张截图和之前上传过的一张完全一致。确认前先看一眼，确实要记账就点「不是重复，保留」。</string>
-    <string name="components_duplicate_notice_field_match">这笔账单和已有记录很接近。确认前先看一眼，避免重复入账。</string>
-    <string name="components_duplicate_notice_generic">这笔账单可能已经上传过。确认前先看一眼，避免重复入账。</string>
+    <string name="components_duplicate_notice_image_hash">这张截图和之前上传过的一张完全一致。请核对后再决定保留或忽略。</string>
+    <string name="components_duplicate_notice_field_match">这笔账单和已有记录很接近。请核对后再处理，避免重复入账。</string>
+    <string name="components_duplicate_notice_generic">这笔账单可能已经上传过。请核对后再处理，避免重复入账。</string>
 
     <!-- ExpenseCard：账单卡片 -->
     <string name="components_expense_card_thumbnail_placeholder">截图缩略图加载中</string>
@@ -37,7 +40,7 @@
     <string name="components_expense_card_amount_placeholder">等待你确认金额</string>
     <string name="components_expense_card_pill_amount_missing">待补金额</string>
     <string name="components_expense_card_pill_review">请核对</string>
-    <string name="components_expense_card_pill_duplicate">疑似新账</string>
+    <string name="components_expense_card_pill_duplicate">疑似重复</string>
     <!-- issue #65 slice 5: 离线手动记账行尚未同步到服务器时的可见标记 -->
     <string name="components_expense_card_pill_pending_sync">待同步</string>
     <string name="components_expense_card_image_placeholder_saved">截图已保存，点开后可查看</string>

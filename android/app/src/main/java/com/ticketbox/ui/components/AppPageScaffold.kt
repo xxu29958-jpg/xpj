@@ -44,6 +44,7 @@ enum class PageDensity {
 }
 
 enum class AppPageRole {
+    Today,
     Pending,
     Ledger,
     Stats,
@@ -59,6 +60,7 @@ val PageRole.density: PageDensity
         PageRole.Ledger,
         PageRole.Edit -> PageDensity.Compact
 
+        PageRole.Today,
         PageRole.Pending,
         PageRole.Stats,
         PageRole.Settings,
@@ -71,7 +73,8 @@ object AppPageDefaults {
     // 浮动底栏（含上下外边距）的估算高度。后续若改为实测高度，
     // 仅需在这里替换。
     val BottomBarHeight: Dp = 96.dp
-    val BottomContentExtraPadding: Dp = AppSpacing.bottomContentPadding
+    val BottomContentExtraPadding: Dp =
+        AppSpacing.bottomContentPadding + AppSpacing.sectionGap + AppSpacing.cardGap
     val CardGap: Dp = AppSpacing.cardGap
 
     fun topContentPadding(density: PageDensity): Dp = when (density) {

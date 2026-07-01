@@ -20,7 +20,7 @@ fun DuplicateNotice(
             style = MaterialTheme.typography.labelLarge,
         )
         Text(
-            text = duplicateNoticeMessage(reason),
+            text = duplicateNoticeBody(reason),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -28,17 +28,23 @@ fun DuplicateNotice(
 }
 
 @Composable
-private fun duplicateNoticeMessage(reason: String?): String {
+fun duplicateNoticeBody(reason: String?): String {
     val normalized = reason.orEmpty().trim()
     return when {
-        normalized.contains("图片 hash", ignoreCase = true) ||
-            normalized.contains("image hash", ignoreCase = true) ->
-            stringResource(R.string.components_duplicate_notice_image_hash)
-        normalized.contains("金额") ||
-            normalized.contains("商家") ||
-            normalized.contains("时间") ->
-            stringResource(R.string.components_duplicate_notice_field_match)
-        normalized.isNotBlank() -> normalized
+        normalized.hasAnyReasonToken(
+            "image hash",
+            "perceptual hash",
+            "hash",
+        ) -> stringResource(R.string.components_duplicate_notice_image_hash)
+        normalized.hasAnyReasonToken(
+            "amount",
+            "merchant",
+            "time",
+            "field",
+        ) -> stringResource(R.string.components_duplicate_notice_field_match)
         else -> stringResource(R.string.components_duplicate_notice_generic)
     }
 }
+
+private fun String.hasAnyReasonToken(vararg tokens: String): Boolean =
+    tokens.any { contains(it, ignoreCase = true) }
