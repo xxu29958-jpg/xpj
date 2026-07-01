@@ -84,7 +84,7 @@ fun BudgetScreen(
                 actions = editorActions,
             )
         }
-        state.budget?.let { budget ->
+        state.budget?.takeIf { it.configured }?.let { budget ->
             item {
                 CategoryBudgetCard(
                     items = budget.categoryBudgets,

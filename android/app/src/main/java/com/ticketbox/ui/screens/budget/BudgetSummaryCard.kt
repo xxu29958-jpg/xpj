@@ -44,19 +44,20 @@ internal fun BudgetSummaryCard(
         )
         return
     }
+    val configuredBudget = budget?.takeIf { it.configured }
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
         ) {
-            BudgetSummaryTitle(budget)
-            if (budget == null) {
+            BudgetSummaryTitle(configuredBudget)
+            if (configuredBudget == null) {
                 BudgetSummaryPlaceholder(loading)
                 return@Column
             }
-            BudgetProgressBar(progress = budget.spentProgress)
+            BudgetProgressBar(progress = configuredBudget.spentProgress)
             BudgetMetricRows(
-                budget = budget,
+                budget = configuredBudget,
                 currencyDisplay = currencyDisplay,
             )
         }
@@ -106,7 +107,7 @@ private fun BudgetSummaryPlaceholder(loading: Boolean) {
         return
     }
     Text(
-        text = stringResource(R.string.budget_summary_loading),
+        text = stringResource(R.string.budget_summary_unconfigured_body),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyMedium,
     )

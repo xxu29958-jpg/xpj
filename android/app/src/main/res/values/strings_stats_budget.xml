@@ -603,9 +603,8 @@
     <!-- BudgetSummaryCard：本月预算概况卡 -->
     <string name="budget_summary_title">本月预算</string>
     <string name="budget_summary_percent">%1$d%%</string>
-    <string name="budget_summary_unconfigured">未配置</string>
-    <string name="budget_summary_loading">正在读取预算。</string>
-    <!-- 加载失败错误态（区别于 loading——之前失败也常驻 budget_summary_loading 文案，看着像一直在读取） -->
+    <string name="budget_summary_unconfigured">未启用</string>
+    <!-- 加载失败错误态（区别于 loading——失败时不能停留在读取占位）。 -->
     <string name="budget_summary_error_title">预算没能打开</string>
     <string name="budget_summary_error_body">可能是网络不稳定或电脑端没在运行，重试一下或稍后再来。</string>
     <string name="budget_summary_metric_total">总额</string>
@@ -615,6 +614,7 @@
     <string name="budget_summary_metric_flex">灵活可花</string>
     <string name="budget_summary_metric_fixed">固定支出</string>
     <string name="budget_summary_metric_excluded">剔除</string>
+    <string name="budget_summary_unconfigured_body">尚未启用月度预算。填写下方总预算后，会显示剩余额度、超支和分类执行。</string>
 
     <!-- BudgetEditorCard / BudgetFields：预算编辑卡 + 输入字段。
          只读提示复用 common_readonly_ledger、保存中复用 common_saving（strings.xml 已有同值）。 -->
