@@ -1,23 +1,15 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,25 +18,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
-import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.StateTone
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
@@ -132,7 +117,7 @@ private fun SyncStatusPageBody(
     onDropFailed: (OutboxRow) -> Unit,
 ) {
     val status = state.status
-    SyncSummaryCard(status)
+    SyncStatusOverviewSection(status)
 
     AppStatusBanner(message = state.message, tone = MessageTone.Info)
 
@@ -207,62 +192,6 @@ private fun DropConfirmDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
-}
-
-@Composable
-private fun SyncSummaryCard(status: OutboxStatus) {
-    val tokens = LocalStateTokens.current
-    val tone: StateTone
-    val icon: ImageVector
-    val title: String
-    val body: String
-    when {
-        status.needsUserAction -> {
-            tone = tokens.danger
-            icon = Icons.Filled.SyncProblem
-            val pending = status.conflicts.size + status.failed.size
-            title = stringResource(R.string.sync_status_summary_needs_action_title, pending)
-            body = stringResource(R.string.sync_status_summary_needs_action_body)
-        }
-        status.queueDepth > 0 -> {
-            tone = tokens.info
-            icon = Icons.Filled.Sync
-            title = stringResource(R.string.sync_status_summary_queued_title, status.queueDepth)
-            body = stringResource(R.string.sync_status_summary_queued_body)
-        }
-        else -> {
-            tone = tokens.success
-            icon = Icons.Filled.CloudDone
-            title = stringResource(R.string.sync_status_summary_synced_title)
-            body = stringResource(R.string.sync_status_summary_synced_body)
-        }
-    }
-
-    SettingsOpenPanel {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier.size(44.dp).clip(CircleShape).background(tone.bg),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = tone.fg, modifier = Modifier.size(22.dp))
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
 }
 
 @Composable

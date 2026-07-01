@@ -164,6 +164,9 @@ that actually ships the fix.
   resource-backed copy, but state coverage is uneven across connection, sync,
   devices, members, rules, merchants, tags, recycle bin, export, security,
   appearance, and background tools.
+- Progress 2026-07-01: the Sync Status page now has a dedicated state overview
+  for queued, conflict, and failed offline mutations. The remaining Settings
+  secondary pages still need page-by-page state parity review.
 - Desired follow-up: make every secondary page declare loading, empty, error,
   read-only, cached/offline/direct-only, success, and destructive-confirmation
   behavior with the shared Settings skeleton.

@@ -158,6 +158,16 @@
     <string name="sync_status_summary_queued_body">联网后会自动上传，不用你操作。</string>
     <string name="sync_status_summary_synced_title">全部已同步</string>
     <string name="sync_status_summary_synced_body">离线改动都已同步到账本。</string>
+    <string name="sync_status_overview_title">当前状态</string>
+    <string name="sync_status_overview_queued_label">待同步</string>
+    <string name="sync_status_overview_conflicts_label">需确认</string>
+    <string name="sync_status_overview_failed_label">失败</string>
+    <string name="sync_status_overview_queued_caption">自动上传</string>
+    <string name="sync_status_overview_conflicts_caption">选择版本</string>
+    <string name="sync_status_overview_failed_caption">重试或移除</string>
+    <string name="sync_status_overview_caption_needs_action">%1$d 笔需要处理，处理后才会继续进入账本。</string>
+    <string name="sync_status_overview_caption_queued">离线改动已保留，恢复连接后会自动同步。</string>
+    <string name="sync_status_overview_caption_settled">没有等待处理的离线改动。</string>
     <string name="sync_status_conflict_offline_prefix">离线时：%1$s</string>
     <string name="sync_status_conflict_fallback">这条改动已在其它设备被改动，没能自动同步。</string>
     <string name="sync_status_conflict_button_keep_mine">用我的覆盖</string>
