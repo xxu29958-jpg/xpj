@@ -49,10 +49,6 @@ internal fun StatsMetricGrid(
     budget: BudgetProgress?,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val aiCategoryAmount = stats.byCategory
-        .firstOrNull { it.category == "AI订阅" || it.category == "AI 订阅" }
-        ?.amountCents
-        ?.takeIf { it > 0L }
     val emptyValue = stringResource(R.string.stats_metric_empty_value)
     val frequentMerchant = lifestyle?.frequentMerchants?.firstOrNull()
     val frequentMerchantCaption = frequentMerchant?.let {
@@ -67,7 +63,6 @@ internal fun StatsMetricGrid(
         StatsInsightMetric(
             label = stringResource(R.string.stats_metric_ai_subscription_label),
             value = lifestyle?.aiSubscriptionAmountCents?.takeIf { it > 0L }?.let { formatDisplayAmount(it, currencyDisplay) }
-                ?: aiCategoryAmount?.let { formatDisplayAmount(it, currencyDisplay) }
                 ?: emptyValue,
             accent = 0,
         ),

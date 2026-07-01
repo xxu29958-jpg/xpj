@@ -26,11 +26,40 @@
 
     <!-- StatsOverviewCard：本月支出 hero 卡 -->
     <string name="stats_overview_month_spend_label">本月支出</string>
-    <string name="stats_overview_local_estimate_badge">本机估算</string>
+    <string name="stats_overview_local_estimate_badge">离线数据</string>
     <string name="stats_overview_count_label">账单</string>
     <string name="stats_overview_count_value">%1$d 笔</string>
     <string name="stats_overview_recent7_label">最近 7 天</string>
     <string name="stats_overview_recent7_unavailable">暂不可用</string>
+    <string name="stats_overview_rhythm_title">支出节奏</string>
+    <string name="stats_overview_rhythm_caption">%1$d 笔已确认，最近 7 天 %2$s。</string>
+    <string name="stats_overview_rhythm_caption_empty">确认账单后，会展示月内节奏和最近窗口。</string>
+    <string name="stats_lead_title">本月支出</string>
+    <string name="stats_lead_source_server_report">数据已更新</string>
+    <string name="stats_lead_source_local">离线数据</string>
+    <string name="stats_lead_source_monthly">当前账本</string>
+    <string name="stats_lead_total_label">已确认支出</string>
+    <string name="stats_lead_total_caption">%1$d 笔已入账</string>
+    <string name="stats_lead_month_delta_label">较上月</string>
+    <string name="stats_lead_month_delta_more_label">较上月增加</string>
+    <string name="stats_lead_month_delta_less_label">较上月减少</string>
+    <string name="stats_lead_month_delta_flat_label">较上月持平</string>
+    <string name="stats_lead_month_delta_no_previous">上月暂无确认支出</string>
+    <string name="stats_lead_month_delta_previous">上月 %1$s</string>
+    <string name="stats_lead_month_delta_previous_percent">上月 %1$s · %2$d%%</string>
+    <string name="stats_lead_month_delta_percent">%1$d%%</string>
+    <string name="stats_lead_month_delta_percent_hint">约 %1$d%%</string>
+    <string name="stats_lead_variable_label">变化最大</string>
+    <string name="stats_lead_inline_value">%1$s · %2$s</string>
+    <string name="stats_lead_top_merchant_caption">%1$d 笔，按金额排行第一</string>
+    <string name="stats_lead_delta_more">增加 %1$s</string>
+    <string name="stats_lead_delta_less">减少 %1$s</string>
+    <string name="stats_lead_delta_flat">持平</string>
+    <string name="stats_lead_yoy_more">同比%1$s</string>
+    <string name="stats_lead_yoy_less">同比%1$s</string>
+    <string name="stats_lead_yoy_flat">同比持平</string>
+    <string name="stats_lead_category_more">较上月%1$s</string>
+    <string name="stats_lead_category_less">较上月%1$s</string>
     <string name="stats_overview_delta_flat">持平</string>
     <string name="stats_overview_delta_up">比上月多 %1$s%2$s</string>
     <string name="stats_overview_delta_down">比上月少 %1$s%2$s</string>
@@ -40,9 +69,12 @@
     <string name="stats_overview_trend_title">月内走势</string>
     <string name="stats_overview_trend_peak">峰值 %1$s</string>
     <string name="stats_overview_trend_peak_amount">%1$s · %2$s</string>
+    <string name="stats_overview_trend_active_buckets_label">有支出</string>
+    <string name="stats_overview_trend_active_buckets_value">%1$d 处</string>
     <string name="stats_overview_trend_peak_share_label">峰值占比</string>
     <string name="stats_overview_trend_peak_share_value">%1$d%%</string>
     <string name="stats_overview_trend_other_average_label">非峰值日均</string>
+    <string name="stats_overview_trend_sparse_hint">当前记录较少，先展示发生时间和金额。</string>
     <string name="stats_overview_trend_empty">暂无趋势数据</string>
 
     <!-- StatsMetricGrid：统计指标网格 + 月度预算进度 -->
@@ -80,8 +112,8 @@
 
     <!-- RecentTrendCard / RecentUploadCard：最近趋势 + 最近上传 -->
     <string name="stats_recent_trend_title">最近 7 天趋势</string>
-    <string name="stats_recent_trend_source">本地账本</string>
-    <string name="stats_recent_trend_empty">手机里还没有最近支出，更新后会显示每日变化。</string>
+    <string name="stats_recent_trend_source">离线数据</string>
+    <string name="stats_recent_trend_empty">暂无最近支出，更新后显示每日变化。</string>
     <string name="stats_recent_trend_total">7 天合计</string>
     <string name="stats_recent_trend_average">日均</string>
     <string name="stats_recent_trend_peak">峰值</string>
@@ -93,6 +125,7 @@
     <string name="stats_recent_trend_vs_previous_down">近 3 天比前 3 天少 %1$s</string>
     <string name="stats_recent_trend_vs_previous_flat">近 3 天与前 3 天持平</string>
     <string name="stats_recent_trend_vs_previous_new">近 3 天开始有支出</string>
+    <string name="stats_recent_trend_sparse">7 天里只有 %1$d 天有支出，先展示发生日与金额。</string>
     <!-- Per-bar TalkBack description: date + daily amount (the bar height is not readable). -->
     <string name="stats_recent_trend_bar_a11y">%1$s %2$s</string>
     <string name="stats_chart_window_label">%1$s-%2$s</string>
@@ -129,7 +162,7 @@
 
     <!-- ReportsInsightCards：动态图表 + 月度目标 -->
     <string name="stats_reports_chart_title">本月支出趋势</string>
-    <string name="stats_reports_chart_subtitle">%1$s · 服务端聚合 · %2$d 笔</string>
+    <string name="stats_reports_chart_subtitle">%1$s · 已同步 · %2$d 笔</string>
     <string name="stats_reports_chart_peak">峰值 %1$s</string>
     <string name="stats_reports_chart_distribution_hint">峰值占 %1$d%%，非峰值日均 %2$s</string>
     <string name="stats_reports_chart_active_days">有支出</string>
@@ -148,7 +181,7 @@
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
     <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，先显示发生支出的日期和金额；数据多起来后会按时间段汇总。</string>
     <string name="stats_reports_recent_window_title">最近 7 天</string>
-    <string name="stats_reports_recent_window_source">本机缓存</string>
+    <string name="stats_reports_recent_window_source">离线数据</string>
     <string name="stats_reports_recent_window_peak_share">%1$s 占 7 天 %2$d%%，其余日均 %3$s</string>
     <string name="stats_reports_recent_window_active_days">有支出</string>
     <string name="stats_reports_recent_window_active_days_value">%1$d 天</string>
@@ -595,7 +628,7 @@
 
     <!-- MonthlyStatsViewModel / StatsReportsViewModel：统计屏 Snackbar/提示文案 -->
     <string name="stats_message_lifestyle_failed">生活统计暂时打不开，请稍后再试。</string>
-    <string name="stats_message_local_fallback">已显示本机账本统计，联网后会自动更新。</string>
+    <string name="stats_message_local_fallback">当前为离线数据，联网后自动更新。</string>
     <string name="stats_message_stats_failed">统计暂时打不开，请稍后再试。</string>
     <string name="stats_message_dashboard_cards_failed">首页卡片设置暂时打不开，已显示默认顺序。</string>
     <string name="stats_message_reports_failed">动态图表暂时打不开，稍后再试。</string>
@@ -670,7 +703,7 @@
     <string name="repayment_draft_dismiss">忽略</string>
     <string name="repayment_draft_action_busy">处理中…</string>
     <string name="repayment_draft_empty_title">没有待确认的还款</string>
-    <string name="repayment_draft_empty_body">开启通知捕获后，花呗 / 白条 / 美团月付 / 信用卡的还款通知会出现在这里等你核对。</string>
+    <string name="repayment_draft_empty_body">开启通知捕获后，花呗 / 白条 / 美团月付 / 信用卡的还款通知会进入这里等待核对。</string>
     <string name="repayment_draft_picker_title">这笔还款对应哪笔欠款？</string>
     <string name="repayment_draft_picker_empty">没有可对应的欠款。请先在「债务管理」里新建一笔外部欠款。</string>
     <string name="repayment_draft_picker_remaining">还剩 %1$s</string>

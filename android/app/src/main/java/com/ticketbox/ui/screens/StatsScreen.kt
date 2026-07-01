@@ -79,6 +79,7 @@ import com.ticketbox.ui.screens.stats.ReportsInsightCard
 import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.StatsOverviewTrendData
+import com.ticketbox.ui.screens.stats.StatsLeadInsight
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -152,7 +153,7 @@ fun StatsScreen(
                 onOpenDebtGoals = onOpenDebtGoals,
             )
         }
-        authorityTone?.let { tone ->
+        authorityTone?.takeIf { it != DataAuthorityTone.Backend }?.let { tone ->
             item {
                 AppDataAuthorityStrip(
                     tone = tone,
@@ -199,30 +200,40 @@ fun StatsScreen(
             DASHBOARD_CARD_RECENT_UPLOADS in selectedDashboardKeys
         var renderedCard = false
 
+        val showLeadInsight = selectedStatsTab == StatsTab.Overview &&
+            DASHBOARD_CARD_MONTHLY_SPEND in selectedDashboardKeys
+
+        if (showLeadInsight) {
+            renderedCard = true
+            item { StatsLeadInsight(state) }
+        }
+
         selectedDashboardKeys.forEach { key ->
             when (key) {
                 DASHBOARD_CARD_MONTHLY_SPEND -> {
-                    renderedCard = true
-                    item {
-                        StatsOverviewCard(
-                            stats = stats,
-                            statsSource = state.statsSource,
-                            recent7DaysAmountCents = overviewRecent7DaysAmount(state),
-                            comparison = state.monthComparison,
-                            trendData = StatsOverviewTrendData(
-                                dailyTrend = if (
-                                    state.statsSource == StatsSource.LocalFallback &&
-                                    state.reportsOverview == null
-                                ) {
-                                    state.dailyTrend
-                                } else {
-                                    emptyList()
-                                },
-                                reportTrend = state.reportsOverview?.trend.orEmpty(),
-                                includeRecentUpload = recentUploadMergedIntoOverview,
-                                lastUploadAt = state.lastUploadAt,
-                            ),
-                        )
+                    if (!showLeadInsight) {
+                        renderedCard = true
+                        item {
+                            StatsOverviewCard(
+                                stats = stats,
+                                statsSource = state.statsSource,
+                                recent7DaysAmountCents = overviewRecent7DaysAmount(state),
+                                comparison = state.monthComparison,
+                                trendData = StatsOverviewTrendData(
+                                    dailyTrend = if (
+                                        state.statsSource == StatsSource.LocalFallback &&
+                                        state.reportsOverview == null
+                                    ) {
+                                        state.dailyTrend
+                                    } else {
+                                        emptyList()
+                                    },
+                                    reportTrend = state.reportsOverview?.trend.orEmpty(),
+                                    includeRecentUpload = recentUploadMergedIntoOverview,
+                                    lastUploadAt = state.lastUploadAt,
+                                ),
+                            )
+                        }
                     }
                 }
 
@@ -539,12 +550,14 @@ private fun StatsFilterRow(
                 trailingIcon = { FilterTrailingIcon(Icons.Filled.ExpandMore, stringResource(R.string.stats_filter_pick_month_description)) },
             )
         }
-        item {
-            StatsSelectablePill(
-                selected = state.selectedTag.isBlank(),
-                onClick = { onTagChange("") },
-                label = stringResource(R.string.stats_filter_all_tags),
-            )
+        if (tags.isNotEmpty() || state.selectedTag.isNotBlank()) {
+            item {
+                StatsSelectablePill(
+                    selected = state.selectedTag.isBlank(),
+                    onClick = { onTagChange("") },
+                    label = stringResource(R.string.stats_filter_all_tags),
+                )
+            }
         }
         items(tags, key = { it }) { tag ->
             val selected = state.selectedTag.equals(tag, ignoreCase = true)

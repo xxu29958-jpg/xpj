@@ -84,8 +84,8 @@ private fun paperStatsTokens(): StatsTokens =
             section = StatsSurfaceStyleTokens(radius = 0.dp, topAlpha = 0f, bottomAlpha = 0f, borderAlpha = 0f),
         ),
         control = StatsControlTokens(
-            height = 38.dp,
-            horizontalPadding = 14.dp,
+            height = 34.dp,
+            horizontalPadding = 12.dp,
             selectedAlpha = 0.72f,
             unselectedAlpha = 0.44f,
             borderAlpha = 0.18f,
@@ -110,8 +110,8 @@ private fun monoStatsTokens(): StatsTokens =
             section = StatsSurfaceStyleTokens(radius = 0.dp, topAlpha = 0f, bottomAlpha = 0f, borderAlpha = 0f),
         ),
         control = StatsControlTokens(
-            height = 38.dp,
-            horizontalPadding = 14.dp,
+            height = 34.dp,
+            horizontalPadding = 12.dp,
             selectedAlpha = 0.66f,
             unselectedAlpha = 0.40f,
             borderAlpha = 0.16f,
@@ -136,8 +136,8 @@ private fun midnightStatsTokens(): StatsTokens =
             section = StatsSurfaceStyleTokens(radius = 0.dp, topAlpha = 0f, bottomAlpha = 0f, borderAlpha = 0f),
         ),
         control = StatsControlTokens(
-            height = 38.dp,
-            horizontalPadding = 14.dp,
+            height = 34.dp,
+            horizontalPadding = 12.dp,
             selectedAlpha = 0.42f,
             unselectedAlpha = 0.16f,
             borderAlpha = 0.16f,

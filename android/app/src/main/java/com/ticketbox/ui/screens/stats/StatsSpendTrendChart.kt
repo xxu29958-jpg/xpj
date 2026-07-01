@@ -101,29 +101,35 @@ private fun DrawScope.drawSpendTrendBars(
     maxAmount: Long,
     style: SpendTrendChartStyle,
 ) {
-    val top = 6.dp.toPx()
-    val bottom = size.height - 2.dp.toPx()
+    val top = 4.dp.toPx()
+    val bottom = size.height - 5.dp.toPx()
     val plotHeight = (bottom - top).coerceAtLeast(1f)
     val horizontalInset = 4.dp.toPx()
     val bucketWidth = (size.width - horizontalInset * 2f) / points.size.coerceAtLeast(1)
-    val barWidth = (bucketWidth * 0.42f).coerceIn(5.dp.toPx(), 18.dp.toPx())
+    val barWidth = (bucketWidth * 0.56f).coerceIn(6.dp.toPx(), 22.dp.toPx())
     val maxPointAmount = points.maxOfOrNull { it.amountCents } ?: 0L
+    val zeroDotSize = 4.dp.toPx()
 
-    listOf(0f, 0.5f, 1f).forEach { ratio ->
-        val y = bottom - plotHeight * ratio
-        drawLine(
-            color = style.grid,
-            start = Offset(0f, y),
-            end = Offset(size.width, y),
-            strokeWidth = 1.dp.toPx(),
-        )
-    }
+    drawLine(
+        color = style.grid,
+        start = Offset(0f, bottom),
+        end = Offset(size.width, bottom),
+        strokeWidth = 1.dp.toPx(),
+    )
 
     points.forEachIndexed { index, point ->
-        if (point.amountCents <= 0L) return@forEachIndexed
-        val ratio = point.amountCents.toFloat() / maxAmount.toFloat()
-        val barHeight = (plotHeight * ratio).coerceAtLeast(5.dp.toPx())
         val x = horizontalInset + bucketWidth * index + (bucketWidth - barWidth) / 2f
+        if (point.amountCents <= 0L) {
+            drawRoundRect(
+                color = style.grid,
+                topLeft = Offset(x + (barWidth - zeroDotSize) / 2f, bottom - zeroDotSize),
+                size = Size(zeroDotSize, zeroDotSize),
+                cornerRadius = CornerRadius(zeroDotSize / 2f, zeroDotSize / 2f),
+            )
+            return@forEachIndexed
+        }
+        val ratio = point.amountCents.toFloat() / maxAmount.toFloat()
+        val barHeight = (plotHeight * ratio).coerceAtLeast(8.dp.toPx())
         val alpha = if (point.amountCents == maxPointAmount) style.emphasisAlpha else style.quietAlpha
         drawRoundRect(
             color = style.primary.copy(alpha = alpha),

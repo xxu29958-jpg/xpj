@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -20,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -202,17 +200,6 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
         )
         // 轴3 三柱对比:本月 vs 上月 vs 去年同月 grouped columns 给「形状」,下面的行制保留精确值。
         // 两月皆零的行画不出对比,纯函数已过滤;全被滤光时只剩行制(不画空图)。
-        val chartRows = remember(rows) { categoryComparisonChartRows(rows) }
-        val hasComparisonBaseline = remember(chartRows) {
-            chartRows.any { it.previousAmountCents > 0L || it.yearOverYearAmountCents > 0L }
-        }
-        val hasCurrentAmount = remember(chartRows) {
-            chartRows.any { it.currentAmountCents > 0L }
-        }
-        if (chartRows.size >= 2 && hasCurrentAmount && hasComparisonBaseline) {
-            CategoryComparisonGroupedChart(rows = chartRows)
-            ComparisonLegend()
-        }
         rows.forEach { row ->
             val deltaText = when {
                 row.yearOverYearDeltaAmountCents > 0L -> stringResource(
@@ -241,45 +228,6 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
 }
 
 /** 图例:三色点+「本月/上月/去年同月」,与 grouped chart 的 series 色同源(chart tokens 前三槽)。 */
-@Composable
-private fun ComparisonLegend() {
-    val chartTokens = LocalChartTokens.current
-    val currentColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
-    val previousColor = chartTokens.series.getOrElse(1) { MaterialTheme.colorScheme.secondary }
-    val yearOverYearColor = chartTokens.series.getOrElse(2) { MaterialTheme.colorScheme.tertiary }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LegendDot(color = currentColor, label = stringResource(R.string.stats_reports_legend_current_month))
-        LegendDot(color = previousColor, label = stringResource(R.string.stats_reports_legend_previous_month))
-        LegendDot(
-            color = yearOverYearColor,
-            label = stringResource(R.string.stats_reports_legend_year_over_year_month),
-        )
-    }
-}
-
-@Composable
-private fun LegendDot(color: Color, label: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(AppSpacing.chipGap)
-                .clip(RoundedCornerShape(AppRadius.pill))
-                .background(color),
-        )
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-        )
-    }
-}
-
 @Composable
 private fun AmountBarRow(
     label: String,

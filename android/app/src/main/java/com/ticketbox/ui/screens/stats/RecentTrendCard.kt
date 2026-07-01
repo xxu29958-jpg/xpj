@@ -61,14 +61,23 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
             )
         } else {
             RecentTrendComparison(summary)
-            RecentTrendMetricStrip(summary)
-            if (summary.shouldUseDominanceBreakdown) {
-                RecentTrendDominanceBreakdown(summary = summary)
-            } else {
-                StatsSpendTrendChart(
+            when {
+                summary.shouldUseSparseBreakdown -> RecentTrendSparseBreakdown(
                     points = chartPoints,
-                    contentDescription = chartA11y,
+                    positiveDayCount = summary.positiveDayCount,
+                    chartA11y = chartA11y,
                 )
+                summary.shouldUseDominanceBreakdown -> {
+                    RecentTrendMetricStrip(summary)
+                    RecentTrendDominanceBreakdown(summary = summary)
+                }
+                else -> {
+                    RecentTrendMetricStrip(summary)
+                    StatsSpendTrendChart(
+                        points = chartPoints,
+                        contentDescription = chartA11y,
+                    )
+                }
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
@@ -242,6 +251,30 @@ private fun RecentTrendBreakdownRow(
     }
 }
 
+@Composable
+private fun RecentTrendSparseBreakdown(
+    points: List<StatsSpendChartPoint>,
+    positiveDayCount: Int,
+    chartA11y: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(
+            text = stringResource(R.string.stats_recent_trend_sparse, positiveDayCount),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        StatsSpendDistributionRows(
+            points = points.filter { it.amountCents > 0L },
+            spec = StatsSpendDistributionSpec(
+                maxRows = 2,
+                sortByAmount = false,
+                includeZeros = false,
+                contentDescription = chartA11y,
+            ),
+        )
+    }
+}
+
 private data class RecentTrendSummary(
     val totalAmountCents: Long,
     val peak: DailySpend?,
@@ -253,6 +286,8 @@ private data class RecentTrendSummary(
     val recentThreeAmountCents: Long,
     val previousThreeAmountCents: Long,
 ) {
+    val shouldUseSparseBreakdown: Boolean =
+        positiveDayCount in 1..2
     val shouldUseDominanceBreakdown: Boolean =
         positiveDayCount >= 3 && peakSharePercent >= RecentTrendDominantPeakPercent
 }

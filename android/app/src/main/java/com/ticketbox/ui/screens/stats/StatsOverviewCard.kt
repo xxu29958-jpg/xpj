@@ -54,38 +54,81 @@ internal fun StatsOverviewCard(
     trendData: StatsOverviewTrendData = StatsOverviewTrendData(),
     statsSource: StatsSource = StatsSource.Backend,
 ) {
+    val evidenceOnly = false
     val currencyDisplay = LocalCurrencyDisplay.current
     val hasCurrentConfirmedSpend = stats.count > 0 && stats.totalAmountCents > 0L
+    val hasTrendData = trendData.reportTrend.any { it.amountCents > 0L } ||
+        trendData.dailyTrend.any { it.amountCents > 0L }
+
+    if (evidenceOnly && !hasTrendData) {
+        return
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                modifier = Modifier.weight(1f),
-                text = stringResource(R.string.stats_overview_month_spend_label),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        if (evidenceOnly) {
+            OverviewRhythmHeader(
+                stats = stats,
+                recent7DaysAmountCents = recent7DaysAmountCents,
+                statsSource = statsSource,
+                currencyDisplay = currencyDisplay,
             )
-            if (statsSource == StatsSource.LocalFallback) {
-                Text(
-                    text = stringResource(R.string.stats_overview_local_estimate_badge),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(AppRadius.pill))
-                        .background(MaterialTheme.colorScheme.secondaryContainer)
-                        .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    style = MaterialTheme.typography.labelSmall,
+        } else {
+            OverviewAmountHeader(
+                stats = stats,
+                statsSource = statsSource,
+                hasCurrentConfirmedSpend = hasCurrentConfirmedSpend,
+                comparison = comparison,
+                currencyDisplay = currencyDisplay,
+            )
+        }
+        if (!evidenceOnly) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+            ) {
+                CompactMetric(
+                    label = stringResource(R.string.stats_overview_count_label),
+                    value = stringResource(R.string.stats_overview_count_value, stats.count),
+                    modifier = Modifier.weight(1f),
+                )
+                CompactMetric(
+                    label = stringResource(R.string.stats_overview_recent7_label),
+                    value = recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+                        ?: stringResource(R.string.stats_overview_recent7_unavailable),
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
+        if (trendData.includeRecentUpload && !evidenceOnly) {
+            OverviewRecentUploadRow(lastUploadAt = trendData.lastUploadAt)
+        }
+        if (hasTrendData || !evidenceOnly) {
+            HeroSpendTrend(
+                dailyTrend = trendData.dailyTrend,
+                reportTrend = trendData.reportTrend,
+                currencyDisplay = currencyDisplay,
+            )
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+    }
+}
+
+@Composable
+private fun OverviewAmountHeader(
+    stats: MonthlyStats,
+    statsSource: StatsSource,
+    hasCurrentConfirmedSpend: Boolean,
+    comparison: MonthComparison?,
+    currencyDisplay: CurrencyDisplay,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        OverviewTitleRow(
+            title = stringResource(R.string.stats_overview_month_spend_label),
+            showLocalBadge = statsSource == StatsSource.LocalFallback,
+        )
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(
                 modifier = Modifier.fillMaxWidth(),
@@ -98,7 +141,7 @@ internal fun StatsOverviewCard(
                     stepSize = 1.sp,
                 ),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
             )
             when {
                 hasCurrentConfirmedSpend -> comparison?.let { MonthDeltaPill(it, currencyDisplay) }
@@ -111,31 +154,69 @@ internal fun StatsOverviewCard(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-        ) {
-            CompactMetric(
-                label = stringResource(R.string.stats_overview_count_label),
-                value = stringResource(R.string.stats_overview_count_value, stats.count),
-                modifier = Modifier.weight(1f),
-            )
-            CompactMetric(
-                label = stringResource(R.string.stats_overview_recent7_label),
-                value = recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
-                    ?: stringResource(R.string.stats_overview_recent7_unavailable),
-                modifier = Modifier.weight(1f),
-            )
-        }
-        if (trendData.includeRecentUpload) {
-            OverviewRecentUploadRow(lastUploadAt = trendData.lastUploadAt)
-        }
-        HeroSpendTrend(
-            dailyTrend = trendData.dailyTrend,
-            reportTrend = trendData.reportTrend,
-            currencyDisplay = currencyDisplay,
+    }
+}
+
+@Composable
+private fun OverviewRhythmHeader(
+    stats: MonthlyStats,
+    recent7DaysAmountCents: Long?,
+    statsSource: StatsSource,
+    currencyDisplay: CurrencyDisplay,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+        OverviewTitleRow(
+            title = stringResource(R.string.stats_overview_rhythm_title),
+            showLocalBadge = statsSource == StatsSource.LocalFallback,
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+        Text(
+            text = if (stats.count > 0) {
+                stringResource(
+                    R.string.stats_overview_rhythm_caption,
+                    stats.count,
+                    recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+                        ?: stringResource(R.string.stats_overview_recent7_unavailable),
+                )
+            } else {
+                stringResource(R.string.stats_overview_rhythm_caption_empty)
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun OverviewTitleRow(
+    title: String,
+    showLocalBadge: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            modifier = Modifier.weight(1f),
+            text = title,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (showLocalBadge) {
+            Text(
+                text = stringResource(R.string.stats_overview_local_estimate_badge),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(AppRadius.pill))
+                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                    .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
     }
 }
 

@@ -69,9 +69,13 @@ private fun HeroTrendHeader(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        heroTrendPeakLabel(summary, currencyDisplay)?.let { peakLabel ->
+        summary.peak?.takeIf { it.amountCents > 0L }?.let { peak ->
             Text(
-                text = peakLabel,
+                text = stringResource(
+                    R.string.stats_overview_trend_peak_amount,
+                    peak.label,
+                    formatDisplayAmount(peak.amountCents, currencyDisplay),
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall.tabularNum(),
                 maxLines = 1,
@@ -97,13 +101,38 @@ private fun HeroTrendBody(
     currencyDisplay: CurrencyDisplay,
     chartA11y: String,
 ) {
+    when {
+        summary.shouldUseSparseBreakdown -> HeroTrendSparseBreakdown(
+            points = points,
+            positivePointCount = summary.positivePointCount,
+            chartA11y = chartA11y,
+        )
+        summary.shouldUseDominanceBreakdown -> {
+            HeroTrendFactStrip(summary = summary, currencyDisplay = currencyDisplay)
+            HeroTrendDominanceBreakdown(summary = summary, currencyDisplay = currencyDisplay)
+        }
+        else -> {
+            HeroTrendFactStrip(summary = summary, currencyDisplay = currencyDisplay)
+            StatsSpendTrendChart(
+                points = points,
+                contentDescription = chartA11y,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeroTrendFactStrip(
+    summary: HeroSpendTrendSummary,
+    currencyDisplay: CurrencyDisplay,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
     ) {
         HeroTrendFact(
-            label = stringResource(R.string.stats_reports_chart_active_days),
-            value = stringResource(R.string.stats_reports_chart_active_days_value, summary.positivePointCount),
+            label = stringResource(R.string.stats_overview_trend_active_buckets_label),
+            value = stringResource(R.string.stats_overview_trend_active_buckets_value, summary.positivePointCount),
             modifier = Modifier.weight(1f),
         )
         HeroTrendFact(
@@ -115,14 +144,6 @@ private fun HeroTrendBody(
             label = stringResource(R.string.stats_overview_trend_other_average_label),
             value = formatDisplayAmount(summary.otherAverageAmountCents, currencyDisplay),
             modifier = Modifier.weight(1f),
-        )
-    }
-    if (summary.shouldUseDominanceBreakdown) {
-        HeroTrendDominanceBreakdown(summary = summary, currencyDisplay = currencyDisplay)
-    } else {
-        StatsSpendTrendChart(
-            points = points,
-            contentDescription = chartA11y,
         )
     }
 }
@@ -204,6 +225,31 @@ private fun HeroTrendBreakdownRow(
     }
 }
 
+@Composable
+private fun HeroTrendSparseBreakdown(
+    points: List<StatsSpendChartPoint>,
+    positivePointCount: Int,
+    chartA11y: String,
+) {
+    val positivePoints = points.filter { it.amountCents > 0L }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(
+            text = stringResource(R.string.stats_overview_trend_sparse_hint, positivePointCount),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        StatsSpendDistributionRows(
+            points = positivePoints,
+            spec = StatsSpendDistributionSpec(
+                maxRows = 2,
+                sortByAmount = false,
+                includeZeros = false,
+                contentDescription = chartA11y,
+            ),
+        )
+    }
+}
+
 private data class HeroSpendTrendSummary(
     val peak: StatsSpendChartPoint?,
     val positivePointCount: Int,
@@ -212,6 +258,8 @@ private data class HeroSpendTrendSummary(
     val otherTotalAmountCents: Long,
     val otherAverageAmountCents: Long,
 ) {
+    val shouldUseSparseBreakdown: Boolean =
+        positivePointCount in 1..2
     val shouldUseDominanceBreakdown: Boolean =
         positivePointCount >= 3 && peakSharePercent >= HeroTrendDominantPeakPercent
 }
@@ -233,21 +281,6 @@ private fun heroSpendTrendSummary(points: List<StatsSpendChartPoint>): HeroSpend
         otherTotalAmountCents = otherTotal,
         otherAverageAmountCents = if (otherPositivePoints.isNotEmpty()) otherTotal / otherPositivePoints.size else 0L,
     )
-}
-
-@Composable
-private fun heroTrendPeakLabel(
-    summary: HeroSpendTrendSummary,
-    currencyDisplay: CurrencyDisplay,
-): String? {
-    val peak = summary.peak?.takeIf { it.amountCents > 0L }
-    return peak?.let {
-        stringResource(
-            R.string.stats_overview_trend_peak_amount,
-            it.label,
-            formatDisplayAmount(it.amountCents, currencyDisplay),
-        )
-    }
 }
 
 private fun heroSpendTrendPoints(
