@@ -389,3 +389,17 @@ that actually ships the fix.
 - Desired follow-up: register and implement backend-authoritative ledger query
   contracts before adding chart-point drill or saved report presets. Android
   must not synthesize authoritative report results locally.
+
+### ANDROID-2026-07-02-connection-vpn-trust
+
+- Surface: Android Settings connection page and network error feedback.
+- Status: registered follow-up after the connection secondary-page slice.
+- Gap: the connection page now makes the bound address and cache/confirmed state
+  visible, but the user-observed VPN failure still needs real-device evidence and
+  network-path diagnosis. A polished state page is not proof that VPN routing,
+  split-tunnel behavior, DNS, or certificate interception is handled correctly.
+- Desired follow-up: reproduce with the official package on a physical device,
+  capture online, VPN-on, VPN-off, and offline states, and ensure user-facing
+  copy tells the user what changed without exposing repository or transport
+  internals. Backend remains the authority whenever reachable; cache display is
+  only a marked fallback.

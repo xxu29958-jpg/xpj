@@ -45,3 +45,24 @@ feature slice without raising risk.
   codes or `UiText`-friendly repository errors in a focused repository/error
   contract slice, then update ViewModel tests for preview, accept, and invalid
   input failures.
+
+- Surface: Android domain/display helpers for ledger roles and ledger scope.
+- Status: registered follow-up after the Connection secondary-page slice.
+- Debt: `ledgerRoleLabel()` and `ledgerScopeLabel()` still return hardcoded
+  Chinese strings from the domain layer and are used by several UI screens. The
+  Connection and Join Family slices avoid those helpers locally, but the broader
+  helper remains a cross-screen resource-rule violation.
+- Desired cleanup: replace domain display helpers with resource-id mapping in
+  the UI layer, migrate Today, Settings root, Family Members, Expense split
+  rows, and chips in focused slices, then delete the hardcoded label helpers or
+  restrict domain helpers to non-display role predicates only.
+
+- Surface: Android network error mapper.
+- Status: registered follow-up after the Connection secondary-page slice.
+- Debt: `NetworkErrorMapper.userNetworkMessage(...)` still returns user-visible
+  Chinese strings directly, including VPN-specific copy. That is useful product
+  behavior, but it bypasses the resource-backed copy contract.
+- Desired cleanup: move network error families to structured codes or resource
+  ids, keep diagnostic-only details separate from ordinary product copy, and add
+  tests for VPN, timeout, SSL interception, unreachable local address, and
+  generic network failures.

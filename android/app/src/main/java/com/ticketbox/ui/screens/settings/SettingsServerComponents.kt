@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -78,9 +79,10 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
+import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
+import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.ServerSettings
-import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.domain.model.ledgerScopeLabel
 import com.ticketbox.ui.appearance.AppearanceDefaults
 import com.ticketbox.ui.appearance.BackgroundCatalog
 import com.ticketbox.ui.appearance.BuiltInBackground
@@ -115,6 +117,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun AccountStatusCard(
     serverSettings: ServerSettings?,
+    serverUrl: String? = null,
     accountName: String? = null,
     ledgerName: String? = null,
     deviceName: String? = null,
@@ -135,9 +138,9 @@ internal fun AccountStatusCard(
         ?: deviceName?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.settings_account_default_device)
     val roleCode = serverSettings?.role?.takeIf { it.isNotBlank() } ?: role?.takeIf { it.isNotBlank() }
-    val displayRole = roleCode?.let { ledgerRoleLabel(it) }
+    val displayRole = roleCode?.let { stringResource(accountRoleLabelRes(it)) }
         ?: stringResource(R.string.settings_account_role_unknown)
-    val ledgerScope = serverSettings?.ledgerIsDefault?.let { ledgerScopeLabel(it) }
+    val ledgerScope = serverSettings?.ledgerIsDefault?.let { stringResource(accountScopeLabelRes(it)) }
     val statusText = when {
         busy -> stringResource(R.string.settings_account_status_updating)
         serverSettings != null -> stringResource(R.string.settings_account_status_server_confirmed)
@@ -152,8 +155,10 @@ internal fun AccountStatusCard(
     val storageText = when (serverSettings?.storageStatus) {
         null -> null
         "normal" -> stringResource(R.string.settings_account_storage_normal)
-        else -> serverSettings.storageStatus
+        else -> stringResource(R.string.settings_account_storage_attention)
     }
+    val addressText = serverUrl?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.settings_account_connection_address_unbound)
 
     Column(
         modifier = Modifier
@@ -196,25 +201,25 @@ internal fun AccountStatusCard(
             style = MaterialTheme.typography.bodySmall,
         )
         serverSettings?.let { AccountServerCounters(it) }
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            AccountInfoLine(text = stringResource(R.string.settings_account_account_line, displayAccount))
-            AccountInfoLine(text = stringResource(R.string.settings_account_device_line, displayDevice))
-            AccountInfoLine(text = stringResource(R.string.settings_account_role_line, displayRole))
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AccountInfoLine(
-                text = stringResource(
-                    R.string.settings_account_last_upload_line,
-                    latestUploadAt?.let { displayTime(it) }
-                        ?: stringResource(R.string.settings_account_no_upload),
-                ),
+                label = stringResource(R.string.settings_account_address_label),
+                value = addressText,
+            )
+            AccountInfoLine(label = stringResource(R.string.settings_account_account_label), value = displayAccount)
+            AccountInfoLine(label = stringResource(R.string.settings_account_device_label), value = displayDevice)
+            AccountInfoLine(label = stringResource(R.string.settings_account_role_label), value = displayRole)
+            AccountInfoLine(
+                label = stringResource(R.string.settings_account_last_upload_label),
+                value = latestUploadAt?.let { displayTime(it) }
+                    ?: stringResource(R.string.settings_account_no_upload),
             )
             AccountInfoLine(
-                text = stringResource(
-                    R.string.settings_account_last_sync_line,
-                    lastSyncAt?.let { displayTime(it) } ?: stringResource(R.string.settings_account_no_sync),
-                ),
+                label = stringResource(R.string.settings_account_last_sync_label),
+                value = lastSyncAt?.let { displayTime(it) } ?: stringResource(R.string.settings_account_no_sync),
             )
             storageText?.let {
-                AccountInfoLine(text = stringResource(R.string.settings_account_storage_line, it))
+                AccountInfoLine(label = stringResource(R.string.settings_account_storage_label), value = it)
             }
         }
         if (onCheckConnection != null && onSync != null) {
@@ -393,16 +398,42 @@ internal fun StatusPill(text: String, confirmed: Boolean) {
 }
 
 @Composable
-internal fun AccountInfoLine(text: String) {
-    Text(
-        text = text,
+internal fun AccountInfoLine(label: String, value: String) {
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodySmall,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(0.34f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = value,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
+
+@StringRes
+private fun accountRoleLabelRes(role: String): Int = when (role.trim()) {
+    LEDGER_ROLE_OWNER -> R.string.settings_account_role_owner
+    LEDGER_ROLE_MEMBER -> R.string.settings_account_role_member
+    LEDGER_ROLE_VIEWER -> R.string.settings_account_role_viewer
+    else -> R.string.settings_account_role_unknown
+}
+
+@StringRes
+private fun accountScopeLabelRes(isDefault: Boolean): Int =
+    if (isDefault) R.string.settings_account_scope_personal else R.string.settings_account_scope_shared
 
 @Composable
 internal fun PreviewRoleCard(
