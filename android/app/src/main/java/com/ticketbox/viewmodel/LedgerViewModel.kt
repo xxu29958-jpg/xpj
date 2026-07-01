@@ -105,10 +105,13 @@ data class LedgerUiState(
      * "no expenses yet" empty state. Pure derivation, unit-testable.
      */
     val isFirstSync: Boolean
-        get() = items.isEmpty() && syncing && lastSyncAt == null
+        get() = syncing && !hasReadableData
 
     val showPageRefresh: Boolean
-        get() = syncing && items.isEmpty()
+        get() = syncing && !hasReadableData
+
+    private val hasReadableData: Boolean
+        get() = items.isNotEmpty() || lastSyncAt != null || syncedInCurrentSession
 
     val summary: LedgerSummaryUi
         get() = LedgerSummaryUi(

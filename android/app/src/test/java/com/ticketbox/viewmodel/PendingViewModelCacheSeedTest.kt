@@ -84,11 +84,20 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
 
     @Test
     fun emptyCacheFallsBackToNetworkFetch() = review {
+        val networkResponse = CompletableDeferred<Result<List<com.ticketbox.domain.model.Expense>>>()
         val fake = FakeReviewActions()
         fake.cachedPending = emptyList()
-        fake.pending = listOf(expense(id = 1L, merchant = "Fresh"))
+        fake.fetchPendingResponder = { networkResponse.await() }
 
         val vm = PendingViewModel(fake)
+        runCurrent()
+
+        assertTrue(vm.uiState.value.loading)
+        assertTrue(vm.uiState.value.hasLoadedOnce)
+        assertTrue(vm.uiState.value.showingCachedSnapshot)
+        assertFalse(vm.uiState.value.showPageRefresh)
+
+        networkResponse.complete(Result.success(listOf(expense(id = 1L, merchant = "Fresh"))))
         advanceUntilIdle()
 
         assertEquals(listOf("Fresh"), vm.uiState.value.items.map { it.merchant })

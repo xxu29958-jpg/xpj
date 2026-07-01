@@ -411,7 +411,9 @@ that actually ships the fix.
   Today/Pending/Ledger/Insights reserve the strong refreshing authority tone for
   blocking first-load states instead of readable background sync. Secondary/drill
   pages reuse the same readable-refresh rule, and confirmed-ledger sync uses 200
-  rows per page.
+  rows per page. The latest frontend fix also treats an already-read empty
+  Pending cache and a previously synced empty Ledger as readable states, so slow
+  network refresh no longer keeps those empty pages in whole-page loading.
 - Remaining QA: measure Today, Pending, Ledger, Insights, and a sample of the
   secondary/drill pages on a physical device with the production backend and
   confirm the page does not imply fresh backend truth before the primary response

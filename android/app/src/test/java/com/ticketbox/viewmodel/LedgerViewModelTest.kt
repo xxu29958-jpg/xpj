@@ -490,6 +490,13 @@ class LedgerViewModelTest {
                 lastSyncAt = "2026-05-17T10:00:00Z",
             ).isFirstSync,
         )
+        assertFalse(
+            LedgerUiState(
+                items = emptyList(),
+                syncing = true,
+                syncedInCurrentSession = true,
+            ).isFirstSync,
+        )
     }
 
     @Test
@@ -509,12 +516,26 @@ class LedgerViewModelTest {
     }
 
     @Test
-    fun pageRefreshOnlyCoversEmptyLedger() {
+    fun pageRefreshOnlyCoversUnreadLedger() {
         assertTrue(LedgerUiState(items = emptyList(), syncing = true).showPageRefresh)
         assertFalse(
             LedgerUiState(
                 items = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
                 syncing = true,
+            ).showPageRefresh,
+        )
+        assertFalse(
+            LedgerUiState(
+                items = emptyList(),
+                syncing = true,
+                lastSyncAt = "2026-05-17T10:00:00Z",
+            ).showPageRefresh,
+        )
+        assertFalse(
+            LedgerUiState(
+                items = emptyList(),
+                syncing = true,
+                syncedInCurrentSession = true,
             ).showPageRefresh,
         )
     }

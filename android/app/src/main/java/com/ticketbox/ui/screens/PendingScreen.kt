@@ -85,8 +85,8 @@ fun PendingScreen(
     var showPendingTools by rememberSaveable { mutableStateOf(false) }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
     var needsReviewFilter by rememberSaveable { mutableStateOf(NeedsReviewFilter.All) }
-    var wasLoading by remember { mutableStateOf(state.loading) }
     val blockingRefresh = state.showPageRefresh
+    var wasBlockingRefresh by remember { mutableStateOf(blockingRefresh) }
     val listState = rememberLazyListState()
     val queueCounts = PendingQueueCounts(
         all = state.items.size,
@@ -125,11 +125,11 @@ fun PendingScreen(
         previousItemCount = state.items.size
     }
 
-    LaunchedEffect(state.loading) {
-        if (wasLoading && !state.loading) {
+    LaunchedEffect(blockingRefresh) {
+        if (wasBlockingRefresh && !blockingRefresh) {
             listState.scrollToItem(0)
         }
-        wasLoading = state.loading
+        wasBlockingRefresh = blockingRefresh
     }
 
     if (showPendingTools) {
@@ -239,7 +239,7 @@ fun PendingScreen(
         }
 
         when {
-            state.items.isEmpty() && state.loading -> {
+            state.items.isEmpty() && blockingRefresh -> {
                 item {
                     Column(modifier = Modifier.shimmer()) {
                         repeat(5) {
@@ -253,6 +253,7 @@ fun PendingScreen(
                 item {
                     EmptyPendingState(
                         uploading = state.uploading,
+                        loading = state.loading,
                         readOnly = readOnly,
                         showUploadGuide = showUploadGuide,
                         onToggleGuide = { showUploadGuide = !showUploadGuide },

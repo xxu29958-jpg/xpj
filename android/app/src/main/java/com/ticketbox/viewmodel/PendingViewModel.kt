@@ -94,7 +94,7 @@ data class PendingUiState(
     val reviewRemaining: Int = 0,
 ) {
     val showPageRefresh: Boolean
-        get() = loading && (items.isEmpty() || !hasLoadedOnce)
+        get() = loading && !hasLoadedOnce
 }
 
 class PendingViewModel(
@@ -249,8 +249,14 @@ class PendingViewModel(
         pendingCacheSeeded = true
         repository.getCachedPending().onSuccess { cached ->
             if (requestGeneration != generation) return@onSuccess
-            if (cached.isNotEmpty() && _uiState.value.items.isEmpty()) {
-                _uiState.update { it.copy(items = cached, showingCachedSnapshot = true, hasLoadedOnce = true) }
+            if (_uiState.value.items.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        items = cached,
+                        showingCachedSnapshot = true,
+                        hasLoadedOnce = true,
+                    )
+                }
             }
         }
     }
