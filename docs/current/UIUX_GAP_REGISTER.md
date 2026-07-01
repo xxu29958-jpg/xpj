@@ -345,8 +345,9 @@ that actually ships the fix.
   available.
 - Resolution: monthly stats now clears the page loading state as soon as the
   authoritative monthly stats response is applied. Lifestyle stats and confirmed
-  cache sync continue in the background, and Reports overview/goals load in
-  parallel instead of serially.
+  cache sync continue in the background. Insights reports now release the trend
+  loading state as soon as the overview response lands; goals continue as a
+  secondary background result and stale goal requests are cancelled.
 - Remaining QA: measure Today and Insights pull-to-refresh on a physical device
   with the production backend and confirm the page does not imply fresh backend
   truth before the primary stats response lands.

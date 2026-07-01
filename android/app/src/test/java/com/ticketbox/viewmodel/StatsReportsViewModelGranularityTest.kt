@@ -10,16 +10,20 @@ import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
+import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
@@ -80,25 +84,46 @@ class StatsReportsViewModelGranularityTest {
 
         assertEquals(1, repo.overviewQueries.size)
     }
+
+    @Test
+    fun overviewStopsReportsLoadingBeforeGoalsComplete() = reportsTest { repo ->
+        val goalsGate = CompletableDeferred<Result<List<Goal>>>()
+        repo.overviewResult = Result.success(overview(month = "2026-06"))
+        repo.goalsResponder = { goalsGate.await() }
+        val vm = StatsReportsViewModel(repo)
+
+        vm.refresh(month = "2026-06", selectedTag = "")
+        runCurrent()
+
+        assertFalse(vm.uiState.value.reportsLoading)
+        assertEquals("2026-06", vm.uiState.value.reportsOverview?.month)
+        assertEquals(emptyList(), vm.uiState.value.reportGoals)
+
+        goalsGate.complete(Result.success(emptyList()))
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.reportsLoading)
+    }
 }
 
 // Top-level (not nested) so the detekt TooManyFunctions baseline entry matches —
 // it must implement the full ReportsActions surface (13 functions) for the VM under test.
 private class RecordingReportsActions : ReportsActions {
     val overviewQueries = mutableListOf<ReportsOverviewQuery>()
+    var overviewResult: Result<ReportsOverview> = Result.failure(RuntimeException("overview unavailable in this fake"))
+    var goalsResponder: (suspend () -> Result<List<Goal>>)? = null
 
     override fun canModifyLedger(): Boolean = true
 
     override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
         overviewQueries += query
-        return Result.failure(RuntimeException("overview unavailable in this fake"))
+        return overviewResult
     }
 
     override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
-        Result.success(emptyList())
+        goalsResponder?.invoke() ?: Result.success(emptyList())
 
     override suspend fun createGoal(draft: GoalDraft): Result<Goal> =
         Result.failure(UnsupportedOperationException())
@@ -143,3 +168,24 @@ private class RecordingReportsActions : ReportsActions {
         surface: DashboardSurface,
     ): Result<DashboardCards> = Result.failure(UnsupportedOperationException())
 }
+
+private fun overview(month: String) = ReportsOverview(
+    month = month,
+    timezone = "Asia/Shanghai",
+    granularity = ReportGranularity.Day,
+    totalAmountCents = 1200L,
+    count = 1,
+    previousMonth = "2026-05",
+    previousTotalAmountCents = 0L,
+    previousCount = 0,
+    yearOverYearMonth = "2025-06",
+    yearOverYearTotalAmountCents = 0L,
+    yearOverYearCount = 0,
+    yearOverYearDeltaAmountCents = 1200L,
+    yearOverYearDeltaCount = 1,
+    merchantCategory = null,
+    rankingMetric = ReportRankingMetric.Count,
+    trend = listOf(ReportTrendPoint(bucket = "$month-01", label = "1日", amountCents = 1200L, count = 1)),
+    merchantRanking = emptyList(),
+    categoryComparison = emptyList(),
+)

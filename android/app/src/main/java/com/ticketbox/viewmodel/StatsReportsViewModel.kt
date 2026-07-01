@@ -139,24 +139,35 @@ class StatsReportsViewModel(
     private fun loadReports(reportsRepo: ReportsActions, generation: Long, month: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(reportsLoading = true, reportsMessage = null) }
-            val overviewDeferred = async {
-                reportsRepo.reportsOverview(
-                    ReportsOverviewQuery(
-                        month = month,
-                        granularity = granularity,
-                        rankingMetric = ReportRankingMetric.Count,
-                    ),
+            val goalsDeferred = async { reportsRepo.goals(month = month) }
+            val overviewResult = reportsRepo.reportsOverview(
+                ReportsOverviewQuery(
+                    month = month,
+                    granularity = granularity,
+                    rankingMetric = ReportRankingMetric.Count,
+                ),
+            )
+            if (!isCurrent(generation)) {
+                goalsDeferred.cancel()
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    reportsOverview = overviewResult.getOrNull(),
+                    reportsLoading = false,
+                    reportsMessage = if (overviewResult.isFailure) {
+                        UiText.res(R.string.stats_message_trend_failed)
+                    } else {
+                        null
+                    },
                 )
             }
-            val goalsDeferred = async { reportsRepo.goals(month = month) }
-            val overviewResult = overviewDeferred.await()
+
             val goalsResult = goalsDeferred.await()
             if (!isCurrent(generation)) return@launch
             _uiState.update {
                 it.copy(
-                    reportsOverview = overviewResult.getOrNull(),
                     reportGoals = goalsResult.getOrDefault(emptyList()),
-                    reportsLoading = false,
                     reportsMessage = when {
                         overviewResult.isFailure && goalsResult.isFailure ->
                             UiText.res(R.string.stats_message_reports_failed)

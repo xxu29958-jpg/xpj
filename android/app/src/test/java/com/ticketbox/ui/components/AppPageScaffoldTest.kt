@@ -1,5 +1,6 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.ui.design.AppSpacing
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -33,7 +34,10 @@ class AppPageScaffoldTest {
     @Test
     fun bottomPaddingUsesNamedBottomBarConstant() {
         assertEquals(96f, AppPageDefaults.BottomBarHeight.value)
-        assertEquals(24f, AppPageDefaults.BottomContentExtraPadding.value)
+        assertEquals(
+            AppSpacing.bottomContentPadding + AppSpacing.sectionGap + AppSpacing.cardGap,
+            AppPageDefaults.BottomContentExtraPadding,
+        )
     }
 
     @Test
