@@ -8,21 +8,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,21 +27,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtGoalUiState
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import kotlinx.coroutines.delay
@@ -60,7 +55,7 @@ private const val DebtGoalFlashDismissMillis = 4000L
  * 关联欠款（未结清 / 已结清 / 已作废），并在 needs_review 时给出 §6/F13 复核两出口
  * （移除作废欠款 / 保留存档）。本切片只读 + 复核，创建还债目标随后续债务管理界面落地。
  *
- * 复用共享骨架（[AppScrollableContent] + secondary header + [AppGlassCard] +
+ * 复用共享骨架（[AppScrollableContent] + secondary header +
  * [AppStatusBanner]），三端 token 同步走 MaterialTheme + AppSpacing。屏接 VM（与
  * IncomePlanScreen 同形），返回先收详情、再关 overlay（overlay 无 NavHost 回退栈，
  * 必须自带 [BackHandler] — [[project_overlay_screen_needs_own_backhandler]]）。
@@ -91,21 +86,60 @@ fun DebtGoalScreen(
     // 排序刻意不 keyed-by-goal=会话级视图偏好，跨 closeDetail 保留）。picker 对话框在 AppScrollableContent **外**渲染。
     var sortMode by rememberSaveable { mutableStateOf(DebtPlanSortMode.Default) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    val callbacks = DebtGoalScreenBodyCallbacks(
+        handleBack = handleBack,
+        onCreate = onCreate,
+        onOpenLinkedDebt = onOpenLinkedDebt,
+        detailCallbacks = DebtGoalDetailCallbacks(
+            sortMode = sortMode,
+            onSortModeChange = { sortMode = it },
+            onSetTargetDate = { showDatePicker = true },
+        ),
+    )
+    DebtGoalScreenBody(state = state, currency = currency, viewModel = viewModel, callbacks = callbacks)
+    DebtTargetDatePickerDialog(
+        visible = showDatePicker,
+        selected = selected,
+        onSetTargetDate = viewModel::setTargetDate,
+        onDismiss = { showDatePicker = false },
+    )
+}
+
+private data class DebtGoalScreenBodyCallbacks(
+    val handleBack: () -> Unit,
+    val onCreate: () -> Unit,
+    val onOpenLinkedDebt: (String) -> Unit,
+    val detailCallbacks: DebtGoalDetailCallbacks,
+)
+
+@Composable
+private fun DebtGoalScreenBody(
+    state: DebtGoalUiState,
+    currency: CurrencyDisplay,
+    viewModel: DebtGoalViewModel,
+    callbacks: DebtGoalScreenBodyCallbacks,
+) {
+    val selected = state.selectedGoal
     AppScrollableContent(
         role = AppPageRole.Stats,
         isRefreshing = ReadableRefreshIndicator.isActive(state.isLoading, selected != null || state.goals.isNotEmpty()),
         // 不能用 viewModel::refresh：refresh 现带 clearStale 默认参，方法引用解析为 (Boolean)->Unit 不匹配 ()->Unit。
         onRefresh = { viewModel.refresh() },
         hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
         item {
             DebtGoalHeader(
                 title = selected?.name ?: stringResource(R.string.debt_goal_topbar_title),
                 subtitle = if (selected == null) stringResource(R.string.debt_goal_intro_body) else null,
-                onBack = handleBack,
+                onBack = callbacks.handleBack,
                 // CTA 仅在列表态（非详情）且可写时出现；创建走 onCreate（overlay 内子页）。
-                onCreate = if (selected == null && state.canModify) onCreate else null,
+                onCreate = if (selected == null && state.canModify) callbacks.onCreate else null,
+            )
+        }
+        item {
+            AppDataAuthorityStrip(
+                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
             )
         }
         state.flashMessage?.let { msg ->
@@ -119,23 +153,13 @@ fun DebtGoalScreen(
                 state = state,
                 currency = currency,
                 viewModel = viewModel,
-                onOpenLinkedDebt = onOpenLinkedDebt,
-                callbacks = DebtGoalDetailCallbacks(
-                    sortMode = sortMode,
-                    onSortModeChange = { sortMode = it },
-                    onSetTargetDate = { showDatePicker = true },
-                ),
+                onOpenLinkedDebt = callbacks.onOpenLinkedDebt,
+                callbacks = callbacks.detailCallbacks,
             )
         } else {
             debtGoalListSection(state = state, viewModel = viewModel)
         }
     }
-    DebtTargetDatePickerDialog(
-        visible = showDatePicker,
-        selected = selected,
-        onSetTargetDate = viewModel::setTargetDate,
-        onDismiss = { showDatePicker = false },
-    )
 }
 
 @Composable
@@ -165,84 +189,151 @@ private fun LazyListScope.debtGoalListSection(
     state: DebtGoalUiState,
     viewModel: DebtGoalViewModel,
 ) {
-    if (state.goals.isEmpty() && !state.isLoading) {
-        item { DebtGoalEmptyCard() }
-        return
-    }
-    items(state.goals, key = { it.publicId }) { goal ->
-        DebtGoalListCard(goal = goal, onClick = { viewModel.openDetail(goal) })
-    }
-}
-
-@Composable
-private fun DebtGoalListCard(goal: Goal, onClick: () -> Unit) {
-    val evaluation = goal.debtRepayment
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(AppSpacing.cardPadding),
-            verticalAlignment = Alignment.CenterVertically,
+    val summary = debtGoalListSummary(goals = state.goals, isLoading = state.isLoading)
+    item { DebtGoalOverviewSection(summary = summary) }
+    item {
+        DebtGoalOpenSection(
+            title = stringResource(R.string.debt_goal_list_title),
+            subtitle = stringResource(R.string.debt_goal_list_subtitle),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            if (summary.loadingWithoutData) {
                 Text(
-                    goal.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.size(AppSpacing.miniGap))
-                Text(
-                    stringResource(
-                        R.string.debt_goal_card_linked_count,
-                        evaluation?.linkedDebts?.size ?: 0,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
+                    stringResource(R.string.debt_goal_list_loading),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Column(horizontalAlignment = Alignment.End) {
-                if (evaluation != null) {
-                    DebtStatusBadge(
-                        text = stringResource(debtGoalEvaluationLabelRes(evaluation.evaluationState)),
-                        tone = debtGoalEvaluationTone(evaluation.evaluationState),
-                    )
-                }
-                if (evaluation?.needsReview == true) {
-                    Spacer(Modifier.size(AppSpacing.miniGap))
-                    Text(
-                        stringResource(R.string.debt_goal_card_needs_review),
-                        style = MaterialTheme.typography.labelSmall,
-                        // §6.5 去 shame：复核是「需要你拿个主意」的注意态，不是错误——用 warn（琥珀）非 error（红）。
-                        color = LocalStateTokens.current.warn.fg,
-                    )
-                }
+        }
+    }
+    if (state.goals.isEmpty() && !state.isLoading) {
+        item { DebtGoalEmptyState() }
+        return
+    }
+    items(state.goals, key = { it.publicId }) { goal ->
+        DebtGoalListRow(goal = goal, onClick = { viewModel.openDetail(goal) })
+        DebtGoalRowDivider()
+    }
+}
+
+@Composable
+private fun DebtGoalOverviewSection(summary: DebtGoalListSummary) {
+    DebtGoalOpenSection(
+        title = stringResource(R.string.debt_goal_overview_title),
+        subtitle = stringResource(R.string.debt_goal_overview_subtitle),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        DebtGoalMetricRow(
+            label = stringResource(R.string.debt_goal_metric_active),
+            value = stringResource(R.string.debt_goal_metric_goal_count, summary.activeGoalCount),
+        )
+        DebtGoalRowDivider()
+        DebtGoalMetricRow(
+            label = stringResource(R.string.debt_goal_metric_achieved),
+            value = stringResource(R.string.debt_goal_metric_goal_count, summary.achievedGoalCount),
+        )
+        DebtGoalRowDivider()
+        DebtGoalMetricRow(
+            label = stringResource(R.string.debt_goal_metric_review),
+            value = stringResource(R.string.debt_goal_metric_goal_count, summary.reviewGoalCount),
+        )
+        DebtGoalRowDivider()
+        DebtGoalMetricRow(
+            label = stringResource(R.string.debt_goal_metric_linked_debts),
+            value = stringResource(R.string.debt_goal_metric_debt_count, summary.linkedDebtCount),
+        )
+        DebtGoalRowDivider()
+        DebtGoalMetricRow(
+            label = stringResource(R.string.debt_goal_metric_open_debts),
+            value = stringResource(R.string.debt_goal_metric_debt_count, summary.openDebtCount),
+        )
+    }
+}
+
+@Composable
+private fun DebtGoalMetricRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium.tabularNum(),
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun DebtGoalListRow(goal: Goal, onClick: () -> Unit) {
+    val evaluation = goal.debtRepayment
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = AppSpacing.compactGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+            Text(
+                goal.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                stringResource(
+                    R.string.debt_goal_row_meta,
+                    evaluation?.clearedCount ?: 0,
+                    evaluation?.totalCount ?: 0,
+                    evaluation?.remainingCount ?: 0,
+                ),
+                style = MaterialTheme.typography.bodySmall.tabularNum(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+            if (evaluation != null) {
+                DebtStatusBadge(
+                    text = stringResource(debtGoalEvaluationLabelRes(evaluation.evaluationState)),
+                    tone = debtGoalEvaluationTone(evaluation.evaluationState),
+                )
+            }
+            if (evaluation?.needsReview == true) {
+                Text(
+                    stringResource(R.string.debt_goal_card_needs_review),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalStateTokens.current.warn.fg,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun DebtGoalEmptyCard() {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AppSpacing.sectionGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                stringResource(R.string.debt_goal_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.debt_goal_empty_body),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun DebtGoalEmptyState() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        horizontalAlignment = Alignment.Start,
+    ) {
+        Text(
+            stringResource(R.string.debt_goal_empty_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            stringResource(R.string.debt_goal_empty_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -281,13 +372,19 @@ private fun LazyListScope.debtGoalDetailSection(
             )
         }
     }
-    item { SectionEyebrow(stringResource(R.string.debt_goal_detail_links_title)) }
     // 8e-6a：「先清小的」排序只对**纯外部债**开放（§7.0 红线，成员/混装不做清偿排序器）。
     // 必须用 `== External`（`!= Member` 会误纳 Mixed）。排序对**冻结快照**纯客户端算术、返回新列表，
     // `items(key = debtPublicId)` 因稳定 key 平滑重组（不改源 list，对抗审 C2）。
     val isPureExternal = evaluation.composition == DebtGoalComposition.External
-    if (isPureExternal) {
-        item { DebtPlanSortToggle(mode = callbacks.sortMode, onModeChange = callbacks.onSortModeChange) }
+    item {
+        DebtGoalOpenSection(
+            title = stringResource(R.string.debt_goal_detail_links_title),
+            subtitle = stringResource(R.string.debt_goal_detail_links_subtitle),
+        ) {
+            if (isPureExternal) {
+                DebtPlanSortToggle(mode = callbacks.sortMode, onModeChange = callbacks.onSortModeChange)
+            }
+        }
     }
     val links =
         if (isPureExternal) evaluation.linkedDebts.sortedForPlan(callbacks.sortMode) else evaluation.linkedDebts
@@ -307,36 +404,34 @@ private fun DebtGoalIntegrityReviewCard(
     isSubmitting: Boolean,
     onAction: (DebtIntegrityAction) -> Unit,
 ) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
-            Text(
-                stringResource(R.string.debt_goal_review_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                // §6.5 去 shame：复核标题用 warn（琥珀）非 error（红），保持暖意红线。
-                color = LocalStateTokens.current.warn.fg,
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Text(
+            stringResource(R.string.debt_goal_review_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = LocalStateTokens.current.warn.fg,
+        )
+        Text(
+            stringResource(
+                when {
+                    achieved -> R.string.debt_goal_review_body_achieved
+                    canRemoveVoided -> R.string.debt_goal_review_body_not_evaluable
+                    else -> R.string.debt_goal_review_body_all_voided
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (canModify) {
+            DebtGoalIntegrityActions(
+                achieved = achieved,
+                canRemoveVoided = canRemoveVoided,
+                isSubmitting = isSubmitting,
+                onAction = onAction,
             )
-            Spacer(Modifier.size(AppSpacing.miniGap))
-            Text(
-                stringResource(
-                    when {
-                        achieved -> R.string.debt_goal_review_body_achieved
-                        canRemoveVoided -> R.string.debt_goal_review_body_not_evaluable
-                        else -> R.string.debt_goal_review_body_all_voided
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (canModify) {
-                Spacer(Modifier.size(AppSpacing.compactGap))
-                DebtGoalIntegrityActions(
-                    achieved = achieved,
-                    canRemoveVoided = canRemoveVoided,
-                    isSubmitting = isSubmitting,
-                    onAction = onAction,
-                )
-            }
         }
     }
 }
@@ -375,16 +470,6 @@ private fun DebtGoalIntegrityActions(
     }
 }
 
-@Composable
-private fun SectionEyebrow(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = AppSpacing.smallGap),
-    )
-}
-
 /**
  * 详情屏的交互回调束（8e-6a 排序是会话级视图偏好；8e-6c 还清日期 picker 是屏级对话框，由 [DebtGoalScreen]
  * hoist）——打包成一个对象，让 [debtGoalDetailSection] 的参数数维持在 detekt LongParameterList 门内（≤5）。
@@ -394,56 +479,3 @@ internal data class DebtGoalDetailCallbacks(
     val onSortModeChange: (DebtPlanSortMode) -> Unit,
     val onSetTargetDate: () -> Unit,
 )
-
-/**
- * 8e-6c 还清日期 picker（Material3 [DatePickerDialog]）。[visible] 为 false 时 no-op（host 逻辑内联于此，避免在
- * [DebtGoalScreen] 体内占行触 LongMethod）。确定=用选中的 UTC 毫秒设截止日；[selected] 已有截止日时额外给
- * 「清除日期」（=清空，走 `onSetTargetDate(null)`）。picker 初值回显当前截止日。**不限制过去日期**：过去截止日是
- * 合法输入（→ at_risk，事实性「晚于计划」，钉死在后端 `test_three_state_at_risk_when_deadline_is_in_the_past`）。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DebtTargetDatePickerDialog(
-    visible: Boolean,
-    selected: Goal?,
-    onSetTargetDate: (Long?) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    // R2 defense-in-depth (§7.0)：还清日期入口本就只从 DebtExternalKpiBlock（composition == External）可达，
-    // 但 render 层再 gate 一道——即便 hoist 的 showDatePicker 跨 goal 切换残留到成员/混装计划，picker 也 no-op。
-    if (!visible || selected?.debtRepayment?.composition != DebtGoalComposition.External) return
-    // `selected` is smart-cast non-null here (the guard returns on null/non-External).
-    val deadlineIso = selected.debtRepayment?.targetDate
-    val pickerState = rememberDatePickerState(
-        initialSelectedDateMillis = deadlineIso?.let { isoDateToEpochMillis(it) },
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                onClick = { pickerState.selectedDateMillis?.let { onSetTargetDate(it); onDismiss() } },
-                enabled = pickerState.selectedDateMillis != null,
-            ) { Text(stringResource(R.string.common_confirm)) }
-        },
-        dismissButton = {
-            Row {
-                if (deadlineIso != null) {
-                    TextButton(onClick = { onSetTargetDate(null); onDismiss() }) {
-                        Text(stringResource(R.string.debt_goal_target_date_clear))
-                    }
-                }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-            }
-        },
-    ) {
-        DatePicker(
-            state = pickerState,
-            title = {
-                Text(
-                    stringResource(R.string.debt_goal_target_date_picker_title),
-                    modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
-                )
-            },
-        )
-    }
-}

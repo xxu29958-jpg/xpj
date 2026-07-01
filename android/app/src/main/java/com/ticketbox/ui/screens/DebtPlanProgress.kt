@@ -5,10 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,7 +23,6 @@ import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.DebtGoalLink
 import com.ticketbox.domain.model.DebtRepaymentEvaluation
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -53,48 +50,41 @@ internal fun DebtPlanProgressCard(
     canModify: Boolean,
     onSetTargetDate: () -> Unit,
 ) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
-            DebtStatusBadge(
-                text = stringResource(debtGoalEvaluationLabelRes(evaluation.evaluationState)),
-                tone = debtGoalEvaluationTone(evaluation.evaluationState),
+    DebtGoalOpenSection(
+        title = stringResource(R.string.debt_goal_progress_title),
+        subtitle = stringResource(R.string.debt_goal_progress_subtitle),
+    ) {
+        DebtStatusBadge(
+            text = stringResource(debtGoalEvaluationLabelRes(evaluation.evaluationState)),
+            tone = debtGoalEvaluationTone(evaluation.evaluationState),
+        )
+        if (evaluation.totalCount == 0) {
+            Text(
+                stringResource(R.string.debt_plan_all_voided),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            if (evaluation.totalCount == 0) {
-                // 全部关联欠款已作废（§6.2 空态）：不渲染进度条，短路到下方复核卡 / 空状态。
-                Text(
-                    stringResource(R.string.debt_plan_all_voided),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        } else {
+            PlanCountHeadline(evaluation)
+            AppProgressBar(
+                fraction = evaluation.planFraction,
+                tone = LocalStateTokens.current.success,
+                height = AppSpacing.contentGap,
+                contentDescription = stringResource(
+                    R.string.debt_plan_progress_a11y,
+                    evaluation.clearedCount,
+                    evaluation.totalCount,
+                ),
+            )
+            if (evaluation.sharedHomeCurrencyCode != null) {
+                PlanAmountLine(evaluation, currency)
+            }
+            if (evaluation.composition == DebtGoalComposition.External) {
+                DebtExternalKpiBlock(
+                    evaluation = evaluation,
+                    canModify = canModify,
+                    onSetTargetDate = onSetTargetDate,
                 )
-            } else {
-                PlanCountHeadline(evaluation)
-                Spacer(Modifier.size(AppSpacing.compactGap))
-                AppProgressBar(
-                    fraction = evaluation.planFraction,
-                    tone = LocalStateTokens.current.success,
-                    height = AppSpacing.contentGap,
-                    contentDescription = stringResource(
-                        R.string.debt_plan_progress_a11y,
-                        evaluation.clearedCount,
-                        evaluation.totalCount,
-                    ),
-                )
-                if (evaluation.sharedHomeCurrencyCode != null) {
-                    Spacer(Modifier.size(AppSpacing.smallGap))
-                    PlanAmountLine(evaluation, currency)
-                }
-                // 8e-6b/6c：还清日期投影 + 三态 + 设/改还清日期只对**纯外部债**计划呈现（§7.0 红线：成员/
-                // 混装不做 Market 还债仪表盘；gate 用 `== External` 不是 `!= Member` 以排除 Mixed）。服务端已
-                // gate，这是冗余第二层防线——也保证「设还清日期」入口永不泄漏到成员/混装计划（picker 红线）。
-                if (evaluation.composition == DebtGoalComposition.External) {
-                    Spacer(Modifier.size(AppSpacing.smallGap))
-                    DebtExternalKpiBlock(
-                        evaluation = evaluation,
-                        canModify = canModify,
-                        onSetTargetDate = onSetTargetDate,
-                    )
-                }
             }
         }
     }
@@ -248,42 +238,42 @@ internal fun DebtGoalLinkRow(
     }
     val cardModifier =
         if (link.isVoided) baseModifier else baseModifier.clickable { onClick(link.debtPublicId) }
-    AppGlassCard(modifier = cardModifier) {
-        Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    debtLinkCounterparty(link),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
+    Column(
+        modifier = cardModifier.padding(vertical = AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                debtLinkCounterparty(link),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            if (isMember) {
+                DebtStatusBadge(
+                    text = stringResource(memberDebtStatusLabelRes(link.status)),
+                    tone = memberDebtStatusTone(link.status),
                 )
-                if (isMember) {
-                    DebtStatusBadge(
-                        text = stringResource(memberDebtStatusLabelRes(link.status)),
-                        tone = memberDebtStatusTone(link.status),
-                    )
-                } else {
-                    DebtStatusBadge(
-                        text = stringResource(debtLinkStatusLabelRes(link.status)),
-                        tone = debtLinkStatusTone(link.status),
-                    )
-                }
-            }
-            if (!link.isVoided) {
-                Spacer(Modifier.size(AppSpacing.smallGap))
-                AppProgressBar(
-                    fraction = link.clearedFraction,
-                    tone = if (link.isCleared) {
-                        LocalStateTokens.current.success
-                    } else {
-                        LocalStateTokens.current.neutral
-                    },
-                    height = AppSpacing.miniGap,
+            } else {
+                DebtStatusBadge(
+                    text = stringResource(debtLinkStatusLabelRes(link.status)),
+                    tone = debtLinkStatusTone(link.status),
                 )
             }
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            DebtGoalLinkNote(link = link, currency = currency, isMember = isMember)
         }
+        if (!link.isVoided) {
+            AppProgressBar(
+                fraction = link.clearedFraction,
+                tone = if (link.isCleared) {
+                    LocalStateTokens.current.success
+                } else {
+                    LocalStateTokens.current.neutral
+                },
+                height = AppSpacing.miniGap,
+            )
+        }
+        DebtGoalLinkNote(link = link, currency = currency, isMember = isMember)
+        DebtGoalRowDivider()
     }
 }
 

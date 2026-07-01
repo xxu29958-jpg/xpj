@@ -387,7 +387,7 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-insights-budget-goal-drill-semantics
 
 - Surface: Android Insights Budget, Goals, and Tag/drill pages.
-- Status: Budget secondary parity implemented locally; true-device QA and
+- Status: Budget and Debt Goals secondary parity implemented locally; true-device QA and
   product/API follow-up remain.
 - Gap: user observation says the Budget/Tag area can still show mismatched
   monthly-insight modules, unclear budget remaining/options language, and goal
@@ -402,13 +402,17 @@ that actually ships the fix.
   `BudgetScreenActions` and a pure page-decision model remove the old long
   Composable parameter surface while keeping all write operations in the
   ViewModel/repository path. Goal rows now label existing backend-backed types
-  as "开销目标" or "还债目标" instead of a generic enabled target.
+  as "开销目标" or "还债目标" instead of a generic enabled target. The Debt
+  Goals drill now uses an authority strip, true goal/evaluation summary, open
+  progress/detail sections, divider rows for goals and linked debts, and a
+  selection-style create page instead of stacked form/list cards.
   Tag-filtered Insights now disables global Budget/Goals tabs and keeps tag
   views to tag-relevant Overview/Trend/Category content.
 - Desired follow-up: audit the actual drill paths with backend data. Budget
   still needs true-device coverage for active, over-budget, read-only, and not
-  enabled states. Saving goals remain a product/API contract gap; Android must
-  not invent a "存款目标" type until the backend exposes it.
+  enabled states; Debt Goals still needs true-device coverage for empty,
+  populated, review, detail, and create states. Saving goals remain a product/API
+  contract gap; Android must not invent a "存款目标" type until the backend exposes it.
 
 ### ANDROID-2026-07-01-about-product-trust-page
 

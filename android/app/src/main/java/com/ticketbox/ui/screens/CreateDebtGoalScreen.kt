@@ -24,17 +24,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -45,7 +45,7 @@ import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 /**
  * ADR-0049 §6 (slice 8b) 新建还债目标：名称输入 + 未结清欠款多选选择器 →
  * [CreateDebtGoalViewModel.submit]。镜像 [DebtListScreen] 的生活流骨架
- * （[AppScrollableContent] + [AppPageHeader] + [AppGlassCard] + [AppStatusBanner]），
+ * （[AppScrollableContent] + [AppSecondaryPageHeader] + [AppStatusBanner]），
  * 方向 / 对象标签复用 [DebtGoalLabels]。它是 DebtGoal overlay 内的一个子页（与列表/详情
  * 互斥渲染，见 DebtGoalRoute），故自带 [BackHandler]
  * （[[project_overlay_screen_needs_own_backhandler]]）：返回回到目标列表，再返回才关 overlay。
@@ -78,13 +78,31 @@ fun CreateDebtGoalScreen(
         ),
         onRefresh = viewModel::reload,
         hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
         item { CreateDebtGoalHeader(onBack = onBack) }
+        item {
+            AppDataAuthorityStrip(
+                tone = if (state.isLoadingDebts) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
+            )
+        }
         item { CreateDebtGoalNameField(name = state.name, onNameChange = viewModel::updateName) }
         state.formError?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
         state.loadError?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
-        item { PickerSectionEyebrow(stringResource(R.string.debt_goal_create_picker_title)) }
+        item {
+            DebtGoalOpenSection(
+                title = stringResource(R.string.debt_goal_create_picker_title),
+                subtitle = stringResource(R.string.debt_goal_create_picker_subtitle),
+            ) {
+                if (state.isLoadingDebts && state.candidates.isEmpty()) {
+                    Text(
+                        stringResource(R.string.debt_goal_create_picker_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         debtPickerSection(state = state, currency = currency, onToggle = viewModel::toggleDebt)
         item {
             CreateDebtGoalFooter(
@@ -109,16 +127,17 @@ private fun CreateDebtGoalHeader(onBack: () -> Unit) {
 
 @Composable
 private fun CreateDebtGoalNameField(name: String, onNameChange: (String) -> Unit) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = onNameChange,
-                label = { Text(stringResource(R.string.debt_goal_create_name_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+    DebtGoalOpenSection(
+        title = stringResource(R.string.debt_goal_create_name_section),
+        subtitle = stringResource(R.string.debt_goal_create_name_hint),
+    ) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = onNameChange,
+            label = { Text(stringResource(R.string.debt_goal_create_name_label)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -150,50 +169,55 @@ private fun DebtPickerRow(
 ) {
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(AppSpacing.cardPadding),
-            verticalAlignment = Alignment.CenterVertically,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(vertical = AppSpacing.compactGap),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Checkbox(checked = selected, onCheckedChange = { onToggle() })
+        Spacer(Modifier.width(AppSpacing.smallGap))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            Checkbox(checked = selected, onCheckedChange = { onToggle() })
-            Spacer(Modifier.width(AppSpacing.smallGap))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.size(AppSpacing.miniGap))
-                DebtStatusBadge(
-                    text = stringResource(debtDirectionLabelRes(debt.direction)),
-                    tone = LocalStateTokens.current.neutral,
-                )
-            }
-            Spacer(Modifier.width(AppSpacing.smallGap))
+            Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            DebtStatusBadge(
+                text = stringResource(debtDirectionLabelRes(debt.direction)),
+                tone = LocalStateTokens.current.neutral,
+            )
             Text(
-                formatDisplayAmount(debt.remainingAmountCents, currency),
-                style = MaterialTheme.typography.titleMedium.tabularNum(),
+                stringResource(
+                    R.string.debt_goal_create_remaining_amount,
+                    formatDisplayAmount(debt.remainingAmountCents, currency),
+                ),
+                style = MaterialTheme.typography.bodySmall.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+    DebtGoalRowDivider()
 }
 
 @Composable
 private fun CreateDebtGoalPickerEmpty() {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.sectionGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                stringResource(R.string.debt_goal_create_picker_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.debt_goal_create_picker_empty_body),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        horizontalAlignment = Alignment.Start,
+    ) {
+        Text(
+            stringResource(R.string.debt_goal_create_picker_empty_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            stringResource(R.string.debt_goal_create_picker_empty_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -221,14 +245,4 @@ private fun CreateDebtGoalFooter(
             )
         }
     }
-}
-
-@Composable
-private fun PickerSectionEyebrow(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = AppSpacing.smallGap),
-    )
 }
