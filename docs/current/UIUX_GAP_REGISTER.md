@@ -245,6 +245,24 @@ that actually ships the fix.
   Empty / Attention / Stable state model, so "节奏稳定" only appears when at
   least one real goal exists and none need attention.
 
+### ANDROID-2026-07-02-insights-tag-scope
+
+- Surface: Android Insights with a selected tag.
+- Status: partially fixed in the current tag-scope slice; true-device evidence
+  is still required with a real selected tag.
+- Gap: the selected-tag view previously reused generic Trend fallback content
+  and could sit beside global Budget/Goals semantics. That made the page read
+  like a mismatched report rather than a tag-specific view.
+- Resolution: tag-active Insights now keeps Budget/Goals/global activity
+  modules out of the tab set, and the Trend tab renders an explicit tag-scope
+  summary from backend monthly stats plus the tag-filtered recent trend. Android
+  still does not fabricate tag-scoped Reports Overview, budget, or goal
+  conclusions because the backend API does not expose a full tag reports
+  contract yet.
+  Remaining gap: add backend-authoritative tag Reports Overview if product
+  wants tag-level merchant/category comparison, saved report presets, or
+  drill-through from tag charts.
+
 ### ANDROID-2026-07-01-phase0-ia-uiux-audit
 
 - Surface: Android Today, Pending, Ledger, Insights, Settings root, and Settings

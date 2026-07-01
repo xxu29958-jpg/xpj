@@ -52,6 +52,7 @@ import com.ticketbox.ui.screens.stats.StatsLeadInsight
 import com.ticketbox.ui.screens.stats.StatsPlanningActions
 import com.ticketbox.ui.screens.stats.StatsTopPanel
 import com.ticketbox.ui.screens.stats.StatsTopPanelActions
+import com.ticketbox.ui.screens.stats.TagScopeInsight
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.StatsSource
@@ -256,21 +257,24 @@ fun StatsScreen(
                         }
                     }
                     if (selectedStatsTab == StatsTab.Trend) {
-                        if (state.selectedTag.isBlank()) {
-                            val overview = state.reportsOverview
-                            if (overview != null) {
-                                item {
-                                    ReportsInsightCard(
-                                        overview = overview,
-                                        recentTrend = state.dailyTrend,
-                                        onGranularityChange = onGranularityChange,
-                                    )
-                                }
-                            } else {
-                                item { RecentTrendCard(state.dailyTrend) }
+                        val overview = state.reportsOverview
+                        when {
+                            overview != null -> item {
+                                ReportsInsightCard(
+                                    overview = overview,
+                                    recentTrend = state.dailyTrend,
+                                    onGranularityChange = onGranularityChange,
+                                )
                             }
-                        } else {
-                            item { RecentTrendCard(state.dailyTrend) }
+                            state.selectedTag.isNotBlank() -> item {
+                                TagScopeInsight(
+                                    stats = stats,
+                                    selectedTag = state.selectedTag,
+                                    dailyTrend = state.dailyTrend,
+                                    statsSource = state.statsSource,
+                                )
+                            }
+                            else -> item { RecentTrendCard(state.dailyTrend) }
                         }
                     }
                 }

@@ -115,6 +115,15 @@
     <string name="stats_tag_distribution_subtitle">按本月已确认账单的标签聚合</string>
     <string name="stats_tag_distribution_row_label">#%1$s</string>
     <string name="stats_tag_distribution_percent_count">%1$d%% · %2$d 笔</string>
+    <string name="stats_tag_scope_title">标签洞察</string>
+    <string name="stats_tag_scope_subtitle">#%1$s · %2$s</string>
+    <string name="stats_tag_scope_source_monthly">本月统计</string>
+    <string name="stats_tag_scope_source_local">离线数据</string>
+    <string name="stats_tag_scope_confirmed_caption">%1$d 笔已确认记录使用此标签。</string>
+    <string name="stats_tag_scope_empty_caption">本月还没有使用此标签的确认记录。</string>
+    <string name="stats_tag_scope_month_count_label">本月记录</string>
+    <string name="stats_tag_scope_recent_label">最近 7 天</string>
+    <string name="stats_tag_scope_recent_empty">暂无支出</string>
 
     <!-- RecentTrendCard / RecentUploadCard：最近趋势 + 最近上传 -->
     <string name="stats_recent_trend_title">最近 7 天趋势</string>
