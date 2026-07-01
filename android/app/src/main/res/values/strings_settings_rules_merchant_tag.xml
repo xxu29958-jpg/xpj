@@ -21,6 +21,7 @@
     <string name="category_rule_card_action_edit">编辑</string>
     <string name="category_rule_card_action_delete">删除</string>
     <string name="category_rule_condition_separator"> · </string>
+    <string name="category_rule_condition_none">无附加条件</string>
 
     <!-- CategoryRuleEditorCard（categoryrules/）：新增/编辑表单 -->
     <string name="category_rule_editor_keyword_label">商家关键词</string>

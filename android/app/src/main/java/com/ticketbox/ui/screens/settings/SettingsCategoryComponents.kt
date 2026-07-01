@@ -42,6 +42,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -153,56 +154,95 @@ internal fun CategoryRuleCard(
     onDeleteRule: () -> Unit,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
+    val conditionText = categoryRuleConditionText(rule, currencyDisplay)
+        ?: stringResource(R.string.category_rule_condition_none)
 
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(rule.keyword, style = MaterialTheme.typography.titleSmall)
-                Text(rule.category, color = MaterialTheme.colorScheme.primary)
-            }
-            Text(
-                text = stringResource(
-                    R.string.category_rule_card_priority_status,
-                    rule.priority,
-                    if (rule.enabled) {
-                        stringResource(R.string.category_rule_card_status_enabled)
-                    } else {
-                        stringResource(R.string.category_rule_card_status_disabled)
-                    },
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        CategoryRuleHeader(rule = rule)
+        Text(
+            text = stringResource(
+                R.string.category_rule_card_priority_status,
+                rule.priority,
+                if (rule.enabled) {
+                    stringResource(R.string.category_rule_card_status_enabled)
+                } else {
+                    stringResource(R.string.category_rule_card_status_disabled)
+                },
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            text = conditionText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!readOnly) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
+            CategoryRuleActions(
+                rule = rule,
+                onToggleRule = onToggleRule,
+                onEditRule = onEditRule,
+                onDeleteRule = onDeleteRule,
             )
-            val conditionText = categoryRuleConditionText(rule, currencyDisplay)
-            if (conditionText != null) {
-                Text(
-                    text = conditionText,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (!readOnly) {
-                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-                    OutlinedButton(onClick = { onToggleRule(rule) }) {
-                        Text(
-                            if (rule.enabled) {
-                                stringResource(R.string.category_rule_card_action_disable)
-                            } else {
-                                stringResource(R.string.category_rule_card_action_enable)
-                            },
-                        )
-                    }
-                    OutlinedButton(onClick = onEditRule) {
-                        Text(stringResource(R.string.category_rule_card_action_edit))
-                    }
-                    OutlinedButton(onClick = onDeleteRule) {
-                        Text(stringResource(R.string.category_rule_card_action_delete))
-                    }
-                }
-            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryRuleHeader(rule: CategoryRule) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = rule.keyword,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = rule.category,
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun CategoryRuleActions(
+    rule: CategoryRule,
+    onToggleRule: (CategoryRule) -> Unit,
+    onEditRule: () -> Unit,
+    onDeleteRule: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+        TextButton(onClick = { onToggleRule(rule) }) {
+            Text(
+                if (rule.enabled) {
+                    stringResource(R.string.category_rule_card_action_disable)
+                } else {
+                    stringResource(R.string.category_rule_card_action_enable)
+                },
+            )
+        }
+        TextButton(onClick = onEditRule) {
+            Text(stringResource(R.string.category_rule_card_action_edit))
+        }
+        TextButton(
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            onClick = onDeleteRule,
+        ) {
+            Text(stringResource(R.string.category_rule_card_action_delete))
+        }
     }
 }
 
