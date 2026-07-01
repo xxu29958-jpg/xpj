@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.design.AppAmountRole
@@ -206,7 +207,7 @@ fun ExpenseCard(
                         } else if ((expense.confidence ?: 1.0) < 0.62) {
                             StatusPill(text = stringResource(R.string.components_expense_card_pill_review), tone = LocalStateTokens.current.warn)
                         }
-                        if (expense.duplicateStatus == "suspected") {
+                        if (expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
                             StatusPill(text = stringResource(R.string.components_expense_card_pill_duplicate), tone = LocalStateTokens.current.info)
                         }
                     }
@@ -236,7 +237,7 @@ fun ExpenseCard(
                 )
             }
 
-            if (expense.duplicateStatus == "suspected") {
+            if (expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
                 DuplicateNotice(reason = expense.duplicateReason)
             }
 
@@ -324,7 +325,7 @@ fun ExpenseCard(
                         }
                     }
                 }
-                if (showDuplicateAction && expense.duplicateStatus == "suspected") {
+                if (showDuplicateAction && expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
                     AppOutlinedButton(
                         enabled = actionsEnabled,
                         onClick = onKeepDuplicate,

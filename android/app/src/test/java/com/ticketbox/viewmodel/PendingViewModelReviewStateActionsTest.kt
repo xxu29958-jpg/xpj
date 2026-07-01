@@ -24,12 +24,15 @@ import kotlin.test.assertTrue
 internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTestBase() {
 
     @Test
-    fun confirmReadyExpensesSkipsMissingAmountAndDuplicates() = review {
+    fun confirmReadyExpensesSkipsIncompleteItemsAndDuplicates() = review {
         val ready = expense(id = 10L, amountCents = 100L, merchant = "M1")
         val missingAmount = expense(id = 11L, amountCents = null, merchant = "M2")
         val missingMerchant = expense(id = 12L, amountCents = 100L, merchant = null)
         val suspected = expense(id = 13L, amountCents = 100L, merchant = "M3", duplicateStatus = "suspected")
-        val fake = FakeReviewActions(pending = listOf(ready, missingAmount, missingMerchant, suspected))
+        val missingCategory = expense(id = 14L, amountCents = 100L, merchant = "M4", category = "")
+        val fake = FakeReviewActions(
+            pending = listOf(ready, missingAmount, missingMerchant, suspected, missingCategory),
+        )
         fake.confirmResponder = { id -> Result.success(ready.copy(id = id, status = "confirmed")) }
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
@@ -42,7 +45,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         assertEquals(1, state.bulkConfirm.succeeded)
         assertEquals(0, state.bulkConfirm.failed)
         assertFalse(state.bulkConfirm.running)
-        assertEquals(setOf(11L, 12L, 13L), state.items.map { it.id }.toSet())
+        assertEquals(setOf(11L, 12L, 13L, 14L), state.items.map { it.id }.toSet())
     }
 
     @Test

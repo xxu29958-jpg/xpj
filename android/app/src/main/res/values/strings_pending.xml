@@ -10,30 +10,21 @@
     <string name="pending_celebration_body">待确认队列清空。新截图来了会出现在这里。</string>
     <string name="pending_celebration_check_desc">全部完成</string>
 
-    <!-- 上传流程引导卡片 -->
-    <string name="pending_upload_flow_title">上传后怎么处理</string>
-    <string name="pending_upload_flow_step1_title">上传</string>
-    <string name="pending_upload_flow_step1_subtitle">选截图</string>
-    <string name="pending_upload_flow_step2_title">核对</string>
-    <string name="pending_upload_flow_step2_subtitle">补金额</string>
-    <string name="pending_upload_flow_step3_title">入账</string>
-    <string name="pending_upload_flow_step3_subtitle">确认后记录</string>
-
     <!-- 上传进度卡片 -->
     <string name="pending_upload_progress_title">正在创建待确认账单</string>
     <string name="pending_upload_progress_body">上传完成后会自动刷新。新截图仍然只是草稿，不会直接入账。</string>
 
     <!-- 空态：section header -->
     <string name="pending_empty_header_title_loading">正在整理待确认</string>
-    <string name="pending_empty_header_title">待处理</string>
-    <string name="pending_empty_header_subtitle_readonly">当前角色可查看待确认账单，不能新增或修改</string>
+    <string name="pending_empty_header_title">队列状态</string>
+    <string name="pending_empty_header_subtitle_readonly">当前角色只能查看，不能新增或修改</string>
     <string name="pending_empty_header_subtitle_loading">同步完成后，这里会立刻显示需要核对的账单</string>
     <string name="pending_empty_header_subtitle">上传截图后，会出现在这里等你确认</string>
 
     <!-- 空态：内容卡 -->
     <string name="pending_empty_card_title_loading">正在整理待确认账单</string>
-    <string name="pending_empty_card_title">还没有待确认账单</string>
-    <string name="pending_empty_card_body_readonly">当前账本没有需要查看的待确认账单。</string>
+    <string name="pending_empty_card_title">队列已清空</string>
+    <string name="pending_empty_card_body_readonly">服务端当前没有待确认账单。</string>
     <string name="pending_empty_card_body_loading">截图上传后会先进入待确认区，确认后才会入账。</string>
     <string name="pending_empty_card_body">截图上传后会先进入待确认区。核对清楚后，再把它记到账本里。</string>
 
@@ -52,6 +43,7 @@
     <string name="pending_filter_label_needs_merchant">缺商家</string>
     <string name="pending_filter_label_duplicate">疑似重复</string>
     <string name="pending_filter_label_ready_to_confirm">可直接确认</string>
+    <string name="pending_filter_chip_label">%1$s %2$d</string>
 
     <!-- Needs Review 空筛选卡片 -->
     <string name="pending_filter_empty_title">没有符合「%1$s」的待确认账单</string>
@@ -59,9 +51,10 @@
 
     <!-- 页头 PendingTop -->
     <string name="pending_top_title">待确认</string>
-    <string name="pending_top_subtitle_has_items">%1$d 张截图待核对，确认后才进入账本</string>
-    <string name="pending_top_subtitle_empty">还没有待核对截图，上传后会先放在这里</string>
-    <string name="pending_top_metric_caption">张待核对</string>
+    <string name="pending_top_subtitle_has_items">服务端待核对队列</string>
+    <string name="pending_top_subtitle_empty">服务端没有待核对截图</string>
+    <string name="pending_top_subtitle_empty_readonly">服务端当前没有待核对截图</string>
+    <string name="pending_top_metric_caption">服务端待核对</string>
     <string name="pending_top_duplicate_caption">疑似重复</string>
     <string name="pending_top_cta_readonly">只读角色不能上传</string>
     <string name="pending_top_cta_uploading">正在上传截图</string>

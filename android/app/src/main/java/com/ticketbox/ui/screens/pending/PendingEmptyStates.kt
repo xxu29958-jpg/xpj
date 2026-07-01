@@ -15,50 +15,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppContentCard
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSecondaryButton
-
-@Composable
-internal fun UploadFlowCard() {
-    AppContentCard {
-        Text(
-            text = stringResource(R.string.pending_upload_flow_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FlowStep(
-                "1",
-                stringResource(R.string.pending_upload_flow_step1_title),
-                stringResource(R.string.pending_upload_flow_step1_subtitle),
-                modifier = Modifier.weight(1f),
-            )
-            FlowStep(
-                "2",
-                stringResource(R.string.pending_upload_flow_step2_title),
-                stringResource(R.string.pending_upload_flow_step2_subtitle),
-                modifier = Modifier.weight(1f),
-            )
-            FlowStep(
-                "3",
-                stringResource(R.string.pending_upload_flow_step3_title),
-                stringResource(R.string.pending_upload_flow_step3_subtitle),
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
+import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun UploadProgressCard() {
-    AppContentCard {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
         Text(
             text = stringResource(R.string.pending_upload_progress_title),
             style = MaterialTheme.typography.titleSmall,
@@ -74,34 +42,6 @@ internal fun UploadProgressCard() {
 }
 
 @Composable
-private fun FlowStep(
-    number: String,
-    title: String,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = number,
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = AppTextHierarchy.heading.weight)
-            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
 internal fun EmptyPendingState(
     uploading: Boolean,
     loading: Boolean = false,
@@ -112,7 +52,7 @@ internal fun EmptyPendingState(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         AppSectionHeader(
             title = if (loading) {
@@ -128,27 +68,25 @@ internal fun EmptyPendingState(
                 stringResource(R.string.pending_empty_header_subtitle)
             },
         )
-        AppContentCard {
-            PendingStateTitle(
-                icon = Icons.Filled.AddPhotoAlternate,
-                title = if (loading) {
-                    stringResource(R.string.pending_empty_card_title_loading)
-                } else {
-                    stringResource(R.string.pending_empty_card_title)
-                },
-                body = if (readOnly) {
-                    stringResource(R.string.pending_empty_card_body_readonly)
-                } else if (loading) {
-                    stringResource(R.string.pending_empty_card_body_loading)
-                } else {
-                    stringResource(R.string.pending_empty_card_body)
-                },
-            )
-            if (loading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
+        PendingStateTitle(
+            icon = Icons.Filled.AddPhotoAlternate,
+            title = if (loading) {
+                stringResource(R.string.pending_empty_card_title_loading)
+            } else {
+                stringResource(R.string.pending_empty_card_title)
+            },
+            body = if (readOnly) {
+                stringResource(R.string.pending_empty_card_body_readonly)
+            } else if (loading) {
+                stringResource(R.string.pending_empty_card_body_loading)
+            } else {
+                stringResource(R.string.pending_empty_card_body)
+            },
+        )
+        if (loading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             if (!readOnly) {
                 AppSecondaryButton(
                     text = if (showUploadGuide) {
@@ -170,15 +108,18 @@ internal fun EmptyPendingState(
             )
         }
         if (showUploadGuide && !readOnly) {
-            AppContentCard {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(stringResource(R.string.pending_empty_guide_title), style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.heading.weight)
-                    Text(stringResource(R.string.pending_empty_guide_step1))
-                    Text(stringResource(R.string.pending_empty_guide_step2))
-                    Text(stringResource(R.string.pending_empty_guide_step3))
-                }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
+                Text(
+                    text = stringResource(R.string.pending_empty_guide_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                )
+                Text(stringResource(R.string.pending_empty_guide_step1))
+                Text(stringResource(R.string.pending_empty_guide_step2))
+                Text(stringResource(R.string.pending_empty_guide_step3))
             }
         }
     }
@@ -191,7 +132,7 @@ private fun PendingStateTitle(
     body: String,
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
@@ -201,7 +142,7 @@ private fun PendingStateTitle(
         )
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
             Text(
                 text = title,

@@ -11,10 +11,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
@@ -47,10 +47,10 @@ internal fun PendingToolsSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.cardPaddingSmall),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(
                 text = stringResource(R.string.pending_tools_title),
                 style = MaterialTheme.typography.titleLarge,
@@ -62,7 +62,7 @@ internal fun PendingToolsSheet(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
             AppFilterChip(
                 selected = displayMode == PendingDisplayMode.Compact,
                 onClick = { onDisplayModeChange(PendingDisplayMode.Compact) },
@@ -74,7 +74,7 @@ internal fun PendingToolsSheet(
                 label = stringResource(R.string.pending_tools_density_comfortable),
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AppSecondaryButton(
                 text = if (loading) {
                     stringResource(R.string.pending_tools_refresh_loading)

@@ -6,6 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -210,9 +211,7 @@ fun PendingViewModel.confirmReadyExpenses() {
     if (blockReadOnlyWrite(closeSheet = true)) return
     val state = _uiState.value
     if (state.bulkConfirm.running) return
-    val ready = state.items.filter {
-        it.amountCents != null && !it.merchant.isNullOrBlank() && it.duplicateStatus != "suspected"
-    }
+    val ready = state.items.filter { it.isPendingReadyToConfirmDirectly() }
     if (ready.isEmpty()) {
         _uiState.update { it.copy(message = UiText.res(R.string.pending_review_bulk_none_ready)) }
         return

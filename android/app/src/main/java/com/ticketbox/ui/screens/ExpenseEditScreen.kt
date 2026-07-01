@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.canCreateRepaymentDraft
@@ -363,7 +364,7 @@ fun ExpenseEditScreen(
             )
         }
 
-        if (currentExpense.duplicateStatus == "suspected") {
+        if (currentExpense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             DuplicateNotice(reason = currentExpense.duplicateReason)
             if (!readOnly) {
                 AppOutlinedButton(onClick = onKeepDuplicate) {

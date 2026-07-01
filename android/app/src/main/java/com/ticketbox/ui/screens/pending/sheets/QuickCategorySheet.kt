@@ -20,11 +20,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
@@ -46,8 +46,10 @@ internal fun QuickCategorySheetContent(
     var custom by remember(expense.id) { mutableStateOf("") }
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.cardPaddingSmall),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
     ) {
         ReviewQueueHeader(chrome = chrome)
         Text(
@@ -63,8 +65,8 @@ internal fun QuickCategorySheetContent(
 
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
         ) {
             options.forEach { option ->
                 AppFilterChip(
@@ -90,7 +92,7 @@ internal fun QuickCategorySheetContent(
 
         ReviewSheetStatusMessage(chrome = chrome)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AppSecondaryButton(
                 text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),

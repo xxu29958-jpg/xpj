@@ -22,12 +22,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
@@ -59,8 +59,10 @@ internal fun MissingAmountSheetContent(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.cardPaddingSmall),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
     ) {
         ReviewQueueHeader(chrome = chrome)
         Text(
@@ -103,7 +105,7 @@ internal fun MissingAmountSheetContent(
 
         ReviewSheetStatusMessage(chrome = chrome)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AppSecondaryButton(
                 text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),

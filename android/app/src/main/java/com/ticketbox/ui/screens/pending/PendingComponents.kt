@@ -1,10 +1,10 @@
 package com.ticketbox.ui.screens.pending
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -17,89 +17,66 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.PrimaryCtaButton
-import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun PendingMessageCard(message: String) {
-    AppContentCard {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            Text(
-                text = message,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.smallGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Info,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(AppSpacing.cardPadding),
+        )
+        Text(
+            text = message,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 
-/**
- * 待确认页头。
- *
- * 紧凑型重设计（v0.11，对去重 audit）：
- * - 单一页头 [AppPageHeader] —— 不再额外渲染 [PendingHeader] 的"待处理"section title
- * - hero 数字 [pendingCount] 和重复计数集中到一个 KPI 行，不再重复 3 次
- * - 上传 CTA 仍然显眼；"识别内容只作为草稿"提示去掉（subtitle 已经在说"确认后才进入账本"）
- * - 显示模式（紧凑/舒适）由 [trailingAction] 注入到 AppPageHeader 的 action 槽，与 SafeBadge 并列
- *
- * @param trailingAction 头部右上角附加按钮——通常是显示模式切换。SafeBadge 始终展示。
- */
 @Composable
 internal fun PendingTop(
-    pendingCount: Int,
-    duplicateCount: Int,
+    counts: PendingQueueCounts,
     uploading: Boolean,
     readOnly: Boolean,
     onUploadScreenshot: () -> Unit,
     trailingAction: (@Composable () -> Unit)? = null,
 ) {
+    val pendingCount = counts.all
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         AppPageHeader(
             title = stringResource(R.string.pending_top_title),
-            subtitle = if (pendingCount > 0) {
-                stringResource(R.string.pending_top_subtitle_has_items, pendingCount)
-            } else {
-                stringResource(R.string.pending_top_subtitle_empty)
+            subtitle = when {
+                pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_has_items)
+                readOnly -> stringResource(R.string.pending_top_subtitle_empty_readonly)
+                else -> stringResource(R.string.pending_top_subtitle_empty)
             },
         ) {
             trailingAction?.invoke()
-            SafeBadge()
         }
 
-        // KPI 行：左 hero 主计数 + 右辅助计数。原来用 AppContentCard 包了一层，
-        // hero 数字和 subtitle 里的 pendingCount 重复展示——这里把卡片和重复说明都拆掉，
-        // 只留一行清楚的 metric。如果未来需要更多维度（最近确认率等），再补 card。
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 Text(
                     text = pendingCount.toString(),
                     color = MaterialTheme.colorScheme.onSurface,
@@ -116,37 +93,71 @@ internal fun PendingTop(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (duplicateCount > 0) {
+            if (counts.readyToConfirm > 0 || counts.needsAmount > 0 || counts.duplicate > 0) {
                 Column(
                     horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
                 ) {
-                    Text(
-                        text = duplicateCount.toString(),
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = AppTextHierarchy.heading.weight,
+                    PendingTopMetric(
+                        visible = counts.readyToConfirm > 0,
+                        value = counts.readyToConfirm,
+                        label = stringResource(R.string.pending_filter_label_ready_to_confirm),
                     )
-                    Text(
-                        text = stringResource(R.string.pending_top_duplicate_caption),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = AppTextHierarchy.caption.weight,
+                    PendingTopMetric(
+                        visible = counts.needsAmount > 0,
+                        value = counts.needsAmount,
+                        label = stringResource(R.string.pending_filter_label_needs_amount),
+                    )
+                    PendingTopMetric(
+                        visible = counts.duplicate > 0,
+                        value = counts.duplicate,
+                        label = stringResource(R.string.pending_top_duplicate_caption),
                     )
                 }
             }
         }
 
-        PrimaryCtaButton(
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uploading && !readOnly,
-            icon = Icons.Filled.AddPhotoAlternate,
-            text = when {
-                readOnly -> stringResource(R.string.pending_top_cta_readonly)
-                uploading -> stringResource(R.string.pending_top_cta_uploading)
-                else -> stringResource(R.string.pending_top_cta_upload)
-            },
-            onClick = onUploadScreenshot,
+        if (!readOnly) {
+            PrimaryCtaButton(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uploading,
+                icon = Icons.Filled.AddPhotoAlternate,
+                text = if (uploading) {
+                    stringResource(R.string.pending_top_cta_uploading)
+                } else {
+                    stringResource(R.string.pending_top_cta_upload)
+                },
+                onClick = onUploadScreenshot,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PendingTopMetric(
+    visible: Boolean,
+    value: Int,
+    label: String,
+) {
+    if (!visible) return
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = value.toString(),
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+        )
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = AppTextHierarchy.caption.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -204,24 +215,25 @@ internal fun PendingUndoRejectBanner(
     } else {
         stringResource(R.string.pending_undo_banner_label)
     }
-    AppContentCard {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Info,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = label,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            AppSecondaryButton(text = stringResource(R.string.pending_undo_banner_action), onClick = onUndo)
-        }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.smallGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Info,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(AppSpacing.cardPadding),
+        )
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        AppSecondaryButton(text = stringResource(R.string.pending_undo_banner_action), onClick = onUndo)
     }
 }

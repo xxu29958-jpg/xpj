@@ -73,6 +73,16 @@ fun Expense.canInitiateBillSplit(readOnly: Boolean): Boolean =
         source != ExpenseSourceValues.BILL_SPLIT_RECEIVED &&
         !readOnly
 
+fun Expense.isPendingReadyToConfirmDirectly(): Boolean =
+    amountCents != null &&
+        !merchant.isNullOrBlank() &&
+        category.isNotBlank() &&
+        duplicateStatus != DuplicateStatusValues.SUSPECTED
+
+object DuplicateStatusValues {
+    const val SUSPECTED = "suspected"
+}
+
 /**
  * [Expense.source] 的服务端存储值（domain 值，非 UI 文案）。中文 token 是后端
  * 落库的历史值，镜像 `web_stats_service.SOURCE_LABELS` 的键；展示层据此映射到

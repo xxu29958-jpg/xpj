@@ -12,10 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
@@ -43,8 +42,10 @@ internal fun BulkConfirmSheetContent(
     onDismiss: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         Text(
             stringResource(R.string.pending_bulk_sheet_title),
@@ -57,11 +58,10 @@ internal fun BulkConfirmSheetContent(
             style = MaterialTheme.typography.bodySmall,
         )
 
-        AppGlassCard(containerAlpha = 0.94f) {
-            Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
+        ) {
                 StatLine(
                     label = stringResource(R.string.pending_bulk_sheet_stat_will_confirm),
                     value = stringResource(R.string.pending_bulk_sheet_stat_count, readyCount),
@@ -78,10 +78,9 @@ internal fun BulkConfirmSheetContent(
                         value = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate_count, duplicateSkipCount),
                     )
                 }
-            }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             AppSecondaryButton(
                 text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),
