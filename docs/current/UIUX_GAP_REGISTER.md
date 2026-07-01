@@ -286,15 +286,17 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-about-product-trust-page
 
 - Surface: Android Settings -> About Ticketbox.
-- Status: registered follow-up.
+- Status: implemented locally; true-device evidence pending because the phone is
+  unplugged.
 - Gap: the About page is part of the product trust layer, but it has not yet had
   the same secondary-page treatment as Devices or Members. It risks reading like
   a diagnostics surface if build/support/legal details are not structured and
   copy-reviewed.
-- Desired follow-up: make About a compact product trust page with resource-backed
-  version, support, legal, build, and diagnostics rows. Release-facing copy
-  should stay product-level; technical diagnostics should be explicit and
-  secondary.
+- Resolution: About now uses a compact trust-page layout with resource-backed
+  app/version, confirmation boundary, sync authority, and screenshot/OCR boundary
+  rows. Release-facing copy avoids backend/local implementation wording.
+- Remaining QA: capture About on a physical device and check row density,
+  icon/text alignment, and bottom spacing.
 
 ### ANDROID-2026-07-01-pending-real-item-card-density
 
