@@ -305,15 +305,18 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-pending-real-item-card-density
 
 - Surface: Android Pending real unconfirmed-bill rows.
-- Status: registered follow-up.
+- Status: implemented locally; true-device evidence still pending.
 - Gap: compact-mode summary work improved the top of Pending, but user
   observation says real unconfirmed items can still feel like the old Ledger
   card stack. That means the default row surface still needs a scan-first pass,
   not only the overview.
-- Desired follow-up: review Pending with real backend items and convert default
-  rows into denser, aligned, status-first surfaces. Keep expanded detail for
-  focused review or Comfortable mode, and keep all counts/statuses derived from
-  real pending state.
+- Resolution: default Pending rows now use a dedicated scan-first review row
+  instead of reusing the generic expense card. The row keeps thumbnail/category,
+  merchant, time, true issue signals, full amount, and the next action visible
+  from the same `Expense` state.
+- Remaining QA: reconnect a physical device with real pending items and verify
+  density, amount fitting, swipe actions, read-only state, and offline/cache
+  labels.
 
 ### ANDROID-2026-07-01-edit-keyboard-action-density
 
@@ -324,14 +327,29 @@ that actually ships the fix.
   shows the amount/currency field with the keyboard open. The bottom action
   surface becomes a large rounded block, the four actions form a heavy 2x2 grid,
   and the amount section still looks like the older card-first language.
-- Resolution: `AppPageScrollableColumn` now captures IME visibility before the
-  scaffold consumes keyboard insets and passes that state to floating bars, so
-  the edit action bar can reliably switch to its compact one-line keyboard mode.
-  The amount/currency section no longer sits inside a heavy card; currencies wrap
-  as visible chips, the amount label is shorter, and placeholders stay in
+- Resolution: `AppPageScrollableColumn` captures IME visibility before the
+  scaffold consumes keyboard insets, and the amount field now forces compact
+  actions while focused for devices that under-report IME state. The currency
+  selector is a single-line scrollable chip row and all touched labels remain in
   resources.
 - Remaining QA: capture the same amount/currency keyboard state on a physical
   device and confirm the strip does not crowd, truncate, or cover the input.
+
+### ANDROID-2026-07-02-refresh-loading-latency
+
+- Surface: Android Today and Insights root refresh.
+- Status: implemented locally; true-device timing evidence still pending.
+- Gap: user reports frontend refresh/loading is too slow. The root cause found in
+  the Android state path is that page-level loading could stay active while
+  non-primary work continued after the main monthly stats response was already
+  available.
+- Resolution: monthly stats now clears the page loading state as soon as the
+  authoritative monthly stats response is applied. Lifestyle stats and confirmed
+  cache sync continue in the background, and Reports overview/goals load in
+  parallel instead of serially.
+- Remaining QA: measure Today and Insights pull-to-refresh on a physical device
+  with the production backend and confirm the page does not imply fresh backend
+  truth before the primary stats response lands.
 
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 
