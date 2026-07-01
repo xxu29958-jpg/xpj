@@ -7,10 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,14 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetProgress
-import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.LifestyleStats
-import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
@@ -34,164 +31,61 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
-private data class StatsInsightMetric(
-    val label: String,
-    val value: String,
-    val caption: String? = null,
-    val accent: Int = 0,
-)
-
 @Composable
 internal fun StatsMetricGrid(
-    stats: MonthlyStats,
-    lifestyle: LifestyleStats?,
-    insight: CategoryInsight?,
     budget: BudgetProgress?,
+    onOpenBudget: () -> Unit,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val emptyValue = stringResource(R.string.stats_metric_empty_value)
-    val frequentMerchant = lifestyle?.frequentMerchants?.firstOrNull()
-    val frequentMerchantCaption = frequentMerchant?.let {
-        stringResource(R.string.stats_metric_merchant_count, it.count)
-    }
-    val concentrationValue = insight?.topCategory
-        ?: stringResource(R.string.stats_metric_category_count, stats.byCategory.count { it.amountCents > 0L })
-    val concentrationCaption = insight?.let {
-        stringResource(R.string.stats_metric_top_share, it.topSharePercent)
-    }
-    val metrics = listOf(
-        StatsInsightMetric(
-            label = stringResource(R.string.stats_metric_ai_subscription_label),
-            value = lifestyle?.aiSubscriptionAmountCents?.takeIf { it > 0L }?.let { formatDisplayAmount(it, currencyDisplay) }
-                ?: emptyValue,
-            accent = 0,
-        ),
-        StatsInsightMetric(
-            label = stringResource(R.string.stats_metric_max_expense_label),
-            value = lifestyle?.maxExpense?.amountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: emptyValue,
-            caption = lifestyle?.maxExpense?.merchant?.takeIf { it.isNotBlank() },
-            accent = 1,
-        ),
-        StatsInsightMetric(
-            label = stringResource(R.string.stats_metric_frequent_merchant_label),
-            value = frequentMerchant?.merchant ?: emptyValue,
-            caption = frequentMerchantCaption,
-            accent = 2,
-        ),
-        StatsInsightMetric(
-            label = stringResource(R.string.stats_metric_category_concentration_label),
-            value = concentrationValue,
-            caption = concentrationCaption,
-            accent = 3,
-        ),
-    )
-    val visuals = LocalThemeVisuals.current
 
     StatsInsightSurface {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            Text(
-                text = stringResource(R.string.stats_metric_module_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-            MonthlyInsightRows(metrics = metrics, emptyValue = emptyValue)
-            budget?.let {
-                HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.soft))
-                BudgetProgressSection(it, currencyDisplay)
-            }
+        if (budget == null) {
+            BudgetEmptySection(onOpenBudget = onOpenBudget)
+        } else {
+            BudgetProgressSection(budget, currencyDisplay)
         }
     }
 }
 
 @Composable
-private fun MonthlyInsightRows(
-    metrics: List<StatsInsightMetric>,
-    emptyValue: String,
+private fun BudgetEmptySection(
+    onOpenBudget: () -> Unit,
 ) {
-    val visuals = LocalThemeVisuals.current
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        metrics.forEachIndexed { index, metric ->
-            if (index > 0) {
-                HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.subtle))
-            }
-            StatsInsightMetricRow(metric = metric, emptyValue = emptyValue)
-        }
-    }
-}
-
-@Composable
-private fun StatsInsightMetricRow(
-    metric: StatsInsightMetric,
-    emptyValue: String,
-) {
-    val isEmptyValue = metric.value == emptyValue
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        MetricAccentMark(accent = metric.accent)
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(
+                    text = stringResource(R.string.stats_budget_progress_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                )
+                Text(
+                    text = stringResource(R.string.stats_budget_empty_status),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
             Text(
-                text = metric.label,
+                text = stringResource(R.string.stats_budget_empty_badge),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
-            metric.caption?.let {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
         Text(
-            text = metric.value,
-            color = if (isEmptyValue) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-            style = if (isEmptyValue) {
-                MaterialTheme.typography.titleSmall
-            } else {
-                MaterialTheme.typography.titleMedium
-            },
-            fontWeight = if (isEmptyValue) AppTextHierarchy.caption.weight else AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            text = stringResource(R.string.stats_budget_empty_body),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
         )
-    }
-}
-
-@Composable
-private fun MetricAccentMark(accent: Int) {
-    val visuals = LocalThemeVisuals.current
-    val accentColors = listOf(
-        visuals.chipSelected,
-        visuals.warningTint.copy(alpha = AppAlpha.soft),
-        visuals.glassTint.copy(alpha = AppAlpha.opaque),
-        visuals.shadowTint.copy(alpha = AppAlpha.subtle),
-    )
-    Box(
-        modifier = Modifier
-            .size(18.dp)
-            .clip(RoundedCornerShape(AppRadius.extraSmall))
-            .background(accentColors[accent % accentColors.size]),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(5.dp)
-                .clip(RoundedCornerShape(AppRadius.pill))
-                .background(visuals.primary),
+        AppPrimaryButton(
+            text = stringResource(R.string.stats_budget_empty_action),
+            icon = Icons.Filled.Tune,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onOpenBudget,
         )
     }
 }
@@ -210,7 +104,12 @@ private fun BudgetProgressSection(
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 Text(
                     stringResource(R.string.stats_budget_progress_title),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                )
+                Text(
+                    text = stringResource(R.string.stats_budget_progress_configured),
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(

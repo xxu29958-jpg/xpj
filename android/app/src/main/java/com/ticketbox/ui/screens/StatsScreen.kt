@@ -214,10 +214,8 @@ fun StatsScreen(
                     renderedCard = true
                     item {
                         StatsMetricGrid(
-                            stats = stats,
-                            lifestyle = state.lifestyleStats,
-                            insight = state.categoryInsight,
                             budget = state.budgetProgress,
+                            onOpenBudget = onOpenBudget,
                         )
                     }
                 }

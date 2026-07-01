@@ -61,7 +61,7 @@ Every UIUX slice should close these gates before being called done:
 | AIA-003 | Today | Needs QA | P0 | Today now gives the month amount full width, includes the source/status in the month line, and derives a single next action from real pending state; true-device review still needs to judge density and amount fitting with live data. | The first screen states source, pending workload, month status, and next action without truncating large amounts. |
 | AIA-004 | Pending | Needs QA | P0 | Pending now has a real queue overview derived from `state.items`; true-device review still needs to judge density, first-viewport balance, and scroll behavior. | No fake duplicate/ready counts; the user can immediately see ready, missing amount, missing merchant, duplicate, and blocked work. |
 | AIA-005 | Ledger | Needs QA | P0 | Long history can become endless scrolling if day groups and compact rows are not tuned on real data. | Confirmed records scan by day/month with compact rows, useful filters, no bottom-nav obstruction, and no large-card pile. |
-| AIA-006 | Insights root | Needs QA | P0 | Insights has been reshaped, but it still needs final review as an answer page rather than a chart dashboard. | The page answers spend, comparison, recent signal, top contributors, and action signals in that order. |
+| AIA-006 | Insights root | Needs QA | P0 | Insights has been reshaped, and the 2026-07-01 true-device pass fixed two authority-language defects: Budget no longer shows generic "month insight" content when no budget exists, and Goals no longer labels zero goals as stable. Full-page answer-flow review remains open. | The page answers spend, comparison, recent signal, top contributors, and action signals in that order. |
 | AIA-007 | Insights charts | Needs QA | P0 | Recent 7-day and month trend views must show comparison, variation, concentration, or degrade to facts. | No chart exists only as decoration; dominant or sparse data becomes facts/ranking, not flat bars or fake lines. |
 | AIA-008 | Insights merchants | Needs QA | P0 | High-frequency merchants and spend-ranked merchants must stay separate. | Frequency lists sort by confirmed count; spend lists sort by amount; each row shows the active metric clearly. |
 | AIA-009 | Settings root | Registered | P1 | Settings should read as governance, not a directory. | Account, ledger/family, device, connection/sync, data rules, safety, and appearance are grouped by responsibility. |
@@ -104,6 +104,8 @@ Every UIUX slice should close these gates before being called done:
 | FUNC-INS-002 | Insights spend ranking | Registered | Spend-ranked merchants/categories are useful but answer a different question from frequency. | Label as spend ranking and sort by amount; show count as secondary detail. |
 | FUNC-INS-003 | Insight chart drill-through | Deferred | Charts do not yet close the loop from visible point/bar to filtered ledger records. | Register backend query contract first, then add UI drill and tests. |
 | FUNC-INS-004 | Saved report presets | Deferred | Repeated analytical views are not first-class saved presets yet. | Add only after report query/filter contracts are explicit and server-authoritative. |
+| FUNC-INS-005 | Insights budget state | Fixed | The Budget tab reused a generic "month insight" block, so an unconfigured budget could look like an active analytical module. | Budget now branches on real `BudgetProgress`: configured budgets show progress; missing budgets show a resource-backed "not enabled" state and budget setup entry. |
+| FUNC-INS-006 | Insights goals state | Fixed | The Goals tab treated "0 enabled goals" as stable because status copy only checked for attention items. | Goals status now distinguishes Empty, Attention, and Stable; "stable" requires at least one real goal. |
 | FUNC-LED-001 | Ledger long history | Registered | Long ledgers can become repetitive vertical scrolling. | Add grouping/folding/density improvements without hiding confirmed facts. |
 | FUNC-SET-001 | Settings secondary state parity | Registered | Secondary pages do not all expose the same loading, empty, error, read-only, cached, and destructive states. | Close one page at a time and update the Secondary Settings Register. |
 | FUNC-AUTH-001 | Offline creation and cache language | Registered | Android can create/cache offline, but must not present cache as authority. | Treat queued, syncing, failed, conflict, cached, and read-only as visible product states. |
@@ -117,7 +119,7 @@ Every UIUX slice should close these gates before being called done:
 | S2 Today cockpit | Needs QA | `05c4febd` plus true-device follow-up | First viewport hierarchy, amount fitting, real next-action priority. |
 | S3 Pending queue | Needs QA | `6715c74b` plus true-device follow-up | Queue overview, compact review scan, batch and feedback closure. |
 | S4 Ledger density | Needs QA | `1b8fb6bd` | Day grouping, compact record surface, long-list safety. |
-| S5 Insights answer flow | Needs QA | `575d9ebf`, `8e4e9d43` | Merchant metric split, sparse/dominant trend handling, answer-first layout. |
+| S5 Insights answer flow | Needs QA | `575d9ebf`, `8e4e9d43`, current budget/goal semantics slice | Merchant metric split, sparse/dominant trend handling, answer-first layout, and budget/goal empty-state authority language. |
 | S6 Settings governance | In progress | `b61dbedd` plus next settings slices | Root governance and secondary state parity. |
 | S7 Debt cleanup and tests | Registered | Later focused slices | Same-page debt only; cross-domain debt stays in registers. |
 | S8 True-device review | Registered | Final review doc | Official package, backend pairing, real-data visual QA. |
@@ -127,10 +129,10 @@ Every UIUX slice should close these gates before being called done:
 | Check | Current state | Next requirement |
 | --- | --- | --- |
 | Documentation | Phase 0, reference pass, gap register, and this audit register exist; the register now includes page, functional, copy, density, and metric gates. | Keep statuses updated after every slice. |
-| Gradle compile/detekt | Today cockpit slice passes `compileGrayDebugKotlin`, `detektGrayDebug`, and `detektGrayDebugUnitTest` with the existing detekt alpha warning and 0 findings. | Rerun flavor-qualified gates after code changes. |
-| Unit tests | Today next-action priority has focused JVM tests and the Android test-count baseline is updated to `1237`. | Add focused tests only where state authority or UI decisions are risky. |
+| Gradle compile/detekt | Current Insights budget/goal semantics slice passes `detektGrayDebug` and `assembleGrayDebug`; detekt still reports the existing compiler-analysis warning but 0 findings. | Rerun flavor-qualified gates after code changes. |
+| Unit tests | Today next-action priority and Insights goal header-state decisions have focused JVM tests. The Android test-count baseline is `1237`. | Add focused tests only where state authority or UI decisions are risky. |
 | Lint | Required for broader Android slices. | Run before any final Android batch commit/push. |
-| True device | Prior real-device passes exist and an ADB preflight saw a physical device available, but the current audit register still needs a final clean pass after the docs gate. | Bind official `com.ticketbox` to backend and capture fresh evidence after page slices. |
+| True device | Physical device `5c52fc22` installed the official `com.ticketbox` gray package against `https://api.zen70.cn`. Clean online screenshots `80-insights-budget-after-fix.png` and `81-insights-goal-after-fix.png` confirm Budget shows "未设置预算/未启用" and Goals shows "未设置" for zero enabled goals. | Continue page-by-page official-package review for full root pages and Settings secondaries. |
 | Screenshots | Local audit folders exist and are intentionally not auto-staged. | Commit only lightweight audit docs unless the user asks to include images. |
 
 ## Open Decisions

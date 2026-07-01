@@ -89,10 +89,15 @@
     <string name="stats_metric_top_share">占本月 %1$d%%</string>
     <string name="stats_metric_module_title">本月洞察</string>
     <string name="stats_budget_progress_title">月度预算</string>
+    <string name="stats_budget_progress_configured">已设置</string>
     <string name="stats_budget_progress_over">已超过预算</string>
     <string name="stats_budget_progress_remaining">还可花 %1$s</string>
     <string name="stats_budget_progress_percent">%1$d%%</string>
-    <string name="stats_budget_progress_hint">可在设置 > 数据与导出里调整，只用于提醒。</string>
+    <string name="stats_budget_progress_hint">预算只用于提醒，不影响账单金额。</string>
+    <string name="stats_budget_empty_status">未设置预算</string>
+    <string name="stats_budget_empty_badge">未启用</string>
+    <string name="stats_budget_empty_body">设置后可查看剩余额度、超支风险和提醒。</string>
+    <string name="stats_budget_empty_action">设置预算</string>
 
     <!-- CategoryStructureCard：分类结构 -->
     <string name="stats_category_structure_title">分类结构</string>
@@ -226,6 +231,7 @@
     <string name="stats_reports_goals_empty_hint">目标启用后，这里会保留进度和风险节奏。</string>
     <string name="stats_reports_goals_count">本月 %1$d 个启用目标</string>
     <string name="stats_reports_goals_attention">%1$d 个要看</string>
+    <string name="stats_reports_goals_unset">未设置</string>
     <string name="stats_reports_goals_stable">节奏稳定</string>
     <string name="stats_reports_goals_average_label">整体进度</string>
     <string name="stats_reports_goals_progress_a11y">本月 %1$d 个目标，整体进度 %2$d%%</string>

@@ -88,7 +88,12 @@ private fun GoalsSummaryHeader(
     attentionCount: Int,
 ) {
     val goalTokens = LocalGoalTokens.current
-    val tone = if (attentionCount > 0) goalTokens.nearLimit else goalTokens.onTrack
+    val status = goalsHeaderStatus(goalCount = goalCount, attentionCount = attentionCount)
+    val tone = when (status) {
+        GoalsHeaderStatus.Empty -> goalTokens.idle
+        GoalsHeaderStatus.Attention -> goalTokens.nearLimit
+        GoalsHeaderStatus.Stable -> goalTokens.onTrack
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -117,10 +122,10 @@ private fun GoalsSummaryHeader(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (attentionCount > 0) {
-                    stringResource(R.string.stats_reports_goals_attention, attentionCount)
-                } else {
-                    stringResource(R.string.stats_reports_goals_stable)
+                text = when (status) {
+                    GoalsHeaderStatus.Empty -> stringResource(R.string.stats_reports_goals_unset)
+                    GoalsHeaderStatus.Attention -> stringResource(R.string.stats_reports_goals_attention, attentionCount)
+                    GoalsHeaderStatus.Stable -> stringResource(R.string.stats_reports_goals_stable)
                 },
                 color = tone.fg,
                 style = MaterialTheme.typography.labelMedium,

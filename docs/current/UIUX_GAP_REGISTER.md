@@ -131,6 +131,20 @@ that actually ships the fix.
   ledger queries; then introduce saved report presets only after the query
   contract is explicit and test-covered.
 
+### ANDROID-2026-07-01-insights-budget-goal-state
+
+- Surface: Android Insights Budget and Goals tabs.
+- Status: fixed in the current Android Insights IA slice; true-device evidence
+  captured as `80-insights-budget-after-fix.png` and
+  `81-insights-goal-after-fix.png` under the local audit folder.
+- Gap: the Budget tab reused generic monthly insight rows when no budget was
+  configured, and the Goals tab labeled zero enabled goals as "stable". Both
+  states made missing configuration look like a real financial conclusion.
+- Resolution: Budget now branches on backend-derived `BudgetProgress`; missing
+  budgets show "未设置预算 / 未启用" and a setup entry. Goals now uses a small
+  Empty / Attention / Stable state model, so "节奏稳定" only appears when at
+  least one real goal exists and none need attention.
+
 ### ANDROID-2026-07-01-phase0-ia-uiux-audit
 
 - Surface: Android Today, Pending, Ledger, Insights, Settings root, and Settings
