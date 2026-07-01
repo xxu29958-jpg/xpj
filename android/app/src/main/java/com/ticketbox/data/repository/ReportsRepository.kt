@@ -13,6 +13,7 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
+import com.ticketbox.domain.model.GOAL_TYPE_DEBT_REPAYMENT
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
@@ -198,7 +199,7 @@ class ReportsRepository(
                 api.createGoal(
                     request = GoalCreateRequestDto(
                         name = cleanName,
-                        goalType = DEBT_REPAYMENT_GOAL_TYPE,
+                        goalType = GOAL_TYPE_DEBT_REPAYMENT,
                         debtPublicIds = cleanIds,
                     ),
                     timezone = currentTimezoneId(),
@@ -380,7 +381,7 @@ class ReportsRepository(
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
                 api.goals(
-                    goalType = DEBT_REPAYMENT_GOAL_TYPE,
+                    goalType = GOAL_TYPE_DEBT_REPAYMENT,
                     includeArchived = includeArchived,
                     timezone = currentTimezoneId(),
                 ).items.map { it.toDomain() }

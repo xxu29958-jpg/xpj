@@ -27,9 +27,6 @@ import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.normalizeExpenseCategory
 
-/** ADR-0049 §6 goal_type for debt_repayment goals (single source for the list query + create). */
-internal const val DEBT_REPAYMENT_GOAL_TYPE = "debt_repayment"
-
 fun ReportsOverviewDto.toDomain(): ReportsOverview = ReportsOverview(
     month = month,
     timezone = timezone,

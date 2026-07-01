@@ -296,15 +296,22 @@ private fun goalStatusText(goal: Goal): String {
 private fun goalMetaText(goal: Goal): String {
     val debtEvaluation = goal.debtRepayment.takeIf { goal.isDebtRepayment }
     val currencyDisplay = LocalCurrencyDisplay.current
+    val goalTypeText = when {
+        goal.isDebtRepayment -> stringResource(R.string.stats_reports_goal_type_debt)
+        goal.isSpendingLimit -> stringResource(R.string.stats_reports_goal_type_spending)
+        else -> stringResource(R.string.stats_reports_goal_type_unknown)
+    }
     return if (debtEvaluation != null) {
         stringResource(
             R.string.stats_reports_goal_debt_progress,
+            goalTypeText,
             debtEvaluation.clearedCount,
             debtEvaluation.totalCount,
         )
     } else {
         stringResource(
             R.string.stats_reports_goal_progress,
+            goalTypeText,
             goal.category ?: stringResource(R.string.stats_reports_goal_total),
             formatDisplayAmount(goal.spentAmountCents, currencyDisplay),
             formatDisplayAmount(goal.remainingAmountCents, currencyDisplay),

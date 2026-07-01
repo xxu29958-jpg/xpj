@@ -271,17 +271,20 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-insights-budget-goal-drill-semantics
 
 - Surface: Android Insights Budget, Goals, and Tag/drill pages.
-- Status: registered follow-up; separate from the already-fixed empty Budget
-  root state.
+- Status: partially implemented; true-device QA and product/API follow-up remain.
 - Gap: user observation says the Budget/Tag area can still show mismatched
   monthly-insight modules, unclear budget remaining/options language, and goal
   wording that does not make the target type obvious. "Goal enabled" is too vague
   for a finance product; repayment, saving, and spending-control goals have
   different user intent.
+- Resolution so far: Budget secondary pages now treat backend `configured=false`
+  as not enabled and hide active-only budget modules. Goal rows now label existing
+  backend-backed types as "开销目标" or "还债目标" instead of a generic enabled
+  target.
 - Desired follow-up: audit the actual drill paths with backend data. Budget
-  should distinguish not set, no remaining amount, over budget, and setup action
-  states. Goals should lead with goal type and backend-backed status, not a
-  generic enabled/disabled label.
+  still needs true-device coverage for active, over-budget, read-only, and not
+  enabled states. Saving goals remain a product/API contract gap; Android must
+  not invent a "存款目标" type until the backend exposes it.
 
 ### ANDROID-2026-07-01-about-product-trust-page
 

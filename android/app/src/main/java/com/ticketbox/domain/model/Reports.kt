@@ -90,6 +90,9 @@ enum class GoalProgressState(val apiValue: String) {
     }
 }
 
+const val GOAL_TYPE_SPENDING_LIMIT = "spending_limit"
+const val GOAL_TYPE_DEBT_REPAYMENT = "debt_repayment"
+
 data class Goal(
     val publicId: String,
     val ledgerId: String,
@@ -116,7 +119,8 @@ data class Goal(
     val progress: Float = (progressPercent / 100f).coerceIn(0f, 1f)
     val isArchived: Boolean = status == "archived" || archivedAt != null
     val isOverLimit: Boolean = progressState == GoalProgressState.OverLimit
-    val isDebtRepayment: Boolean = goalType == "debt_repayment"
+    val isDebtRepayment: Boolean = goalType == GOAL_TYPE_DEBT_REPAYMENT
+    val isSpendingLimit: Boolean = goalType == GOAL_TYPE_SPENDING_LIMIT
 }
 
 data class GoalDraft(
