@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -30,19 +31,17 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.MyDevicesUiState
 import com.ticketbox.viewmodel.MyDevicesViewModel
-import com.valentinilk.shimmer.shimmer
 
 /** Row management callbacks grouped so device rows stay small and stable. */
 @Immutable
@@ -139,38 +138,48 @@ private fun DeviceListSection(
         icon = Icons.Filled.Devices,
     ) {
         SettingsOpenPanel(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             if (state.devices.isEmpty() && state.loading) {
-                Column(modifier = Modifier.shimmer()) {
-                    repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                }
+                SettingsInlineEmpty(
+                    title = stringResource(R.string.my_devices_loading_title),
+                    body = stringResource(R.string.my_devices_loading_body),
+                )
             } else if (state.devices.isEmpty()) {
                 Text(
                     text = stringResource(R.string.my_devices_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            state.devices.forEach { device ->
+            state.devices.forEachIndexed { index, device ->
                 DeviceRow(
                     device = device,
                     canManage = canManage,
                     busy = state.busyDeviceId == device.publicId,
                     actions = actions,
                 )
+                if (index != state.devices.lastIndex) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+                    )
+                }
             }
-            OutlinedButton(
-                onClick = onRefresh,
-                enabled = !state.loading && state.busyDeviceId == null,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
             ) {
-                Text(
-                    if (state.loading) {
-                        stringResource(R.string.my_devices_refresh_loading)
-                    } else {
-                        stringResource(R.string.my_devices_refresh)
-                    },
-                )
+                TextButton(
+                    onClick = onRefresh,
+                    enabled = !state.loading && state.busyDeviceId == null,
+                ) {
+                    Text(
+                        if (state.loading) {
+                            stringResource(R.string.my_devices_refresh_loading)
+                        } else {
+                            stringResource(R.string.my_devices_refresh)
+                        },
+                    )
+                }
             }
         }
     }
@@ -183,100 +192,130 @@ private fun DeviceRow(
     busy: Boolean,
     actions: DeviceRowActions,
 ) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.miniGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        DeviceTitleRow(
+            device = device,
+            canManage = canManage,
+            busy = busy,
+            actions = actions,
+        )
+        DeviceActivityText(device = device)
+    }
+}
+
+@Composable
+private fun DeviceTitleRow(
+    device: AccountDevice,
+    canManage: Boolean,
+    busy: Boolean,
+    actions: DeviceRowActions,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = device.deviceName,
+            style = MaterialTheme.typography.titleSmall,
+            color = if (device.isRevoked) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (device.isCurrent) {
+            Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
+            Text(
+                text = stringResource(R.string.my_devices_row_current_badge),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        if (canManage) {
+            DeviceActionsRow(device = device, busy = busy, actions = actions)
+        }
+    }
+}
+
+@Composable
+private fun DeviceActivityText(device: AccountDevice) {
     val platformLabel = when (device.platform) {
         "android" -> stringResource(R.string.my_devices_platform_android)
         "web" -> stringResource(R.string.my_devices_platform_web)
         "iphone" -> stringResource(R.string.my_devices_platform_iphone)
         else -> device.platform
     }
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    val lastSeen = if (device.lastSeenAt.isNullOrBlank()) {
+        stringResource(R.string.my_devices_last_active_empty)
+    } else {
+        displayTime(device.lastSeenAt)
+    }
+    Text(
+        text = stringResource(R.string.my_devices_row_platform_last_seen, platformLabel, lastSeen),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (device.isRevoked) {
+        val revokedAt = if (device.revokedAt.isNullOrBlank()) {
+            stringResource(R.string.my_devices_revoked_time_empty)
+        } else {
+            displayTime(device.revokedAt)
+        }
+        Text(
+            text = stringResource(R.string.my_devices_row_revoked_at, revokedAt),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@Composable
+private fun DeviceActionsRow(
+    device: AccountDevice,
+    busy: Boolean,
+    actions: DeviceRowActions,
+) {
+    Row(
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = device.deviceName,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (device.isRevoked) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (device.isCurrent) {
-                Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
+        if (!device.isRevoked) {
+            TextButton(
+                enabled = !busy,
+                onClick = { actions.onRename(device) },
+            ) {
+                Text(stringResource(R.string.my_devices_action_rename))
+            }
+            if (!device.isCurrent) {
+                TextButton(
+                    enabled = !busy,
+                    onClick = { actions.onRevoke(device) },
+                ) {
+                    Text(
+                        text = stringResource(R.string.my_devices_action_revoke),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        } else {
+            TextButton(
+                enabled = !busy,
+                onClick = { actions.onDelete(device) },
+            ) {
                 Text(
-                    text = stringResource(R.string.my_devices_row_current_badge),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    text = stringResource(R.string.my_devices_action_delete),
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
         }
-        Text(
-            text = stringResource(R.string.my_devices_row_platform_last_seen, platformLabel, displayTime(device.lastSeenAt)),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (device.isRevoked) {
-            Text(
-                text = stringResource(R.string.my_devices_row_revoked_at, displayTime(device.revokedAt)),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        if (canManage && !device.isRevoked) {
-            DeviceActionRow(
-                showRevoke = !device.isCurrent,
-                busy = busy,
-                onRename = { actions.onRename(device) },
-                onRevoke = { actions.onRevoke(device) },
-            )
-        } else if (canManage && device.isRevoked) {
-            DeviceRemoveButton(busy = busy, onDelete = { actions.onDelete(device) })
-        }
-    }
-}
-
-@Composable
-private fun DeviceActionRow(
-    showRevoke: Boolean,
-    busy: Boolean,
-    onRename: () -> Unit,
-    onRevoke: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-    ) {
-        OutlinedButton(
-            modifier = Modifier.weight(1f),
-            enabled = !busy,
-            onClick = onRename,
-        ) {
-            Text(stringResource(R.string.my_devices_action_rename))
-        }
-        if (showRevoke) {
-            OutlinedButton(
-                modifier = Modifier.weight(1f),
-                enabled = !busy,
-                onClick = onRevoke,
-            ) {
-                Text(stringResource(R.string.my_devices_action_revoke))
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeviceRemoveButton(busy: Boolean, onDelete: () -> Unit) {
-    OutlinedButton(
-        modifier = Modifier.fillMaxWidth(),
-        enabled = !busy,
-        onClick = onDelete,
-    ) {
-        Text(stringResource(R.string.my_devices_action_delete))
     }
 }
 

@@ -83,7 +83,7 @@ Every UIUX slice should close these gates before being called done:
 | --- | --- | --- | --- |
 | SET-001 | Connection | Registered | Fresh/backend failure/cache states, reconnect path, no exposed token/server internals in ordinary copy. |
 | SET-002 | Sync status | Fixed | Queued, conflict, and failed offline mutations are summarized from real outbox state. |
-| SET-003 | Devices | Registered | Device role/status/revoke flows distinguish server authority from local device cache. |
+| SET-003 | Devices | Needs QA | Device rows now use compact scan-first rows with inline actions, resource-backed loading text, and device-specific missing-activity copy instead of the generic "未填写时间"; final true-device screenshot is still required. |
 | SET-004 | Members | Registered | Role, invite, remove, read-only, and permission-denied states are explicit. |
 | SET-005 | Join family | Registered | Pairing/invite flow has clear loading, failure, expired, success, and back behavior. |
 | SET-006 | Category rules | Registered | Rule list and edit states handle empty, conflict, queued, failed, read-only, and stale data. |
@@ -121,7 +121,7 @@ Every UIUX slice should close these gates before being called done:
 | S3 Pending queue | Needs QA | `6715c74b` plus current density slice | Queue overview, compact review scan, batch and feedback closure. |
 | S4 Ledger density | Needs QA | `1b8fb6bd` plus current ledger density slice | Day grouping, compact record surface, long-list safety. |
 | S5 Insights answer flow | Needs QA | `575d9ebf`, `8e4e9d43`, current budget/goal semantics slice | Merchant metric split, sparse/dominant trend handling, answer-first layout, and budget/goal empty-state authority language. |
-| S6 Settings governance | In progress | `b61dbedd` plus current Settings root density slice and next secondary slices | Root governance and secondary state parity. |
+| S6 Settings governance | In progress | `b61dbedd` plus Settings root density and My Devices compact-row slices | Root governance and secondary state parity. |
 | S7 Debt cleanup and tests | Registered | Later focused slices | Same-page debt only; cross-domain debt stays in registers. |
 | S8 True-device review | Registered | Final review doc | Official package, backend pairing, real-data visual QA. |
 
@@ -130,10 +130,10 @@ Every UIUX slice should close these gates before being called done:
 | Check | Current state | Next requirement |
 | --- | --- | --- |
 | Documentation | Phase 0, reference pass, gap register, and this audit register exist; the register now includes page, functional, copy, density, and metric gates. | Keep statuses updated after every slice. |
-| Gradle compile/detekt | Current Ledger density slice passes `testGrayDebugUnitTest --tests com.ticketbox.ui.design.AppDensityTest`, `detektGrayDebug`, and `assembleGrayDebug`; detekt still reports the existing compiler-analysis warning but 0 findings. | Rerun flavor-qualified gates after code changes. |
+| Gradle compile/detekt | Current Settings My Devices slice passes `detektGrayDebug` and `assembleGrayDebug`; detekt still reports the existing compiler-analysis warning but 0 findings. | Rerun flavor-qualified gates after code changes. |
 | Unit tests | Today next-action priority, Insights goal header-state decisions, Pending overview, and row-density token decisions have focused JVM tests. The Android test-count baseline is `1237`. | Add focused tests only where state authority or UI decisions are risky. |
 | Lint | Required for broader Android slices. | Run before any final Android batch commit/push. |
-| True device | Physical device `5c52fc22` installed the official `com.ticketbox` gray package against `https://api.zen70.cn`. Clean online screenshots `80-insights-budget-after-fix.png` and `81-insights-goal-after-fix.png` confirm Budget shows "未设置预算/未启用" and Goals shows "未设置" for zero enabled goals. Screenshot `83-pending-after-density-fix.png` confirms Pending compact mode shows two queue rows in the first viewport without expanded duplicate notices. Screenshot `90-ledger-density-final-settled.png` confirms Ledger header compaction, compact row meta, full amounts, and bottom-nav clearance on live data. Screenshots `95-settings-root-portrait-after-density.png` and `96-settings-root-settled-after-density.png` confirm Settings initial refreshing state and settled confirmed state. | Continue page-by-page official-package review for full root pages and Settings secondaries. |
+| True device | Physical device `5c52fc22` installed the official `com.ticketbox` gray package against `https://api.zen70.cn`. Clean online screenshots `80-insights-budget-after-fix.png` and `81-insights-goal-after-fix.png` confirm Budget shows "未设置预算/未启用" and Goals shows "未设置" for zero enabled goals. Screenshot `83-pending-after-density-fix.png` confirms Pending compact mode shows two queue rows in the first viewport without expanded duplicate notices. Screenshot `90-ledger-density-final-settled.png` confirms Ledger header compaction, compact row meta, full amounts, and bottom-nav clearance on live data. Screenshots `95-settings-root-portrait-after-density.png` and `96-settings-root-settled-after-density.png` confirm Settings initial refreshing state and settled confirmed state. The My Devices APK was installed after the compact-row change, but the phone disconnected from ADB before final page screenshot capture. | Reconnect physical device and capture the My Devices secondary page before closing SET-003. |
 | Screenshots | Local audit folders exist and are intentionally not auto-staged. | Commit only lightweight audit docs unless the user asks to include images. |
 
 ## Open Decisions

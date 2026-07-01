@@ -138,12 +138,16 @@
     <string name="my_devices_page_subtitle_manage">查看并管理可访问本账本的设备。重命名、停用或添加新设备。</string>
     <string name="my_devices_page_subtitle_view">查看可访问本账本的设备。只有拥有者能管理设备。</string>
     <string name="my_devices_section_devices">可访问的设备</string>
+    <string name="my_devices_loading_title">正在同步设备</string>
+    <string name="my_devices_loading_body">同步完成后显示最新可访问设备。</string>
     <string name="my_devices_empty">还没有可显示的设备。</string>
     <string name="my_devices_refresh">刷新设备列表</string>
     <string name="my_devices_refresh_loading">刷新中…</string>
     <string name="my_devices_row_current_badge">本机</string>
     <string name="my_devices_row_platform_last_seen">%1$s · 最近活跃 %2$s</string>
+    <string name="my_devices_last_active_empty">暂无活跃记录</string>
     <string name="my_devices_row_revoked_at">已停用 · %1$s</string>
+    <string name="my_devices_revoked_time_empty">停用时间待同步</string>
     <string name="my_devices_platform_android">安卓</string>
     <string name="my_devices_platform_web">网页</string>
     <string name="my_devices_platform_iphone">iPhone</string>
