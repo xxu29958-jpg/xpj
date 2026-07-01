@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 fun SettingsSection(
@@ -32,7 +33,11 @@ fun SettingsSection(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp),
             )
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
         }
         content()
     }

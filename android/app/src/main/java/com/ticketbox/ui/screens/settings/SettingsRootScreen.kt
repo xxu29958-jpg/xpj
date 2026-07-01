@@ -299,5 +299,6 @@ fun SettingsRootScreen(
 private fun settingsAuthorityTone(state: SettingsUiState): DataAuthorityTone = when {
     state.busy -> DataAuthorityTone.Refreshing
     state.serverSettingsFresh -> DataAuthorityTone.Backend
+    state.serverSettings == null && state.message == null -> DataAuthorityTone.Refreshing
     else -> DataAuthorityTone.LocalCache
 }

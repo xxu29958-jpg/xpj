@@ -51,6 +51,24 @@ that actually ships the fix.
 - Constraint: backend remains the authority; Android Room/cache/offline creation
   is client capability, not a competing source of truth.
 
+### ANDROID-2026-07-01-settings-root-density
+
+- Surface: Android Settings root page.
+- Status: implemented in the current Settings root density slice; secondary
+  page QA remains open.
+- Gap: the root page had the right governance grouping, but navigation rows and
+  section titles were too display-heavy. The first viewport read like a large
+  directory instead of a compact control center, and initial server-settings load
+  could flash as offline before the request had resolved.
+- Resolution: Settings root navigation rows now use a quieter body/meta
+  hierarchy, section titles use the shared heading weight at body scale, and the
+  root authority strip treats first server-settings load as refreshing cache
+  state until the backend response confirms or fails. True-device evidence:
+  `95-settings-root-portrait-after-density.png` and
+  `96-settings-root-settled-after-density.png`.
+- Remaining QA: inspect each Settings secondary page individually for the same
+  density, state, copy, and bottom-safe behavior.
+
 ### ANDROID-2026-07-01-insights-empty-month-authority
 
 - Surface: Android Insights overview and trend tabs.

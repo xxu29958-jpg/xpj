@@ -104,6 +104,7 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
@@ -128,7 +129,7 @@ fun SettingsEntryRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = AppSpacing.contentGap),
+                .padding(vertical = AppSpacing.smallGap),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -144,14 +145,15 @@ fun SettingsEntryRow(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = AppTextHierarchy.body.weight,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = subtitle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
