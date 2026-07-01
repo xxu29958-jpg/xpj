@@ -224,7 +224,9 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
             label="Acme Corp 工资",
             source_type="工资",
             amount_cents=1_500_000,
-            pay_day=15,
+            # Current-month income is filtered by pay day; keep this line
+            # applicable no matter which day the test suite runs.
+            pay_day=1,
         )
         db.commit()
     with SessionLocal() as db:
@@ -233,7 +235,7 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
     assert 1_500_000 in plans, "the created income line must be present"
     mine = plans[1_500_000]
     assert mine.source_type == "other"  # free-text 工资 generalized, never raw
-    assert mine.pay_day == 15
+    assert mine.pay_day == 1
     # Every emitted source_type is in the PII-free allowlist (no raw free text),
     # and the snapshot shape carries no `label` (potential PII).
     assert all(p.source_type in ALLOWED_INCOME_SOURCE_TYPES for p in inputs.income_plan)

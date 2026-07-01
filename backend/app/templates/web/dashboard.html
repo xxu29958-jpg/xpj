@@ -58,6 +58,13 @@
       </div>
     </div>
   </div>
+  <div class="dashboard-load-panel" data-dashboard-status role="status" aria-live="polite" hidden>
+    <div class="dashboard-load-copy">
+      <div class="dashboard-load-title" data-dashboard-status-title>正在整理仪表盘</div>
+      <div class="dashboard-load-body" data-dashboard-status-body>正在读取待确认、预算和报表卡片。</div>
+    </div>
+    <button class="dt-btn dt-btn--sm dashboard-load-retry" type="button" data-dashboard-retry hidden>重试</button>
+  </div>
   <div data-dashboard-rendered></div>
   <div data-dashboard-fallback>
 {% if visible_cards | length == 0 %}
@@ -329,6 +336,6 @@
    dashboard.js. echarts first; all before desktop.js (see base.html page_scripts note). #}
 {% block page_scripts %}
   <script defer src="/static/web/vendor/echarts.min.js"></script>
-  <script defer src="/static/web/desktop/category-donut.js?v={{ backend_version }}"></script>
-  <script defer src="/static/web/desktop/dashboard.js?v={{ backend_version }}"></script>
+  <script defer src="/static/web/desktop/category-donut.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/desktop/dashboard.js?v={{ asset_version }}"></script>
 {% endblock %}

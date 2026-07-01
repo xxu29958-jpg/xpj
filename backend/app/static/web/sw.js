@@ -6,8 +6,8 @@
  *
  * Cache strategy:
  * - Static assets under /static/web/, /static/shared/ → cache-first (versioned
- *   by ``backend_version`` query string in <link> tags, so the bumping of
- *   that value naturally invalidates entries).
+ *   by the backend-issued ``asset_version`` query string, so real template or
+ *   static-file changes naturally invalidate entries).
  * - Anything else (/web HTML pages, /api/...) → network-only. Account data
  *   must never be served from a stale cache, and authentication state
  *   changes (logout, ledger switch) would be silently broken by HTML

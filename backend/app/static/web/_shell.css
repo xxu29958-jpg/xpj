@@ -74,6 +74,19 @@
     align-self: center;
 }
 
+.desktop-nav {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: calc(var(--space-7) + var(--space-2));
+}
+
+.mobile-primary-nav,
+.mobile-more-nav {
+    display: none;
+}
+
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
 .nav-group-collapsible {
     border: 0;

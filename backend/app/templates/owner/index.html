@@ -14,15 +14,77 @@
 </div>
 {% endif %}
 
+<svg class="owner-icon-sprite" aria-hidden="true" focusable="false">
+  <symbol id="owner-icon-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="7" y="3" width="10" height="18" rx="2"></rect>
+    <path d="M11 18h2"></path>
+  </symbol>
+  <symbol id="owner-icon-family" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 20v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+    <circle cx="10" cy="7" r="4"></circle>
+    <path d="M22 20v-2a4 4 0 0 0-3-3.87"></path>
+    <path d="M17 3.13a4 4 0 0 1 0 7.75"></path>
+  </symbol>
+  <symbol id="owner-icon-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 16V4"></path>
+    <path d="m7 9 5-5 5 5"></path>
+    <path d="M20 16.5a4.5 4.5 0 0 1-4.5 4.5h-7A4.5 4.5 0 0 1 4 16.5"></path>
+  </symbol>
+  <symbol id="owner-icon-health" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 12h4l2-5 4 10 2-5h6"></path>
+  </symbol>
+  <symbol id="owner-icon-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
+    <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"></path>
+    <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"></path>
+  </symbol>
+  <symbol id="owner-icon-web" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="4" width="18" height="12" rx="2"></rect>
+    <path d="M8 20h8"></path>
+    <path d="M12 16v4"></path>
+  </symbol>
+  <symbol id="owner-icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+  </symbol>
+  <symbol id="owner-icon-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.6 13.3 13.3 20.6a2 2 0 0 1-2.8 0L3 13.1V3h10.1l7.5 7.5a2 2 0 0 1 0 2.8Z"></path>
+    <circle cx="7.5" cy="7.5" r="1"></circle>
+  </symbol>
+  <symbol id="owner-icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v12"></path>
+    <path d="m7 10 5 5 5-5"></path>
+    <path d="M5 21h14"></path>
+  </symbol>
+</svg>
+
 <div class="card">
   <h2>常用操作</h2>
   <div class="quick-links">
-    <a href="/owner/pairing">🔑 绑定你的手机</a>
-    <a href="/owner/ledgers">👪 给家人发邀请</a>
-    <a href="/owner/upload-links">📎 给 iPhone 配上传</a>
-    <a href="/owner/diagnostics">🩺 看系统体检</a>
-    <a href="/owner/backups">💾 数据库备份</a>
-    <a href="/web" target="_blank">🖥️ 网页版账本</a>
+    <a class="owner-action-link" href="/owner/pairing">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-phone"></use></svg></span>
+      <span>绑定你的手机</span>
+    </a>
+    <a class="owner-action-link" href="/owner/ledgers">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-family"></use></svg></span>
+      <span>给家人发邀请</span>
+    </a>
+    <a class="owner-action-link" href="/owner/upload-links">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-upload"></use></svg></span>
+      <span>给 iPhone 配上传</span>
+    </a>
+    <a class="owner-action-link" href="/owner/diagnostics">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-health"></use></svg></span>
+      <span>看系统体检</span>
+    </a>
+    <a class="owner-action-link" href="/owner/backups">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-database"></use></svg></span>
+      <span>数据库备份</span>
+    </a>
+    <a class="owner-action-link" href="/web" target="_blank">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-web"></use></svg></span>
+      <span>网页版账本</span>
+    </a>
   </div>
 </div>
 
@@ -112,11 +174,26 @@
     </div>
   </div>
   <div class="quick-links mt-4">
-    <a href="/web/data-quality?ledger_id={{ primary_tenant_id }}" target="_blank">🩺 数据体检</a>
-    <a href="/web/duplicates?ledger_id={{ primary_tenant_id }}" target="_blank">🧬 重复整理</a>
-    <a href="/web/categories/uncategorized?ledger_id={{ primary_tenant_id }}" target="_blank">🏷️ 未分类</a>
-    <a href="/web/import?ledger_id={{ primary_tenant_id }}" target="_blank">⬆️ CSV 导入</a>
-    <a href="/web/export.csv?ledger_id={{ primary_tenant_id }}" target="_blank">⬇️ CSV 导出</a>
+    <a class="owner-action-link" href="/web/data-quality?ledger_id={{ primary_tenant_id }}" target="_blank">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-health"></use></svg></span>
+      <span>数据体检</span>
+    </a>
+    <a class="owner-action-link" href="/web/duplicates?ledger_id={{ primary_tenant_id }}" target="_blank">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-copy"></use></svg></span>
+      <span>重复整理</span>
+    </a>
+    <a class="owner-action-link" href="/web/categories/uncategorized?ledger_id={{ primary_tenant_id }}" target="_blank">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-tag"></use></svg></span>
+      <span>未分类</span>
+    </a>
+    <a class="owner-action-link" href="/web/import?ledger_id={{ primary_tenant_id }}" target="_blank">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-upload"></use></svg></span>
+      <span>CSV 导入</span>
+    </a>
+    <a class="owner-action-link" href="/web/export.csv?ledger_id={{ primary_tenant_id }}" target="_blank">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-download"></use></svg></span>
+      <span>CSV 导出</span>
+    </a>
   </div>
 </div>
 {% endif %}

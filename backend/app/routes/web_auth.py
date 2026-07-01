@@ -33,7 +33,7 @@ from app.services.identity_service import (
     pair_device,
 )
 from app.services.session_lifecycle_service import revoke_web_session_token
-from app.version import BACKEND_VERSION
+from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 router = APIRouter(prefix="/web/auth", tags=["web"])
 
@@ -86,6 +86,7 @@ def web_login_form(
             "next_url": _safe_next_url(next),
             "error_message": _ERROR_MESSAGES.get(error or "", "") if error else "",
             "backend_version": BACKEND_VERSION,
+            "asset_version": STATIC_ASSET_VERSION,
         },
     )
 

@@ -7,6 +7,15 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
+from app.version import STATIC_ASSET_VERSION
+
+
+def _assert_in_order(text: str, labels: list[str]) -> None:
+    cursor = -1
+    for label in labels:
+        cursor = text.find(label, cursor + 1)
+        assert cursor >= 0, label
+
 
 def test_web_pending_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/pending")
@@ -39,6 +48,94 @@ def test_web_confirmed_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/confirmed")
     assert resp.status_code == 200
     assert "已确认" in resp.text
+    assert f"/static/web/_shell.css?v={STATIC_ASSET_VERSION}" in resp.text
+    assert f"/static/shared/tokens.css?v={STATIC_ASSET_VERSION}" in resp.text
+
+
+def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
+    resp = web_client.get("/web/confirmed?ledger_id=owner")
+    assert resp.status_code == 200
+    body = resp.text
+
+    primary = re.search(r'<nav class="mobile-primary-nav".*?</nav>', body, re.S)
+    assert primary is not None
+    assert all(label in primary.group(0) for label in ["今日", "待确认", "账本", "洞察"])
+    assert re.search(
+        r'href="/web/confirmed\?ledger_id=owner"[^>]+aria-current="page"',
+        primary.group(0),
+    )
+
+    desktop = re.search(r'<nav class="desktop-nav" aria-label="桌面入口">.*?</nav>', body, re.S)
+    assert desktop is not None
+    desktop_nav = re.sub(r"\{#.*?#\}", "", desktop.group(0), flags=re.S)
+    assert "账单流" not in desktop_nav
+    assert re.search(
+        r'href="/web/confirmed\?ledger_id=owner"[^>]+aria-current="page"',
+        desktop_nav,
+    )
+    _assert_in_order(
+        desktop_nav,
+        [
+            "概览",
+            "今日",
+            "待确认",
+            "已确认",
+            "搜索",
+            "清算",
+            "疑似重复",
+            "拆账收件箱",
+            "已发拆账",
+            "欠款",
+            "欠我的",
+            "还款捕获",
+            "洞察与规划",
+            "报表",
+            "预算",
+            "目标",
+            "还债目标",
+            "收入记录",
+            "AI 预算建议",
+            "固定支出",
+            "治理",
+            "分类",
+            "商家",
+            "标签",
+            "规则",
+            "数据体检",
+            "回收站",
+            "导入导出",
+        ],
+    )
+
+    reports = web_client.get("/web/reports?ledger_id=owner")
+    assert reports.status_code == 200
+    reports_desktop = re.search(
+        r'<nav class="desktop-nav" aria-label="桌面入口">.*?</nav>',
+        reports.text,
+        re.S,
+    )
+    assert reports_desktop is not None
+    assert re.search(
+        r'<details class="nav-group nav-group-collapsible"[^>]*open>\s*'
+        r'<summary class="nav-group-title">洞察与规划</summary>',
+        reports_desktop.group(0),
+    )
+    assert re.search(
+        r'href="/web/reports\?ledger_id=owner"[^>]+aria-current="page"',
+        reports_desktop.group(0),
+    )
+
+
+def test_web_mobile_more_nav_opens_for_secondary_pages(web_client: TestClient) -> None:
+    resp = web_client.get("/web/search?ledger_id=owner")
+    assert resp.status_code == 200
+    body = resp.text
+
+    assert re.search(r'<details class="mobile-more-nav"[^>]*open', body)
+    assert re.search(
+        r'class="mobile-more-link active" href="/web/search\?ledger_id=owner"[^>]+aria-current="page"',
+        body,
+    )
 
 
 def test_web_month_picker_links_drop_page_param(web_client: TestClient) -> None:

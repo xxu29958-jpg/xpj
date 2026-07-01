@@ -89,6 +89,9 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     assert dashboard.status_code == 200
     assert 'id="dashboard-app"' in dashboard.text
     assert "dashboard-skeleton-grid" in dashboard.text
+    assert "data-dashboard-status" in dashboard.text
+    assert "data-dashboard-retry" in dashboard.text
+    assert "正在整理仪表盘" in dashboard.text
     assert "data-dashboard-fallback" in dashboard.text
     assert dashboard.text.index('data-dashboard-card="goals"') < dashboard.text.index(
         'data-dashboard-card="monthly_spend"'
@@ -161,6 +164,11 @@ def test_web_dashboard_static_js_wires_category_donut(client: TestClient) -> Non
     assert "chart-category" in dashboard_js.text
     assert "initCategoryDonut" in dashboard_js.text
     assert "data-categories" in dashboard_js.text
+    assert "SLOW_LOAD_MS = 2000" in dashboard_js.text
+    assert "FALLBACK_LOAD_MS = 8000" in dashboard_js.text
+    assert "AbortController" in dashboard_js.text
+    assert 'data-dashboard-state", "slow"' in dashboard_js.text
+    assert "data-dashboard-retry" in dashboard_js.text
 
     donut_js = client.get("/static/web/desktop/category-donut.js")
     assert donut_js.status_code == 200

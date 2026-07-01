@@ -20,7 +20,7 @@ from app.config import get_settings
 from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
 from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
-from app.version import BACKEND_VERSION
+from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,7 @@ def _base(request: Request, db: Session) -> dict:
     home_currency = (cfg.fx_home_currency_code or DEFAULT_HOME_CURRENCY_CODE).upper()
     return {
         "backend_version": BACKEND_VERSION,
+        "asset_version": STATIC_ASSET_VERSION,
         "upload_dir_status": upload_status,
         "ui_theme": _read_ui_theme(request),
         "home_currency_code": home_currency,

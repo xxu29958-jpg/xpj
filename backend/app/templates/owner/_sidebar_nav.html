@@ -21,7 +21,11 @@
     </div>
     {% set advanced_active = '/ai-advisor' in request.url.path or '/algorithm-versions' in request.url.path or '/learning-maintenance' in request.url.path or '/tag-cleanup' in request.url.path %}
     <details class="owner-sidebar__group owner-sidebar__advanced"{% if advanced_active %} open{% endif %}>
-      <summary class="owner-sidebar__group-label">高级（平时不用）</summary>
+      <summary class="owner-sidebar__group-label owner-sidebar__advanced-summary">
+        <span class="owner-sidebar__advanced-title">高级</span>
+        <span class="owner-sidebar__advanced-note">平时不用</span>
+        <span class="owner-sidebar__advanced-count" aria-label="4 个入口">4</span>
+      </summary>
       <a href="/owner/ai-advisor" {% if '/ai-advisor' in request.url.path %}class="is-active"{% endif %}>AI 顾问</a>
       <a href="/owner/algorithm-versions" {% if '/algorithm-versions' in request.url.path %}class="is-active"{% endif %}>算法版本</a>
       <a href="/owner/learning-maintenance" {% if '/learning-maintenance' in request.url.path %}class="is-active"{% endif %}>学习层维护</a>

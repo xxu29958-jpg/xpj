@@ -36,7 +36,7 @@ from app.services.spending_contract_service import accounting_zone
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month, ensure_utc, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
-from app.version import BACKEND_VERSION
+from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
@@ -280,6 +280,7 @@ def _base_ctx(
     pending_count, suspected_count = sidebar_counts or (0, 0)
     return {
         "backend_version": BACKEND_VERSION,
+        "asset_version": STATIC_ASSET_VERSION,
         "request": request,
         "ledger_options": options,
         "selected_ledger_id": selected_ledger_id,

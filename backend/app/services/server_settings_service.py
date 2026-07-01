@@ -60,7 +60,12 @@ def server_settings_snapshot(
         "pending_count": _count_expenses(db, tenant_id=ledger_id, status="pending"),
         "confirmed_count": _count_expenses(db, tenant_id=ledger_id, status="confirmed"),
         "rejected_count": _count_expenses(db, tenant_id=ledger_id, status="rejected"),
-        "suspected_duplicate_count": _count_expenses(db, tenant_id=ledger_id, duplicate_status="suspected"),
+        "suspected_duplicate_count": _count_expenses(
+            db,
+            tenant_id=ledger_id,
+            status="pending",
+            duplicate_status="suspected",
+        ),
         "upload_storage_bytes": storage_bytes,
         "latest_upload_at": to_iso(latest_upload_at),
     }

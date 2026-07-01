@@ -8,6 +8,15 @@
     /* Owner 比 /web 更紧凑：稍小圆角和更轻阴影 */
     --radius-card: 8px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.08);
+    --owner-nav-fg: rgba(255, 255, 255, 0.72);
+    --owner-nav-strong-fg: rgba(255, 255, 255, 1);
+    --owner-nav-muted-fg: rgba(255, 255, 255, 0.45);
+    --owner-nav-soft-fg: rgba(255, 255, 255, 0.52);
+    --owner-nav-soft-bg: rgba(255, 255, 255, 0.06);
+    --owner-nav-chip-bg: rgba(255, 255, 255, 0.10);
+    --owner-nav-line: rgba(255, 255, 255, 0.12);
+    --owner-nav-border: rgba(255, 255, 255, 0.14);
+    --owner-nav-border-active: rgba(255, 255, 255, 0.24);
     /* Owner-only 一次性密钥框刻意保留终端绿；它不是 success 状态语义色。 */
     --owner-secret-fg: #a3e635;
 }
@@ -184,21 +193,55 @@ form.inline { display: inline; }
     width: 160px;
 }
 
-.quick-links { display: flex; gap: 12px; flex-wrap: wrap; }
+.owner-icon-sprite {
+    position: absolute;
+    inline-size: 0;
+    block-size: 0;
+    overflow: hidden;
+}
+
+.quick-links {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
 .quick-links a {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
+    min-height: var(--space-8);
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
     background: var(--surface-card);
     border: 1px solid var(--border-card);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     text-decoration: none;
     color: var(--text-default);
-    font-size: 13px;
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
     transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .quick-links a:hover { border-color: var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-focus-ring); color: var(--brand-primary-strong); }
+
+.owner-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--space-5);
+    block-size: var(--space-5);
+    flex: 0 0 auto;
+    color: var(--brand-primary);
+}
+
+.owner-action-icon svg {
+    inline-size: 100%;
+    block-size: 100%;
+}
+
+.owner-action-link:hover .owner-action-icon {
+    color: var(--brand-primary-strong);
+}
 
 .kv-grid { display: grid; grid-template-columns: 180px 1fr; gap: 6px 12px; }
 .kv-key { font-size: 12px; color: var(--text-muted); align-self: center; }
@@ -349,36 +392,37 @@ form.inline { display: inline; }
 }
 .owner-sidebar {
     background: var(--surface-nav);
-    color: var(--text-on-primary);
-    padding: 16px 12px 18px;
+    color: var(--owner-nav-strong-fg);
+    padding: var(--space-5) var(--space-4) calc(var(--space-5) + var(--space-1));
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--space-4-5);
     position: sticky;
     top: 0;
     height: 100vh;
     overflow-y: auto;
 }
 .owner-sidebar__brand {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-on-primary);
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-subtitle-weight);
+    color: var(--owner-nav-strong-fg);
     text-decoration: none;
-    padding: 4px 8px;
+    padding: var(--space-2) var(--space-3);
 }
 .owner-sidebar__nav {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--space-4-5);
     flex: 1;
 }
-.owner-sidebar__group { display: flex; flex-direction: column; gap: 2px; }
+.owner-sidebar__group { display: flex; flex-direction: column; gap: var(--space-1); }
 .owner-sidebar__group-label {
-    font-size: 10px;
+    font-size: var(--type-meta-size);
+    line-height: var(--type-meta-line);
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.45);
-    padding: 6px 8px 2px;
+    color: var(--owner-nav-muted-fg);
+    padding: calc(var(--space-2) + var(--space-1)) var(--space-3) var(--space-1);
 }
 /* 「高级」折叠组: <details>/<summary> 形态; summary 复用 group-label 视觉,
  * 默认折叠把开发者深页收起来, 当前在深页时模板加 open 自动展开。 */
@@ -388,40 +432,65 @@ form.inline { display: inline; }
     user-select: none;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
 }
 .owner-sidebar__advanced > summary::-webkit-details-marker { display: none; }
 .owner-sidebar__advanced > summary::before {
     content: "▸";
-    font-size: 9px;
-    color: rgba(255, 255, 255, 0.45);
-    transition: transform var(--motion-fast) ease;
+    font-size: var(--type-meta-size);
+    color: var(--owner-nav-muted-fg);
+    transition: transform var(--motion-fast) var(--ease-standard);
 }
 .owner-sidebar__advanced[open] > summary::before { transform: rotate(90deg); }
-.owner-sidebar__advanced > summary:hover { color: rgba(255, 255, 255, 0.72); }
+.owner-sidebar__advanced > summary:hover { color: var(--owner-nav-fg); }
+.owner-sidebar__advanced-title {
+    white-space: nowrap;
+}
+.owner-sidebar__advanced-note {
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--owner-nav-soft-fg);
+}
+.owner-sidebar__advanced-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: var(--space-5);
+    block-size: var(--space-5);
+    padding-inline: var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--owner-nav-chip-bg);
+    color: var(--owner-nav-fg);
+    font-size: var(--type-meta-size);
+    line-height: var(--type-meta-line);
+    letter-spacing: 0;
+    text-transform: none;
+}
 .owner-sidebar__nav a {
     display: block;
-    padding: 7px 10px;
-    border-radius: var(--radius-input, 6px);
-    color: rgba(255, 255, 255, 0.72);
+    padding: calc(var(--space-3) - var(--space-1)) var(--space-3-5);
+    border-radius: var(--radius-input, var(--radius-sm));
+    color: var(--owner-nav-fg);
     text-decoration: none;
-    font-size: 13px;
-    transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
+    transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
 }
 .owner-sidebar__nav a:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--text-on-primary);
+    background: var(--owner-nav-soft-bg);
+    color: var(--owner-nav-strong-fg);
 }
 .owner-sidebar__nav a.is-active {
-    background: rgba(255, 255, 255, 0.10);
-    color: var(--text-on-primary);
+    background: var(--owner-nav-chip-bg);
+    color: var(--owner-nav-strong-fg);
     font-weight: 500;
 }
 .owner-sidebar__foot {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.40);
-    padding: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: var(--type-meta-size);
+    line-height: var(--type-meta-line);
+    color: var(--owner-nav-muted-fg);
+    padding: var(--space-3);
+    border-top: 1px solid var(--owner-nav-line);
 }
 .owner-main {
     padding: 24px;
@@ -434,13 +503,34 @@ form.inline { display: inline; }
         height: auto;
         flex-direction: row;
         flex-wrap: wrap;
-        gap: 8px;
-        padding: 8px 12px;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
     }
-    .owner-sidebar__group { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+    .owner-sidebar__group { flex-direction: row; flex-wrap: wrap; gap: var(--space-2); }
     .owner-sidebar__group-label { display: none; }
     .owner-sidebar__foot { display: none; }
     /* 「高级」折叠组在窄屏仍需可展开: summary 是它的唯一入口, 不能跟普通
      * group-label 一起隐藏, 否则折叠态下深页链接彻底点不到。 */
-    .owner-sidebar__advanced > summary { display: inline-flex; }
+    .owner-sidebar__advanced {
+        flex: 1 1 100%;
+        gap: var(--space-2);
+        padding-block-start: var(--space-2);
+        border-block-start: 1px solid var(--owner-nav-line);
+    }
+    .owner-sidebar__advanced > summary {
+        display: inline-flex;
+        flex: 1 1 100%;
+        min-block-size: var(--space-9);
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--owner-nav-border);
+        border-radius: var(--radius-sm);
+        background: var(--owner-nav-soft-bg);
+    }
+    .owner-sidebar__advanced[open] > summary {
+        border-color: var(--owner-nav-border-active);
+        background: var(--owner-nav-chip-bg);
+    }
+    .owner-sidebar__advanced-note {
+        margin-inline-start: auto;
+    }
 }

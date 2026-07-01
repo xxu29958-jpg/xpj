@@ -6,6 +6,8 @@
   const dashboardUrl = app.dashboardUrl;
   const homeCurrencySymbol = app.homeCurrencySymbol;
   const moneyParts = app.moneyParts;
+  const SLOW_LOAD_MS = 2000;
+  const FALLBACK_LOAD_MS = 8000;
 
   function text(value) {
     return String(value == null ? "" : value);
@@ -433,6 +435,37 @@
     return grid;
   }
 
+  function setDashboardStatus(root, title, body, retryable, visible) {
+    const status = root.querySelector("[data-dashboard-status]");
+    const titleNode = root.querySelector("[data-dashboard-status-title]");
+    const bodyNode = root.querySelector("[data-dashboard-status-body]");
+    const retry = root.querySelector("[data-dashboard-retry]");
+    if (status) status.hidden = !visible;
+    if (titleNode) titleNode.textContent = title;
+    if (bodyNode) bodyNode.textContent = body;
+    if (retry) {
+      retry.hidden = !retryable;
+      retry.disabled = false;
+    }
+  }
+
+  function clearDashboardTimers(load) {
+    if (!load) return;
+    if (load.slowTimer) window.clearTimeout(load.slowTimer);
+    if (load.fallbackTimer) window.clearTimeout(load.fallbackTimer);
+    load.slowTimer = null;
+    load.fallbackTimer = null;
+  }
+
+  function showDashboardFallback(root, load, title, body) {
+    if (load.done) return;
+    load.done = true;
+    clearDashboardTimers(load);
+    if (load.controller) load.controller.abort();
+    setDashboardStatus(root, title, body, true, true);
+    root.setAttribute("data-dashboard-state", "fallback");
+  }
+
   app.renderDashboard = renderDashboard;
 
   app.initDashboard = function initDashboard() {
@@ -440,23 +473,92 @@
     if (!root) return;
     const target = root.querySelector("[data-dashboard-rendered]");
     const url = root.getAttribute("data-dashboard-url");
+    let activeLoad = null;
+
+    function startLoad() {
+      if (activeLoad) {
+        activeLoad.done = true;
+        clearDashboardTimers(activeLoad);
+        if (activeLoad.controller) activeLoad.controller.abort();
+      }
+      target.replaceChildren();
+      root.setAttribute("data-dashboard-state", "pending");
+      setDashboardStatus(root, "正在整理仪表盘", "正在读取待确认、预算和报表卡片。", false, false);
+
+      const load = {
+        done: false,
+        controller: typeof AbortController === "function" ? new AbortController() : null,
+        slowTimer: null,
+        fallbackTimer: null,
+      };
+      activeLoad = load;
+
+      load.slowTimer = window.setTimeout(function () {
+        if (load.done || activeLoad !== load) return;
+        setDashboardStatus(
+          root,
+          "仪表盘读取比平时慢",
+          "继续读取最新数据；先保留页面里已渲染的账本卡片，不会影响查看。",
+          false,
+          true
+        );
+        root.setAttribute("data-dashboard-state", "slow");
+      }, SLOW_LOAD_MS);
+
+      load.fallbackTimer = window.setTimeout(function () {
+        if (load.done || activeLoad !== load) return;
+        showDashboardFallback(
+          root,
+          load,
+          "暂时没拿到最新仪表盘",
+          "先显示服务端已经渲染好的卡片。可以继续查看，也可以稍后重试。"
+        );
+      }, FALLBACK_LOAD_MS);
+
+      const fetchOptions = {
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" },
+      };
+      if (load.controller) fetchOptions.signal = load.controller.signal;
+
+      fetch(url, fetchOptions)
+        .then(function (res) {
+          if (!res.ok) throw new Error("dashboard data failed");
+          return res.json();
+        })
+        .then(function (data) {
+          if (load.done || activeLoad !== load) return;
+          load.done = true;
+          clearDashboardTimers(load);
+          target.replaceChildren(renderDashboard(data));
+          root.setAttribute("data-dashboard-state", "ready");
+          setDashboardStatus(root, "", "", false, false);
+          if (typeof app.initSparks === "function") app.initSparks(target);
+          if (typeof app.initCategoryDonut === "function") app.initCategoryDonut();
+        })
+        .catch(function () {
+          if (load.done || activeLoad !== load) return;
+          showDashboardFallback(
+            root,
+            load,
+            "仪表盘暂时刷新失败",
+            "先显示服务端已经渲染好的卡片。检查连接后可以重试。"
+          );
+        });
+    }
+
     if (!target || !url || typeof fetch !== "function") {
+      setDashboardStatus(root, "正在显示已渲染内容", "当前浏览器不支持动态刷新，已切到服务端卡片。", false, true);
       root.setAttribute("data-dashboard-state", "fallback");
       return;
     }
-    fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
-      .then(function (res) {
-        if (!res.ok) throw new Error("dashboard data failed");
-        return res.json();
-      })
-      .then(function (data) {
-        target.replaceChildren(renderDashboard(data));
-        root.setAttribute("data-dashboard-state", "ready");
-        if (typeof app.initSparks === "function") app.initSparks(target);
-        if (typeof app.initCategoryDonut === "function") app.initCategoryDonut();
-      })
-      .catch(function () {
-        root.setAttribute("data-dashboard-state", "fallback");
+    const retry = root.querySelector("[data-dashboard-retry]");
+    if (retry) {
+      retry.addEventListener("click", function () {
+        retry.disabled = true;
+        startLoad();
       });
+    }
+    startLoad();
   };
 })(window, document);

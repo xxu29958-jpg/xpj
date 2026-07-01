@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routes.owner_console import _require_local
+from app.version import STATIC_ASSET_VERSION
 
 
 def _insert_external_console_device() -> str:
@@ -78,7 +79,28 @@ def local_client(client: TestClient) -> TestClient:
 def test_owner_index_local_returns_200(local_client: TestClient) -> None:
     resp = local_client.get("/owner")
     assert resp.status_code == 200
-    assert "小票夹" in resp.text
+    body = resp.text
+    assert "小票夹" in body
+    assert f"/static/owner/owner.css?v={STATIC_ASSET_VERSION}" in body
+    assert f"/static/shared/tokens.css?v={STATIC_ASSET_VERSION}" in body
+    assert f"/static/owner/vendor/qrcode.js?v={STATIC_ASSET_VERSION}" in body
+    assert 'class="owner-icon-sprite"' in body
+    assert body.count('class="owner-action-icon"') >= 11
+    assert '<a class="owner-action-link" href="/owner/pairing">' in body
+    assert 'class="owner-sidebar__group owner-sidebar__advanced"' in body
+    assert 'class="owner-sidebar__group-label owner-sidebar__advanced-summary"' in body
+    assert '<span class="owner-sidebar__advanced-title">高级</span>' in body
+    assert '<span class="owner-sidebar__advanced-note">平时不用</span>' in body
+    assert '<span class="owner-sidebar__advanced-count" aria-label="4 个入口">4</span>' in body
+    assert '<use href="#owner-icon-phone">' in body
+    for legacy_label in [
+        "🔑 绑定你的手机",
+        "👪 给家人发邀请",
+        "📎 给 iPhone 配上传",
+        "🩺 数据体检",
+        "🧬 重复整理",
+    ]:
+        assert legacy_label not in body
 
 
 def test_owner_index_remote_returns_403(client: TestClient) -> None:
@@ -450,6 +472,8 @@ def test_owner_ai_advisor_panel_opens(local_client: TestClient) -> None:
     assert response.status_code == 200
     assert "Provider" in response.text
     assert "/owner/ai-advisor/confirmation" in response.text
+    assert '<details class="owner-sidebar__group owner-sidebar__advanced" open>' in response.text
+    assert '<a href="/owner/ai-advisor" class="is-active">AI 顾问</a>' in response.text
 
 
 def test_owner_ai_advisor_confirmation_updates_runtime_env(

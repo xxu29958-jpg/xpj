@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuthToken, Device
+from app.models import AuthToken, Device, Expense
 from app.network_boundary import require_admin_network_boundary
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
@@ -125,6 +125,52 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(
     assert "token" not in str(payload).lower()
     assert "path" not in str(payload).lower()
     assert "E:\\" not in str(payload)
+
+
+def test_server_settings_suspected_duplicates_are_pending_only(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    with SessionLocal() as db:
+        now = now_utc()
+        db.add_all(
+            [
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1200,
+                    merchant="confirmed duplicate",
+                    category="Dining",
+                    source="pytest",
+                    status="confirmed",
+                    duplicate_status="suspected",
+                    confirmed_at=now,
+                ),
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1800,
+                    merchant="rejected duplicate",
+                    category="Dining",
+                    source="pytest",
+                    status="rejected",
+                    duplicate_status="suspected",
+                ),
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=2200,
+                    merchant="pending duplicate",
+                    category="Dining",
+                    source="pytest",
+                    status="pending",
+                    duplicate_status="suspected",
+                ),
+            ]
+        )
+        db.commit()
+
+    response = client.get("/api/settings/server", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["suspected_duplicate_count"] == 1
 
 
 def test_server_settings_storage_metric_counts_external_upload_dir(

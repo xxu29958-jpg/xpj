@@ -107,6 +107,43 @@ def test_data_quality_suspected_duplicates(client: TestClient, *, identity) -> N
     assert body["ready_to_confirm"] + body["suspected_duplicates"] <= body["pending_total"] + 1
 
 
+def test_data_quality_suspected_duplicates_only_counts_pending(
+    client: TestClient, *, identity,
+) -> None:
+    with SessionLocal() as db:
+        now = now_utc()
+        db.add_all(
+            [
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1200,
+                    merchant="已确认重复",
+                    category="餐饮",
+                    source="pytest",
+                    status="confirmed",
+                    duplicate_status="suspected",
+                    confirmed_at=now,
+                ),
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1800,
+                    merchant="已删除重复",
+                    category="餐饮",
+                    source="pytest",
+                    status="rejected",
+                    duplicate_status="suspected",
+                ),
+            ]
+        )
+        db.commit()
+
+    response = client.get("/api/insights/data-quality", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["pending_total"] == 0
+    assert body["suspected_duplicates"] == 0
+
+
 def test_data_quality_ready_to_confirm_excludes_pending_fx(client: TestClient, *, identity) -> None:
     with SessionLocal() as db:
         db.add(
