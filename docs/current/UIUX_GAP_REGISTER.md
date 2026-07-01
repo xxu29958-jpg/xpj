@@ -104,3 +104,29 @@ that actually ships the fix.
 - Resolution: the empty state now adds its own bottom safety space on top of the
   shared scroll scaffold padding, so the manual-entry/sync actions remain visibly
   above the bottom nav.
+
+### ANDROID-2026-07-01-product-reference-ia-contract
+
+- Surface: Android Today, Pending, Ledger, Insights, and Settings.
+- Status: registered contract for the ongoing Android IA/UIUX refactor.
+- Gap: prior passes could still drift into "polish the existing cards" instead
+  of judging the five tabs from product responsibility first. This made Insights
+  especially vulnerable to becoming a chart container rather than an answer page.
+- Reference pass: YNAB, Monarch, Lunch Money, Qianji, Shark Accounting,
+  Suishouji, and Material Design chart/design-token guidance were reviewed and
+  condensed into `docs/current/ANDROID_UIUX_IA_REFERENCE_2026-07-01.md`.
+- Product rule: Today is the daily cockpit, Pending is the inbox, Ledger is the
+  confirmed-record surface, Insights is the answer/analysis page, and Settings is
+  governance. Root screens must share shell language but not collapse into the
+  same card pattern.
+
+### ANDROID-2026-07-01-insights-feature-gaps
+
+- Surface: Android Insights and its Ledger drill-through.
+- Status: registered follow-up.
+- Gap: the current rebuild improves sparse-data reading, but mature finance
+  products also support saved report presets, point/bar selection, month-review
+  framing, and direct inspection of the transactions behind a chart.
+- Desired follow-up: add drillable insight sections backed by backend-authority
+  ledger queries; then introduce saved report presets only after the query
+  contract is explicit and test-covered.

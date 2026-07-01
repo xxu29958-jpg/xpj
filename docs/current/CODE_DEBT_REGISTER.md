@@ -15,3 +15,20 @@ feature slice without raising risk.
   ADR-backed notes, keep the executable gate file focused on active baselines and
   short current deltas, and preserve the strict counter values without changing
   audit semantics.
+
+- Surface: Android Compose root screens, especially `StatsScreen`.
+- Status: active cleanup in the Android IA/UIUX slice.
+- Debt: visual-control logic had started to accumulate inside root screen files,
+  making the page behave like a god object and tripping detekt
+  `TooManyFunctions` / `LongParameterList` while also weakening product-level IA.
+- Desired cleanup: keep root screens responsible for page flow only; move dense
+  top controls, chart renderers, item rows, and settings sections into focused
+  components with resource-backed copy and testable inputs.
+
+- Surface: Android detekt Gray Debug analysis.
+- Status: registered follow-up.
+- Debt: detekt still reports "34 compiler errors found during analysis" even
+  when Kotlin compilation succeeds, reducing confidence in type-resolution
+  findings and making visual-slice validation noisier.
+- Desired cleanup: investigate the detekt classpath/type-resolution setup so
+  successful builds do not emit stale compiler-analysis warnings.
