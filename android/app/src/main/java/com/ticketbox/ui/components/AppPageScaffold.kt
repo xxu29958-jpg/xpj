@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -23,7 +24,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,6 +101,8 @@ object AppPageDefaults {
         PageDensity.Comfortable -> AppSpacing.cardGap
     }
 }
+
+internal val LocalAppImeVisible = compositionLocalOf { false }
 
 @Immutable
 data class AppPageLayoutValues(
@@ -226,6 +231,7 @@ fun AppPageScrollableColumn(
     content: @Composable ColumnScope.(AppPageLayoutValues) -> Unit,
 ) {
     val density = LocalDensity.current
+    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
     var bottomBarHeight by remember { mutableStateOf(0.dp) }
 
     AppPageScaffold(
@@ -263,7 +269,9 @@ fun AppPageScrollableColumn(
                         .align(Alignment.BottomCenter)
                         .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
                 ) {
-                    bottomBar()
+                    CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
+                        bottomBar()
+                    }
                 }
             }
         }

@@ -24,12 +24,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -83,8 +83,7 @@ internal fun ExpenseEditActionBar(
     actions: ExpenseEditActionBarActions,
 ) {
     val visuals = LocalThemeVisuals.current
-    val density = LocalDensity.current
-    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    val keyboardVisible = LocalAppImeVisible.current
     Surface(
         modifier = Modifier
             .fillMaxWidth()

@@ -2,11 +2,11 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.annotation.StringRes
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -25,11 +25,10 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun ExpenseCurrencyFields(
     currency: CurrencyCode,
     onCurrencyChange: (CurrencyCode) -> Unit,
@@ -48,52 +47,53 @@ internal fun ExpenseCurrencyFields(
     LaunchedEffect(enabled) {
         if (enabled) amountFocus.requestFocus()
     }
-    AppGlassCard(
-        containerAlpha = 0.94f,
-        radius = RoundedCornerShape(AppRadius.medium),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
-            Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-                items(CurrencyCode.entries, key = { it.storageKey }) { code ->
-                    AppFilterChip(
-                        selected = currency == code,
-                        onClick = { onCurrencyChange(code) },
-                        label = "${code.symbol} ${code.storageKey}",
-                        enabled = enabled,
-                    )
-                }
-            }
-            OutlinedTextField(
-                value = originalAmountText,
-                onValueChange = onOriginalAmountChange,
-                modifier = Modifier.fillMaxWidth().focusRequester(amountFocus),
-                label = { Text(stringResource(R.string.expense_edit_original_amount_field_label, currency.storageKey)) },
-                placeholder = {
-                    Text(
-                        stringResource(
-                            if (currency.noFractionDigits) {
-                                R.string.expense_edit_original_amount_placeholder_no_fraction
-                            } else {
-                                R.string.expense_edit_original_amount_placeholder_fraction
-                            },
-                        ),
-                    )
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                enabled = enabled,
-            )
-            if (currency != FxContract.HomeCurrency) {
-                Text(
-                    text = stringResource(R.string.expense_edit_fx_hint),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
+            CurrencyCode.entries.forEach { code ->
+                AppFilterChip(
+                    selected = currency == code,
+                    onClick = { onCurrencyChange(code) },
+                    label = "${code.symbol} ${code.storageKey}",
+                    enabled = enabled,
                 )
             }
+        }
+        OutlinedTextField(
+            value = originalAmountText,
+            onValueChange = onOriginalAmountChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(amountFocus),
+            label = { Text(stringResource(R.string.expense_edit_original_amount_field_label)) },
+            placeholder = {
+                Text(
+                    stringResource(
+                        if (currency.noFractionDigits) {
+                            R.string.expense_edit_original_amount_placeholder_no_fraction
+                        } else {
+                            R.string.expense_edit_original_amount_placeholder_fraction
+                        },
+                    ),
+                )
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            enabled = enabled,
+        )
+        if (currency != FxContract.HomeCurrency) {
+            Text(
+                text = stringResource(R.string.expense_edit_fx_hint),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
