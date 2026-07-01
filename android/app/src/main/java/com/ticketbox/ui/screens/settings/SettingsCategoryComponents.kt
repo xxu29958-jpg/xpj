@@ -69,7 +69,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
@@ -95,7 +94,6 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
@@ -126,7 +124,7 @@ internal fun PreviewReceipt(
     ) {
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -156,8 +154,9 @@ internal fun CategoryRuleCard(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -186,7 +185,7 @@ internal fun CategoryRuleCard(
                 )
             }
             if (!readOnly) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                     OutlinedButton(onClick = { onToggleRule(rule) }) {
                         Text(
                             if (rule.enabled) {
@@ -204,7 +203,6 @@ internal fun CategoryRuleCard(
                     }
                 }
             }
-        }
     }
 }
 
@@ -214,6 +212,7 @@ private fun categoryRuleConditionText(
     currencyDisplay: CurrencyDisplay,
 ): String? {
     if (!rule.hasConditions) return null
+    val separator = stringResource(R.string.category_rule_condition_separator)
     val parts = buildList {
         rule.amountMinCents?.let {
             add(stringResource(R.string.category_rule_condition_amount_min, formatDisplayAmount(it, currencyDisplay)))
@@ -228,7 +227,7 @@ private fun categoryRuleConditionText(
             add(stringResource(R.string.category_rule_condition_tag, it))
         }
     }
-    return parts.joinToString(" · ")
+    return parts.joinToString(separator)
 }
 
 @Composable

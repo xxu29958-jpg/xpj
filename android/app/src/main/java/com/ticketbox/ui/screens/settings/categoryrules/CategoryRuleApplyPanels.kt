@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -14,15 +15,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.RuleApplyPreviewItem
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.screens.settings.SettingsOpenPanel
 
 @Composable
 internal fun ConfirmedRuleApplyPanel(
@@ -32,11 +33,9 @@ internal fun ConfirmedRuleApplyPanel(
     onPreview: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
             Text(
                 text = stringResource(R.string.category_rule_apply_panel_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -44,7 +43,7 @@ internal fun ConfirmedRuleApplyPanel(
             preview?.let { result ->
                 ConfirmedRulePreviewSummary(result)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                 OutlinedButton(
                     enabled = !busy,
                     onClick = onPreview,
@@ -70,7 +69,6 @@ internal fun ConfirmedRuleApplyPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
     }
 }
 
@@ -88,13 +86,18 @@ internal fun RuleApplicationHistory(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            applications.forEach { application ->
+            applications.forEachIndexed { index, application ->
                 RuleApplicationCard(
                     application = application,
                     readOnly = readOnly,
                     busy = busy,
                     onRollback = { onRollback(application) },
                 )
+                if (index < applications.lastIndex) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft),
+                    )
+                }
             }
         }
     }
@@ -124,11 +127,12 @@ private fun ConfirmedRulePreviewSummary(result: RuleApplyConfirmedResult) {
 
 @Composable
 private fun RuleApplyPreviewRow(item: RuleApplyPreviewItem) {
-    AppGlassCard(containerAlpha = 0.82f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.compactPadding),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.miniGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
             Text(
                 text = item.merchant?.takeIf { it.isNotBlank() }
                     ?: stringResource(R.string.category_rule_apply_preview_no_merchant),
@@ -137,11 +141,15 @@ private fun RuleApplyPreviewRow(item: RuleApplyPreviewItem) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${item.currentCategory} -> ${item.suggestedCategory} · ${item.ruleKeyword}",
+                text = stringResource(
+                    R.string.category_rule_apply_preview_mapping,
+                    item.currentCategory,
+                    item.suggestedCategory,
+                    item.ruleKeyword,
+                ),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodySmall,
             )
-        }
     }
 }
 
@@ -152,11 +160,9 @@ private fun RuleApplicationCard(
     busy: Boolean,
     onRollback: () -> Unit,
 ) {
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -197,6 +203,5 @@ private fun RuleApplicationCard(
                     Text(stringResource(R.string.category_rule_apply_history_rollback_button))
                 }
             }
-        }
     }
 }

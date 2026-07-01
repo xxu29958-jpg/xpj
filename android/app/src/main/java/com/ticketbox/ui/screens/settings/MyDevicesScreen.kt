@@ -36,7 +36,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
@@ -144,11 +143,9 @@ private fun DeviceListSection(
         title = stringResource(R.string.my_devices_section_devices),
         icon = Icons.Filled.Devices,
     ) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        ) {
                 if (state.devices.isEmpty() && state.loading) {
                     Column(modifier = Modifier.shimmer()) {
                         repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
@@ -180,7 +177,6 @@ private fun DeviceListSection(
                         },
                     )
                 }
-            }
         }
     }
 }
@@ -200,7 +196,7 @@ private fun DeviceRow(
     }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -215,7 +211,7 @@ private fun DeviceRow(
                 overflow = TextOverflow.Ellipsis,
             )
             if (device.isCurrent) {
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
                 Text(
                     text = stringResource(R.string.my_devices_row_current_badge),
                     style = MaterialTheme.typography.labelSmall,
@@ -258,7 +254,7 @@ private fun DeviceActionRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
     ) {
         OutlinedButton(
             modifier = Modifier.weight(1f),
@@ -305,11 +301,9 @@ private fun AddDeviceSection(
         title = stringResource(R.string.my_devices_section_add),
         icon = Icons.Filled.GroupAdd,
     ) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        ) {
                 Text(
                     text = stringResource(R.string.my_devices_add_intro),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -331,7 +325,6 @@ private fun AddDeviceSection(
                 createdCode?.let { code ->
                     CreatedPairingCodeResult(code = code, onDismissResult = onDismissResult)
                 }
-            }
         }
     }
 }

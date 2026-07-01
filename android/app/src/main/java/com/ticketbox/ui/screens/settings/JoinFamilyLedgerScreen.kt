@@ -18,13 +18,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ServerUrlEntryConfig
@@ -83,79 +81,74 @@ fun JoinFamilyLedgerScreen(
             title = stringResource(R.string.join_family_ledger_section_invite),
             icon = Icons.Filled.GroupAdd,
         ) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                ) {
-                    if (serverUrlEntry == null) {
-                        Text(
-                            text = stringResource(
-                                R.string.join_family_ledger_current_binding,
-                                currentLedgerName,
-                                currentAccountName,
-                                currentRole,
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (serverUrlEntry?.showInput == true) {
-                        OutlinedTextField(
-                            value = serverUrl,
-                            onValueChange = { value ->
-                                serverUrl = value
-                                viewModel.onServerUrlChanged()
-                            },
-                            label = { Text(stringResource(R.string.bind_server_field_url_label)) },
-                            placeholder = { Text(stringResource(R.string.bind_server_field_url_placeholder)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    OutlinedTextField(
-                        value = inviteToken,
-                        onValueChange = { value ->
-                            inviteToken = value.take(INVITE_TOKEN_MAX)
-                            viewModel.onTokenChanged()
-                        },
-                        label = { Text(stringResource(R.string.join_family_ledger_field_invite_token)) },
-                        singleLine = false,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = accountName,
-                        onValueChange = { value -> accountName = value.take(NAME_MAX) },
-                        label = { Text(stringResource(R.string.join_family_ledger_field_account_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = deviceName,
-                        onValueChange = { value -> deviceName = value.take(NAME_MAX) },
-                        label = { Text(stringResource(R.string.join_family_ledger_field_device_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    JoinInvitationActions(
-                        state = state,
-                        previewEnabled = serverUrlEntry == null || serverUrl.isNotBlank(),
-                        onPreview = {
-                            viewModel.previewInvitation(
-                                inviteToken = inviteToken,
-                                serverUrlOverride = if (serverUrlEntry != null) serverUrl else null,
-                            )
-                        },
-                        onAccept = {
-                            viewModel.acceptInvitation(
-                                inviteToken = inviteToken,
-                                accountName = accountName,
-                                deviceName = deviceName,
-                                onAccepted = onAccepted,
-                                onConsumed = { inviteToken = "" },
-                            )
-                        },
+            SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                if (serverUrlEntry == null) {
+                    Text(
+                        text = stringResource(
+                            R.string.join_family_ledger_current_binding,
+                            currentLedgerName,
+                            currentAccountName,
+                            currentRole,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (serverUrlEntry?.showInput == true) {
+                    OutlinedTextField(
+                        value = serverUrl,
+                        onValueChange = { value ->
+                            serverUrl = value
+                            viewModel.onServerUrlChanged()
+                        },
+                        label = { Text(stringResource(R.string.bind_server_field_url_label)) },
+                        placeholder = { Text(stringResource(R.string.bind_server_field_url_placeholder)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedTextField(
+                    value = inviteToken,
+                    onValueChange = { value ->
+                        inviteToken = value.take(INVITE_TOKEN_MAX)
+                        viewModel.onTokenChanged()
+                    },
+                    label = { Text(stringResource(R.string.join_family_ledger_field_invite_token)) },
+                    singleLine = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = accountName,
+                    onValueChange = { value -> accountName = value.take(NAME_MAX) },
+                    label = { Text(stringResource(R.string.join_family_ledger_field_account_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = deviceName,
+                    onValueChange = { value -> deviceName = value.take(NAME_MAX) },
+                    label = { Text(stringResource(R.string.join_family_ledger_field_device_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                JoinInvitationActions(
+                    state = state,
+                    previewEnabled = serverUrlEntry == null || serverUrl.isNotBlank(),
+                    onPreview = {
+                        viewModel.previewInvitation(
+                            inviteToken = inviteToken,
+                            serverUrlOverride = if (serverUrlEntry != null) serverUrl else null,
+                        )
+                    },
+                    onAccept = {
+                        viewModel.acceptInvitation(
+                            inviteToken = inviteToken,
+                            accountName = accountName,
+                            deviceName = deviceName,
+                            onAccepted = onAccepted,
+                            onConsumed = { inviteToken = "" },
+                        )
+                    },
+                )
             }
         }
 
@@ -163,14 +156,14 @@ fun JoinFamilyLedgerScreen(
             Text(
                 text = it.asString(),
                 color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = AppSpacing.miniGap),
             )
         }
         state.success?.let {
             Text(
                 text = it.asString(),
                 color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = AppSpacing.miniGap),
             )
         }
     }
@@ -222,7 +215,7 @@ private fun JoinInvitationActions(
 
 @Composable
 private fun InvitationPreviewPanel(preview: InvitationPreview) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
             text = stringResource(
                 R.string.join_family_ledger_preview_join_target,

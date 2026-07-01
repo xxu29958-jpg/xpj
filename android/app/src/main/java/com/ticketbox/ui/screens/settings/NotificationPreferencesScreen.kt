@@ -30,7 +30,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.notification.NotificationListenerStatus
 import com.ticketbox.ui.components.AppSwitch
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 
 @Composable
@@ -62,11 +61,9 @@ fun NotificationPreferencesScreen(
             title = stringResource(R.string.notification_preferences_section_auto_draft),
             icon = Icons.Filled.Notifications,
         ) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-                ) {
+            SettingsOpenPanel(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+            ) {
                     NotificationSwitchLine(
                         title = stringResource(R.string.notification_preferences_capture_title),
                         subtitle = if (readOnly) {
@@ -107,7 +104,6 @@ fun NotificationPreferencesScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
-                }
             }
         }
         SettingsSection(
@@ -123,11 +119,9 @@ fun NotificationPreferencesScreen(
             title = stringResource(R.string.notification_preferences_section_privacy),
             icon = Icons.Filled.Notifications,
         ) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+            SettingsOpenPanel(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
                     Text(
                         text = stringResource(R.string.notification_preferences_privacy_title),
                         style = MaterialTheme.typography.titleSmall,
@@ -138,7 +132,6 @@ fun NotificationPreferencesScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                }
             }
         }
     }
@@ -169,11 +162,9 @@ private fun ReminderSwitchesCard(
         }
         onUpdate(updated)
     }
-    AppGlassCard(containerAlpha = 0.96f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-        ) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+    ) {
             NotificationSwitchLine(
                 title = stringResource(R.string.notification_preferences_reminder_pending_title),
                 subtitle = stringResource(R.string.notification_preferences_reminder_pending_subtitle),
@@ -208,7 +199,6 @@ private fun ReminderSwitchesCard(
                 preferences = preferences,
                 systemNotificationsAllowed = systemNotificationsAllowed,
             )
-        }
     }
 }
 

@@ -92,7 +92,6 @@ import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount

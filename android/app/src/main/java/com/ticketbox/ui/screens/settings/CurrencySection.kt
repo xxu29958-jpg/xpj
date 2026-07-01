@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -53,11 +52,9 @@ internal fun CurrencySection(
         )
     }
     SettingsSection(title = stringResource(R.string.currency_section_title), icon = Icons.Filled.AttachMoney) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
                 Text(
                     text = stringResource(R.string.currency_section_intro),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -86,7 +83,6 @@ internal fun CurrencySection(
                         }
                     }
                 }
-            }
         }
     }
 }

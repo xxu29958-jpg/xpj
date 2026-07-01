@@ -1,9 +1,7 @@
 package com.ticketbox.ui.screens.settings.categoryrules
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -16,8 +14,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.settings.SettingsOpenPanel
 
 data class CategoryRuleDraftForm(
     val keyword: String = "",
@@ -44,17 +42,15 @@ internal fun CategoryRuleEditorCard(
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    AppGlassCard(containerAlpha = 0.96f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
             OutlinedTextField(
                 value = form.keyword,
                 onValueChange = { onFormChange(form.copy(keyword = it, localMessage = null)) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.category_rule_editor_keyword_label)) },
-                placeholder = { Text("OpenAI") },
+                placeholder = { Text(stringResource(R.string.category_rule_editor_keyword_placeholder)) },
                 singleLine = true,
             )
             OutlinedTextField(
@@ -99,6 +95,5 @@ internal fun CategoryRuleEditorCard(
             form.localMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.secondary)
             }
-        }
     }
 }

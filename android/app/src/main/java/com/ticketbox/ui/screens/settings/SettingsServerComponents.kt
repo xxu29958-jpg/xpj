@@ -66,7 +66,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -96,8 +95,6 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.components.SettingsEntryCard
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -105,14 +102,10 @@ import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.mascot.MascotPlaceholder
-import com.ticketbox.ui.mascot.MascotState
-import com.ticketbox.ui.mascot.mascotPalette
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -132,67 +125,85 @@ internal fun AccountStatusCard(
     onCheckConnection: (() -> Unit)? = null,
     onSync: (() -> Unit)? = null,
 ) {
-    val displayAccount = serverSettings?.accountName?.takeIf { it.isNotBlank() } ?: accountName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.settings_account_default_account)
-    val displayLedger = serverSettings?.ledgerName?.takeIf { it.isNotBlank() } ?: ledgerName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.settings_account_default_ledger)
-    val displayDevice = serverSettings?.deviceName?.takeIf { it.isNotBlank() } ?: deviceName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.settings_account_default_device)
-    val displayRole = ledgerRoleLabel(
-        serverSettings?.role?.takeIf { it.isNotBlank() }
-            ?: role?.takeIf { it.isNotBlank() }
-            ?: "owner",
-    )
+    val displayAccount = serverSettings?.accountName?.takeIf { it.isNotBlank() }
+        ?: accountName?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.settings_account_default_account)
+    val displayLedger = serverSettings?.ledgerName?.takeIf { it.isNotBlank() }
+        ?: ledgerName?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.settings_account_default_ledger)
+    val displayDevice = serverSettings?.deviceName?.takeIf { it.isNotBlank() }
+        ?: deviceName?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.settings_account_default_device)
+    val roleCode = serverSettings?.role?.takeIf { it.isNotBlank() } ?: role?.takeIf { it.isNotBlank() }
+    val displayRole = roleCode?.let { ledgerRoleLabel(it) }
+        ?: stringResource(R.string.settings_account_role_unknown)
     val ledgerScope = serverSettings?.ledgerIsDefault?.let { ledgerScopeLabel(it) }
-    AppGlassCard(containerAlpha = 0.96f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    val statusText = when {
+        busy -> stringResource(R.string.settings_account_status_updating)
+        serverSettings != null -> stringResource(R.string.settings_account_status_server_confirmed)
+        else -> stringResource(R.string.settings_account_status_local_cache)
+    }
+    val sourceText = if (serverSettings != null) {
+        stringResource(R.string.settings_account_source_server)
+    } else {
+        stringResource(R.string.settings_account_source_local_cache)
+    }
+    val latestUploadAt = serverSettings?.latestUploadAt ?: lastUploadAt
+    val storageText = when (serverSettings?.storageStatus) {
+        null -> null
+        "normal" -> stringResource(R.string.settings_account_storage_normal)
+        else -> serverSettings.storageStatus
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-                ) {
-                    Text(
-                        text = stringResource(R.string.settings_account_current_ledger_label),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Text(
-                        text = displayLedger,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ledgerScope?.let { AccountLedgerScopePill(text = it) }
-                    StatusPill(connected = serverSettings != null)
-                }
-            }
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center,
-            ) {
-                MascotPlaceholder(
-                    state = MascotState.Neutral,
-                    palette = mascotPalette(LocalThemeVisuals.current, LocalStateTokens.current),
-                    modifier = Modifier.clearAndSetSemantics {},
-                    size = 104.dp,
+                Text(
+                    text = stringResource(R.string.settings_account_current_ledger_label),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = displayLedger,
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ledgerScope?.let { AccountLedgerScopePill(text = it) }
+                StatusPill(text = statusText, confirmed = serverSettings != null)
+            }
+        }
+        Text(
+            text = sourceText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        serverSettings?.let { AccountServerCounters(it) }
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
             AccountInfoLine(text = stringResource(R.string.settings_account_account_line, displayAccount))
             AccountInfoLine(text = stringResource(R.string.settings_account_device_line, displayDevice))
             AccountInfoLine(text = stringResource(R.string.settings_account_role_line, displayRole))
             AccountInfoLine(
                 text = stringResource(
                     R.string.settings_account_last_upload_line,
-                    (lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) }
+                    latestUploadAt?.let { displayTime(it) }
                         ?: stringResource(R.string.settings_account_no_upload),
                 ),
             )
@@ -202,31 +213,84 @@ internal fun AccountStatusCard(
                     lastSyncAt?.let { displayTime(it) } ?: stringResource(R.string.settings_account_no_sync),
                 ),
             )
-            if (onCheckConnection != null && onSync != null) {
-                Row(
-                    modifier = Modifier.padding(top = AppSpacing.tinyGap),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            storageText?.let {
+                AccountInfoLine(text = stringResource(R.string.settings_account_storage_line, it))
+            }
+        }
+        if (onCheckConnection != null && onSync != null) {
+            Row(
+                modifier = Modifier.padding(top = AppSpacing.tinyGap),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
+                QuietOutlinedButton(
+                    text = if (busy) {
+                        stringResource(R.string.settings_account_button_busy)
+                    } else {
+                        stringResource(R.string.settings_account_button_check_connection)
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = onCheckConnection,
+                )
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = onSync,
                 ) {
-                    QuietOutlinedButton(
-                        text = if (busy) {
-                            stringResource(R.string.settings_account_button_busy)
-                        } else {
-                            stringResource(R.string.settings_account_button_check_connection)
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = !busy,
-                        onClick = onCheckConnection,
-                    )
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        enabled = !busy,
-                        onClick = onSync,
-                    ) {
-                        Text(stringResource(R.string.settings_account_button_update_ledger))
-                    }
+                    Text(stringResource(R.string.settings_account_button_update_ledger))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AccountServerCounters(settings: ServerSettings) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        AccountCounter(
+            label = stringResource(R.string.settings_account_pending_count),
+            value = settings.pendingCount.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        AccountCounter(
+            label = stringResource(R.string.settings_account_confirmed_count),
+            value = settings.confirmedCount.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        AccountCounter(
+            label = stringResource(R.string.settings_account_duplicate_count),
+            value = settings.suspectedDuplicateCount.toString(),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun AccountCounter(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -246,7 +310,6 @@ private fun AccountLedgerScopePill(text: String) {
 
 @Composable
 internal fun AdvancedStatusCard(
-    serverUrl: String?,
     diagnostics: ConnectionDiagnostics?,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
@@ -259,22 +322,10 @@ internal fun AdvancedStatusCard(
         }
     } ?: stringResource(R.string.settings_account_diagnostics_not_run)
 
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        ) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    ) {
             Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(
-                text = stringResource(
-                    R.string.settings_account_connection_address,
-                    serverUrl?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.settings_account_connection_address_unbound),
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
             diagnostics?.let { result ->
                 if (expanded) {
                     result.checks.forEach { check ->
@@ -289,7 +340,10 @@ internal fun AdvancedStatusCard(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(check.name, color = color)
-                                Text("${check.elapsedMs} ms", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = stringResource(R.string.settings_account_diagnostics_elapsed, check.elapsedMs),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             Text(check.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -308,15 +362,14 @@ internal fun AdvancedStatusCard(
                     )
                 }
             }
-        }
     }
 }
 
 @Composable
-internal fun StatusPill(connected: Boolean) {
+internal fun StatusPill(text: String, confirmed: Boolean) {
     val visuals = LocalThemeVisuals.current
-    val background = if (connected) visuals.chipSelected.copy(alpha = 0.78f) else visuals.chipUnselected.copy(alpha = 0.86f)
-    val content = if (connected) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val background = if (confirmed) visuals.chipSelected.copy(alpha = 0.78f) else visuals.chipUnselected.copy(alpha = 0.86f)
+    val content = if (confirmed) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(AppRadius.pill))
@@ -332,11 +385,7 @@ internal fun StatusPill(connected: Boolean) {
             modifier = Modifier.size(16.dp),
         )
         Text(
-            text = if (connected) {
-                stringResource(R.string.settings_account_status_connected)
-            } else {
-                stringResource(R.string.settings_account_status_connecting)
-            },
+            text = text,
             color = content,
             style = MaterialTheme.typography.labelMedium,
         )

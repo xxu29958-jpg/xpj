@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
@@ -42,6 +43,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -89,16 +91,16 @@ import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppBackButton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.components.SettingsEntryCard
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -118,12 +120,53 @@ fun SettingsEntryRow(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    SettingsEntryCard(
-        title = title,
-        subtitle = subtitle,
-        icon = icon,
-        onClick = onClick,
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = AppSpacing.cardPaddingTight),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(AppSpacing.sectionGap),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(AppSpacing.cardPadding),
+            )
+        }
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+        )
+    }
 }
 
 @Composable
@@ -149,16 +192,11 @@ internal fun SettingsPageFrame(
         Column(
             verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) AppSpacing.smallGap else 0.dp),
         ) {
-            onBack?.let {
-                TextButton(onClick = it) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.settings_page_back_to_settings),
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(AppSpacing.miniGap))
-                    Text(stringResource(R.string.settings_page_back_to_settings))
-                }
+            onBack?.let { back ->
+                AppBackButton(
+                    text = stringResource(R.string.settings_page_back_to_settings),
+                    onClick = back,
+                )
             }
             AppPageHeader(title = title, subtitle = subtitle)
         }
@@ -182,4 +220,41 @@ internal fun BackgroundActionButton(
         leadingIcon = leadingIcon,
         onClick = onClick,
     )
+}
+
+@Composable
+internal fun SettingsOpenPanel(
+    modifier: Modifier = Modifier,
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(AppSpacing.compactGap),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.miniGap),
+        verticalArrangement = verticalArrangement,
+        content = content,
+    )
+}
+
+@Composable
+internal fun SettingsInlineEmpty(
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+) {
+    SettingsOpenPanel(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
 }

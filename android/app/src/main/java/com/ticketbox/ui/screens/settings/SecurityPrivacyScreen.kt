@@ -91,7 +91,6 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
@@ -171,11 +170,9 @@ fun SecurityPrivacyScreen(
             },
             icon = Icons.Filled.Security,
         ) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+            SettingsOpenPanel(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+            ) {
                     Text(
                         if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
                             stringResource(R.string.settings_security_unlock_card_title_locked)
@@ -196,7 +193,6 @@ fun SecurityPrivacyScreen(
                         text = stringResource(R.string.settings_security_background_privacy),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
             }
         }
         SettingsSection(title = stringResource(R.string.settings_security_section_danger), icon = Icons.Filled.DeleteOutline) {
@@ -208,8 +204,8 @@ fun SecurityPrivacyScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.settings_security_clear_data_icon_desc), modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.settings_security_clear_data_icon_desc), modifier = Modifier.size(AppSpacing.cardPadding))
+                    Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
                     Text(stringResource(R.string.settings_security_button_clear_data))
                 }
                 OutlinedButton(
@@ -219,8 +215,8 @@ fun SecurityPrivacyScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.settings_security_logout_icon_desc), modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.settings_security_logout_icon_desc), modifier = Modifier.size(AppSpacing.cardPadding))
+                    Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
                     Text(stringResource(R.string.settings_security_button_logout))
                 }
             }

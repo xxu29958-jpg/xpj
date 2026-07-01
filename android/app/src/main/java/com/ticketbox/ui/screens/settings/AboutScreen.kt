@@ -90,7 +90,6 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.displayTime
@@ -114,11 +113,9 @@ fun AboutScreen(
         subtitle = stringResource(R.string.settings_about_page_subtitle),
         onBack = onBack,
     ) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        ) {
                 Text(stringResource(R.string.settings_about_app_name), style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                 Text(
                     text = stringResource(R.string.settings_about_version, appVersionName, appVersionCode),
@@ -128,7 +125,6 @@ fun AboutScreen(
                     text = stringResource(R.string.settings_about_boundary),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
         }
     }
 }

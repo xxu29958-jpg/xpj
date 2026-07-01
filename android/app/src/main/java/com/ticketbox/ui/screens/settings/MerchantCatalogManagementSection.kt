@@ -19,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantCatalog
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -77,12 +76,12 @@ private fun MerchantCatalogCard(
     state: MerchantCatalogCardState,
     actions: MerchantCatalogListActions,
 ) {
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            MerchantCatalogCardHeader(state.catalog, state.mergedTargetName)
-            if (!state.readOnly && !state.catalog.isMerged) {
-                MerchantCatalogCardActions(state, actions)
-            }
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    ) {
+        MerchantCatalogCardHeader(state.catalog, state.mergedTargetName)
+        if (!state.readOnly && !state.catalog.isMerged) {
+            MerchantCatalogCardActions(state, actions)
         }
     }
 }

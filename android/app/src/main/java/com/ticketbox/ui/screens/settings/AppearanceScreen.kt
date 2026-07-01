@@ -91,7 +91,6 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
@@ -151,11 +150,9 @@ fun AppearanceScreen(
             onCurrencyChange = onCurrencyChange,
         )
         SettingsSection(title = stringResource(R.string.appearance_section_background_title), icon = Icons.Filled.Image) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                ) {
+            SettingsOpenPanel(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            ) {
                     ThemeMoodPreview(
                         settings = state.backgroundSettings,
                         skin = currentSkin,
@@ -210,7 +207,6 @@ fun AppearanceScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
-                }
             }
         }
         SettingsSection(title = stringResource(R.string.appearance_section_immersion_title), icon = Icons.Filled.Tune) {

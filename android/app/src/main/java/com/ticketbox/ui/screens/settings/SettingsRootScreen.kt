@@ -99,7 +99,6 @@ import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput

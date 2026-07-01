@@ -25,7 +25,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.backgroundTaskStatusLabel
 import com.ticketbox.domain.model.backgroundTaskTypeLabel
 import com.ticketbox.domain.model.shouldGeneralizeTaskError
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
@@ -57,11 +56,9 @@ fun BackgroundTasksScreen(
         status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
         SettingsSection(title = stringResource(R.string.background_tasks_section_recent_title), icon = Icons.Filled.Tune) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                ) {
+            SettingsOpenPanel(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
                     if (state.tasks.isEmpty() && state.loading) {
                         Column(modifier = Modifier.shimmer()) {
                             repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
@@ -84,7 +81,6 @@ fun BackgroundTasksScreen(
                         enabled = !state.loading && state.busyTaskId == null,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (state.loading) stringResource(R.string.background_tasks_refreshing) else stringResource(R.string.background_tasks_refresh)) }
-                }
             }
         }
     }
@@ -98,7 +94,7 @@ private fun TaskRow(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -28,7 +28,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
@@ -103,11 +102,11 @@ fun CategoryRulesScreen(
                 delay(5000)
                 onDismissUndo()
             }
-            AppGlassCard(containerAlpha = 0.98f) {
+            SettingsOpenPanel {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(AppSpacing.compactGap),
+                        .padding(vertical = AppSpacing.miniGap),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

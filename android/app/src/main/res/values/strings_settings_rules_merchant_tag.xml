@@ -20,9 +20,11 @@
     <string name="category_rule_card_action_enable">启用</string>
     <string name="category_rule_card_action_edit">编辑</string>
     <string name="category_rule_card_action_delete">删除</string>
+    <string name="category_rule_condition_separator"> · </string>
 
     <!-- CategoryRuleEditorCard（categoryrules/）：新增/编辑表单 -->
     <string name="category_rule_editor_keyword_label">商家关键词</string>
+    <string name="category_rule_editor_keyword_placeholder">OpenAI</string>
     <string name="category_rule_editor_category_label">推荐分类</string>
     <string name="category_rule_editor_category_placeholder">AI订阅</string>
     <string name="category_rule_editor_priority_label">优先级</string>
@@ -44,6 +46,7 @@
     <string name="category_rule_apply_preview_summary">扫描 %1$d 笔 · 可更新 %2$d 笔 · 未命中 %3$d 笔</string>
     <string name="category_rule_apply_preview_scan_limit">本次只扫描前 %1$d 笔。</string>
     <string name="category_rule_apply_preview_no_merchant">未填写商家</string>
+    <string name="category_rule_apply_preview_mapping">%1$s → %2$s · %3$s</string>
     <string name="category_rule_apply_history_status_rolled_back">已回退</string>
     <string name="category_rule_apply_history_status_applied">已应用</string>
     <string name="category_rule_apply_history_changed_count">%1$d 笔</string>
@@ -132,6 +135,8 @@
     <string name="dashboard_cards_save_button">保存</string>
     <string name="dashboard_cards_move_up_content_description">上移%1$s</string>
     <string name="dashboard_cards_move_down_content_description">下移%1$s</string>
+    <string name="dashboard_cards_card_visible">已显示</string>
+    <string name="dashboard_cards_card_hidden">已隐藏</string>
     <string name="dashboard_cards_load_failed">首页卡片暂时打不开。</string>
     <string name="dashboard_cards_saved">首页卡片已保存。</string>
     <string name="dashboard_cards_save_failed">保存失败，请稍后再试。</string>

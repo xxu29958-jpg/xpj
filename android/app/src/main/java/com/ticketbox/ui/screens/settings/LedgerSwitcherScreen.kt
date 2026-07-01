@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -29,9 +30,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 import com.valentinilk.shimmer.shimmer
@@ -73,11 +74,9 @@ fun LedgerSwitcherScreen(
             title = stringResource(R.string.ledger_switcher_section_joined),
             icon = Icons.Filled.FolderShared,
         ) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                ) {
+            SettingsOpenPanel(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
                     if (state.ledgers.isEmpty() && state.loading) {
                         Column(modifier = Modifier.shimmer()) {
                             repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
@@ -128,6 +127,7 @@ fun LedgerSwitcherScreen(
                                 ) { Text(stringResource(R.string.ledger_switcher_row_switch_button)) }
                             }
                         }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
                     }
                     OutlinedButton(
                         onClick = { viewModel.refresh() },
@@ -142,7 +142,6 @@ fun LedgerSwitcherScreen(
                             },
                         )
                     }
-                }
             }
         }
 
@@ -150,11 +149,9 @@ fun LedgerSwitcherScreen(
             title = stringResource(R.string.ledger_switcher_section_create),
             icon = Icons.Filled.FolderShared,
         ) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+            SettingsOpenPanel(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
                     Text(
                         text = stringResource(R.string.ledger_switcher_create_hint, LEDGER_NAME_MAX),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -183,7 +180,6 @@ fun LedgerSwitcherScreen(
                         enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(R.string.ledger_switcher_create_button)) }
-                }
             }
         }
     }

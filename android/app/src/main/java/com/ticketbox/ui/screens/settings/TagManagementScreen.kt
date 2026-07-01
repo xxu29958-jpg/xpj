@@ -35,7 +35,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -47,7 +46,7 @@ import kotlinx.coroutines.delay
  *
  * 列表 + 使用次数 / 重命名 / 删除 / 合并 + 5s 撤销 banner。Online-only：每次操作后
  * VM 从服务端 reload 权威列表。layout 按移动端形态自决（卡片 + 对话框，不照搬 /web
- * 的表格），token 经 MaterialTheme + AppSpacing + AppGlassCard 三端共享
+ * 的表格），token 经 MaterialTheme + AppSpacing + SettingsOpenPanel 三端共享
  * ([[feedback_three_surface_visual_sync]])。
  */
 @Composable
@@ -161,11 +160,11 @@ fun TagManagementScreen(
                 delay(5000)
                 viewModel.dismissUndo()
             }
-            AppGlassCard(containerAlpha = 0.98f) {
+            SettingsOpenPanel {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(AppSpacing.compactGap),
+                        .padding(vertical = AppSpacing.miniGap),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -228,11 +227,9 @@ private fun TagCard(
     onMerge: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        ) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -280,7 +277,6 @@ private fun TagCard(
                     ) { Text(stringResource(R.string.tag_management_card_action_delete)) }
                 }
             }
-        }
     }
 }
 

@@ -27,7 +27,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecycleBinItem
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
@@ -82,11 +81,9 @@ private fun RecycleBinListSection(
         title = stringResource(R.string.recycle_bin_section_items),
         icon = Icons.Filled.DeleteOutline,
     ) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        ) {
                 RecycleBinRows(state = state, onRestore = onRestore)
                 OutlinedButton(
                     onClick = onRefresh,
@@ -101,7 +98,6 @@ private fun RecycleBinListSection(
                         },
                     )
                 }
-            }
         }
     }
 }
@@ -143,7 +139,7 @@ private fun RecycleBinRow(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

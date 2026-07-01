@@ -60,18 +60,26 @@
     <!-- 设置 二级页框架（SettingsComponents：SettingsPageFrame）：返回按钮 -->
     <string name="settings_page_back_to_settings">返回设置</string>
 
-    <!-- 账户状态卡（SettingsServerComponents：AccountStatusCard / AdvancedStatusCard / StatusPill），设置根屏与连接页共用 -->
+    <!-- 账户概况（SettingsServerComponents：AccountStatusCard / AdvancedStatusCard / StatusPill），设置根屏与连接页共用 -->
     <string name="settings_account_default_account">我</string>
     <string name="settings_account_default_ledger">我的小票夹</string>
     <string name="settings_account_default_device">当前设备</string>
     <string name="settings_account_current_ledger_label">当前账本</string>
+    <string name="settings_account_source_server">来源：服务端快照</string>
+    <string name="settings_account_source_local_cache">来源：本机缓存，联网后刷新服务端状态</string>
+    <string name="settings_account_pending_count">待确认</string>
+    <string name="settings_account_confirmed_count">已入账</string>
+    <string name="settings_account_duplicate_count">疑似重复</string>
     <string name="settings_account_account_line">当前账号：%1$s</string>
     <string name="settings_account_device_line">当前设备：%1$s</string>
     <string name="settings_account_role_line">角色：%1$s</string>
+    <string name="settings_account_role_unknown">未知</string>
     <string name="settings_account_last_upload_line">最近上传：%1$s</string>
     <string name="settings_account_no_upload">还没有上传</string>
-    <string name="settings_account_last_sync_line">最近更新：%1$s · 存储正常</string>
+    <string name="settings_account_last_sync_line">最近同步：%1$s</string>
     <string name="settings_account_no_sync">还没有更新</string>
+    <string name="settings_account_storage_line">存储：%1$s</string>
+    <string name="settings_account_storage_normal">服务端正常</string>
     <string name="settings_account_button_busy">处理中</string>
     <string name="settings_account_button_check_connection">检查连接</string>
     <string name="settings_account_button_update_ledger">更新账本</string>
@@ -79,12 +87,14 @@
     <string name="settings_account_diagnostics_warning">可用，有 %1$d 个提醒</string>
     <string name="settings_account_diagnostics_ok">连接检测正常</string>
     <string name="settings_account_diagnostics_not_run">尚未运行检测</string>
+    <string name="settings_account_diagnostics_elapsed">%1$d ms</string>
     <string name="settings_account_connection_address">连接地址：%1$s</string>
     <string name="settings_account_connection_address_unbound">未绑定</string>
     <string name="settings_account_toggle_collapse">收起详情</string>
     <string name="settings_account_toggle_expand">查看详情</string>
-    <string name="settings_account_status_connected">已连接</string>
-    <string name="settings_account_status_connecting">连接中</string>
+    <string name="settings_account_status_server_confirmed">服务端已确认</string>
+    <string name="settings_account_status_local_cache">本机缓存</string>
+    <string name="settings_account_status_updating">更新中</string>
 
     <!-- 服务器与联调页（ServerSettingsScreen） -->
     <string name="settings_server_page_title_advanced">服务器与联调</string>

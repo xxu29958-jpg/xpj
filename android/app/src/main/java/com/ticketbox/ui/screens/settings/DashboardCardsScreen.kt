@@ -39,13 +39,10 @@ import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSwitch
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.DraggableReorderColumn
 import com.ticketbox.ui.components.ListItemSkeleton
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppSpacing
 import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.launch
@@ -149,35 +146,19 @@ fun DashboardCardsScreen(
     ) {
         SettingsSection(title = stringResource(R.string.dashboard_cards_section_order), icon = Icons.Filled.DashboardCustomize) {
             when {
-                loading && cards.isEmpty() -> AppGlassCard(containerAlpha = 0.96f) {
-                    Column(
-                        modifier = Modifier
-                            .padding(AppSpacing.cardPaddingTight)
-                            .shimmer(),
-                    ) {
+                loading && cards.isEmpty() -> {
+                    SettingsOpenPanel(modifier = Modifier.shimmer()) {
                         repeat(4) { ListItemSkeleton(horizontalPadding = 0.dp) }
                     }
                 }
-                cards.isEmpty() -> AppEmptyStateCard {
-                    Column(
-                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.dashboard_cards_empty_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = AppTextHierarchy.heading.weight,
-                        )
-                        Text(
-                            text = stringResource(R.string.dashboard_cards_empty_body),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
+                cards.isEmpty() -> {
+                    SettingsInlineEmpty(
+                        title = stringResource(R.string.dashboard_cards_empty_title),
+                        body = stringResource(R.string.dashboard_cards_empty_body),
+                    )
                 }
-                else -> AppGlassCard(containerAlpha = 0.96f) {
-                    Column(
-                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                else -> {
+                    SettingsOpenPanel(
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     ) {
                         // v0.10：长按拾起 + 拖动排序。上下箭头作为可达性回退保留在 DashboardCardRow 内部。
@@ -245,12 +226,13 @@ fun DashboardCardsScreen(
                                 }
                             }
                         }
-                    }
                 }
             }
         }
     }
 }
+}
+
 
 @Composable
 private fun DashboardCardRow(
@@ -263,7 +245,9 @@ private fun DashboardCardRow(
     onVisibleChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.miniGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -277,6 +261,15 @@ private fun DashboardCardRow(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = if (card.visible) {
+                    stringResource(R.string.dashboard_cards_card_visible)
+                } else {
+                    stringResource(R.string.dashboard_cards_card_hidden)
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
             )
         }
         IconButton(

@@ -32,7 +32,6 @@ import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -160,11 +159,11 @@ fun MerchantAliasesScreen(
                 delay(5000)
                 onDismissUndo()
             }
-            AppGlassCard(containerAlpha = 0.98f) {
+            SettingsOpenPanel {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(AppSpacing.compactGap),
+                        .padding(vertical = AppSpacing.miniGap),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -264,11 +263,9 @@ private fun MerchantCatalogCreateSection(
     onSubmit: () -> Unit,
 ) {
     SettingsSection(title = stringResource(R.string.merchant_catalog_section_create), icon = Icons.Filled.Tune) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
                 OutlinedTextField(
                     value = catalogName,
                     onValueChange = onCatalogNameChange,
@@ -287,7 +284,6 @@ private fun MerchantCatalogCreateSection(
                     )
                 }
                 message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
-            }
         }
     }
 }
@@ -301,11 +297,9 @@ private fun MerchantAliasCreateSection(
     onSubmit: () -> Unit,
 ) {
     SettingsSection(title = stringResource(R.string.merchant_aliases_section_create), icon = Icons.Filled.Tune) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
                 OutlinedTextField(
                     value = draft.canonicalMerchant,
                     onValueChange = { onDraftChange(draft.copy(canonicalMerchant = it)) },
@@ -332,7 +326,6 @@ private fun MerchantAliasCreateSection(
                     )
                 }
                 message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
-            }
         }
     }
 }
@@ -375,8 +368,9 @@ private fun MerchantAliasCard(
     onToggleAlias: () -> Unit,
     onDeleteAlias: () -> Unit,
 ) {
-    AppGlassCard(containerAlpha = 0.98f) {
-        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -446,7 +440,6 @@ private fun MerchantAliasCard(
                     }
                 }
             }
-        }
     }
 }
 

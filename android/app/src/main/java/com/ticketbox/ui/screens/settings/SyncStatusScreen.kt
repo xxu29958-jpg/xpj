@@ -41,7 +41,6 @@ import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
-import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -257,9 +256,9 @@ private fun SyncSummaryCard(status: OutboxStatus) {
         }
     }
 
-    AppSolidCard {
+    SettingsOpenPanel {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -294,9 +293,11 @@ private fun ConflictCard(
     // Only the expense family can re-fetch a fresh token for "keep
     // mine" in v1; other families are drop-only here.
     val canKeep = row.targetId.startsWith("expense:")
-    AppSolidCard {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
@@ -347,9 +348,11 @@ private fun FailedCard(
     // it), so Retry is a dead action. Offer only Drop; the message already tells
     // the user to redo the change fresh (which mints a new key).
     val expired = isExpiredFailure(row.lastError)
-    AppSolidCard {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
@@ -41,7 +40,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
@@ -99,48 +97,43 @@ fun FamilyMembersScreen(
             title = stringResource(R.string.family_members_section_members),
             icon = Icons.Filled.Group,
         ) {
-            AppGlassCard(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            SettingsOpenPanel {
+                if (state.members.isEmpty() && state.loading) {
+                    Column(modifier = Modifier.shimmer()) {
+                        repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
+                    }
+                } else if (state.members.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.family_members_members_empty),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                state.members.forEach { member ->
+                    FamilyMemberRow(
+                        member = member,
+                        canManageMembers = canManageMembers,
+                        busy = state.busyMemberId == member.memberId,
+                        onChangeRole = { targetRole ->
+                            pendingAction = FamilyMemberAction.ChangeRole(member, targetRole)
+                        },
+                        onDisable = { pendingAction = FamilyMemberAction.Disable(member) },
+                        onTransferOwner = { pendingAction = FamilyMemberAction.TransferOwner(member) },
+                    )
+                }
+                OutlinedButton(
+                    onClick = { viewModel.refresh(activeLedgerId, currentRole) },
+                    enabled = !state.loading && state.busyMemberId == null,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    if (state.members.isEmpty() && state.loading) {
-                        Column(modifier = Modifier.shimmer()) {
-                            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                        }
-                    } else if (state.members.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.family_members_members_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    state.members.forEach { member ->
-                        FamilyMemberRow(
-                            member = member,
-                            canManageMembers = canManageMembers,
-                            busy = state.busyMemberId == member.memberId,
-                            onChangeRole = { targetRole ->
-                                pendingAction = FamilyMemberAction.ChangeRole(member, targetRole)
-                            },
-                            onDisable = { pendingAction = FamilyMemberAction.Disable(member) },
-                            onTransferOwner = { pendingAction = FamilyMemberAction.TransferOwner(member) },
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = { viewModel.refresh(activeLedgerId, currentRole) },
-                        enabled = !state.loading && state.busyMemberId == null,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            if (state.loading) {
-                                stringResource(R.string.family_members_refresh_loading)
-                            } else if (canManageMembers) {
-                                stringResource(R.string.family_members_refresh_members_and_audit)
-                            } else {
-                                stringResource(R.string.family_members_refresh_members)
-                            },
-                        )
-                    }
+                    Text(
+                        if (state.loading) {
+                            stringResource(R.string.family_members_refresh_loading)
+                        } else if (canManageMembers) {
+                            stringResource(R.string.family_members_refresh_members_and_audit)
+                        } else {
+                            stringResource(R.string.family_members_refresh_members)
+                        },
+                    )
                 }
             }
         }
@@ -157,30 +150,25 @@ fun FamilyMembersScreen(
                 title = stringResource(R.string.family_members_section_audit),
                 icon = Icons.Filled.Info,
             ) {
-                AppGlassCard(containerAlpha = 0.96f) {
-                    Column(
-                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                    ) {
-                        if (state.auditItems.isEmpty() && state.auditLoading) {
-                            Column(modifier = Modifier.shimmer()) {
-                                repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                            }
-                        } else if (state.auditItems.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.family_members_audit_empty),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                SettingsOpenPanel {
+                    if (state.auditItems.isEmpty() && state.auditLoading) {
+                        Column(modifier = Modifier.shimmer()) {
+                            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
                         }
-                        state.auditItems.forEach { item ->
-                            LedgerAuditRow(item = item)
-                        }
-                        if (state.auditLoading && state.auditItems.isNotEmpty()) {
-                            Text(
-                                text = stringResource(R.string.family_members_audit_refreshing),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                    } else if (state.auditItems.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.family_members_audit_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    state.auditItems.forEach { item ->
+                        LedgerAuditRow(item = item)
+                    }
+                    if (state.auditLoading && state.auditItems.isNotEmpty()) {
+                        Text(
+                            text = stringResource(R.string.family_members_audit_refreshing),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -205,31 +193,26 @@ private fun InviteFamilySection(
         title = stringResource(R.string.family_members_section_invite),
         icon = Icons.Filled.Group,
     ) {
-        AppGlassCard(containerAlpha = 0.96f) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            ) {
+        SettingsOpenPanel {
+            Text(
+                text = stringResource(R.string.family_members_invite_intro),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            InviteRoleButtons(creating = creating, onCreate = onCreate)
+            if (creating) {
                 Text(
-                    text = stringResource(R.string.family_members_invite_intro),
+                    text = stringResource(R.string.family_members_invite_creating),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                InviteRoleButtons(creating = creating, onCreate = onCreate)
-                if (creating) {
-                    Text(
-                        text = stringResource(R.string.family_members_invite_creating),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                createdInvite?.let { invite ->
-                    CreatedInviteResult(
-                        invite = invite,
-                        onCopy = { clipboard.setText(AnnotatedString(invite.inviteToken)) },
-                        onDismissResult = onDismissResult,
-                    )
-                }
+            }
+            createdInvite?.let { invite ->
+                CreatedInviteResult(
+                    invite = invite,
+                    onCopy = { clipboard.setText(AnnotatedString(invite.inviteToken)) },
+                    onDismissResult = onDismissResult,
+                )
             }
         }
     }
@@ -310,7 +293,7 @@ private fun CreatedInviteResult(
 private fun LedgerAuditRow(item: LedgerAuditEntry) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -370,7 +353,7 @@ private fun FamilyMemberRow(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -379,7 +362,7 @@ private fun FamilyMemberRow(
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -394,7 +377,7 @@ private fun FamilyMemberRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (member.isSelf) {
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
                         Text(
                             text = stringResource(R.string.family_members_row_self_badge),
                             style = MaterialTheme.typography.labelSmall,
@@ -421,7 +404,7 @@ private fun FamilyMemberRow(
             }
             Column(
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
             ) {
                 SettingsRoleChip(role = member.role)
                 Text(
@@ -442,7 +425,7 @@ private fun FamilyMemberRow(
         if (canManageMembers && member.canBeManaged) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
             ) {
                 val targetRole = if (member.role == LEDGER_ROLE_VIEWER) {
                     LEDGER_ROLE_MEMBER
