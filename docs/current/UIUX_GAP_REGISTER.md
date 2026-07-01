@@ -56,7 +56,10 @@ that actually ships the fix.
   cancellation for service-returned tasks. Recycle Bin now preserves the
   service-returned `short_window_count`, shows a compact overview and divider
   rows instead of one large card, and names read-only, empty, load-failed,
-  refreshing, restoring, and restore-confirm states.
+  refreshing, restoring, and restore-confirm states. Data & Export now separates
+  confirmed ledger records, this-device offline copy, and export scope before
+  presenting update/clear-copy actions, so it no longer reads like a temporary
+  cache utility page.
 
 ### ANDROID-2026-07-01-settings-root-density
 

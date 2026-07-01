@@ -1,54 +1,29 @@
 package com.ticketbox.ui.screens.settings
 
-import android.graphics.BitmapFactory
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,45 +31,49 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.BackgroundCropMode
-import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.domain.model.CategoryRule
-import com.ticketbox.domain.model.ConnectionDiagnostics
-import com.ticketbox.domain.model.DiagnosticStatus
-import com.ticketbox.domain.model.ImmersionMode
-import com.ticketbox.domain.model.ServerSettings
-import com.ticketbox.ui.appearance.AppearanceDefaults
-import com.ticketbox.ui.appearance.BackgroundCatalog
-import com.ticketbox.ui.appearance.BuiltInBackground
-import com.ticketbox.ui.appearance.BuiltInBackgroundCategory
-import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
-import com.ticketbox.ui.appearance.background.SurfaceRole
-import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
-import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
-import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.components.ScreenHeader
+import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatAmount
-import com.ticketbox.ui.theme.backgroundBrushForSkin
-import com.ticketbox.ui.theme.colorSchemeForSkin
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.SettingsUiState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+
+internal enum class DataExportScopeKind {
+    Authority,
+    OfflineCopy,
+    ExportScope,
+}
+
+internal data class DataExportScopeRowModel(
+    val kind: DataExportScopeKind,
+    @param:StringRes val titleRes: Int,
+    @param:StringRes val bodyRes: Int,
+)
+
+internal fun dataExportScopeRows(): List<DataExportScopeRowModel> = listOf(
+    DataExportScopeRowModel(
+        kind = DataExportScopeKind.Authority,
+        titleRes = R.string.settings_data_export_authority_label,
+        bodyRes = R.string.settings_data_export_authority_body,
+    ),
+    DataExportScopeRowModel(
+        kind = DataExportScopeKind.OfflineCopy,
+        titleRes = R.string.settings_data_export_cache_label,
+        bodyRes = R.string.settings_data_export_cache_body,
+    ),
+    DataExportScopeRowModel(
+        kind = DataExportScopeKind.ExportScope,
+        titleRes = R.string.settings_data_export_export_label,
+        bodyRes = R.string.settings_data_export_export_body,
+    ),
+)
 
 @Composable
 fun DataExportScreen(
@@ -117,7 +96,10 @@ fun DataExportScreen(
                         onClearCache()
                     },
                 ) {
-                    Text(stringResource(R.string.settings_data_export_clear_dialog_confirm), color = MaterialTheme.colorScheme.error)
+                    Text(
+                        text = stringResource(R.string.settings_data_export_clear_dialog_confirm),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             },
             dismissButton = {
@@ -134,41 +116,144 @@ fun DataExportScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
-        SettingsSection(title = stringResource(R.string.settings_data_export_section_refresh_cache), icon = Icons.Filled.RestartAlt) {
-            Text(
-                text = stringResource(R.string.settings_data_export_cache_hint),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+        SettingsSection(
+            title = stringResource(R.string.settings_data_export_section_refresh_cache),
+            icon = Icons.Filled.FileDownload,
+        ) {
+            DataExportScopeSection()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+            DataExportActions(
+                busy = state.busy,
+                onSync = onSync,
+                onClearCacheClick = { showClearCacheDialog = true },
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                Button(
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.busy,
-                    onClick = onSync,
-                ) {
-                    Text(
-                        if (state.busy) {
-                            stringResource(R.string.settings_data_export_button_refreshing)
-                        } else {
-                            stringResource(R.string.settings_data_export_button_refresh)
-                        },
-                    )
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = { showClearCacheDialog = true },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) {
-                    Text(stringResource(R.string.settings_data_export_button_clear_cache))
-                }
+        }
+    }
+}
+
+@Composable
+private fun DataExportScopeSection() {
+    val rows = remember { dataExportScopeRows() }
+    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        rows.forEachIndexed { index, row ->
+            if (index > 0) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
             }
+            DataExportScopeRow(row)
+        }
+    }
+}
+
+@Composable
+private fun DataExportScopeRow(row: DataExportScopeRowModel) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.smallGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.Top,
+    ) {
+        DataExportIconBox(icon = row.kind.icon())
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
             Text(
-                text = stringResource(R.string.settings_data_export_export_hint),
+                text = stringResource(row.titleRes),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+            Text(
+                text = stringResource(row.bodyRes),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
     }
+}
+
+@Composable
+private fun DataExportIconBox(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(AppSpacing.controlMinHeight)
+            .clip(RoundedCornerShape(AppRadius.small))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = AppAlpha.subtle)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(AppSpacing.cardPadding),
+        )
+    }
+}
+
+@Composable
+private fun DataExportActions(
+    busy: Boolean,
+    onSync: () -> Unit,
+    onClearCacheClick: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
+            AppPrimaryButton(
+                text = stringResource(
+                    if (busy) {
+                        R.string.settings_data_export_button_refreshing
+                    } else {
+                        R.string.settings_data_export_button_refresh
+                    },
+                ),
+                icon = Icons.Filled.RestartAlt,
+                modifier = Modifier.weight(1f),
+                enabled = !busy,
+                onClick = onSync,
+            )
+            DataExportClearCacheButton(
+                modifier = Modifier.weight(1f),
+                onClick = onClearCacheClick,
+            )
+        }
+        Text(
+            text = stringResource(R.string.settings_data_export_action_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun DataExportClearCacheButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    AppOutlinedButton(
+        modifier = modifier,
+        danger = true,
+        onClick = onClick,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.DeleteOutline,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Box(modifier = Modifier.width(AppSpacing.smallGap))
+        Text(
+            text = stringResource(R.string.settings_data_export_button_clear_cache),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+        )
+    }
+}
+
+private fun DataExportScopeKind.icon(): ImageVector = when (this) {
+    DataExportScopeKind.Authority -> Icons.Filled.CloudDone
+    DataExportScopeKind.OfflineCopy -> Icons.Filled.Devices
+    DataExportScopeKind.ExportScope -> Icons.Filled.FileDownload
 }

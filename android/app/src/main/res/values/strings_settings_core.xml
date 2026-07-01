@@ -115,17 +115,22 @@
     <string name="settings_server_button_refresh_settings">刷新设置</string>
 
     <!-- 数据与导出页（DataExportScreen） -->
-    <string name="settings_data_export_clear_dialog_title">清除本地数据？</string>
-    <string name="settings_data_export_clear_dialog_text">清除后，已保存的离线数据会移除。账本数据不会删除，之后可以重新更新。</string>
-    <string name="settings_data_export_clear_dialog_confirm">确定清除</string>
+    <string name="settings_data_export_clear_dialog_title">清除离线副本？</string>
+    <string name="settings_data_export_clear_dialog_text">只会移除这台设备保存的离线账本副本，不会删除已入账记录。重新更新后可再次离线查看。</string>
+    <string name="settings_data_export_clear_dialog_confirm">清除副本</string>
     <string name="settings_data_export_page_title">数据与导出</string>
-    <string name="settings_data_export_page_subtitle">缓存和导出只处理已入账账单。</string>
-    <string name="settings_data_export_section_refresh_cache">更新与缓存</string>
-    <string name="settings_data_export_cache_hint">已确认账单会保留离线副本，断网时仍可查看。</string>
+    <string name="settings_data_export_page_subtitle">管理已入账记录的更新、离线副本与导出范围。</string>
+    <string name="settings_data_export_section_refresh_cache">账本数据与离线副本</string>
+    <string name="settings_data_export_authority_label">已入账记录</string>
+    <string name="settings_data_export_authority_body">以同步完成的账本记录为准，金额、分类和标签不在本页改写。</string>
+    <string name="settings_data_export_cache_label">离线副本</string>
+    <string name="settings_data_export_cache_body">这台设备会保存已入账记录的副本，用于连接不可用时查看。</string>
+    <string name="settings_data_export_export_label">导出范围</string>
+    <string name="settings_data_export_export_body">从账本页按月份、分类和标签导出已入账记录；无匹配记录时导出不可用。</string>
     <string name="settings_data_export_button_refreshing">更新中</string>
     <string name="settings_data_export_button_refresh">重新更新</string>
-    <string name="settings_data_export_button_clear_cache">清除缓存</string>
-    <string name="settings_data_export_export_hint">表格导出请在账本页选择月份和分类后点击导出账单；没有账单时按钮会禁用。</string>
+    <string name="settings_data_export_button_clear_cache">清除副本</string>
+    <string name="settings_data_export_action_hint">重新更新会获取最新已入账记录；清除副本不会影响账本记录。</string>
 
     <!-- 安全与隐私页（SecurityPrivacyScreen） -->
     <string name="settings_security_clear_dialog_title">清除本地数据？</string>

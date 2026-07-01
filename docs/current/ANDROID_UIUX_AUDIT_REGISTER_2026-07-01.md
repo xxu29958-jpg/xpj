@@ -95,7 +95,7 @@ Every UIUX slice should close these gates before being called done:
 | SET-007 | Merchant management | Registered | Alias/catalog actions show conflicts and do not rewrite historical facts silently. |
 | SET-008 | Tags | Registered | Rename/merge/conflict states follow backend contract and resource-backed copy. |
 | SET-009 | Recycle bin | Needs QA | Recycle Bin now keeps the backend `short_window_count` in the domain/UI state instead of inferring short-window rows from Chinese labels, uses an open overview plus divider rows instead of a single large card, and exposes read-only, empty, load-failed, refreshing, restoring, and restore-confirm states with resource-backed copy. Final true-device screenshot is still required. |
-| SET-010 | Export/data tools | Registered | Export scope, failure, empty, progress, and local file states are explicit. |
+| SET-010 | Export/data tools | Needs QA | Data & Export now separates confirmed ledger records, this-device offline copy, and export scope in a compact open section, with resource-backed clear-copy copy and shared action buttons. Final true-device coverage still needs refresh, offline-copy clearing, empty export scope, and failure states. |
 | SET-011 | Security | Registered | Local biometric/token language stays separate from server authorization. |
 | SET-012 | Background tasks | Needs QA | Task labels now resolve through Android resources, unknown backend task/status tokens no longer leak into UI, and the page explains that task progress comes from the service while Android only views or requests cancellation. Final visual/state QA remains open. |
 | SET-013 | Appearance/background | Registered | Preview/crop/apply flows are bottom-safe, reversible, and not visually isolated from the product system. |
