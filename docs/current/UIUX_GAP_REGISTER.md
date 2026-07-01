@@ -130,3 +130,54 @@ that actually ships the fix.
 - Desired follow-up: add drillable insight sections backed by backend-authority
   ledger queries; then introduce saved report presets only after the query
   contract is explicit and test-covered.
+
+### ANDROID-2026-07-01-phase0-ia-uiux-audit
+
+- Surface: Android Today, Pending, Ledger, Insights, Settings root, and Settings
+  secondary pages.
+- Status: active contract for the updated Android IA/UIUX goal.
+- Gap: the user explicitly reset the goal from page-level polish to a full
+  product-design-lead refactor. Continuing to tune individual cards would not
+  be enough; the five root pages need a shared skeleton, distinct product jobs,
+  backend-authority state language, and a reviewable slice plan before more UI
+  implementation lands.
+- Resolution target: `docs/current/ANDROID_IA_UIUX_PHASE0_AUDIT_2026-07-01.md`
+  records the Phase 0 audit, page matrix, data-authority rules, Insights chart
+  contract, and commit slicing plan.
+
+### ANDROID-2026-07-01-ledger-long-list-density
+
+- Surface: Android Ledger confirmed-history list.
+- Status: active in current worktree; verify before commit.
+- Gap: a long ledger with many days can force endless vertical scanning if every
+  day and every expense is fully expanded. That fights the new mature-product
+  direction and makes the Ledger page feel like stacked cards instead of a dense
+  record surface.
+- Desired follow-up: finish and verify day grouping/folding, compact rows, and
+  bottom-safe empty states against backend-authoritative ledger data.
+
+### ANDROID-2026-07-01-settings-secondary-state-parity
+
+- Surface: Android Settings secondary pages.
+- Status: registered follow-up in the Settings slice.
+- Gap: many secondary pages already use `SettingsPageFrame`, status banners, and
+  resource-backed copy, but state coverage is uneven across connection, sync,
+  devices, members, rules, merchants, tags, recycle bin, export, security,
+  appearance, and background tools.
+- Desired follow-up: make every secondary page declare loading, empty, error,
+  read-only, cached/offline/direct-only, success, and destructive-confirmation
+  behavior with the shared Settings skeleton.
+
+### ANDROID-2026-07-01-insights-frequent-merchant-metric
+
+- Surface: Android Insights merchant sections.
+- Status: registered follow-up in the Insights slice.
+- Gap: "高频商家" must mean count-ranked merchants, not amount-ranked merchants
+  wearing a frequency label. The backend has two different contracts:
+  `stats/lifestyle.frequent_merchants` is count-ranked, while
+  `reports/overview.merchant_ranking` defaults to amount ranking unless
+  `ranking_metric=count` is requested.
+- Desired follow-up: split the merchant IA clearly: high-frequency merchants are
+  sorted by confirmed count, spend-ranked merchants are sorted by amount, and
+  each row makes the active metric obvious with the other metric as supporting
+  context.
