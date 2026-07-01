@@ -18,12 +18,14 @@ class AppDensityTest {
         assertEquals(12.dp, comfortable.contentGap)
         assertEquals(12.dp, comfortable.itemSpacing)
         assertEquals(6.dp, comfortable.labelGap)
+        assertEquals(54.dp, comfortable.markSize)
 
         val compact = AppDensity.rowMetrics(AppListDensity.Compact)
         assertEquals(10.dp, compact.rowPadding)
         assertEquals(8.dp, compact.contentGap)
         assertEquals(10.dp, compact.itemSpacing)
         assertEquals(4.dp, compact.labelGap)
+        assertEquals(32.dp, compact.markSize)
     }
 
     @Test
@@ -33,6 +35,7 @@ class AppDensityTest {
         assertEquals(10.dp, standard.contentGap)
         assertEquals(11.dp, standard.itemSpacing)
         assertEquals(5.dp, standard.labelGap)
+        assertEquals(42.dp, standard.markSize)
     }
 
     @Test
@@ -46,6 +49,7 @@ class AppDensityTest {
             Triple(comfortable.contentGap, standard.contentGap, compact.contentGap),
             Triple(comfortable.itemSpacing, standard.itemSpacing, compact.itemSpacing),
             Triple(comfortable.labelGap, standard.labelGap, compact.labelGap),
+            Triple(comfortable.markSize, standard.markSize, compact.markSize),
         ).forEach { (comfy, std, tight) ->
             assertTrue(comfy > std, "comfortable $comfy should exceed standard $std")
             assertTrue(std > tight, "standard $std should exceed compact $tight")

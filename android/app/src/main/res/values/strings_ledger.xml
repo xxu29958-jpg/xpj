@@ -89,6 +89,8 @@
     <string name="ledger_item_merchant_empty">未填写商家</string>
     <string name="ledger_item_amount_pending">待填写</string>
     <string name="ledger_item_category_mark_fallback">账</string>
+    <string name="ledger_item_time_empty">未设置时间</string>
+    <string name="ledger_item_meta">%1$s · %2$s</string>
 
     <!-- LedgerViewModel：账本 ViewModel 状态/结果文案（ADR-0044 wave 2，纯②：经 UiText 外置） -->
     <string name="ledger_msg_sync_done">更新完成</string>

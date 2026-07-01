@@ -1,14 +1,13 @@
 package com.ticketbox.ui.screens.ledger
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,13 +28,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -89,31 +91,18 @@ internal fun LedgerHeader(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.Bottom,
         ) {
             LedgerKpiCell(
                 label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
                 value = formatAmount(summary.totalAmountCents),
-                modifier = Modifier.weight(1.45f),
+                modifier = Modifier.weight(1.35f),
                 emphasized = true,
             )
             LedgerKpiCell(
                 label = stringResource(R.string.ledger_header_count_label),
                 value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.ledger_header_subtitle),
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(0.78f),
             )
             if (!state.readOnly) {
                 Button(
@@ -153,14 +142,29 @@ private fun LedgerKpiCell(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = (if (emphasized) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium).tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (emphasized) {
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Medium),
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 16.sp,
+                    maxFontSize = AppAmountRole.Medium.role.size,
+                    stepSize = 1.sp,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+            )
+        } else {
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleMedium.tabularNum(),
+                fontWeight = AppTextHierarchy.heading.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

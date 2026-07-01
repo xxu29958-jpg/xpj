@@ -199,13 +199,19 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-ledger-long-list-density
 
 - Surface: Android Ledger confirmed-history list.
-- Status: active in current worktree; verify before commit.
+- Status: implemented in the current Ledger density slice; multi-day sample QA
+  remains open.
 - Gap: a long ledger with many days can force endless vertical scanning if every
   day and every expense is fully expanded. That fights the new mature-product
   direction and makes the Ledger page feel like stacked cards instead of a dense
   record surface.
-- Desired follow-up: finish and verify day grouping/folding, compact rows, and
-  bottom-safe empty states against backend-authoritative ledger data.
+- Resolution: the Ledger header now keeps summary, count, and manual entry in a
+  tighter two-row structure; the default record row uses compact density tokens,
+  shows `time · category` under the merchant instead of repeating full dates,
+  keeps amounts complete, and preserves tap/long-press edit selection paths.
+  True-device evidence: `90-ledger-density-final-settled.png`.
+- Remaining QA: verify many-day backend data to tune day folding and scroll depth
+  without hiding confirmed records.
 
 ### ANDROID-2026-07-01-settings-secondary-state-parity
 

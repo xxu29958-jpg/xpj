@@ -23,12 +23,14 @@ enum class AppListDensity { Comfortable, Standard, Compact }
  *   - [contentGap]  行内主要 section 之间的竖向间距。
  *   - [itemSpacing] 行内横向元素（图标 / 文本块 / 金额）之间的间距。
  *   - [labelGap]    主行 / 副行等细行之间的竖向间距。
+ *   - [markSize]    分类标记 / 缩略标记尺寸。
  */
 data class AppRowMetrics(
     val rowPadding: Dp,
     val contentGap: Dp,
     val itemSpacing: Dp,
     val labelGap: Dp,
+    val markSize: Dp,
 )
 
 object AppDensity {
@@ -46,18 +48,21 @@ object AppDensity {
             contentGap = 12.dp,
             itemSpacing = 12.dp,
             labelGap = 6.dp,
+            markSize = 54.dp,
         )
         AppListDensity.Standard -> AppRowMetrics(
             rowPadding = 12.dp,
             contentGap = 10.dp,
             itemSpacing = 11.dp,
             labelGap = 5.dp,
+            markSize = 42.dp,
         )
         AppListDensity.Compact -> AppRowMetrics(
             rowPadding = 10.dp,
             contentGap = 8.dp,
             itemSpacing = 10.dp,
             labelGap = 4.dp,
+            markSize = 32.dp,
         )
     }
 }

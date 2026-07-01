@@ -34,11 +34,18 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppDensity
+import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 private object LedgerItemLayout {
     const val CardCategoryAlpha = 0.72f
@@ -47,6 +54,7 @@ private object LedgerItemLayout {
     const val TableMerchantWeight = 1.35f
     const val TableCategoryWeight = 0.72f
     const val TableAmountWeight = 0.88f
+    val RowTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 }
 
 internal data class LedgerDayHeaderUi(
@@ -160,7 +168,7 @@ internal fun LedgerExpenseCard(
             if (selectionMode) {
                 Checkbox(checked = selected, onCheckedChange = null)
             }
-            LedgerCategoryMark(category = expense.category)
+            LedgerCategoryMark(category = expense.category, density = AppListDensity.Standard)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
@@ -226,6 +234,9 @@ internal fun LedgerExpenseListRow(
     onToggleSelect: () -> Unit = {},
     onLongPress: () -> Unit = {},
 ) {
+    val rowMetrics = AppDensity.rowMetrics(AppListDensity.Compact)
+    val timeText = ledgerRowTime(expense.ledgerTimestamp()) ?: stringResource(R.string.ledger_item_time_empty)
+    val metaText = stringResource(R.string.ledger_item_meta, timeText, expense.category)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -235,52 +246,43 @@ internal fun LedgerExpenseListRow(
             ),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactGap),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = rowMetrics.rowPadding),
+            horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (selectionMode) {
                 Checkbox(checked = selected, onCheckedChange = null)
             }
-            LedgerCategoryMark(category = expense.category)
+            LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                verticalArrangement = Arrangement.spacedBy(rowMetrics.labelGap),
             ) {
                 Text(
                     text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ledger_item_merchant_empty),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = AppTypography.cardTitle.weight,
+                    fontWeight = AppTextHierarchy.body.weight,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                )
-            }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleSmall.tabularNum(),
-                    fontWeight = AppTypography.amountMedium.weight,
-                    maxLines = 1,
-                )
-                Text(
-                    text = expense.category,
+                    text = metaText,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Text(
+                text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyLarge.tabularNum(),
+                fontWeight = AppTextHierarchy.heading.weight,
+                maxLines = 1,
+                softWrap = false,
+                textAlign = TextAlign.End,
+            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
     }
@@ -361,11 +363,12 @@ internal fun LedgerExpenseTableRow(
 }
 
 @Composable
-private fun LedgerCategoryMark(category: String) {
+private fun LedgerCategoryMark(category: String, density: AppListDensity) {
     val visuals = LocalThemeVisuals.current
+    val rowMetrics = AppDensity.rowMetrics(density)
     Box(
         modifier = Modifier
-            .size(42.dp)
+            .size(rowMetrics.markSize)
             .clip(RoundedCornerShape(AppRadius.small))
             .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CategoryMarkAlpha)),
         contentAlignment = Alignment.Center,
@@ -374,9 +377,23 @@ private fun LedgerCategoryMark(category: String) {
         Text(
             text = category.take(1).ifBlank { markFallback },
             color = visuals.primary,
-            style = MaterialTheme.typography.titleMedium,
+            style = if (density == AppListDensity.Compact) {
+                MaterialTheme.typography.labelLarge
+            } else {
+                MaterialTheme.typography.titleMedium
+            },
             fontWeight = AppTypography.cardTitle.weight,
             textAlign = TextAlign.Center,
         )
     }
+}
+
+private fun Expense.ledgerTimestamp(): String? = expenseTime ?: confirmedAt ?: createdAt
+
+private fun ledgerRowTime(value: String?): String? {
+    if (value.isNullOrBlank()) return null
+    val formatter = LedgerItemLayout.RowTimeFormatter.withZone(ZoneId.systemDefault())
+    return runCatching { formatter.format(Instant.parse(value)) }
+        .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
+        .getOrNull()
 }
