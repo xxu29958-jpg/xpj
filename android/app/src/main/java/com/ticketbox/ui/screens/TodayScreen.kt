@@ -477,5 +477,11 @@ internal object TodayRefreshIndicator {
         pendingLoadedOnce: Boolean,
         monthlyLoading: Boolean,
         monthlyHasReadableData: Boolean,
-    ): Boolean = (monthlyLoading && !monthlyHasReadableData) || (pendingLoading && !pendingLoadedOnce)
+    ): Boolean = ReadableRefreshIndicator.isActive(
+        loading = monthlyLoading,
+        hasReadableData = monthlyHasReadableData,
+    ) || ReadableRefreshIndicator.isActive(
+        loading = pendingLoading,
+        hasReadableData = pendingLoadedOnce,
+    )
 }

@@ -52,7 +52,10 @@ fun BudgetScreen(
 
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.loading,
+        isRefreshing = ReadableRefreshIndicator.isActive(
+            loading = state.loading,
+            hasReadableData = state.budget != null,
+        ),
         onRefresh = onRefresh,
         hasBottomBar = onBack == null,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
@@ -72,7 +75,7 @@ fun BudgetScreen(
         item {
             BudgetSummaryCard(
                 budget = state.budget,
-                loading = state.loading,
+                loading = state.loading && state.budget == null,
                 loadError = state.loadError,
                 currencyDisplay = currencyDisplay,
                 onRetry = onRefresh,

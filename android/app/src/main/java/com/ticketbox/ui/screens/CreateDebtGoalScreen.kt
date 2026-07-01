@@ -72,7 +72,10 @@ fun CreateDebtGoalScreen(
 
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.isLoadingDebts,
+        isRefreshing = ReadableRefreshIndicator.isActive(
+            loading = state.isLoadingDebts,
+            hasReadableData = state.candidates.isNotEmpty(),
+        ),
         onRefresh = viewModel::reload,
         hasBottomBar = false,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),

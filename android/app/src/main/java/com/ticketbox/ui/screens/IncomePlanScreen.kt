@@ -117,7 +117,10 @@ fun IncomePlanScreen(
 
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.isLoading,
+        isRefreshing = ReadableRefreshIndicator.isActive(
+            loading = state.isLoading,
+            hasReadableData = state.activePlans.isNotEmpty() || state.archivedPlans.isNotEmpty(),
+        ),
         onRefresh = viewModel::refresh,
         hasBottomBar = false,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),

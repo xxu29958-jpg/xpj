@@ -3,12 +3,12 @@ package com.ticketbox.ui.screens
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class StatsRefreshIndicatorTest {
+class ReadableRefreshIndicatorTest {
     @Test
     fun initialLoadKeepsRefreshIndicatorActive() {
         assertEquals(
             true,
-            StatsRefreshIndicator.isActive(loading = true, hasReadableData = false),
+            ReadableRefreshIndicator.isActive(loading = true, hasReadableData = false),
         )
     }
 
@@ -16,7 +16,7 @@ class StatsRefreshIndicatorTest {
     fun backgroundRefreshDoesNotHoldRefreshIndicator() {
         assertEquals(
             false,
-            StatsRefreshIndicator.isActive(loading = true, hasReadableData = true),
+            ReadableRefreshIndicator.isActive(loading = true, hasReadableData = true),
         )
     }
 }

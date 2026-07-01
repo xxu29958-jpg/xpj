@@ -70,6 +70,7 @@ fun BillSplitScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(0) }
+    val hasReadableData = state.inbox.isNotEmpty() || state.sent.isNotEmpty()
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
@@ -83,7 +84,10 @@ fun BillSplitScreen(
 
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.loading,
+        isRefreshing = ReadableRefreshIndicator.isActive(
+            loading = state.loading,
+            hasReadableData = hasReadableData,
+        ),
         onRefresh = viewModel::refresh,
         hasBottomBar = false,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
@@ -113,7 +117,7 @@ fun BillSplitScreen(
             if (selectedTab == 0) {
                 InboxCard(
                     inbox = state.inbox,
-                    loading = state.loading,
+                    loading = state.loading && !hasReadableData,
                     onAccept = viewModel::accept,
                     onReject = viewModel::reject,
                     candidates = state.candidateTargetLedgers,
@@ -121,7 +125,7 @@ fun BillSplitScreen(
             } else {
                 SentCard(
                     sent = state.sent,
-                    loading = state.loading,
+                    loading = state.loading && !hasReadableData,
                     onCancel = viewModel::cancel,
                 )
             }

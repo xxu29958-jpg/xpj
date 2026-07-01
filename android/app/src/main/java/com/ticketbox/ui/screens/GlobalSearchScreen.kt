@@ -100,7 +100,10 @@ fun GlobalSearchScreen(
 
     AppScrollableContent(
         role = AppPageRole.Ledger,
-        isRefreshing = state.loadingPending,
+        isRefreshing = ReadableRefreshIndicator.isActive(
+            loading = state.loadingPending,
+            hasReadableData = state.pendingLoaded,
+        ),
         onRefresh = actions.onRefreshPending,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {

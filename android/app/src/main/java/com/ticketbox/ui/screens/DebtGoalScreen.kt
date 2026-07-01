@@ -93,7 +93,7 @@ fun DebtGoalScreen(
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.isLoading,
+        isRefreshing = ReadableRefreshIndicator.isActive(state.isLoading, selected != null || state.goals.isNotEmpty()),
         // 不能用 viewModel::refresh：refresh 现带 clearStale 默认参，方法引用解析为 (Boolean)->Unit 不匹配 ()->Unit。
         onRefresh = { viewModel.refresh() },
         hasBottomBar = false,

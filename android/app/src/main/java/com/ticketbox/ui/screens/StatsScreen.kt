@@ -344,7 +344,8 @@ private fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
 }
 
 internal object StatsRefreshIndicator {
-    fun isActive(loading: Boolean, hasReadableData: Boolean): Boolean = loading && !hasReadableData
+    fun isActive(loading: Boolean, hasReadableData: Boolean): Boolean =
+        ReadableRefreshIndicator.isActive(loading = loading, hasReadableData = hasReadableData)
 }
 
 private val tagScopedHiddenTabs = setOf(StatsTab.Budget, StatsTab.Goals)

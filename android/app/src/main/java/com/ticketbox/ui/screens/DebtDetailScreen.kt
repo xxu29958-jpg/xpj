@@ -87,7 +87,10 @@ fun DebtDetailScreen(
 
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.isLoading,
+        isRefreshing = ReadableRefreshIndicator.isActive(
+            loading = state.isLoading,
+            hasReadableData = debt != null,
+        ),
         onRefresh = {
             viewModel.refresh()
             if (debt?.isMember == true) proposalViewModel.refresh()

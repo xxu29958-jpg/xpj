@@ -84,10 +84,14 @@ fun RecurringScreen(
         RecurringTab.Active -> activeItems.sortedBy { it.merchant }
         RecurringTab.Paused -> state.items.filter { it.status == "paused" }.sortedBy { it.merchant }
     }
+    val hasReadableData = state.items.isNotEmpty() || state.candidates.isNotEmpty()
 
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.loading,
+        isRefreshing = ReadableRefreshIndicator.isActive(
+            loading = state.loading,
+            hasReadableData = hasReadableData,
+        ),
         onRefresh = onRefresh,
         hasBottomBar = onBack == null,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
@@ -121,7 +125,7 @@ fun RecurringScreen(
             RecurringItemsCard(
                 title = stringResource(selectedTab.labelRes),
                 items = visibleItems,
-                loading = state.loading,
+                loading = state.loading && state.items.isEmpty(),
                 currencyDisplay = currencyDisplay,
                 canModify = state.canModify,
                 onPause = onPause,
@@ -132,7 +136,7 @@ fun RecurringScreen(
         item {
             RecurringCandidatesCard(
                 candidates = state.candidates,
-                loading = state.loading,
+                loading = state.loading && state.candidates.isEmpty(),
                 currencyDisplay = currencyDisplay,
                 canModify = state.canModify,
                 onConfirmCandidate = onConfirmCandidate,

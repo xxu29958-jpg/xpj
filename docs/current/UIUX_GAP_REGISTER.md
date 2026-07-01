@@ -130,7 +130,7 @@ that actually ships the fix.
 
 ### ANDROID-2026-07-02-refresh-latency-priority
 
-- Surface: Android Today, Pending, Ledger, and Insights refresh.
+- Surface: Android Today, Pending, Ledger, Insights, and secondary/drill-page refresh.
 - Status: implemented in the current frontend latency slice; true-device timing
   still needs capture.
 - Gap: refresh could feel slow because non-primary work started before the
@@ -145,7 +145,10 @@ that actually ships the fix.
   existing monthly stats remain readable; the authority strip still carries the
   refreshing state until the backend response lands.
   Confirmed-ledger sync now requests the backend-supported 200 rows per page
-  instead of 50 to reduce avoidable round trips on larger ledgers.
+  instead of 50 to reduce avoidable round trips on larger ledgers. A shared
+  readable-refresh guard now also covers Budget, Recurring, Bill Split, Debt
+  list/detail/goals/create goal, Income Plan, Receivables, Repayment Drafts,
+  and Global Search so existing content stays readable while refresh continues.
 
 ### ANDROID-2026-07-01-ledger-empty-safe-area
 
@@ -391,7 +394,7 @@ that actually ships the fix.
 
 ### ANDROID-2026-07-02-refresh-loading-latency
 
-- Surface: Android Today, Pending, Ledger, and Insights root refresh.
+- Surface: Android Today, Pending, Ledger, Insights, and secondary/drill-page refresh.
 - Status: implemented locally; true-device timing evidence still pending.
 - Gap: user reports frontend refresh/loading is too slow. The root cause found in
   the Android state path is that page-level loading could stay active while
@@ -404,11 +407,12 @@ that actually ships the fix.
   secondary background result and stale goal requests are cancelled. Pending and
   Ledger now keep existing rows readable while the authority strip shows refresh
   state, Today and Insights no longer keep the page-level pull indicator active
-  when existing monthly stats are readable, and confirmed-ledger sync uses 200
-  rows per page.
-- Remaining QA: measure Today, Pending, Ledger, and Insights pull-to-refresh on
-  a physical device with the production backend and confirm the page does not
-  imply fresh backend truth before the primary response lands.
+  when existing monthly stats are readable, secondary/drill pages reuse the same
+  readable-refresh rule, and confirmed-ledger sync uses 200 rows per page.
+- Remaining QA: measure Today, Pending, Ledger, Insights, and a sample of the
+  secondary/drill pages on a physical device with the production backend and
+  confirm the page does not imply fresh backend truth before the primary response
+  lands.
 
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 
