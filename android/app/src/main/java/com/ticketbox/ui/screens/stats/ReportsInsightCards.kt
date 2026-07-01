@@ -26,7 +26,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportGranularity
-import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppSegmentedControl
@@ -63,9 +62,9 @@ internal fun ReportsInsightCard(
         )
         if (hasCurrentSpend && overview.merchantRanking.isNotEmpty()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-            RankingBlock(
-                title = stringResource(R.string.stats_reports_merchant_ranking_title),
+            MerchantRankingBlock(
                 rows = overview.merchantRanking.take(5),
+                rankingMetric = overview.rankingMetric,
             )
         }
         if (hasCurrentSpend && overview.categoryComparison.isNotEmpty()) {
@@ -166,26 +165,6 @@ private fun ReportsSparseTrend(
             contentDescription = sparseA11y,
         ),
     )
-}
-
-@Composable
-private fun RankingBlock(
-    title: String,
-    rows: List<ReportMerchantRanking>,
-) {
-    val maxAmount = rows.maxOfOrNull { it.amountCents } ?: 0L
-    val merchantFallback = stringResource(R.string.stats_reports_merchant_fallback)
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap + AppSpacing.tinyGap)) {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.body.weight)
-        rows.forEach { row ->
-            AmountBarRow(
-                label = row.merchant.ifBlank { merchantFallback },
-                amountCents = row.amountCents,
-                maxAmountCents = maxAmount,
-                trailingText = stringResource(R.string.stats_reports_bar_count, row.count),
-            )
-        }
-    }
 }
 
 @Composable

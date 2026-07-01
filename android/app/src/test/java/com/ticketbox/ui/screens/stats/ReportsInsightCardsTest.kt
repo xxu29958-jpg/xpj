@@ -2,6 +2,8 @@ package com.ticketbox.ui.screens.stats
 
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ReportCategoryComparison
+import com.ticketbox.domain.model.ReportMerchantRanking
+import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.ui.components.formatDisplayAmount
 import kotlin.test.Test
@@ -83,6 +85,30 @@ class ReportsInsightCardsTest {
         )
         assertEquals(5, rows.size)
         assertEquals(listOf("分类1", "分类2", "分类3", "分类4", "分类5"), rows.map { it.category })
+    }
+
+    @Test
+    fun merchantRankingBarsUseCountWhenRankingMetricIsCount() {
+        val rows = listOf(
+            ReportMerchantRanking(merchant = "早餐店", amountCents = 900L, count = 5),
+            ReportMerchantRanking(merchant = "超市", amountCents = 3000L, count = 1),
+        )
+
+        assertEquals(5L, merchantRankingMaxValue(rows, ReportRankingMetric.Count))
+        assertEquals(5L, merchantRankingBarValue(rows.first(), ReportRankingMetric.Count))
+        assertEquals(1L, merchantRankingBarValue(rows.last(), ReportRankingMetric.Count))
+    }
+
+    @Test
+    fun merchantRankingBarsUseAmountWhenRankingMetricIsAmount() {
+        val rows = listOf(
+            ReportMerchantRanking(merchant = "早餐店", amountCents = 900L, count = 5),
+            ReportMerchantRanking(merchant = "超市", amountCents = 3000L, count = 1),
+        )
+
+        assertEquals(3000L, merchantRankingMaxValue(rows, ReportRankingMetric.Amount))
+        assertEquals(900L, merchantRankingBarValue(rows.first(), ReportRankingMetric.Amount))
+        assertEquals(3000L, merchantRankingBarValue(rows.last(), ReportRankingMetric.Amount))
     }
 
     @Test

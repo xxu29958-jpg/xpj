@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
+import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import kotlin.test.Test
@@ -45,6 +46,7 @@ class StatsReportsViewModelGranularityTest {
         vm.refresh(month = "2026-06", selectedTag = "")
         advanceUntilIdle()
         assertEquals(listOf(ReportGranularity.Day), repo.overviewQueries.map { it.granularity })
+        assertEquals(listOf(ReportRankingMetric.Count), repo.overviewQueries.map { it.rankingMetric })
     }
 
     @Test

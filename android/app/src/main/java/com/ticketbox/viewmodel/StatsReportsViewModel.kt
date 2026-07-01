@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.ReportGranularity
+import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -141,6 +142,7 @@ class StatsReportsViewModel(
                 ReportsOverviewQuery(
                     month = month,
                     granularity = granularity,
+                    rankingMetric = ReportRankingMetric.Count,
                 ),
             )
             val goalsResult = reportsRepo.goals(month = month)
