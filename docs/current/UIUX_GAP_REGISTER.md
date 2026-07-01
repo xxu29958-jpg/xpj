@@ -110,6 +110,9 @@ that actually ships the fix.
   normal months use a tokenized native Canvas bar trend. No new Android chart
   dependency is currently needed; revisit a library only when tooltip/zoom,
   multi-metric overlay, or drill-select interactions become real requirements.
+- Progress 2026-07-02: the recent 7-day module now adds an explicit previous-3-days
+  versus recent-3-days comparison row before the supporting facts, so the reader
+  can see direction and scale instead of reading a flat bar strip.
 
 ### ANDROID-2026-07-01-ledger-empty-safe-area
 
@@ -355,16 +358,17 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 
 - Surface: Android Insights merchant sections.
-- Status: P0 registered follow-up in the Insights slice.
+- Status: implemented in Android; true-device QA still pending for the visible
+  merchant rows.
 - Gap: "高频商家" must mean count-ranked merchants, not amount-ranked merchants
   wearing a frequency label. The backend has two different contracts:
   `stats/lifestyle.frequent_merchants` is count-ranked, while
   `reports/overview.merchant_ranking` defaults to amount ranking unless
   `ranking_metric=count` is requested.
-- Desired follow-up: split the merchant IA clearly: high-frequency merchants are
-  sorted by confirmed count, spend-ranked merchants are sorted by amount, and
-  each row makes the active metric obvious with the other metric as supporting
-  context.
+- Resolution: Android requests Reports overview with `ranking_metric=count`,
+  renders the ranking title/value from the returned metric, and keeps amount as
+  supporting context for frequency rows. Final closeout still needs a live
+  Insights screenshot with populated merchant rows.
 
 ### ANDROID-2026-07-01-root-page-density
 

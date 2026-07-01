@@ -82,6 +82,7 @@ private fun ReportsRecentWindowSummaryRow(
                 modifier = Modifier.weight(1.4f),
             )
         }
+        ReportsRecentWindowComparisonRows(summary = summary)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -98,6 +99,33 @@ private fun ReportsRecentWindowSummaryRow(
             )
         }
     }
+}
+
+@Composable
+private fun ReportsRecentWindowComparisonRows(summary: ReportsRecentWindowSummaryData) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+    val previousLabel = stringResource(R.string.stats_reports_recent_window_previous_three)
+    val recentLabel = stringResource(R.string.stats_reports_recent_window_recent_three)
+    val comparisonA11y = stringResource(
+        R.string.stats_reports_recent_window_comparison_a11y,
+        formatDisplayAmount(summary.previousThreeAmountCents, currencyDisplay),
+        formatDisplayAmount(summary.recentThreeAmountCents, currencyDisplay),
+    )
+    val points = remember(summary, previousLabel, recentLabel) {
+        listOf(
+            StatsSpendChartPoint(label = previousLabel, amountCents = summary.previousThreeAmountCents),
+            StatsSpendChartPoint(label = recentLabel, amountCents = summary.recentThreeAmountCents),
+        )
+    }
+    StatsSpendDistributionRows(
+        points = points,
+        spec = StatsSpendDistributionSpec(
+            maxRows = 2,
+            sortByAmount = false,
+            includeZeros = true,
+            contentDescription = comparisonA11y,
+        ),
+    )
 }
 
 @Composable
@@ -175,7 +203,7 @@ private fun ReportsRecentWindowFact(
     }
 }
 
-private data class ReportsRecentWindowSummaryData(
+internal data class ReportsRecentWindowSummaryData(
     val totalAmountCents: Long,
     val peakLabel: String,
     val peakAmountCents: Long,
@@ -186,7 +214,7 @@ private data class ReportsRecentWindowSummaryData(
     val previousThreeAmountCents: Long,
 )
 
-private fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecentWindowSummaryData? {
+internal fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecentWindowSummaryData? {
     val normalized = trend
         .takeLast(ReportsRecentWindowLayout.RecentWindowDays)
         .map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }

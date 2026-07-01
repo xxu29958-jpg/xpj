@@ -204,6 +204,9 @@
     <string name="stats_reports_recent_window_title">最近 7 天</string>
     <string name="stats_reports_recent_window_source">最近记录</string>
     <string name="stats_reports_recent_window_peak_share">%1$s 占 7 天 %2$d%%，其余日均 %3$s</string>
+    <string name="stats_reports_recent_window_previous_three">前3天</string>
+    <string name="stats_reports_recent_window_recent_three">近3天</string>
+    <string name="stats_reports_recent_window_comparison_a11y">最近 7 天对比，前3天 %1$s，近3天 %2$s</string>
     <string name="stats_reports_recent_window_active_days">有支出</string>
     <string name="stats_reports_recent_window_active_days_value">%1$d 天</string>
     <string name="stats_reports_recent_window_peak">峰值 %1$s</string>
