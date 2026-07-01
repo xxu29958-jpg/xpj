@@ -168,7 +168,7 @@ internal fun BuiltInBackgroundCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = background.name,
+                        text = stringResource(builtInBackgroundNameRes(background)),
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                     )
@@ -179,7 +179,12 @@ internal fun BuiltInBackgroundCard(
                     }
                 }
                 Text(
-                    text = "${background.category.displayName} · ${skin.displayName} · ${background.description}",
+                    text = stringResource(
+                        R.string.appearance_builtin_background_meta,
+                        stringResource(builtInBackgroundCategoryNameRes(background.category)),
+                        stringResource(appSkinNameRes(skin)),
+                        stringResource(builtInBackgroundDescriptionRes(background)),
+                    ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -301,12 +306,12 @@ internal fun ImmersionModePicker(
                     modifier = Modifier.weight(1f),
                     selected = selected == mode,
                     onClick = { onSelect(mode) },
-                    label = mode.displayName,
+                    label = stringResource(immersionModeNameRes(mode)),
                 )
             }
         }
         Text(
-            text = selected.description,
+            text = stringResource(immersionModeDescriptionRes(selected)),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )

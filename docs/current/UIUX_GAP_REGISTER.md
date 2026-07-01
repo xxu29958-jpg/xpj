@@ -65,6 +65,25 @@ that actually ships the fix.
   from per-tag action cards to a scan-first overview plus divider rows with
   overflow actions, keeping rename/merge/delete/undo as server-confirmed actions.
 
+### ANDROID-2026-07-02-appearance-background-resource-and-overview
+
+- Surface: Android Settings -> Appearance/background, background gallery, crop,
+  and preview entry.
+- Status: implemented locally; true-device evidence still pending.
+- Gap: Appearance/background already had the right local-only storage boundary,
+  but the visible page still mixed product copy from Kotlin models with resource
+  copy, and the first screen did not summarize the current theme, background,
+  currency, and motion state before the controls. That made the page feel more
+  like a settings playground than a mature product secondary page.
+- Resolution: the page now starts with a compact overview derived from current
+  `BackgroundSettings`; skin, immersion, crop, category, and built-in background
+  labels resolve through Android resources; built-in preview receives the same
+  localized label the user tapped. The background contract remains local-only and
+  does not add backend, Room, export, or sync authority.
+- Remaining QA: capture the Appearance overview, built-in gallery, custom-image
+  crop, preview, apply, clear, dark/light, and bottom-safe states on a physical
+  device with the official package.
+
 ### ANDROID-2026-07-01-settings-root-density
 
 - Surface: Android Settings root page.

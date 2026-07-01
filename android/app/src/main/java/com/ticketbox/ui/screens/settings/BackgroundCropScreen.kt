@@ -164,12 +164,12 @@ fun BackgroundCropScreen(
                         modifier = Modifier.weight(1f),
                         selected = cropMode == mode,
                         onClick = { cropMode = mode },
-                        label = mode.displayName,
+                        label = stringResource(cropModeNameRes(mode)),
                     )
                 }
             }
             Text(
-                text = cropMode.description,
+                text = stringResource(cropModeDescriptionRes(cropMode)),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -217,7 +217,7 @@ private fun CropSelectionBadge(
             .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
     ) {
         Text(
-            text = stringResource(R.string.background_crop_selection_badge, cropMode.displayName),
+            text = stringResource(R.string.background_crop_selection_badge, stringResource(cropModeNameRes(cropMode))),
             color = MaterialTheme.colorScheme.onPrimary,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = AppTextHierarchy.heading.weight,

@@ -156,7 +156,7 @@ internal fun ThemeMoodPreview(
                     fontWeight = AppTextHierarchy.body.weight,
                 )
                 Text(
-                    text = skin.displayName,
+                    text = stringResource(appSkinNameRes(skin)),
                     color = scheme.onPrimary,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = AppTextHierarchy.heading.weight,
@@ -170,7 +170,7 @@ internal fun ThemeMoodPreview(
                     .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
             ) {
                 Text(
-                    text = settings.immersionMode.displayName,
+                    text = stringResource(immersionModeNameRes(settings.immersionMode)),
                     color = visuals.primary,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
@@ -226,7 +226,7 @@ internal fun SkinOptionCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = skin.displayName,
+                        text = stringResource(appSkinNameRes(skin)),
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                     )
@@ -237,7 +237,7 @@ internal fun SkinOptionCard(
                     }
                 }
                 Text(
-                    text = skin.description,
+                    text = stringResource(appSkinDescriptionRes(skin)),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,

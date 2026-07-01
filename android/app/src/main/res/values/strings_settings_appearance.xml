@@ -5,8 +5,27 @@
     <!-- AppearanceScreen：外观与主题屏 -->
     <string name="appearance_page_title">外观与主题</string>
     <string name="appearance_page_subtitle">纸本作为默认推荐，背景参与氛围但不抢账单内容。</string>
+    <string name="appearance_section_overview_title">外观概况</string>
+    <string name="appearance_overview_skin_label">主题</string>
+    <string name="appearance_overview_skin_caption">当前视觉</string>
+    <string name="appearance_overview_currency_label">币种</string>
+    <string name="appearance_overview_currency_caption">新账单默认</string>
+    <string name="appearance_overview_background_label">背景</string>
+    <string name="appearance_overview_background_caption_theme">跟随主题</string>
+    <string name="appearance_overview_background_caption_builtin">内置背景</string>
+    <string name="appearance_overview_background_caption_custom">仅本机保存</string>
+    <string name="appearance_overview_motion_label">动效</string>
+    <string name="appearance_overview_motion_dynamic">开启</string>
+    <string name="appearance_overview_motion_static">静态</string>
+    <string name="appearance_overview_motion_reduced">已减少</string>
+    <string name="appearance_overview_motion_caption_dynamic">有轻微视差</string>
+    <string name="appearance_overview_motion_caption_static">无视差</string>
+    <string name="appearance_overview_motion_caption_reduced">稳定优先</string>
     <string name="appearance_section_skin_title">主题皮肤</string>
     <string name="appearance_section_background_title">背景</string>
+    <string name="appearance_background_source_theme_default">跟随主题</string>
+    <string name="appearance_background_source_builtin">内置背景</string>
+    <string name="appearance_background_source_custom_image">自定义图片</string>
     <string name="appearance_background_current_label">当前背景</string>
     <string name="appearance_background_open_gallery">背景图库</string>
     <string name="appearance_background_pick_image">从相册选择</string>
@@ -21,12 +40,47 @@
 
     <!-- SettingsAppearanceComponents：皮肤卡 / 沉浸预览组件 -->
     <string name="appearance_mood_preview_caption">背景只参与氛围</string>
+    <string name="appearance_skin_name_paper">纸本</string>
+    <string name="appearance_skin_name_mono">墨白</string>
+    <string name="appearance_skin_name_midnight">玄夜</string>
+    <string name="appearance_skin_description_paper">温润米白 + 茶铜</string>
+    <string name="appearance_skin_description_mono">冷灰极简</string>
+    <string name="appearance_skin_description_midnight">深色玻璃 + 暖金</string>
+    <string name="appearance_immersion_name_atmosphere">氛围</string>
+    <string name="appearance_immersion_name_balanced">平衡</string>
+    <string name="appearance_immersion_name_focus">专注</string>
+    <string name="appearance_immersion_description_atmosphere">背景更明显，适合首页和统计</string>
+    <string name="appearance_immersion_description_balanced">默认推荐，兼顾好看和清晰</string>
+    <string name="appearance_immersion_description_focus">弱化背景，适合长时间记账</string>
     <string name="appearance_skin_pill_current">当前</string>
     <string name="appearance_skin_pill_recommended">推荐</string>
 
     <!-- SettingsBackgroundComponents：内置背景卡 / 裁剪安全区 -->
     <string name="appearance_builtin_pill_current">当前</string>
     <string name="appearance_builtin_pill_recommended">推荐</string>
+    <string name="appearance_builtin_background_meta">%1$s · %2$s · %3$s</string>
+    <string name="appearance_background_category_nature">自然</string>
+    <string name="appearance_background_category_emotion">情绪</string>
+    <string name="appearance_background_category_minimal">极简</string>
+    <string name="appearance_background_category_illustration">插画</string>
+    <string name="appearance_background_name_paper">纸本</string>
+    <string name="appearance_background_name_paper_warm">茶雾</string>
+    <string name="appearance_background_name_mono">墨白</string>
+    <string name="appearance_background_name_mono_fog">灰雾</string>
+    <string name="appearance_background_name_midnight">玄夜</string>
+    <string name="appearance_background_name_midnight_gold">暖金</string>
+    <string name="appearance_background_description_paper">温润米白与茶铜纸影，和桌面账本默认视觉一致。</string>
+    <string name="appearance_background_description_paper_warm">更明显的暖纸雾面，适合待确认和统计首页。</string>
+    <string name="appearance_background_description_mono">冷灰纸面，减少彩色干扰。</string>
+    <string name="appearance_background_description_mono_fog">低对比灰雾，适合表格和长列表。</string>
+    <string name="appearance_background_description_midnight">深色玻璃与暖金，适合夜间。</string>
+    <string name="appearance_background_description_midnight_gold">深色底上的暖金光晕，保留暗色但不回到旧蓝绿。</string>
+    <string name="appearance_crop_mode_name_top">上方</string>
+    <string name="appearance_crop_mode_name_center">居中</string>
+    <string name="appearance_crop_mode_name_bottom">下方</string>
+    <string name="appearance_crop_mode_description_top">保留画面上半部分，适合天空和票据截图</string>
+    <string name="appearance_crop_mode_description_center">默认构图，适合大多数照片</string>
+    <string name="appearance_crop_mode_description_bottom">保留画面下半部分，适合街景和桌面照片</string>
     <string name="appearance_crop_safezone_top">顶部标题区</string>
     <string name="appearance_crop_safezone_reading">主要阅读区</string>
     <string name="appearance_crop_safezone_bottom">底部导航区</string>

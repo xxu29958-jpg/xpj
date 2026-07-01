@@ -108,7 +108,7 @@ fun BackgroundGalleryScreen(
     onBack: () -> Unit,
     onPickCustomImage: () -> Unit,
     onPreviewThemeDefault: () -> Unit,
-    onPreviewBuiltIn: (BuiltInBackground) -> Unit,
+    onPreviewBuiltIn: (BuiltInBackground, String) -> Unit,
 ) {
     var selectedCategory by remember { mutableStateOf<BuiltInBackgroundCategory?>(null) }
     val backgrounds = selectedCategory?.let(BackgroundCatalog::byCategory) ?: BackgroundCatalog.entries
@@ -130,7 +130,7 @@ fun BackgroundGalleryScreen(
             )
             BuiltInBackgroundCategory.entries.forEach { category ->
                 AppFilterChip(
-                    label = category.displayName,
+                    label = stringResource(builtInBackgroundCategoryNameRes(category)),
                     selected = selectedCategory == category,
                     onClick = { selectedCategory = category },
                 )
@@ -142,11 +142,12 @@ fun BackgroundGalleryScreen(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 rowBackgrounds.forEach { background ->
+                    val backgroundTitle = stringResource(builtInBackgroundNameRes(background))
                     BuiltInBackgroundCard(
                         modifier = Modifier.weight(1f),
                         background = background,
                         selected = currentSettings.builtInBackgroundId == background.id,
-                        onClick = { onPreviewBuiltIn(background) },
+                        onClick = { onPreviewBuiltIn(background, backgroundTitle) },
                     )
                 }
                 if (rowBackgrounds.size == 1) {

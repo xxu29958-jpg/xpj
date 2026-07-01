@@ -250,10 +250,10 @@ internal fun SettingsDestinationHost(
             onBack = { route = SettingsDestination.Appearance },
             onPickCustomImage = ::launchImagePicker,
             onPreviewThemeDefault = ::previewThemeDefault,
-            onPreviewBuiltIn = { background ->
+            onPreviewBuiltIn = { background, title ->
                 route = SettingsDestination.BackgroundPreview(
                     settings = states.appearance.backgroundSettings.withBuiltInBackground(background.id),
-                    title = background.name,
+                    title = title,
                 )
             },
         )

@@ -17,10 +17,10 @@ class BackgroundCatalogTest {
     fun catalogContainsNewThemeAlignedBackgrounds() {
         val categories = BackgroundCatalog.entries.groupBy { it.category }
 
-        assertTrue(categories.getValue(BuiltInBackgroundCategory.Minimal).map { it.name }.containsAll(listOf("纸本", "墨白")))
-        assertTrue(categories.getValue(BuiltInBackgroundCategory.Nature).map { it.name }.containsAll(listOf("茶雾", "玄夜")))
-        assertTrue(categories.getValue(BuiltInBackgroundCategory.Emotion).map { it.name }.contains("暖金"))
-        assertTrue(categories.getValue(BuiltInBackgroundCategory.Illustration).map { it.name }.contains("灰雾"))
+        assertTrue(categories.getValue(BuiltInBackgroundCategory.Minimal).map { it.id }.containsAll(listOf("paper", "mono")))
+        assertTrue(categories.getValue(BuiltInBackgroundCategory.Nature).map { it.id }.containsAll(listOf("paper_warm", "midnight")))
+        assertTrue(categories.getValue(BuiltInBackgroundCategory.Emotion).map { it.id }.contains("midnight_gold"))
+        assertTrue(categories.getValue(BuiltInBackgroundCategory.Illustration).map { it.id }.contains("mono_fog"))
     }
 
     @Test

@@ -80,10 +80,6 @@ import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ServerSettings
-import com.ticketbox.ui.appearance.AppearanceDefaults
-import com.ticketbox.ui.appearance.BackgroundCatalog
-import com.ticketbox.ui.appearance.BuiltInBackground
-import com.ticketbox.ui.appearance.BuiltInBackgroundCategory
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
@@ -125,6 +121,11 @@ fun AppearanceScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
     ) {
+        AppearanceOverviewSection(
+            currentSkin = currentSkin,
+            currentCurrency = currentCurrency,
+            backgroundSettings = state.backgroundSettings,
+        )
         SettingsSection(title = stringResource(R.string.appearance_section_skin_title), icon = Icons.Filled.Palette) {
             AppSkin.entries.chunked(2).forEach { rowSkins ->
                 Row(
@@ -165,12 +166,12 @@ fun AppearanceScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(stringResource(R.string.appearance_background_current_label), style = MaterialTheme.typography.titleSmall)
                             Text(
-                                text = AppearanceDefaults.backgroundSourceLabel(state.backgroundSettings),
+                                text = backgroundSourceLabel(state.backgroundSettings),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         SkinPill(
-                            text = state.backgroundSettings.immersionMode.displayName,
+                            text = stringResource(immersionModeNameRes(state.backgroundSettings.immersionMode)),
                             scheme = MaterialTheme.colorScheme,
                             visuals = themeVisualsForSkin(currentSkin),
                             emphasized = false,

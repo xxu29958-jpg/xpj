@@ -1,14 +1,14 @@
 package com.ticketbox.ui.appearance
 
-import com.ticketbox.domain.model.BackgroundSettings
+import androidx.annotation.StringRes
+import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundSource
 
 object AppearanceDefaults {
-    fun backgroundSourceLabel(settings: BackgroundSettings): String {
-        return when (settings.source) {
-            BackgroundSource.ThemeDefault -> "跟随主题"
-            BackgroundSource.BuiltIn -> BackgroundCatalog.find(settings.builtInBackgroundId)?.name ?: "内置背景"
-            BackgroundSource.CustomImage -> "自定义图片"
-        }
+    @StringRes
+    fun backgroundSourceFallbackLabelRes(source: BackgroundSource): Int = when (source) {
+        BackgroundSource.ThemeDefault -> R.string.appearance_background_source_theme_default
+        BackgroundSource.BuiltIn -> R.string.appearance_background_source_builtin
+        BackgroundSource.CustomImage -> R.string.appearance_background_source_custom_image
     }
 }
