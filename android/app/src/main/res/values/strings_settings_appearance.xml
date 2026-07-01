@@ -73,10 +73,18 @@
 
     <!-- BackgroundTasksScreen：后台任务屏 -->
     <string name="background_tasks_page_title">后台任务</string>
-    <string name="background_tasks_page_subtitle">CSV 导入 / v1.0 迁移等长任务。账本内每个账户只看到自己发起的任务。</string>
+    <string name="background_tasks_page_subtitle">查看小票夹服务返回的导入和迁移进度；本机只负责查看和请求取消。</string>
     <string name="background_tasks_section_recent_title">最近任务</string>
     <string name="background_tasks_empty">还没有后台任务。发起 CSV 导入或迁移等长任务后，进度会出现在这里。</string>
     <string name="background_tasks_row_error_generic">这个任务没有完成，请稍后重试。</string>
+    <string name="background_tasks_type_csv_import">CSV 导入</string>
+    <string name="background_tasks_type_unknown">后台任务</string>
+    <string name="background_tasks_status_queued">排队中</string>
+    <string name="background_tasks_status_running">运行中</string>
+    <string name="background_tasks_status_completed">已完成</string>
+    <string name="background_tasks_status_failed">失败</string>
+    <string name="background_tasks_status_cancelled">已取消</string>
+    <string name="background_tasks_status_unknown">未知状态</string>
     <string name="background_tasks_refreshing">刷新中…</string>
     <string name="background_tasks_refresh">刷新</string>
     <string name="background_tasks_row_created">创建：%1$s</string>

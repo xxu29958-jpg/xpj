@@ -41,20 +41,6 @@ const val BACKGROUND_TASK_COMPLETED = "completed"
 const val BACKGROUND_TASK_FAILED = "failed"
 const val BACKGROUND_TASK_CANCELLED = "cancelled"
 
-fun backgroundTaskStatusLabel(status: String): String = when (status) {
-    BACKGROUND_TASK_QUEUED -> "排队中"
-    BACKGROUND_TASK_RUNNING -> "运行中"
-    BACKGROUND_TASK_COMPLETED -> "已完成"
-    BACKGROUND_TASK_FAILED -> "失败"
-    BACKGROUND_TASK_CANCELLED -> "已取消"
-    else -> status
-}
-
-fun backgroundTaskTypeLabel(taskType: String): String = when (taskType) {
-    "csv_import" -> "CSV 导入"
-    else -> taskType
-}
-
 /** 任务 ``error_message`` 超过这个长度就当作不可直出的诊断串（正常中文短错误远短于此）。 */
 const val BACKGROUND_TASK_ERROR_MAX_DISPLAY_LEN = 60
 

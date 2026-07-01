@@ -50,6 +50,10 @@ that actually ships the fix.
   and Insights.
 - Constraint: backend remains the authority; Android Room/cache/offline creation
   is client capability, not a competing source of truth.
+- Progress 2026-07-02: Background Tasks no longer uses domain-layer hardcoded
+  Chinese for task labels; unknown service task/status tokens map to generic
+  resource copy, and the page now states that Android only views or requests
+  cancellation for service-returned tasks.
 
 ### ANDROID-2026-07-01-settings-root-density
 

@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,10 +21,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.domain.model.BACKGROUND_TASK_CANCELLED
+import com.ticketbox.domain.model.BACKGROUND_TASK_COMPLETED
+import com.ticketbox.domain.model.BACKGROUND_TASK_FAILED
+import com.ticketbox.domain.model.BACKGROUND_TASK_QUEUED
+import com.ticketbox.domain.model.BACKGROUND_TASK_RUNNING
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.backgroundTaskStatusLabel
-import com.ticketbox.domain.model.backgroundTaskTypeLabel
 import com.ticketbox.domain.model.shouldGeneralizeTaskError
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
@@ -96,11 +100,11 @@ private fun TaskRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = backgroundTaskTypeLabel(task.taskType),
+                text = stringResource(backgroundTaskTypeLabelRes(task.taskType)),
                 style = MaterialTheme.typography.titleSmall,
             )
             Text(
-                text = backgroundTaskStatusLabel(task.status),
+                text = stringResource(backgroundTaskStatusLabelRes(task.status)),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary,
             )
@@ -150,4 +154,20 @@ private fun TaskRow(
             ) { Text(if (busy) stringResource(R.string.background_tasks_row_cancelling) else stringResource(R.string.background_tasks_row_request_cancel)) }
         }
     }
+}
+
+@StringRes
+internal fun backgroundTaskStatusLabelRes(status: String): Int = when (status) {
+    BACKGROUND_TASK_QUEUED -> R.string.background_tasks_status_queued
+    BACKGROUND_TASK_RUNNING -> R.string.background_tasks_status_running
+    BACKGROUND_TASK_COMPLETED -> R.string.background_tasks_status_completed
+    BACKGROUND_TASK_FAILED -> R.string.background_tasks_status_failed
+    BACKGROUND_TASK_CANCELLED -> R.string.background_tasks_status_cancelled
+    else -> R.string.background_tasks_status_unknown
+}
+
+@StringRes
+internal fun backgroundTaskTypeLabelRes(taskType: String): Int = when (taskType) {
+    "csv_import" -> R.string.background_tasks_type_csv_import
+    else -> R.string.background_tasks_type_unknown
 }
