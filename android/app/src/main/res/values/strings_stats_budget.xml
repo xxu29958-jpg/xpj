@@ -10,18 +10,15 @@
     <string name="stats_category_empty_body">确认几笔账单后，这里会显示分类占比。</string>
     <string name="stats_all_cards_hidden_title">首页卡片已全部隐藏</string>
     <string name="stats_all_cards_hidden_body">可以在设置 > 首页卡片中恢复默认卡片。</string>
-    <string name="stats_header_title">统计</string>
-    <string name="stats_header_menu">管理</string>
-    <string name="stats_header_section_debt">债务</string>
-    <string name="stats_header_planning">规划</string>
+    <string name="stats_header_title">洞察</string>
+    <string name="stats_header_menu_planning">规划</string>
+    <string name="stats_header_menu_planning_description">规划菜单</string>
+    <string name="stats_header_menu_planning_collapsed">已折叠</string>
+    <string name="stats_header_menu_planning_expanded">已展开</string>
     <string name="stats_header_open_budget">预算</string>
     <string name="stats_header_open_recurring">固定支出</string>
     <string name="stats_header_open_income_plans">收入记录</string>
     <string name="stats_header_open_debt_goals">还债目标</string>
-    <string name="stats_header_open_debts">欠款</string>
-    <string name="stats_header_open_receivables">欠我的</string>
-    <string name="stats_header_open_repayment_drafts">还款待确认</string>
-    <string name="stats_header_repayment_drafts_badge_description">%1$d 笔待复核</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
@@ -34,6 +31,17 @@
     <string name="stats_overview_count_value">%1$d 笔</string>
     <string name="stats_overview_recent7_label">最近 7 天</string>
     <string name="stats_overview_delta_flat">持平</string>
+    <string name="stats_overview_delta_up">比上月多 %1$s%2$s</string>
+    <string name="stats_overview_delta_down">比上月少 %1$s%2$s</string>
+    <string name="stats_overview_delta_percent_up"> · +%1$d%%</string>
+    <string name="stats_overview_delta_percent_down"> · %1$d%%</string>
+    <string name="stats_overview_trend_title">月内走势</string>
+    <string name="stats_overview_trend_peak">峰值 %1$s</string>
+    <string name="stats_overview_trend_peak_amount">%1$s · %2$s</string>
+    <string name="stats_overview_trend_peak_share_label">峰值占比</string>
+    <string name="stats_overview_trend_peak_share_value">%1$d%%</string>
+    <string name="stats_overview_trend_other_average_label">非峰值日均</string>
+    <string name="stats_overview_trend_empty">暂无趋势数据</string>
 
     <!-- StatsMetricGrid：统计指标网格 + 月度预算进度 -->
     <string name="stats_metric_ai_subscription_label">AI 订阅</string>
@@ -44,6 +52,7 @@
     <string name="stats_metric_merchant_count">%1$d 笔</string>
     <string name="stats_metric_category_count">%1$d 个分类</string>
     <string name="stats_metric_top_share">占本月 %1$d%%</string>
+    <string name="stats_metric_module_title">本月洞察</string>
     <string name="stats_budget_progress_title">月度预算</string>
     <string name="stats_budget_progress_over">已超过预算</string>
     <string name="stats_budget_progress_remaining">还可花 %1$s</string>
@@ -54,13 +63,14 @@
     <string name="stats_category_structure_title">分类结构</string>
     <string name="stats_category_structure_top">主要花在「%1$s」</string>
     <string name="stats_category_structure_empty">还没有分类支出</string>
-    <string name="stats_category_structure_insight">占本月 %1$d%% · %2$d 个分类</string>
+    <string name="stats_category_structure_insight">占本月 %1$s · %2$d 个分类</string>
     <string name="stats_category_structure_count">%1$d 个分类</string>
     <string name="stats_category_structure_percent">%1$d%%</string>
-    <!-- §三报表钻取的发现性提示（仅分类行可点时渲染）。 -->
-    <string name="stats_category_structure_drill_hint">点分类行可跳到账本看明细。</string>
+    <string name="stats_category_structure_share_less_than_one">&lt;1%</string>
+    <string name="stats_category_structure_share_more_than_ninety_nine">&gt;99%</string>
+    <string name="stats_category_structure_remainder">其他 %1$d 类合计 %2$s</string>
 
-    <!-- TagStatsCard：标签分布 -->
+    <!-- CategoryStructureCard：标签分布 -->
     <string name="stats_tag_distribution_title">标签分布</string>
     <string name="stats_tag_distribution_subtitle">按本月已确认账单的标签聚合</string>
     <string name="stats_tag_distribution_row_label">#%1$s</string>
@@ -70,13 +80,30 @@
     <string name="stats_recent_trend_title">最近 7 天趋势</string>
     <string name="stats_recent_trend_source">本地账本</string>
     <string name="stats_recent_trend_empty">手机里还没有最近支出，更新后会显示每日变化。</string>
+    <string name="stats_recent_trend_total">7 天合计</string>
+    <string name="stats_recent_trend_average">日均</string>
+    <string name="stats_recent_trend_peak">峰值</string>
+    <string name="stats_recent_trend_peak_day">峰值 %1$s</string>
+    <string name="stats_recent_trend_peak_share">%1$s 占 7 天 %2$d%%</string>
+    <string name="stats_recent_trend_other_days">其余 %1$d 天</string>
+    <string name="stats_recent_trend_other_average">非峰值日均</string>
+    <string name="stats_recent_trend_vs_previous_up">近 3 天比前 3 天多 %1$s</string>
+    <string name="stats_recent_trend_vs_previous_down">近 3 天比前 3 天少 %1$s</string>
+    <string name="stats_recent_trend_vs_previous_flat">近 3 天与前 3 天持平</string>
+    <string name="stats_recent_trend_vs_previous_new">近 3 天开始有支出</string>
     <!-- Per-bar TalkBack description: date + daily amount (the bar height is not readable). -->
     <string name="stats_recent_trend_bar_a11y">%1$s %2$s</string>
+    <string name="stats_chart_window_label">%1$s-%2$s</string>
+    <string name="stats_chart_distribution_remaining">其余 %1$d 天</string>
     <string name="stats_recent_upload_title">最近上传</string>
     <string name="stats_recent_upload_empty">还没有上传记录</string>
     <string name="stats_recent_upload_hint">用于确认手机端和电脑端最近一次上传状态。</string>
 
-    <!-- LifestyleCard / FrequentMerchantsCard：生活统计 + 高频商家 -->
+    <!-- LifestyleCard：生活画像 + 高频商家 + 真香/后悔 -->
+    <string name="stats_lifestyle_module_title">生活画像</string>
+    <string name="stats_lifestyle_header_frequent">常去 %1$s · %2$d 笔</string>
+    <string name="stats_lifestyle_header_merchant_spread">商家分散 · %1$d 个商家</string>
+    <string name="stats_lifestyle_header_largest">最大一笔 %1$s · %2$s</string>
     <string name="stats_lifestyle_title">生活统计</string>
     <string name="stats_lifestyle_ai_subscription">AI 订阅</string>
     <string name="stats_lifestyle_digital">数码消费</string>
@@ -99,8 +126,16 @@
     <string name="stats_pending_overview_hint">去待确认页处理，整理后这里会清零。</string>
 
     <!-- ReportsInsightCards：动态图表 + 月度目标 -->
-    <string name="stats_reports_chart_title">动态图表</string>
+    <string name="stats_reports_chart_title">本月支出趋势</string>
     <string name="stats_reports_chart_subtitle">%1$s · 服务端聚合 · %2$d 笔</string>
+    <string name="stats_reports_chart_peak">峰值 %1$s</string>
+    <string name="stats_reports_chart_distribution_hint">峰值占 %1$d%%，非峰值日均 %2$s</string>
+    <string name="stats_reports_chart_active_days">有支出</string>
+    <string name="stats_reports_chart_active_days_value">%1$d 天</string>
+    <string name="stats_reports_chart_peak_share_label">峰值占比</string>
+    <string name="stats_reports_chart_peak_share_value">%1$d%%</string>
+    <string name="stats_reports_chart_other_average_label">非峰值日均</string>
+    <string name="stats_reports_chart_other_total">其余 %1$d 天</string>
     <!-- 轴3 粒度切换（日/周两档；单月报表内「月」只有一桶无图可画，刻意不给）。 -->
     <string name="stats_reports_granularity_day">按日</string>
     <string name="stats_reports_granularity_week">按周</string>
@@ -109,8 +144,14 @@
     <string name="stats_reports_legend_previous_month">上月</string>
     <string name="stats_reports_legend_year_over_year_month">去年同月</string>
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
-    <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，数据还太少；多记几笔后这里会显示每日支出柱状趋势。</string>
-    <!-- WCAG 1.1.1 图表文本替代（screen reader / TalkBack 用）：Vico 柱图是不透明画布，给图表节点
+    <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，先显示发生支出的日期和金额；数据多起来后会按时间段汇总。</string>
+    <string name="stats_reports_recent_window_title">最近 7 天</string>
+    <string name="stats_reports_recent_window_source">本机缓存</string>
+    <string name="stats_reports_recent_window_peak_share">%1$s 占 7 天 %2$d%%，其余日均 %3$s</string>
+    <string name="stats_reports_recent_window_active_days">有支出</string>
+    <string name="stats_reports_recent_window_active_days_value">%1$d 天</string>
+    <string name="stats_reports_recent_window_peak">峰值 %1$s</string>
+    <!-- WCAG 1.1.1 图表文本替代（screen reader / TalkBack 用）：自绘柱图仍是图形节点，给图表节点
          补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y 去年同月Z」逐档拼接；
          _with_zeros 变体把零额档汇总成「其余 N 档无支出」，避免日粒度下逐日朗读 ¥0.00。 -->
     <string name="stats_reports_chart_a11y">支出趋势，各档金额：%1$s</string>
@@ -125,12 +166,27 @@
     <string name="stats_reports_category_yoy_more">同比多 %1$s</string>
     <string name="stats_reports_category_yoy_less">同比少 %1$s</string>
     <string name="stats_reports_category_yoy_flat">同比持平</string>
+    <string name="stats_reports_category_comparison_values">上月 %1$s · 去年同月 %2$s</string>
     <string name="stats_reports_bar_count">%1$d 笔</string>
     <string name="stats_reports_goals_title">月度目标</string>
     <string name="stats_reports_goals_empty">本月还没有目标。</string>
+    <string name="stats_reports_goals_empty_hint">目标启用后，这里会保留进度和风险节奏。</string>
+    <string name="stats_reports_goals_count">本月 %1$d 个启用目标</string>
+    <string name="stats_reports_goals_attention">%1$d 个要看</string>
+    <string name="stats_reports_goals_stable">节奏稳定</string>
+    <string name="stats_reports_goals_average_label">整体进度</string>
+    <string name="stats_reports_goals_progress_a11y">本月 %1$d 个目标，整体进度 %2$d%%</string>
     <string name="stats_reports_goal_total">总支出</string>
     <string name="stats_reports_goal_progress">%1$s · 已花 %2$s · 剩 %3$s</string>
+    <string name="stats_reports_goal_debt_progress">已结清 %1$d/%2$d 笔</string>
+    <string name="stats_reports_goal_meta_line">%1$s · %2$s</string>
+    <string name="stats_reports_goal_status_over">已超限</string>
+    <string name="stats_reports_goal_status_near">接近上限</string>
+    <string name="stats_reports_goal_status_on_track">正常</string>
+    <string name="stats_reports_goal_status_idle">未开始</string>
+    <string name="stats_reports_goal_status_archived">已归档</string>
     <string name="stats_reports_goal_percent">%1$d%%</string>
+    <string name="stats_reports_goal_progress_a11y">%1$s，进度 %2$d%%</string>
 
     <!-- ADR-0049 §6 (slice 7) 还债目标：还债目标列表/详情 + §6/F13 完整性复核 -->
     <string name="debt_goal_topbar_back">返回</string>
@@ -556,7 +612,7 @@
     <string name="stats_pending_metric_missing_amount">缺金额</string>
     <string name="stats_pending_metric_missing_merchant">缺商家</string>
     <string name="stats_pending_metric_missing_category">未分类</string>
-    <string name="stats_pending_metric_duplicates">重复</string>
+    <string name="stats_pending_metric_duplicates">疑似重复</string>
 
     <!-- 固定支出状态 / 置信度 chip 标签（统计屏摘要卡 + 固定支出独立屏共用） -->
     <string name="recurring_status_active">活跃</string>

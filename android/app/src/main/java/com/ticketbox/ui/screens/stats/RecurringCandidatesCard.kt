@@ -23,7 +23,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -35,9 +34,8 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
     if (candidates.isEmpty()) return
     val currencyDisplay = LocalCurrencyDisplay.current
     val visuals = LocalThemeVisuals.current
-    AppGlassCard(containerAlpha = 0.94f) {
+    StatsInsightSurface {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
@@ -76,9 +74,8 @@ internal fun RecurringItemsSummaryCard(items: List<RecurringItem>) {
     if (items.isEmpty()) return
     val currencyDisplay = LocalCurrencyDisplay.current
     val visuals = LocalThemeVisuals.current
-    AppGlassCard(containerAlpha = 0.94f) {
+    StatsInsightSurface {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(

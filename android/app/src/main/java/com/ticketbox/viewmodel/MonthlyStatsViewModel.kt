@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 
 private data class MonthlyStatsRefreshSnapshot(
     val generation: Long,
@@ -112,7 +114,7 @@ class MonthlyStatsViewModel(
             repository.observeConfirmed().collect { expenses ->
                 confirmedCache = expenses
                 _uiState.update {
-                    val visibleExpenses = filterConfirmedExpenses(
+                    val tagFilteredExpenses = filterConfirmedExpenses(
                         expenses = expenses,
                         month = "",
                         category = "",
@@ -128,8 +130,8 @@ class MonthlyStatsViewModel(
                     it.copy(
                         stats = visibleStats,
                         statsSource = nextSource,
-                        dailyTrend = recentDailySpending(visibleExpenses),
-                        monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
+                        dailyTrend = localDailyTrend(expenses, it.month, it.selectedTag),
+                        monthComparison = monthlySpendingComparison(tagFilteredExpenses, it.month),
                         categoryInsight = monthlyCategoryInsight(visibleStats),
                     )
                 }
@@ -139,7 +141,7 @@ class MonthlyStatsViewModel(
 
     fun setMonth(value: String) {
         _uiState.update {
-            val visibleExpenses = filterConfirmedExpenses(
+            val tagFilteredExpenses = filterConfirmedExpenses(
                 expenses = confirmedCache,
                 month = "",
                 category = "",
@@ -150,8 +152,8 @@ class MonthlyStatsViewModel(
                 month = value,
                 stats = localStats,
                 statsSource = if (localStats != null) StatsSource.LocalFallback else StatsSource.None,
-                dailyTrend = recentDailySpending(visibleExpenses),
-                monthComparison = monthlySpendingComparison(visibleExpenses, value),
+                dailyTrend = localDailyTrend(confirmedCache, value, it.selectedTag),
+                monthComparison = monthlySpendingComparison(tagFilteredExpenses, value),
                 categoryInsight = monthlyCategoryInsight(localStats),
             )
         }
@@ -161,7 +163,7 @@ class MonthlyStatsViewModel(
     fun setTag(value: String) {
         val cleanTag = value.trim()
         _uiState.update {
-            val visibleExpenses = filterConfirmedExpenses(
+            val tagFilteredExpenses = filterConfirmedExpenses(
                 expenses = confirmedCache,
                 month = "",
                 category = "",
@@ -171,8 +173,8 @@ class MonthlyStatsViewModel(
             it.copy(
                 selectedTag = cleanTag,
                 stats = localStats,
-                dailyTrend = recentDailySpending(visibleExpenses),
-                monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
+                dailyTrend = localDailyTrend(confirmedCache, it.month, cleanTag),
+                monthComparison = monthlySpendingComparison(tagFilteredExpenses, it.month),
                 categoryInsight = monthlyCategoryInsight(localStats),
             )
         }
@@ -330,5 +332,31 @@ class MonthlyStatsViewModel(
             ledgerId == activeLedgerId &&
             month == state.month &&
             selectedTag == state.selectedTag.trim()
+    }
+
+    private fun localDailyTrend(
+        expenses: List<Expense>,
+        month: String,
+        selectedTag: String,
+    ) = recentDailySpending(
+        expenses = filterConfirmedExpenses(
+            expenses = expenses,
+            month = month,
+            category = "",
+            tag = selectedTag,
+        ),
+        referenceDate = localTrendReferenceDate(month),
+    )
+
+    private fun localTrendReferenceDate(month: String): LocalDate {
+        val zoneId = ZoneId.systemDefault()
+        val today = LocalDate.now(zoneId)
+        val selectedMonth = runCatching { YearMonth.parse(month.trim()) }.getOrNull()
+            ?: return today
+        return if (selectedMonth == YearMonth.from(today)) {
+            today
+        } else {
+            selectedMonth.atEndOfMonth()
+        }
     }
 }

@@ -1,12 +1,15 @@
 package com.ticketbox.ui.screens.stats
 
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportTrendPoint
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ReportsInsightCardsTest {
+    private val currencyDisplay = CurrencyDisplay.Base
+
     @Test
     fun trendChartPointsKeepServerOrderAndClampInvalidValues() {
         val points = reportTrendChartPoints(
@@ -84,15 +87,20 @@ class ReportsInsightCardsTest {
 
     @Test
     fun trendA11yListsOnlyNonZeroBucketsJoinedByFullwidthComma() {
-        // WCAG 1.1.1 文本替代:只朗读有支出的档,「，」相接;金额走 formatAmount 与可见行一致。
+        // WCAG 1.1.1 文本替代:只朗读有支出的档,「，」相接;金额走显示币种,与可见行一致。
         val a11y = trendChartA11y(
             listOf(
                 ReportTrendChartPoint(x = 0, label = "05-01", amountCents = 1_250L, count = 1),
                 ReportTrendChartPoint(x = 1, label = "05-02", amountCents = 0L, count = 0),
                 ReportTrendChartPoint(x = 2, label = "05-03", amountCents = 800L, count = 1),
             ),
+            currencyDisplay = currencyDisplay,
         )
-        assertEquals("05-01 ${formatAmount(1_250L)}，05-03 ${formatAmount(800L)}", a11y.listed)
+        assertEquals(
+            "05-01 ${formatDisplayAmount(1_250L, currencyDisplay)}，" +
+                "05-03 ${formatDisplayAmount(800L, currencyDisplay)}",
+            a11y.listed,
+        )
     }
 
     @Test
@@ -105,6 +113,7 @@ class ReportsInsightCardsTest {
                 ReportTrendChartPoint(x = 2, label = "05-03", amountCents = 0L, count = 0),
                 ReportTrendChartPoint(x = 3, label = "05-04", amountCents = 800L, count = 1),
             ),
+            currencyDisplay = currencyDisplay,
         )
         assertEquals(2, a11y.zeroBuckets)
     }
@@ -119,10 +128,15 @@ class ReportsInsightCardsTest {
             currentMonthLabel = "本月",
             previousMonthLabel = "上月",
             yearOverYearLabel = "去年同月",
+            currencyDisplay = currencyDisplay,
         )
         assertEquals(
-            "餐饮 本月 ${formatAmount(1_200L)} 上月 ${formatAmount(900L)} 去年同月 ${formatAmount(1_000L)}；" +
-                "交通 本月 ${formatAmount(0L)} 上月 ${formatAmount(800L)} 去年同月 ${formatAmount(0L)}",
+            "餐饮 本月 ${formatDisplayAmount(1_200L, currencyDisplay)} " +
+                "上月 ${formatDisplayAmount(900L, currencyDisplay)} " +
+                "去年同月 ${formatDisplayAmount(1_000L, currencyDisplay)}；" +
+                "交通 本月 ${formatDisplayAmount(0L, currencyDisplay)} " +
+                "上月 ${formatDisplayAmount(800L, currencyDisplay)} " +
+                "去年同月 ${formatDisplayAmount(0L, currencyDisplay)}",
             body,
         )
     }

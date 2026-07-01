@@ -1,12 +1,20 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
@@ -14,22 +22,26 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
@@ -46,19 +58,14 @@ import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
 import com.ticketbox.ui.components.AppErrorState
-import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.CardSkeleton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSegmentedControl
-import com.ticketbox.ui.components.AppSegmentedItem
-import com.ticketbox.ui.components.CountBadge
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.screens.stats.CategoryStructureCard
 import com.ticketbox.ui.screens.stats.EmptyStatsCard
-import com.ticketbox.ui.screens.stats.FrequentMerchantsCard
 import com.ticketbox.ui.screens.stats.LifestyleCard
 import com.ticketbox.ui.screens.stats.PendingOverviewCard
 import com.ticketbox.ui.screens.stats.RecentTrendCard
@@ -69,10 +76,13 @@ import com.ticketbox.ui.screens.stats.GoalsSummaryCard
 import com.ticketbox.ui.screens.stats.ReportsInsightCard
 import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
-import com.ticketbox.ui.screens.stats.TagStatsCard
-import com.ticketbox.ui.screens.stats.ValueRegretRankingsCard
+import com.ticketbox.ui.screens.stats.StatsOverviewTrendData
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalStatsTokens
+import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
 
@@ -88,12 +98,6 @@ fun StatsScreen(
     onOpenIncomePlans: () -> Unit = {},
     // ADR-0049 §6 (slice 7): 还债目标二级页。默认 no-op 保旧调用方/预览。
     onOpenDebtGoals: () -> Unit = {},
-    // ADR-0049 §2 (slice 8): 债务管理(欠款列表)二级页。默认 no-op 保旧调用方/预览。
-    onOpenDebts: () -> Unit = {},
-    // ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面二级页。默认 no-op 保旧调用方/预览。
-    onOpenReceivables: () -> Unit = {},
-    // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱二级页。默认 no-op 保旧调用方/预览。
-    onOpenRepaymentDrafts: () -> Unit = {},
     // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
     onDrillToLedger: (String) -> Unit = {},
     // 轴3 粒度切换:动态图表卡的日/周档切换,交给 StatsReportsViewModel 重拉。
@@ -138,9 +142,6 @@ fun StatsScreen(
                 onOpenRecurring = onOpenRecurring,
                 onOpenIncomePlans = onOpenIncomePlans,
                 onOpenDebtGoals = onOpenDebtGoals,
-                onOpenDebts = onOpenDebts,
-                onOpenReceivables = onOpenReceivables,
-                onOpenRepaymentDrafts = onOpenRepaymentDrafts,
             )
         }
         state.message?.let {
@@ -178,6 +179,9 @@ fun StatsScreen(
         }
         val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
         val visibleTags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
+        val recentUploadMergedIntoOverview = selectedStatsTab == StatsTab.Overview &&
+            DASHBOARD_CARD_MONTHLY_SPEND in selectedDashboardKeys &&
+            DASHBOARD_CARD_RECENT_UPLOADS in selectedDashboardKeys
         var renderedCard = false
 
         selectedDashboardKeys.forEach { key ->
@@ -188,14 +192,21 @@ fun StatsScreen(
                         StatsOverviewCard(
                             stats = stats,
                             statsSource = state.statsSource,
-                            recent7DaysAmountCents = if (state.selectedTag.isBlank()) {
-                                state.lifestyleStats?.recent7DaysAmountCents
-                                    ?: state.dailyTrend.sumOf { it.amountCents }
-                            } else {
-                                state.dailyTrend.sumOf { it.amountCents }
-                            },
+                            recent7DaysAmountCents = overviewRecent7DaysAmount(state),
                             comparison = state.monthComparison,
-                            dailyTrend = state.dailyTrend,
+                            trendData = StatsOverviewTrendData(
+                                dailyTrend = if (
+                                    state.statsSource == StatsSource.LocalFallback &&
+                                    state.reportsOverview == null
+                                ) {
+                                    state.dailyTrend
+                                } else {
+                                    emptyList()
+                                },
+                                reportTrend = state.reportsOverview?.trend.orEmpty(),
+                                includeRecentUpload = recentUploadMergedIntoOverview,
+                                lastUploadAt = state.lastUploadAt,
+                            ),
                         )
                     }
                 }
@@ -226,32 +237,29 @@ fun StatsScreen(
                             item {
                                 CategoryStructureCard(
                                     categories = visibleCategories,
-                                    totalAmountCents = stats.totalAmountCents,
-                                    insight = state.categoryInsight,
-                                    onCategoryClick = onDrillToLedger,
-                                )
-                            }
-                        }
-                        if (visibleTags.isNotEmpty()) {
-                            item {
-                                TagStatsCard(
                                     tags = visibleTags,
                                     totalAmountCents = stats.totalAmountCents,
+                                    onCategoryClick = onDrillToLedger,
                                 )
                             }
                         }
                     }
                     if (selectedStatsTab == StatsTab.Trend) {
-                        item { RecentTrendCard(state.dailyTrend) }
                         if (state.selectedTag.isBlank()) {
-                            state.reportsOverview?.let { overview ->
+                            val overview = state.reportsOverview
+                            if (overview != null) {
                                 item {
                                     ReportsInsightCard(
                                         overview = overview,
+                                        recentTrend = state.dailyTrend,
                                         onGranularityChange = onGranularityChange,
                                     )
                                 }
+                            } else {
+                                item { RecentTrendCard(state.dailyTrend) }
                             }
+                        } else {
+                            item { RecentTrendCard(state.dailyTrend) }
                         }
                     }
                 }
@@ -282,24 +290,13 @@ fun StatsScreen(
                 }
 
                 DASHBOARD_CARD_RECENT_UPLOADS -> {
-                    renderedCard = true
-                    item { RecentUploadCard(state.lastUploadAt) }
+                    if (!recentUploadMergedIntoOverview) {
+                        renderedCard = true
+                        item { RecentUploadCard(state.lastUploadAt) }
+                    }
                     state.lifestyleStats?.let { lifestyle ->
+                        renderedCard = true
                         item { LifestyleCard(lifestyle) }
-                        if (
-                            lifestyle.bestValueExpenses.isNotEmpty() ||
-                            lifestyle.mostRegrettedExpenses.isNotEmpty()
-                        ) {
-                            item {
-                                ValueRegretRankingsCard(
-                                    bestValueExpenses = lifestyle.bestValueExpenses,
-                                    mostRegrettedExpenses = lifestyle.mostRegrettedExpenses,
-                                )
-                            }
-                        }
-                        if (lifestyle.frequentMerchants.isNotEmpty()) {
-                            item { FrequentMerchantsCard(lifestyle.frequentMerchants) }
-                        }
                     }
                 }
             }
@@ -328,26 +325,16 @@ private fun StatsTopPanel(
     onOpenRecurring: () -> Unit,
     onOpenIncomePlans: () -> Unit,
     onOpenDebtGoals: () -> Unit,
-    onOpenDebts: () -> Unit,
-    onOpenReceivables: () -> Unit,
-    onOpenRepaymentDrafts: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         AppPageHeader(
             title = stringResource(R.string.stats_header_title),
             action = {
                 StatsPlanningMenu(
-                    actions = StatsPlanningActions(
-                        onOpenBudget = onOpenBudget,
-                        onOpenRecurring = onOpenRecurring,
-                        onOpenIncomePlans = onOpenIncomePlans,
-                        onOpenDebtGoals = onOpenDebtGoals,
-                        onOpenDebts = onOpenDebts,
-                        onOpenReceivables = onOpenReceivables,
-                        onOpenRepaymentDrafts = onOpenRepaymentDrafts,
-                    ),
-                    // 轨道2 [P1]：「还款待确认」项的 pending 还款草稿数 badge（账本作用域，>0 才显）。
-                    repaymentDraftBadgeCount = state.pendingRepaymentDraftCount,
+                    onOpenBudget = onOpenBudget,
+                    onOpenRecurring = onOpenRecurring,
+                    onOpenIncomePlans = onOpenIncomePlans,
+                    onOpenDebtGoals = onOpenDebtGoals,
                 )
             },
         )
@@ -365,95 +352,91 @@ private fun StatsTopPanel(
     }
 }
 
-/**
- * 「管理」下拉菜单：分两节呈现六个二级页入口（ADR-0049 轨道2）——
- * 债务节{欠款 / 还款待确认}（操作向）在前，规划节{预算 / 固定支出 / 收入计划 / 还债目标}在后。
- * 节标题为非点击 label 行，两节间 HorizontalDivider 分隔；触发钮为中性「管理」（菜单已跨债务+规划）。
- * copy 一律中性操作向，禁催收/收账（一个 label 路由到分角色的两条卡，中性才对两条路径都安全）。
- */
-private data class StatsPlanningActions(
-    val onOpenBudget: () -> Unit,
-    val onOpenRecurring: () -> Unit,
-    val onOpenIncomePlans: () -> Unit,
-    val onOpenDebtGoals: () -> Unit,
-    val onOpenDebts: () -> Unit,
-    val onOpenReceivables: () -> Unit,
-    val onOpenRepaymentDrafts: () -> Unit,
-)
-
-/** 下拉菜单内的非点击节标题行（与 DropdownMenuItem 默认 12dp 横向 padding 对齐）。 */
 @Composable
-private fun StatsMenuSectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap)
-            .semantics { heading() },
-    )
-}
-
-@Composable
-private fun StatsPlanningMenu(actions: StatsPlanningActions, repaymentDraftBadgeCount: Int) {
+private fun StatsPlanningMenu(
+    onOpenBudget: () -> Unit,
+    onOpenRecurring: () -> Unit,
+    onOpenIncomePlans: () -> Unit,
+    onOpenDebtGoals: () -> Unit,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { menuOpen = true }) {
-            Text(
-                text = stringResource(R.string.stats_header_menu),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null)
-        }
+        StatsPlanningMenuTrigger(
+            expanded = menuOpen,
+            onOpen = { menuOpen = true },
+        )
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            StatsMenuSectionLabel(stringResource(R.string.stats_header_section_debt))
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_debts)) },
-                onClick = { menuOpen = false; actions.onOpenDebts() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_receivables)) },
-                onClick = { menuOpen = false; actions.onOpenReceivables() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_repayment_drafts)) },
-                // pending 还款草稿数 badge（>0 才显，镜像 /web nav-badge 的 `{% if pending_count %}`）。
-                trailingIcon = if (repaymentDraftBadgeCount > 0) {
-                    {
-                        CountBadge(
-                            count = repaymentDraftBadgeCount,
-                            contentDescription = stringResource(
-                                R.string.stats_header_repayment_drafts_badge_description,
-                                repaymentDraftBadgeCount,
-                            ),
-                        )
-                    }
-                } else {
-                    null
-                },
-                onClick = { menuOpen = false; actions.onOpenRepaymentDrafts() },
-            )
-            HorizontalDivider()
-            StatsMenuSectionLabel(stringResource(R.string.stats_header_planning))
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_budget)) },
-                onClick = { menuOpen = false; actions.onOpenBudget() },
+                onClick = { menuOpen = false; onOpenBudget() },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_recurring)) },
-                onClick = { menuOpen = false; actions.onOpenRecurring() },
+                onClick = { menuOpen = false; onOpenRecurring() },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
-                onClick = { menuOpen = false; actions.onOpenIncomePlans() },
+                onClick = { menuOpen = false; onOpenIncomePlans() },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
-                onClick = { menuOpen = false; actions.onOpenDebtGoals() },
+                onClick = { menuOpen = false; onOpenDebtGoals() },
             )
         }
+    }
+}
+
+@Composable
+private fun StatsPlanningMenuTrigger(
+    expanded: Boolean,
+    onOpen: () -> Unit,
+) {
+    val visuals = LocalThemeVisuals.current
+    val controlTokens = LocalStatsTokens.current.control
+    val menuDescription = stringResource(R.string.stats_header_menu_planning_description)
+    val menuStateDescription = stringResource(
+        if (expanded) {
+            R.string.stats_header_menu_planning_expanded
+        } else {
+            R.string.stats_header_menu_planning_collapsed
+        },
+    )
+    Row(
+        modifier = Modifier
+            .clearAndSetSemantics {
+                contentDescription = menuDescription
+                stateDescription = menuStateDescription
+                role = Role.Button
+                onClick(action = {
+                    onOpen()
+                    true
+                })
+            }
+            .height(controlTokens.height)
+            .widthIn(min = 48.dp)
+            .clip(RoundedCornerShape(AppRadius.pill))
+            .background(visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha),
+                shape = RoundedCornerShape(AppRadius.pill),
+            )
+            .clickable(role = Role.Button, onClick = onOpen)
+            .padding(horizontal = controlTokens.horizontalPadding),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.stats_header_menu_planning),
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Icon(
+            imageVector = Icons.Default.ArrowDropDown,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -464,17 +447,16 @@ private fun StatsTabRow(
     visibleDashboardKeys: List<String>,
     onTabChange: (StatsTab) -> Unit,
 ) {
-    AppSegmentedControl(
-        options = StatsTab.entries.map { tab ->
-            AppSegmentedItem(
-                value = tab,
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+        items(StatsTab.entries, key = { it.name }) { tab ->
+            StatsSelectablePill(
                 label = statsTabLabel(tab, dashboardCards),
+                selected = selectedTab == tab,
                 enabled = statsDashboardKeysForTab(tab, visibleDashboardKeys).isNotEmpty(),
+                onClick = { onTabChange(tab) },
             )
-        },
-        selectedValue = selectedTab,
-        onValueChange = onTabChange,
-    )
+        }
+    }
 }
 
 @Composable
@@ -507,6 +489,13 @@ private fun orderedStatsDashboardKeys(keys: List<String>): List<String> {
     return preferredOrder.filter { it in keys } + keys.filter { it !in preferredOrder }
 }
 
+private fun overviewRecent7DaysAmount(state: StatsUiState): Long {
+    if (state.statsSource == StatsSource.LocalFallback) {
+        return state.dailyTrend.sumOf { it.amountCents.coerceAtLeast(0L) }
+    }
+    return state.lifestyleStats?.recent7DaysAmountCents ?: 0L
+}
+
 @Composable
 private fun StatsFilterRow(
     state: StatsUiState,
@@ -527,7 +516,7 @@ private fun StatsFilterRow(
         .take(12)
     LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
         item {
-            AppFilterChip(
+            StatsSelectablePill(
                 selected = true,
                 onClick = onOpenMonthPicker,
                 label = state.month.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
@@ -536,7 +525,7 @@ private fun StatsFilterRow(
             )
         }
         item {
-            AppFilterChip(
+            StatsSelectablePill(
                 selected = state.selectedTag.isBlank(),
                 onClick = { onTagChange("") },
                 label = stringResource(R.string.stats_filter_all_tags),
@@ -544,7 +533,7 @@ private fun StatsFilterRow(
         }
         items(tags, key = { it }) { tag ->
             val selected = state.selectedTag.equals(tag, ignoreCase = true)
-            AppFilterChip(
+            StatsSelectablePill(
                 selected = selected,
                 onClick = { onTagChange(if (selected) "" else tag) },
                 label = "#$tag",
@@ -555,6 +544,58 @@ private fun StatsFilterRow(
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun StatsSelectablePill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    trailingIcon: (@Composable () -> Unit)? = null,
+) {
+    val visuals = LocalThemeVisuals.current
+    val controlTokens = LocalStatsTokens.current.control
+    val shape = RoundedCornerShape(AppRadius.pill)
+    val labelColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier
+            .height(controlTokens.height)
+            .clip(shape)
+            .background(
+                if (selected) {
+                    visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha)
+                } else {
+                    MaterialTheme.colorScheme.surface.copy(alpha = controlTokens.unselectedAlpha)
+                },
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = controlTokens.borderAlpha)
+                },
+                shape = shape,
+            )
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = controlTokens.horizontalPadding),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = labelColor,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+        )
+        trailingIcon?.invoke()
     }
 }
 

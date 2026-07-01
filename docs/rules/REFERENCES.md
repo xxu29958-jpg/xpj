@@ -112,6 +112,3 @@
 - Retrofit metadata：https://repo1.maven.org/maven2/com/squareup/retrofit2/retrofit/maven-metadata.xml
 - OkHttp metadata：https://repo1.maven.org/maven2/com/squareup/okhttp3/okhttp/maven-metadata.xml
 - AndroidX DataStore preferences metadata：https://dl.google.com/dl/android/maven2/androidx/datastore/datastore-preferences/maven-metadata.xml
-- Vico 官方文档：https://github.com/patrykandpatrick/vico/tree/master/guide/v3.x.x
-- Vico Compose Material 3 Maven metadata：https://repo1.maven.org/maven2/com/patrykandpatrick/vico/compose-m3/maven-metadata.xml
-- Vico Compose Material 3 3.1.0 POM：https://repo1.maven.org/maven2/com/patrykandpatrick/vico/compose-m3/3.1.0/compose-m3-3.1.0.pom

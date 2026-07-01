@@ -47,6 +47,7 @@ import com.ticketbox.ui.design.LocalDashboardCardTokens
 import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.LocalSkeletonTokens
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.ui.design.LocalStatsTokens
 import com.ticketbox.ui.design.LocalSwipeActionTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.SkeletonTokens
@@ -56,6 +57,7 @@ import com.ticketbox.ui.design.chartTokensForSkin
 import com.ticketbox.ui.design.dashboardCardTokensForSkin
 import com.ticketbox.ui.design.goalTokensForSkin
 import com.ticketbox.ui.design.skeletonTokensForSkin
+import com.ticketbox.ui.design.statsTokensForSkin
 import com.ticketbox.ui.design.stateTokensForSkin
 import com.ticketbox.ui.design.swipeActionTokensForSkin
 import com.ticketbox.ui.design.themeVisualsForSkin
@@ -211,6 +213,7 @@ fun TicketboxTheme(
                 LocalChartTokens provides chartTokensForSkin(skin),
                 LocalGoalTokens provides goalTokensForSkin(skin),
                 LocalDashboardCardTokens provides dashboardCardTokensForSkin(skin),
+                LocalStatsTokens provides statsTokensForSkin(skin),
                 LocalSkeletonTokens provides skeletonTokens,
                 LocalShimmerTheme provides shimmerThemeFor(skeletonTokens),
                 LocalSwipeActionTokens provides swipeActionTokensForSkin(skin),

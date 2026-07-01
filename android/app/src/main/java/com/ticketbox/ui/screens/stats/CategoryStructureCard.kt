@@ -9,30 +9,33 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.domain.model.TagStats
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -42,22 +45,37 @@ import com.ticketbox.ui.design.tabularNum
 @Composable
 internal fun CategoryStructureCard(
     categories: List<CategoryStats>,
+    tags: List<TagStats>,
     totalAmountCents: Long,
-    insight: CategoryInsight?,
-    // §三报表钻取:分类行点击 → 账本带筛选打开。null=行不可点(预览/无宿主场景原样)。
     onCategoryClick: ((String) -> Unit)? = null,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val topCategories = categories.sortedByDescending { it.amountCents }.take(5)
+    val visuals = LocalThemeVisuals.current
+    val sortedCategories = remember(categories) {
+        categories
+            .filter { it.amountCents > 0L && it.count > 0 }
+            .sortedByDescending { it.amountCents }
+    }
+    val visibleTags = remember(tags) {
+        tags
+            .filter { it.amountCents > 0L && it.count > 0 }
+            .sortedByDescending { it.amountCents }
+            .take(6)
+    }
+    val topCategories = remember(sortedCategories) { sortedCategories.take(5) }
     val topCategory = topCategories.firstOrNull()
-    AppGlassCard(containerAlpha = 0.96f) {
+    val categoryCount = sortedCategories.size
+    val topShareLabel = topCategory?.let { categoryShareLabel(it.amountCents, totalAmountCents) }
+    val otherCount = (categoryCount - 1).coerceAtLeast(0)
+    val otherAmountCents = remember(sortedCategories) { sortedCategories.drop(1).sumOf { it.amountCents } }
+
+    StatsInsightSurface {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CategoryDonut(
@@ -66,7 +84,7 @@ internal fun CategoryStructureCard(
                 )
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
                 ) {
                     Text(
                         stringResource(R.string.stats_category_structure_title),
@@ -86,14 +104,14 @@ internal fun CategoryStructureCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (insight != null) {
+                        text = if (topShareLabel != null) {
                             stringResource(
                                 R.string.stats_category_structure_insight,
-                                insight.topSharePercent,
-                                insight.categoryCount,
+                                topShareLabel,
+                                categoryCount,
                             )
                         } else {
-                            stringResource(R.string.stats_category_structure_count, categories.size)
+                            stringResource(R.string.stats_category_structure_count, categoryCount)
                         },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
@@ -102,7 +120,20 @@ internal fun CategoryStructureCard(
                     )
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (topCategory != null && otherCount > 0 && otherAmountCents > 0L) {
+                Text(
+                    text = stringResource(
+                        R.string.stats_category_structure_remainder,
+                        otherCount,
+                        formatDisplayAmount(otherAmountCents, currencyDisplay),
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 topCategories.forEachIndexed { index, category ->
                     CategoryStructureBarRow(
                         category = category,
@@ -113,11 +144,12 @@ internal fun CategoryStructureCard(
                     )
                 }
             }
-            if (onCategoryClick != null) {
-                Text(
-                    text = stringResource(R.string.stats_category_structure_drill_hint),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
+            if (visibleTags.isNotEmpty()) {
+                HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
+                TagDistributionSection(
+                    tags = visibleTags,
+                    totalAmountCents = totalAmountCents,
+                    currencyDisplay = currencyDisplay,
                 )
             }
         }
@@ -133,11 +165,7 @@ private fun CategoryStructureBarRow(
     onClick: (() -> Unit)? = null,
 ) {
     val colors = statsCategoryColors()
-    val percent = if (totalAmountCents > 0L) {
-        (category.amountCents * 100 / totalAmountCents).toInt()
-    } else {
-        0
-    }
+    val percentLabel = categoryShareLabel(category.amountCents, totalAmountCents)
     val progress = if (totalAmountCents > 0L) {
         (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -145,17 +173,17 @@ private fun CategoryStructureBarRow(
     }
     Column(
         modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(10.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .size(AppSpacing.contentGap)
+                    .clip(RoundedCornerShape(AppRadius.pill))
                     .background(colors[index % colors.size]),
             )
             Text(
@@ -173,8 +201,8 @@ private fun CategoryStructureBarRow(
                 fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
-                text = stringResource(R.string.stats_category_structure_percent, percent),
-                modifier = Modifier.width(38.dp),
+                text = percentLabel,
+                modifier = Modifier.width(44.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -182,15 +210,15 @@ private fun CategoryStructureBarRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(7.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)),
+                .height(AppSpacing.smallGap)
+                .clip(RoundedCornerShape(AppRadius.pill))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.faint)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(progress)
-                    .height(7.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .height(AppSpacing.smallGap)
+                    .clip(RoundedCornerShape(AppRadius.pill))
                     .background(colors[index % colors.size]),
             )
         }
@@ -205,8 +233,6 @@ private fun CategoryDonut(
     val colors = statsCategoryColors()
     val emptyTrack = LocalChartTokens.current.empty
     Canvas(
-        // 装饰性:环形占比与右侧标题 + 下方各分类条(名称/金额/百分比)信息完全重复,
-        // 显式清空语义让 TalkBack 跳过这张图,避免重复播报。
         modifier = Modifier
             .size(92.dp)
             .clearAndSetSemantics {},
@@ -222,6 +248,13 @@ private fun CategoryDonut(
             )
             return@Canvas
         }
+        drawArc(
+            color = emptyTrack.copy(alpha = 0.34f),
+            startAngle = -90f,
+            sweepAngle = 360f,
+            useCenter = false,
+            style = stroke,
+        )
         var startAngle = -90f
         categories.forEachIndexed { index, category ->
             val sweep = 360f * (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
@@ -234,6 +267,158 @@ private fun CategoryDonut(
             )
             startAngle += sweep
         }
+    }
+}
+
+@Composable
+private fun TagDistributionSection(
+    tags: List<TagStats>,
+    totalAmountCents: Long,
+    currencyDisplay: CurrencyDisplay,
+) {
+    val visuals = LocalThemeVisuals.current
+    val showBars = remember(tags) {
+        val firstAmount = tags.firstOrNull()?.amountCents
+        tags.size > 1 && firstAmount != null && tags.any { it.amountCents != firstAmount }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+            Text(
+                stringResource(R.string.stats_tag_distribution_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+            Text(
+                text = stringResource(R.string.stats_tag_distribution_subtitle),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        tags.forEachIndexed { index, tag ->
+            if (index > 0) {
+                HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.medium))
+            }
+            TagStatsRow(
+                tag = tag,
+                totalAmountCents = totalAmountCents,
+                colorIndex = index,
+                currencyDisplay = currencyDisplay,
+                showBar = showBars,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TagStatsRow(
+    tag: TagStats,
+    totalAmountCents: Long,
+    colorIndex: Int,
+    currencyDisplay: CurrencyDisplay,
+    showBar: Boolean,
+) {
+    val colors = statsCategoryColors()
+    val color = colors[(colorIndex + 1) % colors.size]
+    val progress = if (totalAmountCents > 0L) {
+        (tag.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val percent = if (totalAmountCents > 0L) {
+        (tag.amountCents * 100 / totalAmountCents).toInt().coerceIn(0, 100)
+    } else {
+        0
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        TagStatsContentRow(
+            tag = tag,
+            percent = percent,
+            currencyDisplay = currencyDisplay,
+            color = color,
+        )
+        if (showBar) {
+            TagStatsBar(progress = progress, color = color)
+        }
+    }
+}
+
+@Composable
+private fun TagStatsContentRow(
+    tag: TagStats,
+    percent: Int,
+    currencyDisplay: CurrencyDisplay,
+    color: Color,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(AppSpacing.smallGap)
+                .clip(RoundedCornerShape(AppRadius.pill))
+                .background(color),
+        )
+        Text(
+            text = stringResource(R.string.stats_tag_distribution_row_label, tag.tag),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = formatDisplayAmount(tag.amountCents, currencyDisplay),
+            style = MaterialTheme.typography.labelLarge.tabularNum(),
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = AppTextHierarchy.body.weight,
+        )
+        Text(
+            text = stringResource(R.string.stats_tag_distribution_percent_count, percent, tag.count),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun TagStatsBar(progress: Float, color: Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(AppSpacing.miniGap)
+            .clip(RoundedCornerShape(AppRadius.pill))
+            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.faint)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(progress)
+                .height(AppSpacing.miniGap)
+                .clip(RoundedCornerShape(AppRadius.pill))
+                .background(color),
+        )
+    }
+}
+
+@Composable
+private fun categoryShareLabel(
+    amountCents: Long,
+    totalAmountCents: Long,
+): String {
+    if (amountCents <= 0L || totalAmountCents <= 0L) {
+        return stringResource(R.string.stats_category_structure_percent, 0)
+    }
+    val share = amountCents.toDouble() / totalAmountCents.toDouble() * 100.0
+    return when {
+        share < 1.0 -> stringResource(R.string.stats_category_structure_share_less_than_one)
+        amountCents < totalAmountCents && share > 99.0 -> {
+            stringResource(R.string.stats_category_structure_share_more_than_ninety_nine)
+        }
+        else -> stringResource(R.string.stats_category_structure_percent, share.toInt().coerceIn(1, 100))
     }
 }
 

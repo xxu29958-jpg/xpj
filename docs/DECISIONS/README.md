@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0054（0018 已撤回；0032–0034 未使用，编号跳过）。
+**编号范围**：0001–0055（0018 已撤回；0032–0034 未使用，编号跳过）。
 
 ## 索引
 
@@ -32,7 +32,7 @@
 | [0022](0022-family-ledger-permission-model.md) | 家庭账本权限模型 | owner / member / viewer 三态 + 邀请 token；账户隔离不破 | v0.5 收口见 [CHANGELOG](../current/CHANGELOG.md) |
 | [0023](0023-chart-library-policy.md) | 图表库引入政策 | 阶段化：v0.9 经审计后可引入展示层图表库 | 政策层 → 0025 / 0026 是其落地 |
 | [0024](0024-tri-surface-ui-ux-unification.md) | 三端 UI/UX 美化统一 | 统一设计语言，不强行同屏复刻 | — |
-| [0025](0025-v0.9-android-chart-library-vico.md) | Android 图表库 Vico 3.1.0 | Vico 进 Compose 展示层 | 0023 下落地 |
+| [0025](0025-v0.9-android-chart-library-vico.md) | Android 图表库 Vico 3.1.0 | Vico 进 Compose 展示层；已被 0055 回收 | 0023 下落地，superseded |
 | [0026](0026-v0.9-web-chart-library-echarts.md) | /web 图表库 ECharts 6.0.0 | 自托管 ECharts，禁 CDN | 0023 下落地 |
 | [0027](0027-backend-authoritative-fx.md) | Backend Authoritative FX | 后端唯一汇率权威；ECB 参考；缺率返 pending | — |
 | [0028](0028-public-web-session-gated.md) | Public Web Session-Gated Surface | `/web` 公网仅以后端 web session + Cloudflare allowlist 方式开放，`/owner` 仍 loopback | 公网边界 |
@@ -59,10 +59,11 @@
 | [0052](0052-master-delete-recycle-bin-scope.md) | 主数据删除与回收站边界 | category 先做偏好目录，budget 按月度配置归档，merchant master 等 catalog ADR 后再删 | accepted target contract；[[0013]]/[[0051]] |
 | [0053](0053-merchant-catalog-contract.md) | 商家目录与删除边界 | merchant catalog 是账本级目录行；删除只隐藏/软删目录，不批量改写历史 `Expense.merchant`；merge 另片 | accepted target contract；[[0051]]/[[0052]] |
 | [0054](0054-merchant-catalog-merge-rename.md) | 商家目录合并与重命名契约 | rename 不修历史账单；merge 独立双 token + 显式 alias policy，第一版不迁移 future producer | accepted target contract；[[0038]]/[[0042]]/[[0053]] |
+| [0055](0055-android-chart-native-canvas-tokens.md) | Android 图表回收到原生 Canvas 与设计 token | 删除 Vico 运行时依赖；洞察页趋势图只用单一图表语义和 tokenized Canvas | accepted；supersedes [[0025]] |
 
 ## 编写新 ADR
 
-下一编号 `0055`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0056`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

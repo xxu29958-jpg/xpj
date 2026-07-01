@@ -1,160 +1,289 @@
 package com.ticketbox.ui.screens.stats
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DailySpend
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatAmount
-import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.tabularNum
+import kotlin.math.abs
+
+private const val RecentTrendDominantPeakPercent = 75
 
 @Composable
 internal fun RecentTrendCard(trend: List<DailySpend>) {
-    val maxAmount = trend.maxOfOrNull { it.amountCents } ?: 0L
+    val summary = remember(trend) { recentTrendSummary(trend) }
+    val currencyDisplay = LocalCurrencyDisplay.current
+    val chartA11y = remember(trend, currencyDisplay) {
+        trend.joinToString(separator = "\uFF0C") { "${it.label} ${formatDisplayAmount(it.amountCents, currencyDisplay)}" }
+    }
+    val chartPoints = remember(trend) {
+        trend.map { day -> StatsSpendChartPoint(label = day.label, amountCents = day.amountCents) }
+    }
 
-    AppGlassCard(containerAlpha = 0.92f) {
-        Column(
-            modifier = Modifier.padding(
-                horizontal = AppSpacing.cardPaddingSmall,
-                vertical = AppSpacing.cardPaddingTight,
-            ),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(stringResource(R.string.stats_recent_trend_title), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    text = stringResource(R.string.stats_recent_trend_source),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (trend.isEmpty() || maxAmount == 0L) {
-                Text(
-                    text = stringResource(R.string.stats_recent_trend_empty),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Text(stringResource(R.string.stats_recent_trend_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = stringResource(R.string.stats_recent_trend_source),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (trend.isEmpty() || summary.totalAmountCents == 0L) {
+            Text(
+                text = stringResource(R.string.stats_recent_trend_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            RecentTrendComparison(summary)
+            RecentTrendMetricStrip(summary)
+            if (summary.shouldUseDominanceBreakdown) {
+                RecentTrendDominanceBreakdown(summary = summary)
             } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(92.dp),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                ) {
-                    trend.forEach { day ->
-                        DailyTrendBar(
-                            modifier = Modifier.weight(1f),
-                            day = day,
-                            maxAmount = maxAmount,
-                        )
-                    }
-                }
+                StatsSpendDistributionRows(
+                    points = chartPoints,
+                    spec = StatsSpendDistributionSpec(
+                        maxRows = 7,
+                        sortByAmount = false,
+                        includeZeros = true,
+                        contentDescription = chartA11y,
+                    ),
+                )
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
 @Composable
 internal fun RecentUploadCard(lastUploadAt: String?) {
-    AppGlassCard(containerAlpha = 0.92f) {
-        Column(
-            modifier = Modifier.padding(
-                horizontal = AppSpacing.cardPaddingSmall,
-                vertical = AppSpacing.cardPaddingTight,
-            ),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            Text(
-                stringResource(R.string.stats_recent_upload_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = AppTextHierarchy.heading.weight,
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Text(
+            stringResource(R.string.stats_recent_upload_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(
+            text = lastUploadAt?.let { displayTime(it) } ?: stringResource(R.string.stats_recent_upload_empty),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = stringResource(R.string.stats_recent_upload_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+    }
+}
+
+@Composable
+private fun RecentTrendMetricStrip(summary: RecentTrendSummary) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        RecentTrendMetric(
+            label = stringResource(R.string.stats_recent_trend_total),
+            value = formatDisplayAmount(summary.totalAmountCents, currencyDisplay),
+            modifier = Modifier.weight(1f),
+        )
+        RecentTrendMetric(
+            label = summary.peak?.label?.let {
+                stringResource(R.string.stats_recent_trend_peak_day, it)
+            } ?: stringResource(R.string.stats_recent_trend_peak),
+            value = summary.peak?.let { formatDisplayAmount(it.amountCents, currencyDisplay) }.orEmpty(),
+            modifier = Modifier.weight(1f),
+        )
+        RecentTrendMetric(
+            label = stringResource(R.string.stats_recent_trend_other_average),
+            value = formatDisplayAmount(summary.otherAverageAmountCents, currencyDisplay),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun RecentTrendMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = value,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyMedium.tabularNum(),
+            fontWeight = AppTextHierarchy.body.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun RecentTrendComparison(summary: RecentTrendSummary) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+    val diff = summary.recentThreeAmountCents - summary.previousThreeAmountCents
+    val label = when {
+        summary.peak != null && summary.peakSharePercent >= 50 -> stringResource(
+            R.string.stats_recent_trend_peak_share,
+            summary.peak.label,
+            summary.peakSharePercent,
+        )
+        summary.previousThreeAmountCents == 0L && summary.recentThreeAmountCents > 0L ->
+            stringResource(R.string.stats_recent_trend_vs_previous_new)
+        diff > 0L -> stringResource(
+            R.string.stats_recent_trend_vs_previous_up,
+            formatDisplayAmount(abs(diff), currencyDisplay),
+        )
+        diff < 0L -> stringResource(
+            R.string.stats_recent_trend_vs_previous_down,
+            formatDisplayAmount(abs(diff), currencyDisplay),
+        )
+        else -> stringResource(R.string.stats_recent_trend_vs_previous_flat)
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun RecentTrendDominanceBreakdown(summary: RecentTrendSummary) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        summary.peak?.takeIf { it.amountCents > 0L }?.let { peak ->
+            RecentTrendBreakdownRow(
+                label = stringResource(R.string.stats_recent_trend_peak_day, peak.label),
+                amountCents = peak.amountCents,
+                currencyDisplay = currencyDisplay,
             )
-            Text(
-                text = lastUploadAt?.let { displayTime(it) } ?: stringResource(R.string.stats_recent_upload_empty),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = stringResource(R.string.stats_recent_upload_hint),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+        }
+        if (summary.otherPositiveDayCount > 0) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
+            RecentTrendBreakdownRow(
+                label = stringResource(R.string.stats_recent_trend_other_days, summary.otherPositiveDayCount),
+                amountCents = summary.otherTotalAmountCents,
+                currencyDisplay = currencyDisplay,
             )
         }
     }
 }
 
 @Composable
-private fun DailyTrendBar(
-    modifier: Modifier,
-    day: DailySpend,
-    maxAmount: Long,
+private fun RecentTrendBreakdownRow(
+    label: String,
+    amountCents: Long,
+    currencyDisplay: CurrencyDisplay,
 ) {
-    val visuals = LocalThemeVisuals.current
-    val progress = if (maxAmount > 0) {
-        (day.amountCents.toFloat() / maxAmount.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    val barHeight = if (day.amountCents > 0L) {
-        (12 + 46 * progress).dp
-    } else {
-        8.dp
-    }
-    val barColor = if (day.amountCents > 0L) {
-        visuals.primary
-    } else {
-        visuals.chipUnselected.copy(alpha = 0.72f)
-    }
-    // WCAG 1.1.1: the bar height is the only amount cue; give TalkBack the date + amount.
-    val barA11y = stringResource(R.string.stats_recent_trend_bar_a11y, day.label, formatAmount(day.amountCents))
-
-    Column(
-        modifier = modifier.semantics(mergeDescendants = true) { contentDescription = barA11y },
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(barHeight)
-                    .clip(RoundedCornerShape(AppRadius.pill))
-                    .background(barColor),
-            )
-        }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(
-            text = day.label,
+            text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = formatDisplayAmount(amountCents, currencyDisplay),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyMedium.tabularNum(),
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+private data class RecentTrendSummary(
+    val totalAmountCents: Long,
+    val peak: DailySpend?,
+    val positiveDayCount: Int,
+    val peakSharePercent: Int,
+    val otherPositiveDayCount: Int,
+    val otherTotalAmountCents: Long,
+    val otherAverageAmountCents: Long,
+    val recentThreeAmountCents: Long,
+    val previousThreeAmountCents: Long,
+) {
+    val shouldUseDominanceBreakdown: Boolean =
+        positiveDayCount >= 3 && peakSharePercent >= RecentTrendDominantPeakPercent
+}
+
+private fun recentTrendSummary(trend: List<DailySpend>): RecentTrendSummary {
+    val normalized = trend.map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }
+    val total = normalized.sumOf { it.amountCents }
+    val peakIndex = normalized.indices.maxByOrNull { normalized[it].amountCents }
+    val peak = peakIndex?.let { normalized[it] }
+    val otherPositiveDays = normalized.filterIndexed { index, day ->
+        index != peakIndex && day.amountCents > 0L
+    }
+    val otherTotal = otherPositiveDays.sumOf { it.amountCents }
+    return RecentTrendSummary(
+        totalAmountCents = total,
+        peak = peak,
+        positiveDayCount = normalized.count { it.amountCents > 0L },
+        peakSharePercent = if (total > 0L) {
+            (((peak?.amountCents ?: 0L) * 100) / total).toInt()
+        } else {
+            0
+        },
+        otherPositiveDayCount = otherPositiveDays.size,
+        otherTotalAmountCents = otherTotal,
+        otherAverageAmountCents = if (otherPositiveDays.isNotEmpty()) otherTotal / otherPositiveDays.size else 0L,
+        recentThreeAmountCents = normalized.takeLast(3).sumOf { it.amountCents },
+        previousThreeAmountCents = normalized.dropLast(3).takeLast(3).sumOf { it.amountCents },
+    )
 }

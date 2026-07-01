@@ -12,7 +12,7 @@
 
 ## 决策
 
-小票夹图表库政策（v0.9 起允许引入，已落地 ADR 0025 Android Vico、ADR 0026 Web ECharts）：
+小票夹图表库政策（v0.9 起允许引入；Android 端 ADR 0025 Vico 已被 ADR 0055 回收到原生 Canvas，Web 端 ADR 0026 ECharts 保持有效）：
 
 图表库只能属于展示层：
 

@@ -20,9 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
@@ -47,7 +45,7 @@ internal fun StatsMonthChip(
                 Icon(
                     imageVector = Icons.Filled.ExpandMore,
                     contentDescription = stringResource(R.string.stats_empty_month_chip_description),
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(AppSpacing.cardPadding),
                 )
             },
         )
@@ -60,24 +58,22 @@ internal fun EmptyStatsCard(
     body: String = stringResource(R.string.stats_empty_card_body),
     onRefresh: (() -> Unit)? = null,
 ) {
-    AppEmptyStateCard {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = body,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            StatsSkeletonPlaceholder()
-            onRefresh?.let {
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = it,
-                ) {
-                    Text(stringResource(R.string.stats_empty_card_refresh))
-                }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        StatsSkeletonPlaceholder()
+        onRefresh?.let {
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = it,
+            ) {
+                Text(stringResource(R.string.stats_empty_card_refresh))
             }
         }
     }
@@ -105,7 +101,7 @@ private fun SkeletonBlock(
     title: String,
     widthFraction: Float,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap - 1.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
         Text(
             text = title,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
@@ -114,7 +110,7 @@ private fun SkeletonBlock(
         Box(
             modifier = Modifier
                 .fillMaxWidth(widthFraction)
-                .height(10.dp)
+                .height(AppSpacing.contentGap)
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)),
         )

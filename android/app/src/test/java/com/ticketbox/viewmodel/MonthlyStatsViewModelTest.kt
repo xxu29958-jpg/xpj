@@ -195,6 +195,28 @@ class MonthlyStatsViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf("餐饮"), viewModel.uiState.value.tags)
     }
+
+    @Test
+    fun localDailyTrendIsBoundedToSelectedMonth() = statsTest {
+        val stats = FakeStatsActions()
+        stats.confirmedFlow.value = listOf(
+            confirmedExpense(publicId = "may", amountCents = 1200L, expenseTime = "2026-05-31"),
+            confirmedExpense(publicId = "june", amountCents = 980000L, expenseTime = "2026-06-30"),
+        )
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+
+        viewModel.setMonth("2026-05")
+        advanceUntilIdle()
+
+        val nonZeroDays = viewModel.uiState.value.dailyTrend.filter { it.amountCents > 0L }
+        assertEquals(1, nonZeroDays.size)
+        assertEquals("2026-05-31", nonZeroDays.single().date)
+        assertEquals(1200L, nonZeroDays.single().amountCents)
+    }
 }
 
 private class FakeStatsActions : StatsActions {
@@ -289,4 +311,37 @@ private fun statsForMonth(month: String, total: Long = 0): MonthlyStats =
         totalAmountCents = total,
         count = if (total > 0) 1 else 0,
         byCategory = emptyList(),
+    )
+
+private fun confirmedExpense(
+    publicId: String,
+    amountCents: Long,
+    expenseTime: String,
+): Expense =
+    Expense(
+        id = publicId.hashCode().toLong(),
+        publicId = publicId,
+        amountCents = amountCents,
+        merchant = "测试商家",
+        category = "餐饮",
+        note = null,
+        source = "android-test",
+        imagePath = null,
+        thumbnailPath = null,
+        imageHash = null,
+        rawText = null,
+        confidence = null,
+        duplicateStatus = "none",
+        duplicateOfId = null,
+        duplicateReason = null,
+        tags = "",
+        valueScore = null,
+        regretScore = null,
+        status = "confirmed",
+        expenseTime = expenseTime,
+        createdAt = expenseTime,
+        updatedAt = expenseTime,
+        rowVersion = 1L,
+        confirmedAt = expenseTime,
+        rejectedAt = null,
     )

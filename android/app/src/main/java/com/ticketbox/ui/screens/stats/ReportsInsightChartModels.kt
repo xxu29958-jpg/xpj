@@ -1,8 +1,9 @@
 package com.ticketbox.ui.screens.stats
 
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportTrendPoint
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -72,17 +73,20 @@ private fun decimal(value: Long, divisor: Long): String =
         .toPlainString()
 
 // ── WCAG 1.1.1 图表文本替代(纯函数,单测直测)─────────────────────────────
-// Vico 柱图对 TalkBack 是不透明画布,给图表节点补 contentDescription 文本替代;
-// 金额走与可见行同源的 formatAmount,屏幕阅读器听到的与屏上一致。
+// 自绘柱图对 TalkBack 仍是图形节点,给图表节点补 contentDescription 文本替代;
+// 金额走与可见行同源的 formatDisplayAmount,屏幕阅读器听到的与屏上一致。
 
 /** 趋势图文本替代:只逐档朗读「有支出」的档([listed],「，」相接),零额档并成 [zeroBuckets] 计数,
  *  由调用方汇总成「其余 N 档无支出」——避免日粒度下逐日朗读 ~30 个 ¥0.00(纯可用性,见复审 P3)。 */
 internal data class TrendChartA11y(val listed: String, val zeroBuckets: Int)
 
-internal fun trendChartA11y(points: List<ReportTrendChartPoint>): TrendChartA11y {
+internal fun trendChartA11y(
+    points: List<ReportTrendChartPoint>,
+    currencyDisplay: CurrencyDisplay,
+): TrendChartA11y {
     val nonZero = points.filter { it.amountCents > 0L }
     return TrendChartA11y(
-        listed = nonZero.joinToString("，") { "${it.label} ${formatAmount(it.amountCents)}" },
+        listed = nonZero.joinToString("，") { "${it.label} ${formatDisplayAmount(it.amountCents, currencyDisplay)}" },
         zeroBuckets = points.size - nonZero.size,
     )
 }
@@ -94,9 +98,10 @@ internal fun comparisonChartA11yBody(
     currentMonthLabel: String,
     previousMonthLabel: String,
     yearOverYearLabel: String,
+    currencyDisplay: CurrencyDisplay,
 ): String =
     rows.joinToString("；") {
-        "${it.category} $currentMonthLabel ${formatAmount(it.currentAmountCents)} " +
-            "$previousMonthLabel ${formatAmount(it.previousAmountCents)} " +
-            "$yearOverYearLabel ${formatAmount(it.yearOverYearAmountCents)}"
+        "${it.category} $currentMonthLabel ${formatDisplayAmount(it.currentAmountCents, currencyDisplay)} " +
+            "$previousMonthLabel ${formatDisplayAmount(it.previousAmountCents, currencyDisplay)} " +
+            "$yearOverYearLabel ${formatDisplayAmount(it.yearOverYearAmountCents, currencyDisplay)}"
     }

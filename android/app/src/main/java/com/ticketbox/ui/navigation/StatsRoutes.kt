@@ -466,9 +466,6 @@ internal fun StatsRoute(
         onOpenRecurring = { shellState.openStatsSecondary(StatsSecondaryPage.Recurring) },
         onOpenIncomePlans = { shellState.openStatsSecondary(StatsSecondaryPage.IncomePlans) },
         onOpenDebtGoals = { shellState.openStatsSecondary(StatsSecondaryPage.DebtGoals) },
-        onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
-        onOpenReceivables = { shellState.openStatsSecondary(StatsSecondaryPage.Receivables) },
-        onOpenRepaymentDrafts = { shellState.openRepaymentDrafts() },
         // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
         // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
         onDrillToLedger = { category ->
