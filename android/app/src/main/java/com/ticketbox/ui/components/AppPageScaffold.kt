@@ -243,33 +243,33 @@ fun AppPageScrollableColumn(
     ) { layout ->
         // align(BottomCenter) needs a BoxScope — the scaffold's content lambda has
         // no receiver, so the column + floating bar pair gets its own Box root.
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        top = layout.statusPadding,
-                        // 栏自带导航栏 inset，实测高度已覆盖 bottomViewportPadding
-                        // 的导航栏份额，二者取一不叠加。
-                        bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
-                    )
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = layout.horizontalPadding)
-                    .padding(
-                        top = layout.contentTopPadding,
-                        bottom = layout.bottomContentExtraPadding,
-                    ),
-                verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
-            ) {
-                content(layout)
-            }
-            if (bottomBar != null) {
-                Box(
+        CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
+                        .fillMaxSize()
+                        .padding(
+                            top = layout.statusPadding,
+                            // 栏自带导航栏 inset，实测高度已覆盖 bottomViewportPadding
+                            // 的导航栏份额，二者取一不叠加。
+                            bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
+                        )
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = layout.horizontalPadding)
+                        .padding(
+                            top = layout.contentTopPadding,
+                            bottom = layout.bottomContentExtraPadding,
+                        ),
+                    verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
                 ) {
-                    CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
+                    content(layout)
+                }
+                if (bottomBar != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
+                    ) {
                         bottomBar()
                     }
                 }

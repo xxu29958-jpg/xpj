@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -25,7 +26,14 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.design.AppSpacing
+
+@Immutable
+internal data class ExpenseCurrencyFieldOptions(
+    val enabled: Boolean = true,
+    val autoFocusAmount: Boolean = true,
+)
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -34,38 +42,23 @@ internal fun ExpenseCurrencyFields(
     onCurrencyChange: (CurrencyCode) -> Unit,
     originalAmountText: String,
     onOriginalAmountChange: (String) -> Unit,
-    enabled: Boolean = true,
+    options: ExpenseCurrencyFieldOptions = ExpenseCurrencyFieldOptions(),
 ) {
-    // A9: auto-focus the amount field when this card enters composition — for
-    // both the manual-entry sheet and the edit screen the amount is the first
-    // thing the user fixes (OCR draft / fresh entry), so pop the keyboard on it.
-    // Internal FocusRequester (no new param): the focus needs no outer
-    // coordination, and the `enabled` flag already gates read-only (don't steal
-    // focus / pop the keyboard on a non-editable expense). Mirrors
-    // MissingAmountSheet / QuickMerchantSheet.
+    // The manual-entry sheet can opt into immediate amount entry, while existing
+    // receipt edit pages keep the page readable until the user taps a field.
+    // The `enabled` flag still gates read-only pages so they never steal focus.
     val amountFocus = remember { FocusRequester() }
-    LaunchedEffect(enabled) {
-        if (enabled) amountFocus.requestFocus()
+    val keyboardVisible = LocalAppImeVisible.current
+    LaunchedEffect(options.enabled, options.autoFocusAmount) {
+        if (options.enabled && options.autoFocusAmount) amountFocus.requestFocus()
     }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(
+            if (keyboardVisible) AppSpacing.miniGap else AppSpacing.smallGap,
+        ),
     ) {
         Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            CurrencyCode.entries.forEach { code ->
-                AppFilterChip(
-                    selected = currency == code,
-                    onClick = { onCurrencyChange(code) },
-                    label = "${code.symbol} ${code.storageKey}",
-                    enabled = enabled,
-                )
-            }
-        }
         OutlinedTextField(
             value = originalAmountText,
             onValueChange = onOriginalAmountChange,
@@ -86,8 +79,22 @@ internal fun ExpenseCurrencyFields(
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
-            enabled = enabled,
+            enabled = options.enabled,
         )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            CurrencyCode.entries.forEach { code ->
+                AppFilterChip(
+                    selected = currency == code,
+                    onClick = { onCurrencyChange(code) },
+                    label = "${code.symbol} ${code.storageKey}",
+                    enabled = options.enabled,
+                )
+            }
+        }
         if (currency != FxContract.HomeCurrency) {
             Text(
                 text = stringResource(R.string.expense_edit_fx_hint),

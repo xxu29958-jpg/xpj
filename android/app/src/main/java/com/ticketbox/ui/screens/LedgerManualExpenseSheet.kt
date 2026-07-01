@@ -53,6 +53,7 @@ import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.timePickerToUtcIso
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -185,7 +186,7 @@ fun ManualExpenseSheet(
             },
             originalAmountText = amountText,
             onOriginalAmountChange = { amountText = it },
-            enabled = !saving,
+            options = ExpenseCurrencyFieldOptions(enabled = !saving),
         )
         if (recentMerchants.isNotEmpty()) {
             ManualRecentMerchants(

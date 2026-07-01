@@ -43,6 +43,7 @@ import com.ticketbox.ui.screens.expense.BillSplitInviteSheetState
 import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseDateField
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarState
@@ -384,7 +385,10 @@ fun ExpenseEditScreen(
             },
             originalAmountText = originalAmountText,
             onOriginalAmountChange = { originalAmountText = it },
-            enabled = !readOnly,
+            options = ExpenseCurrencyFieldOptions(
+                enabled = !readOnly,
+                autoFocusAmount = false,
+            ),
         )
         ExpenseEditMerchantField(
             merchant = merchant,
