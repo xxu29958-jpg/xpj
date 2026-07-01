@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,9 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,14 +26,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ticketbox.R
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.notification.NotificationListenerStatus
 import com.ticketbox.ui.components.AppSwitch
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 fun NotificationPreferencesScreen(
@@ -41,11 +48,20 @@ fun NotificationPreferencesScreen(
     onBack: () -> Unit,
     onSave: (NotificationPreferences) -> Unit,
 ) {
-    fun update(updated: NotificationPreferences) {
-        onSave(updated)
+    val systemState = rememberNotificationSystemState()
+    val summary = remember(
+        preferences,
+        readOnly,
+        systemState.listenerAuthorized,
+        systemState.systemNotificationsAllowed,
+    ) {
+        notificationPreferencesSummary(
+            preferences = preferences,
+            readOnly = readOnly,
+            listenerAuthorized = systemState.listenerAuthorized,
+            systemNotificationsAllowed = systemState.systemNotificationsAllowed,
+        )
     }
-    val context = LocalContext.current
-    val listenerAuthorized = NotificationListenerStatus.isEnabled(context)
 
     SettingsPageFrame(
         title = stringResource(R.string.notification_preferences_page_title),
@@ -53,164 +69,204 @@ fun NotificationPreferencesScreen(
         onBack = onBack,
         status = status,
     ) {
-        SettingsSection(
-            title = stringResource(R.string.notification_preferences_section_auto_draft),
-            icon = Icons.Filled.Notifications,
-        ) {
-            SettingsOpenPanel(
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-            ) {
-                NotificationSwitchLine(
-                    title = stringResource(R.string.notification_preferences_capture_title),
-                    subtitle = if (readOnly) {
-                        stringResource(R.string.notification_preferences_capture_subtitle_readonly)
-                    } else if (listenerAuthorized) {
-                        stringResource(R.string.notification_preferences_capture_subtitle_authorized)
-                    } else {
-                        stringResource(R.string.notification_preferences_capture_subtitle_default)
-                    },
-                    checked = preferences.autoCaptureEnabled && !readOnly,
-                    enabled = !readOnly,
-                    onCheckedChange = {
-                        update(preferences.copy(autoCaptureEnabled = it))
-                    },
-                )
-                Button(
-                    onClick = {
-                        context.startActivity(NotificationListenerStatus.settingsIntent())
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (listenerAuthorized) {
-                            stringResource(R.string.notification_preferences_grant_view)
-                        } else {
-                            stringResource(R.string.notification_preferences_grant_open)
-                        },
-                    )
-                }
-                Text(
-                    text = if (readOnly) {
-                        stringResource(R.string.notification_preferences_capture_note_readonly)
-                    } else if (preferences.autoCaptureEnabled) {
-                        stringResource(R.string.notification_preferences_capture_note_enabled)
-                    } else {
-                        stringResource(R.string.notification_preferences_capture_note_disabled)
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-        SettingsSection(
-            title = stringResource(R.string.notification_preferences_section_reminders),
-            icon = Icons.Filled.Notifications,
-        ) {
-            ReminderSwitchesCard(
-                preferences = preferences,
-                onUpdate = { update(it) },
-            )
-        }
-        SettingsSection(
-            title = stringResource(R.string.notification_preferences_section_privacy),
-            icon = Icons.Filled.Notifications,
-        ) {
-            SettingsOpenPanel(
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            ) {
-                Text(
-                    text = stringResource(R.string.notification_preferences_privacy_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = stringResource(R.string.notification_preferences_privacy_body),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
+        NotificationPreferencesOverviewSection(summary)
+        NotificationAutoDraftSection(
+            preferences = preferences,
+            readOnly = readOnly,
+            listenerAuthorized = systemState.listenerAuthorized,
+            onOpenAuthorization = systemState.openListenerSettings,
+            onUpdate = onSave,
+        )
+        NotificationReminderSection(
+            preferences = preferences,
+            summary = summary,
+            systemNotificationsAllowed = systemState.systemNotificationsAllowed,
+            onRequestPermission = systemState.requestPostNotifications,
+            onUpdate = onSave,
+        )
+        NotificationPrivacySection()
     }
 }
 
-/** Reminder switches request Android notification permission when the user turns one on. */
 @Composable
-private fun ReminderSwitchesCard(
-    preferences: NotificationPreferences,
-    onUpdate: (NotificationPreferences) -> Unit,
-) {
+private fun rememberNotificationSystemState(): NotificationSystemState {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var listenerAuthorized by remember {
+        mutableStateOf(NotificationListenerStatus.isEnabled(context))
+    }
     var systemNotificationsAllowed by remember {
         mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
     }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { _ ->
+    fun refreshSystemState() {
+        listenerAuthorized = NotificationListenerStatus.isEnabled(context)
         systemNotificationsAllowed = NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
-    fun toggleReminder(turnedOn: Boolean, updated: NotificationPreferences) {
-        if (turnedOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !systemNotificationsAllowed) {
-            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        onUpdate(updated)
-    }
-    SettingsOpenPanel(
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
     ) {
-        NotificationSwitchLine(
-            title = stringResource(R.string.notification_preferences_reminder_pending_title),
-            subtitle = stringResource(R.string.notification_preferences_reminder_pending_subtitle),
-            checked = preferences.pendingDraftReminders,
-            onCheckedChange = { toggleReminder(it, preferences.copy(pendingDraftReminders = it)) },
-        )
-        NotificationSwitchLine(
-            title = stringResource(R.string.notification_preferences_reminder_large_amount_title),
-            subtitle = stringResource(R.string.notification_preferences_reminder_large_amount_subtitle),
-            checked = preferences.largeAmountAlerts,
-            onCheckedChange = { toggleReminder(it, preferences.copy(largeAmountAlerts = it)) },
-        )
-        NotificationSwitchLine(
-            title = stringResource(R.string.notification_preferences_reminder_recurring_title),
-            subtitle = stringResource(R.string.notification_preferences_reminder_recurring_subtitle),
-            checked = preferences.recurringReminders,
-            onCheckedChange = { toggleReminder(it, preferences.copy(recurringReminders = it)) },
-        )
-        NotificationSwitchLine(
-            title = stringResource(R.string.notification_preferences_reminder_budget_title),
-            subtitle = stringResource(R.string.notification_preferences_reminder_budget_subtitle),
-            checked = preferences.budgetOverspendAlerts,
-            onCheckedChange = { toggleReminder(it, preferences.copy(budgetOverspendAlerts = it)) },
-        )
-        NotificationSwitchLine(
-            title = stringResource(R.string.notification_preferences_reminder_backup_title),
-            subtitle = stringResource(R.string.notification_preferences_reminder_backup_subtitle),
-            checked = preferences.backupStaleAlerts,
-            onCheckedChange = { toggleReminder(it, preferences.copy(backupStaleAlerts = it)) },
-        )
-        ReminderPermissionHint(
-            preferences = preferences,
-            systemNotificationsAllowed = systemNotificationsAllowed,
+        refreshSystemState()
+    }
+    DisposableEffect(context, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshSystemState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    return NotificationSystemState(
+        listenerAuthorized = listenerAuthorized,
+        systemNotificationsAllowed = systemNotificationsAllowed,
+        requestPostNotifications = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+        openListenerSettings = { context.startActivity(NotificationListenerStatus.settingsIntent()) },
+    )
+}
+
+private data class NotificationSystemState(
+    val listenerAuthorized: Boolean,
+    val systemNotificationsAllowed: Boolean,
+    val requestPostNotifications: () -> Unit,
+    val openListenerSettings: () -> Unit,
+)
+
+@Composable
+private fun NotificationAutoDraftSection(
+    preferences: NotificationPreferences,
+    readOnly: Boolean,
+    listenerAuthorized: Boolean,
+    onOpenAuthorization: () -> Unit,
+    onUpdate: (NotificationPreferences) -> Unit,
+) {
+    SettingsSection(
+        title = stringResource(R.string.notification_preferences_section_auto_draft),
+        icon = Icons.Filled.Notifications,
+    ) {
+        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+            NotificationSwitchLine(
+                title = stringResource(R.string.notification_preferences_capture_title),
+                subtitle = when {
+                    readOnly -> stringResource(R.string.notification_preferences_capture_subtitle_readonly)
+                    listenerAuthorized -> stringResource(R.string.notification_preferences_capture_subtitle_authorized)
+                    else -> stringResource(R.string.notification_preferences_capture_subtitle_default)
+                },
+                checked = preferences.autoCaptureEnabled && !readOnly,
+                enabled = !readOnly,
+                onCheckedChange = { onUpdate(preferences.copy(autoCaptureEnabled = it)) },
+            )
+            Button(
+                onClick = onOpenAuthorization,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    if (listenerAuthorized) {
+                        stringResource(R.string.notification_preferences_grant_view)
+                    } else {
+                        stringResource(R.string.notification_preferences_grant_open)
+                    },
+                )
+            }
+            Text(
+                text = when {
+                    readOnly -> stringResource(R.string.notification_preferences_capture_note_readonly)
+                    preferences.autoCaptureEnabled -> stringResource(R.string.notification_preferences_capture_note_enabled)
+                    else -> stringResource(R.string.notification_preferences_capture_note_disabled)
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotificationReminderSection(
+    preferences: NotificationPreferences,
+    summary: NotificationPreferencesSummary,
+    systemNotificationsAllowed: Boolean,
+    onRequestPermission: () -> Unit,
+    onUpdate: (NotificationPreferences) -> Unit,
+) {
+    SettingsSection(
+        title = stringResource(R.string.notification_preferences_section_reminders),
+        icon = Icons.Filled.Notifications,
+    ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        ) {
+            val rows = reminderRows(preferences)
+            rows.forEachIndexed { index, row ->
+                NotificationReminderRow(
+                    row = row,
+                    showDivider = index != rows.lastIndex,
+                    systemNotificationsAllowed = systemNotificationsAllowed,
+                    onRequestPermission = onRequestPermission,
+                    onUpdate = onUpdate,
+                )
+            }
+            ReminderPermissionHint(show = summary.reminderPermissionMismatch)
+        }
+    }
+}
+
+@Composable
+private fun NotificationReminderRow(
+    row: ReminderToggleRow,
+    showDivider: Boolean,
+    systemNotificationsAllowed: Boolean,
+    onRequestPermission: () -> Unit,
+    onUpdate: (NotificationPreferences) -> Unit,
+) {
+    NotificationSwitchLine(
+        title = stringResource(row.titleRes),
+        subtitle = stringResource(row.subtitleRes),
+        checked = row.checked,
+        onCheckedChange = { turnedOn ->
+            if (turnedOn && shouldRequestPostNotifications(systemNotificationsAllowed)) {
+                onRequestPermission()
+            }
+            onUpdate(row.updated(turnedOn))
+        },
+    )
+    if (showDivider) {
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
         )
     }
 }
 
-/** Shows when reminders are enabled but Android notifications are unavailable. */
 @Composable
-private fun ReminderPermissionHint(
-    preferences: NotificationPreferences,
-    systemNotificationsAllowed: Boolean,
-) {
-    val anyReminderEnabled = preferences.pendingDraftReminders ||
-        preferences.largeAmountAlerts ||
-        preferences.recurringReminders ||
-        preferences.budgetOverspendAlerts ||
-        preferences.backupStaleAlerts
-    if (!anyReminderEnabled || systemNotificationsAllowed) return
+private fun ReminderPermissionHint(show: Boolean) {
+    if (!show) return
     Text(
         text = stringResource(R.string.notification_preferences_system_permission_hint),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
     )
+}
+
+@Composable
+private fun NotificationPrivacySection() {
+    SettingsSection(
+        title = stringResource(R.string.notification_preferences_section_privacy),
+        icon = Icons.Filled.Notifications,
+    ) {
+        SettingsOpenPanel(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
+            Text(
+                text = stringResource(R.string.notification_preferences_privacy_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+            Text(
+                text = stringResource(R.string.notification_preferences_privacy_body),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
 }
 
 @Composable
@@ -230,17 +286,21 @@ private fun NotificationSwitchLine(
             modifier = Modifier
                 .weight(1f)
                 .padding(end = AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = AppTextHierarchy.body.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = subtitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         AppSwitch(
@@ -250,3 +310,46 @@ private fun NotificationSwitchLine(
         )
     }
 }
+
+private data class ReminderToggleRow(
+    @param:StringRes val titleRes: Int,
+    @param:StringRes val subtitleRes: Int,
+    val checked: Boolean,
+    val updated: (Boolean) -> NotificationPreferences,
+)
+
+private fun reminderRows(preferences: NotificationPreferences): List<ReminderToggleRow> = listOf(
+    ReminderToggleRow(
+        titleRes = R.string.notification_preferences_reminder_pending_title,
+        subtitleRes = R.string.notification_preferences_reminder_pending_subtitle,
+        checked = preferences.pendingDraftReminders,
+        updated = { preferences.copy(pendingDraftReminders = it) },
+    ),
+    ReminderToggleRow(
+        titleRes = R.string.notification_preferences_reminder_large_amount_title,
+        subtitleRes = R.string.notification_preferences_reminder_large_amount_subtitle,
+        checked = preferences.largeAmountAlerts,
+        updated = { preferences.copy(largeAmountAlerts = it) },
+    ),
+    ReminderToggleRow(
+        titleRes = R.string.notification_preferences_reminder_recurring_title,
+        subtitleRes = R.string.notification_preferences_reminder_recurring_subtitle,
+        checked = preferences.recurringReminders,
+        updated = { preferences.copy(recurringReminders = it) },
+    ),
+    ReminderToggleRow(
+        titleRes = R.string.notification_preferences_reminder_budget_title,
+        subtitleRes = R.string.notification_preferences_reminder_budget_subtitle,
+        checked = preferences.budgetOverspendAlerts,
+        updated = { preferences.copy(budgetOverspendAlerts = it) },
+    ),
+    ReminderToggleRow(
+        titleRes = R.string.notification_preferences_reminder_backup_title,
+        subtitleRes = R.string.notification_preferences_reminder_backup_subtitle,
+        checked = preferences.backupStaleAlerts,
+        updated = { preferences.copy(backupStaleAlerts = it) },
+    ),
+)
+
+private fun shouldRequestPostNotifications(systemNotificationsAllowed: Boolean): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !systemNotificationsAllowed

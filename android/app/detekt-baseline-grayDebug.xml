@@ -78,7 +78,6 @@
     <ID>LongMethod:MerchantAliasesScreen.kt:@Composable fun MerchantAliasesScreen</ID>
     <ID>LongMethod:MerchantAliasesScreen.kt:@Composable private fun MerchantAliasCard</ID>
     <ID>LongMethod:MissingAmountSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun MissingAmountSheetContent</ID>
-    <ID>LongMethod:NotificationPreferencesScreen.kt:@Composable fun NotificationPreferencesScreen</ID>
     <ID>LongMethod:OutboxDrainEngine.kt:OutboxDrainEngine$suspend fun drainOnce: DrainSummary</ID>
     <ID>LongMethod:PendingComponents.kt:@Composable internal fun PendingTop</ID>
     <ID>LongMethod:PendingEmptyStates.kt:@Composable internal fun EmptyPendingState</ID>

@@ -324,10 +324,12 @@ that actually ships the fix.
   role/owner/disable actions into an overflow menu, with product loading copy
   for members and audit records. Recycle Bin now uses backend-provided
   short-window counts, explicit read-only/failed/empty/restoring states, and a
-  scan-first divider list rather than a large container. Final true-device
-  screenshots are still pending because the phone was unplugged before the last
-  visual pass. The remaining Settings secondary pages still need page-by-page
-  state parity review.
+  scan-first divider list rather than a large container. Notification
+  Preferences now separates this-device notification preference, system
+  authorization, reminder permission, and server-ledger authority in a compact
+  overview/list layout. Final true-device screenshots are still pending because
+  the phone was unplugged before the last visual pass. The remaining Settings
+  secondary pages still need page-by-page state parity review.
 - Desired follow-up: make every secondary page declare loading, empty, error,
   read-only, cached/offline/direct-only, success, and destructive-confirmation
   behavior with the shared Settings skeleton.
@@ -347,6 +349,25 @@ that actually ships the fix.
   restore, and resource-backed copy.
 - Remaining QA: capture empty, populated, restoring, and viewer/read-only states
   on a physical device after installing the official package.
+
+### ANDROID-2026-07-02-notification-preferences-secondary-parity
+
+- Surface: Android Settings -> Notification Preferences.
+- Status: implemented locally; true-device evidence still pending.
+- Gap: the notification page mixed auto-draft setup, system authorization,
+  reminder toggles, and privacy copy in flat sections, so the first read did not
+  tell the user which parts were enabled, which permissions were missing, or
+  where the server-ledger authority boundary sits.
+- Resolution: the page now opens with a compact overview for auto-draft,
+  notification-listener authorization, enabled reminder count, and Android
+  notification permission; reminder toggles use divider rows instead of stacked
+  card surfaces; read-only auto-draft state comes from the real role; and copy
+  states that this page only controls device notification behavior while ledger
+  facts come from the server ledger. A pure summary model covers read-only,
+  permission, and reminder-count decisions.
+- Remaining QA: capture listener grant/revoke, Android notification
+  grant/deny, read-only role, reminder toggle, and return-from-system-settings
+  states on a physical device after installing the official package.
 
 ### ANDROID-2026-07-01-secondary-page-language-drift
 

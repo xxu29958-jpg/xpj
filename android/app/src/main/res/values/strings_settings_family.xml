@@ -125,7 +125,25 @@
 
     <!-- NotificationPreferencesScreen：设置→通知与提醒 屏 -->
     <string name="notification_preferences_page_title">通知与提醒</string>
-    <string name="notification_preferences_page_subtitle">通知只生成待确认草稿或提醒，不会自动入账。</string>
+    <string name="notification_preferences_page_subtitle">通知只生成待确认草稿或本机提醒，核对后才会入账。</string>
+    <string name="notification_preferences_section_overview">通知概况</string>
+    <string name="notification_preferences_overview_auto_draft_label">自动草稿</string>
+    <string name="notification_preferences_overview_listener_label">通知读取授权</string>
+    <string name="notification_preferences_overview_reminders_label">提醒</string>
+    <string name="notification_preferences_overview_system_label">系统通知</string>
+    <string name="notification_preferences_overview_state_on">已开启</string>
+    <string name="notification_preferences_overview_state_off">已关闭</string>
+    <string name="notification_preferences_overview_state_readonly">只读不可用</string>
+    <string name="notification_preferences_overview_permission_granted">已授权</string>
+    <string name="notification_preferences_overview_permission_missing">未授权</string>
+    <string name="notification_preferences_overview_auto_draft_caption_on">新通知先进入待确认。</string>
+    <string name="notification_preferences_overview_auto_draft_caption_off">不会读取支付通知。</string>
+    <string name="notification_preferences_overview_auto_draft_caption_readonly">当前角色不能生成草稿。</string>
+    <string name="notification_preferences_overview_listener_caption">控制是否能读取支付通知。</string>
+    <string name="notification_preferences_overview_reminders_value">%1$d 项开启</string>
+    <string name="notification_preferences_overview_reminders_caption">只做提醒，不会自动入账。</string>
+    <string name="notification_preferences_overview_system_caption">控制提醒能否展示。</string>
+    <string name="notification_preferences_overview_boundary">本页只控制本机通知；账单入账状态以服务器账本为准。</string>
     <string name="notification_preferences_section_auto_draft">通知自动草稿</string>
     <string name="notification_preferences_capture_title">本机解析支付通知</string>
     <string name="notification_preferences_capture_subtitle_readonly">当前角色为只读，不能生成自动草稿。</string>
