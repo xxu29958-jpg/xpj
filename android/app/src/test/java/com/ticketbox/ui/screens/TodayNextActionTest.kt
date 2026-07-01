@@ -83,10 +83,28 @@ class TodayNextActionTest {
     }
 
     @Test
-    fun monthlyLoadingKeepsTodayRefreshIndicatorActive() {
+    fun monthlyInitialLoadKeepsTodayRefreshIndicatorActive() {
         assertEquals(
             true,
-            TodayRefreshIndicator.isActive(pendingLoading = false, pendingLoadedOnce = true, monthlyLoading = true),
+            TodayRefreshIndicator.isActive(
+                pendingLoading = false,
+                pendingLoadedOnce = true,
+                monthlyLoading = true,
+                monthlyHasReadableData = false,
+            ),
+        )
+    }
+
+    @Test
+    fun monthlyBackgroundRefreshDoesNotHoldTodayRefreshIndicator() {
+        assertEquals(
+            false,
+            TodayRefreshIndicator.isActive(
+                pendingLoading = false,
+                pendingLoadedOnce = true,
+                monthlyLoading = true,
+                monthlyHasReadableData = true,
+            ),
         )
     }
 
@@ -94,7 +112,12 @@ class TodayNextActionTest {
     fun pendingInitialLoadKeepsTodayRefreshIndicatorActive() {
         assertEquals(
             true,
-            TodayRefreshIndicator.isActive(pendingLoading = true, pendingLoadedOnce = false, monthlyLoading = false),
+            TodayRefreshIndicator.isActive(
+                pendingLoading = true,
+                pendingLoadedOnce = false,
+                monthlyLoading = false,
+                monthlyHasReadableData = true,
+            ),
         )
     }
 
@@ -102,7 +125,13 @@ class TodayNextActionTest {
     fun pendingBackgroundRefreshDoesNotHoldTodayRefreshIndicator() {
         assertEquals(
             false,
-            TodayRefreshIndicator.isActive(pendingLoading = true, pendingLoadedOnce = true, monthlyLoading = false),
+            TodayRefreshIndicator.isActive(
+                pendingLoading = true,
+                pendingLoadedOnce = true,
+                monthlyLoading = false,
+                monthlyHasReadableData = true,
+            ),
         )
     }
+
 }

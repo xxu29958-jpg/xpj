@@ -125,6 +125,7 @@ fun TodayScreen(
             pendingLoading = state.pending.loading,
             pendingLoadedOnce = state.pending.hasLoadedOnce,
             monthlyLoading = state.monthly.loading,
+            monthlyHasReadableData = state.monthly.stats != null,
         ),
         onRefresh = actions.onRefresh,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
@@ -475,5 +476,6 @@ internal object TodayRefreshIndicator {
         pendingLoading: Boolean,
         pendingLoadedOnce: Boolean,
         monthlyLoading: Boolean,
-    ): Boolean = monthlyLoading || (pendingLoading && !pendingLoadedOnce)
+        monthlyHasReadableData: Boolean,
+    ): Boolean = (monthlyLoading && !monthlyHasReadableData) || (pendingLoading && !pendingLoadedOnce)
 }

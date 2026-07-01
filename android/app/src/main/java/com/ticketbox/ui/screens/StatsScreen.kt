@@ -94,7 +94,10 @@ fun StatsScreen(
 
     AppScrollableContent(
         role = AppPageRole.Stats,
-        isRefreshing = state.loading,
+        isRefreshing = StatsRefreshIndicator.isActive(
+            loading = state.loading,
+            hasReadableData = state.stats != null,
+        ),
         onRefresh = onRefresh,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
@@ -338,6 +341,10 @@ private fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
         return state.dailyTrend.sumOf { it.amountCents.coerceAtLeast(0L) }
     }
     return state.lifestyleStats?.recent7DaysAmountCents
+}
+
+internal object StatsRefreshIndicator {
+    fun isActive(loading: Boolean, hasReadableData: Boolean): Boolean = loading && !hasReadableData
 }
 
 private val tagScopedHiddenTabs = setOf(StatsTab.Budget, StatsTab.Goals)

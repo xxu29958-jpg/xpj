@@ -140,7 +140,10 @@ that actually ships the fix.
 - Resolution: monthly stats now start before supplemental recurring,
   candidate, data-quality, lifestyle, and confirmed-cache work; Today starts
   the month refresh before Pending; Today, Pending, and Ledger stop holding the
-  whole-page pull indicator once readable content is already on screen.
+  whole-page pull indicator once readable content is already on screen. A
+  follow-up also lets Today and Insights release the pull indicator while
+  existing monthly stats remain readable; the authority strip still carries the
+  refreshing state until the backend response lands.
   Confirmed-ledger sync now requests the backend-supported 200 rows per page
   instead of 50 to reduce avoidable round trips on larger ledgers.
 
@@ -400,7 +403,9 @@ that actually ships the fix.
   loading state as soon as the overview response lands; goals continue as a
   secondary background result and stale goal requests are cancelled. Pending and
   Ledger now keep existing rows readable while the authority strip shows refresh
-  state, and confirmed-ledger sync uses 200 rows per page.
+  state, Today and Insights no longer keep the page-level pull indicator active
+  when existing monthly stats are readable, and confirmed-ledger sync uses 200
+  rows per page.
 - Remaining QA: measure Today, Pending, Ledger, and Insights pull-to-refresh on
   a physical device with the production backend and confirm the page does not
   imply fresh backend truth before the primary response lands.
