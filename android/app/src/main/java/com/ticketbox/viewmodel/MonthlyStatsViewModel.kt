@@ -199,9 +199,6 @@ class MonthlyStatsViewModel(
             }
             val month = snapshot.month.trim().ifBlank { null }
             val tag = snapshot.selectedTag.trim().ifBlank { null }
-            loadRecurring(month, snapshot)
-            loadRecurringCandidates(snapshot)
-            loadDataQuality(snapshot)
             val statsResult = repository.monthlyStats(month = month, tag = tag)
             if (!snapshot.isCurrent()) return@launch
             statsResult
@@ -256,8 +253,18 @@ class MonthlyStatsViewModel(
                 statsLoadError = null,
             )
         }
+        loadSupplementalAfterPrimaryStats(month, snapshot)
         loadLifestyleAfterPrimaryStats(month, snapshot)
         syncConfirmedAfterPrimaryStats(month, tag, snapshot)
+    }
+
+    private fun loadSupplementalAfterPrimaryStats(
+        month: String?,
+        snapshot: MonthlyStatsRefreshSnapshot,
+    ) {
+        loadRecurring(month, snapshot)
+        loadRecurringCandidates(snapshot)
+        loadDataQuality(snapshot)
     }
 
     private fun loadLifestyleAfterPrimaryStats(
@@ -330,6 +337,7 @@ class MonthlyStatsViewModel(
                 },
             )
         }
+        loadSupplementalAfterPrimaryStats(month, snapshot)
     }
 
     private fun beginRefreshSnapshot(): MonthlyStatsRefreshSnapshot {

@@ -51,6 +51,7 @@ data class PendingUiState(
     val actionInProgressIds: Set<Long> = emptySet(),
     val readOnly: Boolean = false,
     val showingCachedSnapshot: Boolean = false,
+    val hasLoadedOnce: Boolean = false,
     val loading: Boolean = false,
     val uploading: Boolean = false,
     val message: UiText? = null,
@@ -223,7 +224,13 @@ class PendingViewModel(
                 .onFailure { error ->
                     if (requestGeneration != generation) return@onFailure
                     if (refreshSkipEpoch != skipEpoch) return@onFailure
-                    _uiState.update { it.copy(loading = false, message = error.toUiText(R.string.pending_msg_load_failed)) }
+                    _uiState.update {
+                        it.copy(
+                            hasLoadedOnce = true,
+                            loading = false,
+                            message = error.toUiText(R.string.pending_msg_load_failed),
+                        )
+                    }
                 }
         }
     }
@@ -240,7 +247,7 @@ class PendingViewModel(
         repository.getCachedPending().onSuccess { cached ->
             if (requestGeneration != generation) return@onSuccess
             if (cached.isNotEmpty() && _uiState.value.items.isEmpty()) {
-                _uiState.update { it.copy(items = cached, showingCachedSnapshot = true) }
+                _uiState.update { it.copy(items = cached, showingCachedSnapshot = true, hasLoadedOnce = true) }
             }
         }
     }

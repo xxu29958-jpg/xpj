@@ -81,4 +81,28 @@ class TodayNextActionTest {
 
         assertEquals(TodayNextAction.UploadReceipt, action)
     }
+
+    @Test
+    fun monthlyLoadingKeepsTodayRefreshIndicatorActive() {
+        assertEquals(
+            true,
+            TodayRefreshIndicator.isActive(pendingLoading = false, pendingLoadedOnce = true, monthlyLoading = true),
+        )
+    }
+
+    @Test
+    fun pendingInitialLoadKeepsTodayRefreshIndicatorActive() {
+        assertEquals(
+            true,
+            TodayRefreshIndicator.isActive(pendingLoading = true, pendingLoadedOnce = false, monthlyLoading = false),
+        )
+    }
+
+    @Test
+    fun pendingBackgroundRefreshDoesNotHoldTodayRefreshIndicator() {
+        assertEquals(
+            false,
+            TodayRefreshIndicator.isActive(pendingLoading = true, pendingLoadedOnce = true, monthlyLoading = false),
+        )
+    }
 }

@@ -17,6 +17,7 @@ internal object PendingUiStateReducer {
             activeSheet = reconcileActiveSheet(current.activeSheet, expenses),
             readOnly = readOnly,
             showingCachedSnapshot = false,
+            hasLoadedOnce = true,
             loading = false,
         )
     }

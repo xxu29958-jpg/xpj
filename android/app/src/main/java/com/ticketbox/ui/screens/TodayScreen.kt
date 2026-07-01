@@ -121,7 +121,11 @@ fun TodayScreen(
 ) {
     AppScrollableContent(
         role = AppPageRole.Today,
-        isRefreshing = state.pending.loading || state.monthly.loading,
+        isRefreshing = TodayRefreshIndicator.isActive(
+            pendingLoading = state.pending.loading,
+            pendingLoadedOnce = state.pending.hasLoadedOnce,
+            monthlyLoading = state.monthly.loading,
+        ),
         onRefresh = actions.onRefresh,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
@@ -464,4 +468,12 @@ internal fun todayNextAction(
     readyToConfirmCount > 0 -> TodayNextAction.Ready
     pendingCount > 0 -> TodayNextAction.ReviewPending
     else -> TodayNextAction.UploadReceipt
+}
+
+internal object TodayRefreshIndicator {
+    fun isActive(
+        pendingLoading: Boolean,
+        pendingLoadedOnce: Boolean,
+        monthlyLoading: Boolean,
+    ): Boolean = monthlyLoading || (pendingLoading && !pendingLoadedOnce)
 }

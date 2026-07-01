@@ -68,7 +68,7 @@ private fun refreshToday(
     pending: PendingViewModel,
     monthly: MonthlyStatsViewModel,
 ) {
-    pending.refresh()
     monthly.reloadTags()
     monthly.refresh()
+    pending.refresh()
 }

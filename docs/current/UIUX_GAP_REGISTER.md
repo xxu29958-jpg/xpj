@@ -118,6 +118,20 @@ that actually ships the fix.
   versus recent-3-days comparison row before the supporting facts, so the reader
   can see direction and scale instead of reading a flat bar strip.
 
+### ANDROID-2026-07-02-refresh-latency-priority
+
+- Surface: Android Today and Insights refresh.
+- Status: implemented in the current frontend latency slice; true-device timing
+  still needs capture.
+- Gap: refresh could feel slow because non-primary work started before the
+  authoritative monthly stats request, and Today kept the pull indicator active
+  while Pending refreshed in the background even when existing Pending content
+  was already visible.
+- Resolution: monthly stats now start before supplemental recurring,
+  candidate, data-quality, lifestyle, and confirmed-cache work; Today starts
+  the month refresh before Pending, and existing Pending content no longer keeps
+  the whole-page pull indicator active.
+
 ### ANDROID-2026-07-01-ledger-empty-safe-area
 
 - Surface: Android Ledger empty state.
