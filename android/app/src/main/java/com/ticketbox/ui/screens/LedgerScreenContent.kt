@@ -152,7 +152,7 @@ private fun rememberLedgerDayFoldState(state: LedgerUiState): LedgerDayFoldState
 
 private fun ledgerAuthorityTone(state: LedgerUiState): DataAuthorityTone = when {
     state.readOnly -> DataAuthorityTone.ReadOnly
-    state.syncing -> DataAuthorityTone.Refreshing
+    state.showPageRefresh -> DataAuthorityTone.Refreshing
     state.syncedInCurrentSession -> DataAuthorityTone.Backend
     else -> DataAuthorityTone.LocalCache
 }

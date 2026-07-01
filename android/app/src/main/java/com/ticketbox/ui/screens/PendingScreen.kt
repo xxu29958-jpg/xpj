@@ -86,6 +86,7 @@ fun PendingScreen(
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
     var needsReviewFilter by rememberSaveable { mutableStateOf(NeedsReviewFilter.All) }
     var wasLoading by remember { mutableStateOf(state.loading) }
+    val blockingRefresh = state.showPageRefresh
     val listState = rememberLazyListState()
     val queueCounts = PendingQueueCounts(
         all = state.items.size,
@@ -134,7 +135,7 @@ fun PendingScreen(
     if (showPendingTools) {
         ModalBottomSheet(onDismissRequest = { showPendingTools = false }) {
             PendingToolsSheet(
-                loading = state.loading,
+                loading = blockingRefresh,
                 displayMode = displayMode,
                 onDisplayModeChange = { displayMode = it },
                 onRefresh = onRefresh,
@@ -182,7 +183,7 @@ fun PendingScreen(
                 trailingAction = if (state.items.isNotEmpty()) {
                     {
                         PendingDisplayModeButton(
-                            loading = state.loading,
+                            loading = blockingRefresh,
                             displayMode = displayMode,
                             onClick = { showPendingTools = true },
                         )
@@ -195,7 +196,7 @@ fun PendingScreen(
 
         val authorityTone = when {
             readOnly -> DataAuthorityTone.ReadOnly
-            state.loading -> DataAuthorityTone.Refreshing
+            blockingRefresh -> DataAuthorityTone.Refreshing
             state.showingCachedSnapshot -> DataAuthorityTone.LocalCache
             else -> DataAuthorityTone.Backend
         }

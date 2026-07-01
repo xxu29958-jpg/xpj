@@ -111,7 +111,8 @@ fun StatsScreen(
             ),
         )
         val authorityTone = when {
-            state.loading -> DataAuthorityTone.Refreshing
+            StatsRefreshIndicator.isActive(loading = state.loading, hasReadableData = state.stats != null) ->
+                DataAuthorityTone.Refreshing
             state.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
             state.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
             else -> null

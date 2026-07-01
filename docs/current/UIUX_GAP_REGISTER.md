@@ -142,8 +142,9 @@ that actually ships the fix.
   the month refresh before Pending; Today, Pending, and Ledger stop holding the
   whole-page pull indicator once readable content is already on screen. A
   follow-up also lets Today and Insights release the pull indicator while
-  existing monthly stats remain readable; the authority strip still carries the
-  refreshing state until the backend response lands.
+  existing monthly stats remain readable; the latest follow-up also stops the
+  root authority strips and Pending density control from presenting readable
+  background sync as whole-page loading.
   Confirmed-ledger sync now requests the backend-supported 200 rows per page
   instead of 50 to reduce avoidable round trips on larger ledgers. A shared
   readable-refresh guard now also covers Budget, Recurring, Bill Split, Debt
@@ -405,10 +406,12 @@ that actually ships the fix.
   cache sync continue in the background. Insights reports now release the trend
   loading state as soon as the overview response lands; goals continue as a
   secondary background result and stale goal requests are cancelled. Pending and
-  Ledger now keep existing rows readable while the authority strip shows refresh
-  state, Today and Insights no longer keep the page-level pull indicator active
-  when existing monthly stats are readable, secondary/drill pages reuse the same
-  readable-refresh rule, and confirmed-ledger sync uses 200 rows per page.
+  Ledger now keep existing rows readable, Today and Insights no longer keep the
+  page-level pull indicator active when existing monthly stats are readable, and
+  Today/Pending/Ledger/Insights reserve the strong refreshing authority tone for
+  blocking first-load states instead of readable background sync. Secondary/drill
+  pages reuse the same readable-refresh rule, and confirmed-ledger sync uses 200
+  rows per page.
 - Remaining QA: measure Today, Pending, Ledger, Insights, and a sample of the
   secondary/drill pages on a physical device with the production backend and
   confirm the page does not imply fresh backend truth before the primary response

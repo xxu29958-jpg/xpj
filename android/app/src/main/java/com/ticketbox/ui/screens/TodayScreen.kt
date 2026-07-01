@@ -79,10 +79,17 @@ data class TodayScreenState(
             ?.filter { it.amountCents > 0L }
             ?.maxByOrNull { it.amountCents }
             ?.let { TodayTopCategory(name = it.category, amountCents = it.amountCents) }
+    val showBlockingRefresh: Boolean
+        get() = TodayRefreshIndicator.isActive(
+            pendingLoading = pending.loading,
+            pendingLoadedOnce = pending.hasLoadedOnce,
+            monthlyLoading = monthly.loading,
+            monthlyHasReadableData = monthly.stats != null,
+        )
     val authorityTone: DataAuthorityTone?
         get() = when {
             pending.readOnly -> DataAuthorityTone.ReadOnly
-            pending.loading || monthly.loading -> DataAuthorityTone.Refreshing
+            showBlockingRefresh -> DataAuthorityTone.Refreshing
             pending.showingCachedSnapshot -> DataAuthorityTone.LocalCache
             monthly.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
             monthly.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
@@ -411,7 +418,7 @@ private fun TodayMonthSignals(
 
 @Composable
 private fun todaySyncValue(monthly: MonthlyStatsUiState): String = when {
-    monthly.loading -> stringResource(R.string.today_sync_loading)
+    monthly.loading && monthly.stats == null -> stringResource(R.string.today_sync_loading)
     monthly.statsLoadError != null -> stringResource(R.string.today_sync_error)
     monthly.statsSource == StatsSource.LocalFallback -> stringResource(R.string.today_sync_local)
     monthly.statsSource == StatsSource.Backend -> stringResource(R.string.today_sync_ready)
