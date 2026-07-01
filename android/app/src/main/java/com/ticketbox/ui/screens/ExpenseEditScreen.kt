@@ -202,6 +202,7 @@ fun ExpenseEditScreen(
     var showTimePicker by remember(currentExpense.id) { mutableStateOf(false) }
     var showRejectDialog by remember(currentExpense.id) { mutableStateOf(false) }
     var showLargeImage by remember(currentExpense.id) { mutableStateOf(false) }
+    var amountFocused by remember(currentExpense.id) { mutableStateOf(false) }
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.expense_edit_raw_text_empty)
     val previewImage = state.fullImage ?: state.thumbnail
@@ -312,6 +313,7 @@ fun ExpenseEditScreen(
                     allowReject = allowReject && !readOnly,
                     validationMessage = message,
                     statusMessage = state.message?.asString(),
+                    forceCompact = amountFocused,
                 ),
                 actions = ExpenseEditActionBarActions(
                     onBack = onDone,
@@ -388,6 +390,7 @@ fun ExpenseEditScreen(
             options = ExpenseCurrencyFieldOptions(
                 enabled = !readOnly,
                 autoFocusAmount = false,
+                onAmountFocusChanged = { amountFocused = it },
             ),
         )
         ExpenseEditMerchantField(

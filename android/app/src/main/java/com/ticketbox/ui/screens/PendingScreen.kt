@@ -28,9 +28,7 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.DataAuthorityTone
-import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.rememberAppHaptics
-import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.SwipeActionConfig
 import com.ticketbox.ui.components.SwipeableActionRow
@@ -43,6 +41,9 @@ import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
 import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
 import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
+import com.ticketbox.ui.screens.pending.PendingExpenseReviewActions
+import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
+import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueOverview
@@ -96,6 +97,20 @@ fun PendingScreen(
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
     val haptics = rememberAppHaptics()
+
+    fun resolvePrimaryAction(expense: Expense) {
+        when {
+            expense.amountCents == null -> onMissingAmount(expense)
+            expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> onOpenDuplicate(expense)
+            expense.category.isBlank() -> onQuickCategory(expense)
+            expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
+            else -> {
+                haptics.confirm()
+                onConfirm(expense)
+            }
+        }
+    }
+
     // Trigger celebration only when a settled non-loading queue goes from non-empty to empty.
     var previousItemCount by remember { mutableStateOf(if (state.loading) 0 else state.items.size) }
     var showCelebration by remember { mutableStateOf(false) }
@@ -156,7 +171,7 @@ fun PendingScreen(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
         listState = listState,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         item {
             PendingTop(
@@ -261,7 +276,8 @@ fun PendingScreen(
                 item { NeedsReviewEmptyFilterCard(filter = needsReviewFilter) }
             } else {
                 items(filteredItems, key = { it.id }) { expense ->
-                    val canSwipe = !readOnly && expense.id !in state.actionInProgressIds
+                    val actionBusy = expense.id in state.actionInProgressIds
+                    val canSwipe = !readOnly && !actionBusy
                     val showInlineActions = !readOnly && displayMode == PendingDisplayMode.Comfortable
                     val swipeTokens = LocalSwipeActionTokens.current
                     val leftAction = if (canSwipe) SwipeActionConfig(
@@ -269,15 +285,7 @@ fun PendingScreen(
                         label = stringResource(R.string.pending_swipe_confirm_label),
                         bg = swipeTokens.confirm.bg,
                         fg = swipeTokens.confirm.fg,
-                        onTriggered = {
-                            when {
-                                expense.amountCents == null -> onMissingAmount(expense)
-                                expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> onOpenDuplicate(expense)
-                                expense.category.isBlank() -> onQuickCategory(expense)
-                                expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
-                                else -> onConfirm(expense)
-                            }
-                        },
+                        onTriggered = { resolvePrimaryAction(expense) },
                     ) else null
                     val rightAction = if (canSwipe) SwipeActionConfig(
                         icon = Icons.Filled.DeleteOutline,
@@ -292,33 +300,24 @@ fun PendingScreen(
                         rightAction = rightAction,
                         enabled = canSwipe,
                     ) {
-                        ExpenseCard(
-                            expense = expense,
-                            thumbnail = state.thumbnails[expense.id],
-                            previewMode = when (displayMode) {
-                                PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
-                                PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
-                            },
-                            showActions = showInlineActions,
-                            actionsEnabled = expense.id !in state.actionInProgressIds,
-                            onEdit = { onEdit(expense) },
-                            onConfirm = {
-                                when {
-                                    expense.amountCents == null -> onMissingAmount(expense)
-                                    expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> onOpenDuplicate(expense)
-                                    expense.category.isBlank() -> onQuickCategory(expense)
-                                    expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
-                                    else -> {
-                                        haptics.confirm()
-                                        onConfirm(expense)
-                                    }
-                                }
-                            },
-                            onReject = {
-                                haptics.reject()
-                                onReject(expense)
-                            },
-                            onKeepDuplicate = { onKeepDuplicate(expense) },
+                        PendingExpenseReviewRow(
+                            item = PendingExpenseReviewItem(
+                                expense = expense,
+                                thumbnail = state.thumbnails[expense.id],
+                                compact = displayMode == PendingDisplayMode.Compact,
+                                showInlineActions = showInlineActions,
+                                busy = actionBusy,
+                            ),
+                            actions = PendingExpenseReviewActions(
+                                canMutate = canSwipe,
+                                onEdit = { onEdit(expense) },
+                                onPrimaryAction = { resolvePrimaryAction(expense) },
+                                onReject = {
+                                    haptics.reject()
+                                    onReject(expense)
+                                },
+                                onKeepDuplicate = { onKeepDuplicate(expense) },
+                            ),
                         )
                     }
                 }

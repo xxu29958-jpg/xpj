@@ -2,8 +2,6 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -19,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
@@ -33,10 +32,10 @@ import com.ticketbox.ui.design.AppSpacing
 internal data class ExpenseCurrencyFieldOptions(
     val enabled: Boolean = true,
     val autoFocusAmount: Boolean = true,
+    val onAmountFocusChanged: (Boolean) -> Unit = {},
 )
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
 internal fun ExpenseCurrencyFields(
     currency: CurrencyCode,
     onCurrencyChange: (CurrencyCode) -> Unit,
@@ -64,7 +63,8 @@ internal fun ExpenseCurrencyFields(
             onValueChange = onOriginalAmountChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(amountFocus),
+                .focusRequester(amountFocus)
+                .onFocusChanged { options.onAmountFocusChanged(it.isFocused) },
             label = { Text(stringResource(R.string.expense_edit_original_amount_field_label)) },
             placeholder = {
                 Text(
@@ -81,12 +81,10 @@ internal fun ExpenseCurrencyFields(
             singleLine = true,
             enabled = options.enabled,
         )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
-            CurrencyCode.entries.forEach { code ->
+            items(CurrencyCode.entries, key = { it.storageKey }) { code ->
                 AppFilterChip(
                     selected = currency == code,
                     onClick = { onCurrencyChange(code) },

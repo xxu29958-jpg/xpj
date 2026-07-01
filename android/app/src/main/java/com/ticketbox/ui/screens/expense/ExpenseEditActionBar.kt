@@ -50,6 +50,7 @@ internal data class ExpenseEditActionBarState(
     val allowReject: Boolean,
     val validationMessage: String?,
     val statusMessage: String?,
+    val forceCompact: Boolean = false,
 )
 
 /** 编辑页操作栏的四个动作回调（沿 BudgetEditorActions 先例分组，避免长参数表）。 */
@@ -84,6 +85,7 @@ internal fun ExpenseEditActionBar(
 ) {
     val visuals = LocalThemeVisuals.current
     val keyboardVisible = LocalAppImeVisible.current
+    val compactMode = keyboardVisible || state.forceCompact
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -92,8 +94,8 @@ internal fun ExpenseEditActionBar(
                 horizontal = AppSpacing.cardGap,
                 vertical = AppSpacing.smallGap,
             ),
-        shape = RoundedCornerShape(if (keyboardVisible) AppRadius.medium else AppRadius.bottomBar),
-        color = visuals.solidCard.copy(alpha = if (keyboardVisible) 0.96f else 0.995f),
+        shape = RoundedCornerShape(if (compactMode) AppRadius.medium else AppRadius.bottomBar),
+        color = visuals.solidCard.copy(alpha = if (compactMode) 0.90f else 0.995f),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -102,9 +104,9 @@ internal fun ExpenseEditActionBar(
                 .fillMaxWidth()
                 .padding(
                     horizontal = AppSpacing.cardPaddingTight,
-                    vertical = if (keyboardVisible) AppSpacing.smallGap else AppSpacing.compactGap,
+                    vertical = if (compactMode) AppSpacing.miniGap else AppSpacing.compactGap,
                 ),
-            verticalArrangement = Arrangement.spacedBy(if (keyboardVisible) AppSpacing.miniGap else AppSpacing.smallGap),
+            verticalArrangement = Arrangement.spacedBy(if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap),
         ) {
             state.validationMessage?.let {
                 ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
@@ -112,7 +114,7 @@ internal fun ExpenseEditActionBar(
             state.statusMessage?.let {
                 ExpenseEditActionMessage(it, MaterialTheme.colorScheme.secondary)
             }
-            if (keyboardVisible) {
+            if (compactMode) {
                 ExpenseEditKeyboardActionRow(state = state, actions = actions)
             } else {
                 ExpenseEditActionForwardRow(
@@ -229,12 +231,15 @@ private fun ExpenseEditKeyboardActionRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        CompactTextAction(
-            text = stringResource(R.string.expense_edit_primary_back_button),
-            weight = 0.68f,
-            enabled = !state.saving,
-            onClick = actions.onBack,
-        )
+        val showBack = !state.allowConfirm || (!state.allowSave && !state.allowReject)
+        if (showBack) {
+            CompactTextAction(
+                text = stringResource(R.string.expense_edit_primary_back_button),
+                weight = 0.72f,
+                enabled = !state.saving,
+                onClick = actions.onBack,
+            )
+        }
         if (state.allowSave) {
             CompactOutlinedAction(
                 text = if (state.saving) {
@@ -242,7 +247,7 @@ private fun ExpenseEditKeyboardActionRow(
                 } else {
                     stringResource(R.string.expense_edit_primary_save_button)
                 },
-                weight = 0.78f,
+                weight = if (state.allowConfirm) 0.82f else 1f,
                 enabled = !state.saving,
                 onClick = actions.onSave,
             )
@@ -250,7 +255,7 @@ private fun ExpenseEditKeyboardActionRow(
         if (state.allowConfirm) {
             CompactFilledAction(
                 text = stringResource(R.string.expense_edit_confirm_button),
-                weight = 1.2f,
+                weight = 1.32f,
                 enabled = !state.saving,
                 onClick = actions.onConfirm,
             )
@@ -258,7 +263,7 @@ private fun ExpenseEditKeyboardActionRow(
         if (state.allowReject) {
             CompactTextAction(
                 text = stringResource(R.string.expense_edit_reject_button),
-                weight = 0.68f,
+                weight = 0.72f,
                 enabled = !state.saving,
                 danger = true,
                 onClick = actions.onRequestReject,

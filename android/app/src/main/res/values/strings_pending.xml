@@ -73,6 +73,25 @@
     <!-- 显示模式按钮 -->
     <string name="pending_display_mode_button_loading">刷新中</string>
 
+    <!-- 待确认真实条目：紧凑复核行 -->
+    <string name="pending_row_image_placeholder">截图</string>
+    <string name="pending_row_meta">%1$s · 待确认</string>
+    <string name="pending_row_amount_missing">待补金额</string>
+    <string name="pending_row_signal_pending_sync">待同步</string>
+    <string name="pending_row_signal_amount">缺金额</string>
+    <string name="pending_row_signal_merchant">缺商家</string>
+    <string name="pending_row_signal_category">缺分类</string>
+    <string name="pending_row_signal_duplicate">疑似重复</string>
+    <string name="pending_row_signal_review">需核对</string>
+    <string name="pending_row_action_edit">编辑</string>
+    <string name="pending_row_action_amount">补金额</string>
+    <string name="pending_row_action_duplicate">处理重复</string>
+    <string name="pending_row_action_category">补分类</string>
+    <string name="pending_row_action_merchant">补商家</string>
+    <string name="pending_row_action_confirm">确认</string>
+    <string name="pending_row_action_ignore">忽略</string>
+    <string name="pending_row_action_keep_duplicate">保留</string>
+
     <!-- 撤销 banner -->
     <string name="pending_undo_banner_label_with_descriptor">已忽略 · %1$s</string>
     <string name="pending_undo_banner_label">已忽略</string>
