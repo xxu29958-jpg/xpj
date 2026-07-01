@@ -4,7 +4,8 @@ This is the product-design lead audit for the Android IA/UIUX refactor. It
 freezes the page responsibilities, state-authority rules, and implementation
 slices before more visual work lands. It should be read with
 `docs/current/ANDROID_UIUX_IA_REFERENCE_2026-07-01.md`, which contains the
-external product reference pass.
+external product reference pass. Execution status is tracked in
+`docs/current/ANDROID_UIUX_AUDIT_REGISTER_2026-07-01.md`.
 
 ## Evidence Read
 

@@ -135,7 +135,8 @@ that actually ships the fix.
 
 - Surface: Android Today, Pending, Ledger, Insights, Settings root, and Settings
   secondary pages.
-- Status: active contract for the updated Android IA/UIUX goal.
+- Status: active contract for the updated Android IA/UIUX goal; execution is
+  tracked in `docs/current/ANDROID_UIUX_AUDIT_REGISTER_2026-07-01.md`.
 - Gap: the user explicitly reset the goal from page-level polish to a full
   product-design-lead refactor. Continuing to tune individual cards would not
   be enough; the five root pages need a shared skeleton, distinct product jobs,
@@ -143,7 +144,8 @@ that actually ships the fix.
   implementation lands.
 - Resolution target: `docs/current/ANDROID_IA_UIUX_PHASE0_AUDIT_2026-07-01.md`
   records the Phase 0 audit, page matrix, data-authority rules, Insights chart
-  contract, and commit slicing plan.
+  contract, and commit slicing plan. The audit register records per-page status,
+  acceptance gates, Settings secondary coverage, and true-device review debt.
 
 ### ANDROID-2026-07-01-ledger-long-list-density
 
