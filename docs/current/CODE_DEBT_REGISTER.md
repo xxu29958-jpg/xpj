@@ -32,3 +32,16 @@ feature slice without raising risk.
   findings and making visual-slice validation noisier.
 - Desired cleanup: investigate the detekt classpath/type-resolution setup so
   successful builds do not emit stale compiler-analysis warnings.
+
+- Surface: Android `LedgerRepository` invitation validation and repository error
+  messages.
+- Status: registered follow-up after the Join Family secondary-page slice.
+- Debt: the UI/VM slice now resolves known ledger roles through resources, but
+  `LedgerRepository.acceptInvitation` still throws several Chinese validation
+  strings directly. Those can surface through `Throwable.toUiText(...)` as raw
+  messages, which violates the resource-backed copy rule if left as the normal
+  product path.
+- Desired cleanup: migrate invitation validation failures to structured error
+  codes or `UiText`-friendly repository errors in a focused repository/error
+  contract slice, then update ViewModel tests for preview, accept, and invalid
+  input failures.

@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.InvitationPreview
+import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
+import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
+import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
+import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -110,11 +114,7 @@ class JoinFamilyLedgerViewModel(
                     it.copy(
                         submitting = false,
                         preview = null,
-                        success = UiText.res(
-                            R.string.join_family_ledger_message_accepted,
-                            ledger.name,
-                            ledger.role,
-                        ),
+                        success = acceptedMessage(ledger),
                     )
                 }
                 onConsumed()
@@ -134,3 +134,13 @@ class JoinFamilyLedgerViewModel(
 
 private fun String?.displayOr(@androidx.annotation.StringRes fallback: Int): UiText =
     this?.takeIf { it.isNotBlank() }?.let { UiText.raw(it) } ?: UiText.res(fallback)
+
+private fun acceptedMessage(ledger: LedgerSummary): UiText {
+    val name = ledger.name
+    return when (ledger.role.trim()) {
+        LEDGER_ROLE_OWNER -> UiText.res(R.string.join_family_ledger_message_accepted_owner, name)
+        LEDGER_ROLE_MEMBER -> UiText.res(R.string.join_family_ledger_message_accepted_member, name)
+        LEDGER_ROLE_VIEWER -> UiText.res(R.string.join_family_ledger_message_accepted_viewer, name)
+        else -> UiText.res(R.string.join_family_ledger_message_accepted_unknown, name, ledger.role)
+    }
+}

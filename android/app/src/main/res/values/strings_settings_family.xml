@@ -69,26 +69,38 @@
 
     <!-- JoinFamilyLedgerScreen：设置→加入家庭账本 屏 -->
     <string name="join_family_ledger_page_title">加入家庭账本</string>
-    <string name="join_family_ledger_page_subtitle">先确认邀请目标，再替换本机绑定。</string>
-    <string name="join_family_ledger_section_invite">邀请信息</string>
-    <string name="join_family_ledger_current_binding">当前绑定：%1$s / %2$s / %3$s</string>
-    <string name="join_family_ledger_field_invite_token">邀请明文</string>
+    <string name="join_family_ledger_page_subtitle">先核对邀请目标，再加入对应账本。</string>
+    <string name="join_family_ledger_section_current">当前设备</string>
+    <string name="join_family_ledger_section_invite">邀请验证</string>
+    <string name="join_family_ledger_current_ledger">账本</string>
+    <string name="join_family_ledger_current_account">账号</string>
+    <string name="join_family_ledger_current_role">角色</string>
+    <string name="join_family_ledger_current_note">加入成功后，此设备会切换到新账本。</string>
+    <string name="join_family_ledger_identity_title">加入身份</string>
+    <string name="join_family_ledger_field_invite_token">邀请码</string>
     <string name="join_family_ledger_field_account_name">你的显示名</string>
     <string name="join_family_ledger_field_device_name">设备名</string>
     <string name="join_family_ledger_preview_loading">预览中…</string>
     <string name="join_family_ledger_preview_button">预览邀请</string>
     <string name="join_family_ledger_accept_loading">处理中…</string>
     <string name="join_family_ledger_accept_button">接受邀请</string>
-    <string name="join_family_ledger_preview_required">预览后才可以接受邀请；接受成功会替换本机当前绑定。</string>
-    <string name="join_family_ledger_preview_join_target">将加入：%1$s</string>
+    <string name="join_family_ledger_preview_required">预览通过后才可以加入；加入成功后，此设备会切换到邀请账本。</string>
+    <string name="join_family_ledger_preview_join_target">目标账本：%1$s</string>
     <string name="join_family_ledger_preview_ledger_unnamed">未命名账本</string>
     <string name="join_family_ledger_preview_role">邀请角色：%1$s</string>
     <string name="join_family_ledger_preview_expires_at">有效期至：%1$s</string>
+    <string name="join_family_ledger_role_owner">拥有者</string>
+    <string name="join_family_ledger_role_member">成员</string>
+    <string name="join_family_ledger_role_viewer">只读</string>
+    <string name="join_family_ledger_role_unknown">未知</string>
     <!-- JoinFamilyLedgerViewModel：当前绑定回退名与反馈消息（ADR-0044 wave 2） -->
     <string name="join_family_ledger_binding_unbound">未绑定</string>
     <string name="join_family_ledger_message_preview_failed">预览邀请失败。</string>
     <string name="join_family_ledger_message_accept_failed">接受邀请失败。</string>
-    <string name="join_family_ledger_message_accepted">已加入「%1$s」，当前角色：%2$s</string>
+    <string name="join_family_ledger_message_accepted_owner">已加入「%1$s」，当前角色：拥有者。</string>
+    <string name="join_family_ledger_message_accepted_member">已加入「%1$s」，当前角色：成员。</string>
+    <string name="join_family_ledger_message_accepted_viewer">已加入「%1$s」，当前角色：只读。</string>
+    <string name="join_family_ledger_message_accepted_unknown">已加入「%1$s」，当前角色：%2$s。</string>
 
     <!-- LedgerSwitcherScreen：设置→账本 屏 -->
     <string name="ledger_switcher_page_title">账本</string>
