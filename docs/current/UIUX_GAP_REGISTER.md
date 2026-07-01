@@ -164,7 +164,8 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-pending-queue-overview
 
 - Surface: Android Pending root page.
-- Status: implemented in the current Pending queue slice; needs true-device QA.
+- Status: implemented in the current Pending queue slice; density pass verified
+  on true-device screenshot `83-pending-after-density-fix.png`.
 - Gap: the queue counts were already real, but they were split between the page
   header, filters, and a filtered-only bulk-confirm entry. That made the page
   feel like a list plus controls instead of a review inbox with an obvious
@@ -173,8 +174,11 @@ that actually ships the fix.
   before the filters. It prioritizes suspected duplicates, missing amount,
   missing merchant, and directly confirmable items, and exposes the batch-confirm
   entry without inventing any counts or treating cached data as server truth.
-- Remaining QA: run official-package true-device review for first-viewport
-  density, cache/read-only copy, scroll position, and bottom-nav safety.
+  Compact mode no longer expands duplicate-warning blocks or inline action
+  buttons, so the first viewport supports queue scanning instead of full-detail
+  reading.
+- Remaining QA: continue official-package review for cache/read-only copy,
+  scroll position, bottom-nav safety, and the Comfortable detail mode.
 
 ### ANDROID-2026-07-01-today-cockpit-priority
 

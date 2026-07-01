@@ -72,50 +72,22 @@ internal fun PendingTop(
         }
 
         if (pendingCount > 0) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                    Text(
-                        text = pendingCount.toString(),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = AppTextHierarchy.hero.weight,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = stringResource(R.string.pending_top_metric_caption),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = AppTextHierarchy.caption.weight,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (counts.readyToConfirm > 0 || counts.needsAmount > 0 || counts.duplicate > 0) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-                    ) {
-                        PendingTopMetric(
-                            visible = counts.readyToConfirm > 0,
-                            value = counts.readyToConfirm,
-                            label = stringResource(R.string.pending_filter_label_ready_to_confirm),
-                        )
-                        PendingTopMetric(
-                            visible = counts.needsAmount > 0,
-                            value = counts.needsAmount,
-                            label = stringResource(R.string.pending_filter_label_needs_amount),
-                        )
-                        PendingTopMetric(
-                            visible = counts.duplicate > 0,
-                            value = counts.duplicate,
-                            label = stringResource(R.string.pending_top_duplicate_caption),
-                        )
-                    }
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(
+                    text = pendingCount.toString(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = AppTextHierarchy.hero.weight,
+                    maxLines = 1,
+                )
+                Text(
+                    text = stringResource(R.string.pending_top_metric_caption),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = AppTextHierarchy.caption.weight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
 
@@ -132,35 +104,6 @@ internal fun PendingTop(
                 onClick = onUploadScreenshot,
             )
         }
-    }
-}
-
-@Composable
-private fun PendingTopMetric(
-    visible: Boolean,
-    value: Int,
-    label: String,
-) {
-    if (!visible) return
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = value.toString(),
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-        )
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = AppTextHierarchy.caption.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

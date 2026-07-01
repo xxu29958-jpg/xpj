@@ -237,7 +237,7 @@ fun ExpenseCard(
                 )
             }
 
-            if (expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
+            if (!isCompact && expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
                 DuplicateNotice(reason = expense.duplicateReason)
             }
 

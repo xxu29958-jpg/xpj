@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -82,10 +80,9 @@ internal fun PendingQueueOverview(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = AppSpacing.smallGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            .padding(vertical = AppSpacing.tinyGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
         Text(
             text = stringResource(R.string.pending_queue_overview_title),
             style = MaterialTheme.typography.titleSmall,
@@ -96,23 +93,19 @@ internal fun PendingQueueOverview(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
             PendingQueueMetric(
                 label = stringResource(R.string.pending_queue_overview_ready_label),
                 value = model.readyCount,
-                modifier = Modifier.weight(1f),
             )
             PendingQueueMetric(
                 label = stringResource(R.string.pending_queue_overview_review_label),
                 value = model.reviewCount,
-                modifier = Modifier.weight(1f),
             )
-        }
-        if (model.hasReviewSignals) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
+            if (model.hasReviewSignals) {
                 PendingQueueIssue(model.needsAmount, R.string.pending_queue_overview_amount_issue)
                 PendingQueueIssue(model.needsMerchant, R.string.pending_queue_overview_merchant_issue)
                 PendingQueueIssue(model.duplicate, R.string.pending_queue_overview_duplicate_issue)
@@ -146,19 +139,19 @@ private fun pendingQueuePriorityText(model: PendingQueueOverviewModel): String =
 }
 
 @Composable
-private fun PendingQueueMetric(label: String, value: Int, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        Text(
-            text = stringResource(R.string.pending_queue_overview_metric_count, value),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.hero.weight,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+private fun PendingQueueMetric(label: String, value: Int) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = AppTextHierarchy.caption.weight,
+        )
+        Text(
+            text = stringResource(R.string.pending_queue_overview_metric_count, value),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = AppTextHierarchy.heading.weight,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }

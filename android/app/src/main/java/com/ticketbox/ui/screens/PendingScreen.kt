@@ -262,6 +262,7 @@ fun PendingScreen(
             } else {
                 items(filteredItems, key = { it.id }) { expense ->
                     val canSwipe = !readOnly && expense.id !in state.actionInProgressIds
+                    val showInlineActions = !readOnly && displayMode == PendingDisplayMode.Comfortable
                     val swipeTokens = LocalSwipeActionTokens.current
                     val leftAction = if (canSwipe) SwipeActionConfig(
                         icon = Icons.Filled.CheckCircle,
@@ -298,7 +299,7 @@ fun PendingScreen(
                                 PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
                                 PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
                             },
-                            showActions = !readOnly,
+                            showActions = showInlineActions,
                             actionsEnabled = expense.id !in state.actionInProgressIds,
                             onEdit = { onEdit(expense) },
                             onConfirm = {
