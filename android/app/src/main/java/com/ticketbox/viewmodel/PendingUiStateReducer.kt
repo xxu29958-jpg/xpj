@@ -16,6 +16,7 @@ internal object PendingUiStateReducer {
             thumbnails = current.thumbnails.filterKeys { id -> id in activeIds },
             activeSheet = reconcileActiveSheet(current.activeSheet, expenses),
             readOnly = readOnly,
+            showingCachedSnapshot = false,
             loading = false,
         )
     }

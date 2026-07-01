@@ -26,15 +26,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
-import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
 import com.ticketbox.domain.model.ledgerRoleLabel
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -49,6 +50,11 @@ import com.ticketbox.viewmodel.MonthlyStatsUiState
 import com.ticketbox.viewmodel.PendingUiState
 import com.ticketbox.viewmodel.StatsSource
 
+data class TodayTopCategory(
+    val name: String,
+    val amountCents: Long,
+)
+
 data class TodayScreenState(
     val pending: PendingUiState,
     val monthly: MonthlyStatsUiState,
@@ -60,10 +66,21 @@ data class TodayScreenState(
     val duplicateCount: Int get() = pending.items.count { it.duplicateStatus == DuplicateStatusValues.SUSPECTED }
     val readyToConfirmCount: Int
         get() = pending.items.count { it.isPendingReadyToConfirmDirectly() }
-    val topCategory: CategoryStats?
+    val topCategory: TodayTopCategory?
         get() = monthly.categoryInsight?.let {
-            CategoryStats(category = it.topCategory, amountCents = it.topAmountCents, count = 0)
-        } ?: monthly.stats?.byCategory?.filter { it.amountCents > 0L }?.maxByOrNull { it.amountCents }
+            TodayTopCategory(name = it.topCategory, amountCents = it.topAmountCents)
+        } ?: monthly.stats?.byCategory
+            ?.filter { it.amountCents > 0L }
+            ?.maxByOrNull { it.amountCents }
+            ?.let { TodayTopCategory(name = it.category, amountCents = it.amountCents) }
+    val authorityTone: DataAuthorityTone?
+        get() = when {
+            pending.readOnly -> DataAuthorityTone.ReadOnly
+            pending.loading || monthly.loading -> DataAuthorityTone.Refreshing
+            monthly.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
+            monthly.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
+            else -> null
+        }
 }
 
 data class TodayActions(
@@ -91,6 +108,11 @@ fun TodayScreen(
                 title = stringResource(R.string.today_header_title),
                 subtitle = stringResource(R.string.today_header_subtitle),
             )
+        }
+        state.authorityTone?.let { tone ->
+            item {
+                AppDataAuthorityStrip(tone = tone)
+            }
         }
         item { TodayOverview(state = state) }
         item { TodayActionRow(state = state, actions = actions) }
@@ -270,7 +292,7 @@ private fun TodayMonthSignals(state: TodayScreenState) {
     TodaySignalSection(title = stringResource(R.string.today_section_month)) {
         TodaySignalRow(
             label = stringResource(R.string.today_metric_top_category),
-            value = topCategory?.category ?: stringResource(R.string.today_top_category_empty),
+            value = topCategory?.name ?: stringResource(R.string.today_top_category_empty),
             caption = topCategory?.amountCents?.let { formatDisplayAmount(it, currencyDisplay) },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))

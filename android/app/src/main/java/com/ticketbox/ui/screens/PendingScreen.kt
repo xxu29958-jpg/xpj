@@ -23,9 +23,11 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.ExpensePreviewMode
@@ -188,6 +190,18 @@ fun PendingScreen(
                 } else {
                     null
                 },
+            )
+        }
+
+        item {
+            AppDataAuthorityStrip(
+                tone = when {
+                    readOnly -> DataAuthorityTone.ReadOnly
+                    state.loading -> DataAuthorityTone.Refreshing
+                    state.showingCachedSnapshot -> DataAuthorityTone.LocalCache
+                    else -> DataAuthorityTone.Backend
+                },
+                localCacheBodyRes = R.string.components_data_authority_pending_cache_body,
             )
         }
 

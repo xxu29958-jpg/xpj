@@ -50,6 +50,7 @@ data class PendingUiState(
     val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
     val actionInProgressIds: Set<Long> = emptySet(),
     val readOnly: Boolean = false,
+    val showingCachedSnapshot: Boolean = false,
     val loading: Boolean = false,
     val uploading: Boolean = false,
     val message: UiText? = null,
@@ -239,7 +240,7 @@ class PendingViewModel(
         repository.getCachedPending().onSuccess { cached ->
             if (requestGeneration != generation) return@onSuccess
             if (cached.isNotEmpty() && _uiState.value.items.isEmpty()) {
-                _uiState.update { it.copy(items = cached) }
+                _uiState.update { it.copy(items = cached, showingCachedSnapshot = true) }
             }
         }
     }

@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.runCurrent
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -28,6 +29,7 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
 
         // 种子已铺：列表先显示缓存行，loading 仍 true（网络在飞）。
         assertEquals(listOf("Cached"), vm.uiState.value.items.map { it.merchant })
+        assertTrue(vm.uiState.value.showingCachedSnapshot)
         assertTrue(vm.uiState.value.loading)
 
         networkResponse.complete(Result.success(listOf(expense(id = 2L, merchant = "Fresh"))))
@@ -35,7 +37,8 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
 
         // 网络回来后整列替换为权威数据，loading 落下。
         assertEquals(listOf("Fresh"), vm.uiState.value.items.map { it.merchant })
-        assertTrue(!vm.uiState.value.loading)
+        assertFalse(vm.uiState.value.showingCachedSnapshot)
+        assertFalse(vm.uiState.value.loading)
     }
 
     @Test
@@ -49,7 +52,8 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
 
         // 飞行模式：缓存留在列表，网络失败只落 loading + 提示，不清空 items。
         assertEquals(listOf("Cached"), vm.uiState.value.items.map { it.merchant })
-        assertTrue(!vm.uiState.value.loading)
+        assertTrue(vm.uiState.value.showingCachedSnapshot)
+        assertFalse(vm.uiState.value.loading)
         assertTrue(vm.uiState.value.message != null)
     }
 
@@ -85,5 +89,6 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         advanceUntilIdle()
 
         assertEquals(listOf("Fresh"), vm.uiState.value.items.map { it.merchant })
+        assertFalse(vm.uiState.value.showingCachedSnapshot)
     }
 }

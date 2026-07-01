@@ -59,9 +59,11 @@ import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.CardSkeleton
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.screens.stats.CategoryStructureCard
@@ -130,6 +132,12 @@ fun StatsScreen(
         val selectedDashboardKeys = orderedStatsDashboardKeys(
             statsDashboardKeysForTab(selectedStatsTab, visibleDashboardKeys),
         )
+        val authorityTone = when {
+            state.loading -> DataAuthorityTone.Refreshing
+            state.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
+            state.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
+            else -> null
+        }
         item {
             StatsTopPanel(
                 state = state,
@@ -143,6 +151,13 @@ fun StatsScreen(
                 onOpenIncomePlans = onOpenIncomePlans,
                 onOpenDebtGoals = onOpenDebtGoals,
             )
+        }
+        authorityTone?.let { tone ->
+            item {
+                AppDataAuthorityStrip(
+                    tone = tone,
+                )
+            }
         }
         state.message?.let {
             item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
