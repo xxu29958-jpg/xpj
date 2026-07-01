@@ -240,42 +240,54 @@ class MonthlyStatsViewModel(
         }
     }
 
-    private suspend fun handleStatsSuccess(
+    private fun handleStatsSuccess(
         stats: MonthlyStats,
         month: String?,
         tag: String?,
         snapshot: MonthlyStatsRefreshSnapshot,
     ) {
-        val lifestyleResult = repository.lifestyleStats(month)
         if (!snapshot.isCurrent()) return
-        lifestyleResult
-            .onSuccess { lifestyle ->
-                repository.syncConfirmed(month = month, category = null, tag = tag)
-                if (!snapshot.isCurrent()) return
-                _uiState.update {
-                    it.copy(
-                        stats = stats,
-                        statsSource = StatsSource.Backend,
-                        lifestyleStats = lifestyle,
-                        categoryInsight = monthlyCategoryInsight(stats),
-                        loading = false,
-                        statsLoadError = null,
-                    )
+        _uiState.update {
+            it.copy(
+                stats = stats,
+                statsSource = StatsSource.Backend,
+                categoryInsight = monthlyCategoryInsight(stats),
+                loading = false,
+                statsLoadError = null,
+            )
+        }
+        loadLifestyleAfterPrimaryStats(month, snapshot)
+        syncConfirmedAfterPrimaryStats(month, tag, snapshot)
+    }
+
+    private fun loadLifestyleAfterPrimaryStats(
+        month: String?,
+        snapshot: MonthlyStatsRefreshSnapshot,
+    ) {
+        viewModelScope.launch {
+            val lifestyleResult = repository.lifestyleStats(month)
+            if (!snapshot.isCurrent()) return@launch
+            lifestyleResult
+                .onSuccess { lifestyle ->
+                    _uiState.update { it.copy(lifestyleStats = lifestyle) }
                 }
-            }
-            .onFailure { error ->
-                if (!snapshot.isCurrent()) return
-                _uiState.update {
-                    it.copy(
-                        stats = stats,
-                        statsSource = StatsSource.Backend,
-                        categoryInsight = monthlyCategoryInsight(stats),
-                        loading = false,
-                        message = error.toUiText(R.string.stats_message_lifestyle_failed),
-                        statsLoadError = null,
-                    )
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(message = error.toUiText(R.string.stats_message_lifestyle_failed))
+                    }
                 }
-            }
+        }
+    }
+
+    private fun syncConfirmedAfterPrimaryStats(
+        month: String?,
+        tag: String?,
+        snapshot: MonthlyStatsRefreshSnapshot,
+    ) {
+        viewModelScope.launch {
+            if (!snapshot.isCurrent()) return@launch
+            repository.syncConfirmed(month = month, category = null, tag = tag)
+        }
     }
 
     private fun handleStatsFailure(

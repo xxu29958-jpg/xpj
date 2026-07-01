@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -82,6 +83,27 @@ class MonthlyStatsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
+    }
+
+    @Test
+    fun primaryStatsStopsLoadingBeforeLifestyleCompletes() = statsTest {
+        val lifestyleResponse = CompletableDeferred<Result<LifestyleStats>>()
+        val stats = FakeStatsActions()
+        stats.lifestyleStatsResponder = { lifestyleResponse.await() }
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+
+        assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
+        assertFalse(viewModel.uiState.value.loading)
+        assertNull(viewModel.uiState.value.lifestyleStats)
+
+        lifestyleResponse.complete(Result.success(lifestyleForMonth("2026-05")))
+        advanceUntilIdle()
+
+        assertEquals("2026-05", viewModel.uiState.value.lifestyleStats?.month)
     }
 
     @Test
@@ -241,6 +263,7 @@ private class FakeStatsActions : StatsActions {
     val ledgerFlow = MutableStateFlow<String?>("owner")
     val confirmedFlow = MutableStateFlow<List<Expense>>(emptyList())
     var monthlyStatsResponder: (suspend (String?, String?) -> Result<MonthlyStats>)? = null
+    var lifestyleStatsResponder: (suspend (String?) -> Result<LifestyleStats>)? = null
     var monthList: List<String> = listOf("2026-05", "2026-04")
     var tagList: List<String> = emptyList()
 
@@ -262,16 +285,8 @@ private class FakeStatsActions : StatsActions {
     }
 
     override suspend fun lifestyleStats(month: String?): Result<LifestyleStats> =
-        Result.success(
-            LifestyleStats(
-                month = month ?: "2026-05",
-                aiSubscriptionAmountCents = 0,
-                digitalAmountCents = 0,
-                maxExpense = null,
-                recent7DaysAmountCents = 0,
-                frequentMerchants = emptyList(),
-            )
-        )
+        lifestyleStatsResponder?.invoke(month)
+            ?: Result.success(lifestyleForMonth(month ?: "2026-05"))
 
     override suspend fun syncConfirmed(
         month: String?,
@@ -330,6 +345,16 @@ private fun statsForMonth(month: String, total: Long = 0): MonthlyStats =
         totalAmountCents = total,
         count = if (total > 0) 1 else 0,
         byCategory = emptyList(),
+    )
+
+private fun lifestyleForMonth(month: String): LifestyleStats =
+    LifestyleStats(
+        month = month,
+        aiSubscriptionAmountCents = 0,
+        digitalAmountCents = 0,
+        maxExpense = null,
+        recent7DaysAmountCents = 0,
+        frequentMerchants = emptyList(),
     )
 
 private fun confirmedExpense(

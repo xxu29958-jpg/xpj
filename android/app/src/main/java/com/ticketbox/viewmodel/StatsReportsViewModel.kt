@@ -10,6 +10,7 @@ import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -138,14 +139,18 @@ class StatsReportsViewModel(
     private fun loadReports(reportsRepo: ReportsActions, generation: Long, month: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(reportsLoading = true, reportsMessage = null) }
-            val overviewResult = reportsRepo.reportsOverview(
-                ReportsOverviewQuery(
-                    month = month,
-                    granularity = granularity,
-                    rankingMetric = ReportRankingMetric.Count,
-                ),
-            )
-            val goalsResult = reportsRepo.goals(month = month)
+            val overviewDeferred = async {
+                reportsRepo.reportsOverview(
+                    ReportsOverviewQuery(
+                        month = month,
+                        granularity = granularity,
+                        rankingMetric = ReportRankingMetric.Count,
+                    ),
+                )
+            }
+            val goalsDeferred = async { reportsRepo.goals(month = month) }
+            val overviewResult = overviewDeferred.await()
+            val goalsResult = goalsDeferred.await()
             if (!isCurrent(generation)) return@launch
             _uiState.update {
                 it.copy(
