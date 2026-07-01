@@ -22,13 +22,14 @@ data class LedgerExpenseGroup(
      * unit-tested through [groupLedgerExpenses].
      */
     val dayTotalCents: Long get() = items.sumOf { it.amountCents ?: 0L }
+    val itemCount: Int get() = items.size
 }
 
 fun groupLedgerExpenses(resources: Resources, items: List<Expense>): List<LedgerExpenseGroup> {
     return items
+        .sortedWith(compareByDescending<Expense> { expenseLedgerDate(it) ?: LocalDate.MIN }.thenByDescending { ledgerSortTime(it) })
         .groupBy { expense ->
-            val date = expenseLedgerDate(expense)
-            date?.toString() ?: "unknown"
+            expenseLedgerDate(expense)?.toString() ?: UNKNOWN_LEDGER_DAY_KEY
         }
         .map { (key, expenses) ->
             val date = expenses.firstOrNull()?.let(::expenseLedgerDate)
@@ -53,6 +54,8 @@ private fun String?.toLocalDateOrNull(): LocalDate? {
         .getOrNull()
 }
 
+private fun ledgerSortTime(expense: Expense): String = expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt
+
 fun ledgerDayLabel(resources: Resources, date: LocalDate?): String {
     if (date == null) return resources.getString(R.string.ledger_day_no_date)
     val today = LocalDate.now()
@@ -64,3 +67,5 @@ fun ledgerDayLabel(resources: Resources, date: LocalDate?): String {
         else -> date.format(DateTimeFormatter.ofPattern("M月d日 E", Locale.CHINA))
     }
 }
+
+private const val UNKNOWN_LEDGER_DAY_KEY = "unknown"

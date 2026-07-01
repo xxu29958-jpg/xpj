@@ -17,7 +17,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.ticketbox.R
 import com.ticketbox.domain.model.CsvExport
+import com.ticketbox.ui.screens.LedgerLaunchRequest
 import com.ticketbox.ui.screens.LedgerScreen
+import com.ticketbox.ui.screens.LedgerScreenActions
 import com.ticketbox.viewmodel.LedgerViewModel
 
 @Composable
@@ -61,39 +63,45 @@ internal fun LedgerRoute(
 
     LedgerScreen(
         state = state,
-        // 「记一笔」shortcut 一次性动作:只消费属于自己的 OpenManualEntry 变体。
-        openManualEntryRequested = shellState.launchAction.pending is LaunchAction.OpenManualEntry,
-        onManualEntryConsumed = {
-            if (shellState.launchAction.pending is LaunchAction.OpenManualEntry) shellState.launchAction.consume()
-        },
-        onMonthChange = ledgerViewModel::setMonthFilter,
-        onCategoryChange = ledgerViewModel::setCategoryFilter,
-        onTagChange = ledgerViewModel::setTagFilter,
-        onQueryChange = ledgerViewModel::setQuery,
-        onClearFilters = ledgerViewModel::clearFilters,
-        onSync = ledgerViewModel::sync,
-        onExportCsv = ledgerViewModel::exportCsv,
-        onOpenBillSplit = { shellState.openStatsSecondary(StatsSecondaryPage.BillSplits) },
-        onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
-        onOpenReceivables = { shellState.openStatsSecondary(StatsSecondaryPage.Receivables) },
-        onOpenRepaymentDrafts = { shellState.openRepaymentDrafts() },
-        onOpenGlobalSearch = { shellState.openStatsSecondary(StatsSecondaryPage.GlobalSearch) },
-        onManualCreate = ledgerViewModel::createManualExpense,
-        onViewModeChange = ledgerViewModel::setViewMode,
-        // issue #65 slice 5: pending offline-create rows (negative local id) are
-        // now editable — the edit VM loads them from the local cache. The negative
-        // id round-trips through the NavType.LongType route arg.
-        onEdit = { navController.openExpense(it.id) },
-        onEnterSelection = ledgerViewModel::enterSelection,
-        onExitSelection = ledgerViewModel::exitSelection,
-        onToggleSelect = ledgerViewModel::toggleSelected,
-        onSelectAllVisible = ledgerViewModel::selectAllVisible,
-        onApplyBatchCategory = ledgerViewModel::applyBatchCategory,
-        onApplyBatchTags = ledgerViewModel::applyBatchTags,
-        onManualCreateSettled = ledgerViewModel::manualCreateSettled,
-        onBatchSettled = ledgerViewModel::batchSettled,
+        launchRequest = LedgerLaunchRequest(
+            openManualEntryRequested = shellState.launchAction.pending is LaunchAction.OpenManualEntry,
+            onManualEntryConsumed = {
+                if (shellState.launchAction.pending is LaunchAction.OpenManualEntry) shellState.launchAction.consume()
+            },
+        ),
+        actions = ledgerScreenActions(ledgerViewModel, navController, shellState),
     )
 }
+
+private fun ledgerScreenActions(
+    ledgerViewModel: LedgerViewModel,
+    navController: NavHostController,
+    shellState: MainShellState,
+): LedgerScreenActions = LedgerScreenActions(
+    onMonthChange = ledgerViewModel::setMonthFilter,
+    onCategoryChange = ledgerViewModel::setCategoryFilter,
+    onTagChange = ledgerViewModel::setTagFilter,
+    onQueryChange = ledgerViewModel::setQuery,
+    onClearFilters = ledgerViewModel::clearFilters,
+    onSync = ledgerViewModel::sync,
+    onExportCsv = ledgerViewModel::exportCsv,
+    onOpenBillSplit = { shellState.openStatsSecondary(StatsSecondaryPage.BillSplits) },
+    onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
+    onOpenReceivables = { shellState.openStatsSecondary(StatsSecondaryPage.Receivables) },
+    onOpenRepaymentDrafts = { shellState.openRepaymentDrafts() },
+    onOpenGlobalSearch = { shellState.openStatsSecondary(StatsSecondaryPage.GlobalSearch) },
+    onManualCreate = ledgerViewModel::createManualExpense,
+    onViewModeChange = ledgerViewModel::setViewMode,
+    onEdit = { navController.openExpense(it.id) },
+    onEnterSelection = ledgerViewModel::enterSelection,
+    onExitSelection = ledgerViewModel::exitSelection,
+    onToggleSelect = ledgerViewModel::toggleSelected,
+    onSelectAllVisible = ledgerViewModel::selectAllVisible,
+    onApplyBatchCategory = ledgerViewModel::applyBatchCategory,
+    onApplyBatchTags = ledgerViewModel::applyBatchTags,
+    onManualCreateSettled = ledgerViewModel::manualCreateSettled,
+    onBatchSettled = ledgerViewModel::batchSettled,
+)
 
 @Composable
 private fun SyncLedgerAfterExpenseEdit(

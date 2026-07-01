@@ -1,8 +1,11 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.screens.ledger.shouldCompactLedgerDayGroups
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Pure-JVM coverage for the ledger day-group subtotal (batch 8 "扫读节奏").
@@ -48,6 +51,27 @@ class LedgerGroupingTest {
         val group = LedgerExpenseGroup(key = "unknown", label = "未设置日期", items = emptyList())
 
         assertEquals(0L, group.dayTotalCents)
+    }
+
+    @Test
+    fun dayGroupExposesItemCountForFoldedHeaders() {
+        val group = LedgerExpenseGroup(
+            key = "2026-05-17",
+            label = "5月17日 六",
+            items = listOf(
+                expense(id = 1, amountCents = 1200),
+                expense(id = 2, amountCents = 3000),
+            ),
+        )
+
+        assertEquals(2, group.itemCount)
+    }
+
+    @Test
+    fun compactDayGroupsOnlyStartsForLongLedgerLists() {
+        assertFalse(shouldCompactLedgerDayGroups(groupCount = 4, itemCount = 18))
+        assertTrue(shouldCompactLedgerDayGroups(groupCount = 5, itemCount = 18))
+        assertTrue(shouldCompactLedgerDayGroups(groupCount = 4, itemCount = 19))
     }
 }
 

@@ -14,8 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +49,15 @@ private object LedgerItemLayout {
     const val TableAmountWeight = 0.88f
 }
 
+internal data class LedgerDayHeaderUi(
+    val label: String,
+    val dayTotalCents: Long,
+    val itemCount: Int,
+    val previewText: String? = null,
+    val expandable: Boolean = false,
+    val expanded: Boolean = true,
+)
+
 /**
  * Day-group header: date on the left, that day's subtotal on the right. The
  * subtotal uses tabular figures and ink color (金额永远用墨), matching the
@@ -53,11 +66,18 @@ private object LedgerItemLayout {
  * than becoming another block container.
  */
 @Composable
-internal fun LedgerDayHeader(label: String, dayTotalCents: Long) {
+internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? = null) {
+    val metaText = state.previewText
+        ?.let { stringResource(R.string.ledger_day_count_with_preview, state.itemCount, it) }
+        ?: stringResource(R.string.ledger_day_count, state.itemCount)
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .combinedClickable(
+                    onClick = { onToggle?.invoke() },
+                    enabled = onToggle != null,
+                )
                 .padding(
                     horizontal = AppSpacing.smallGap,
                     vertical = AppSpacing.tinyGap + AppSpacing.tinyGap,
@@ -65,25 +85,53 @@ internal fun LedgerDayHeader(label: String, dayTotalCents: Long) {
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(
+                    text = state.label,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = AppTypography.cardTitle.weight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = metaText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
-                text = label,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTypography.cardTitle.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = formatAmount(dayTotalCents),
+                text = formatAmount(state.dayTotalCents),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.labelLarge.tabularNum(),
                 fontWeight = AppTypography.cardTitle.weight,
                 maxLines = 1,
             )
+            LedgerDayHeaderToggleIcon(state)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
     }
+}
+
+@Composable
+private fun LedgerDayHeaderToggleIcon(state: LedgerDayHeaderUi) {
+    if (!state.expandable) return
+    Icon(
+        imageVector = if (state.expanded) {
+            Icons.Filled.KeyboardArrowDown
+        } else {
+            Icons.AutoMirrored.Filled.KeyboardArrowRight
+        },
+        contentDescription = if (state.expanded) {
+            stringResource(R.string.ledger_day_collapse_description)
+        } else {
+            stringResource(R.string.ledger_day_expand_description)
+        },
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.size(20.dp),
+    )
 }
 
 @Composable

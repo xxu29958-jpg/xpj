@@ -124,6 +124,14 @@
     <string name="ledger_day_no_date">未设置日期</string>
     <string name="ledger_day_today">今天</string>
     <string name="ledger_day_yesterday">昨天</string>
+    <string name="ledger_day_count">%1$d 笔</string>
+    <string name="ledger_day_count_with_preview">%1$d 笔 · %2$s</string>
+    <string name="ledger_day_expand_description">展开这一天</string>
+    <string name="ledger_day_collapse_description">收起这一天</string>
+    <string name="ledger_day_expand_count">展开 %1$d 笔</string>
+    <string name="ledger_day_preview_more">还有 %1$d 笔</string>
+    <string name="ledger_day_preview_with_more">%1$s · %2$s</string>
+    <string name="ledger_day_preview_separator">、</string>
 
     <!-- LedgerToolsSheet：筛选与更新 sheet -->
     <string name="ledger_tools_title">账本工具</string>
