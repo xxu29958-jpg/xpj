@@ -15,6 +15,7 @@ from app.services.category_service import list_ledger_category_options, normaliz
 from app.services.csv_security import safe_csv_cell
 from app.services.spending_contract_service import (
     canonical_merchant_display,
+    current_accounting_month,
     default_accounting_timezone_name,
     enabled_merchant_display_map,
     month_bounds_utc,
@@ -138,6 +139,7 @@ def list_months(
     db: Session, tenant_id: str, timezone_name: str | None = None
 ) -> list[str]:
     resolved_timezone = _stat_timezone(timezone_name)
+    current_month_label = current_accounting_month(resolved_timezone)
     expenses = db.scalars(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
@@ -148,7 +150,7 @@ def list_months(
         label
         for expense in expenses
         if (label := stat_month_label(expense, resolved_timezone))
-        is not None
+        is not None and label <= current_month_label
     }
     return sorted(months, reverse=True)
 

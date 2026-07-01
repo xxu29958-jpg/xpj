@@ -238,7 +238,7 @@ STRICT_EQUALITY_BASELINE.update({"mutate_token_carriers": 70, "backend_pytest_co
 # catalog deltas. Keep new entries short; CODE-2026-07-01 tracks historical
 # comment cleanup for the older mojibake/long-provenance blocks above.
 STRICT_EQUALITY_BASELINE.update({
-    "backend_pytest_count": 2351,
+    "backend_pytest_count": 2352,
     "mutate_token_carriers": 77,
     "mutate_token_exempted": 122,
     "mutate_token_reason_create_row": 32,

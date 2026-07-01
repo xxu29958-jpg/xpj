@@ -4,6 +4,7 @@ import csv
 from datetime import UTC, datetime
 from io import StringIO
 
+import pytest
 from api_contract_helpers import (
     insert_confirmed_expense,
 )
@@ -161,8 +162,12 @@ def test_confirmed_category_filter_includes_legacy_aliases(client: TestClient, *
 
 
 def test_confirmed_month_filter_handles_cross_year_local_boundary(
-    client: TestClient, *, identity,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
 ) -> None:
+    monkeypatch.setattr(
+        "app.services.stats_service.current_accounting_month",
+        lambda timezone_name=None: "2027-01",
+    )
     insert_confirmed_expense(
         amount_cents=1234,
         merchant="跨年后餐饮",
@@ -209,6 +214,34 @@ def test_confirmed_month_filter_handles_cross_year_local_boundary(
     months = client.get("/api/expenses/months", headers=identity.app_headers)
     assert months.status_code == 200
     assert months.json()["items"] == ["2027-01", "2026-12"]
+
+
+def test_months_endpoint_hides_future_confirmed_expense_months(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.stats_service.current_accounting_month",
+        lambda timezone_name=None: "2026-07",
+    )
+    insert_confirmed_expense(
+        amount_cents=8700,
+        merchant="future ocr bill",
+        category="other",
+        expense_time=datetime(2027, 6, 13, 15, 59, tzinfo=UTC),
+        confirmed_at=datetime(2026, 6, 28, 12, 55, tzinfo=UTC),
+    )
+    insert_confirmed_expense(
+        amount_cents=1200,
+        merchant="current month bill",
+        category="other",
+        expense_time=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        confirmed_at=datetime(2026, 7, 1, 10, 1, tzinfo=UTC),
+    )
+
+    months = client.get("/api/expenses/months", headers=identity.app_headers)
+
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2026-07"]
 
 
 def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zero(
