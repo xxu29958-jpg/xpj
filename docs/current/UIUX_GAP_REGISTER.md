@@ -53,7 +53,10 @@ that actually ships the fix.
 - Progress 2026-07-02: Background Tasks no longer uses domain-layer hardcoded
   Chinese for task labels; unknown service task/status tokens map to generic
   resource copy, and the page now states that Android only views or requests
-  cancellation for service-returned tasks.
+  cancellation for service-returned tasks. Recycle Bin now preserves the
+  service-returned `short_window_count`, shows a compact overview and divider
+  rows instead of one large card, and names read-only, empty, load-failed,
+  refreshing, restoring, and restore-confirm states.
 
 ### ANDROID-2026-07-01-settings-root-density
 
@@ -266,13 +269,31 @@ that actually ships the fix.
   copy, and a device-specific missing-activity label instead of the generic
   `未填写时间`. Family Members now keeps role/status visible and moves
   role/owner/disable actions into an overflow menu, with product loading copy
-  for members and audit records. Final true-device screenshots are still
-  pending because the phone was unplugged before the last visual pass. The
-  remaining Settings secondary pages still need page-by-page state parity
-  review.
+  for members and audit records. Recycle Bin now uses backend-provided
+  short-window counts, explicit read-only/failed/empty/restoring states, and a
+  scan-first divider list rather than a large container. Final true-device
+  screenshots are still pending because the phone was unplugged before the last
+  visual pass. The remaining Settings secondary pages still need page-by-page
+  state parity review.
 - Desired follow-up: make every secondary page declare loading, empty, error,
   read-only, cached/offline/direct-only, success, and destructive-confirmation
   behavior with the shared Settings skeleton.
+
+### ANDROID-2026-07-02-recycle-bin-secondary-parity
+
+- Surface: Android Settings -> Recycle Bin.
+- Status: implemented locally; true-device evidence still pending.
+- Gap: the Recycle Bin page had the right backend endpoint, but Android dropped
+  the backend `short_window_count`, inferred urgency from the localized
+  retention label, and wrapped the list/empty/refresh states in a single large
+  panel. Read-only and load-failed states were not visible enough for a
+  governance page.
+- Resolution: repository and ViewModel now carry a `RecycleBinSnapshot` with
+  backend-provided short-window count; the page shows a compact summary,
+  explicit read-only/empty/load-failed states, divider rows, confirm-before-
+  restore, and resource-backed copy.
+- Remaining QA: capture empty, populated, restoring, and viewer/read-only states
+  on a physical device after installing the official package.
 
 ### ANDROID-2026-07-01-secondary-page-language-drift
 

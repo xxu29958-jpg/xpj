@@ -64,7 +64,7 @@ class RecycleBinViewModelTest {
             val api = StubApi().apply {
                 recycleBinResult = RecycleBinListResponseDto(
                     items = listOf(recycleItem()),
-                    shortWindowCount = 0,
+                    shortWindowCount = 1,
                 )
             }
             val vm = harness(api)
@@ -73,6 +73,7 @@ class RecycleBinViewModelTest {
             val state = vm.uiState.first { it.items.isNotEmpty() }
 
             assertEquals(listOf("旧工资"), state.items.map { it.title })
+            assertEquals(1, state.shortWindowCount)
             assertEquals(1, api.recycleBinRefreshCount.size)
             assertTrue(state.canModify)
             assertNull(state.message)
@@ -117,6 +118,23 @@ class RecycleBinViewModelTest {
             vm.restore(recycleItem().toDomain())
 
             assertTrue(api.recycleBinRestoreRequests.isEmpty())
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun refreshFailureMarksLoadFailed() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply { recycleBinError = RuntimeException("boom") }
+            val vm = harness(api)
+
+            vm.refresh()
+            val state = vm.uiState.first { it.message != null }
+
+            assertTrue(state.loadFailed)
+            assertEquals(emptyList(), state.items)
         } finally {
             Dispatchers.resetMain()
         }

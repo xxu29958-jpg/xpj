@@ -9,7 +9,9 @@ data class RecycleBinItem(
     val removedAt: String?,
     val retentionLabel: String,
     val expectedRowVersion: Int?,
-) {
-    val isShortWindow: Boolean
-        get() = retentionLabel != "长期保留"
-}
+)
+
+data class RecycleBinSnapshot(
+    val items: List<RecycleBinItem>,
+    val shortWindowCount: Int,
+)

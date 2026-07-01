@@ -14,7 +14,9 @@ import kotlinx.coroutines.launch
 
 data class RecycleBinUiState(
     val items: List<RecycleBinItem> = emptyList(),
+    val shortWindowCount: Int = 0,
     val loading: Boolean = false,
+    val loadFailed: Boolean = false,
     val busyItemKey: String? = null,
     val message: UiText? = null,
     val canModify: Boolean = false,
@@ -32,18 +34,30 @@ class RecycleBinViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(loading = true, message = null, canModify = repository.canModifyLedger())
+                it.copy(
+                    loading = true,
+                    loadFailed = false,
+                    message = null,
+                    canModify = repository.canModifyLedger(),
+                )
             }
             repository.refreshRecycleBin()
-                .onSuccess { items ->
+                .onSuccess { snapshot ->
                     _uiState.update {
-                        it.copy(items = items, loading = false, canModify = repository.canModifyLedger())
+                        it.copy(
+                            items = snapshot.items,
+                            shortWindowCount = snapshot.shortWindowCount,
+                            loading = false,
+                            loadFailed = false,
+                            canModify = repository.canModifyLedger(),
+                        )
                     }
                 }
                 .onFailure { err ->
                     _uiState.update {
                         it.copy(
                             loading = false,
+                            loadFailed = true,
                             canModify = repository.canModifyLedger(),
                             message = err.toUiText(R.string.recycle_bin_message_load_failed),
                         )
@@ -60,10 +74,12 @@ class RecycleBinViewModel(
             repository.restoreRecycleBinItem(item)
                 .onSuccess { message ->
                     repository.refreshRecycleBin()
-                        .onSuccess { items ->
+                        .onSuccess { snapshot ->
                             _uiState.update {
                                 it.copy(
-                                    items = items,
+                                    items = snapshot.items,
+                                    shortWindowCount = snapshot.shortWindowCount,
+                                    loadFailed = false,
                                     busyItemKey = null,
                                     message = UiText.raw(message),
                                     canModify = repository.canModifyLedger(),
@@ -74,6 +90,7 @@ class RecycleBinViewModel(
                             _uiState.update {
                                 it.copy(
                                     busyItemKey = null,
+                                    loadFailed = true,
                                     message = err.toUiText(R.string.recycle_bin_message_load_failed),
                                     canModify = repository.canModifyLedger(),
                                 )

@@ -33,6 +33,7 @@ import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.OwnerTransferResult
 import com.ticketbox.domain.model.RecycleBinItem
+import com.ticketbox.domain.model.RecycleBinSnapshot
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -315,9 +316,14 @@ class LedgerRepository(
         ).toDevicePairingCode()
     }
 
-    suspend fun refreshRecycleBin(): Result<List<RecycleBinItem>> = wrap {
+    suspend fun refreshRecycleBin(): Result<RecycleBinSnapshot> = wrap {
         requireActiveLedger(activeLedgerId())
-        api().recycleBin().items.map { it.toRecycleBinItem() }
+        val response = api().recycleBin()
+        val items = response.items.map { it.toRecycleBinItem() }
+        RecycleBinSnapshot(
+            items = items,
+            shortWindowCount = response.shortWindowCount.coerceIn(0, items.size),
+        )
     }
 
     suspend fun restoreRecycleBinItem(item: RecycleBinItem): Result<String> = wrap {
