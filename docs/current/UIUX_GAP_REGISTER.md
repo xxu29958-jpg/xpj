@@ -253,6 +253,62 @@ that actually ships the fix.
   read-only, cached/offline/direct-only, success, and destructive-confirmation
   behavior with the shared Settings skeleton.
 
+### ANDROID-2026-07-01-secondary-page-language-drift
+
+- Surface: Android Settings secondaries, Insights Tag/Budget/Goal drill pages,
+  and other second-level Android surfaces.
+- Status: user-observed follow-up; true-device evidence pending because the
+  phone was unplugged before this pass.
+- Gap: root tabs are moving toward one product skeleton, but second-level pages
+  can still feel like a different app: heavier rounded containers, uneven page
+  rhythm, inconsistent status language, and capsule text that does not sit
+  cleanly inside its container.
+- Desired follow-up: define the secondary-page skeleton as a first-class
+  product pattern, then close pages one by one. Each page needs the same title,
+  back, state, section, row-density, chip/button alignment, and bottom-safe
+  behavior as the root tabs while keeping its own product job clear.
+
+### ANDROID-2026-07-01-insights-budget-goal-drill-semantics
+
+- Surface: Android Insights Budget, Goals, and Tag/drill pages.
+- Status: registered follow-up; separate from the already-fixed empty Budget
+  root state.
+- Gap: user observation says the Budget/Tag area can still show mismatched
+  monthly-insight modules, unclear budget remaining/options language, and goal
+  wording that does not make the target type obvious. "Goal enabled" is too vague
+  for a finance product; repayment, saving, and spending-control goals have
+  different user intent.
+- Desired follow-up: audit the actual drill paths with backend data. Budget
+  should distinguish not set, no remaining amount, over budget, and setup action
+  states. Goals should lead with goal type and backend-backed status, not a
+  generic enabled/disabled label.
+
+### ANDROID-2026-07-01-about-product-trust-page
+
+- Surface: Android Settings -> About Ticketbox.
+- Status: registered follow-up.
+- Gap: the About page is part of the product trust layer, but it has not yet had
+  the same secondary-page treatment as Devices or Members. It risks reading like
+  a diagnostics surface if build/support/legal details are not structured and
+  copy-reviewed.
+- Desired follow-up: make About a compact product trust page with resource-backed
+  version, support, legal, build, and diagnostics rows. Release-facing copy
+  should stay product-level; technical diagnostics should be explicit and
+  secondary.
+
+### ANDROID-2026-07-01-pending-real-item-card-density
+
+- Surface: Android Pending real unconfirmed-bill rows.
+- Status: registered follow-up.
+- Gap: compact-mode summary work improved the top of Pending, but user
+  observation says real unconfirmed items can still feel like the old Ledger
+  card stack. That means the default row surface still needs a scan-first pass,
+  not only the overview.
+- Desired follow-up: review Pending with real backend items and convert default
+  rows into denser, aligned, status-first surfaces. Keep expanded detail for
+  focused review or Comfortable mode, and keep all counts/statuses derived from
+  real pending state.
+
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 
 - Surface: Android Insights merchant sections.
