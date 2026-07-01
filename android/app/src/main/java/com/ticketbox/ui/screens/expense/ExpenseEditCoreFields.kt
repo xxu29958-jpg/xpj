@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.annotation.StringRes
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -19,13 +20,14 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppSolidCard
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 internal fun ExpenseCurrencyFields(
@@ -46,13 +48,16 @@ internal fun ExpenseCurrencyFields(
     LaunchedEffect(enabled) {
         if (enabled) amountFocus.requestFocus()
     }
-    AppSolidCard {
+    AppGlassCard(
+        containerAlpha = 0.94f,
+        radius = RoundedCornerShape(AppRadius.medium),
+    ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                 items(CurrencyCode.entries, key = { it.storageKey }) { code ->
                     AppFilterChip(
                         selected = currency == code,
@@ -67,7 +72,17 @@ internal fun ExpenseCurrencyFields(
                 onValueChange = onOriginalAmountChange,
                 modifier = Modifier.fillMaxWidth().focusRequester(amountFocus),
                 label = { Text(stringResource(R.string.expense_edit_original_amount_field_label, currency.storageKey)) },
-                placeholder = { Text(if (currency.noFractionDigits) "1280" else "36.80") },
+                placeholder = {
+                    Text(
+                        stringResource(
+                            if (currency.noFractionDigits) {
+                                R.string.expense_edit_original_amount_placeholder_no_fraction
+                            } else {
+                                R.string.expense_edit_original_amount_placeholder_fraction
+                            },
+                        ),
+                    )
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 enabled = enabled,
@@ -115,7 +130,7 @@ internal fun ExpenseEditCategoryField(
         enabled = enabled,
     )
     if (categories.isNotEmpty()) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
             items(categories, key = { it }) { item ->
                 SelectableCategoryChip(
                     selected = category == item,

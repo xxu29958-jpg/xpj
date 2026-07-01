@@ -2,24 +2,31 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
@@ -76,6 +83,8 @@ internal fun ExpenseEditActionBar(
     actions: ExpenseEditActionBarActions,
 ) {
     val visuals = LocalThemeVisuals.current
+    val density = LocalDensity.current
+    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -84,16 +93,19 @@ internal fun ExpenseEditActionBar(
                 horizontal = AppSpacing.cardGap,
                 vertical = AppSpacing.smallGap,
             ),
-        shape = RoundedCornerShape(AppRadius.bottomBar),
-        color = visuals.solidCard.copy(alpha = 0.995f),
+        shape = RoundedCornerShape(if (keyboardVisible) AppRadius.medium else AppRadius.bottomBar),
+        color = visuals.solidCard.copy(alpha = if (keyboardVisible) 0.96f else 0.995f),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                .padding(
+                    horizontal = AppSpacing.cardPaddingTight,
+                    vertical = if (keyboardVisible) AppSpacing.smallGap else AppSpacing.compactGap,
+                ),
+            verticalArrangement = Arrangement.spacedBy(if (keyboardVisible) AppSpacing.miniGap else AppSpacing.smallGap),
         ) {
             state.validationMessage?.let {
                 ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
@@ -101,19 +113,23 @@ internal fun ExpenseEditActionBar(
             state.statusMessage?.let {
                 ExpenseEditActionMessage(it, MaterialTheme.colorScheme.secondary)
             }
-            ExpenseEditActionForwardRow(
-                saving = state.saving,
-                allowSave = state.allowSave,
-                allowConfirm = state.allowConfirm,
-                onSave = actions.onSave,
-                onConfirm = actions.onConfirm,
-            )
-            ExpenseEditActionSecondaryRow(
-                saving = state.saving,
-                allowReject = state.allowReject,
-                onBack = actions.onBack,
-                onRequestReject = actions.onRequestReject,
-            )
+            if (keyboardVisible) {
+                ExpenseEditKeyboardActionRow(state = state, actions = actions)
+            } else {
+                ExpenseEditActionForwardRow(
+                    saving = state.saving,
+                    allowSave = state.allowSave,
+                    allowConfirm = state.allowConfirm,
+                    onSave = actions.onSave,
+                    onConfirm = actions.onConfirm,
+                )
+                ExpenseEditActionSecondaryRow(
+                    saving = state.saving,
+                    allowReject = state.allowReject,
+                    onBack = actions.onBack,
+                    onRequestReject = actions.onRequestReject,
+                )
+            }
         }
     }
 }
@@ -141,11 +157,13 @@ private fun ExpenseEditActionForwardRow(
     ) {
         if (allowSave) {
             AppOutlinedButton(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = AppSpacing.controlMinHeight),
                 enabled = !saving,
                 onClick = onSave,
             ) {
-                Text(
+                ExpenseEditActionLabel(
                     if (saving) {
                         stringResource(R.string.expense_edit_primary_saving_button)
                     } else {
@@ -156,11 +174,13 @@ private fun ExpenseEditActionForwardRow(
         }
         if (allowConfirm) {
             Button(
-                modifier = Modifier.weight(if (allowSave) 1.2f else 1f),
+                modifier = Modifier
+                    .weight(if (allowSave) 1.2f else 1f)
+                    .heightIn(min = AppSpacing.controlMinHeight),
                 enabled = !saving,
                 onClick = onConfirm,
             ) {
-                Text(stringResource(R.string.expense_edit_confirm_button))
+                ExpenseEditActionLabel(stringResource(R.string.expense_edit_confirm_button))
             }
         }
     }
@@ -178,21 +198,146 @@ private fun ExpenseEditActionSecondaryRow(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         AppOutlinedButton(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = AppSpacing.controlMinHeight),
             enabled = !saving,
             onClick = onBack,
         ) {
-            Text(stringResource(R.string.expense_edit_primary_back_button))
+            ExpenseEditActionLabel(stringResource(R.string.expense_edit_primary_back_button))
         }
         if (allowReject) {
             AppOutlinedButton(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = AppSpacing.controlMinHeight),
                 enabled = !saving,
                 danger = true,
                 onClick = onRequestReject,
             ) {
-                Text(stringResource(R.string.expense_edit_reject_button))
+                ExpenseEditActionLabel(stringResource(R.string.expense_edit_reject_button))
             }
         }
     }
 }
+
+@Composable
+private fun ExpenseEditKeyboardActionRow(
+    state: ExpenseEditActionBarState,
+    actions: ExpenseEditActionBarActions,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        CompactTextAction(
+            text = stringResource(R.string.expense_edit_primary_back_button),
+            weight = 0.68f,
+            enabled = !state.saving,
+            onClick = actions.onBack,
+        )
+        if (state.allowSave) {
+            CompactOutlinedAction(
+                text = if (state.saving) {
+                    stringResource(R.string.expense_edit_primary_saving_button)
+                } else {
+                    stringResource(R.string.expense_edit_primary_save_button)
+                },
+                weight = 0.78f,
+                enabled = !state.saving,
+                onClick = actions.onSave,
+            )
+        }
+        if (state.allowConfirm) {
+            CompactFilledAction(
+                text = stringResource(R.string.expense_edit_confirm_button),
+                weight = 1.2f,
+                enabled = !state.saving,
+                onClick = actions.onConfirm,
+            )
+        }
+        if (state.allowReject) {
+            CompactTextAction(
+                text = stringResource(R.string.expense_edit_reject_button),
+                weight = 0.68f,
+                enabled = !state.saving,
+                danger = true,
+                onClick = actions.onRequestReject,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.CompactOutlinedAction(
+    text: String,
+    weight: Float,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    AppOutlinedButton(
+        modifier = Modifier
+            .weight(weight)
+            .heightIn(min = AppSpacing.controlMinHeight),
+        enabled = enabled,
+        contentPadding = CompactActionPadding,
+        onClick = onClick,
+    ) {
+        ExpenseEditActionLabel(text)
+    }
+}
+
+@Composable
+private fun RowScope.CompactFilledAction(
+    text: String,
+    weight: Float,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        modifier = Modifier
+            .weight(weight)
+            .heightIn(min = AppSpacing.controlMinHeight),
+        enabled = enabled,
+        contentPadding = CompactActionPadding,
+        onClick = onClick,
+    ) {
+        ExpenseEditActionLabel(text)
+    }
+}
+
+@Composable
+private fun RowScope.CompactTextAction(
+    text: String,
+    weight: Float,
+    enabled: Boolean,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    TextButton(
+        modifier = Modifier
+            .weight(weight)
+            .heightIn(min = AppSpacing.controlMinHeight),
+        enabled = enabled,
+        contentPadding = CompactActionPadding,
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f),
+        ),
+        onClick = onClick,
+    ) {
+        ExpenseEditActionLabel(text)
+    }
+}
+
+@Composable
+private fun ExpenseEditActionLabel(text: String) {
+    Text(
+        text = text,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+private val CompactActionPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)

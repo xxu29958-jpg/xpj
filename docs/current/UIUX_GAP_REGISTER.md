@@ -309,6 +309,23 @@ that actually ships the fix.
   focused review or Comfortable mode, and keep all counts/statuses derived from
   real pending state.
 
+### ANDROID-2026-07-01-edit-keyboard-action-density
+
+- Surface: Android receipt edit / confirm detail page.
+- Status: implemented locally in the current edit-density slice; true-device
+  evidence pending because the phone was unplugged after the screenshot was
+  provided.
+- Gap: user screenshot `Screenshot_2026-07-01-23-48-19-093_com.ticketbox.jpg`
+  shows the amount/currency field with the keyboard open. The bottom action
+  surface becomes a large rounded block, the four actions form a heavy 2x2 grid,
+  and the amount section still looks like the older card-first language.
+- Resolution: keyboard-visible actions now collapse into a thinner action strip,
+  the confirm action remains primary, back/save/ignore stay available, and amount
+  placeholders moved into resources while the amount section uses shared spacing
+  and radius tokens.
+- Remaining QA: capture the same amount/currency keyboard state on a physical
+  device and confirm the strip does not crowd, truncate, or cover the input.
+
 ### ANDROID-2026-07-01-insights-frequent-merchant-metric
 
 - Surface: Android Insights merchant sections.

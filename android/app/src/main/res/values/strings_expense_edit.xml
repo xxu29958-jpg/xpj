@@ -37,6 +37,8 @@
     <!-- ExpenseEditCoreFields：金额/币种/商家/分类/备注/来源 -->
     <string name="expense_edit_currency_card_title">金额与币种</string>
     <string name="expense_edit_original_amount_field_label">原始金额，%1$s</string>
+    <string name="expense_edit_original_amount_placeholder_no_fraction">1280</string>
+    <string name="expense_edit_original_amount_placeholder_fraction">36.80</string>
     <string name="expense_edit_fx_hint">按消费日期使用账本汇率；同步前会标记为待汇率。</string>
     <string name="expense_edit_merchant_field_label">商家</string>
     <string name="expense_edit_category_field_label">分类</string>
