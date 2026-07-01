@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="today_header_title">今日</string>
+    <string name="today_header_subtitle">待处理队列 · 本月账面</string>
+    <string name="today_ledger_label">当前账本</string>
+    <string name="today_ledger_unknown">未命名账本</string>
+    <string name="today_month_spend_label">本月已确认</string>
+    <string name="today_month_empty_value">暂无记录</string>
+    <string name="today_month_count">%1$d 笔已确认</string>
+    <string name="today_primary_upload">上传截图</string>
+    <string name="today_primary_manual">记一笔</string>
+    <string name="today_section_work">今日待办</string>
+    <string name="today_section_month">本月账面</string>
+    <string name="today_metric_pending">待确认截图</string>
+    <string name="today_metric_missing_amount">需要补金额</string>
+    <string name="today_metric_duplicates">疑似重复</string>
+    <string name="today_metric_ready">可直接确认</string>
+    <string name="today_metric_top_category">本月最多分类</string>
+    <string name="today_metric_recent_upload">最近上传</string>
+    <string name="today_metric_sync">同步状态</string>
+    <string name="today_count_receipts">%1$d 张</string>
+    <string name="today_top_category_empty">暂无分类</string>
+    <string name="today_recent_upload_empty">暂无上传</string>
+    <string name="today_sync_loading">同步中</string>
+    <string name="today_sync_local">本机估算</string>
+    <string name="today_sync_error">需要重试</string>
+    <string name="today_sync_ready">已更新</string>
+    <string name="today_sync_idle">待同步</string>
+    <string name="today_go_pending">待确认</string>
+    <string name="today_go_ledger">账本</string>
+    <string name="today_go_insights">洞察</string>
+    <string name="today_pending_attention">%1$d 张截图等处理，%2$d 张可直接确认。</string>
+    <string name="today_pending_empty">没有截图待确认。</string>
+</resources>

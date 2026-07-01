@@ -32,9 +32,9 @@
 
     <!-- 底部导航 tab 标签（AppBottomNav 的可见 Text + contentDescription） -->
     <string name="nav_tab_ledger">账本</string>
-    <string name="nav_tab_reports">报表</string>
+    <string name="nav_tab_today">今日</string>
     <string name="nav_tab_pending">待确认</string>
-    <string name="nav_tab_search">搜索</string>
+    <string name="nav_tab_insights">洞察</string>
     <string name="nav_tab_settings">设置</string>
 
     <!-- BiometricAuthManager：本地生物识别解锁的系统弹窗 + 错误文案（release REQUIRE_LOCAL_UNLOCK=true 时可见，经 onError→AppViewModel→LoginScreen） -->

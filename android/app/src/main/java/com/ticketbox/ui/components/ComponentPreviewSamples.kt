@@ -11,8 +11,8 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,17 +111,17 @@ private fun AppVisualComponentsPreview() {
                 onClick = {},
             )
             AppBottomNav(
-                // 对齐生产 5 tab(MainShellState.BottomTab,v0.10 IA): 账本/报表/待确认/搜索/设置。
+                // 对齐生产主底栏(MainShellState.BottomTab): 待确认/账本/洞察/设置。
                 // 标签走 stringResource(同生产 toBottomNavItem),避免硬编码中文(ADR-0044)。
                 // 选中 pending(居中、3 字最长标签)正是胶囊自适应宽度修复的关键场景。
                 items = listOf(
-                    AppBottomNavItem("ledger", stringResource(R.string.nav_tab_ledger), Icons.AutoMirrored.Filled.ReceiptLong),
-                    AppBottomNavItem("reports", stringResource(R.string.nav_tab_reports), Icons.Filled.Insights),
+                    AppBottomNavItem("today", stringResource(R.string.nav_tab_today), Icons.Filled.Today),
                     AppBottomNavItem("pending", stringResource(R.string.nav_tab_pending), Icons.Filled.CheckCircle),
-                    AppBottomNavItem("search", stringResource(R.string.nav_tab_search), Icons.Filled.Search),
+                    AppBottomNavItem("ledger", stringResource(R.string.nav_tab_ledger), Icons.AutoMirrored.Filled.ReceiptLong),
+                    AppBottomNavItem("insights", stringResource(R.string.nav_tab_insights), Icons.Filled.Insights),
                     AppBottomNavItem("settings", stringResource(R.string.nav_tab_settings), Icons.Filled.Settings),
                 ),
-                selectedKey = "pending",
+                selectedKey = "today",
                 onSelect = {},
             )
         }

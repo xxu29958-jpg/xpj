@@ -82,22 +82,18 @@ fun AppBottomNav(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = AppSpacing.compactPadding,
+                        horizontal = AppBottomNavLayout.InnerHorizontalPadding,
                         vertical = AppBottomNavLayout.InnerVerticalPadding,
                     ),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Center,
             ) {
                 items.forEach { item ->
                     val selected = item.key == selectedKey
                     Box(
                         modifier = Modifier
-                            // 选中胶囊按内容自适应宽度(裹住图标+完整标签),未选中均分剩余;旧版固定 weight 太小→3 字「待确认」被截成「待...」。
-                            .then(if (selected) Modifier.wrapContentWidth() else Modifier.weight(1f))
+                            .weight(1f)
                             .height(AppBottomNavLayout.ItemHeight)
-                            // clip 必须在 clickable 之前：把点按 ripple 裁进胶囊圆角，
-                            // 否则未裁切的方形点击区会露出方角高亮（UI/UX P0：底部导航黑框）。
                             .clip(RoundedCornerShape(AppRadius.large))
-                            // Role.Tab + selected 让 TalkBack 念出 "已选中 / 共 N 项 / 当前是第 X 项"
                             .semantics {
                                 role = Role.Tab
                                 this.selected = selected
@@ -137,18 +133,20 @@ private fun AppBottomNavItemView(
 
     Row(
         modifier = Modifier
-            // 选中态胶囊裹内容(wrap),未选中态填满格子让图标居中(fillMaxWidth + 外层 wrap 会互相打架,故按 selected 分流)。
             .then(if (selected) Modifier.wrapContentWidth() else Modifier.fillMaxWidth())
             .height(AppBottomNavLayout.PillHeight)
             .clip(RoundedCornerShape(AppRadius.large))
             .background(background)
-            .padding(horizontal = AppSpacing.smallGap, vertical = AppBottomNavLayout.PillVerticalPadding),
+            .padding(
+                horizontal = AppBottomNavLayout.PillHorizontalPadding,
+                vertical = AppBottomNavLayout.PillVerticalPadding,
+            ),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = item.icon,
-            contentDescription = item.label,
+            contentDescription = null,
             tint = content,
             modifier = Modifier.size(AppBottomNavLayout.IconSize),
         )
@@ -161,8 +159,8 @@ private fun AppBottomNavItemView(
                 text = item.label,
                 color = content,
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 12.sp,
-                    lineHeight = 15.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
                 ),
                 fontWeight = AppTextHierarchy.heading.weight,
                 maxLines = 1,
@@ -173,10 +171,12 @@ private fun AppBottomNavItemView(
 }
 
 private object AppBottomNavLayout {
-    val OuterHorizontalPadding: Dp = 16.dp
+    val OuterHorizontalPadding: Dp = 12.dp
+    val InnerHorizontalPadding: Dp = 4.dp
     val InnerVerticalPadding: Dp = 6.dp
     val ItemHeight: Dp = 48.dp
     val PillHeight: Dp = 40.dp
+    val PillHorizontalPadding: Dp = 5.dp
     val PillVerticalPadding: Dp = 6.dp
-    val IconSize: Dp = 17.dp
+    val IconSize: Dp = 16.dp
 }

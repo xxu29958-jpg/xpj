@@ -3,11 +3,10 @@ package com.ticketbox.ui.navigation
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,11 +30,11 @@ internal enum class BottomTab(
     @param:StringRes val labelRes: Int,
     val icon: ImageVector,
 ) {
-    // v0.10 IA 重排: 账本作主入口, Reports 独立 tab (从 Stats 二级拆出, 内容 V0.11 再拆分)
-    Ledger("ledger", R.string.nav_tab_ledger, Icons.AutoMirrored.Filled.ReceiptLong),
-    Reports("reports", R.string.nav_tab_reports, Icons.Default.Insights),
+    // IA 重排: 底栏只放高频任务域；全局搜索降级到账本工具里的全屏二级页。
+    Today("today", R.string.nav_tab_today, Icons.Default.Today),
     Pending("pending", R.string.nav_tab_pending, Icons.Default.CheckCircle),
-    Search("search", R.string.nav_tab_search, Icons.Default.Search),
+    Ledger("ledger", R.string.nav_tab_ledger, Icons.AutoMirrored.Filled.ReceiptLong),
+    Insights("insights", R.string.nav_tab_insights, Icons.Default.Insights),
     Settings("settings", R.string.nav_tab_settings, Icons.Default.Settings),
 }
 
@@ -46,18 +45,20 @@ internal enum class StatsSecondaryPage {
     // A3 IA: 拆账中心从账本动作区提级为全屏二级页, 复用本 overlay 机制(与预算/固定支出同形)。
     // 它是账本域页面而非统计面, 故 surfaceRole 单独归 Ledger(见下方 surfaceRole)。
     BillSplits,
+    // IA mobile: 搜索从底栏降级为账本工具内的全屏二级页，避免底栏长期占位。
+    GlobalSearch,
     // ADR-0049 §6 (slice 7): 还债目标(规划面, 与预算/收入计划同 overlay)。
     DebtGoals,
-    // ADR-0049 §2 (slice 8): 债务管理(欠款列表+新建外部欠款, 与还债目标同规划 overlay)。
+    // ADR-0049 §2 (slice 8): 债务管理(欠款列表+新建外部欠款), 由账本里的关系账入口打开。
     Debts,
-    // ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面，与「欠款」(Debts) 并列成中性 sibling。
+    // ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面, 与「欠款」并列成中性 sibling。
     Receivables,
     // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱(列 pending 还款草稿→选债 confirm/dismiss)。
     RepaymentDrafts,
 }
 
 internal class MainShellState {
-    var selectedTab by mutableStateOf(BottomTab.Ledger)
+    var selectedTab by mutableStateOf(BottomTab.Today)
         private set
 
     var statsSecondaryPage by mutableStateOf<StatsSecondaryPage?>(null)
@@ -114,12 +115,19 @@ internal class MainShellState {
         expenseEditCompletionRevision += 1
     }
 
-    fun surfaceRole(currentRoute: String?): SurfaceRole = when {
-        currentRoute == EXPENSE_ROUTE -> SurfaceRole.Edit
-        // 拆账中心从账本进入, 背景归账本域; 其余二级页是统计/规划面, 仍归 Stats。
-        statsSecondaryPage == StatsSecondaryPage.BillSplits -> SurfaceRole.Ledger
-        statsSecondaryPage != null -> SurfaceRole.Stats
-        else -> selectedTab.surfaceRole
+    fun surfaceRole(currentRoute: String?): SurfaceRole {
+        val secondaryPage = statsSecondaryPage
+        return when {
+            currentRoute == EXPENSE_ROUTE -> SurfaceRole.Edit
+            // 账本工具打开的搜索 / 拆账 / 关系账二级页归账本域；预算、固定支出、收入计划、目标仍归洞察。
+            secondaryPage == StatsSecondaryPage.BillSplits -> SurfaceRole.Ledger
+            secondaryPage == StatsSecondaryPage.GlobalSearch -> SurfaceRole.Ledger
+            secondaryPage == StatsSecondaryPage.Debts -> SurfaceRole.Ledger
+            secondaryPage == StatsSecondaryPage.Receivables -> SurfaceRole.Ledger
+            secondaryPage == StatsSecondaryPage.RepaymentDrafts -> SurfaceRole.Ledger
+            secondaryPage != null -> SurfaceRole.Stats
+            else -> selectedTab.surfaceRole
+        }
     }
 }
 
@@ -128,10 +136,10 @@ internal fun rememberMainShellState(): MainShellState = remember { MainShellStat
 
 internal val BottomTab.surfaceRole: SurfaceRole
     get() = when (this) {
+        BottomTab.Today -> SurfaceRole.Pending
         BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
-        BottomTab.Reports -> SurfaceRole.Stats
-        BottomTab.Search -> SurfaceRole.Ledger
+        BottomTab.Insights -> SurfaceRole.Stats
         BottomTab.Settings -> SurfaceRole.Settings
     }
 

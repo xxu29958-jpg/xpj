@@ -166,6 +166,13 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
+            // 搜索从底栏收进账本工具，但仍保留原全屏搜索能力。
+            StatsSecondaryPage.GlobalSearch -> SearchRoute(
+                navController = navController,
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+            )
+
             // ADR-0049 §6 (slice 7): 还债目标(规划)二级页。返回先关详情、再关 overlay
             // 由 DebtGoalRoute 自带的 BackHandler 处理。
             StatsSecondaryPage.DebtGoals -> DebtGoalRoute(
@@ -173,19 +180,19 @@ private fun MainRouteContent(
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
-            // ADR-0049 §2 (slice 8): 债务管理(欠款列表+新建)规划二级页。
+            // ADR-0049 §2 (slice 8): 账本关系账入口 → 欠款列表+新建外部欠款。
             StatsSecondaryPage.Debts -> DebtRoute(
                 screenFactory = screenFactory,
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
-            // ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面二级页。
+            // ADR-0049 P3b / ⑤c (slice ⑤c-2): 账本关系账入口 → 欠我的(应收)只读发现面。
             StatsSecondaryPage.Receivables -> ReceivablesRoute(
                 screenFactory = screenFactory,
                 onBack = shellState::closeStatsSecondaryPage,
             )
 
-            // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱规划二级页。
+            // ADR-0049 §杠杆③ (slice 3a): 账本关系账入口 → NLS 还款捕获复核箱。
             StatsSecondaryPage.RepaymentDrafts -> RepaymentDraftRoute(
                 screenFactory = screenFactory,
                 focusedDraftPublicId = shellState.focusedRepaymentDraftPublicId,
@@ -230,6 +237,11 @@ private fun MainTabRoute(
         label = "main-tab",
     ) { tab ->
         when (tab) {
+            BottomTab.Today -> TodayRoute(
+                shellState = shellState,
+                screenFactory = screenFactory,
+            )
+
             BottomTab.Pending -> PendingRoute(
                 navController = navController,
                 shellState = shellState,
@@ -242,13 +254,8 @@ private fun MainTabRoute(
                 screenFactory = screenFactory,
             )
 
-            BottomTab.Reports -> StatsRoute(
+            BottomTab.Insights -> StatsRoute(
                 shellState = shellState,
-                screenFactory = screenFactory,
-            )
-
-            BottomTab.Search -> SearchRoute(
-                navController = navController,
                 screenFactory = screenFactory,
             )
 
