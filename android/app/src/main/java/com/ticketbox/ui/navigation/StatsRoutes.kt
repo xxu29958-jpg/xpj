@@ -25,6 +25,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.mascot.rememberMascotController
 import com.ticketbox.ui.screens.BudgetScreen
+import com.ticketbox.ui.screens.BudgetScreenActions
 import com.ticketbox.ui.screens.CreateDebtGoalScreen
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.DebtGoalCelebrationOverlay
@@ -92,17 +93,19 @@ internal fun BudgetRoute(
     val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
     BudgetScreen(
         state = state,
-        onRefresh = budgetViewModel::refresh,
-        onPreviousMonth = budgetViewModel::previousMonth,
-        onNextMonth = budgetViewModel::nextMonth,
-        onTotalAmountChange = budgetViewModel::updateTotalAmount,
-        onRolloverAmountChange = budgetViewModel::updateRolloverAmount,
-        onNonMonthlyAmountChange = budgetViewModel::updateNonMonthlyAmount,
-        onExcludedCategoriesChange = budgetViewModel::updateExcludedCategories,
-        onCategoryRowChange = budgetViewModel::updateCategoryRow,
-        onAddCategoryRow = budgetViewModel::addCategoryRow,
-        onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
-        onSave = budgetViewModel::save,
+        actions = BudgetScreenActions(
+            onRefresh = budgetViewModel::refresh,
+            onPreviousMonth = budgetViewModel::previousMonth,
+            onNextMonth = budgetViewModel::nextMonth,
+            onTotalAmountChange = budgetViewModel::updateTotalAmount,
+            onRolloverAmountChange = budgetViewModel::updateRolloverAmount,
+            onNonMonthlyAmountChange = budgetViewModel::updateNonMonthlyAmount,
+            onExcludedCategoriesChange = budgetViewModel::updateExcludedCategories,
+            onCategoryRowChange = budgetViewModel::updateCategoryRow,
+            onAddCategoryRow = budgetViewModel::addCategoryRow,
+            onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
+            onSave = budgetViewModel::save,
+        ),
         onBack = onBack,
     )
 }

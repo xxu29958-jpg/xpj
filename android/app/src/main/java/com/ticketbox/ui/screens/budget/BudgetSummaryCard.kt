@@ -5,21 +5,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppErrorState
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -27,7 +23,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.valentinilk.shimmer.shimmer
 
 @Composable
-internal fun BudgetSummaryCard(
+internal fun BudgetSummarySection(
     budget: BudgetMonthly?,
     loading: Boolean,
     loadError: UiText?,
@@ -45,35 +41,33 @@ internal fun BudgetSummaryCard(
         return
     }
     val configuredBudget = budget?.takeIf { it.configured }
-    AppGlassCard(containerAlpha = 0.94f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-        ) {
-            BudgetSummaryTitle(configuredBudget)
-            if (configuredBudget == null) {
-                BudgetSummaryPlaceholder(loading)
-                return@Column
-            }
-            BudgetProgressBar(progress = configuredBudget.spentProgress)
-            BudgetMetricRows(
-                budget = configuredBudget,
-                currencyDisplay = currencyDisplay,
-            )
+    BudgetOpenSection(
+        title = stringResource(R.string.budget_summary_title),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        BudgetSummaryStatus(configuredBudget)
+        if (configuredBudget == null) {
+            BudgetSummaryPlaceholder(loading)
+            return@BudgetOpenSection
         }
+        BudgetProgressBar(progress = configuredBudget.spentProgress)
+        BudgetMetricRows(
+            budget = configuredBudget,
+            currencyDisplay = currencyDisplay,
+        )
     }
 }
 
 @Composable
-private fun BudgetSummaryTitle(budget: BudgetMonthly?) {
+private fun BudgetSummaryStatus(budget: BudgetMonthly?) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.budget_summary_title),
-            style = MaterialTheme.typography.titleMedium,
+            text = stringResource(R.string.budget_summary_status_label),
+            style = MaterialTheme.typography.bodyLarge,
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
@@ -97,11 +91,11 @@ private fun BudgetSummaryPlaceholder(loading: Boolean) {
                 .shimmer(),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-            SkeletonBlock(modifier = Modifier.fillMaxWidth(0.8f).height(22.dp))
-            SkeletonBlock(modifier = Modifier.fillMaxWidth().height(12.dp))
+            SkeletonBlock(modifier = Modifier.fillMaxWidth(0.8f).height(AppSpacing.cardPadding + AppSpacing.tinyGap))
+            SkeletonBlock(modifier = Modifier.fillMaxWidth().height(AppSpacing.compactGap))
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                SkeletonBlock(modifier = Modifier.weight(1f).height(58.dp))
-                SkeletonBlock(modifier = Modifier.weight(1f).height(58.dp))
+                SkeletonBlock(modifier = Modifier.weight(1f).height(AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall))
+                SkeletonBlock(modifier = Modifier.weight(1f).height(AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall))
             }
         }
         return

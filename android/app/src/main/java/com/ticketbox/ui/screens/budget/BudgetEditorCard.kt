@@ -1,10 +1,8 @@
 package com.ticketbox.ui.screens.budget
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
@@ -16,9 +14,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.BudgetUiState
@@ -35,43 +31,36 @@ internal data class BudgetEditorActions(
 )
 
 @Composable
-internal fun BudgetEditorCard(
+internal fun BudgetEditorSection(
     state: BudgetUiState,
     actions: BudgetEditorActions,
 ) {
-    AppGlassCard(containerAlpha = 0.94f) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    BudgetOpenSection(
+        title = stringResource(R.string.budget_editor_title),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        if (!state.canModify) {
+            Text(
+                text = stringResource(R.string.common_readonly_ledger),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            return@BudgetOpenSection
+        }
+        BudgetCoreFields(state, actions)
+        BudgetCategoryFields(state, actions)
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.saving,
+            onClick = actions.onSave,
         ) {
             Text(
-                text = stringResource(R.string.budget_editor_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = AppTextHierarchy.heading.weight,
+                if (state.saving) {
+                    stringResource(R.string.common_saving)
+                } else {
+                    stringResource(R.string.budget_editor_save)
+                },
             )
-            if (!state.canModify) {
-                Text(
-                    text = stringResource(R.string.common_readonly_ledger),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                return@Column
-            }
-            BudgetCoreFields(state, actions)
-            BudgetCategoryFields(state, actions)
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.saving,
-                onClick = actions.onSave,
-            ) {
-                Text(
-                    if (state.saving) {
-                        stringResource(R.string.common_saving)
-                    } else {
-                        stringResource(R.string.budget_editor_save)
-                    },
-                )
-            }
         }
     }
 }

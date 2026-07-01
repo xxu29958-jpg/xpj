@@ -606,8 +606,9 @@
     <string name="budget_month_previous">上月</string>
     <string name="budget_month_next">下月</string>
 
-    <!-- BudgetSummaryCard：本月预算概况卡 -->
+    <!-- BudgetSummarySection：本月预算概况 -->
     <string name="budget_summary_title">本月预算</string>
+    <string name="budget_summary_status_label">执行进度</string>
     <string name="budget_summary_percent">%1$d%%</string>
     <string name="budget_summary_unconfigured">未启用</string>
     <!-- 加载失败错误态（区别于 loading——失败时不能停留在读取占位）。 -->
@@ -622,7 +623,7 @@
     <string name="budget_summary_metric_excluded">剔除</string>
     <string name="budget_summary_unconfigured_body">尚未启用月度预算。填写下方总预算后，会显示剩余额度、超支和分类执行。</string>
 
-    <!-- BudgetEditorCard / BudgetFields：预算编辑卡 + 输入字段。
+    <!-- BudgetEditorSection / BudgetFields：预算编辑 + 输入字段。
          只读提示复用 common_readonly_ledger、保存中复用 common_saving（strings.xml 已有同值）。 -->
     <string name="budget_editor_title">预算设置</string>
     <string name="budget_editor_save">保存预算</string>
@@ -644,7 +645,7 @@
     <string name="budget_field_remove_category_named">删除 %1$s 分类预算</string>
     <string name="budget_field_remove_category">删除分类预算</string>
 
-    <!-- BudgetBreakdownCards：分类执行 + 剔除明细 -->
+    <!-- BudgetBreakdownSections：分类执行 + 剔除明细 -->
     <string name="budget_category_card_title">分类执行</string>
     <string name="budget_category_card_empty">未设置分类预算。</string>
     <string name="budget_category_spent">已花 %1$s</string>

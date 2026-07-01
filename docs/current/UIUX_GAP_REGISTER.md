@@ -387,17 +387,24 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-insights-budget-goal-drill-semantics
 
 - Surface: Android Insights Budget, Goals, and Tag/drill pages.
-- Status: partially implemented; true-device QA and product/API follow-up remain.
+- Status: Budget secondary parity implemented locally; true-device QA and
+  product/API follow-up remain.
 - Gap: user observation says the Budget/Tag area can still show mismatched
   monthly-insight modules, unclear budget remaining/options language, and goal
   wording that does not make the target type obvious. "Goal enabled" is too vague
   for a finance product; repayment, saving, and spending-control goals have
   different user intent.
 - Resolution so far: Budget secondary pages now treat backend `configured=false`
-  as not enabled and hide active-only budget modules. Goal rows now label existing
-  backend-backed types as "开销目标" or "还债目标" instead of a generic enabled
-  target. Tag-filtered Insights now disables global Budget/Goals tabs and keeps
-  tag views to tag-relevant Overview/Trend/Category content.
+  as not enabled and hide active-only budget modules. The Budget drill now uses
+  open summary/editor/execution sections instead of stacked card containers,
+  keeps active execution rows behind the backend-configured state, and lets
+  amount lanes wrap instead of hiding the primary number behind an ellipsis.
+  `BudgetScreenActions` and a pure page-decision model remove the old long
+  Composable parameter surface while keeping all write operations in the
+  ViewModel/repository path. Goal rows now label existing backend-backed types
+  as "开销目标" or "还债目标" instead of a generic enabled target.
+  Tag-filtered Insights now disables global Budget/Goals tabs and keeps tag
+  views to tag-relevant Overview/Trend/Category content.
 - Desired follow-up: audit the actual drill paths with backend data. Budget
   still needs true-device coverage for active, over-budget, read-only, and not
   enabled states. Saving goals remain a product/API contract gap; Android must
