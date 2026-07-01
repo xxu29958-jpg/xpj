@@ -205,20 +205,30 @@ fun visibleDashboardCardKeys(cards: List<DashboardCard>): List<String> {
 fun statsDashboardKeysForTab(
     tab: StatsTab,
     keys: List<String>,
+    tagFilterActive: Boolean = false,
 ): List<String> {
-    val allowedKeys = when (tab) {
-        StatsTab.Overview -> setOf(
-            DASHBOARD_CARD_MONTHLY_SPEND,
-            DASHBOARD_CARD_PENDING,
-            DASHBOARD_CARD_RECENT_UPLOADS,
-        )
-        StatsTab.Trend -> setOf(DASHBOARD_CARD_REPORTS)
-        StatsTab.Category -> setOf(DASHBOARD_CARD_REPORTS)
-        StatsTab.Budget -> setOf(
-            DASHBOARD_CARD_BUDGET,
-            DASHBOARD_CARD_RECURRING,
-        )
-        StatsTab.Goals -> setOf(DASHBOARD_CARD_GOALS)
+    val allowedKeys = if (tagFilterActive) {
+        when (tab) {
+            StatsTab.Overview -> setOf(DASHBOARD_CARD_MONTHLY_SPEND)
+            StatsTab.Trend -> setOf(DASHBOARD_CARD_REPORTS)
+            StatsTab.Category -> setOf(DASHBOARD_CARD_REPORTS)
+            StatsTab.Budget, StatsTab.Goals -> emptySet()
+        }
+    } else {
+        when (tab) {
+            StatsTab.Overview -> setOf(
+                DASHBOARD_CARD_MONTHLY_SPEND,
+                DASHBOARD_CARD_PENDING,
+                DASHBOARD_CARD_RECENT_UPLOADS,
+            )
+            StatsTab.Trend -> setOf(DASHBOARD_CARD_REPORTS)
+            StatsTab.Category -> setOf(DASHBOARD_CARD_REPORTS)
+            StatsTab.Budget -> setOf(
+                DASHBOARD_CARD_BUDGET,
+                DASHBOARD_CARD_RECURRING,
+            )
+            StatsTab.Goals -> setOf(DASHBOARD_CARD_GOALS)
+        }
     }
     return keys.filter { it in allowedKeys }
 }

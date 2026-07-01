@@ -95,6 +95,7 @@ internal fun StatsTopPanel(
             selectedTab = selectedTab,
             dashboardCards = state.dashboardCards,
             visibleDashboardKeys = visibleDashboardKeys,
+            tagFilterActive = state.selectedTag.isNotBlank(),
             onTabChange = actions.onTabChange,
         )
     }
@@ -180,6 +181,7 @@ private fun StatsTabRow(
     selectedTab: StatsTab,
     dashboardCards: List<DashboardCard>,
     visibleDashboardKeys: List<String>,
+    tagFilterActive: Boolean,
     onTabChange: (StatsTab) -> Unit,
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
@@ -187,7 +189,11 @@ private fun StatsTabRow(
             StatsTextTab(
                 label = statsTabLabel(tab, dashboardCards),
                 selected = selectedTab == tab,
-                enabled = statsDashboardKeysForTab(tab, visibleDashboardKeys).isNotEmpty(),
+                enabled = statsDashboardKeysForTab(
+                    tab,
+                    visibleDashboardKeys,
+                    tagFilterActive = tagFilterActive,
+                ).isNotEmpty(),
                 onClick = { onTabChange(tab) },
             )
         }

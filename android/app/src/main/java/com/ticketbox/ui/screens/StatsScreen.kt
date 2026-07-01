@@ -99,8 +99,13 @@ fun StatsScreen(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         val visibleDashboardKeys = orderedStatsDashboardKeys(visibleDashboardCardKeys(state.dashboardCards))
+        val tagFilterActive = state.selectedTag.isNotBlank()
         val selectedDashboardKeys = orderedStatsDashboardKeys(
-            statsDashboardKeysForTab(selectedStatsTab, visibleDashboardKeys),
+            statsDashboardKeysForTab(
+                selectedStatsTab,
+                visibleDashboardKeys,
+                tagFilterActive = tagFilterActive,
+            ),
         )
         val authorityTone = when {
             state.loading -> DataAuthorityTone.Refreshing
@@ -115,7 +120,12 @@ fun StatsScreen(
                 visibleDashboardKeys = visibleDashboardKeys,
                 actions = StatsTopPanelActions(
                     onOpenMonthPicker = { showMonthPicker = true },
-                    onTagChange = onTagChange,
+                    onTagChange = { tag ->
+                        onTagChange(tag)
+                        if (tag.isNotBlank() && selectedStatsTab in tagScopedHiddenTabs) {
+                            selectedStatsTab = StatsTab.Trend
+                        }
+                    },
                     onTabChange = { selectedStatsTab = it },
                     planning = StatsPlanningActions(
                         onOpenBudget = onOpenBudget,
@@ -329,3 +339,5 @@ private fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
     }
     return state.lifestyleStats?.recent7DaysAmountCents
 }
+
+private val tagScopedHiddenTabs = setOf(StatsTab.Budget, StatsTab.Goals)

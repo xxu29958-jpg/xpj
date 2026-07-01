@@ -68,4 +68,30 @@ class DashboardCardsTest {
             statsDashboardKeysForTab(StatsTab.Overview, visibleKeys),
         )
     }
+
+    @Test
+    fun statsTabMappingHidesGlobalCardsWhenTagFiltered() {
+        val visibleKeys = visibleDashboardCardKeys(emptyList())
+
+        assertEquals(
+            listOf(DASHBOARD_CARD_MONTHLY_SPEND),
+            statsDashboardKeysForTab(StatsTab.Overview, visibleKeys, tagFilterActive = true),
+        )
+        assertEquals(
+            listOf(DASHBOARD_CARD_REPORTS),
+            statsDashboardKeysForTab(StatsTab.Trend, visibleKeys, tagFilterActive = true),
+        )
+        assertEquals(
+            listOf(DASHBOARD_CARD_REPORTS),
+            statsDashboardKeysForTab(StatsTab.Category, visibleKeys, tagFilterActive = true),
+        )
+        assertEquals(
+            emptyList(),
+            statsDashboardKeysForTab(StatsTab.Budget, visibleKeys, tagFilterActive = true),
+        )
+        assertEquals(
+            emptyList(),
+            statsDashboardKeysForTab(StatsTab.Goals, visibleKeys, tagFilterActive = true),
+        )
+    }
 }
