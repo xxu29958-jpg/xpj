@@ -44,6 +44,7 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -98,6 +99,21 @@ data class TodayActions(
     val onManualEntry: () -> Unit,
 )
 
+internal enum class TodayNextAction {
+    MissingAmount,
+    Duplicate,
+    Ready,
+    ReviewPending,
+    UploadReceipt,
+    OpenLedger,
+}
+
+private data class TodayNextActionCopy(
+    val title: String,
+    val caption: String,
+    val buttonText: String,
+)
+
 @Composable
 fun TodayScreen(
     state: TodayScreenState,
@@ -120,7 +136,7 @@ fun TodayScreen(
                 AppDataAuthorityStrip(tone = tone)
             }
         }
-        item { TodayOverview(state = state) }
+        item { TodayCockpit(state = state) }
         item { TodayActionRow(state = state, actions = actions) }
         item { TodayWorkstream(state = state, onOpenPending = actions.onOpenPending) }
         item {
@@ -134,9 +150,10 @@ fun TodayScreen(
 }
 
 @Composable
-private fun TodayOverview(state: TodayScreenState) {
+private fun TodayCockpit(state: TodayScreenState) {
     val ledgerName = state.ledgerName?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.today_ledger_unknown)
+    val syncValue = todaySyncValue(state.monthly)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -144,8 +161,8 @@ private fun TodayOverview(state: TodayScreenState) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         TodayLedgerHeader(ledgerName = ledgerName, ledgerRole = state.ledgerRole)
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
-        TodayMonthSummary(stats = state.monthly.stats)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+        TodayMonthSummary(stats = state.monthly.stats, syncValue = syncValue)
     }
 }
 
@@ -185,9 +202,12 @@ private fun TodayLedgerHeader(
 }
 
 @Composable
-private fun TodayMonthSummary(stats: MonthlyStats?) {
+private fun TodayMonthSummary(stats: MonthlyStats?, syncValue: String) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
         Text(
             text = stringResource(R.string.today_month_spend_label),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -196,10 +216,11 @@ private fun TodayMonthSummary(stats: MonthlyStats?) {
         Text(
             text = stats?.totalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
                 ?: stringResource(R.string.today_month_empty_value),
+            modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
             autoSize = TextAutoSize.StepBased(
-                minFontSize = 22.sp,
+                minFontSize = 18.sp,
                 maxFontSize = AppAmountRole.Hero.role.size,
                 stepSize = 1.sp,
             ),
@@ -207,7 +228,7 @@ private fun TodayMonthSummary(stats: MonthlyStats?) {
             overflow = TextOverflow.Clip,
         )
         Text(
-            text = stringResource(R.string.today_month_count, stats?.count ?: 0),
+            text = stringResource(R.string.today_month_count_with_status, stats?.count ?: 0, syncValue),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium.tabularNum(),
         )
@@ -219,23 +240,74 @@ private fun TodayActionRow(
     state: TodayScreenState,
     actions: TodayActions,
 ) {
-    Row(
+    val action = todayNextAction(
+        pendingCount = state.pendingCount,
+        missingAmountCount = state.missingAmountCount,
+        duplicateCount = state.duplicateCount,
+        readyToConfirmCount = state.readyToConfirmCount,
+        readOnly = state.pending.readOnly,
+    )
+    val copy = todayNextActionCopy(action, state)
+    val primaryIcon = if (action == TodayNextAction.UploadReceipt) {
+        Icons.Filled.AddPhotoAlternate
+    } else {
+        Icons.AutoMirrored.Filled.KeyboardArrowRight
+    }
+    val primaryEnabled = action != TodayNextAction.UploadReceipt || (!state.pending.readOnly && !state.pending.uploading)
+    val primaryClick = when (action) {
+        TodayNextAction.UploadReceipt -> actions.onUploadReceipt
+        TodayNextAction.OpenLedger -> actions.onOpenLedger
+        else -> actions.onOpenPending
+    }
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        AppPrimaryButton(
-            text = stringResource(R.string.today_primary_upload),
-            icon = Icons.Filled.AddPhotoAlternate,
-            modifier = Modifier.weight(1f),
-            enabled = !state.pending.readOnly && !state.pending.uploading,
-            onClick = actions.onUploadReceipt,
+        TodayNextActionText(copy)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
+            AppPrimaryButton(
+                text = copy.buttonText,
+                icon = primaryIcon,
+                modifier = Modifier.weight(1f),
+                enabled = primaryEnabled,
+                onClick = primaryClick,
+            )
+            QuietOutlinedButton(
+                text = stringResource(R.string.today_primary_manual),
+                leadingIcon = Icons.Filled.Add,
+                modifier = Modifier.weight(1f),
+                enabled = !state.pending.readOnly,
+                onClick = actions.onManualEntry,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TodayNextActionText(copy: TodayNextActionCopy) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+        Text(
+            text = stringResource(R.string.today_next_action_label),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
         )
-        QuietOutlinedButton(
-            text = stringResource(R.string.today_primary_manual),
-            leadingIcon = Icons.Filled.Add,
-            modifier = Modifier.weight(1f),
-            enabled = !state.pending.readOnly,
-            onClick = actions.onManualEntry,
+        Text(
+            text = copy.title,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = copy.caption,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -303,13 +375,7 @@ private fun TodayMonthSignals(
     val topCategory = state.topCategory
     val recentUploadValue = state.monthly.lastUploadAt?.let(::displayTime)
         ?: stringResource(R.string.today_recent_upload_empty)
-    val syncValue = when {
-        state.monthly.loading -> stringResource(R.string.today_sync_loading)
-        state.monthly.statsLoadError != null -> stringResource(R.string.today_sync_error)
-        state.monthly.statsSource == StatsSource.LocalFallback -> stringResource(R.string.today_sync_local)
-        state.monthly.statsSource == StatsSource.Backend -> stringResource(R.string.today_sync_ready)
-        else -> stringResource(R.string.today_sync_idle)
-    }
+    val syncValue = todaySyncValue(state.monthly)
     TodaySignalSection(title = stringResource(R.string.today_section_month)) {
         TodaySignalRow(
             label = stringResource(R.string.today_metric_top_category),
@@ -336,4 +402,66 @@ private fun TodayMonthSignals(
             )
         }
     }
+}
+
+@Composable
+private fun todaySyncValue(monthly: MonthlyStatsUiState): String = when {
+    monthly.loading -> stringResource(R.string.today_sync_loading)
+    monthly.statsLoadError != null -> stringResource(R.string.today_sync_error)
+    monthly.statsSource == StatsSource.LocalFallback -> stringResource(R.string.today_sync_local)
+    monthly.statsSource == StatsSource.Backend -> stringResource(R.string.today_sync_ready)
+    else -> stringResource(R.string.today_sync_idle)
+}
+
+@Composable
+private fun todayNextActionCopy(
+    action: TodayNextAction,
+    state: TodayScreenState,
+): TodayNextActionCopy = when (action) {
+    TodayNextAction.MissingAmount -> TodayNextActionCopy(
+        title = stringResource(R.string.today_next_missing_amount_title),
+        caption = stringResource(R.string.today_next_missing_amount_caption, state.missingAmountCount),
+        buttonText = stringResource(R.string.today_next_review_button),
+    )
+    TodayNextAction.Duplicate -> TodayNextActionCopy(
+        title = stringResource(R.string.today_next_duplicate_title),
+        caption = stringResource(R.string.today_next_duplicate_caption, state.duplicateCount),
+        buttonText = stringResource(R.string.today_next_review_button),
+    )
+    TodayNextAction.Ready -> TodayNextActionCopy(
+        title = stringResource(R.string.today_next_ready_title),
+        caption = stringResource(R.string.today_next_ready_caption, state.readyToConfirmCount),
+        buttonText = stringResource(R.string.today_next_confirm_button),
+    )
+    TodayNextAction.ReviewPending -> TodayNextActionCopy(
+        title = stringResource(R.string.today_next_review_title),
+        caption = stringResource(R.string.today_next_review_caption, state.pendingCount),
+        buttonText = stringResource(R.string.today_next_review_button),
+    )
+    TodayNextAction.UploadReceipt -> TodayNextActionCopy(
+        title = stringResource(R.string.today_next_upload_title),
+        caption = stringResource(R.string.today_next_upload_caption),
+        buttonText = stringResource(R.string.today_next_upload_button),
+    )
+    TodayNextAction.OpenLedger -> TodayNextActionCopy(
+        title = stringResource(R.string.today_next_ledger_title),
+        caption = stringResource(R.string.today_next_ledger_caption, state.monthly.stats?.count ?: 0),
+        buttonText = stringResource(R.string.today_next_ledger_button),
+    )
+}
+
+internal fun todayNextAction(
+    pendingCount: Int,
+    missingAmountCount: Int,
+    duplicateCount: Int,
+    readyToConfirmCount: Int,
+    readOnly: Boolean,
+): TodayNextAction = when {
+    readOnly && pendingCount > 0 -> TodayNextAction.ReviewPending
+    readOnly -> TodayNextAction.OpenLedger
+    missingAmountCount > 0 -> TodayNextAction.MissingAmount
+    duplicateCount > 0 -> TodayNextAction.Duplicate
+    readyToConfirmCount > 0 -> TodayNextAction.Ready
+    pendingCount > 0 -> TodayNextAction.ReviewPending
+    else -> TodayNextAction.UploadReceipt
 }

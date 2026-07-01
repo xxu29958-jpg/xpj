@@ -162,6 +162,22 @@ that actually ships the fix.
 - Remaining QA: run official-package true-device review for first-viewport
   density, cache/read-only copy, scroll position, and bottom-nav safety.
 
+### ANDROID-2026-07-01-today-cockpit-priority
+
+- Surface: Android Today root page.
+- Status: implemented in the current Today cockpit slice; needs true-device QA.
+- Gap: Today already had real pending and monthly state, but the first viewport
+  still let the month total, action buttons, and work queue compete. Large
+  amounts also needed a stronger width guarantee so they do not visually collapse
+  into truncation on narrow phones.
+- Resolution: Today now gives the monthly amount a full-width line with
+  auto-sizing down to a smaller floor, shows the month source/status beside the
+  confirmed count, and derives one primary next action from real pending counts
+  before falling back to upload or ledger review. Read-only state does not prompt
+  write actions.
+- Remaining QA: run official-package true-device review for amount fitting,
+  first-viewport density, source/status copy, and bottom-nav scroll behavior.
+
 ### ANDROID-2026-07-01-ledger-long-list-density
 
 - Surface: Android Ledger confirmed-history list.

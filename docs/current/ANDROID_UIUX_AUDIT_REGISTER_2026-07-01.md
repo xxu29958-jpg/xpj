@@ -43,7 +43,7 @@ Every UIUX slice should close these gates before being called done:
 | --- | --- | --- | --- | --- | --- |
 | AIA-001 | Global shell | Needs QA | P0 | The five root pages have a shared shell, but the final true-device pass must verify header rhythm, status language, bottom padding, and dense pages together. | Today, Pending, Ledger, Insights, and Settings share one skeleton language without becoming the same card layout. |
 | AIA-002 | Data authority | Needs QA | P0 | Backend authority and local cache labels exist, but every page must keep cached/offline state below server facts. | Fresh backend, local cache, read-only, queued, conflict, and failed states are visibly distinct and never imply fake server truth. |
-| AIA-003 | Today | Registered | P0 | Today is the daily cockpit, but the first viewport can still compete between month total, work queue, and actions. | The first screen states source, pending workload, month status, and next action without truncating large amounts. |
+| AIA-003 | Today | Needs QA | P0 | Today now gives the month amount full width, includes the source/status in the month line, and derives a single next action from real pending state; true-device review still needs to judge density and amount fitting with live data. | The first screen states source, pending workload, month status, and next action without truncating large amounts. |
 | AIA-004 | Pending | Needs QA | P0 | Pending now has a real queue overview derived from `state.items`; true-device review still needs to judge density, first-viewport balance, and scroll behavior. | No fake duplicate/ready counts; the user can immediately see ready, missing amount, missing merchant, duplicate, and blocked work. |
 | AIA-005 | Ledger | Needs QA | P0 | Long history can become endless scrolling if day groups and compact rows are not tuned on real data. | Confirmed records scan by day/month with compact rows, useful filters, no bottom-nav obstruction, and no large-card pile. |
 | AIA-006 | Insights root | Needs QA | P0 | Insights has been reshaped, but it still needs final review as an answer page rather than a chart dashboard. | The page answers spend, comparison, recent signal, top contributors, and action signals in that order. |
@@ -81,7 +81,7 @@ Every UIUX slice should close these gates before being called done:
 | --- | --- | --- | --- |
 | S0 Audit and reference | Fixed | `a66393e3`, `0a829305` | Phase 0 audit, product references, initial gap register. |
 | S1 Shared shell / authority language | Needs QA | Existing Android IA commits on this branch | Shared page skeleton, source/status strip, bottom safety, card reduction. |
-| S2 Today cockpit | Registered | Next Today slice | First viewport hierarchy, amount fitting, real next-action priority. |
+| S2 Today cockpit | Needs QA | Current Today cockpit slice | First viewport hierarchy, amount fitting, real next-action priority. |
 | S3 Pending queue | Needs QA | Current Pending queue slice | Queue overview, compact review scan, batch and feedback closure. |
 | S4 Ledger density | Needs QA | `1b8fb6bd` | Day grouping, compact record surface, long-list safety. |
 | S5 Insights answer flow | Needs QA | `575d9ebf`, `8e4e9d43` | Merchant metric split, sparse/dominant trend handling, answer-first layout. |
@@ -94,18 +94,16 @@ Every UIUX slice should close these gates before being called done:
 | Check | Current state | Next requirement |
 | --- | --- | --- |
 | Documentation | Phase 0, reference pass, gap register, and this audit register exist. | Keep statuses updated after every slice. |
-| Gradle compile/detekt | Pending queue slice passes `compileGrayDebugKotlin`, `detektGrayDebug`, and `detektGrayDebugUnitTest`. | Rerun flavor-qualified gates after code changes. |
-| Unit tests | Pending queue overview model has focused JVM tests and the Android test-count baseline is updated to `1231`. | Add focused tests only where state authority or UI decisions are risky. |
+| Gradle compile/detekt | Today cockpit slice passes `compileGrayDebugKotlin`, `detektGrayDebug`, and `detektGrayDebugUnitTest` with the existing detekt alpha warning and 0 findings. | Rerun flavor-qualified gates after code changes. |
+| Unit tests | Today next-action priority has focused JVM tests and the Android test-count baseline is updated to `1237`. | Add focused tests only where state authority or UI decisions are risky. |
 | Lint | Required for broader Android slices. | Run before any final Android batch commit/push. |
 | True device | Prior real-device passes exist, but the current audit register still needs a final clean pass. | Bind official `com.ticketbox` to backend and capture fresh evidence after page slices. |
 | Screenshots | Local audit folders exist and are intentionally not auto-staged. | Commit only lightweight audit docs unless the user asks to include images. |
 
 ## Open Decisions
 
-- Pending queue overview should be the next root-page audit closeout because it
-  directly addresses fake/hardcoded-state concern and batch-review scan quality.
-- Today amount fitting must be checked with the user's real large monthly amount
-  so the UI never hides the amount behind an ellipsis.
+- Today cockpit still needs true-device review with the user's real large
+  monthly amount so the UI never hides the amount behind an ellipsis.
 - Insights should not add a chart dependency until the missing interaction is
   specific: point selection, tooltip, grouped series, zoom, or export preview.
 - Settings secondary work should proceed page by page; do not call Settings done
