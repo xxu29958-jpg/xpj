@@ -36,7 +36,6 @@ import com.ticketbox.ui.components.SwipeActionConfig
 import com.ticketbox.ui.components.SwipeableActionRow
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalSwipeActionTokens
-import com.ticketbox.ui.screens.pending.BulkConfirmEntry
 import com.ticketbox.ui.screens.pending.EmptyPendingState
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
@@ -46,6 +45,7 @@ import com.ticketbox.ui.screens.pending.PendingDisplayMode
 import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
 import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
+import com.ticketbox.ui.screens.pending.PendingQueueOverview
 import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
@@ -193,6 +193,17 @@ fun PendingScreen(
             }
         }
 
+        if (state.items.isNotEmpty()) {
+            item {
+                PendingQueueOverview(
+                    counts = queueCounts,
+                    readOnly = readOnly,
+                    bulkRunning = state.bulkConfirm.running,
+                    onOpenBulkConfirm = onOpenBulkConfirm,
+                )
+            }
+        }
+
         if (state.items.isEmpty() && !readOnly) {
             item { PendingClearCelebration(visible = showCelebration) }
         }
@@ -241,15 +252,6 @@ fun PendingScreen(
                         counts = queueCounts,
                         onSelect = { needsReviewFilter = it },
                     )
-                }
-                if (!readOnly && needsReviewFilter == NeedsReviewFilter.ReadyToConfirm && queueCounts.readyToConfirm > 0) {
-                    item {
-                        BulkConfirmEntry(
-                            readyCount = queueCounts.readyToConfirm,
-                            inProgress = state.bulkConfirm.running,
-                            onOpen = onOpenBulkConfirm,
-                        )
-                    }
                 }
             }
         }

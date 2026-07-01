@@ -1,26 +1,9 @@
 package com.ticketbox.ui.screens.pending
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.pending.sheets.BulkConfirmSheetContent
 import com.ticketbox.ui.screens.pending.sheets.DuplicateConfirmSheetContent
 import com.ticketbox.ui.screens.pending.sheets.MissingAmountSheetContent
@@ -107,44 +90,6 @@ internal fun PendingReviewSheetHost(
                 totalCount = bulkTotal,
                 onConfirmReady = onConfirmReady,
                 onDismiss = onDismiss,
-            )
-        }
-    }
-}
-
-@Composable
-internal fun BulkConfirmEntry(
-    readyCount: Int,
-    inProgress: Boolean,
-    onOpen: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.smallGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = AppSpacing.tinyGap),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.pending_bulk_entry_ready, readyCount),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-            AppSecondaryButton(
-                text = if (inProgress) {
-                    stringResource(R.string.pending_bulk_entry_in_progress)
-                } else {
-                    stringResource(R.string.pending_bulk_entry_button)
-                },
-                enabled = !inProgress,
-                onClick = onOpen,
             )
         }
     }

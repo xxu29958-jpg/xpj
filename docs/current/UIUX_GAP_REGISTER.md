@@ -147,6 +147,21 @@ that actually ships the fix.
   contract, and commit slicing plan. The audit register records per-page status,
   acceptance gates, Settings secondary coverage, and true-device review debt.
 
+### ANDROID-2026-07-01-pending-queue-overview
+
+- Surface: Android Pending root page.
+- Status: implemented in the current Pending queue slice; needs true-device QA.
+- Gap: the queue counts were already real, but they were split between the page
+  header, filters, and a filtered-only bulk-confirm entry. That made the page
+  feel like a list plus controls instead of a review inbox with an obvious
+  processing order.
+- Resolution: Pending now shows an open queue overview derived from `state.items`
+  before the filters. It prioritizes suspected duplicates, missing amount,
+  missing merchant, and directly confirmable items, and exposes the batch-confirm
+  entry without inventing any counts or treating cached data as server truth.
+- Remaining QA: run official-package true-device review for first-viewport
+  density, cache/read-only copy, scroll position, and bottom-nav safety.
+
 ### ANDROID-2026-07-01-ledger-long-list-density
 
 - Surface: Android Ledger confirmed-history list.

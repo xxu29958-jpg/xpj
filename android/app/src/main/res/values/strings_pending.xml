@@ -53,6 +53,23 @@
     <string name="pending_top_cta_uploading">正在上传截图</string>
     <string name="pending_top_cta_upload">上传截图</string>
 
+    <!-- 待确认队列概览 -->
+    <string name="pending_queue_overview_title">处理重点</string>
+    <string name="pending_queue_overview_priority_duplicate">优先处理疑似重复，避免重复入账。</string>
+    <string name="pending_queue_overview_priority_amount">补全金额后再确认入账。</string>
+    <string name="pending_queue_overview_priority_merchant">补全商家后，筛选与统计更准确。</string>
+    <string name="pending_queue_overview_priority_ready">%1$d 条可直接确认入账。</string>
+    <string name="pending_queue_overview_priority_review">当前队列需要逐条核对。</string>
+    <string name="pending_queue_overview_priority_empty">暂无待确认账单。</string>
+    <string name="pending_queue_overview_ready_label">可确认</string>
+    <string name="pending_queue_overview_review_label">需核对</string>
+    <string name="pending_queue_overview_metric_count">%1$d 条</string>
+    <string name="pending_queue_overview_amount_issue">缺金额 %1$d</string>
+    <string name="pending_queue_overview_merchant_issue">缺商家 %1$d</string>
+    <string name="pending_queue_overview_duplicate_issue">疑似重复 %1$d</string>
+    <string name="pending_queue_overview_bulk_confirm">确认 %1$d 条</string>
+    <string name="pending_queue_overview_bulk_running">正在确认</string>
+
     <!-- 显示模式按钮 -->
     <string name="pending_display_mode_button_loading">刷新中</string>
 
@@ -60,11 +77,6 @@
     <string name="pending_undo_banner_label_with_descriptor">已忽略 · %1$s</string>
     <string name="pending_undo_banner_label">已忽略</string>
     <string name="pending_undo_banner_action">撤销</string>
-
-    <!-- 批量确认入口卡片 -->
-    <string name="pending_bulk_entry_ready">可直接确认 %1$d 条</string>
-    <string name="pending_bulk_entry_in_progress">确认中…</string>
-    <string name="pending_bulk_entry_button">批量确认</string>
 
     <!-- 工具 sheet PendingToolsSheet -->
     <string name="pending_tools_title">列表与刷新</string>
