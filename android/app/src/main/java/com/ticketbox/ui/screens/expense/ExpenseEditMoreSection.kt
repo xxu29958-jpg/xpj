@@ -4,8 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -15,10 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
-import com.ticketbox.ui.components.AppSolidCard
+import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppSpacing
 
 // Stable test tags for the 「更多记录」inputs — instrumented tests target these instead of the
 // Material3 label/value text (not reliably in the semantics tree). Shared constants so the UI and
@@ -51,35 +51,38 @@ internal fun ExpenseEditMoreSection(
     onRetryOcr: () -> Unit,
     onRecognizeText: () -> Unit = {},
 ) {
-    AppSolidCard {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(stringResource(R.string.expense_edit_more_title), style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        text = stringResource(R.string.expense_edit_more_subtitle),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                AppOutlinedButton(onClick = onToggleMore) {
-                    Text(
-                        if (moreExpanded) {
-                            stringResource(R.string.expense_edit_more_collapse_button)
-                        } else {
-                            stringResource(R.string.expense_edit_more_expand_button)
-                        }
-                    )
-                }
+                Text(stringResource(R.string.expense_edit_more_title), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = stringResource(R.string.expense_edit_more_subtitle),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
+            AppOutlinedButton(onClick = onToggleMore) {
+                Text(
+                    if (moreExpanded) {
+                        stringResource(R.string.expense_edit_more_collapse_button)
+                    } else {
+                        stringResource(R.string.expense_edit_more_expand_button)
+                    }
+                )
+            }
+        }
 
-            if (moreExpanded) {
+        if (moreExpanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
                 // testTag: instrumented tests locate these by a stable tag, not a Material3
                 // OutlinedTextField label/value text node (which isn't reliably exposed in the
                 // semantics tree — the cause of ExpenseEditScreenContractTest's flaky "标签" lookup).
@@ -109,7 +112,7 @@ internal fun ExpenseEditMoreSection(
                     singleLine = true,
                     enabled = !readOnly,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                     TextButton(onClick = onToggleRawText) {
                         Text(
                             if (rawTextExpanded) {
@@ -121,6 +124,7 @@ internal fun ExpenseEditMoreSection(
                     }
                     if (!readOnly && canRecognize) {
                         AppOutlinedButton(
+                            modifier = Modifier.weight(1f),
                             enabled = !ocrRunning && !saving,
                             onClick = onRetryOcr,
                         ) {
@@ -132,15 +136,18 @@ internal fun ExpenseEditMoreSection(
                                 }
                             )
                         }
-                        // ADR-0042 Slice E-2: paste the receipt text by hand and
-                        // let the server parse it into the empty fields (distinct
-                        // from re-running OCR on the stored image).
-                        AppOutlinedButton(
-                            enabled = !ocrRunning && !saving,
-                            onClick = onRecognizeText,
-                        ) {
-                            Text(stringResource(R.string.expense_edit_more_recognize_paste_button))
-                        }
+                    }
+                }
+                if (!readOnly && canRecognize) {
+                    // ADR-0042 Slice E-2: paste the receipt text by hand and
+                    // let the server parse it into the empty fields (distinct
+                    // from re-running OCR on the stored image).
+                    AppOutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !ocrRunning && !saving,
+                        onClick = onRecognizeText,
+                    ) {
+                        Text(stringResource(R.string.expense_edit_more_recognize_paste_button))
                     }
                 }
                 if (rawTextExpanded) {
@@ -151,5 +158,6 @@ internal fun ExpenseEditMoreSection(
                 }
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
     }
 }

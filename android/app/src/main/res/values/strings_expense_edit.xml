@@ -38,7 +38,6 @@
     <string name="expense_edit_currency_card_title">金额与币种</string>
     <string name="expense_edit_amount_field_label">金额</string>
     <string name="expense_edit_amount_supporting_text">按实际支付金额填写，汇率和入账金额由账本结算。</string>
-    <string name="expense_edit_amount_current_record">当前记录：%1$s</string>
     <string name="expense_edit_fx_hint">缺少汇率时会暂缓结算，汇率同步后再入账。</string>
     <string name="expense_edit_merchant_field_label">商家</string>
     <string name="expense_edit_category_field_label">分类</string>

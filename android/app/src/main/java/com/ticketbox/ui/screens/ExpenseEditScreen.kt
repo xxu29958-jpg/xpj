@@ -34,11 +34,9 @@ import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetActions
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetState
@@ -214,7 +212,6 @@ fun ExpenseEditScreen(
     val previewImage = state.fullImage ?: state.thumbnail
     val readOnly = state.readOnly
     val haptics = rememberAppHaptics()
-    val currencyDisplay = LocalCurrencyDisplay.current
     // ADR-0044: stringResource is @Composable-only, but the validation messages
     // below are assigned inside non-composable local functions / onClick lambdas.
     // Hoist the resolved strings (the out-of-range one as a format template) here.
@@ -405,17 +402,6 @@ fun ExpenseEditScreen(
                 autoFocusAmount = false,
                 onAmountFocusChanged = { amountFocused = it },
                 supportingText = stringResource(R.string.expense_edit_amount_supporting_text),
-                statusText = if (currentExpense.originalAmountMinor != null ||
-                    currentExpense.homeAmountCents != null ||
-                    currentExpense.amountCents != null
-                ) {
-                    stringResource(
-                        R.string.expense_edit_amount_current_record,
-                        formatExpensePrimaryAmount(currentExpense, currencyDisplay),
-                    )
-                } else {
-                    null
-                },
             ),
         )
         ExpenseEditMerchantField(
