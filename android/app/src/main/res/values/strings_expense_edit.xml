@@ -10,7 +10,7 @@
     <string name="expense_edit_large_image_loading">原图加载中</string>
     <string name="expense_edit_large_image_failed">原图暂时加载失败，截图已保存</string>
     <string name="expense_edit_keep_duplicate_button">不是重复，保留</string>
-    <string name="expense_edit_raw_text_empty">第一版为空</string>
+    <string name="expense_edit_raw_text_empty">暂无识别原文</string>
     <string name="expense_edit_score_out_of_range">%1$s 只能填写 1 到 5。</string>
     <string name="expense_edit_score_value_label">值不值评分</string>
     <string name="expense_edit_score_regret_label">后悔指数</string>
@@ -35,9 +35,9 @@
     <string name="expense_edit_reject_button">忽略</string>
 
     <!-- ExpenseEditCoreFields：金额/币种/商家/分类/备注/来源 -->
-    <string name="expense_edit_currency_card_title">金额与币种</string>
-    <string name="expense_edit_original_amount_field_label">原始金额</string>
-    <string name="expense_edit_fx_hint">按消费日期使用账本汇率；同步前会标记为待汇率。</string>
+    <string name="expense_edit_currency_card_title">账单金额</string>
+    <string name="expense_edit_original_amount_field_label">金额</string>
+    <string name="expense_edit_fx_hint">汇率由账本计算；缺少汇率时会先等待同步。</string>
     <string name="expense_edit_merchant_field_label">商家</string>
     <string name="expense_edit_category_field_label">分类</string>
     <string name="expense_edit_note_field_label">备注</string>

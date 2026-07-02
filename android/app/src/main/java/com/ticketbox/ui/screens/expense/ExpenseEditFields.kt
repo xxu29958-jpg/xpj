@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -33,6 +34,7 @@ import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSectionHeader
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
@@ -308,25 +310,36 @@ internal fun ExpenseDateField(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            AppOutlinedButton(enabled = state.enabled, onClick = actions.onPickDate) {
-                Text(stringResource(R.string.expense_edit_date_pick_date_button))
-            }
+            AppSecondaryButton(
+                text = stringResource(R.string.expense_edit_date_pick_date_button),
+                modifier = Modifier.widthIn(min = AppSpacing.controlMinHeight),
+                enabled = state.enabled,
+                onClick = actions.onPickDate,
+            )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            TextButton(enabled = state.enabled, onClick = actions.onPickTime) {
-                Text(stringResource(R.string.expense_edit_date_pick_time_button))
-            }
-            TextButton(enabled = state.enabled, onClick = actions.onUseNow) {
-                Text(stringResource(R.string.expense_edit_date_use_now_button))
-            }
-            TextButton(
-                enabled = state.enabled && state.expenseTime.isNotBlank(),
-                onClick = actions.onClear,
-            ) {
-                Text(stringResource(R.string.expense_edit_date_clear_button))
-            }
-        }
+        ExpenseDateQuickActions(state = state, actions = actions)
         ExpenseEditRowDivider()
+    }
+}
+
+@Composable
+private fun ExpenseDateQuickActions(
+    state: ExpenseDateFieldState,
+    actions: ExpenseDateFieldActions,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        TextButton(enabled = state.enabled, onClick = actions.onPickTime) {
+            Text(stringResource(R.string.expense_edit_date_pick_time_button))
+        }
+        TextButton(enabled = state.enabled, onClick = actions.onUseNow) {
+            Text(stringResource(R.string.expense_edit_date_use_now_button))
+        }
+        TextButton(
+            enabled = state.enabled && state.expenseTime.isNotBlank(),
+            onClick = actions.onClear,
+        ) {
+            Text(stringResource(R.string.expense_edit_date_clear_button))
+        }
     }
 }
 
