@@ -67,6 +67,29 @@ class ReportsRecentWindowSummaryTest {
         assertEquals(true, summary.shouldUseSparseRows)
         assertEquals(true, summary.shouldShowSparseRows(avoidRepeatedSparseRows = false))
         assertEquals(false, summary.shouldShowSparseRows(avoidRepeatedSparseRows = true))
+        assertEquals(false, summary.shouldSuppressRepeatedSparseDetails(avoidRepeatedSparseRows = false))
+        assertEquals(true, summary.shouldSuppressRepeatedSparseDetails(avoidRepeatedSparseRows = true))
+        assertEquals(false, summary.shouldShowFactRow(avoidRepeatedSparseRows = true))
+    }
+
+    @Test
+    fun denseWindowKeepsFactRowEvenWhenMonthSparseRowsAreSuppressed() {
+        val summary = summarizeReportsRecentWindow(
+            listOf(
+                spend("6/24", 100L),
+                spend("6/25", 200L),
+                spend("6/26", 300L),
+                spend("6/27", 400L),
+                spend("6/28", 500L),
+                spend("6/29", 600L),
+                spend("6/30", 700L),
+            ),
+        )
+
+        requireNotNull(summary)
+        assertEquals(false, summary.shouldUseSparseRows)
+        assertEquals(false, summary.shouldSuppressRepeatedSparseDetails(avoidRepeatedSparseRows = true))
+        assertEquals(true, summary.shouldShowFactRow(avoidRepeatedSparseRows = true))
     }
 
     private fun spend(label: String, amountCents: Long) = DailySpend(

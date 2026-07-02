@@ -50,6 +50,7 @@ internal fun ReportsRecentWindowSummary(
             "${it.label} ${formatDisplayAmount(it.amountCents, currencyDisplay)}"
         }
     }
+    val suppressRepeatedSparseDetails = summary.shouldSuppressRepeatedSparseDetails(avoidRepeatedSparseRows)
     val movement = remember(chartPoints, chartA11y, avoidRepeatedSparseRows) {
         ReportsRecentWindowMovement(
             points = chartPoints,
@@ -59,7 +60,10 @@ internal fun ReportsRecentWindowSummary(
     }
     ReportsRecentWindowSummaryRow(
         summary = summary,
-        insight = reportsRecentWindowInsight(summary),
+        insight = reportsRecentWindowInsight(
+            summary = summary,
+            preferComparisonInsight = suppressRepeatedSparseDetails,
+        ),
         movement = movement,
         modifier = modifier,
     )
@@ -72,11 +76,15 @@ private data class ReportsRecentWindowMovement(
 )
 
 @Composable
-private fun reportsRecentWindowInsight(summary: ReportsRecentWindowSummaryData): String {
+private fun reportsRecentWindowInsight(
+    summary: ReportsRecentWindowSummaryData,
+    preferComparisonInsight: Boolean = false,
+): String {
     val currencyDisplay = LocalCurrencyDisplay.current
     val diff = summary.recentThreeAmountCents - summary.previousThreeAmountCents
     return when {
-        summary.peakSharePercent >= ReportsRecentWindowLayout.DominantPeakPercent -> stringResource(
+        !preferComparisonInsight &&
+            summary.peakSharePercent >= ReportsRecentWindowLayout.DominantPeakPercent -> stringResource(
             R.string.stats_reports_recent_window_peak_share,
             summary.peakLabel,
             summary.peakSharePercent,
@@ -118,20 +126,22 @@ private fun ReportsRecentWindowSummaryRow(
             movement = movement,
         )
         ReportsRecentWindowComparisonRows(summary = summary)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            ReportsRecentWindowFact(
-                label = stringResource(R.string.stats_reports_recent_window_active_days),
-                value = stringResource(R.string.stats_reports_recent_window_active_days_value, summary.activeDayCount),
-                modifier = Modifier.weight(1f),
-            )
-            ReportsRecentWindowFact(
-                label = stringResource(R.string.stats_reports_recent_window_peak, summary.peakLabel),
-                value = formatDisplayAmount(summary.peakAmountCents, LocalCurrencyDisplay.current),
-                modifier = Modifier.weight(1f),
-            )
+        if (summary.shouldShowFactRow(movement.avoidRepeatedSparseRows)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
+                ReportsRecentWindowFact(
+                    label = stringResource(R.string.stats_reports_recent_window_active_days),
+                    value = stringResource(R.string.stats_reports_recent_window_active_days_value, summary.activeDayCount),
+                    modifier = Modifier.weight(1f),
+                )
+                ReportsRecentWindowFact(
+                    label = stringResource(R.string.stats_reports_recent_window_peak, summary.peakLabel),
+                    value = formatDisplayAmount(summary.peakAmountCents, LocalCurrencyDisplay.current),
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -304,6 +314,12 @@ internal data class ReportsRecentWindowSummaryData(
 
     fun shouldShowSparseRows(avoidRepeatedSparseRows: Boolean): Boolean =
         shouldUseSparseRows && !avoidRepeatedSparseRows
+
+    fun shouldSuppressRepeatedSparseDetails(avoidRepeatedSparseRows: Boolean): Boolean =
+        shouldUseSparseRows && avoidRepeatedSparseRows
+
+    fun shouldShowFactRow(avoidRepeatedSparseRows: Boolean): Boolean =
+        !shouldSuppressRepeatedSparseDetails(avoidRepeatedSparseRows)
 }
 
 internal fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecentWindowSummaryData? {

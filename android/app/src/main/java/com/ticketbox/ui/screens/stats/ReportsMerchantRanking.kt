@@ -61,11 +61,18 @@ private fun MerchantRankingHeader(
     onRankingMetricChange: (ReportRankingMetric) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(
-            text = stringResource(merchantRankingTitleRes(rankingMetric)),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.body.weight,
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+            Text(
+                text = stringResource(merchantRankingTitleRes(rankingMetric)),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = AppTextHierarchy.body.weight,
+            )
+            Text(
+                text = stringResource(merchantRankingCaptionRes(rankingMetric)),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         AppSegmentedControl(
             options = listOf(
                 AppSegmentedItem(
@@ -174,4 +181,9 @@ internal fun merchantRankingMaxValue(rows: List<ReportMerchantRanking>, rankingM
 private fun merchantRankingTitleRes(rankingMetric: ReportRankingMetric): Int = when (rankingMetric) {
     ReportRankingMetric.Count -> R.string.stats_reports_merchant_frequency_title
     ReportRankingMetric.Amount -> R.string.stats_reports_merchant_spend_title
+}
+
+private fun merchantRankingCaptionRes(rankingMetric: ReportRankingMetric): Int = when (rankingMetric) {
+    ReportRankingMetric.Count -> R.string.stats_reports_merchant_count_caption
+    ReportRankingMetric.Amount -> R.string.stats_reports_merchant_amount_caption
 }
