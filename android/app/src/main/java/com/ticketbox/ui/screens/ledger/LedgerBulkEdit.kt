@@ -13,7 +13,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,6 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
 
@@ -121,14 +123,15 @@ internal fun LedgerBulkEditSheet(
             Switch(checked = tagsEnabled, onCheckedChange = { tagsEnabled = it }, enabled = !applying)
         }
         if (tagsEnabled) {
-            OutlinedTextField(
-                value = tags,
-                onValueChange = { tags = it },
+            AppTextInput(
+                state = AppTextInputState(
+                    label = stringResource(R.string.ledger_bulk_tags_label),
+                    value = tags,
+                    placeholder = stringResource(R.string.ledger_bulk_tags_placeholder),
+                    enabled = !applying,
+                ),
+                actions = AppTextInputActions(onValueChange = { tags = it }),
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.ledger_bulk_tags_label)) },
-                placeholder = { Text(stringResource(R.string.ledger_bulk_tags_placeholder)) },
-                singleLine = true,
-                enabled = !applying,
             )
             Text(
                 text = stringResource(R.string.ledger_bulk_tags_replace_warning),

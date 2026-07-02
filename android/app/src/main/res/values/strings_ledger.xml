@@ -139,6 +139,7 @@
     <!-- LedgerToolsSheet：筛选与更新 sheet -->
     <string name="ledger_tools_title">账本工具</string>
     <string name="ledger_tools_view_title">显示方式</string>
+    <string name="ledger_tools_search_label">筛选关键词</string>
     <string name="ledger_tools_search_placeholder">搜索备注</string>
     <string name="ledger_tools_global_search">全局搜索</string>
     <string name="ledger_tools_exporting">导出中</string>

@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -21,16 +20,18 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.screens.CategoryFilterRow
 import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.ui.design.AppSpacing
@@ -190,14 +191,14 @@ private fun LedgerFilterTools(
                 onTagChange = onTagChange,
             )
         }
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = AppSpacing.controlMinHeight + AppSpacing.compactGap),
-            placeholder = { Text(stringResource(R.string.ledger_tools_search_placeholder)) },
-            singleLine = true,
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.ledger_tools_search_label),
+                value = state.query,
+                placeholder = stringResource(R.string.ledger_tools_search_placeholder),
+            ),
+            actions = AppTextInputActions(onValueChange = onQueryChange),
+            modifier = Modifier.fillMaxWidth(),
         )
         LedgerInlineButton(
             text = stringResource(R.string.ledger_tools_global_search),
