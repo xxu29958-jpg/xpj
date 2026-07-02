@@ -21,6 +21,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -35,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
@@ -45,7 +45,7 @@ import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
-import com.ticketbox.ui.components.AppSolidCard
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
@@ -55,6 +55,7 @@ import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.timePickerToUtcIso
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
@@ -112,7 +113,11 @@ fun ManualExpenseSheet(
                 title = {
                     Text(
                         stringResource(R.string.ledger_manual_date_picker_title),
-                        modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
+                        modifier = Modifier.padding(
+                            start = AppSpacing.cardPadding,
+                            end = AppSpacing.compactGap,
+                            top = AppSpacing.cardPaddingSmall,
+                        ),
                     )
                 },
             )
@@ -239,26 +244,12 @@ fun ManualExpenseSheet(
             modifier = Modifier.fillMaxWidth(),
             label = { Text(stringResource(R.string.ledger_manual_note_label)) },
         )
-        AppSolidCard {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-            ) {
-                Text(stringResource(R.string.ledger_manual_time_section_title), style = MaterialTheme.typography.titleSmall)
-                Text(displayDateTime(expenseTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-                    AppOutlinedButton(onClick = { showDatePicker = true }) {
-                        Text(stringResource(R.string.ledger_manual_pick_date_button))
-                    }
-                    TextButton(onClick = { showTimePicker = true }) {
-                        Text(stringResource(R.string.ledger_manual_pick_time_button))
-                    }
-                    TextButton(onClick = { expenseTime = nowUtcIso() }) {
-                        Text(stringResource(R.string.ledger_manual_now_button))
-                    }
-                }
-            }
-        }
+        ManualExpenseTimeSection(
+            expenseTime = expenseTime,
+            onPickDate = { showDatePicker = true },
+            onPickTime = { showTimePicker = true },
+            onUseNow = { expenseTime = nowUtcIso() },
+        )
         ManualExpenseActionSlot(
             visible = !keyboardVisible,
             feedbackMessage = feedbackMessage,
@@ -266,6 +257,40 @@ fun ManualExpenseSheet(
             onDismiss = onDismiss,
             onSubmit = ::submitDraft,
         )
+    }
+}
+
+@Composable
+private fun ManualExpenseTimeSection(
+    expenseTime: String,
+    onPickDate: () -> Unit,
+    onPickTime: () -> Unit,
+    onUseNow: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Text(stringResource(R.string.ledger_manual_time_section_title), style = MaterialTheme.typography.titleSmall)
+        Text(displayDateTime(expenseTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+            AppSecondaryButton(
+                text = stringResource(R.string.ledger_manual_pick_date_button),
+                modifier = Modifier.weight(1f),
+                onClick = onPickDate,
+            )
+            AppSecondaryButton(
+                text = stringResource(R.string.ledger_manual_pick_time_button),
+                modifier = Modifier.weight(1f),
+                onClick = onPickTime,
+            )
+            AppSecondaryButton(
+                text = stringResource(R.string.ledger_manual_now_button),
+                modifier = Modifier.weight(1f),
+                onClick = onUseNow,
+            )
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
