@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,16 +18,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -61,6 +63,9 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -125,7 +130,7 @@ fun IncomePlanScreen(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
             title = stringResource(R.string.income_plan_topbar_title),
-            subtitle = stringResource(R.string.income_plan_intro_body),
+            subtitle = stringResource(R.string.income_plan_header_subtitle_compact),
             backText = stringResource(R.string.income_plan_topbar_back),
             onBack = onBack,
             hasBottomBar = false,
@@ -142,7 +147,7 @@ fun IncomePlanScreen(
             actions = {
                 if (state.canModify) {
                     AppSecondaryButton(
-                        text = stringResource(R.string.income_plan_fab_add),
+                        text = stringResource(R.string.income_plan_add_action_short),
                         leadingIcon = Icons.Default.Add,
                         onClick = {
                             viewModel.resetDraft()
@@ -162,7 +167,11 @@ fun IncomePlanScreen(
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         item {
-            IncomeTotalSummary(totalCents = state.totalActiveAmountCents, currency = currency)
+            IncomeTotalSummary(
+                totalCents = state.totalActiveAmountCents,
+                activeCount = state.activePlans.size,
+                currency = currency,
+            )
         }
         incomePlanSections(state = state, currency = currency, viewModel = viewModel)
     }
@@ -288,22 +297,22 @@ private fun SectionEyebrow(text: String) {
 }
 
 @Composable
-private fun IncomeTotalSummary(totalCents: Long, currency: CurrencyDisplay) {
+private fun IncomeTotalSummary(totalCents: Long, activeCount: Int, currency: CurrencyDisplay) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            stringResource(R.string.income_plan_total_label),
+            stringResource(R.string.income_plan_total_label_compact),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
         Text(
             formatDisplayAmount(totalCents, currency),
-            style = MaterialTheme.typography.displaySmall.tabularNum(),
+            style = MaterialTheme.typography.headlineLarge.tabularNum(),
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
         Text(
-            stringResource(R.string.income_plan_total_hint),
+            stringResource(R.string.income_plan_total_meta, activeCount),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -398,7 +407,7 @@ private fun IncomePlanEmptyState() {
         )
         Spacer(Modifier.size(AppSpacing.smallGap))
         Text(
-            stringResource(R.string.income_plan_empty_body),
+            stringResource(R.string.income_plan_empty_body_compact),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -426,12 +435,14 @@ private fun AddIncomePlanSheet(
         )
         Spacer(Modifier.size(AppSpacing.cardPadding))
 
-        OutlinedTextField(
-            value = draft.label,
-            onValueChange = actions.onLabel,
-            label = { Text(stringResource(R.string.income_plan_sheet_label_name)) },
-            singleLine = true,
-            enabled = !state.isSubmitting,
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.income_plan_sheet_label_name),
+                value = draft.label,
+                placeholder = stringResource(R.string.income_plan_sheet_name_placeholder),
+                enabled = !state.isSubmitting,
+            ),
+            actions = AppTextInputActions(onValueChange = actions.onLabel),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.size(AppSpacing.compactGap))
@@ -510,21 +521,19 @@ private fun AddIncomePlanSheet(
         )
         Spacer(Modifier.size(AppSpacing.compactGap))
 
-        OutlinedTextField(
-            value = draft.payDayInput,
-            onValueChange = actions.onPayDay,
-            label = {
-                Text(
-                    if (draft.frequency == IncomeFrequency.ONE_TIME) {
-                        stringResource(R.string.income_plan_sheet_label_arrival_day)
-                    } else {
-                        stringResource(R.string.income_plan_sheet_label_payday)
-                    },
-                )
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            enabled = !state.isSubmitting,
+        AppTextInput(
+            state = AppTextInputState(
+                label = if (draft.frequency == IncomeFrequency.ONE_TIME) {
+                    stringResource(R.string.income_plan_sheet_label_arrival_day)
+                } else {
+                    stringResource(R.string.income_plan_sheet_label_payday)
+                },
+                value = draft.payDayInput,
+                placeholder = stringResource(R.string.income_plan_sheet_day_placeholder),
+                enabled = !state.isSubmitting,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            ),
+            actions = AppTextInputActions(onValueChange = actions.onPayDay),
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -551,10 +560,18 @@ private fun AddIncomePlanSheet(
                 onClick = actions.onCancel,
             )
             Button(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = AppSpacing.controlMinHeight),
                 onClick = actions.onSubmit,
                 enabled = !state.isSubmitting,
             ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+                Spacer(Modifier.width(AppSpacing.smallGap))
                 Text(
                     if (state.isSubmitting) {
                         stringResource(R.string.income_plan_sheet_submitting)

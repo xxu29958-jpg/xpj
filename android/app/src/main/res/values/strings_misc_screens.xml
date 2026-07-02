@@ -130,4 +130,13 @@
     <string name="app_skin_switched">已切换为%1$s</string>
     <string name="app_currency_switched">已切换为%1$s默认记账币种</string>
 
+    <!-- IncomePlanScreen：二级页收口文案（短标签，避免说明书式段落） -->
+    <string name="income_plan_header_subtitle_compact">到账与固定收入</string>
+    <string name="income_plan_add_action_short">添加</string>
+    <string name="income_plan_total_label_compact">本月到账</string>
+    <string name="income_plan_total_meta">在用 %1$d 项</string>
+    <string name="income_plan_empty_body_compact">添加第一笔到账收入。</string>
+    <string name="income_plan_sheet_name_placeholder">工资 / 奖金 / 接单</string>
+    <string name="income_plan_sheet_day_placeholder">1-31</string>
+
 </resources>
