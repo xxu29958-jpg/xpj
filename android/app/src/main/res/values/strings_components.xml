@@ -59,7 +59,9 @@
 
     <!-- MonthPickerSheet：月份选择 -->
     <string name="components_month_picker_title">选择月份</string>
+    <string name="components_month_picker_current_label">当前</string>
     <string name="components_month_picker_all_months">全部月份</string>
+    <string name="components_month_picker_year_header">%1$s 年</string>
     <string name="components_month_picker_empty">更新后会显示可选月份。</string>
 
     <!-- AppAmountInput：金额输入 -->
