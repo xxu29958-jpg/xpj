@@ -66,17 +66,6 @@ internal fun ExpenseCurrencyFields(
                 .focusRequester(amountFocus)
                 .onFocusChanged { options.onAmountFocusChanged(it.isFocused) },
             label = { Text(stringResource(R.string.expense_edit_original_amount_field_label)) },
-            placeholder = {
-                Text(
-                    stringResource(
-                        if (currency.noFractionDigits) {
-                            R.string.expense_edit_original_amount_placeholder_no_fraction
-                        } else {
-                            R.string.expense_edit_original_amount_placeholder_fraction
-                        },
-                    ),
-                )
-            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
             enabled = options.enabled,

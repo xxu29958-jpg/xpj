@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,11 +24,12 @@ import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppOutlinedButton
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.DuplicateNotice
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.nowUtcIso
@@ -107,7 +107,7 @@ fun ExpenseEditScreen(
     allowConfirm: Boolean = true,
     allowReject: Boolean = true,
 ) {
-    BackHandler {
+    val handleBack = {
         if (!state.saving && !state.repaymentDraftCreating) {
             onDone()
         }
@@ -301,13 +301,29 @@ fun ExpenseEditScreen(
         onConfirm(draft)
     }
 
-    AppPageScrollableColumn(
-        role = AppPageRole.Edit,
+    AppSecondaryScrollableColumn(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Edit,
+            title = stringResource(R.string.expense_edit_header_title),
+            subtitle = stringResource(R.string.expense_edit_header_subtitle),
+            backText = stringResource(R.string.expense_edit_primary_back_button),
+            onBack = handleBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        ),
         // 操作栏浮在底部：底部空间由实测栏高让出（见 AppPageScrollableColumn），
         // 不走静态 BottomBarHeight 估算，故 hasBottomBar = false 避免双重预留。
-        hasBottomBar = false,
-        includeStatusBarPadding = true,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        slots = AppSecondaryPageSlots(
+            actions = {
+                StatusPill(
+                    if (currentExpense.status == "pending") {
+                        stringResource(R.string.expense_edit_status_pending)
+                    } else {
+                        stringResource(R.string.expense_edit_status_confirmed)
+                    }
+                )
+            },
+        ),
         bottomBar = {
             ExpenseEditActionBar(
                 state = ExpenseEditActionBarState(
@@ -320,7 +336,7 @@ fun ExpenseEditScreen(
                     forceCompact = amountFocused,
                 ),
                 actions = ExpenseEditActionBarActions(
-                    onBack = onDone,
+                    onBack = handleBack,
                     onSave = ::submitSave,
                     onConfirm = ::submitConfirm,
                     onRequestReject = { showRejectDialog = true },
@@ -328,20 +344,6 @@ fun ExpenseEditScreen(
             )
         },
     ) {
-        AppPageHeader(
-            title = stringResource(R.string.expense_edit_header_title),
-            subtitle = stringResource(R.string.expense_edit_header_subtitle),
-            eyebrow = "",
-        ) {
-            StatusPill(
-                if (currentExpense.status == "pending") {
-                    stringResource(R.string.expense_edit_status_pending)
-                } else {
-                    stringResource(R.string.expense_edit_status_confirmed)
-                }
-            )
-        }
-
         EditDraftPreviewCard(
             state = EditDraftPreviewState(
                 expense = currentExpense,

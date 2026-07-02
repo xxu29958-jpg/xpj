@@ -80,15 +80,6 @@ internal fun MissingAmountSheetContent(
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             label = { Text(stringResource(R.string.pending_missing_amount_label, currency.storageKey)) },
-            placeholder = {
-                Text(
-                    if (currency.noFractionDigits) {
-                        stringResource(R.string.pending_missing_amount_placeholder_no_fraction)
-                    } else {
-                        stringResource(R.string.pending_missing_amount_placeholder_fraction)
-                    },
-                )
-            },
             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             enabled = !saving,
             isError = invalid,

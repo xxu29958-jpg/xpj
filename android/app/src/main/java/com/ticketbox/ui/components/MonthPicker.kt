@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,8 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
+import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 fun MonthPickerSheet(
@@ -36,8 +38,8 @@ fun MonthPickerSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = AppSpacing.cardPaddingSmall),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         Text(stringResource(R.string.components_month_picker_title), style = MaterialTheme.typography.titleLarge)
         Text(
@@ -46,9 +48,8 @@ fun MonthPickerSheet(
             style = MaterialTheme.typography.bodySmall,
         )
         LazyColumn(
-            modifier = Modifier.heightIn(max = 430.dp),
-            contentPadding = PaddingValues(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.heightIn(max = AppSpacing.controlMinHeight * 10.5f),
+            contentPadding = PaddingValues(bottom = AppSpacing.cardPadding),
         ) {
             item {
                 MonthOptionRow(
@@ -56,13 +57,14 @@ fun MonthPickerSheet(
                     selected = selectedMonth.isBlank(),
                     onClick = { onSelectMonth("") },
                 )
+                MonthOptionDivider()
             }
             if (months.isEmpty()) {
                 item {
                     Text(
                         text = stringResource(R.string.components_month_picker_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp),
+                        modifier = Modifier.padding(vertical = AppSpacing.smallGap),
                     )
                 }
             }
@@ -72,6 +74,7 @@ fun MonthPickerSheet(
                     selected = selectedMonth == month,
                     onClick = { onSelectMonth(month) },
                 )
+                MonthOptionDivider()
             }
         }
     }
@@ -88,29 +91,34 @@ private fun MonthOptionRow(
     } else {
         Color.Transparent
     }
-    AppSolidCard(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = AppSpacing.controlMinHeight)
+            .background(selectedBackground)
+            .padding(horizontal = AppSpacing.compactPadding, vertical = AppSpacing.smallGap)
             .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(selectedBackground)
-                .padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(label, style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.weight(1f))
-            if (selected) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (selected) AppTextHierarchy.heading.weight else FontWeight.Medium,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
     }
+}
+
+@Composable
+private fun MonthOptionDivider() {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
 }
 
 fun displayMonthLabel(month: String): String {

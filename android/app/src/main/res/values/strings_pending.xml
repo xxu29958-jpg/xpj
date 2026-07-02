@@ -159,10 +159,8 @@
 
     <!-- MissingAmountSheet -->
     <string name="pending_missing_amount_title">补一下金额</string>
-    <string name="pending_missing_amount_hint">金额按原始币种输入，例如 12.34。保存后会按消费时间换算入账金额。</string>
+    <string name="pending_missing_amount_hint">金额按原始币种输入。保存后会按消费时间换算入账金额。</string>
     <string name="pending_missing_amount_label">金额 (%1$s)</string>
-    <string name="pending_missing_amount_placeholder_no_fraction">例如 1200</string>
-    <string name="pending_missing_amount_placeholder_fraction">例如 12.34</string>
     <string name="pending_missing_amount_invalid">请输入大于 0 的金额</string>
     <string name="pending_missing_amount_save_draft">仅保存</string>
     <string name="pending_missing_amount_processing">处理中</string>

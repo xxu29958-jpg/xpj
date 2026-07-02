@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,8 +55,10 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.displayMonthLabel
@@ -78,8 +79,7 @@ private const val FlashDismissMillis = 4000L
 /**
  * v1.1 收入计划 — Android 生活流：KPI 卡 → 卡片列 → 页头 CTA → 底部抽屉添加。
  *
- * 收口回共享骨架：列表与下拉刷新走 [AppScrollableContent]（与 BillSplitScreen /
- * RecurringScreen 同形态——in-content secondary header），反馈走页头位的
+ * 收口回共享骨架：列表与下拉刷新走 [AppSecondaryScrollableContent]，反馈走页头位的
  * [AppStatusBanner]（flashMessage→Success / error→Danger），添加入口收编到页头的
  * [PrimaryCtaButton]。不照搬 /web 的"表 + form"，按移动端单手操作模式：每条收入是
  * 一个卡片，添加进底部抽屉。共享 design token 通过 MaterialTheme + AppSpacing +
@@ -113,28 +113,38 @@ fun IncomePlanScreen(
         viewModel.resetDraft()
     }
 
-    BackHandler(onBack = onBack)
-
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.isLoading,
-            hasReadableData = state.activePlans.isNotEmpty() || state.archivedPlans.isNotEmpty(),
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = stringResource(R.string.income_plan_topbar_title),
+            subtitle = stringResource(R.string.income_plan_intro_body),
+            backText = stringResource(R.string.income_plan_topbar_back),
+            onBack = onBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
-        onRefresh = viewModel::refresh,
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoading,
+                hasReadableData = state.activePlans.isNotEmpty() || state.archivedPlans.isNotEmpty(),
+            ),
+            onRefresh = viewModel::refresh,
+        ),
+        slots = AppSecondaryPageSlots(
+            actions = {
+                if (state.canModify) {
+                    PrimaryCtaButton(
+                        text = stringResource(R.string.income_plan_fab_add),
+                        icon = Icons.Default.Add,
+                        onClick = {
+                            viewModel.resetDraft()
+                            showAddSheet = true
+                        },
+                    )
+                }
+            },
+        ),
     ) {
-        item {
-            IncomePlanHeader(
-                canModify = state.canModify,
-                onBack = onBack,
-                onAdd = {
-                    viewModel.resetDraft()
-                    showAddSheet = true
-                },
-            )
-        }
         // 反馈横幅落在页头下方（/web flash 同位）：只在有消息时占位，避免空 item
         // 在 spacedBy 下留出幽灵间距。flashMessage→Success / error→Danger。
         state.flashMessage?.let { msg ->
@@ -215,30 +225,8 @@ private fun IncomeMonthPicker(
     }
 }
 
-@Composable
-private fun IncomePlanHeader(
-    canModify: Boolean,
-    onBack: () -> Unit,
-    onAdd: () -> Unit,
-) {
-    AppSecondaryPageHeader(
-        title = stringResource(R.string.income_plan_topbar_title),
-        subtitle = stringResource(R.string.income_plan_intro_body),
-        backText = stringResource(R.string.income_plan_topbar_back),
-        onBack = onBack,
-    ) {
-        if (canModify) {
-            PrimaryCtaButton(
-                text = stringResource(R.string.income_plan_fab_add),
-                icon = Icons.Default.Add,
-                onClick = onAdd,
-            )
-        }
-    }
-}
-
 /**
- * 在用 / 已归档两组计划，挂进骨架（[AppScrollableContent]）提供的列表：每条计划是
+ * 在用 / 已归档两组计划，挂进共享二级页列表：每条计划是
  * 一个独立 item，避免把整组塞进单个 item 造成嵌套过深；空态（无在用计划且加载完）
  * 渲染引导卡片。
  */
