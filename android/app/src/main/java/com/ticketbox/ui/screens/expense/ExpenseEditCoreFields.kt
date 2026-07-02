@@ -1,23 +1,31 @@
 package com.ticketbox.ui.screens.expense
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.annotation.StringRes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseSourceValues
@@ -25,11 +33,16 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.LocalAppImeVisible
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Immutable
 internal data class ExpenseCurrencyFieldOptions(
@@ -93,21 +106,14 @@ internal fun ExpenseCurrencyFields(
                 { AmountSupportingText(text) }
             },
         )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            items(CurrencyCode.entries, key = { it.storageKey }) { code ->
-                AppFilterChip(
-                    selected = currency == code,
-                    onClick = {
-                        onCurrencyChange(code)
-                        onAmountChange(sanitizeMinorAmountInput(amountText, code))
-                    },
-                    label = "${code.symbol} ${code.storageKey}",
-                    enabled = options.enabled,
-                )
-            }
-        }
+        ExpenseCurrencyChoices(
+            currency = currency,
+            enabled = options.enabled,
+            onCurrencySelect = { code ->
+                onCurrencyChange(code)
+                onAmountChange(sanitizeMinorAmountInput(amountText, code))
+            },
+        )
         options.statusText?.let { AmountStatusText(it) }
         if (currency != FxContract.HomeCurrency) {
             Text(
@@ -125,33 +131,71 @@ internal fun ExpenseEditTextField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        Text(
-            text = state.label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelLarge,
-        )
-        OutlinedTextField(
+    AppTextInput(
+        state = AppTextInputState(
+            label = state.label,
             value = state.value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = if (state.placeholder.isNotBlank()) {
-                { Text(state.placeholder) }
-            } else {
-                null
-            },
+            placeholder = state.placeholder,
+            enabled = state.enabled,
             singleLine = state.singleLine,
             minLines = state.minLines,
             maxLines = if (state.singleLine) 1 else 3,
-            enabled = state.enabled,
             keyboardOptions = state.keyboardOptions,
-            textStyle = MaterialTheme.typography.bodyLarge,
-            shape = RoundedCornerShape(AppRadius.extraSmall),
-        )
+        ),
+        actions = AppTextInputActions(onValueChange = onValueChange),
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun ExpenseCurrencyChoices(
+    currency: CurrencyCode,
+    enabled: Boolean,
+    onCurrencySelect: (CurrencyCode) -> Unit,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+        items(CurrencyCode.entries, key = { it.storageKey }) { code ->
+            ExpenseCurrencyChoice(
+                code = code,
+                selected = currency == code,
+                enabled = enabled,
+                onClick = { onCurrencySelect(code) },
+            )
+        }
     }
+}
+
+@Composable
+private fun ExpenseCurrencyChoice(
+    code: CurrencyCode,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val visuals = LocalThemeVisuals.current
+    val shape = RoundedCornerShape(AppRadius.extraSmall)
+    val borderColor = if (selected) {
+        visuals.primary.copy(alpha = AppAlpha.medium)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle)
+    }
+    val backgroundColor = if (selected) {
+        visuals.brandPrimaryBg.copy(alpha = AppAlpha.opaque)
+    } else {
+        Color.Transparent
+    }
+    Text(
+        text = "${code.symbol} ${code.storageKey}",
+        modifier = Modifier
+            .clip(shape)
+            .background(backgroundColor)
+            .border(width = 1.dp, color = borderColor, shape = shape)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = AppSpacing.compactPadding, vertical = AppSpacing.smallGap),
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = if (selected) AppTextHierarchy.heading.weight else FontWeight.Medium,
+    )
 }
 
 @Composable

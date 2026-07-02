@@ -344,39 +344,6 @@ fun ExpenseEditScreen(
             )
         },
     ) {
-        EditDraftPreviewCard(
-            state = EditDraftPreviewState(
-                expense = currentExpense,
-                previewImage = previewImage,
-                imageLoading = state.imageLoading,
-                ocrRunning = state.ocrRunning,
-                readOnly = readOnly,
-                showLargeImage = showLargeImage,
-            ),
-            actions = EditDraftPreviewActions(
-                onToggleLargeImage = {
-                    if (!showLargeImage && state.fullImage == null) {
-                        onLoadFullImage()
-                    }
-                    showLargeImage = !showLargeImage
-                },
-                onRetryOcr = onRetryOcr,
-            ),
-        )
-
-        if (showLargeImage && currentExpense.imagePath != null) {
-            AppAsyncImage(
-                image = state.fullImage ?: previewImage,
-                placeholder = if (state.imageLoading) {
-                    stringResource(R.string.expense_edit_large_image_loading)
-                } else {
-                    stringResource(R.string.expense_edit_large_image_failed)
-                },
-                contentScale = ContentScale.Fit,
-                displayHeight = 420.dp,
-            )
-        }
-
         if (currentExpense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             DuplicateNotice(reason = currentExpense.duplicateReason)
             if (!readOnly) {
@@ -436,6 +403,39 @@ fun ExpenseEditScreen(
             source = currentExpense.source,
             confidence = currentExpense.confidence,
         )
+
+        EditDraftPreviewCard(
+            state = EditDraftPreviewState(
+                expense = currentExpense,
+                previewImage = previewImage,
+                imageLoading = state.imageLoading,
+                ocrRunning = state.ocrRunning,
+                readOnly = readOnly,
+                showLargeImage = showLargeImage,
+            ),
+            actions = EditDraftPreviewActions(
+                onToggleLargeImage = {
+                    if (!showLargeImage && state.fullImage == null) {
+                        onLoadFullImage()
+                    }
+                    showLargeImage = !showLargeImage
+                },
+                onRetryOcr = onRetryOcr,
+            ),
+        )
+
+        if (showLargeImage && currentExpense.imagePath != null) {
+            AppAsyncImage(
+                image = state.fullImage ?: previewImage,
+                placeholder = if (state.imageLoading) {
+                    stringResource(R.string.expense_edit_large_image_loading)
+                } else {
+                    stringResource(R.string.expense_edit_large_image_failed)
+                },
+                contentScale = ContentScale.Fit,
+                displayHeight = 420.dp,
+            )
+        }
 
         ExpenseEditV1DetailsSection(
             expenseItems = state.expenseItems,
