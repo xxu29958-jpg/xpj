@@ -13,8 +13,9 @@ import com.ticketbox.ui.screens.LedgerExpenseGroup
 import com.ticketbox.viewmodel.LedgerViewMode
 
 private object LedgerDaySectionDefaults {
-    const val FoldThresholdGroups = 4
-    const val FoldThresholdItems = 18
+    const val FoldThresholdGroups = 3
+    const val FoldThresholdItems = 12
+    const val FoldThresholdMixedItems = 8
     const val PreviewMerchantCount = 3
 }
 
@@ -34,8 +35,9 @@ internal data class LedgerDaySectionActions(
 )
 
 internal fun shouldCompactLedgerDayGroups(groupCount: Int, itemCount: Int): Boolean {
-    return groupCount > LedgerDaySectionDefaults.FoldThresholdGroups ||
-        itemCount > LedgerDaySectionDefaults.FoldThresholdItems
+    return itemCount > LedgerDaySectionDefaults.FoldThresholdItems ||
+        (groupCount > LedgerDaySectionDefaults.FoldThresholdGroups &&
+            itemCount > LedgerDaySectionDefaults.FoldThresholdMixedItems)
 }
 
 internal fun LazyListScope.ledgerDaySection(

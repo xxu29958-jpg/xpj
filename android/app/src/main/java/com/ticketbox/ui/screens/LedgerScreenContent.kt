@@ -44,7 +44,7 @@ internal fun LedgerContent(
         role = AppPageRole.Ledger,
         isRefreshing = state.showPageRefresh,
         onRefresh = actions.onSync,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         item { LedgerTopChrome(state = state, actions = actions, chromeState = chromeState) }
         val authorityTone = ledgerAuthorityTone(state)
