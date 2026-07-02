@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,7 +35,7 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -146,43 +147,41 @@ private fun DebtDetailEffects(
 // debt (unchanged) and the member foreign-currency defensive fallback (§2.6) — hence internal.
 @Composable
 internal fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
+    AppSectionGroup(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        Text(
+            stringResource(R.string.debt_detail_remaining),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            formatDisplayAmount(debt.remainingAmountCents, currency),
+            style = MaterialTheme.typography.headlineMedium.tabularNum(),
+            fontWeight = FontWeight.SemiBold,
+        )
+        HorizontalDivider()
+        DebtSummaryRow(
+            label = stringResource(R.string.debt_detail_principal),
+            value = formatDisplayAmount(debt.principalAmountCents, currency),
+        )
+        DebtSummaryRow(
+            label = stringResource(R.string.debt_detail_paid),
+            value = formatDisplayAmount(debt.paidAmountCents, currency),
+        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.debt_detail_remaining),
-                style = MaterialTheme.typography.labelMedium,
+                stringResource(R.string.debt_detail_status),
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
             )
-            Text(
-                formatDisplayAmount(debt.remainingAmountCents, currency),
-                style = MaterialTheme.typography.headlineMedium.tabularNum(),
-                fontWeight = FontWeight.SemiBold,
+            DebtStatusBadge(
+                text = stringResource(debtLinkStatusLabelRes(debt.status)),
+                tone = debtLinkStatusTone(debt.status),
             )
-            Spacer(Modifier.size(AppSpacing.compactGap))
-            HorizontalDivider()
-            Spacer(Modifier.size(AppSpacing.compactGap))
-            DebtSummaryRow(
-                label = stringResource(R.string.debt_detail_principal),
-                value = formatDisplayAmount(debt.principalAmountCents, currency),
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            DebtSummaryRow(
-                label = stringResource(R.string.debt_detail_paid),
-                value = formatDisplayAmount(debt.paidAmountCents, currency),
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.debt_detail_status),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                DebtStatusBadge(
-                    text = stringResource(debtLinkStatusLabelRes(debt.status)),
-                    tone = debtLinkStatusTone(debt.status),
-                )
-            }
         }
     }
 }
@@ -232,12 +231,16 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
 
 @Composable
 internal fun DebtNoteCard(text: String) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppSectionGroup(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
+        showTopDivider = false,
+    ) {
         Text(
             text,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

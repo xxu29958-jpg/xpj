@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,7 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.design.AppSpacing
 
 /**
@@ -84,9 +85,12 @@ internal fun DebtKindCardWithEditor(debt: Debt, canModify: Boolean, onSelect: (S
  */
 @Composable
 private fun DebtKindCard(debt: Debt, canModify: Boolean, onEdit: () -> Unit) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppSectionGroup(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {

@@ -1,9 +1,10 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,7 +19,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputDecorations
@@ -124,37 +125,35 @@ private fun DebtInstallmentCard(debt: Debt, currency: CurrencyDisplay) {
         stringResource(R.string.debt_installment_schedule_periodic, count, period)
     }
     val payoff = debt.installmentPayoffDate?.let { parsePayoffYearMonth(it) }
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
+    AppSectionGroup(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Text(
+            stringResource(R.string.debt_installment_card_title),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(scheduleText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+        Text(
+            stringResource(R.string.debt_installment_progress, paidPeriods, totalPeriods),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        payoff?.let { (year, month) ->
             Text(
-                stringResource(R.string.debt_installment_card_title),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.size(AppSpacing.miniGap))
-            Text(scheduleText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.debt_installment_progress, paidPeriods, totalPeriods),
+                stringResource(R.string.debt_installment_payoff, year, month),
                 style = MaterialTheme.typography.bodyMedium,
-            )
-            payoff?.let { (year, month) ->
-                Spacer(Modifier.size(AppSpacing.smallGap))
-                Text(
-                    stringResource(R.string.debt_installment_payoff, year, month),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(
-                    R.string.debt_installment_per_period,
-                    formatDisplayAmount(installmentPerPeriodCents(debt.principalAmountCents, count), currency),
-                ),
-                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        Text(
+            stringResource(
+                R.string.debt_installment_per_period,
+                formatDisplayAmount(installmentPerPeriodCents(debt.principalAmountCents, count), currency),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

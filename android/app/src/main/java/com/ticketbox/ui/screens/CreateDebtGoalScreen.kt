@@ -1,16 +1,13 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +25,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppDataAuthorityStrip
+import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -153,12 +151,13 @@ private fun LazyListScope.debtPickerSection(
         item { CreateDebtGoalPickerEmpty() }
         return
     }
-    items(state.candidates, key = { it.publicId }) { debt ->
+    itemsIndexed(state.candidates, key = { _, debt -> debt.publicId }) { index, debt ->
         DebtPickerRow(
             debt = debt,
             selected = debt.publicId in state.selectedDebtIds,
             currency = currency,
             onToggle = { onToggle(debt.publicId) },
+            showDivider = index < state.candidates.lastIndex,
         )
     }
 }
@@ -169,15 +168,14 @@ private fun DebtPickerRow(
     selected: Boolean,
     currency: CurrencyDisplay,
     onToggle: () -> Unit,
+    showDivider: Boolean,
 ) {
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(vertical = AppSpacing.compactGap),
-        verticalAlignment = Alignment.Top,
+    AppListRow(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onToggle,
+        showDivider = showDivider,
     ) {
         Checkbox(checked = selected, onCheckedChange = { onToggle() })
         Spacer(Modifier.width(AppSpacing.smallGap))
@@ -201,7 +199,6 @@ private fun DebtPickerRow(
             )
         }
     }
-    DebtGoalRowDivider()
 }
 
 @Composable
