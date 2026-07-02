@@ -59,6 +59,15 @@ internal fun visibleNeedsReviewFilters(
     return visible
 }
 
+internal fun shouldShowNeedsReviewFilterBar(
+    counts: PendingQueueCounts,
+    selected: NeedsReviewFilter,
+): Boolean {
+    if (counts.all <= 0) return false
+    if (selected != NeedsReviewFilter.All) return true
+    return !counts.hasSingleCompleteSignal
+}
+
 internal fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFilter): List<Expense> {
     return when (filter) {
         NeedsReviewFilter.All -> items
@@ -104,6 +113,14 @@ private fun PendingQueueCounts.countFor(filter: NeedsReviewFilter): Int = when (
     NeedsReviewFilter.Duplicate -> duplicate
     NeedsReviewFilter.ReadyToConfirm -> readyToConfirm
 }
+
+private val PendingQueueCounts.hasSingleCompleteSignal: Boolean
+    get() {
+        val total = all.coerceAtLeast(0)
+        val visibleSignalCount = pendingSignalFilters.count { countFor(it) > 0 }
+        return visibleSignalCount == 0 ||
+            visibleSignalCount == 1 && pendingSignalFilters.any { countFor(it) == total }
+    }
 
 private val pendingSignalFilters = listOf(
     NeedsReviewFilter.Duplicate,

@@ -53,6 +53,7 @@ import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
+import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
 import com.valentinilk.shimmer.shimmer
 
@@ -263,12 +264,14 @@ fun PendingScreen(
             }
 
             else -> {
-                item {
-                    NeedsReviewFilterBar(
-                        selected = needsReviewFilter,
-                        counts = queueCounts,
-                        onSelect = { needsReviewFilter = it },
-                    )
+                if (shouldShowNeedsReviewFilterBar(queueCounts, needsReviewFilter)) {
+                    item {
+                        NeedsReviewFilterBar(
+                            selected = needsReviewFilter,
+                            counts = queueCounts,
+                            onSelect = { needsReviewFilter = it },
+                        )
+                    }
                 }
             }
         }

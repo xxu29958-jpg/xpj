@@ -101,13 +101,11 @@ internal fun PendingQueueOverview(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
-            if (model.readyCount > 0) {
+            if (model.shouldShowMetrics) {
                 PendingQueueMetric(
                     label = stringResource(R.string.pending_queue_overview_ready_label),
                     value = model.readyCount,
                 )
-            }
-            if (model.reviewCount > 0) {
                 PendingQueueMetric(
                     label = stringResource(R.string.pending_queue_overview_review_label),
                     value = model.reviewCount,
@@ -140,7 +138,7 @@ private fun PendingQueueOverviewHeader(
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Spacer(modifier = Modifier.weight(1f))
-        if (!readOnly && model.readyCount > 0) {
+        if (!readOnly && model.hasBatchConfirmAction) {
             TextButton(
                 enabled = !bulkRunning,
                 onClick = onOpenBulkConfirm,
@@ -162,6 +160,12 @@ private fun PendingQueueOverviewHeader(
 
 private val PendingQueueOverviewModel.hasReviewSignals: Boolean
     get() = needsAmount > 0 || needsMerchant > 0 || duplicate > 0
+
+private val PendingQueueOverviewModel.hasBatchConfirmAction: Boolean
+    get() = readyCount > 1
+
+private val PendingQueueOverviewModel.shouldShowMetrics: Boolean
+    get() = readyCount > 0 && reviewCount > 0
 
 @Composable
 private fun pendingQueuePriorityText(model: PendingQueueOverviewModel): String = when (model.priority) {

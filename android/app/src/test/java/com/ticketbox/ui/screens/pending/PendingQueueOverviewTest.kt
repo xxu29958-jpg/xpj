@@ -24,6 +24,54 @@ class PendingQueueOverviewTest {
     }
 
     @Test
+    fun filterBarHidesSingleCompleteSignalFromDefaultView() {
+        val shouldShow = shouldShowNeedsReviewFilterBar(
+            PendingQueueCounts(
+                all = 1,
+                needsAmount = 0,
+                needsMerchant = 0,
+                duplicate = 0,
+                readyToConfirm = 1,
+            ),
+            selected = NeedsReviewFilter.All,
+        )
+
+        assertEquals(false, shouldShow)
+    }
+
+    @Test
+    fun filterBarShowsMixedQueueFromDefaultView() {
+        val shouldShow = shouldShowNeedsReviewFilterBar(
+            PendingQueueCounts(
+                all = 3,
+                needsAmount = 1,
+                needsMerchant = 0,
+                duplicate = 0,
+                readyToConfirm = 1,
+            ),
+            selected = NeedsReviewFilter.All,
+        )
+
+        assertEquals(true, shouldShow)
+    }
+
+    @Test
+    fun filterBarKeepsSelectedFilterReachable() {
+        val shouldShow = shouldShowNeedsReviewFilterBar(
+            PendingQueueCounts(
+                all = 1,
+                needsAmount = 0,
+                needsMerchant = 0,
+                duplicate = 0,
+                readyToConfirm = 1,
+            ),
+            selected = NeedsReviewFilter.Duplicate,
+        )
+
+        assertEquals(true, shouldShow)
+    }
+
+    @Test
     fun visibleFiltersKeepSelectedZeroFilterReachable() {
         val filters = visibleNeedsReviewFilters(
             PendingQueueCounts(

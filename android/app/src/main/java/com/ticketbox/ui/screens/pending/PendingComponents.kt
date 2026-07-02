@@ -71,39 +71,88 @@ internal fun PendingTop(
             trailingAction?.invoke()
         }
 
-        if (pendingCount > 0) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(
-                    text = pendingCount.toString(),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = AppTextHierarchy.hero.weight,
-                    maxLines = 1,
-                )
-                Text(
-                    text = stringResource(R.string.pending_top_metric_caption),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = AppTextHierarchy.caption.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        when {
+            pendingCount > 0 -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PendingCountMetric(count = pendingCount, modifier = Modifier.weight(1f))
+                    if (!readOnly) {
+                        PendingUploadAction(
+                            uploading = uploading,
+                            prominent = false,
+                            onUploadScreenshot = onUploadScreenshot,
+                        )
+                    }
+                }
+            }
+
+            !readOnly -> {
+                PendingUploadAction(
+                    uploading = uploading,
+                    prominent = true,
+                    onUploadScreenshot = onUploadScreenshot,
                 )
             }
         }
+    }
+}
 
-        if (!readOnly) {
-            PrimaryCtaButton(
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !uploading,
-                icon = Icons.Filled.AddPhotoAlternate,
-                text = if (uploading) {
-                    stringResource(R.string.pending_top_cta_uploading)
-                } else {
-                    stringResource(R.string.pending_top_cta_upload)
-                },
-                onClick = onUploadScreenshot,
-            )
-        }
+@Composable
+private fun PendingCountMetric(
+    count: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
+        Text(
+            text = count.toString(),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = AppTextHierarchy.hero.weight,
+            maxLines = 1,
+        )
+        Text(
+            text = stringResource(R.string.pending_top_metric_caption),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = AppTextHierarchy.caption.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun PendingUploadAction(
+    uploading: Boolean,
+    prominent: Boolean,
+    onUploadScreenshot: () -> Unit,
+) {
+    val text = if (uploading) {
+        stringResource(R.string.pending_top_cta_uploading)
+    } else {
+        stringResource(R.string.pending_top_cta_upload)
+    }
+    if (prominent) {
+        PrimaryCtaButton(
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !uploading,
+            icon = Icons.Filled.AddPhotoAlternate,
+            text = text,
+            onClick = onUploadScreenshot,
+        )
+    } else {
+        AppSecondaryButton(
+            enabled = !uploading,
+            leadingIcon = Icons.Filled.AddPhotoAlternate,
+            text = text,
+            onClick = onUploadScreenshot,
+        )
     }
 }
 
