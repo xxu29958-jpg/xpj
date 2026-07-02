@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -15,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -194,23 +196,11 @@ private fun StatsSpendDistributionRowView(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Box(
-            modifier = Modifier
-                .weight(distributionTokens.trackWeight)
-                .height(statsTokens.chart.distributionHeight)
-                .clip(RoundedCornerShape(AppRadius.pill))
-                .background(chartTokens.grid.copy(alpha = statsTokens.chart.guideAlpha)),
-        ) {
-            if (fillFraction > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fillFraction)
-                        .height(statsTokens.chart.distributionHeight)
-                        .clip(RoundedCornerShape(AppRadius.pill))
-                        .background(fillColor),
-                )
-            }
-        }
+        StatsSpendDistributionValueBar(
+            fillFraction = fillFraction,
+            fillColor = fillColor,
+            modifier = Modifier.weight(distributionTokens.trackWeight),
+        )
         Text(
             text = formatDisplayAmount(amountCents, currencyDisplay),
             modifier = Modifier.weight(distributionTokens.amountWeight),
@@ -221,5 +211,37 @@ private fun StatsSpendDistributionRowView(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.End,
         )
+    }
+}
+
+@Composable
+private fun StatsSpendDistributionValueBar(
+    fillFraction: Float,
+    fillColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val chartTokens = LocalChartTokens.current
+    val statsTokens = LocalStatsTokens.current
+    Box(
+        modifier = modifier.height(statsTokens.chart.distributionHeight),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        if (fillFraction > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fillFraction)
+                    .height(statsTokens.chart.distributionHeight)
+                    .clip(RoundedCornerShape(AppRadius.pill))
+                    .background(fillColor),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .width(AppSpacing.contentGap)
+                    .height(statsTokens.chart.distributionHeight)
+                    .clip(RoundedCornerShape(AppRadius.pill))
+                    .background(chartTokens.empty.copy(alpha = statsTokens.chart.guideAlpha)),
+            )
+        }
     }
 }
