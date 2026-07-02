@@ -123,7 +123,10 @@ private fun ReportsChartPanel(
             ReportsTrendMode.Chart,
             -> ReportsTrendFlowChart(points = model.trendPoints)
         }
-        ReportsRecentWindowSummary(recentTrend = recentTrend)
+        ReportsRecentWindowSummary(
+            recentTrend = recentTrend,
+            avoidRepeatedSparseRows = model.trendEvidence.mode == ReportsTrendMode.Sparse,
+        )
     }
 }
 

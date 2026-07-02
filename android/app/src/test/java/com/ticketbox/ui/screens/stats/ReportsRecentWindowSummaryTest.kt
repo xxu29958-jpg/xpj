@@ -49,6 +49,26 @@ class ReportsRecentWindowSummaryTest {
         assertNull(summarizeReportsRecentWindow(listOf(spend("6/24", -100L), spend("6/25", 0L))))
     }
 
+    @Test
+    fun sparseRowsCanBeSuppressedWhenMonthRowsAlreadyShowTheSameDays() {
+        val summary = summarizeReportsRecentWindow(
+            listOf(
+                spend("6/24", 0L),
+                spend("6/25", 0L),
+                spend("6/26", 0L),
+                spend("6/27", 0L),
+                spend("6/28", 0L),
+                spend("6/29", 100L),
+                spend("6/30", 200L),
+            ),
+        )
+
+        requireNotNull(summary)
+        assertEquals(true, summary.shouldUseSparseRows)
+        assertEquals(true, summary.shouldShowSparseRows(avoidRepeatedSparseRows = false))
+        assertEquals(false, summary.shouldShowSparseRows(avoidRepeatedSparseRows = true))
+    }
+
     private fun spend(label: String, amountCents: Long) = DailySpend(
         date = "2026-06-${label.substringAfter('/')}",
         label = label,

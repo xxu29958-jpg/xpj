@@ -34,6 +34,7 @@ private object ReportsRecentWindowLayout {
 internal fun ReportsRecentWindowSummary(
     recentTrend: List<DailySpend>,
     modifier: Modifier = Modifier,
+    avoidRepeatedSparseRows: Boolean = false,
 ) {
     val summary = remember(recentTrend) { summarizeReportsRecentWindow(recentTrend) } ?: return
     val chartPoints = remember(recentTrend) {
@@ -49,14 +50,26 @@ internal fun ReportsRecentWindowSummary(
             "${it.label} ${formatDisplayAmount(it.amountCents, currencyDisplay)}"
         }
     }
+    val movement = remember(chartPoints, chartA11y, avoidRepeatedSparseRows) {
+        ReportsRecentWindowMovement(
+            points = chartPoints,
+            chartA11y = chartA11y,
+            avoidRepeatedSparseRows = avoidRepeatedSparseRows,
+        )
+    }
     ReportsRecentWindowSummaryRow(
         summary = summary,
         insight = reportsRecentWindowInsight(summary),
-        chartPoints = chartPoints,
-        chartA11y = chartA11y,
+        movement = movement,
         modifier = modifier,
     )
 }
+
+private data class ReportsRecentWindowMovement(
+    val points: List<StatsSpendChartPoint>,
+    val chartA11y: String,
+    val avoidRepeatedSparseRows: Boolean,
+)
 
 @Composable
 private fun reportsRecentWindowInsight(summary: ReportsRecentWindowSummaryData): String {
@@ -81,8 +94,7 @@ private fun reportsRecentWindowInsight(summary: ReportsRecentWindowSummaryData):
 private fun ReportsRecentWindowSummaryRow(
     summary: ReportsRecentWindowSummaryData,
     insight: String,
-    chartPoints: List<StatsSpendChartPoint>,
-    chartA11y: String,
+    movement: ReportsRecentWindowMovement,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -101,7 +113,10 @@ private fun ReportsRecentWindowSummaryRow(
                 modifier = Modifier.weight(1.4f),
             )
         }
-        ReportsRecentWindowMovementBody(summary = summary, points = chartPoints, chartA11y = chartA11y)
+        ReportsRecentWindowMovementBody(
+            summary = summary,
+            movement = movement,
+        )
         ReportsRecentWindowComparisonRows(summary = summary)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -124,17 +139,16 @@ private fun ReportsRecentWindowSummaryRow(
 @Composable
 private fun ReportsRecentWindowMovementBody(
     summary: ReportsRecentWindowSummaryData,
-    points: List<StatsSpendChartPoint>,
-    chartA11y: String,
+    movement: ReportsRecentWindowMovement,
 ) {
-    if (summary.shouldUseSparseRows) {
+    if (summary.shouldShowSparseRows(movement.avoidRepeatedSparseRows)) {
         ReportsRecentWindowSparseRows(
-            points = points,
+            points = movement.points,
             activeDayCount = summary.activeDayCount,
-            chartA11y = chartA11y,
+            chartA11y = movement.chartA11y,
         )
-    } else {
-        ReportsRecentWindowDayChart(points = points, chartA11y = chartA11y)
+    } else if (!summary.shouldUseSparseRows) {
+        ReportsRecentWindowDayChart(points = movement.points, chartA11y = movement.chartA11y)
     }
 }
 
@@ -175,26 +189,29 @@ private fun ReportsRecentWindowComparisonRows(summary: ReportsRecentWindowSummar
     val currencyDisplay = LocalCurrencyDisplay.current
     val previousLabel = stringResource(R.string.stats_reports_recent_window_previous_three)
     val recentLabel = stringResource(R.string.stats_reports_recent_window_recent_three)
-    val comparisonA11y = stringResource(
-        R.string.stats_reports_recent_window_comparison_a11y,
-        formatDisplayAmount(summary.previousThreeAmountCents, currencyDisplay),
-        formatDisplayAmount(summary.recentThreeAmountCents, currencyDisplay),
-    )
-    val points = remember(summary, previousLabel, recentLabel) {
-        listOf(
-            StatsSpendChartPoint(label = previousLabel, amountCents = summary.previousThreeAmountCents),
-            StatsSpendChartPoint(label = recentLabel, amountCents = summary.recentThreeAmountCents),
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        ReportsRecentWindowFact(
+            label = previousLabel,
+            value = if (summary.previousThreeAmountCents > 0L) {
+                formatDisplayAmount(summary.previousThreeAmountCents, currencyDisplay)
+            } else {
+                stringResource(R.string.stats_reports_recent_window_no_spend)
+            },
+            modifier = Modifier.weight(1f),
+        )
+        ReportsRecentWindowFact(
+            label = recentLabel,
+            value = if (summary.recentThreeAmountCents > 0L) {
+                formatDisplayAmount(summary.recentThreeAmountCents, currencyDisplay)
+            } else {
+                stringResource(R.string.stats_reports_recent_window_no_spend)
+            },
+            modifier = Modifier.weight(1f),
         )
     }
-    StatsSpendDistributionRows(
-        points = points,
-        spec = StatsSpendDistributionSpec(
-            maxRows = 2,
-            sortByAmount = false,
-            includeZeros = true,
-            contentDescription = comparisonA11y,
-        ),
-    )
 }
 
 @Composable
@@ -284,6 +301,9 @@ internal data class ReportsRecentWindowSummaryData(
 ) {
     val shouldUseSparseRows: Boolean =
         activeDayCount in 1..ReportsRecentWindowLayout.SparseActiveDayLimit
+
+    fun shouldShowSparseRows(avoidRepeatedSparseRows: Boolean): Boolean =
+        shouldUseSparseRows && !avoidRepeatedSparseRows
 }
 
 internal fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecentWindowSummaryData? {
