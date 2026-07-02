@@ -1,11 +1,9 @@
 package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,7 +23,6 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,24 +38,11 @@ internal fun QuickCategorySheetContent(
     var selected by remember(expense.id) { mutableStateOf(initial) }
     var custom by remember(expense.id) { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.cardPaddingSmall),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
+    ReviewSheetScaffold(
+        title = stringResource(R.string.quick_category_sheet_title),
+        subtitle = stringResource(R.string.quick_category_sheet_hint),
+        chrome = chrome,
     ) {
-        ReviewQueueHeader(chrome = chrome)
-        Text(
-            stringResource(R.string.quick_category_sheet_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = stringResource(R.string.quick_category_sheet_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),

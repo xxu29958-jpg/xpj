@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -29,43 +28,30 @@ internal fun BulkConfirmSheetContent(
     onConfirmReady: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.compactGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ReviewSheetScaffold(
+        title = stringResource(R.string.pending_bulk_sheet_title),
+        subtitle = stringResource(R.string.pending_bulk_sheet_hint),
     ) {
-        Text(
-            stringResource(R.string.pending_bulk_sheet_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = stringResource(R.string.pending_bulk_sheet_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
         ) {
+            StatLine(
+                label = stringResource(R.string.pending_bulk_sheet_stat_will_confirm),
+                value = stringResource(R.string.pending_bulk_sheet_stat_count, readyCount),
+            )
+            if (missingAmountSkipCount > 0) {
                 StatLine(
-                    label = stringResource(R.string.pending_bulk_sheet_stat_will_confirm),
-                    value = stringResource(R.string.pending_bulk_sheet_stat_count, readyCount),
+                    label = stringResource(R.string.pending_bulk_sheet_stat_skip_missing_amount),
+                    value = stringResource(R.string.pending_bulk_sheet_stat_count, missingAmountSkipCount),
                 )
-                if (missingAmountSkipCount > 0) {
-                    StatLine(
-                        label = stringResource(R.string.pending_bulk_sheet_stat_skip_missing_amount),
-                        value = stringResource(R.string.pending_bulk_sheet_stat_count, missingAmountSkipCount),
-                    )
-                }
-                if (duplicateSkipCount > 0) {
-                    StatLine(
-                        label = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate),
-                        value = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate_count, duplicateSkipCount),
-                    )
-                }
+            }
+            if (duplicateSkipCount > 0) {
+                StatLine(
+                    label = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate),
+                    value = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate_count, duplicateSkipCount),
+                )
+            }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {

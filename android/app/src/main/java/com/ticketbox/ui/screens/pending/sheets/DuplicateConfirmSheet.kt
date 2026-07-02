@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -33,44 +32,32 @@ internal fun DuplicateConfirmSheetContent(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.compactGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ReviewSheetScaffold(
+        title = stringResource(R.string.pending_duplicate_sheet_title),
+        subtitle = stringResource(R.string.pending_duplicate_sheet_hint),
     ) {
-        Text(
-            stringResource(R.string.pending_duplicate_sheet_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = stringResource(R.string.pending_duplicate_sheet_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
+            Text(
+                text = expense.merchant?.takeIf { it.isNotBlank() }
+                    ?: stringResource(R.string.pending_duplicate_sheet_merchant_missing),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = AppTextHierarchy.body.weight,
+            )
+            Text(
+                text = formatDisplayAmount(expense.amountCents, currencyDisplay),
+                style = MaterialTheme.typography.bodyLarge.tabularNum(),
+                fontWeight = AppTextHierarchy.body.weight,
+            )
+            expense.duplicateReason?.takeIf { it.isNotBlank() }?.let {
                 Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.pending_duplicate_sheet_merchant_missing),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = AppTextHierarchy.body.weight,
+                    text = stringResource(R.string.pending_duplicate_sheet_reason, duplicateNoticeBody(it)),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                 )
-                Text(
-                    text = formatDisplayAmount(expense.amountCents, currencyDisplay),
-                    style = MaterialTheme.typography.bodyLarge.tabularNum(),
-                    fontWeight = AppTextHierarchy.body.weight,
-                )
-                expense.duplicateReason?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = stringResource(R.string.pending_duplicate_sheet_reason, duplicateNoticeBody(it)),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+            }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {

@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +40,7 @@ import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
@@ -76,14 +77,10 @@ internal fun PendingExpenseReviewRow(
     val metrics = AppDensity.rowMetrics(
         if (item.compact) AppListDensity.Compact else AppListDensity.Standard,
     )
-    Surface(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.small))
             .clickable(enabled = !item.busy, onClick = actions.onEdit),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
     ) {
         Column(
             modifier = Modifier.padding(metrics.rowPadding),
@@ -101,6 +98,7 @@ internal fun PendingExpenseReviewRow(
                 PendingExpenseInlineActions(item.expense, actions)
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 

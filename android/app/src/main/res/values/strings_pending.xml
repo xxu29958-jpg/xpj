@@ -150,17 +150,17 @@
 
     <!-- 待确认处理 sheet 文案。 -->
     <!-- QuickMerchantSheet -->
-    <string name="pending_quick_merchant_title">补一下商家</string>
-    <string name="pending_quick_merchant_hint">保存后不会自动确认。空商家不能保存。</string>
+    <string name="pending_quick_merchant_title">补全商家</string>
+    <string name="pending_quick_merchant_hint">填写商家后仍需确认入账。空商家不能保存。</string>
     <string name="pending_quick_merchant_label">商家名称</string>
     <string name="pending_quick_merchant_placeholder">例如：星巴克 / 美团外卖</string>
     <string name="pending_quick_merchant_blank_error">不能只填空格</string>
     <string name="pending_quick_merchant_save_button">保存商家</string>
 
     <!-- MissingAmountSheet -->
-    <string name="pending_missing_amount_title">补一下金额</string>
-    <string name="pending_missing_amount_hint">金额按原始币种输入。保存后会按消费时间换算入账金额。</string>
-    <string name="pending_missing_amount_label">金额 (%1$s)</string>
+    <string name="pending_missing_amount_title">补全金额</string>
+    <string name="pending_missing_amount_hint">按原始币种填写。确认后由账本服务换算入账金额。</string>
+    <string name="pending_missing_amount_field_label">金额</string>
     <string name="pending_missing_amount_invalid">请输入大于 0 的金额</string>
     <string name="pending_missing_amount_save_draft">仅保存</string>
     <string name="pending_missing_amount_processing">处理中</string>
@@ -181,7 +181,7 @@
 
     <!-- DuplicateConfirmSheet -->
     <string name="pending_duplicate_sheet_title">处理疑似重复</string>
-    <string name="pending_duplicate_sheet_hint">请你来决定。我们不会自动忽略，也不会自动确认入账。</string>
+    <string name="pending_duplicate_sheet_hint">确认是否保留当前账单。系统不会自动忽略或自动入账。</string>
     <string name="pending_duplicate_sheet_merchant_missing">未填写商家</string>
     <string name="pending_duplicate_sheet_reason">可能原因：%1$s</string>
     <string name="pending_duplicate_sheet_processing">处理中…</string>

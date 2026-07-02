@@ -1,10 +1,8 @@
 package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,7 +24,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,24 +40,11 @@ internal fun QuickMerchantSheetContent(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.cardPaddingSmall),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
+    ReviewSheetScaffold(
+        title = stringResource(R.string.pending_quick_merchant_title),
+        subtitle = stringResource(R.string.pending_quick_merchant_hint),
+        chrome = chrome,
     ) {
-        ReviewQueueHeader(chrome = chrome)
-        Text(
-            stringResource(R.string.pending_quick_merchant_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = stringResource(R.string.pending_quick_merchant_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-
         OutlinedTextField(
             value = value,
             onValueChange = { value = it.take(40) },

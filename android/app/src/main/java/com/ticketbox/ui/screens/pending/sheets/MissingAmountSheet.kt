@@ -1,15 +1,10 @@
 package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,16 +14,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppAmountInput
+import com.ticketbox.ui.components.AppAmountInputActions
+import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,40 +47,33 @@ internal fun MissingAmountSheetContent(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.cardPaddingSmall),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
+    ReviewSheetScaffold(
+        title = stringResource(R.string.pending_missing_amount_title),
+        subtitle = stringResource(R.string.pending_missing_amount_hint),
+        chrome = chrome,
     ) {
-        ReviewQueueHeader(chrome = chrome)
-        Text(
-            stringResource(R.string.pending_missing_amount_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = stringResource(R.string.pending_missing_amount_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-
-        OutlinedTextField(
-            value = input,
-            onValueChange = { raw ->
-                input = raw
-                    .filter { c -> c.isDigit() || (!currency.noFractionDigits && c == '.') }
-                    .take(12)
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            label = { Text(stringResource(R.string.pending_missing_amount_label, currency.storageKey)) },
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-            enabled = !saving,
-            isError = invalid,
+        AppAmountInput(
+            state = AppAmountInputState(
+                label = stringResource(R.string.pending_missing_amount_field_label),
+                currency = currency,
+                value = input,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                enabled = !saving,
+                isError = invalid,
+            ),
+            actions = AppAmountInputActions(
+                onValueChange = { raw ->
+                    input = raw
+                        .filter { c -> c.isDigit() || (!currency.noFractionDigits && c == '.') }
+                        .take(12)
+                },
+            ),
+            focusRequester = focusRequester,
             supportingText = if (invalid) {
                 { Text(stringResource(R.string.pending_missing_amount_invalid), color = MaterialTheme.colorScheme.error) }
-            } else null,
+            } else {
+                null
+            },
         )
 
         ReviewSheetStatusMessage(chrome = chrome)

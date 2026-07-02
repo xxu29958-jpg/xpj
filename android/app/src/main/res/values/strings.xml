@@ -74,9 +74,9 @@
     <string name="merchant_alias_restored">已恢复商家别名</string>
     <string name="merchant_alias_restore_failed">没有恢复成功，请稍后再试。</string>
 
-    <!-- QuickCategory：待确认流「补一下分类」sheet -->
-    <string name="quick_category_sheet_title">补一下分类</string>
-    <string name="quick_category_sheet_hint">选一个常用分类，或自定义。保存后不会自动确认入账。</string>
+    <!-- QuickCategory：待确认流「补全分类」sheet -->
+    <string name="quick_category_sheet_title">补全分类</string>
+    <string name="quick_category_sheet_hint">选择常用分类，或输入自定义分类。保存后仍需确认入账。</string>
     <string name="quick_category_custom_label">或者输入新分类</string>
     <string name="quick_category_save_button">保存分类</string>
 

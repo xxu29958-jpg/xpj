@@ -1,14 +1,11 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.annotation.StringRes
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -16,23 +13,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FxContract
+import com.ticketbox.ui.components.AppAmountInput
+import com.ticketbox.ui.components.AppAmountInputActions
+import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.LocalAppImeVisible
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.tabularNum
 
 @Immutable
 internal data class ExpenseCurrencyFieldOptions(
@@ -64,12 +57,19 @@ internal fun ExpenseCurrencyFields(
         ),
     ) {
         Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
-        OriginalAmountInput(
-            currency = currency,
-            value = originalAmountText,
-            onValueChange = onOriginalAmountChange,
-            amountFocus = amountFocus,
-            options = options,
+        AppAmountInput(
+            state = AppAmountInputState(
+                label = stringResource(R.string.expense_edit_original_amount_field_label),
+                currency = currency,
+                value = originalAmountText,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                enabled = options.enabled,
+            ),
+            actions = AppAmountInputActions(
+                onValueChange = onOriginalAmountChange,
+                onFocusChanged = { options.onAmountFocusChanged(it.isFocused) },
+            ),
+            focusRequester = amountFocus,
         )
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -90,51 +90,6 @@ internal fun ExpenseCurrencyFields(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
-}
-
-@Composable
-private fun OriginalAmountInput(
-    currency: CurrencyCode,
-    value: String,
-    onValueChange: (String) -> Unit,
-    amountFocus: FocusRequester,
-    options: ExpenseCurrencyFieldOptions,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.expense_edit_original_amount_field_label),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Text(
-                text = "${currency.symbol} ${currency.storageKey}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(amountFocus)
-                .onFocusChanged { options.onAmountFocusChanged(it.isFocused) },
-            placeholder = { Text(stringResource(R.string.expense_edit_amount_placeholder)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-            enabled = options.enabled,
-            prefix = { Text(currency.symbol) },
-            textStyle = MaterialTheme.typography.headlineSmall.tabularNum(),
-            shape = RoundedCornerShape(AppRadius.extraSmall),
-        )
     }
 }
 
