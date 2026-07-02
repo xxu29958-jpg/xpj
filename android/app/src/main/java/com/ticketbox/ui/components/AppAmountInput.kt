@@ -79,8 +79,7 @@ fun AppAmountInput(
             enabled = state.enabled,
             isError = state.isError,
             supportingText = supportingText,
-            prefix = { Text(state.currency.symbol) },
-            textStyle = MaterialTheme.typography.headlineSmall.tabularNum(),
+            textStyle = MaterialTheme.typography.titleLarge.tabularNum(),
             shape = RoundedCornerShape(AppRadius.extraSmall),
         )
     }
