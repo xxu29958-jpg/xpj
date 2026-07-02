@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,8 +23,9 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.ReceivablesUiState
@@ -50,36 +50,30 @@ fun ReceivablesScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    BackHandler(onBack = onBack)
-
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.isLoading,
-            hasReadableData = state.receivables.isNotEmpty(),
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = stringResource(R.string.receivables_topbar_title),
+            subtitle = stringResource(R.string.receivables_intro_body),
+            backText = stringResource(R.string.debt_list_topbar_back),
+            onBack = onBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
-        onRefresh = viewModel::refresh,
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoading,
+                hasReadableData = state.receivables.isNotEmpty(),
+            ),
+            onRefresh = viewModel::refresh,
+        ),
     ) {
-        item { ReceivablesHeader(onBack = onBack) }
         state.error?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         receivablesSection(state = state, onOpenReceivable = onOpenReceivable)
     }
 }
-
-@Composable
-private fun ReceivablesHeader(onBack: () -> Unit) {
-    AppSecondaryPageHeader(
-        title = stringResource(R.string.receivables_topbar_title),
-        subtitle = stringResource(R.string.receivables_intro_body),
-        backText = stringResource(R.string.debt_list_topbar_back),
-        onBack = onBack,
-    )
-}
-
 private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
     onOpenReceivable: (Debt) -> Unit,

@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,13 +34,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
-import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -64,6 +58,9 @@ private const val DebtDetailFlashDismissMillis = 4000L
  * 成员/拆账欠款显示走对方确认流程的提示而非按钮。统一动作面板（[DebtActionSheet]）按 [DebtAction] 渲染
  * 相应字段，写成功后 ViewModel 把折叠后的欠款换入本地态。
  */
+// ADR-0049 §3.2 (slice 8d): the detail screen's side-effects, extracted so the screen composable
+// stays under the LongMethod gate. Loads the member proposal收发箱 on entry, refreshes the Debt
+// summary after a fold-changing confirm, and auto-dismisses both VMs' success flashes.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DebtDetailScreen(
@@ -83,49 +80,22 @@ fun DebtDetailScreen(
         proposalViewModel = proposalViewModel,
     )
 
-    BackHandler(onBack = onBack)
-
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.isLoading,
-            hasReadableData = debt != null,
-        ),
+    val callbacks = DebtDetailScreenCallbacks(
+        onBack = onBack,
         onRefresh = {
             viewModel.refresh()
             if (debt?.isMember == true) proposalViewModel.refresh()
         },
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
-    ) {
-        item { DebtDetailHeader(debt = debt, onBack = onBack) }
-        state.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
-        proposalState.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
-        state.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
-        proposalState.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
-        debt?.let { loaded ->
-            // ② 成员债换轴：关系卡 + proposal 收发箱；外部债走会计卡 + 直接写动作面板（一字不改）。
-            if (loaded.isMember) {
-                item { MemberSharedThingCard(debt = loaded, currency = currency) }
-                item {
-                    MemberProposalSection(
-                        debt = loaded,
-                        state = proposalState,
-                        viewModel = proposalViewModel,
-                        currency = currency,
-                    )
-                }
-            } else {
-                item { DebtSummaryCard(debt = loaded, currency = currency) }
-                // 8e-6e 还款类型（仅外部债）：当前分类卡 + open 债的 owner 点「修改」开选择器纠正（自带本地态）。
-                item { DebtKindCardWithEditor(debt = loaded, canModify = state.canModify, onSelect = viewModel::selectKind) }
-                // §B 分期计划卡：仅进行中且已排期的 installment 外部债显示（合约还清日 / 已还期数 / 每期估算）。
-                debtInstallmentItem(debt = loaded, currency = currency)
-                item { DebtActionPanel(debt = loaded, canModify = state.canModify, onAction = viewModel::openAction) }
-            }
-        }
-    }
-
+        onSelectKind = viewModel::selectKind,
+        onOpenAction = viewModel::openAction,
+    )
+    DebtDetailContent(
+        state = state,
+        proposalState = proposalState,
+        proposalViewModel = proposalViewModel,
+        currency = currency,
+        callbacks = callbacks,
+    )
     if (state.activeAction != null) {
         DebtActionSheet(state = state, viewModel = viewModel, onClose = viewModel::dismissAction)
     }
@@ -138,10 +108,6 @@ fun DebtDetailScreen(
         )
     }
 }
-
-// ADR-0049 §3.2 (slice 8d): the detail screen's side-effects, extracted so the screen composable
-// stays under the LongMethod gate. Loads the member proposal收发箱 on entry, refreshes the Debt
-// summary after a fold-changing confirm, and auto-dismisses both VMs' success flashes.
 @Composable
 private fun DebtDetailEffects(
     state: DebtDetailUiState,
@@ -166,24 +132,6 @@ private fun DebtDetailEffects(
         delay(DebtDetailFlashDismissMillis)
         proposalViewModel.dismissFlash()
     }
-}
-
-@Composable
-private fun DebtDetailHeader(debt: Debt?, onBack: () -> Unit) {
-    val title = debt?.counterpartyLabel?.takeIf { it.isNotBlank() }
-        ?: debt?.let { stringResource(debtCounterpartyFallbackRes(it.counterpartyType)) }
-        ?: stringResource(R.string.debt_detail_title)
-    AppSecondaryPageHeader(
-        title = title,
-        // ② 成员债副标题关系化（你帮我垫的 / 我帮你垫的 / 第三人称）；外部债仍走应付/应收。
-        subtitle = debt?.let { d ->
-            val directionRes =
-                if (d.isMember) memberDebtDirectionRes(d.viewerIsDebtor) else debtDirectionLabelRes(d.direction)
-            stringResource(directionRes)
-        },
-        backText = stringResource(R.string.debt_detail_back),
-        onBack = onBack,
-    )
 }
 
 // Member debt routes to MemberSharedThingCard; this businesslike accounting card serves external
@@ -253,7 +201,7 @@ internal fun DebtSummaryRow(label: String, value: String) {
 // (§5.2 / slice8d). External debts are always direct-writable (guard_direct_fact_writable: external
 // + manual), so there is no member-note branch here.
 @Composable
-private fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtAction) -> Unit) {
+internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtAction) -> Unit) {
     when {
         !debt.isOpen -> DebtNoteCard(stringResource(R.string.debt_detail_closed_note))
         !canModify -> Unit

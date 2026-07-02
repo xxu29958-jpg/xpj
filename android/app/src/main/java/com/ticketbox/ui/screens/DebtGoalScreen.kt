@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -35,8 +34,10 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.PrimaryCtaButton
@@ -79,8 +80,6 @@ fun DebtGoalScreen(
         viewModel.dismissFlash()
     }
 
-    BackHandler(onBack = handleBack)
-
     val selected = state.selectedGoal
     // 8e-6a「先清小的」排序 + 8e-6c 还清日期 picker 显隐：详情层 composable-local 视图态（无持久化/无 DataStore；
     // 排序刻意不 keyed-by-goal=会话级视图偏好，跨 closeDetail 保留）。picker 对话框在 AppScrollableContent **外**渲染。
@@ -120,34 +119,41 @@ private fun DebtGoalScreenBody(
     callbacks: DebtGoalScreenBodyCallbacks,
 ) {
     val selected = state.selectedGoal
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(state.isLoading, selected != null || state.goals.isNotEmpty()),
-        // 不能用 viewModel::refresh：refresh 现带 clearStale 默认参，方法引用解析为 (Boolean)->Unit 不匹配 ()->Unit。
-        onRefresh = { viewModel.refresh() },
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+    val createAction: (@Composable () -> Unit)? =
+        if (selected == null && state.canModify) {
+            {
+                PrimaryCtaButton(
+                    text = stringResource(R.string.debt_goal_create_cta),
+                    icon = Icons.Default.Add,
+                    onClick = callbacks.onCreate,
+                )
+            }
+        } else {
+            null
+        }
+
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = selected?.name ?: stringResource(R.string.debt_goal_topbar_title),
+            subtitle = if (selected == null) stringResource(R.string.debt_goal_intro_body) else null,
+            backText = stringResource(R.string.debt_goal_topbar_back),
+            onBack = callbacks.handleBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+        ),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoading,
+                hasReadableData = selected != null || state.goals.isNotEmpty(),
+            ),
+            onRefresh = { viewModel.refresh() },
+        ),
+        slots = AppSecondaryPageSlots(
+            status = { DebtGoalStatusStack(state = state) },
+            actions = createAction,
+        ),
     ) {
-        item {
-            DebtGoalHeader(
-                title = selected?.name ?: stringResource(R.string.debt_goal_topbar_title),
-                subtitle = if (selected == null) stringResource(R.string.debt_goal_intro_body) else null,
-                onBack = callbacks.handleBack,
-                // CTA 仅在列表态（非详情）且可写时出现；创建走 onCreate（overlay 内子页）。
-                onCreate = if (selected == null && state.canModify) callbacks.onCreate else null,
-            )
-        }
-        item {
-            AppDataAuthorityStrip(
-                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-            )
-        }
-        state.flashMessage?.let { msg ->
-            item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
-        }
-        state.error?.let { err ->
-            item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
-        }
         if (selected != null) {
             debtGoalDetailSection(
                 state = state,
@@ -163,28 +169,19 @@ private fun DebtGoalScreenBody(
 }
 
 @Composable
-private fun DebtGoalHeader(
-    title: String,
-    subtitle: String?,
-    onBack: () -> Unit,
-    onCreate: (() -> Unit)?,
-) {
-    AppSecondaryPageHeader(
-        title = title,
-        subtitle = subtitle,
-        backText = stringResource(R.string.debt_goal_topbar_back),
-        onBack = onBack,
-    ) {
-        if (onCreate != null) {
-            PrimaryCtaButton(
-                text = stringResource(R.string.debt_goal_create_cta),
-                icon = Icons.Default.Add,
-                onClick = onCreate,
-            )
+private fun DebtGoalStatusStack(state: DebtGoalUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        AppDataAuthorityStrip(
+            tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
+        )
+        state.flashMessage?.let { msg ->
+            AppStatusBanner(message = msg, tone = MessageTone.Success)
+        }
+        state.error?.let { err ->
+            AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
     }
 }
-
 private fun LazyListScope.debtGoalListSection(
     state: DebtGoalUiState,
     viewModel: DebtGoalViewModel,

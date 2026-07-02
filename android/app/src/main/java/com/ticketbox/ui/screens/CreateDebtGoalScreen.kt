@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,8 +30,10 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -68,27 +69,26 @@ fun CreateDebtGoalScreen(
             viewModel.consumeCreated()
         }
     }
-    BackHandler(onBack = onBack)
-
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.isLoadingDebts,
-            hasReadableData = state.candidates.isNotEmpty(),
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = stringResource(R.string.debt_goal_create_title),
+            subtitle = stringResource(R.string.debt_goal_create_intro),
+            backText = stringResource(R.string.debt_goal_create_back),
+            onBack = onBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ),
-        onRefresh = viewModel::reload,
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoadingDebts,
+                hasReadableData = state.candidates.isNotEmpty(),
+            ),
+            onRefresh = viewModel::reload,
+        ),
+        slots = AppSecondaryPageSlots(status = { CreateDebtGoalStatusStack(state = state) }),
     ) {
-        item { CreateDebtGoalHeader(onBack = onBack) }
-        item {
-            AppDataAuthorityStrip(
-                tone = if (state.isLoadingDebts) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-            )
-        }
         item { CreateDebtGoalNameField(name = state.name, onNameChange = viewModel::updateName) }
-        state.formError?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
-        state.loadError?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
         item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.debt_goal_create_picker_title),
@@ -116,15 +116,15 @@ fun CreateDebtGoalScreen(
 }
 
 @Composable
-private fun CreateDebtGoalHeader(onBack: () -> Unit) {
-    AppSecondaryPageHeader(
-        title = stringResource(R.string.debt_goal_create_title),
-        subtitle = stringResource(R.string.debt_goal_create_intro),
-        backText = stringResource(R.string.debt_goal_create_back),
-        onBack = onBack,
-    )
+private fun CreateDebtGoalStatusStack(state: CreateDebtGoalUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        AppDataAuthorityStrip(
+            tone = if (state.isLoadingDebts) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
+        )
+        state.formError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
+        state.loadError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
+    }
 }
-
 @Composable
 private fun CreateDebtGoalNameField(name: String, onNameChange: (String) -> Unit) {
     DebtGoalOpenSection(

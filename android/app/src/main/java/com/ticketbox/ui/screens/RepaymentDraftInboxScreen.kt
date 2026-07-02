@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,8 +39,9 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -78,19 +78,24 @@ fun RepaymentDraftInboxScreen(
         viewModel.dismissFlash()
     }
 
-    BackHandler(onBack = onBack)
-
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.isLoading,
-            hasReadableData = state.drafts.isNotEmpty(),
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = stringResource(R.string.repayment_draft_topbar_title),
+            subtitle = stringResource(R.string.repayment_draft_intro_body),
+            backText = stringResource(R.string.repayment_draft_topbar_back),
+            onBack = onBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
-        onRefresh = viewModel::refresh,
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoading,
+                hasReadableData = state.drafts.isNotEmpty(),
+            ),
+            onRefresh = viewModel::refresh,
+        ),
     ) {
-        item { RepaymentDraftInboxHeader(onBack = onBack) }
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }
@@ -105,7 +110,6 @@ fun RepaymentDraftInboxScreen(
             onDismiss = viewModel::dismiss,
         )
     }
-
     val activeDraftId = pickerDraftId
     if (activeDraftId != null) {
         DebtPickerSheet(
@@ -122,16 +126,6 @@ fun RepaymentDraftInboxScreen(
             onClose = { pickerDraftId = null },
         )
     }
-}
-
-@Composable
-private fun RepaymentDraftInboxHeader(onBack: () -> Unit) {
-    AppSecondaryPageHeader(
-        title = stringResource(R.string.repayment_draft_topbar_title),
-        subtitle = stringResource(R.string.repayment_draft_intro_body),
-        backText = stringResource(R.string.repayment_draft_topbar_back),
-        onBack = onBack,
-    )
 }
 
 private fun LazyListScope.repaymentDraftListSection(

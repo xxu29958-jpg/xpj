@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,8 +47,10 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.QuietOutlinedButton
@@ -77,6 +78,13 @@ private const val DebtFlashDismissMillis = 4000L
  * [AppStatusBanner]，新建入口是页头的 [PrimaryCtaButton] → 底部抽屉表单。方向 / 状态标签复用
  * [DebtGoalLabels] 的 §6 映射（应付 / 应收 / 未结清…），不端内分叉。overlay 自带 [BackHandler]。
  */
+private data class DebtListScreenCallbacks(
+    val onBack: () -> Unit,
+    val onOpenDebt: (Debt) -> Unit,
+    val onParseBillImage: () -> Unit,
+    val onRefresh: () -> Unit,
+    val onAddDebt: () -> Unit,
+)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DebtListScreen(
@@ -111,36 +119,17 @@ fun DebtListScreen(
         viewModel.ackBillParsePrefill()
     }
 
-    BackHandler(onBack = onBack)
-
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.isLoading,
-            hasReadableData = state.debts.isNotEmpty(),
-        ),
+    val callbacks = DebtListScreenCallbacks(
+        onBack = onBack,
+        onOpenDebt = onOpenDebt,
+        onParseBillImage = onParseBillImage,
         onRefresh = viewModel::refresh,
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
-    ) {
-        item {
-            DebtListHeader(
-                canModify = state.canModify,
-                isParsingBill = state.isParsingBill,
-                onBack = onBack,
-                onAdd = { viewModel.resetDraft(); showAddSheet = true },
-                onParseBillImage = onParseBillImage,
-            )
-        }
-        state.flashMessage?.let { msg ->
-            item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
-        }
-        state.error?.let { err ->
-            item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
-        }
-        debtListSection(state = state, currency = currency, onOpenDebt = onOpenDebt)
-    }
-
+        onAddDebt = {
+            viewModel.resetDraft()
+            showAddSheet = true
+        },
+    )
+    DebtListContent(state = state, currency = currency, callbacks = callbacks)
     if (showAddSheet) {
         DebtAddSheet(
             state = state,
@@ -152,44 +141,83 @@ fun DebtListScreen(
 }
 
 @Composable
-private fun DebtListHeader(
-    canModify: Boolean,
-    isParsingBill: Boolean,
-    onBack: () -> Unit,
-    onAdd: () -> Unit,
-    onParseBillImage: () -> Unit,
+private fun DebtListContent(
+    state: DebtListUiState,
+    currency: CurrencyDisplay,
+    callbacks: DebtListScreenCallbacks,
 ) {
-    AppSecondaryPageHeader(
-        title = stringResource(R.string.debt_list_topbar_title),
-        subtitle = stringResource(R.string.debt_list_intro_body),
-        backText = stringResource(R.string.debt_list_topbar_back),
-        onBack = onBack,
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = stringResource(R.string.debt_list_topbar_title),
+            subtitle = stringResource(R.string.debt_list_intro_body),
+            backText = stringResource(R.string.debt_list_topbar_back),
+            onBack = callbacks.onBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        ),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoading,
+                hasReadableData = state.debts.isNotEmpty(),
+            ),
+            onRefresh = callbacks.onRefresh,
+        ),
+        slots = AppSecondaryPageSlots(actions = debtListHeaderActions(state, callbacks)),
     ) {
-        if (canModify) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                QuietOutlinedButton(
-                    text = stringResource(
-                        if (isParsingBill) {
-                            R.string.debt_list_parse_bill_busy
-                        } else {
-                            R.string.debt_list_parse_bill
-                        },
-                    ),
-                    leadingIcon = Icons.Default.Search,
-                    enabled = !isParsingBill,
-                    onClick = onParseBillImage,
-                )
-                PrimaryCtaButton(
-                    text = stringResource(R.string.debt_list_add),
-                    icon = Icons.Default.Add,
-                    enabled = !isParsingBill,
-                    onClick = onAdd,
-                )
-            }
+        state.flashMessage?.let { msg ->
+            item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }
+        state.error?.let { err ->
+            item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
+        }
+        debtListSection(state = state, currency = currency, onOpenDebt = callbacks.onOpenDebt)
     }
 }
 
+private fun debtListHeaderActions(
+    state: DebtListUiState,
+    callbacks: DebtListScreenCallbacks,
+): (@Composable () -> Unit)? =
+    if (state.canModify) {
+        {
+            DebtListHeaderActions(
+                isParsingBill = state.isParsingBill,
+                onParseBillImage = callbacks.onParseBillImage,
+                onAddDebt = callbacks.onAddDebt,
+            )
+        }
+    } else {
+        null
+    }
+
+@Composable
+private fun DebtListHeaderActions(
+    isParsingBill: Boolean,
+    onParseBillImage: () -> Unit,
+    onAddDebt: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        QuietOutlinedButton(
+            text = stringResource(
+                if (isParsingBill) {
+                    R.string.debt_list_parse_bill_busy
+                } else {
+                    R.string.debt_list_parse_bill
+                },
+            ),
+            leadingIcon = Icons.Default.Search,
+            enabled = !isParsingBill,
+            onClick = onParseBillImage,
+        )
+        PrimaryCtaButton(
+            text = stringResource(R.string.debt_list_add),
+            icon = Icons.Default.Add,
+            enabled = !isParsingBill,
+            onClick = onAddDebt,
+        )
+    }
+}
 private fun LazyListScope.debtListSection(
     state: DebtListUiState,
     currency: CurrencyDisplay,
