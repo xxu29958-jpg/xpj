@@ -24,7 +24,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimeInput
@@ -59,6 +58,8 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
+import com.ticketbox.ui.screens.expense.ExpenseEditTextField
+import com.ticketbox.ui.screens.expense.ExpenseEditTextFieldState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -221,31 +222,40 @@ fun ManualExpenseSheet(
                 category = picked.category
             },
         )
-        OutlinedTextField(
-            value = merchant,
+        ExpenseEditTextField(
+            state = ExpenseEditTextFieldState(
+                label = stringResource(R.string.ledger_manual_merchant_label),
+                value = merchant,
+                placeholder = stringResource(R.string.ledger_manual_merchant_placeholder),
+                enabled = !saving,
+            ),
             onValueChange = { merchant = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.ledger_manual_merchant_label)) },
-            placeholder = { Text(stringResource(R.string.ledger_manual_merchant_placeholder)) },
-            singleLine = true,
         )
-        OutlinedTextField(
-            value = category,
+        ExpenseEditTextField(
+            state = ExpenseEditTextFieldState(
+                label = stringResource(R.string.ledger_manual_category_label),
+                value = category,
+                enabled = !saving,
+            ),
             onValueChange = { category = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.ledger_manual_category_label)) },
-            singleLine = true,
         )
         ManualCategoryChoices(
             categories = categories,
             selectedCategory = category,
             onCategoryChange = { category = it },
         )
-        OutlinedTextField(
-            value = note,
+        ExpenseEditTextField(
+            state = ExpenseEditTextFieldState(
+                label = stringResource(R.string.ledger_manual_note_label),
+                value = note,
+                enabled = !saving,
+                singleLine = false,
+                minLines = 2,
+            ),
             onValueChange = { note = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.ledger_manual_note_label)) },
         )
         ManualExpenseTimeSection(
             expenseTime = expenseTime,

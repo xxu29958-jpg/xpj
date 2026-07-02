@@ -3,23 +3,16 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -27,18 +20,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.EditableSplit
 
 /**
  * ADR-0042 Slice E-1 splits editor. A full-height [ModalBottomSheet] mirroring
  * [ItemsEditorSheet]: each ledger member is a checklist row (included? + name +
- * an amount field in exact yuan) with a pinned reconciliation footer (合计 / 票面
- * / 差额). A 「均分」 button fills the checked members with a deterministic
+ * an amount field in exact yuan) with a pinned reconciliation footer (分摊合计 /
+ * 账单金额 / 差额). A 「均分」 button fills the checked members with a deterministic
  * largest-remainder split (see [evenSplitCents]); the user can still edit any
  * amount afterwards. Save is never blocked on a mismatch — the backend allows
  * non-summing splits, so the difference is surfaced as quiet status with a
@@ -59,21 +52,10 @@ fun SplitsEditorSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding(),
+        ExpenseEditSheetScaffold(
+            title = stringResource(R.string.expense_edit_splits_sheet_title),
+            subtitle = stringResource(R.string.expense_edit_splits_sheet_subtitle),
         ) {
-            Text(stringResource(R.string.expense_edit_splits_sheet_title), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                stringResource(R.string.expense_edit_splits_sheet_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-
             if (drafts.isEmpty()) {
                 // ADR-0042 P1: the roster loads async after the sheet opens. Until
                 // drafts is built, Save is disabled (below) so an empty splits=[]
@@ -86,15 +68,15 @@ fun SplitsEditorSheet(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 24.dp),
+                    modifier = Modifier.padding(vertical = AppSpacing.contentGap),
                 )
             }
 
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 380.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .heightIn(max = AppSpacing.controlMinHeight * 7),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
                 items(drafts, key = { it.memberId }) { draft ->
                     SplitEditorRow(
@@ -105,44 +87,32 @@ fun SplitsEditorSheet(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                OutlinedButton(onClick = onEvenSplit, enabled = !saving && drafts.isNotEmpty()) { Text(stringResource(R.string.expense_edit_splits_even_button)) }
-            }
-            Spacer(Modifier.height(8.dp))
-            SplitsReconciliationFooter(drafts = drafts, parentAmountCents = parentAmountCents)
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    enabled = !saving,
-                    modifier = Modifier.weight(1f),
-                ) { Text(stringResource(R.string.common_cancel)) }
-                Button(
-                    // ADR-0042 P1: never enable Save with an empty draft list — the
-                    // roster hasn't loaded, and saving would send splits=[] which the
-                    // backend replace turns into "delete all existing splits".
-                    onClick = onSave,
+                AppSecondaryButton(
+                    text = stringResource(R.string.expense_edit_splits_even_button),
                     enabled = !saving && drafts.isNotEmpty(),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(
-                        if (saving) {
-                            stringResource(R.string.expense_edit_splits_saving_button)
-                        } else {
-                            stringResource(R.string.expense_edit_splits_save_button)
-                        }
-                    )
-                }
+                    onClick = onEvenSplit,
+                )
             }
-            Spacer(Modifier.height(12.dp))
+            SplitsReconciliationFooter(drafts = drafts, parentAmountCents = parentAmountCents)
+            // ADR-0042 P1: never enable Save with an empty draft list — the roster
+            // hasn't loaded, and saving would send splits=[] which the backend
+            // replace turns into "delete all existing splits".
+            ExpenseEditSheetActions(
+                state = ExpenseEditSheetActionState(
+                    saving = saving,
+                    primaryEnabled = drafts.isNotEmpty(),
+                    savingText = stringResource(R.string.expense_edit_splits_saving_button),
+                    primaryText = stringResource(R.string.expense_edit_splits_save_button),
+                ),
+                handlers = ExpenseEditSheetActionHandlers(
+                    onDismiss = onDismiss,
+                    onSubmit = onSave,
+                ),
+            )
         }
     }
 }
@@ -158,43 +128,48 @@ private fun SplitEditorRow(
     // so historical attribution isn't dropped (the user can't re-include or
     // edit a disabled member; the server keeps the existing row on replay).
     val editable = !draft.disabled
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Checkbox(
-            checked = draft.included,
-            onCheckedChange = if (editable) ({ onToggle(it) }) else null,
-            enabled = editable,
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = draft.displayName,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (editable) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
+            Checkbox(
+                checked = draft.included,
+                onCheckedChange = if (editable) ({ onToggle(it) }) else null,
+                enabled = editable,
             )
-            if (draft.disabled) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.expense_edit_splits_member_disabled),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = draft.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (editable) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                 )
+                if (draft.disabled) {
+                    Text(
+                        text = stringResource(R.string.expense_edit_splits_member_disabled),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
-        OutlinedTextField(
-            value = draft.amountText,
+        ExpenseEditTextField(
+            state = ExpenseEditTextFieldState(
+                label = stringResource(R.string.expense_edit_splits_row_amount_label),
+                value = draft.amountText,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                enabled = editable && draft.included,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            ),
             onValueChange = onUpdateAmount,
-            modifier = Modifier.width(120.dp),
-            singleLine = true,
-            enabled = editable && draft.included,
-            label = { Text(stringResource(R.string.expense_edit_splits_row_amount_label)) },
-            prefix = { Text("¥") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
     }
 }
@@ -206,47 +181,28 @@ private fun SplitsReconciliationFooter(
 ) {
     val total = drafts.filter { it.included }.sumOf { parseAmountCents(it.amountText) ?: 0L }
     val diff = parentAmountCents?.let { total - it }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(stringResource(R.string.expense_edit_splits_footer_total_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(formatDisplayAmount(total), style = MaterialTheme.typography.bodyMedium.tabularNum())
-        }
-        if (parentAmountCents != null) {
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(stringResource(R.string.expense_edit_splits_footer_face_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatDisplayAmount(parentAmountCents), style = MaterialTheme.typography.bodyMedium.tabularNum())
-            }
-        }
-        if (diff != null && diff != 0L) {
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column {
-                    Text(stringResource(R.string.expense_edit_splits_footer_diff_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                    Text(
-                        stringResource(R.string.expense_edit_splits_footer_even_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(
-                    formatDisplayAmount(diff),
-                    style = MaterialTheme.typography.bodyMedium.tabularNum(),
-                    color = MaterialTheme.colorScheme.error,
+    ExpenseEditReconciliationRows(
+        rows = listOfNotNull(
+            ExpenseEditReconciliationLine(
+                label = stringResource(R.string.expense_edit_splits_footer_total_label),
+                value = formatDisplayAmount(total),
+            ),
+            parentAmountCents?.let {
+                ExpenseEditReconciliationLine(
+                    label = stringResource(R.string.expense_edit_splits_footer_bill_label),
+                    value = formatDisplayAmount(it),
                 )
-            }
-        }
-    }
+            },
+            diff?.takeIf { it != 0L }?.let {
+                ExpenseEditReconciliationLine(
+                    label = stringResource(R.string.expense_edit_splits_footer_diff_label),
+                    value = formatDisplayAmount(it),
+                    emphasis = true,
+                    hint = stringResource(R.string.expense_edit_splits_footer_even_hint),
+                )
+            },
+        ),
+    )
 }
 
 /**

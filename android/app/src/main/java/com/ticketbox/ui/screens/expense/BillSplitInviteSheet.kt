@@ -1,24 +1,17 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -28,12 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
 
 /**
@@ -68,13 +61,11 @@ internal fun BillSplitInviteSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = sheetState) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding(),
+        ExpenseEditSheetScaffold(
+            title = stringResource(R.string.expense_edit_bill_split_sheet_title),
+            subtitle = stringResource(R.string.expense_edit_bill_split_sheet_subtitle),
         ) {
-            BillSplitInviteHeader()
+            BillSplitInviteMemberLabel()
             BillSplitInviteMemberList(
                 members = state.members,
                 membersLoading = state.membersLoading,
@@ -88,30 +79,30 @@ internal fun BillSplitInviteSheet(
                 onUpdateAmount = actions.onUpdateAmount,
             )
             state.message?.let {
-                Spacer(Modifier.height(8.dp))
                 Text(
                     it.asString(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            BillSplitInviteActionsRow(state = state, actions = actions)
-            Spacer(Modifier.height(12.dp))
+            ExpenseEditSheetActions(
+                state = ExpenseEditSheetActionState(
+                    saving = state.sending,
+                    primaryEnabled = state.selectedMemberId != null && state.members.isNotEmpty(),
+                    savingText = stringResource(R.string.expense_edit_bill_split_sheet_sending_button),
+                    primaryText = stringResource(R.string.expense_edit_bill_split_sheet_send_button),
+                ),
+                handlers = ExpenseEditSheetActionHandlers(
+                    onDismiss = actions.onDismiss,
+                    onSubmit = actions.onSend,
+                ),
+            )
         }
     }
 }
 
 @Composable
-private fun BillSplitInviteHeader() {
-    Text(stringResource(R.string.expense_edit_bill_split_sheet_title), style = MaterialTheme.typography.titleMedium)
-    Spacer(Modifier.height(4.dp))
-    Text(
-        stringResource(R.string.expense_edit_bill_split_sheet_subtitle),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(12.dp))
+private fun BillSplitInviteMemberLabel() {
     Text(
         stringResource(R.string.expense_edit_bill_split_sheet_member_label),
         style = MaterialTheme.typography.labelMedium,
@@ -127,54 +118,22 @@ private fun BillSplitInviteAmountField(
     sending: Boolean,
     onUpdateAmount: (String) -> Unit,
 ) {
-    Spacer(Modifier.height(12.dp))
-    OutlinedTextField(
-        value = amountText,
+    ExpenseEditTextField(
+        state = ExpenseEditTextFieldState(
+            label = stringResource(R.string.expense_edit_bill_split_sheet_amount_label),
+            value = amountText,
+            placeholder = stringResource(R.string.components_amount_input_placeholder),
+            enabled = !sending,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        ),
         onValueChange = onUpdateAmount,
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        enabled = !sending,
-        label = { Text(stringResource(R.string.expense_edit_bill_split_sheet_amount_label)) },
-        prefix = { Text("¥") },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
     )
     remainingCents?.let {
-        Spacer(Modifier.height(4.dp))
         Text(
             stringResource(R.string.expense_edit_bill_split_sheet_remaining, formatDisplayAmount(it)),
             style = MaterialTheme.typography.bodySmall.tabularNum(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-}
-
-@Composable
-private fun BillSplitInviteActionsRow(
-    state: BillSplitInviteSheetState,
-    actions: BillSplitInviteSheetActions,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        OutlinedButton(
-            onClick = actions.onDismiss,
-            enabled = !state.sending,
-            modifier = Modifier.weight(1f),
-        ) { Text(stringResource(R.string.common_cancel)) }
-        Button(
-            onClick = actions.onSend,
-            enabled = !state.sending && state.selectedMemberId != null && state.members.isNotEmpty(),
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                if (state.sending) {
-                    stringResource(R.string.expense_edit_bill_split_sheet_sending_button)
-                } else {
-                    stringResource(R.string.expense_edit_bill_split_sheet_send_button)
-                }
-            )
-        }
     }
 }
 
@@ -194,15 +153,15 @@ private fun BillSplitInviteMemberList(
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 16.dp),
+            modifier = Modifier.padding(vertical = AppSpacing.contentGap),
         )
         return
     }
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 280.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .heightIn(max = AppSpacing.controlMinHeight * 5),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
         items(members, key = { it.memberId }) { member ->
             BillSplitInviteMemberRow(
@@ -224,9 +183,9 @@ private fun BillSplitInviteMemberRow(
         modifier = Modifier
             .fillMaxWidth()
             .selectable(selected = selected, onClick = onSelect)
-            .padding(vertical = 6.dp),
+            .padding(vertical = AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         RadioButton(selected = selected, onClick = onSelect)
         Text(

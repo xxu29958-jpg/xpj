@@ -60,10 +60,12 @@
     <string name="expense_edit_items_saving_button">保存中…</string>
     <string name="expense_edit_items_save_button">保存</string>
     <string name="expense_edit_items_row_name_label">名称</string>
+    <string name="expense_edit_items_row_name_placeholder">商品或费用名称</string>
     <string name="expense_edit_items_row_amount_label">金额</string>
+    <string name="expense_edit_items_row_kind_label">类型</string>
     <string name="expense_edit_items_row_remove_desc">删除该项</string>
     <string name="expense_edit_items_footer_total_label">合计</string>
-    <string name="expense_edit_items_footer_face_label">票面</string>
+    <string name="expense_edit_items_footer_bill_label">账单金额</string>
     <string name="expense_edit_items_footer_diff_label">差额</string>
 
     <!-- ExpenseEditDialogs：日期/时间/忽略/粘贴识别对话框 -->
@@ -99,7 +101,7 @@
 
     <!-- SplitsEditorSheet：家庭拆账编辑 sheet -->
     <string name="expense_edit_splits_sheet_title">编辑家庭拆账</string>
-    <string name="expense_edit_splits_sheet_subtitle">勾选参与分摊的家庭成员并填写各自金额；拆账只记录分摊，不改动原始账单金额。</string>
+    <string name="expense_edit_splits_sheet_subtitle">勾选参与分摊的家庭成员并填写各自金额；拆账只记录分摊，不改动账单金额。</string>
     <string name="expense_edit_splits_members_loading">正在加载家庭成员…</string>
     <string name="expense_edit_splits_members_failed">家庭成员暂时加载失败，请关闭后重试。</string>
     <string name="expense_edit_splits_even_button">均分</string>
@@ -108,7 +110,7 @@
     <string name="expense_edit_splits_member_disabled">成员已停用</string>
     <string name="expense_edit_splits_row_amount_label">金额</string>
     <string name="expense_edit_splits_footer_total_label">合计</string>
-    <string name="expense_edit_splits_footer_face_label">票面</string>
+    <string name="expense_edit_splits_footer_bill_label">账单金额</string>
     <string name="expense_edit_splits_footer_diff_label">差额</string>
     <string name="expense_edit_splits_footer_even_hint">点击均分可平账</string>
 
@@ -144,7 +146,7 @@
     <string name="expense_edit_v1_items_mismatch_ack_button">原小票如此</string>
     <string name="expense_edit_v1_items_mismatch_acknowledged">已确认原小票合计与明细存在 %1$s 差异</string>
     <string name="expense_edit_v1_splits_title">家庭拆账</string>
-    <string name="expense_edit_v1_splits_subtitle">拆账只记录家庭分摊，不改动原始账单金额</string>
+    <string name="expense_edit_v1_splits_subtitle">拆账只记录家庭分摊，不改动账单金额</string>
     <string name="expense_edit_v1_splits_add_button">添加拆账</string>
     <string name="expense_edit_v1_splits_edit_button">编辑拆账</string>
     <string name="expense_edit_v1_splits_loading_title">拆账加载中</string>
@@ -236,7 +238,7 @@
 
     <!-- 发起 sheet -->
     <string name="expense_edit_bill_split_sheet_title">发起拆账</string>
-    <string name="expense_edit_bill_split_sheet_subtitle">选一位家人，填要分给 TA 的金额。对方会在自己的账本里收到这笔邀请。</string>
+    <string name="expense_edit_bill_split_sheet_subtitle">选一位家人，填写要分摊的金额。对方会在自己的账本里收到这笔邀请。</string>
     <string name="expense_edit_bill_split_sheet_member_label">分给谁</string>
     <string name="expense_edit_bill_split_sheet_no_members">本账本暂时没有可分摊的家人。先邀请家人加入本账本，再发起拆账。</string>
     <string name="expense_edit_bill_split_sheet_amount_label">分摊金额</string>
