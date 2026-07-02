@@ -369,6 +369,7 @@ fun ExpenseEditScreen(
                 enabled = !readOnly,
                 autoFocusAmount = false,
                 onAmountFocusChanged = { amountFocused = it },
+                showSectionTitle = false,
             ),
         )
         ExpenseEditMerchantField(

@@ -52,6 +52,7 @@ internal data class ExpenseCurrencyFieldOptions(
     val supportingText: String? = null,
     val statusText: String? = null,
     val showFxHint: Boolean = true,
+    val showSectionTitle: Boolean = true,
 )
 
 @Immutable
@@ -87,7 +88,9 @@ internal fun ExpenseCurrencyFields(
             if (keyboardVisible) AppSpacing.miniGap else AppSpacing.smallGap,
         ),
     ) {
-        Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
+        if (options.showSectionTitle) {
+            Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
+        }
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.expense_edit_amount_field_label),

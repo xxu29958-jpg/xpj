@@ -203,6 +203,7 @@ fun ManualExpenseSheet(
             options = ExpenseCurrencyFieldOptions(
                 enabled = !saving,
                 showFxHint = false,
+                showSectionTitle = false,
             ),
         )
         val feedbackMessage = message ?: errorMessage
