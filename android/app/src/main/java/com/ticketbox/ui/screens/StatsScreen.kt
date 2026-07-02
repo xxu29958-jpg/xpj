@@ -153,8 +153,10 @@ fun StatsScreen(
         state.message?.let {
             item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
         }
-        state.reportsMessage?.let {
-            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
+        if (selectedStatsTab == StatsTab.Trend) {
+            state.reportsMessage?.let {
+                item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
+            }
         }
         state.dashboardCardsMessage?.let {
             item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
