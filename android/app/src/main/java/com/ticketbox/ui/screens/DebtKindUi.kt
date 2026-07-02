@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -33,7 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
+import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSectionGroup
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
 
 /**
@@ -133,42 +134,33 @@ private fun DebtKindSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-            Text(
-                stringResource(R.string.debt_kind_sheet_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.debt_kind_sheet_body),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.size(AppSpacing.compactGap))
-            DebtKinds.ORDERED.forEach { kind ->
+        AppSheetScaffold(
+            title = stringResource(R.string.debt_kind_sheet_title),
+            subtitle = stringResource(R.string.debt_kind_sheet_body),
+        ) {
+            DebtKinds.ORDERED.forEachIndexed { index, kind ->
                 DebtKindOptionRow(
                     kind = kind,
                     selected = kind == currentKind,
+                    showDivider = index != DebtKinds.ORDERED.lastIndex,
                     onClick = { onSelect(kind) },
                 )
             }
-            Spacer(Modifier.size(AppSpacing.compactGap))
         }
     }
 }
 
 @Composable
-private fun DebtKindOptionRow(kind: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = AppSpacing.smallGap),
-        verticalAlignment = Alignment.CenterVertically,
+private fun DebtKindOptionRow(
+    kind: String,
+    selected: Boolean,
+    showDivider: Boolean,
+    onClick: () -> Unit,
+) {
+    AppListRow(
+        onClick = onClick,
+        showDivider = showDivider,
     ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Spacer(Modifier.width(AppSpacing.smallGap))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 stringResource(debtKindLabelRes(kind)),
@@ -181,6 +173,8 @@ private fun DebtKindOptionRow(kind: String, selected: Boolean, onClick: () -> Un
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        Spacer(Modifier.width(AppSpacing.smallGap))
+        RadioButton(selected = selected, onClick = onClick)
     }
 }
 

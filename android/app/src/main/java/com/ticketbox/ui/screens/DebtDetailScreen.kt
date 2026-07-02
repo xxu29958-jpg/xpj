@@ -8,17 +8,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,14 +28,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.ui.asString
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSectionGroup
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetScaffold
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -212,17 +216,33 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
     when {
         !debt.isOpen -> DebtNoteCard(stringResource(R.string.debt_detail_closed_note))
         !canModify -> Unit
-        else -> Column(
+        else -> AppSectionGroup(
             modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            showTopDivider = false,
         ) {
-            Button(onClick = { onAction(DebtAction.Repayment) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.debt_action_repayment_title))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+            ) {
+                AppPrimaryButton(
+                    text = stringResource(R.string.debt_action_repayment_title),
+                    icon = Icons.Filled.Check,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(DebtAction.Repayment) },
+                )
+                QuietOutlinedButton(
+                    text = stringResource(R.string.debt_action_adjustment_title),
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(DebtAction.Adjustment) },
+                )
             }
-            OutlinedButton(onClick = { onAction(DebtAction.Adjustment) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.debt_action_adjustment_title))
-            }
-            OutlinedButton(onClick = { onAction(DebtAction.Void) }, modifier = Modifier.fillMaxWidth()) {
+            AppOutlinedButton(
+                onClick = { onAction(DebtAction.Void) },
+                modifier = Modifier.fillMaxWidth(),
+                danger = true,
+            ) {
                 Text(stringResource(R.string.debt_action_void_title))
             }
         }
@@ -274,13 +294,7 @@ private fun DebtActionForm(
     onCancel: () -> Unit,
 ) {
     val action = state.activeAction ?: return
-    Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-        Text(
-            stringResource(debtActionTitleRes(action)),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.size(AppSpacing.cardPadding))
+    AppSheetScaffold(title = stringResource(debtActionTitleRes(action))) {
         if (action != DebtAction.Void) {
             AppAmountInput(
                 state = AppAmountInputState(
@@ -295,11 +309,9 @@ private fun DebtActionForm(
             )
         }
         if (action == DebtAction.Adjustment) {
-            Spacer(Modifier.size(AppSpacing.smallGap))
             DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = viewModel::setAdjustmentSign)
         }
         if (action != DebtAction.Repayment) {
-            Spacer(Modifier.size(AppSpacing.compactGap))
             AppTextInput(
                 state = AppTextInputState(
                     label = stringResource(R.string.debt_action_reason_label),
@@ -310,7 +322,6 @@ private fun DebtActionForm(
             )
         }
         if (action == DebtAction.Void) {
-            Spacer(Modifier.size(AppSpacing.smallGap))
             Text(
                 stringResource(R.string.debt_action_void_warning),
                 style = MaterialTheme.typography.bodySmall,
@@ -318,14 +329,24 @@ private fun DebtActionForm(
             )
         }
         state.validationError?.let { err ->
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(err.asString(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
-        Spacer(Modifier.size(AppSpacing.cardPadding))
-        HorizontalDivider()
-        Spacer(Modifier.size(AppSpacing.compactGap))
-        DebtActionFormButtons(isSubmitting = state.isSubmitting, onSubmit = onSubmit, onCancel = onCancel)
-        Spacer(Modifier.size(AppSpacing.compactGap))
+        AppSheetActionRow(
+            primary = AppSheetAction(
+                text = if (state.isSubmitting) {
+                    stringResource(R.string.debt_action_submitting)
+                } else {
+                    stringResource(R.string.debt_action_submit)
+                },
+                onClick = onSubmit,
+                enabled = !state.isSubmitting,
+            ),
+            secondary = AppSheetAction(
+                text = stringResource(R.string.common_cancel),
+                onClick = onCancel,
+                enabled = !state.isSubmitting,
+            ),
+        )
     }
 }
 
@@ -343,22 +364,5 @@ private fun DebtAdjustmentSignChips(increase: Boolean, onSelect: (Boolean) -> Un
             onClick = { onSelect(false) },
             label = { Text(stringResource(R.string.debt_action_adjustment_decrease)) },
         )
-    }
-}
-
-@Composable
-internal fun DebtActionFormButtons(isSubmitting: Boolean, onSubmit: () -> Unit, onCancel: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
-        Spacer(Modifier.width(AppSpacing.smallGap))
-        Button(onClick = onSubmit, enabled = !isSubmitting) {
-            Text(
-                if (isSubmitting) {
-                    stringResource(R.string.debt_action_submitting)
-                } else {
-                    stringResource(R.string.debt_action_submit)
-                },
-            )
-        }
     }
 }

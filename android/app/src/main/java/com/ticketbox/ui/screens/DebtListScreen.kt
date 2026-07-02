@@ -13,15 +13,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,7 +36,6 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
@@ -50,6 +46,9 @@ import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
@@ -380,21 +379,8 @@ private fun DebtDraftForm(
     onCancel: () -> Unit,
 ) {
     val draft = state.addDraft
-    Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-        Text(
-            stringResource(R.string.debt_create_sheet_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.size(AppSpacing.cardPadding))
-        Text(
-            stringResource(R.string.debt_create_label_direction),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.size(AppSpacing.miniGap))
-        DebtDirectionChips(selected = draft.direction, onSelect = viewModel::updateDraftDirection)
-        Spacer(Modifier.size(AppSpacing.compactGap))
+    AppSheetScaffold(title = stringResource(R.string.debt_create_sheet_title)) {
+        DebtDirectionField(selected = draft.direction, onSelect = viewModel::updateDraftDirection)
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.debt_create_label_counterparty),
@@ -403,7 +389,6 @@ private fun DebtDraftForm(
             actions = AppTextInputActions(onValueChange = viewModel::updateDraftCounterparty),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.size(AppSpacing.compactGap))
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.debt_create_label_amount),
@@ -415,57 +400,48 @@ private fun DebtDraftForm(
             actions = AppAmountInputActions(onValueChange = viewModel::updateDraftAmount),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.size(AppSpacing.compactGap))
         DebtKindCreateField(selected = draft.kind, onSelect = viewModel::updateDraftKind)
         DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, onValueChange = viewModel::updateDraftInstallmentCount)
         DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, onValueChange = viewModel::updateDraftInstallmentPeriod)
         draft.validationError?.let { err ->
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                err.asString(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
+            AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
-        Spacer(Modifier.size(AppSpacing.cardPadding))
-        HorizontalDivider()
-        Spacer(Modifier.size(AppSpacing.compactGap))
-        DebtDraftFormActions(isSubmitting = state.isSubmitting, onSubmit = onSubmit, onCancel = onCancel)
-        Spacer(Modifier.size(AppSpacing.compactGap))
-    }
-}
-
-@Composable
-private fun DebtDirectionChips(selected: String, onSelect: (String) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        listOf(DebtDirections.I_OWE, DebtDirections.OWED_TO_ME).forEach { direction ->
-            FilterChip(
-                selected = selected == direction,
-                onClick = { onSelect(direction) },
-                label = { Text(stringResource(debtDirectionLabelRes(direction))) },
-                modifier = Modifier.padding(end = AppSpacing.smallGap),
-            )
-        }
-    }
-}
-
-@Composable
-private fun DebtDraftFormActions(
-    isSubmitting: Boolean,
-    onSubmit: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
-        Spacer(Modifier.width(AppSpacing.smallGap))
-        Button(onClick = onSubmit, enabled = !isSubmitting) {
-            Text(
-                if (isSubmitting) {
+        AppSheetActionRow(
+            primary = AppSheetAction(
+                text = if (state.isSubmitting) {
                     stringResource(R.string.debt_create_submitting)
                 } else {
                     stringResource(R.string.debt_create_save)
                 },
-            )
+                onClick = onSubmit,
+                enabled = !state.isSubmitting,
+            ),
+            secondary = AppSheetAction(
+                text = stringResource(R.string.common_cancel),
+                onClick = onCancel,
+                enabled = !state.isSubmitting,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun DebtDirectionField(selected: String, onSelect: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        Text(
+            stringResource(R.string.debt_create_label_direction),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf(DebtDirections.I_OWE, DebtDirections.OWED_TO_ME).forEach { direction ->
+                FilterChip(
+                    selected = selected == direction,
+                    onClick = { onSelect(direction) },
+                    label = { Text(stringResource(debtDirectionLabelRes(direction))) },
+                    modifier = Modifier.padding(end = AppSpacing.smallGap),
+                )
+            }
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,10 +37,12 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -310,13 +311,7 @@ private fun DebtPickerSheet(
         model.debts.sortedByDescending { it.publicId == model.suggestedPublicId }
     }
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-            Text(
-                stringResource(R.string.repayment_draft_picker_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
+        AppSheetScaffold(title = stringResource(R.string.repayment_draft_picker_title)) {
             if (ordered.isEmpty()) {
                 Text(
                     stringResource(R.string.repayment_draft_picker_empty),
@@ -324,16 +319,16 @@ private fun DebtPickerSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                ordered.forEach { debt ->
+                ordered.forEachIndexed { index, debt ->
                     DebtPickerRow(
                         debt = debt,
                         currency = currency,
                         isSuggested = debt.publicId == model.suggestedPublicId,
+                        showDivider = index != ordered.lastIndex,
                         onPick = { onPick(debt) },
                     )
                 }
             }
-            Spacer(Modifier.size(AppSpacing.compactGap))
         }
     }
 }
@@ -343,23 +338,28 @@ private fun DebtPickerRow(
     debt: Debt,
     currency: CurrencyDisplay,
     isSuggested: Boolean,
+    showDivider: Boolean,
     onPick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onPick).padding(vertical = AppSpacing.smallGap),
-        verticalAlignment = Alignment.CenterVertically,
+    AppListRow(
+        onClick = onPick,
+        showDivider = showDivider,
     ) {
-        Text(debtPickerLabel(debt), style = MaterialTheme.typography.bodyLarge)
-        if (isSuggested) {
-            Spacer(Modifier.width(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.repayment_draft_picker_suggested_badge),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(debtPickerLabel(debt), style = MaterialTheme.typography.bodyLarge)
+                if (isSuggested) {
+                    Spacer(Modifier.width(AppSpacing.smallGap))
+                    Text(
+                        stringResource(R.string.repayment_draft_picker_suggested_badge),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(AppSpacing.smallGap))
         Text(
             stringResource(
                 R.string.repayment_draft_picker_remaining,

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -30,12 +29,16 @@ import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.MemberRepaymentProposal
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetScaffold
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -265,13 +268,7 @@ private fun ProposalForm(
     onCancel: () -> Unit,
 ) {
     val form = state.activeForm ?: return
-    Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-        Text(
-            stringResource(proposalFormTitleRes(form)),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.size(AppSpacing.cardPadding))
+    AppSheetScaffold(title = stringResource(proposalFormTitleRes(form))) {
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.debt_action_amount_label),
@@ -284,7 +281,6 @@ private fun ProposalForm(
             modifier = Modifier.fillMaxWidth(),
         )
         if (form == ProposalForm.Propose) {
-            Spacer(Modifier.size(AppSpacing.compactGap))
             AppTextInput(
                 state = AppTextInputState(
                     label = stringResource(R.string.debt_proposal_note_label),
@@ -295,14 +291,24 @@ private fun ProposalForm(
             )
         }
         state.validationError?.let { err ->
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(err.asString(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
-        Spacer(Modifier.size(AppSpacing.cardPadding))
-        HorizontalDivider()
-        Spacer(Modifier.size(AppSpacing.compactGap))
-        DebtActionFormButtons(isSubmitting = state.isSubmitting, onSubmit = onSubmit, onCancel = onCancel)
-        Spacer(Modifier.size(AppSpacing.compactGap))
+        AppSheetActionRow(
+            primary = AppSheetAction(
+                text = if (state.isSubmitting) {
+                    stringResource(R.string.debt_action_submitting)
+                } else {
+                    stringResource(R.string.debt_action_submit)
+                },
+                onClick = onSubmit,
+                enabled = !state.isSubmitting,
+            ),
+            secondary = AppSheetAction(
+                text = stringResource(R.string.common_cancel),
+                onClick = onCancel,
+                enabled = !state.isSubmitting,
+            ),
+        )
     }
 }
 
