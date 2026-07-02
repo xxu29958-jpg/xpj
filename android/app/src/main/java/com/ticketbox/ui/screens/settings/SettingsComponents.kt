@@ -129,7 +129,7 @@ fun SettingsEntryRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = AppSpacing.smallGap),
+                .padding(vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -153,8 +153,8 @@ fun SettingsEntryRow(
                 Text(
                     text = subtitle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 2,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

@@ -32,7 +32,7 @@
     <string name="settings_root_entry_notifications_title">通知与提醒</string>
     <string name="settings_root_entry_notifications_subtitle">待确认、大额和固定支出提醒开关</string>
     <string name="settings_root_entry_income_plans_title">收入记录</string>
-    <string name="settings_root_entry_income_plans_subtitle">补录工资到账和固定收入，算「本月可自由支配」</string>
+    <string name="settings_root_entry_income_plans_subtitle">工资到账、固定收入与可支配余额</string>
     <string name="settings_root_section_alerts_appearance">提醒与外观</string>
     <string name="settings_root_entry_family_members_title">家庭成员</string>
     <string name="settings_root_entry_family_members_subtitle">查看当前账本成员、角色和状态</string>
