@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,8 +42,9 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.MonthPickerSheet
@@ -80,10 +80,6 @@ fun GlobalSearchScreen(
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
 
-    if (onBack != null) {
-        BackHandler(onBack = onBack)
-    }
-
     if (showMonthPicker) {
         ModalBottomSheet(onDismissRequest = { showMonthPicker = false }) {
             MonthPickerSheet(
@@ -98,18 +94,24 @@ fun GlobalSearchScreen(
         }
     }
 
-    AppScrollableContent(
-        role = AppPageRole.Ledger,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.loadingPending,
-            hasReadableData = state.pendingLoaded,
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Ledger,
+            title = stringResource(R.string.global_search_header_title),
+            subtitle = stringResource(R.string.global_search_header_subtitle),
+            backText = stringResource(R.string.global_search_back),
+            onBack = onBack,
+            hasBottomBar = onBack == null,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
-        onRefresh = actions.onRefreshPending,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.loadingPending,
+                hasReadableData = state.pendingLoaded,
+            ),
+            onRefresh = actions.onRefreshPending,
+        ),
     ) {
-        item {
-            SearchHeader(onBack = onBack)
-        }
         item {
             SearchControlCard(
                 state = state,
@@ -122,16 +124,6 @@ fun GlobalSearchScreen(
         }
         searchBody(state = state, actions = actions)
     }
-}
-
-@Composable
-private fun SearchHeader(onBack: (() -> Unit)?) {
-    AppSecondaryPageHeader(
-        title = stringResource(R.string.global_search_header_title),
-        subtitle = stringResource(R.string.global_search_header_subtitle),
-        backText = stringResource(R.string.global_search_back),
-        onBack = onBack,
-    )
 }
 
 private fun LazyListScope.searchBody(

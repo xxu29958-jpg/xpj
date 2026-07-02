@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,8 +40,9 @@ import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -57,7 +57,7 @@ import com.valentinilk.shimmer.shimmer
  * ADR-0029 bill split UI: two tabs (Inbox / Sent), actions per row.
  *
  * v0.11 UI/UX P1 (structure): rendered on the shared page skeleton
- * ([AppScrollableContent]) like RecurringScreen — an in-content secondary header,
+ * ([AppSecondaryScrollableContent]) like RecurringScreen — an in-content secondary header,
  * chip tabs with counts, and one card per list with
  * divider-separated rows plus a shimmer loading state (previously the bare
  * Material `Scaffold`/`TopAppBar` showed nothing while loading). Data, actions,
@@ -76,37 +76,31 @@ fun BillSplitScreen(
         viewModel.refresh()
     }
 
-    // 系统返回键交给 onBack(镜像 BudgetScreen/RecurringScreen)。本屏可作全屏二级页
-    // 渲染——账本工具表入口走 statsSecondaryPage overlay、设置树入口走 SettingsDestinationHost——
-    // overlay 路径下没有外层 BackHandler(NavHost 仍在 start destination、回退栈为空),
-    // 缺这一句系统返回会穿透到 Activity 把 app 切后台而非回账本。
-    BackHandler { onBack() }
-
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.loading,
-            hasReadableData = hasReadableData,
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Ledger,
+            title = stringResource(R.string.bill_split_topbar_title),
+            subtitle = null,
+            backText = stringResource(R.string.bill_split_topbar_back),
+            onBack = onBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
-        onRefresh = viewModel::refresh,
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.loading,
+                hasReadableData = hasReadableData,
+            ),
+            onRefresh = viewModel::refresh,
+        ),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                AppSecondaryPageHeader(
-                    title = stringResource(R.string.bill_split_topbar_title),
-                    subtitle = null,
-                    backText = stringResource(R.string.bill_split_topbar_back),
-                    onBack = onBack,
-                )
-                BillSplitTabRow(
-                    selectedTab = selectedTab,
-                    onSelect = { selectedTab = it },
-                    inboxCount = state.inbox.size,
-                    sentCount = state.sent.size,
-                )
-            }
+            BillSplitTabRow(
+                selectedTab = selectedTab,
+                onSelect = { selectedTab = it },
+                inboxCount = state.inbox.size,
+                sentCount = state.sent.size,
+            )
         }
         state.message?.let {
             item {

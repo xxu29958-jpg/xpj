@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,8 +40,10 @@ import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -73,10 +74,6 @@ fun RecurringScreen(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
-    BackHandler(enabled = onBack != null) {
-        onBack?.invoke()
-    }
-
     var selectedTab by rememberSaveable { mutableStateOf(RecurringTab.Upcoming) }
     val activeItems = state.items.filter { it.status == "active" }
     val visibleItems = when (selectedTab) {
@@ -86,37 +83,34 @@ fun RecurringScreen(
     }
     val hasReadableData = state.items.isNotEmpty() || state.candidates.isNotEmpty()
 
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.loading,
-            hasReadableData = hasReadableData,
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = stringResource(R.string.recurring_header_title),
+            subtitle = stringResource(R.string.recurring_header_subtitle),
+            backText = stringResource(R.string.recurring_back_to_stats),
+            onBack = onBack,
+            hasBottomBar = onBack == null,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
-        onRefresh = onRefresh,
-        hasBottomBar = onBack == null,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.loading,
+                hasReadableData = hasReadableData,
+            ),
+            onRefresh = onRefresh,
+        ),
+        slots = AppSecondaryPageSlots(
+            actions = { SafeBadge() },
+        ),
     ) {
         item {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(
-                    if (onBack == null) AppSpacing.compactGap else AppSpacing.smallGap,
-                ),
-            ) {
-                AppSecondaryPageHeader(
-                    title = stringResource(R.string.recurring_header_title),
-                    subtitle = stringResource(R.string.recurring_header_subtitle),
-                    backText = stringResource(R.string.recurring_back_to_stats),
-                    onBack = onBack,
-                ) {
-                    SafeBadge()
-                }
-                RecurringTabRow(
-                    selected = selectedTab,
-                    onSelect = { selectedTab = it },
-                    activeCount = activeItems.size,
-                    pausedCount = state.items.count { it.status == "paused" },
-                )
-            }
+            RecurringTabRow(
+                selected = selectedTab,
+                onSelect = { selectedTab = it },
+                activeCount = activeItems.size,
+                pausedCount = state.items.count { it.status == "paused" },
+            )
         }
         state.message?.let {
             item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }

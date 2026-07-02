@@ -1,24 +1,29 @@
 package com.ticketbox.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.budget.BudgetEditorActions
 import com.ticketbox.ui.screens.budget.BudgetEditorSection
-import com.ticketbox.ui.screens.budget.BudgetHeader
 import com.ticketbox.ui.screens.budget.BudgetPageDecision
 import com.ticketbox.ui.screens.budget.BudgetSummarySection
 import com.ticketbox.ui.screens.budget.CategoryBudgetSection
 import com.ticketbox.ui.screens.budget.ExcludedBreakdownSection
+import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.ui.screens.budget.budgetPageDecision
 import com.ticketbox.viewmodel.BudgetUiState
 
@@ -42,10 +47,6 @@ fun BudgetScreen(
     actions: BudgetScreenActions,
     onBack: (() -> Unit)? = null,
 ) {
-    BackHandler(enabled = onBack != null) {
-        onBack?.invoke()
-    }
-
     BudgetScreenContent(state = state, actions = actions, onBack = onBack)
 }
 
@@ -58,23 +59,32 @@ private fun BudgetScreenContent(
     val currencyDisplay = LocalCurrencyDisplay.current
     val decision = budgetPageDecision(state)
 
-    AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = ReadableRefreshIndicator.isActive(
-            loading = state.loading,
-            hasReadableData = state.budget != null,
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Stats,
+            title = stringResource(R.string.budget_header_title),
+            subtitle = stringResource(R.string.budget_header_subtitle, state.month),
+            backText = stringResource(R.string.budget_back_to_stats),
+            onBack = onBack,
+            hasBottomBar = onBack == null,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ),
-        onRefresh = actions.onRefresh,
-        hasBottomBar = onBack == null,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+        refresh = AppSecondaryRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.loading,
+                hasReadableData = state.budget != null,
+            ),
+            onRefresh = actions.onRefresh,
+        ),
+        slots = AppSecondaryPageSlots(
+            actions = { SafeBadge() },
+        ),
     ) {
         item {
-            BudgetHeader(
+            MonthSwitcher(
                 month = state.month,
-                hasBottomBar = onBack == null,
                 onPreviousMonth = actions.onPreviousMonth,
                 onNextMonth = actions.onNextMonth,
-                onBack = onBack,
             )
         }
         state.message?.let { message ->
