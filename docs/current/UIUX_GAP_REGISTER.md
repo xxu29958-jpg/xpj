@@ -65,7 +65,10 @@ that actually ships the fix.
   from per-tag action cards to a scan-first overview plus divider rows with
   overflow actions, keeping rename/merge/delete/undo as server-confirmed actions.
   Category Rules now keeps rule rows and rule-application history inside single
-  divider-row groups instead of repeating independent row panels, and the stale
+  divider-row groups instead of repeating independent row panels. The latest
+  Settings secondary shell pass also hides the global bottom nav whenever the
+  Settings route is on a secondary page, so pages like Category Rules are no
+  longer visually or interactively competing with the root tab bar. The stale
   Data & Export / Security LongMethod baselines have been removed.
 
 ### ANDROID-2026-07-02-appearance-background-resource-and-overview

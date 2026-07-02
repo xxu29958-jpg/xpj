@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -151,6 +152,7 @@ internal fun SettingsDestinationHost(
     currentSkin: AppSkin,
     currentCurrency: CurrencyCode,
     showAdvancedTools: Boolean,
+    onSecondaryActiveChange: (Boolean) -> Unit = {},
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
 ) {
@@ -163,6 +165,13 @@ internal fun SettingsDestinationHost(
     val backgroundCopyFailedMessage = stringResource(R.string.settings_background_copy_failed)
     val backgroundCustomTitle = stringResource(R.string.settings_background_custom_title)
     val backgroundCropFailedMessage = stringResource(R.string.settings_background_crop_failed)
+
+    LaunchedEffect(route) {
+        onSecondaryActiveChange(route != SettingsDestination.Root)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onSecondaryActiveChange(false) }
+    }
 
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),

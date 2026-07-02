@@ -107,7 +107,7 @@ private fun MainRoute(
         contentWindowInsets = WindowInsets(0.dp),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (shellState.statsSecondaryPage == null) {
+            if (shellState.statsSecondaryPage == null && !shellState.settingsSecondaryActive) {
                 AppBottomNav(
                     items = BottomTab.entries.map { it.toBottomNavItem() },
                     selectedKey = shellState.selectedTab.key,

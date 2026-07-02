@@ -6,11 +6,14 @@
     <string name="category_rules_page_title">分类规则</string>
     <string name="category_rules_undo_deleted">已删除「%1$s」</string>
     <string name="category_rules_undo_button">撤销</string>
+    <string name="category_rules_section_manage">规则维护</string>
     <string name="category_rules_section_create">新增规则</string>
     <string name="category_rules_section_edit">编辑规则</string>
     <string name="category_rules_section_list">规则列表</string>
     <string name="category_rules_section_confirmed_apply">已入账应用</string>
     <string name="category_rules_section_history">最近应用记录</string>
+    <string name="category_rules_create_prompt_title">需要新规则时再添加</string>
+    <string name="category_rules_create_prompt_body">当前列表先展示已生效规则；新增只会在保存成功或进入待同步后生效。</string>
 
     <!-- CategoryRuleCard（SettingsCategoryComponents.kt）：单条规则卡片 -->
     <string name="category_rule_card_priority_status">优先级 %1$d · %2$s</string>

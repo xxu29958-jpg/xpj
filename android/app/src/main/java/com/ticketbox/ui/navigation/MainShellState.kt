@@ -64,6 +64,8 @@ internal class MainShellState {
     var statsSecondaryPage by mutableStateOf<StatsSecondaryPage?>(null)
         private set
 
+    var settingsSecondaryActive by mutableStateOf(false)
+
     var focusedRepaymentDraftPublicId by mutableStateOf<String?>(null)
         private set
 

@@ -50,6 +50,7 @@ internal fun SettingsRoute(
         currentSkin = currentSkin,
         currentCurrency = currentCurrency,
         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
+        onSecondaryActiveChange = { shellState.settingsSecondaryActive = it },
         actions = SettingsRouteActions(
             onTestConnection = settingsViewModel::testConnection,
             onRunDiagnostics = settingsViewModel::runDiagnostics,

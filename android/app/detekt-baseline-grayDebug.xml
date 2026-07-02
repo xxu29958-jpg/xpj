@@ -37,7 +37,6 @@
     <ID>LongMethod:BackgroundPreviewScreen.kt:@Composable fun BackgroundPreviewScreen</ID>
     <ID>LongMethod:BackgroundTasksScreen.kt:@Composable private fun TaskRow</ID>
     <ID>LongMethod:BindServerScreen.kt:@Composable fun BindServerScreen</ID>
-    <ID>LongMethod:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>
     <ID>LongMethod:CategoryStructureCard.kt:@Composable internal fun CategoryStructureCard</ID>
     <ID>LongMethod:CategoryStructureCard.kt:@Composable private fun CategoryStructureBarRow</ID>
     <ID>LongMethod:ChartTokens.kt:fun chartTokensForSkin: ChartTokens</ID>
