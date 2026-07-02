@@ -14,12 +14,14 @@ import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
-import com.ticketbox.ui.components.SafeBadge
+import com.ticketbox.ui.components.StatusPill
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.budget.BudgetEditorActions
 import com.ticketbox.ui.screens.budget.BudgetEditorSection
 import com.ticketbox.ui.screens.budget.BudgetPageDecision
+import com.ticketbox.ui.screens.budget.BudgetPageStatus
 import com.ticketbox.ui.screens.budget.BudgetSummarySection
 import com.ticketbox.ui.screens.budget.CategoryBudgetSection
 import com.ticketbox.ui.screens.budget.ExcludedBreakdownSection
@@ -77,7 +79,7 @@ private fun BudgetScreenContent(
             onRefresh = actions.onRefresh,
         ),
         slots = AppSecondaryPageSlots(
-            actions = { SafeBadge() },
+            actions = { BudgetStatusBadge(decision) },
         ),
     ) {
         item {
@@ -107,6 +109,25 @@ private fun BudgetScreenContent(
         }
         budgetExecutionSections(decision, currencyDisplay)
     }
+}
+
+@Composable
+private fun BudgetStatusBadge(decision: BudgetPageDecision) {
+    val stateTokens = LocalStateTokens.current
+    val (text, tone) = when (decision.status) {
+        BudgetPageStatus.Loading -> stringResource(R.string.budget_status_badge_loading) to stateTokens.neutral
+        BudgetPageStatus.LoadFailed -> stringResource(R.string.budget_status_badge_error) to stateTokens.warn
+        BudgetPageStatus.NotEnabled -> stringResource(R.string.budget_status_badge_not_enabled) to stateTokens.neutral
+        BudgetPageStatus.Active -> {
+            val budget = decision.configuredBudget
+            if (budget?.isOverBudget == true) {
+                stringResource(R.string.budget_status_badge_over) to stateTokens.warn
+            } else {
+                stringResource(R.string.budget_status_badge_active) to stateTokens.info
+            }
+        }
+    }
+    StatusPill(text = text, tone = tone)
 }
 
 private fun BudgetScreenActions.toBudgetEditorActions() = BudgetEditorActions(

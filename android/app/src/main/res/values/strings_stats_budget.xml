@@ -658,6 +658,11 @@
     <string name="budget_summary_metric_fixed">固定支出</string>
     <string name="budget_summary_metric_excluded">剔除</string>
     <string name="budget_summary_unconfigured_body">尚未启用月度预算。填写下方总预算后，会显示剩余额度、超支和分类执行。</string>
+    <string name="budget_status_badge_loading">读取中</string>
+    <string name="budget_status_badge_error">待刷新</string>
+    <string name="budget_status_badge_not_enabled">未启用</string>
+    <string name="budget_status_badge_active">预算中</string>
+    <string name="budget_status_badge_over">已超支</string>
 
     <!-- BudgetEditorSection / BudgetFields：预算编辑 + 输入字段。
          只读提示复用 common_readonly_ledger、保存中复用 common_saving（strings.xml 已有同值）。 -->
