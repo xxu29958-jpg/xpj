@@ -3,7 +3,6 @@ package com.ticketbox.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,12 +36,17 @@ import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetActions
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetState
 import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
+import com.ticketbox.ui.screens.expense.EditDraftPreviewActions
+import com.ticketbox.ui.screens.expense.EditDraftPreviewState
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseDateField
+import com.ticketbox.ui.screens.expense.ExpenseDateFieldActions
+import com.ticketbox.ui.screens.expense.ExpenseDateFieldState
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
@@ -303,7 +307,7 @@ fun ExpenseEditScreen(
         // 不走静态 BottomBarHeight 估算，故 hasBottomBar = false 避免双重预留。
         hasBottomBar = false,
         includeStatusBarPadding = true,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         bottomBar = {
             ExpenseEditActionBar(
                 state = ExpenseEditActionBarState(
@@ -339,19 +343,23 @@ fun ExpenseEditScreen(
         }
 
         EditDraftPreviewCard(
-            expense = currentExpense,
-            previewImage = previewImage,
-            imageLoading = state.imageLoading,
-            ocrRunning = state.ocrRunning,
-            readOnly = readOnly,
-            showLargeImage = showLargeImage,
-            onToggleLargeImage = {
-                if (!showLargeImage && state.fullImage == null) {
-                    onLoadFullImage()
-                }
-                showLargeImage = !showLargeImage
-            },
-            onRetryOcr = onRetryOcr,
+            state = EditDraftPreviewState(
+                expense = currentExpense,
+                previewImage = previewImage,
+                imageLoading = state.imageLoading,
+                ocrRunning = state.ocrRunning,
+                readOnly = readOnly,
+                showLargeImage = showLargeImage,
+            ),
+            actions = EditDraftPreviewActions(
+                onToggleLargeImage = {
+                    if (!showLargeImage && state.fullImage == null) {
+                        onLoadFullImage()
+                    }
+                    showLargeImage = !showLargeImage
+                },
+                onRetryOcr = onRetryOcr,
+            ),
         )
 
         if (showLargeImage && currentExpense.imagePath != null) {
@@ -410,12 +418,16 @@ fun ExpenseEditScreen(
             enabled = !readOnly,
         )
         ExpenseDateField(
-            expenseTime = expenseTime,
-            onPickDate = { showDatePicker = true },
-            onPickTime = { showTimePicker = true },
-            onUseNow = { expenseTime = nowUtcIso() },
-            onClear = { expenseTime = "" },
-            enabled = !readOnly,
+            state = ExpenseDateFieldState(
+                expenseTime = expenseTime,
+                enabled = !readOnly,
+            ),
+            actions = ExpenseDateFieldActions(
+                onPickDate = { showDatePicker = true },
+                onPickTime = { showTimePicker = true },
+                onUseNow = { expenseTime = nowUtcIso() },
+                onClear = { expenseTime = "" },
+            ),
         )
         ExpenseEditSourceInfo(
             source = currentExpense.source,

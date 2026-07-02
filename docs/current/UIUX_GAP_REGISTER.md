@@ -481,7 +481,10 @@ that actually ships the fix.
   scaffold consumes keyboard insets, and the amount field now forces compact
   actions while focused for devices that under-report IME state. The currency
   selector is a single-line scrollable chip row and all touched labels remain in
-  resources.
+  resources. The follow-up edit-detail slice removes the remaining large card
+  blocks from preview, repayment draft, and date editing, replaces them with open
+  secondary-workbench sections and dividers, and lets the preview amount autosize
+  instead of truncating.
 - Remaining QA: capture the same amount/currency keyboard state on a physical
   device and confirm the strip does not crowd, truncate, or cover the input.
 
