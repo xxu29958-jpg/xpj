@@ -1,7 +1,9 @@
 package com.ticketbox.data.remote
 
+import android.net.Network
 import java.net.InetAddress
 import java.net.Socket
+import java.net.SocketException
 import javax.net.SocketFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,6 +45,39 @@ class ApiClientNetworkResilienceTest {
         factory.createSocket()
 
         assertEquals(1, defaultFactory.createdSockets)
+    }
+
+    @Test
+    fun dynamicRouteHelpersUseActiveNonVpnRouteWhenAvailable() {
+        val ipv6 = InetAddress.getByName("2001:db8::20")
+        val ipv4 = InetAddress.getByName("203.0.113.20")
+        val defaultFactory = CountingSocketFactory()
+        val bypassFactory = CountingSocketFactory()
+        val routeProvider = FakeBackendNetworkRouteProvider(
+            addresses = listOf(ipv6, ipv4),
+            socketFactory = bypassFactory,
+        )
+        val dns = DynamicNetworkDns(routeProvider)
+        val socketFactory = DynamicNetworkSocketFactory(routeProvider, defaultFactory)
+
+        val resolved = dns.lookup("api.zen70.cn")
+        socketFactory.createSocket()
+
+        assertEquals(listOf(ipv4, ipv6), resolved)
+        assertEquals(listOf("api.zen70.cn"), routeProvider.lookups)
+        assertEquals(0, defaultFactory.createdSockets)
+        assertEquals(1, bypassFactory.createdSockets)
+    }
+
+    @Test
+    fun networkSelectionDeniedMatchesDirectAndSuppressedEpermSocketBindFailures() {
+        val error = SocketException("Binding socket to network 215 failed: EPERM (Operation not permitted)")
+        val root = SocketException("Connection reset")
+        val suppressed = SocketException("Binding socket to network 215 failed: EPERM (Operation not permitted)")
+        root.addSuppressed(suppressed)
+
+        assertTrue(error.isNetworkSelectionDenied())
+        assertTrue(root.isNetworkSelectionDenied())
     }
 
     @Test
@@ -96,6 +131,24 @@ class ApiClientNetworkResilienceTest {
         val tinyAttempt = retryBackoffMs(attempt = 0, baseDelayMs = tinyBase, random = { 0.0 })
         assertTrue(tinyAttempt >= 1L)
     }
+}
+
+private class FakeBackendNetworkRouteProvider(
+    private val addresses: List<InetAddress>? = null,
+    private val socketFactory: SocketFactory? = null,
+) : BackendNetworkRouteProvider {
+    val lookups = mutableListOf<String>()
+
+    override fun activeNonVpnLookup(hostname: String): List<InetAddress>? {
+        lookups += hostname
+        return addresses
+    }
+
+    override fun activeNonVpnSocketFactory(): SocketFactory? = socketFactory
+
+    override fun validatedNonVpnNetwork(): Network? = null
+
+    override fun disableNonVpnRouting() = Unit
 }
 
 private class CountingSocketFactory : SocketFactory() {

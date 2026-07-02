@@ -21,6 +21,7 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.Proxy
 import java.net.Socket
+import java.net.SocketException
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import javax.net.SocketFactory
@@ -161,8 +162,15 @@ internal object Ipv4FirstDns : Dns {
     }
 }
 
+internal interface BackendNetworkRouteProvider {
+    fun activeNonVpnLookup(hostname: String): List<InetAddress>?
+    fun activeNonVpnSocketFactory(): SocketFactory?
+    fun validatedNonVpnNetwork(): Network?
+    fun disableNonVpnRouting()
+}
+
 internal class DynamicNetworkDns(
-    private val networkProvider: NonVpnNetworkProvider?,
+    private val networkProvider: BackendNetworkRouteProvider?,
 ) : Dns {
     override fun lookup(hostname: String): List<InetAddress> {
         val addresses = networkProvider?.activeNonVpnLookup(hostname)
@@ -172,7 +180,7 @@ internal class DynamicNetworkDns(
 }
 
 internal class DynamicNetworkSocketFactory(
-    private val networkProvider: NonVpnNetworkProvider?,
+    private val networkProvider: BackendNetworkRouteProvider?,
     private val defaultFactory: SocketFactory = SocketFactory.getDefault(),
 ) : SocketFactory() {
     private fun selectedFactory(): SocketFactory {
@@ -274,34 +282,68 @@ internal fun retryBackoffMs(
 internal const val MAX_RETRY_BACKOFF_MS = 5_000L
 
 internal class NonVpnGetFallbackInterceptor(
-    private val networkProvider: NonVpnNetworkProvider?,
+    private val networkProvider: BackendNetworkRouteProvider?,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         try {
             return chain.proceed(request)
         } catch (defaultNetworkError: IOException) {
+            if (defaultNetworkError.isNetworkSelectionDenied()) {
+                networkProvider?.disableNonVpnRouting()
+                return executeFallbackCall(
+                    request = request,
+                    originalError = defaultNetworkError,
+                    client = defaultNetworkClient(),
+                )
+            }
             if (request.method != "GET") {
                 throw defaultNetworkError
             }
             val network = networkProvider?.validatedNonVpnNetwork() ?: throw defaultNetworkError
-            val fallbackClient = OkHttpClient.Builder()
-                .retryOnConnectionFailure(true)
-                .dns(NetworkDns(network))
-                .socketFactory(network.socketFactory)
-                .proxy(Proxy.NO_PROXY)
-                .protocols(listOf(Protocol.HTTP_1_1))
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
-                .writeTimeout(45, TimeUnit.SECONDS)
-                .callTimeout(60, TimeUnit.SECONDS)
-                .build()
-            return try {
-                fallbackClient.newCall(request).execute()
-            } catch (fallbackError: IOException) {
-                fallbackError.addSuppressed(defaultNetworkError)
-                throw fallbackError
-            }
+            return executeFallbackCall(
+                request = request,
+                originalError = defaultNetworkError,
+                client = nonVpnNetworkClient(network),
+            )
+        }
+    }
+
+    private fun defaultNetworkClient(): OkHttpClient {
+        return baseFallbackClientBuilder()
+            .dns(Ipv4FirstDns)
+            .socketFactory(SocketFactory.getDefault())
+            .build()
+    }
+
+    private fun nonVpnNetworkClient(network: Network): OkHttpClient {
+        return baseFallbackClientBuilder()
+            .dns(NetworkDns(network))
+            .socketFactory(network.socketFactory)
+            .build()
+    }
+
+    private fun baseFallbackClientBuilder(): OkHttpClient.Builder {
+        return OkHttpClient.Builder()
+            .retryOnConnectionFailure(true)
+            .proxy(Proxy.NO_PROXY)
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
+    }
+
+    private fun executeFallbackCall(
+        request: okhttp3.Request,
+        originalError: IOException,
+        client: OkHttpClient,
+    ): Response {
+        return try {
+            client.newCall(request).execute()
+        } catch (fallbackError: IOException) {
+            fallbackError.addSuppressed(originalError)
+            throw fallbackError
         }
     }
 }
@@ -314,40 +356,39 @@ internal class NetworkDns(
     }
 }
 
-internal class NonVpnNetworkProvider(context: Context) {
+internal class NonVpnNetworkProvider(context: Context) : BackendNetworkRouteProvider {
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    @Volatile
+    private var nonVpnRoutingDisabled = false
 
     @Suppress("DEPRECATION")
-    fun hasActiveVpnNetwork(): Boolean {
+    override fun validatedNonVpnNetwork(): Network? {
         return runCatching {
-            connectivityManager.allNetworks.any { network ->
-                connectivityManager.getNetworkCapabilities(network)
-                    ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-            }
-        }.getOrDefault(false)
-    }
-
-    @Suppress("DEPRECATION")
-    fun validatedNonVpnNetwork(): Network? {
-        return runCatching {
-            connectivityManager.allNetworks.firstOrNull { network ->
-                val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return@firstOrNull false
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            val activeNetwork = connectivityManager.activeNetwork
+            if (activeNetwork != null && activeNetwork.isValidatedNonVpnNetwork()) {
+                activeNetwork
+            } else {
+                connectivityManager.allNetworks.firstOrNull { network ->
+                    network.isValidatedNonVpnNetwork()
+                }
             }
         }.getOrNull()
     }
 
     fun activeNonVpnNetwork(): Network? {
-        if (!hasActiveVpnNetwork()) {
+        if (nonVpnRoutingDisabled) {
             return null
         }
+        // Some proxy/VPN apps rewrite backend DNS to 198.18.x virtual
+        // addresses without reliably exposing TRANSPORT_VPN to the app.
+        // Remote backend traffic therefore prefers a validated NOT_VPN
+        // network whenever Android exposes one. Local dev URLs opt out
+        // before this provider is wired into OkHttp.
         return validatedNonVpnNetwork()
     }
 
-    fun activeNonVpnLookup(hostname: String): List<InetAddress>? {
+    override fun activeNonVpnLookup(hostname: String): List<InetAddress>? {
         return activeNonVpnNetwork()?.let { network ->
             runCatching {
                 network.getAllByName(hostname).toList()
@@ -355,7 +396,37 @@ internal class NonVpnNetworkProvider(context: Context) {
         }
     }
 
-    fun activeNonVpnSocketFactory(): SocketFactory? {
+    override fun activeNonVpnSocketFactory(): SocketFactory? {
         return activeNonVpnNetwork()?.socketFactory
     }
+
+    override fun disableNonVpnRouting() {
+        nonVpnRoutingDisabled = true
+    }
+
+    private fun Network.isValidatedNonVpnNetwork(): Boolean {
+        val capabilities = connectivityManager.getNetworkCapabilities(this) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+    }
+}
+
+internal fun Throwable.isNetworkSelectionDenied(): Boolean {
+    return isNetworkSelectionDenied(seen = mutableSetOf())
+}
+
+private fun Throwable.isNetworkSelectionDenied(seen: MutableSet<Throwable>): Boolean {
+    if (!seen.add(this)) {
+        return false
+    }
+    val message = message.orEmpty()
+    if (this is SocketException &&
+        message.contains("Binding socket to network") &&
+        message.contains("EPERM")
+    ) {
+        return true
+    }
+    return cause?.isNetworkSelectionDenied(seen) == true ||
+        suppressed.any { error -> error.isNetworkSelectionDenied(seen) }
 }
