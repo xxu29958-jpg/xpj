@@ -25,6 +25,16 @@ data class LedgerExpenseGroup(
     val itemCount: Int get() = items.size
 }
 
+internal fun ledgerDayPreviewLabels(items: List<Expense>, limit: Int): List<String> {
+    return items
+        .mapNotNull { expense -> expense.previewLabel()?.let { LedgerDayPreviewCandidate(it, expense.amountCents ?: 0L) } }
+        .groupBy { it.label }
+        .map { (label, candidates) -> LedgerDayPreviewCandidate(label, candidates.maxOf { it.amountCents }) }
+        .sortedWith(compareByDescending<LedgerDayPreviewCandidate> { it.amountCents }.thenBy { it.label })
+        .take(limit)
+        .map { it.label }
+}
+
 fun groupLedgerExpenses(resources: Resources, items: List<Expense>): List<LedgerExpenseGroup> {
     return items
         .sortedWith(compareByDescending<Expense> { expenseLedgerDate(it) ?: LocalDate.MIN }.thenByDescending { ledgerSortTime(it) })
@@ -56,6 +66,11 @@ private fun String?.toLocalDateOrNull(): LocalDate? {
 
 private fun ledgerSortTime(expense: Expense): String = expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt
 
+private fun Expense.previewLabel(): String? {
+    return merchant?.trim()?.takeIf { it.isNotBlank() }
+        ?: category.trim().takeIf { it.isNotBlank() }
+}
+
 fun ledgerDayLabel(resources: Resources, date: LocalDate?): String {
     if (date == null) return resources.getString(R.string.ledger_day_no_date)
     val today = LocalDate.now()
@@ -67,5 +82,10 @@ fun ledgerDayLabel(resources: Resources, date: LocalDate?): String {
         else -> date.format(DateTimeFormatter.ofPattern("M月d日 E", Locale.CHINA))
     }
 }
+
+private data class LedgerDayPreviewCandidate(
+    val label: String,
+    val amountCents: Long,
+)
 
 private const val UNKNOWN_LEDGER_DAY_KEY = "unknown"

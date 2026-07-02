@@ -74,6 +74,35 @@ class LedgerGroupingTest {
         assertTrue(shouldCompactLedgerDayGroups(groupCount = 2, itemCount = 9))
         assertTrue(shouldCompactLedgerDayGroups(groupCount = 1, itemCount = 13))
     }
+
+    @Test
+    fun dayPreviewLabelsPrioritizeLargeAmounts() {
+        val labels = ledgerDayPreviewLabels(
+            items = listOf(
+                expense(id = 1, amountCents = 900).copy(merchant = "Coffee"),
+                expense(id = 2, amountCents = 30_000).copy(merchant = "Rent"),
+                expense(id = 3, amountCents = 5_000).copy(merchant = "Market"),
+                expense(id = 4, amountCents = 12_000).copy(merchant = "Pharmacy"),
+            ),
+            limit = 3,
+        )
+
+        assertEquals(listOf("Rent", "Pharmacy", "Market"), labels)
+    }
+
+    @Test
+    fun dayPreviewLabelsDeduplicateMerchantByLargestAmount() {
+        val labels = ledgerDayPreviewLabels(
+            items = listOf(
+                expense(id = 1, amountCents = 900).copy(merchant = "Coffee"),
+                expense(id = 2, amountCents = 12_000).copy(merchant = "Coffee"),
+                expense(id = 3, amountCents = 5_000).copy(merchant = "Market"),
+            ),
+            limit = 3,
+        )
+
+        assertEquals(listOf("Coffee", "Market"), labels)
+    }
 }
 
 private fun expense(id: Long, amountCents: Long?): Expense = Expense(

@@ -10,6 +10,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.screens.LedgerExpenseGroup
+import com.ticketbox.ui.screens.ledgerDayPreviewLabels
 import com.ticketbox.viewmodel.LedgerViewMode
 
 private object LedgerDaySectionDefaults {
@@ -118,10 +119,7 @@ private fun LedgerExpenseRow(
 @Composable
 private fun LedgerExpenseGroup.previewText(): String? {
     val separator = stringResource(R.string.ledger_day_preview_separator)
-    val names = items
-        .map { it.merchant?.trim()?.takeIf { merchant -> merchant.isNotBlank() } ?: it.category }
-        .distinct()
-        .take(LedgerDaySectionDefaults.PreviewMerchantCount)
+    val names = ledgerDayPreviewLabels(items, LedgerDaySectionDefaults.PreviewMerchantCount)
     if (names.isEmpty()) return null
     val hiddenCount = itemCount - names.size
     val mainText = names.joinToString(separator)
