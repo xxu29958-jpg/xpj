@@ -62,7 +62,7 @@ internal fun ReportsInsightCard(
         if (hasCurrentSpend && overview.merchantRanking.isNotEmpty()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
             MerchantRankingBlock(
-                rows = overview.merchantRanking.take(5),
+                rows = overview.merchantRanking,
                 rankingMetric = overview.rankingMetric,
                 onRankingMetricChange = onRankingMetricChange,
             )

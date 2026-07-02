@@ -20,7 +20,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
@@ -74,7 +73,7 @@ private fun LifestyleHeader(
     currencyDisplay: CurrencyDisplay,
 ) {
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
-    val frequentMerchant = lifestyle.frequentMerchants.firstOrNull()
+    val frequentMerchant = frequentMerchantDisplayRows(lifestyle.frequentMerchants).firstOrNull()
     val merchantCount = lifestyle.frequentMerchants.size
     val maxExpense = lifestyle.maxExpense
     val caption = when {
@@ -154,7 +153,7 @@ private fun LifestyleMetricRow(
     ) {
         Box(
             modifier = Modifier
-                .size(8.dp)
+                .size(AppSpacing.smallGap)
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(visuals.accent),
         )
@@ -191,7 +190,7 @@ private fun LifestyleMetricRow(
 @Composable
 private fun FrequentMerchantsSection(merchants: List<FrequentMerchant>) {
     val visuals = LocalThemeVisuals.current
-    val visibleMerchants = merchants.take(5)
+    val visibleMerchants = frequentMerchantDisplayRows(merchants)
     val maxCount = visibleMerchants.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
     val minCount = visibleMerchants.minOfOrNull { it.count } ?: maxCount
     val showBars = maxCount > minCount
@@ -235,7 +234,7 @@ private fun FrequentMerchantRow(
         ) {
             Text(
                 text = (index + 1).toString(),
-                modifier = Modifier.width(20.dp),
+                modifier = Modifier.width(AppSpacing.cardPadding),
                 style = MaterialTheme.typography.labelMedium.tabularNum(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -256,14 +255,14 @@ private fun FrequentMerchantRow(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(5.dp)
+                    .height(AppSpacing.miniGap)
                     .clip(RoundedCornerShape(AppRadius.pill))
                     .background(track),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(progress)
-                        .height(5.dp)
+                        .height(AppSpacing.miniGap)
                         .clip(RoundedCornerShape(AppRadius.pill))
                         .background(color.copy(alpha = AppAlpha.opaque)),
                 )
@@ -384,3 +383,19 @@ private fun hasLifestyleSignals(lifestyle: LifestyleStats): Boolean =
     lifestyle.aiSubscriptionAmountCents > 0L ||
         lifestyle.digitalAmountCents > 0L ||
         lifestyle.maxExpense != null
+
+internal fun frequentMerchantDisplayRows(
+    merchants: List<FrequentMerchant>,
+    limit: Int = FrequentMerchantVisibleLimit,
+): List<FrequentMerchant> =
+    merchants
+        .sortedWith(
+            compareByDescending<FrequentMerchant> {
+                it.count.coerceAtLeast(0)
+            }.thenBy {
+                it.merchant
+            },
+        )
+        .take(limit)
+
+private const val FrequentMerchantVisibleLimit = 5

@@ -37,14 +37,15 @@ internal fun MerchantRankingBlock(
     rankingMetric: ReportRankingMetric,
     onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
 ) {
-    val maxValue = merchantRankingMaxValue(rows, rankingMetric)
+    val visibleRows = merchantRankingVisibleRows(rows, rankingMetric)
+    val maxValue = merchantRankingMaxValue(visibleRows, rankingMetric)
     val merchantFallback = stringResource(R.string.stats_reports_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap + AppSpacing.tinyGap)) {
         MerchantRankingHeader(
             rankingMetric = rankingMetric,
             onRankingMetricChange = onRankingMetricChange,
         )
-        rows.forEach { row ->
+        visibleRows.forEach { row ->
             MerchantRankingRow(
                 label = row.merchant.ifBlank { merchantFallback },
                 row = row,
@@ -178,6 +179,30 @@ internal fun merchantRankingBarValue(row: ReportMerchantRanking, rankingMetric: 
 internal fun merchantRankingMaxValue(rows: List<ReportMerchantRanking>, rankingMetric: ReportRankingMetric): Long =
     rows.maxOfOrNull { merchantRankingBarValue(it, rankingMetric) }?.coerceAtLeast(1L) ?: 1L
 
+internal fun merchantRankingVisibleRows(
+    rows: List<ReportMerchantRanking>,
+    rankingMetric: ReportRankingMetric,
+    limit: Int = MerchantRankingVisibleLimit,
+): List<ReportMerchantRanking> =
+    rows.sortedWith(
+        when (rankingMetric) {
+            ReportRankingMetric.Count -> compareByDescending<ReportMerchantRanking> {
+                it.count.coerceAtLeast(0)
+            }.thenByDescending {
+                it.amountCents.coerceAtLeast(0L)
+            }.thenBy {
+                it.merchant
+            }
+            ReportRankingMetric.Amount -> compareByDescending<ReportMerchantRanking> {
+                it.amountCents.coerceAtLeast(0L)
+            }.thenByDescending {
+                it.count.coerceAtLeast(0)
+            }.thenBy {
+                it.merchant
+            }
+        },
+    ).take(limit)
+
 private fun merchantRankingTitleRes(rankingMetric: ReportRankingMetric): Int = when (rankingMetric) {
     ReportRankingMetric.Count -> R.string.stats_reports_merchant_frequency_title
     ReportRankingMetric.Amount -> R.string.stats_reports_merchant_spend_title
@@ -187,3 +212,5 @@ private fun merchantRankingCaptionRes(rankingMetric: ReportRankingMetric): Int =
     ReportRankingMetric.Count -> R.string.stats_reports_merchant_count_caption
     ReportRankingMetric.Amount -> R.string.stats_reports_merchant_amount_caption
 }
+
+private const val MerchantRankingVisibleLimit = 5

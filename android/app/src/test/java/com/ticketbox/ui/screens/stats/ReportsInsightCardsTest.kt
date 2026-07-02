@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.stats
 
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportRankingMetric
@@ -109,6 +110,37 @@ class ReportsInsightCardsTest {
         assertEquals(3000L, merchantRankingMaxValue(rows, ReportRankingMetric.Amount))
         assertEquals(900L, merchantRankingBarValue(rows.first(), ReportRankingMetric.Amount))
         assertEquals(3000L, merchantRankingBarValue(rows.last(), ReportRankingMetric.Amount))
+    }
+
+    @Test
+    fun rankingDisplayRowsSortBySelectedMetricAndCount() {
+        val rankingRows = listOf(
+            ReportMerchantRanking(merchant = "A", amountCents = 100L, count = 1),
+            ReportMerchantRanking(merchant = "B", amountCents = 50L, count = 4),
+            ReportMerchantRanking(merchant = "C", amountCents = 200L, count = 2),
+        )
+
+        assertEquals(
+            listOf("B", "C", "A"),
+            merchantRankingVisibleRows(rankingRows, ReportRankingMetric.Count).map { it.merchant },
+        )
+        assertEquals(
+            listOf("C", "A", "B"),
+            merchantRankingVisibleRows(rankingRows, ReportRankingMetric.Amount).map { it.merchant },
+        )
+        val merchantRows = listOf(
+            FrequentMerchant(merchant = "C", count = 1),
+            FrequentMerchant(merchant = "A", count = 4),
+            FrequentMerchant(merchant = "B", count = 2),
+            FrequentMerchant(merchant = "D", count = 3),
+            FrequentMerchant(merchant = "E", count = 5),
+            FrequentMerchant(merchant = "F", count = 6),
+        )
+
+        assertEquals(
+            listOf("F", "E", "A", "D", "B"),
+            frequentMerchantDisplayRows(merchantRows).map { it.merchant },
+        )
     }
 
     @Test
