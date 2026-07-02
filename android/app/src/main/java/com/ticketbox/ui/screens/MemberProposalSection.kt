@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,7 +16,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -29,13 +27,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAmountInput
+import com.ticketbox.ui.components.AppAmountInputActions
+import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.design.AppSpacing
@@ -236,6 +239,7 @@ private fun CreditorForgiveAction(
 @Composable
 internal fun ProposalFormSheet(
     state: MemberProposalUiState,
+    currency: CurrencyDisplay,
     viewModel: MemberRepaymentProposalViewModel,
     expectedRowVersion: Long,
     onClose: () -> Unit,
@@ -244,6 +248,7 @@ internal fun ProposalFormSheet(
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         ProposalForm(
             state = state,
+            currency = currency,
             viewModel = viewModel,
             onSubmit = { viewModel.submit(expectedRowVersion) },
             onCancel = onClose,
@@ -254,6 +259,7 @@ internal fun ProposalFormSheet(
 @Composable
 private fun ProposalForm(
     state: MemberProposalUiState,
+    currency: CurrencyDisplay,
     viewModel: MemberRepaymentProposalViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -266,21 +272,25 @@ private fun ProposalForm(
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.size(AppSpacing.cardPadding))
-        OutlinedTextField(
-            value = state.amountInput,
-            onValueChange = viewModel::updateAmount,
-            label = { Text(stringResource(R.string.debt_action_amount_label)) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        AppAmountInput(
+            state = AppAmountInputState(
+                label = stringResource(R.string.debt_action_amount_label),
+                currency = currency.homeCurrency,
+                value = state.amountInput,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                isError = state.validationError != null,
+            ),
+            actions = AppAmountInputActions(onValueChange = viewModel::updateAmount),
             modifier = Modifier.fillMaxWidth(),
         )
         if (form == ProposalForm.Propose) {
             Spacer(Modifier.size(AppSpacing.compactGap))
-            OutlinedTextField(
-                value = state.noteInput,
-                onValueChange = viewModel::updateNote,
-                label = { Text(stringResource(R.string.debt_proposal_note_label)) },
-                singleLine = true,
+            AppTextInput(
+                state = AppTextInputState(
+                    label = stringResource(R.string.debt_proposal_note_label),
+                    value = state.noteInput,
+                ),
+                actions = AppTextInputActions(onValueChange = viewModel::updateNote),
                 modifier = Modifier.fillMaxWidth(),
             )
         }

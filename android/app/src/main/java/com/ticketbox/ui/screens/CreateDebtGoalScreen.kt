@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +34,9 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -131,11 +133,12 @@ private fun CreateDebtGoalNameField(name: String, onNameChange: (String) -> Unit
         title = stringResource(R.string.debt_goal_create_name_section),
         subtitle = stringResource(R.string.debt_goal_create_name_hint),
     ) {
-        OutlinedTextField(
-            value = name,
-            onValueChange = onNameChange,
-            label = { Text(stringResource(R.string.debt_goal_create_name_label)) },
-            singleLine = true,
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.debt_goal_create_name_label),
+                value = name,
+            ),
+            actions = AppTextInputActions(onValueChange = onNameChange),
             modifier = Modifier.fillMaxWidth(),
         )
     }

@@ -8,13 +8,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.BudgetUiState
@@ -92,14 +94,17 @@ private fun BudgetCoreFields(
             modifier = Modifier.weight(1f),
         )
     }
-    OutlinedTextField(
-        value = state.form.excludedCategories,
-        onValueChange = actions.onExcludedCategoriesChange,
+    AppTextInput(
+        state = AppTextInputState(
+            label = stringResource(R.string.budget_editor_excluded_label),
+            value = state.form.excludedCategories,
+            placeholder = stringResource(R.string.budget_editor_excluded_placeholder),
+            singleLine = false,
+            minLines = 1,
+            maxLines = 3,
+        ),
+        actions = AppTextInputActions(onValueChange = actions.onExcludedCategoriesChange),
         modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.budget_editor_excluded_label)) },
-        placeholder = { Text(stringResource(R.string.budget_editor_excluded_placeholder)) },
-        minLines = 1,
-        maxLines = 3,
     )
 }
 

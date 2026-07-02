@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
@@ -21,7 +20,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,8 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -45,6 +41,9 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAmountInput
+import com.ticketbox.ui.components.AppAmountInputActions
+import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -52,6 +51,9 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -133,6 +135,7 @@ fun DebtListScreen(
     if (showAddSheet) {
         DebtAddSheet(
             state = state,
+            currency = currency,
             viewModel = viewModel,
             sheetState = sheetState,
             onClose = { showAddSheet = false; viewModel.resetDraft() },
@@ -323,6 +326,7 @@ private fun DebtEmptyStateCard() {
 @Composable
 private fun DebtAddSheet(
     state: DebtListUiState,
+    currency: CurrencyDisplay,
     viewModel: DebtListViewModel,
     sheetState: SheetState,
     onClose: () -> Unit,
@@ -330,6 +334,7 @@ private fun DebtAddSheet(
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         DebtDraftForm(
             state = state,
+            currency = currency,
             viewModel = viewModel,
             onSubmit = { viewModel.submitDraft() },
             onCancel = onClose,
@@ -340,6 +345,7 @@ private fun DebtAddSheet(
 @Composable
 private fun DebtDraftForm(
     state: DebtListUiState,
+    currency: CurrencyDisplay,
     viewModel: DebtListViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -360,20 +366,24 @@ private fun DebtDraftForm(
         Spacer(Modifier.size(AppSpacing.miniGap))
         DebtDirectionChips(selected = draft.direction, onSelect = viewModel::updateDraftDirection)
         Spacer(Modifier.size(AppSpacing.compactGap))
-        OutlinedTextField(
-            value = draft.counterpartyLabel,
-            onValueChange = viewModel::updateDraftCounterparty,
-            label = { Text(stringResource(R.string.debt_create_label_counterparty)) },
-            singleLine = true,
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.debt_create_label_counterparty),
+                value = draft.counterpartyLabel,
+            ),
+            actions = AppTextInputActions(onValueChange = viewModel::updateDraftCounterparty),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.size(AppSpacing.compactGap))
-        OutlinedTextField(
-            value = draft.amountYuanInput,
-            onValueChange = viewModel::updateDraftAmount,
-            label = { Text(stringResource(R.string.debt_create_label_amount)) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        AppAmountInput(
+            state = AppAmountInputState(
+                label = stringResource(R.string.debt_create_label_amount),
+                currency = currency.homeCurrency,
+                value = draft.amountYuanInput,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                isError = draft.validationError != null,
+            ),
+            actions = AppAmountInputActions(onValueChange = viewModel::updateDraftAmount),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.size(AppSpacing.compactGap))

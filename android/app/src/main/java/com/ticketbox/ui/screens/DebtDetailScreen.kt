@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,7 +16,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -28,14 +26,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAmountInput
+import com.ticketbox.ui.components.AppAmountInputActions
+import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -97,11 +99,17 @@ fun DebtDetailScreen(
         callbacks = callbacks,
     )
     if (state.activeAction != null) {
-        DebtActionSheet(state = state, viewModel = viewModel, onClose = viewModel::dismissAction)
+        DebtActionSheet(
+            state = state,
+            currency = currency,
+            viewModel = viewModel,
+            onClose = viewModel::dismissAction,
+        )
     }
     if (debt != null && proposalState.activeForm != null) {
         ProposalFormSheet(
             state = proposalState,
+            currency = currency,
             viewModel = proposalViewModel,
             expectedRowVersion = debt.rowVersion,
             onClose = proposalViewModel::dismissForm,
@@ -238,18 +246,26 @@ internal fun DebtNoteCard(text: String) {
 @Composable
 private fun DebtActionSheet(
     state: DebtDetailUiState,
+    currency: CurrencyDisplay,
     viewModel: DebtDetailViewModel,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
-        DebtActionForm(state = state, viewModel = viewModel, onSubmit = viewModel::submit, onCancel = onClose)
+        DebtActionForm(
+            state = state,
+            currency = currency,
+            viewModel = viewModel,
+            onSubmit = viewModel::submit,
+            onCancel = onClose,
+        )
     }
 }
 
 @Composable
 private fun DebtActionForm(
     state: DebtDetailUiState,
+    currency: CurrencyDisplay,
     viewModel: DebtDetailViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -263,12 +279,15 @@ private fun DebtActionForm(
         )
         Spacer(Modifier.size(AppSpacing.cardPadding))
         if (action != DebtAction.Void) {
-            OutlinedTextField(
-                value = state.amountInput,
-                onValueChange = viewModel::updateAmount,
-                label = { Text(stringResource(debtActionAmountLabelRes(action))) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            AppAmountInput(
+                state = AppAmountInputState(
+                    label = stringResource(debtActionAmountLabelRes(action)),
+                    currency = currency.homeCurrency,
+                    value = state.amountInput,
+                    placeholder = stringResource(R.string.components_amount_input_placeholder),
+                    isError = state.validationError != null,
+                ),
+                actions = AppAmountInputActions(onValueChange = viewModel::updateAmount),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -278,11 +297,12 @@ private fun DebtActionForm(
         }
         if (action != DebtAction.Repayment) {
             Spacer(Modifier.size(AppSpacing.compactGap))
-            OutlinedTextField(
-                value = state.reasonInput,
-                onValueChange = viewModel::updateReason,
-                label = { Text(stringResource(R.string.debt_action_reason_label)) },
-                singleLine = true,
+            AppTextInput(
+                state = AppTextInputState(
+                    label = stringResource(R.string.debt_action_reason_label),
+                    value = state.reasonInput,
+                ),
+                actions = AppTextInputActions(onValueChange = viewModel::updateReason),
                 modifier = Modifier.fillMaxWidth(),
             )
         }

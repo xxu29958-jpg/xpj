@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -20,6 +19,9 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
@@ -65,14 +67,15 @@ internal fun installmentProgressPair(paidCount: Long?, count: Long): Pair<Long, 
 internal fun DebtInstallmentCountField(kind: String, countInput: String, onValueChange: (String) -> Unit) {
     if (kind != DebtKinds.INSTALLMENT) return
     Spacer(Modifier.size(AppSpacing.compactGap))
-    OutlinedTextField(
-        value = countInput,
-        onValueChange = onValueChange,
-        label = { Text(stringResource(R.string.debt_create_label_installment_count)) },
-        supportingText = { Text(stringResource(R.string.debt_create_installment_count_hint)) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    AppTextInput(
+        state = AppTextInputState(
+            label = stringResource(R.string.debt_create_label_installment_count),
+            value = countInput,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        ),
+        actions = AppTextInputActions(onValueChange = onValueChange),
         modifier = Modifier.fillMaxWidth(),
+        supportingText = { Text(stringResource(R.string.debt_create_installment_count_hint)) },
     )
 }
 
@@ -84,14 +87,15 @@ internal fun DebtInstallmentCountField(kind: String, countInput: String, onValue
 internal fun DebtInstallmentPeriodField(kind: String, periodInput: String, onValueChange: (String) -> Unit) {
     if (kind != DebtKinds.INSTALLMENT) return
     Spacer(Modifier.size(AppSpacing.compactGap))
-    OutlinedTextField(
-        value = periodInput,
-        onValueChange = onValueChange,
-        label = { Text(stringResource(R.string.debt_create_label_installment_period)) },
-        supportingText = { Text(stringResource(R.string.debt_create_installment_period_hint)) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    AppTextInput(
+        state = AppTextInputState(
+            label = stringResource(R.string.debt_create_label_installment_period),
+            value = periodInput,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        ),
+        actions = AppTextInputActions(onValueChange = onValueChange),
         modifier = Modifier.fillMaxWidth(),
+        supportingText = { Text(stringResource(R.string.debt_create_installment_period_hint)) },
     )
 }
 
