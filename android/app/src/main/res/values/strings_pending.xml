@@ -159,13 +159,13 @@
 
     <!-- MissingAmountSheet -->
     <string name="pending_missing_amount_title">补全金额</string>
-    <string name="pending_missing_amount_hint">按原始币种填写。确认后由账本服务换算入账金额。</string>
+    <string name="pending_missing_amount_hint"></string>
     <string name="pending_missing_amount_field_label">金额</string>
     <string name="pending_missing_amount_invalid">请输入大于 0 的金额</string>
     <string name="pending_missing_amount_save_draft">仅保存</string>
     <string name="pending_missing_amount_processing">处理中</string>
     <string name="pending_missing_amount_save_and_confirm">保存并确认</string>
-    <string name="pending_missing_amount_footnote">保存并确认会先保存金额，再确认入账。没填金额不会被确认。</string>
+    <string name="pending_missing_amount_footnote"></string>
 
     <!-- BulkConfirmSheet -->
     <string name="pending_bulk_sheet_title">批量确认这一批账单</string>

@@ -15,7 +15,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 @Composable
 internal fun ReviewSheetScaffold(
     title: String,
-    subtitle: String,
+    subtitle: String = "",
     modifier: Modifier = Modifier,
     chrome: ReviewSheetChrome? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -32,11 +32,13 @@ internal fun ReviewSheetScaffold(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = AppTextHierarchy.heading.weight,
         )
-        Text(
-            text = subtitle,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
+        subtitle.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         content()
     }
 }

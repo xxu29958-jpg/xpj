@@ -51,6 +51,7 @@ internal data class ExpenseCurrencyFieldOptions(
     val onAmountFocusChanged: (Boolean) -> Unit = {},
     val supportingText: String? = null,
     val statusText: String? = null,
+    val showFxHint: Boolean = true,
 )
 
 @Immutable
@@ -102,7 +103,7 @@ internal fun ExpenseCurrencyFields(
                 onFocusChanged = { options.onAmountFocusChanged(it.isFocused) },
             ),
             focusRequester = amountFocus,
-            supportingText = options.supportingText?.let { text ->
+            supportingText = options.supportingText?.takeIf { it.isNotBlank() }?.let { text ->
                 { AmountSupportingText(text) }
             },
         )
@@ -115,7 +116,7 @@ internal fun ExpenseCurrencyFields(
             },
         )
         options.statusText?.let { AmountStatusText(it) }
-        if (currency != FxContract.HomeCurrency) {
+        if (options.showFxHint && currency != FxContract.HomeCurrency) {
             Text(
                 text = stringResource(R.string.expense_edit_fx_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

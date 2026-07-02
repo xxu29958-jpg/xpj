@@ -98,11 +98,5 @@ internal fun MissingAmountSheetContent(
                 Text(if (saving) stringResource(R.string.pending_missing_amount_processing) else stringResource(R.string.pending_missing_amount_save_and_confirm))
             }
         }
-
-        Text(
-            text = stringResource(R.string.pending_missing_amount_footnote),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-        )
     }
 }

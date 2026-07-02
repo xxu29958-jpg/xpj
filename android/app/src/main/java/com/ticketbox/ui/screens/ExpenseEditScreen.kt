@@ -63,6 +63,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
 import com.ticketbox.ui.screens.expense.ExpenseRepaymentDraftPanel
+import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.OcrProgressCard
 import com.ticketbox.ui.screens.expense.SplitsEditorSheet
@@ -179,7 +180,7 @@ fun ExpenseEditScreen(
     var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(
             formatMinorAmountInput(
-                currentExpense.originalAmountMinor ?: currentExpense.amountCents,
+                initialExpenseAmountInputMinor(currentExpense),
                 currentExpense.originalCurrencyCode,
             )
         )
@@ -368,7 +369,6 @@ fun ExpenseEditScreen(
                 enabled = !readOnly,
                 autoFocusAmount = false,
                 onAmountFocusChanged = { amountFocused = it },
-                supportingText = stringResource(R.string.expense_edit_amount_supporting_text),
             ),
         )
         ExpenseEditMerchantField(

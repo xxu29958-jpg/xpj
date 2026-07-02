@@ -202,7 +202,7 @@ fun ManualExpenseSheet(
             onAmountChange = { amountText = it },
             options = ExpenseCurrencyFieldOptions(
                 enabled = !saving,
-                supportingText = stringResource(R.string.ledger_manual_amount_supporting_text),
+                showFxHint = false,
             ),
         )
         val feedbackMessage = message ?: errorMessage
@@ -338,6 +338,7 @@ private fun ManualExpenseActionRow(
 
 @Composable
 private fun ManualExpenseHeader(keyboardVisible: Boolean) {
+    val subtitle = stringResource(R.string.ledger_manual_sheet_subtitle)
     Text(
         stringResource(R.string.ledger_manual_sheet_title),
         style = if (keyboardVisible) {
@@ -346,9 +347,9 @@ private fun ManualExpenseHeader(keyboardVisible: Boolean) {
             MaterialTheme.typography.titleLarge
         },
     )
-    if (!keyboardVisible) {
+    if (!keyboardVisible && subtitle.isNotBlank()) {
         Text(
-            text = stringResource(R.string.ledger_manual_sheet_subtitle),
+            text = subtitle,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
