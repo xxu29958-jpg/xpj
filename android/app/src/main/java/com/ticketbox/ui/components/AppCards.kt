@@ -2,11 +2,14 @@ package com.ticketbox.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,7 +18,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -23,8 +28,9 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalThemeVisuals
+
 @Composable
 fun AppGlassCard(
     modifier: Modifier = Modifier,
@@ -105,6 +111,35 @@ fun AppSectionGroup(
             content = content,
         )
         HorizontalDivider(color = dividerColor)
+    }
+}
+
+@Composable
+fun AppListRow(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    settled: Boolean = false,
+    showDivider: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium)
+    val clickModifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (settled) Modifier.alpha(AppAlpha.opaque) else Modifier),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(clickModifier)
+                .padding(vertical = AppSpacing.contentGap),
+            verticalAlignment = Alignment.Top,
+            content = content,
+        )
+        if (showDivider) {
+            HorizontalDivider(color = dividerColor)
+        }
     }
 }
 

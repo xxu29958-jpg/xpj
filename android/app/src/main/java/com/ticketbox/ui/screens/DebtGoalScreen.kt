@@ -1,15 +1,13 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
@@ -33,6 +31,7 @@ import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppDataAuthorityStrip
+import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -206,9 +205,12 @@ private fun LazyListScope.debtGoalListSection(
         item { DebtGoalEmptyState() }
         return
     }
-    items(state.goals, key = { it.publicId }) { goal ->
-        DebtGoalListRow(goal = goal, onClick = { viewModel.openDetail(goal) })
-        DebtGoalRowDivider()
+    itemsIndexed(state.goals, key = { _, goal -> goal.publicId }) { index, goal ->
+        DebtGoalListRow(
+            goal = goal,
+            onClick = { viewModel.openDetail(goal) },
+            showDivider = index < state.goals.lastIndex,
+        )
     }
 }
 
@@ -268,15 +270,17 @@ private fun DebtGoalMetricRow(label: String, value: String) {
 }
 
 @Composable
-private fun DebtGoalListRow(goal: Goal, onClick: () -> Unit) {
+private fun DebtGoalListRow(
+    goal: Goal,
+    onClick: () -> Unit,
+    showDivider: Boolean,
+) {
     val evaluation = goal.debtRepayment
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = AppSpacing.compactGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
+    AppListRow(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        settled = evaluation?.isAchieved == true,
+        showDivider = showDivider,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(
@@ -385,8 +389,13 @@ private fun LazyListScope.debtGoalDetailSection(
     }
     val links =
         if (isPureExternal) evaluation.linkedDebts.sortedForPlan(callbacks.sortMode) else evaluation.linkedDebts
-    items(links, key = { it.debtPublicId }) { link ->
-        DebtGoalLinkRow(link = link, currency = currency, onClick = onOpenLinkedDebt)
+    itemsIndexed(links, key = { _, link -> link.debtPublicId }) { index, link ->
+        DebtGoalLinkRow(
+            link = link,
+            currency = currency,
+            onClick = onOpenLinkedDebt,
+            showDivider = index < links.lastIndex,
+        )
     }
 }
 

@@ -1,8 +1,8 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
@@ -44,8 +43,9 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
@@ -227,82 +227,111 @@ private fun LazyListScope.debtListSection(
     onOpenDebt: (Debt) -> Unit,
 ) {
     if (state.debts.isEmpty() && !state.isLoading) {
-        item { DebtEmptyStateCard() }
+        item { DebtEmptyStateSection() }
         return
     }
-    // slice 1A: 软分两组 (家人在前)，家人行 communal、外部行会计；各组 active-first 排序。
     val (members, externals) = groupDebtsForList(state.debts)
+    // Keep family debts and external debts in separate scan groups.
     if (members.isNotEmpty()) {
         item(key = "debt-section-family") {
-            DebtSectionHeader(stringResource(R.string.debt_list_section_family))
-        }
-        items(members, key = { it.publicId }) { debt ->
-            MemberDebtRow(debt = debt, onClick = { onOpenDebt(debt) })
+            AppSectionGroup(
+                contentPadding = PaddingValues(vertical = AppSpacing.compactGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                DebtSectionHeader(stringResource(R.string.debt_list_section_family))
+                members.forEachIndexed { index, debt ->
+                    MemberDebtRow(
+                        debt = debt,
+                        onClick = { onOpenDebt(debt) },
+                        showDivider = index < members.lastIndex,
+                    )
+                }
+            }
         }
     }
     if (externals.isNotEmpty()) {
         item(key = "debt-section-external") {
-            DebtSectionHeader(stringResource(R.string.debt_list_section_external))
-        }
-        items(externals, key = { it.publicId }) { debt ->
-            ExternalDebtRow(debt = debt, currency = currency, onClick = { onOpenDebt(debt) })
-        }
-    }
-}
-
-@Composable
-private fun ExternalDebtRow(debt: Debt, currency: CurrencyDisplay, onClick: () -> Unit) {
-    val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
-        ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(AppSpacing.cardPadding),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.size(AppSpacing.smallGap))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    DebtStatusBadge(
-                        text = stringResource(debtDirectionLabelRes(debt.direction)),
-                        tone = LocalStateTokens.current.neutral,
-                    )
-                    Spacer(Modifier.width(AppSpacing.smallGap))
-                    DebtStatusBadge(
-                        text = stringResource(debtLinkStatusLabelRes(debt.status)),
-                        tone = debtLinkStatusTone(debt.status),
+            AppSectionGroup(
+                contentPadding = PaddingValues(vertical = AppSpacing.compactGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                showTopDivider = members.isEmpty(),
+            ) {
+                DebtSectionHeader(stringResource(R.string.debt_list_section_external))
+                externals.forEachIndexed { index, debt ->
+                    ExternalDebtRow(
+                        debt = debt,
+                        currency = currency,
+                        onClick = { onOpenDebt(debt) },
+                        showDivider = index < externals.lastIndex,
                     )
                 }
             }
-            Spacer(Modifier.width(AppSpacing.smallGap))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    formatDisplayAmount(debt.remainingAmountCents, currency),
-                    style = MaterialTheme.typography.titleLarge.tabularNum(),
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    stringResource(
-                        R.string.debt_list_card_principal,
-                        formatDisplayAmount(debt.principalAmountCents, currency),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
 
 @Composable
-private fun DebtEmptyStateCard() {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+private fun ExternalDebtRow(
+    debt: Debt,
+    currency: CurrencyDisplay,
+    onClick: () -> Unit,
+    showDivider: Boolean,
+) {
+    val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
+        ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
+    AppListRow(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        settled = !debt.isOpen,
+        showDivider = showDivider,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.size(AppSpacing.smallGap))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DebtStatusBadge(
+                    text = stringResource(debtDirectionLabelRes(debt.direction)),
+                    tone = LocalStateTokens.current.neutral,
+                )
+                Spacer(Modifier.width(AppSpacing.smallGap))
+                DebtStatusBadge(
+                    text = stringResource(debtLinkStatusLabelRes(debt.status)),
+                    tone = debtLinkStatusTone(debt.status),
+                )
+            }
+        }
+        Spacer(Modifier.width(AppSpacing.smallGap))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                formatDisplayAmount(debt.remainingAmountCents, currency),
+                style = MaterialTheme.typography.titleLarge.tabularNum(),
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                stringResource(
+                    R.string.debt_list_card_principal,
+                    formatDisplayAmount(debt.principalAmountCents, currency),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DebtEmptyStateSection() {
+    AppSectionGroup(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(vertical = AppSpacing.sectionGap),
+        showTopDivider = false,
+    ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.sectionGap),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             MascotEmptyIllustration()

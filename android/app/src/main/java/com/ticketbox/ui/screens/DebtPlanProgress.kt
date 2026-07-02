@@ -1,19 +1,16 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,9 +20,9 @@ import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.DebtGoalLink
 import com.ticketbox.domain.model.DebtRepaymentEvaluation
+import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
@@ -229,51 +226,51 @@ internal fun DebtGoalLinkRow(
     link: DebtGoalLink,
     currency: CurrencyDisplay,
     onClick: (String) -> Unit,
+    showDivider: Boolean = true,
 ) {
     val isMember = link.counterpartyType == DebtCounterpartyTypes.MEMBER
-    val baseModifier = if (link.isVoided) {
-        Modifier.fillMaxWidth().alpha(AppAlpha.opaque)
-    } else {
-        Modifier.fillMaxWidth()
-    }
-    val cardModifier =
-        if (link.isVoided) baseModifier else baseModifier.clickable { onClick(link.debtPublicId) }
-    Column(
-        modifier = cardModifier.padding(vertical = AppSpacing.compactGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    AppListRow(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = if (link.isVoided) null else { { onClick(link.debtPublicId) } },
+        settled = link.isVoided || link.isCleared,
+        showDivider = showDivider,
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                debtLinkCounterparty(link),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            if (isMember) {
-                DebtStatusBadge(
-                    text = stringResource(memberDebtStatusLabelRes(link.status)),
-                    tone = memberDebtStatusTone(link.status),
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    debtLinkCounterparty(link),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
                 )
-            } else {
-                DebtStatusBadge(
-                    text = stringResource(debtLinkStatusLabelRes(link.status)),
-                    tone = debtLinkStatusTone(link.status),
+                if (isMember) {
+                    DebtStatusBadge(
+                        text = stringResource(memberDebtStatusLabelRes(link.status)),
+                        tone = memberDebtStatusTone(link.status),
+                    )
+                } else {
+                    DebtStatusBadge(
+                        text = stringResource(debtLinkStatusLabelRes(link.status)),
+                        tone = debtLinkStatusTone(link.status),
+                    )
+                }
+            }
+            if (!link.isVoided) {
+                AppProgressBar(
+                    fraction = link.clearedFraction,
+                    tone = if (link.isCleared) {
+                        LocalStateTokens.current.success
+                    } else {
+                        LocalStateTokens.current.neutral
+                    },
+                    height = AppSpacing.miniGap,
                 )
             }
+            DebtGoalLinkNote(link = link, currency = currency, isMember = isMember)
         }
-        if (!link.isVoided) {
-            AppProgressBar(
-                fraction = link.clearedFraction,
-                tone = if (link.isCleared) {
-                    LocalStateTokens.current.success
-                } else {
-                    LocalStateTokens.current.neutral
-                },
-                height = AppSpacing.miniGap,
-            )
-        }
-        DebtGoalLinkNote(link = link, currency = currency, isMember = isMember)
-        DebtGoalRowDivider()
     }
 }
 
