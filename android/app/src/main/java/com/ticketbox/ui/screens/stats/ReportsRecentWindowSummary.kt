@@ -27,6 +27,7 @@ import kotlin.math.abs
 private object ReportsRecentWindowLayout {
     const val DominantPeakPercent = 50
     const val RecentWindowDays = 7
+    const val SparseActiveDayLimit = 2
 }
 
 @Composable
@@ -100,7 +101,7 @@ private fun ReportsRecentWindowSummaryRow(
                 modifier = Modifier.weight(1.4f),
             )
         }
-        ReportsRecentWindowDayChart(points = chartPoints, chartA11y = chartA11y)
+        ReportsRecentWindowMovementBody(summary = summary, points = chartPoints, chartA11y = chartA11y)
         ReportsRecentWindowComparisonRows(summary = summary)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -117,6 +118,47 @@ private fun ReportsRecentWindowSummaryRow(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+}
+
+@Composable
+private fun ReportsRecentWindowMovementBody(
+    summary: ReportsRecentWindowSummaryData,
+    points: List<StatsSpendChartPoint>,
+    chartA11y: String,
+) {
+    if (summary.shouldUseSparseRows) {
+        ReportsRecentWindowSparseRows(
+            points = points,
+            activeDayCount = summary.activeDayCount,
+            chartA11y = chartA11y,
+        )
+    } else {
+        ReportsRecentWindowDayChart(points = points, chartA11y = chartA11y)
+    }
+}
+
+@Composable
+private fun ReportsRecentWindowSparseRows(
+    points: List<StatsSpendChartPoint>,
+    activeDayCount: Int,
+    chartA11y: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(
+            text = stringResource(R.string.stats_reports_recent_window_sparse, activeDayCount),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        StatsSpendDistributionRows(
+            points = points.filter { it.amountCents > 0L },
+            spec = StatsSpendDistributionSpec(
+                maxRows = ReportsRecentWindowLayout.SparseActiveDayLimit,
+                sortByAmount = false,
+                includeZeros = false,
+                contentDescription = chartA11y,
+            ),
+        )
     }
 }
 
@@ -244,7 +286,10 @@ internal data class ReportsRecentWindowSummaryData(
     val otherAverageAmountCents: Long,
     val recentThreeAmountCents: Long,
     val previousThreeAmountCents: Long,
-)
+) {
+    val shouldUseSparseRows: Boolean =
+        activeDayCount in 1..ReportsRecentWindowLayout.SparseActiveDayLimit
+}
 
 internal fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecentWindowSummaryData? {
     val normalized = trend

@@ -26,6 +26,7 @@ class ReportsRecentWindowSummaryTest {
         assertEquals(1_800L, summary.recentThreeAmountCents)
         assertEquals("6/30", summary.peakLabel)
         assertEquals(25, summary.peakSharePercent)
+        assertEquals(false, summary.shouldUseSparseRows)
     }
 
     @Test
@@ -44,6 +45,7 @@ class ReportsRecentWindowSummaryTest {
         assertEquals(0L, summary.previousThreeAmountCents)
         assertEquals(900L, summary.recentThreeAmountCents)
         assertEquals(1, summary.activeDayCount)
+        assertEquals(true, summary.shouldUseSparseRows)
         assertNull(summarizeReportsRecentWindow(listOf(spend("6/24", -100L), spend("6/25", 0L))))
     }
 

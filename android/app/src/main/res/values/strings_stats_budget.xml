@@ -221,6 +221,7 @@
     <string name="stats_reports_recent_window_active_days">有支出</string>
     <string name="stats_reports_recent_window_active_days_value">%1$d 天</string>
     <string name="stats_reports_recent_window_peak">峰值 %1$s</string>
+    <string name="stats_reports_recent_window_sparse">7 天里只有 %1$d 天有支出，先显示发生日和金额。</string>
     <!-- WCAG 1.1.1 图表文本替代（screen reader / TalkBack 用）：自绘柱图仍是图形节点，给图表节点
          补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y 去年同月Z」逐档拼接；
          _with_zeros 变体把零额档汇总成「其余 N 档无支出」，避免日粒度下逐日朗读 ¥0.00。 -->
