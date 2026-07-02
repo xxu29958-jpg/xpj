@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
@@ -79,7 +80,7 @@ internal fun RuleApplicationHistory(
     busy: Boolean,
     onRollback: (RuleApplicationBatch) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
         if (applications.isEmpty()) {
             Text(
                 text = stringResource(R.string.category_rule_apply_history_empty),
@@ -87,7 +88,7 @@ internal fun RuleApplicationHistory(
             )
         } else {
             applications.forEachIndexed { index, application ->
-                RuleApplicationCard(
+                RuleApplicationRow(
                     application = application,
                     readOnly = readOnly,
                     busy = busy,
@@ -154,13 +155,16 @@ private fun RuleApplyPreviewRow(item: RuleApplyPreviewItem) {
 }
 
 @Composable
-private fun RuleApplicationCard(
+private fun RuleApplicationRow(
     application: RuleApplicationBatch,
     readOnly: Boolean,
     busy: Boolean,
     onRollback: () -> Unit,
 ) {
-    SettingsOpenPanel(
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
             Row(

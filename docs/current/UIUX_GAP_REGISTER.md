@@ -64,6 +64,9 @@ that actually ships the fix.
   clearing the offline copy, and leaving the ledger. Tag Management now moves
   from per-tag action cards to a scan-first overview plus divider rows with
   overflow actions, keeping rename/merge/delete/undo as server-confirmed actions.
+  Category Rules now keeps rule rows and rule-application history inside single
+  divider-row groups instead of repeating independent row panels, and the stale
+  Data & Export / Security LongMethod baselines have been removed.
 
 ### ANDROID-2026-07-02-appearance-background-resource-and-overview
 
@@ -350,7 +353,10 @@ that actually ships the fix.
   scan-first divider list rather than a large container. Notification
   Preferences now separates this-device notification preference, system
   authorization, reminder permission, and server-ledger authority in a compact
-  overview/list layout. Final true-device screenshots are still pending because
+  overview/list layout. Category Rules now uses one divider-row group for rules
+  and one for application history, reducing secondary-page card stacking without
+  changing create/update/toggle/delete/apply/rollback authority. Final
+  true-device screenshots are still pending because
   the phone was unplugged before the last visual pass. The remaining Settings
   secondary pages still need page-by-page state parity review.
 - Desired follow-up: make every secondary page declare loading, empty, error,

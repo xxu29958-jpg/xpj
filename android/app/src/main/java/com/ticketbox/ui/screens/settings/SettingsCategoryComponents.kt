@@ -157,7 +157,10 @@ internal fun CategoryRuleCard(
     val conditionText = categoryRuleConditionText(rule, currencyDisplay)
         ?: stringResource(R.string.category_rule_condition_none)
 
-    SettingsOpenPanel(
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         CategoryRuleHeader(rule = rule)
