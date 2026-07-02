@@ -133,17 +133,11 @@ fun AppBackButton(
                     true
                 })
             }
-            .height(48.dp)
+            .height(44.dp)
             .widthIn(min = 48.dp)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                shape = shape,
-            )
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = AppSpacing.compactGap),
+            .padding(end = AppSpacing.compactGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -151,7 +145,7 @@ fun AppBackButton(
             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(20.dp),
         )
         Text(
             text = text,

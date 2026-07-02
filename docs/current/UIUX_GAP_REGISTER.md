@@ -449,17 +449,30 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-about-product-trust-page
 
 - Surface: Android Settings -> About Ticketbox.
-- Status: implemented locally; true-device evidence pending because the phone is
-  unplugged.
+- Status: fixed with true-device evidence.
 - Gap: the About page is part of the product trust layer, but it has not yet had
   the same secondary-page treatment as Devices or Members. It risks reading like
   a diagnostics surface if build/support/legal details are not structured and
   copy-reviewed.
-- Resolution: About now uses a compact trust-page layout with resource-backed
+- Resolution: About uses a compact trust-page layout with resource-backed
   app/version, confirmation boundary, sync authority, and screenshot/OCR boundary
-  rows. Release-facing copy avoids backend/local implementation wording.
-- Remaining QA: capture About on a physical device and check row density,
-  icon/text alignment, and bottom spacing.
+  rows. Release-facing copy avoids backend/local implementation wording. True-device
+  screenshots `142-about-page.png` and `145-about-back-light-clean.png` confirm
+  row density, icon/text alignment, no bottom-nav overlap, and the lighter shared
+  back affordance.
+- Remaining QA: none for About. Keep broader secondary-page drift open for the
+  other Settings and Insights drill pages.
+
+### ANDROID-2026-07-02-settings-income-entry-density
+
+- Surface: Android Settings root -> Income Record entry.
+- Status: registered.
+- Gap: the true-device Settings root pass shows the Income Record subtitle wrapping
+  into a taller row, which breaks the otherwise scan-first settings rhythm.
+- Required handling: tighten the root subtitle during the Income Record secondary
+  pass, inspect the drill page for card-heavy layout, and keep income data behind
+  backend income-plan/record contracts. Do not change income semantics in Android
+  just to shorten copy.
 
 ### ANDROID-2026-07-01-pending-real-item-card-density
 
