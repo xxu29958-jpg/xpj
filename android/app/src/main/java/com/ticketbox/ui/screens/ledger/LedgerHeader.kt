@@ -47,7 +47,7 @@ internal fun LedgerHeader(
     onManualAdd: () -> Unit,
 ) {
     val summary = state.summary
-    val monthLabel = summary.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+    val monthLabel = summary.monthFilter.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
         ?: stringResource(R.string.ledger_header_month_all)
     val statusText = when {
         summary.syncing -> stringResource(R.string.ledger_header_status_syncing)

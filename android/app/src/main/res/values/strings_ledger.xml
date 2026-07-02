@@ -2,7 +2,7 @@
 <!-- ADR-0044 wave 1，cluster ledger（账本屏）。命名/红线见 strings.xml 头部。只放中文，不建第二语言。 -->
 <resources>
     <!-- LedgerScreen：月份选择 sheet -->
-    <string name="ledger_month_picker_description">选择后会刷新账本。历史月份多了以后可以上下滑动。</string>
+    <string name="ledger_month_picker_description"></string>
 
     <!-- ManualExpenseSheet：手动记一笔 -->
     <string name="ledger_manual_date_picker_title">选择日期</string>

@@ -5,14 +5,14 @@ import kotlin.test.assertEquals
 
 class MonthPickerTest {
     @Test
-    fun displayMonthLabelDropsLeadingZero() {
-        assertEquals("2026年7月", displayMonthLabel("2026-07"))
+    fun monthLabelPartsDropLeadingZero() {
+        assertEquals(MonthLabelParts(year = "2026", monthNumber = "7"), monthLabelParts("2026-07"))
     }
 
     @Test
-    fun displayMonthLabelKeepsUnexpectedValuesReadable() {
-        assertEquals("2026", displayMonthLabel("2026"))
-        assertEquals("2026-07-extra", displayMonthLabel("2026-07-extra"))
+    fun monthLabelPartsReturnNullForUnexpectedValues() {
+        assertEquals(null, monthLabelParts("2026"))
+        assertEquals(null, monthLabelParts("2026-07-extra"))
     }
 
     @Test

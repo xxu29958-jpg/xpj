@@ -244,7 +244,7 @@ private fun StatsFilterRow(
         StatsSelectablePill(
             selected = true,
             onClick = onOpenMonthPicker,
-            label = state.month.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+            label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
                 ?: stringResource(R.string.stats_filter_all_months),
             modifier = if (showTagFilter) {
                 Modifier.weight(1f)

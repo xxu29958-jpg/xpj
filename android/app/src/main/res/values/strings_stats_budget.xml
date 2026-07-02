@@ -5,7 +5,7 @@
 -->
 <resources>
     <!-- StatsScreen：统计主屏 -->
-    <string name="stats_month_picker_description">选择后刷新统计。本页按消费时间统计，没有消费时间时按确认时间。</string>
+    <string name="stats_month_picker_description"></string>
     <string name="stats_category_empty_title">%1$s 还没有分类支出</string>
     <string name="stats_category_empty_body">确认几笔账单后，这里会显示分类占比。</string>
     <string name="stats_all_cards_hidden_title">首页卡片已全部隐藏</string>

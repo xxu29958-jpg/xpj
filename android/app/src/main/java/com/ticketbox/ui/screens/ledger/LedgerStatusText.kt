@@ -24,7 +24,7 @@ internal fun ledgerCombinedStatusLine(state: LedgerUiState): String {
 @Composable
 internal fun ledgerFilterSummary(state: LedgerUiState): String {
     val filter = state.filter
-    val month = filter.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+    val month = filter.monthFilter.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
         ?: stringResource(R.string.ledger_filter_summary_month_all)
     val category = filter.categoryFilter.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.ledger_filter_summary_category_all)

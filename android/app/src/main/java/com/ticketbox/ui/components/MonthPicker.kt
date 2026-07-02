@@ -46,10 +46,11 @@ fun MonthPickerSheet(
     description: String,
     onSelectMonth: (String) -> Unit,
 ) {
-    val selectedLabel = selectedMonth
-        .takeIf { it.isNotBlank() }
-        ?.let(::displayMonthLabel)
-        ?: stringResource(R.string.components_month_picker_all_months)
+    val selectedLabel = if (selectedMonth.isBlank()) {
+        stringResource(R.string.components_month_picker_all_months)
+    } else {
+        displayMonthLabel(selectedMonth)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -74,39 +75,41 @@ private fun MonthPickerHeader(description: String) {
             style = MaterialTheme.typography.titleLarge,
             fontWeight = AppTextHierarchy.heading.weight,
         )
-        Text(
-            text = description,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
+        description.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
 @Composable
 private fun MonthPickerSelectionSummary(selectedLabel: String) {
-    val visuals = LocalThemeVisuals.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.small))
-            .background(visuals.chipSelected.copy(alpha = AppAlpha.soft))
-            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactPadding),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.components_month_picker_current_label),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        Text(
-            text = selectedLabel,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.smallGap),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.components_month_picker_current_label),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                text = selectedLabel,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = AppTextHierarchy.heading.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
     }
 }
 
@@ -156,7 +159,7 @@ private fun MonthOptionRow(
             .heightIn(min = AppSpacing.controlMinHeight)
             .clip(RoundedCornerShape(AppRadius.extraSmall))
             .background(
-                if (selected) visuals.chipSelected.copy(alpha = AppAlpha.heavy) else Color.Transparent,
+                if (selected) visuals.chipSelected.copy(alpha = AppAlpha.soft) else Color.Transparent,
             )
             .clickable(onClick = onClick)
             .semantics { this.selected = selected }
@@ -214,13 +217,24 @@ private fun MonthPickerEmptyRow() {
     }
 }
 
+@Composable
 fun displayMonthLabel(month: String): String {
+    val parts = monthLabelParts(month) ?: return month
+    return stringResource(R.string.components_month_label, parts.year, parts.monthNumber)
+}
+
+internal fun monthLabelParts(month: String): MonthLabelParts? {
     val parts = month.split("-")
-    if (parts.size != 2) return month
+    if (parts.size != 2) return null
     val year = parts[0]
     val monthNumber = parts[1].trimStart('0').ifBlank { parts[1] }
-    return "${year}年${monthNumber}月"
+    return MonthLabelParts(year = year, monthNumber = monthNumber)
 }
+
+internal data class MonthLabelParts(
+    val year: String,
+    val monthNumber: String,
+)
 
 internal sealed interface MonthPickerEntry {
     val key: String

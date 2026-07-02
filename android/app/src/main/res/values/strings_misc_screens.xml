@@ -57,7 +57,7 @@
     <string name="global_search_badge_confirmed">已确认</string>
     <string name="global_search_filter_category_all">全部分类</string>
     <string name="global_search_filter_month_all">全部月份</string>
-    <string name="global_search_filter_month_picker_description">选择月份</string>
+    <string name="global_search_filter_month_picker_description"></string>
     <string name="global_search_filter_amount_hint">输入金额可按金额精确匹配，如 12.50</string>
     <string name="global_search_recent_title">最近搜索</string>
     <string name="global_search_recent_clear">清除</string>

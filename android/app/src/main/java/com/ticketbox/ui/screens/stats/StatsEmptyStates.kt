@@ -39,7 +39,7 @@ internal fun StatsMonthChip(
         AppFilterChip(
             selected = true,
             onClick = onClick,
-            label = selectedMonth.takeIf { it.isNotBlank() }?.let(::displayMonthLabel)
+            label = selectedMonth.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
                 ?: stringResource(R.string.stats_empty_month_chip_all),
             trailingIcon = {
                 Icon(
