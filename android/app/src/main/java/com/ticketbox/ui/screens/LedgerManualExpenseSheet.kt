@@ -3,7 +3,9 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
@@ -31,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
@@ -43,6 +46,7 @@ import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
+import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.nowUtcIso
@@ -76,6 +80,8 @@ fun ManualExpenseSheet(
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showTimePicker by rememberSaveable { mutableStateOf(false) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
+    val density = LocalDensity.current
+    val keyboardVisible = LocalAppImeVisible.current || WindowInsets.ime.getBottom(density) > 0
 
     if (showDatePicker) {
         val datePickerState = androidx.compose.material3.rememberDatePickerState(
@@ -165,6 +171,13 @@ fun ManualExpenseSheet(
         )
     }
 
+    fun submitDraft() {
+        val draft = draftOrMessage() ?: return
+        // The sheet closes only after the repository reports success.
+        message = null
+        onCreate(draft)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -173,12 +186,7 @@ fun ManualExpenseSheet(
             .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.contentGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        Text(stringResource(R.string.ledger_manual_sheet_title), style = MaterialTheme.typography.titleLarge)
-        Text(
-            text = stringResource(R.string.ledger_manual_sheet_subtitle),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
+        ManualExpenseHeader(keyboardVisible = keyboardVisible)
         ExpenseCurrencyFields(
             currency = currency,
             onCurrencyChange = {
@@ -188,18 +196,23 @@ fun ManualExpenseSheet(
             onOriginalAmountChange = { amountText = it },
             options = ExpenseCurrencyFieldOptions(enabled = !saving),
         )
-        if (recentMerchants.isNotEmpty()) {
-            ManualRecentMerchants(
-                recentMerchants = recentMerchants,
-                selectedMerchant = merchant,
-                onPick = { picked ->
-                    // User-initiated quick fill (not an AI/OCR auto-fill): carry
-                    // both the merchant and the category it was last paired with.
-                    merchant = picked.merchant
-                    category = picked.category
-                },
-            )
-        }
+        val feedbackMessage = message ?: errorMessage
+        ManualExpenseActionSlot(
+            visible = keyboardVisible,
+            feedbackMessage = feedbackMessage,
+            saving = saving,
+            onDismiss = onDismiss,
+            onSubmit = ::submitDraft,
+        )
+        ManualRecentMerchantsSection(
+            recentMerchants = recentMerchants,
+            selectedMerchant = merchant,
+            onPick = { picked ->
+                // User-initiated quick fill, not AI/OCR auto-fill.
+                merchant = picked.merchant
+                category = picked.category
+            },
+        )
         OutlinedTextField(
             value = merchant,
             onValueChange = { merchant = it },
@@ -215,17 +228,11 @@ fun ManualExpenseSheet(
             label = { Text(stringResource(R.string.ledger_manual_category_label)) },
             singleLine = true,
         )
-        if (categories.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-                items(categories, key = { it }) { item ->
-                    SelectableFilterChip(
-                        selected = category == item,
-                        label = item,
-                        onClick = { category = item },
-                    )
-                }
-            }
-        }
+        ManualCategoryChoices(
+            categories = categories,
+            selectedCategory = category,
+            onCategoryChange = { category = it },
+        )
         OutlinedTextField(
             value = note,
             onValueChange = { note = it },
@@ -252,38 +259,111 @@ fun ManualExpenseSheet(
                 }
             }
         }
-        // Local validation message and the repository failure (the sheet stays
-        // open on a failed create so the typed form survives) share the slot.
-        (message ?: errorMessage)?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
+        ManualExpenseActionSlot(
+            visible = !keyboardVisible,
+            feedbackMessage = feedbackMessage,
+            saving = saving,
+            onDismiss = onDismiss,
+            onSubmit = ::submitDraft,
+        )
+    }
+}
+
+@Composable
+private fun ManualExpenseActionRow(
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+        AppOutlinedButton(
+            modifier = Modifier.weight(1f),
+            onClick = onDismiss,
+        ) {
+            Text(stringResource(R.string.common_cancel))
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            AppOutlinedButton(
-                modifier = Modifier.weight(1f),
-                onClick = onDismiss,
-            ) {
-                Text(stringResource(R.string.common_cancel))
-            }
-            Button(
-                modifier = Modifier.weight(1f),
-                enabled = !saving,
-                onClick = {
-                    val draft = draftOrMessage() ?: return@Button
-                    // The sheet now outlives the submit (closes only on
-                    // success) — drop a stale local validation message so it
-                    // can't shadow the repository outcome.
-                    message = null
-                    onCreate(draft)
+        Button(
+            modifier = Modifier.weight(1f),
+            enabled = !saving,
+            onClick = onSubmit,
+        ) {
+            Text(
+                if (saving) {
+                    stringResource(R.string.ledger_manual_saving_button)
+                } else {
+                    stringResource(R.string.ledger_manual_save_button)
                 },
-            ) {
-                Text(
-                    if (saving) {
-                        stringResource(R.string.ledger_manual_saving_button)
-                    } else {
-                        stringResource(R.string.ledger_manual_save_button)
-                    },
-                )
-            }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManualExpenseHeader(keyboardVisible: Boolean) {
+    Text(
+        stringResource(R.string.ledger_manual_sheet_title),
+        style = if (keyboardVisible) {
+            MaterialTheme.typography.titleMedium
+        } else {
+            MaterialTheme.typography.titleLarge
+        },
+    )
+    if (!keyboardVisible) {
+        Text(
+            text = stringResource(R.string.ledger_manual_sheet_subtitle),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun ManualExpenseActionSlot(
+    visible: Boolean,
+    feedbackMessage: String?,
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: () -> Unit,
+) {
+    if (!visible) return
+    feedbackMessage?.let {
+        Text(it, color = MaterialTheme.colorScheme.secondary)
+    }
+    ManualExpenseActionRow(
+        saving = saving,
+        onDismiss = onDismiss,
+        onSubmit = onSubmit,
+    )
+}
+
+@Composable
+private fun ManualRecentMerchantsSection(
+    recentMerchants: List<RecentMerchant>,
+    selectedMerchant: String,
+    onPick: (RecentMerchant) -> Unit,
+) {
+    if (recentMerchants.isEmpty()) return
+    ManualRecentMerchants(
+        recentMerchants = recentMerchants,
+        selectedMerchant = selectedMerchant,
+        onPick = onPick,
+    )
+}
+
+@Composable
+private fun ManualCategoryChoices(
+    categories: List<String>,
+    selectedCategory: String,
+    onCategoryChange: (String) -> Unit,
+) {
+    if (categories.isEmpty()) return
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+        items(categories, key = { it }) { item ->
+            SelectableFilterChip(
+                selected = selectedCategory == item,
+                label = item,
+                onClick = { onCategoryChange(item) },
+            )
         }
     }
 }

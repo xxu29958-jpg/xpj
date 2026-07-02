@@ -477,8 +477,8 @@ that actually ships the fix.
 ### ANDROID-2026-07-01-edit-keyboard-action-density
 
 - Surface: Android receipt edit / confirm detail page.
-- Status: root-cause fix implemented locally; true-device evidence still
-  pending.
+- Status: receipt edit root-cause fix implemented; manual-entry keyboard fix
+  verified on physical device.
 - Gap: user screenshot `Screenshot_2026-07-01-23-48-19-093_com.ticketbox.jpg`
   shows the amount/currency field with the keyboard open. The bottom action
   surface becomes a large rounded block, the four actions form a heavy 2x2 grid,
@@ -490,9 +490,14 @@ that actually ships the fix.
   resources. The follow-up edit-detail slice removes the remaining large card
   blocks from preview, repayment draft, and date editing, replaces them with open
   secondary-workbench sections and dividers, and lets the preview amount autosize
-  instead of truncating.
-- Remaining QA: capture the same amount/currency keyboard state on a physical
-  device and confirm the strip does not crowd, truncate, or cover the input.
+  instead of truncating. A true-device manual-entry pass then found that
+  `LocalAppImeVisible` can be false inside `ModalBottomSheet`; the sheet now
+  opens expanded, reads `WindowInsets.ime` as a fallback, and places cancel/save
+  directly below amount/currency when the keyboard is open.
+- Evidence: `docs/audits/android-true-device-2026-07-02/115-manual-entry-keyboard-fixed-clean.png`
+  shows amount, currency, cancel, and save visible above the live keyboard.
+- Remaining QA: capture a real receipt edit/confirm detail amount-currency
+  keyboard state, not only the manual-entry sheet.
 
 ### ANDROID-2026-07-02-refresh-loading-latency
 

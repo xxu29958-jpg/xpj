@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
@@ -63,7 +64,8 @@ private fun LedgerManualSheetHost(
         chromeState.showManualSheet = false
         actions.onManualCreateSettled()
     }
-    ModalBottomSheet(onDismissRequest = dismissManualSheet) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = dismissManualSheet, sheetState = sheetState) {
         ManualExpenseSheet(
             categories = state.categories,
             saving = state.creatingManual,
