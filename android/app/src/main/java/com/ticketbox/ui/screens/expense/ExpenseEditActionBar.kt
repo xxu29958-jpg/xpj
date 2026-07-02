@@ -80,9 +80,9 @@ internal data class ExpenseEditActionBarActions(
  *   resource key 沿用既有 `expense_edit_reject_button`，只改文案值。）
  *
  * 层级：
- *  - 主行（前进动作）：保存（tonal outlined）+ 确认入账（filled primary，主操作，
- *    仅 [ExpenseEditActionBarState.allowConfirm]）。
- *  - 次行（低强调）：返回（text）+ 忽略（danger text，仅 allowReject）。
+ *  - 动作行：忽略（低强调 danger text，仅 allowReject）+ 保存（tonal outlined）
+ *    + 确认入账（filled primary，主操作，仅 allowConfirm）。返回放在页头，
+ *    避免底部重复一个大按钮把二级页压得太重。
  *  - message 校验/状态提示锚在按钮上沿，"点确认→缺金额"永远在视野内。
  *
  * 软键盘 inset 由外层 [com.ticketbox.ui.components.AppPageScaffold] 的
@@ -132,19 +132,7 @@ internal fun ExpenseEditActionBar(
             if (compactMode) {
                 ExpenseEditKeyboardActionRow(state = state, actions = actions)
             } else {
-                ExpenseEditActionForwardRow(
-                    saving = state.saving,
-                    allowSave = state.allowSave,
-                    allowConfirm = state.allowConfirm,
-                    onSave = actions.onSave,
-                    onConfirm = actions.onConfirm,
-                )
-                ExpenseEditActionSecondaryRow(
-                    saving = state.saving,
-                    allowReject = state.allowReject,
-                    onBack = actions.onBack,
-                    onRequestReject = actions.onRequestReject,
-                )
+                ExpenseEditActionForwardRow(state = state, actions = actions)
             }
         }
     }
@@ -161,26 +149,33 @@ private fun ExpenseEditActionMessage(message: String, color: Color) {
 
 @Composable
 private fun ExpenseEditActionForwardRow(
-    saving: Boolean,
-    allowSave: Boolean,
-    allowConfirm: Boolean,
-    onSave: () -> Unit,
-    onConfirm: () -> Unit,
+    state: ExpenseEditActionBarState,
+    actions: ExpenseEditActionBarActions,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (allowSave) {
+        if (state.allowReject) {
+            CompactTextAction(
+                text = stringResource(R.string.expense_edit_reject_button),
+                weight = 0.64f,
+                enabled = !state.saving,
+                danger = true,
+                onClick = actions.onRequestReject,
+            )
+        }
+        if (state.allowSave) {
             AppOutlinedButton(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(if (state.allowConfirm) 0.92f else 1f)
                     .heightIn(min = AppSpacing.controlMinHeight),
-                enabled = !saving,
-                onClick = onSave,
+                enabled = !state.saving,
+                onClick = actions.onSave,
             ) {
                 ExpenseEditActionLabel(
-                    text = if (saving) {
+                    text = if (state.saving) {
                         stringResource(R.string.expense_edit_primary_saving_button)
                     } else {
                         stringResource(R.string.expense_edit_primary_save_button)
@@ -189,53 +184,18 @@ private fun ExpenseEditActionForwardRow(
                 )
             }
         }
-        if (allowConfirm) {
+        if (state.allowConfirm) {
             Button(
                 modifier = Modifier
-                    .weight(if (allowSave) 1.2f else 1f)
+                    .weight(if (state.allowSave) 1.24f else 1f)
                     .heightIn(min = AppSpacing.controlMinHeight),
-                enabled = !saving,
-                onClick = onConfirm,
+                enabled = !state.saving,
+                onClick = actions.onConfirm,
             ) {
                 ExpenseEditActionLabel(
                     text = stringResource(R.string.expense_edit_confirm_button),
                     icon = Icons.Filled.Check,
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExpenseEditActionSecondaryRow(
-    saving: Boolean,
-    allowReject: Boolean,
-    onBack: () -> Unit,
-    onRequestReject: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        AppOutlinedButton(
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = AppSpacing.controlMinHeight),
-            enabled = !saving,
-            onClick = onBack,
-        ) {
-            ExpenseEditActionLabel(stringResource(R.string.expense_edit_primary_back_button))
-        }
-        if (allowReject) {
-            AppOutlinedButton(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = AppSpacing.controlMinHeight),
-                enabled = !saving,
-                danger = true,
-                onClick = onRequestReject,
-            ) {
-                ExpenseEditActionLabel(stringResource(R.string.expense_edit_reject_button))
             }
         }
     }
