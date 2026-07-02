@@ -13,7 +13,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -156,15 +155,16 @@ fun LedgerSwitcherScreen(
                         text = stringResource(R.string.ledger_switcher_create_hint, LEDGER_NAME_MAX),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    OutlinedTextField(
-                        value = newLedgerName,
+                    SettingsDialogTextInput(
+                        state = SettingsTextInputState(
+                            label = stringResource(R.string.ledger_switcher_field_ledger_name),
+                            value = newLedgerName,
+                            enabled = !state.loading,
+                        ),
                         onValueChange = { value ->
                             // Trim hard upper bound on input to prevent oversize requests.
                             newLedgerName = value.take(LEDGER_NAME_MAX)
                         },
-                        label = { Text(stringResource(R.string.ledger_switcher_field_ledger_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
                     )
                     Button(
                         onClick = {

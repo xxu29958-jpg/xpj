@@ -7,7 +7,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -16,7 +15,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.settings.SettingsDialogTextInput
 import com.ticketbox.ui.screens.settings.SettingsOpenPanel
+import com.ticketbox.ui.screens.settings.SettingsTextInputState
 
 data class CategoryRuleDraftForm(
     val keyword: String = "",
@@ -46,7 +47,7 @@ internal fun CategoryRuleEditorCard(
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        CategoryRuleEditorFields(form = form, onFormChange = onFormChange)
+        CategoryRuleEditorFields(form = form, busy = busy, onFormChange = onFormChange)
         CategoryRuleEditorActions(
             form = form,
             busy = busy,
@@ -62,35 +63,41 @@ internal fun CategoryRuleEditorCard(
 @Composable
 private fun CategoryRuleEditorFields(
     form: CategoryRuleDraftForm,
+    busy: Boolean,
     onFormChange: (CategoryRuleDraftForm) -> Unit,
 ) {
-    OutlinedTextField(
-        value = form.keyword,
+    SettingsDialogTextInput(
+        state = SettingsTextInputState(
+            label = stringResource(R.string.category_rule_editor_keyword_label),
+            value = form.keyword,
+            placeholder = stringResource(R.string.category_rule_editor_keyword_placeholder),
+            enabled = !busy,
+        ),
         onValueChange = { onFormChange(form.copy(keyword = it, localMessage = null)) },
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.category_rule_editor_keyword_label)) },
-        placeholder = { Text(stringResource(R.string.category_rule_editor_keyword_placeholder)) },
-        singleLine = true,
     )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
     ) {
-        OutlinedTextField(
-            value = form.category,
+        SettingsDialogTextInput(
+            state = SettingsTextInputState(
+                label = stringResource(R.string.category_rule_editor_category_label),
+                value = form.category,
+                placeholder = stringResource(R.string.category_rule_editor_category_placeholder),
+                enabled = !busy,
+            ),
             onValueChange = { onFormChange(form.copy(category = it, localMessage = null)) },
             modifier = Modifier.weight(1.15f),
-            label = { Text(stringResource(R.string.category_rule_editor_category_label)) },
-            placeholder = { Text(stringResource(R.string.category_rule_editor_category_placeholder)) },
-            singleLine = true,
         )
-        OutlinedTextField(
-            value = form.priorityText,
+        SettingsDialogTextInput(
+            state = SettingsTextInputState(
+                label = stringResource(R.string.category_rule_editor_priority_label),
+                value = form.priorityText,
+                enabled = !busy,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            ),
             onValueChange = { onFormChange(form.copy(priorityText = it, localMessage = null)) },
             modifier = Modifier.weight(0.85f),
-            label = { Text(stringResource(R.string.category_rule_editor_priority_label)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
         )
     }
 }

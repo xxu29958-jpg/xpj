@@ -19,7 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -431,11 +430,12 @@ private fun RenameDeviceDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.my_devices_rename_dialog_title)) },
         text = {
-            OutlinedTextField(
-                value = name,
+            SettingsDialogTextInput(
+                state = SettingsTextInputState(
+                    label = stringResource(R.string.my_devices_rename_dialog_label),
+                    value = name,
+                ),
                 onValueChange = { name = it },
-                singleLine = true,
-                label = { Text(stringResource(R.string.my_devices_rename_dialog_label)) },
             )
         },
         confirmButton = {

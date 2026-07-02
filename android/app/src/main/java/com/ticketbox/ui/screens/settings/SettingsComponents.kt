@@ -47,7 +47,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,7 +67,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -96,6 +94,9 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -260,3 +261,36 @@ internal fun SettingsInlineEmpty(
         )
     }
 }
+
+@Composable
+internal fun SettingsDialogTextInput(
+    state: SettingsTextInputState,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AppTextInput(
+        state = AppTextInputState(
+            label = state.label,
+            value = state.value,
+            placeholder = state.placeholder,
+            enabled = state.enabled,
+            singleLine = state.singleLine,
+            minLines = state.minLines,
+            maxLines = state.maxLines,
+            keyboardOptions = state.keyboardOptions,
+        ),
+        actions = AppTextInputActions(onValueChange = onValueChange),
+        modifier = modifier.fillMaxWidth(),
+    )
+}
+
+internal data class SettingsTextInputState(
+    val label: String,
+    val value: String,
+    val placeholder: String = "",
+    val enabled: Boolean = true,
+    val singleLine: Boolean = true,
+    val minLines: Int = 1,
+    val maxLines: Int = 3,
+    val keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+)

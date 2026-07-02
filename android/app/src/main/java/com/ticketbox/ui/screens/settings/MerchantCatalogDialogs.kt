@@ -13,7 +13,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -139,12 +138,14 @@ private fun RenameMerchantCatalogDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.merchant_catalog_rename_dialog_title)) },
         text = {
-            OutlinedTextField(
-                value = name,
+            SettingsDialogTextInput(
+                state = SettingsTextInputState(
+                    label = stringResource(R.string.merchant_catalog_rename_dialog_label),
+                    value = name,
+                    enabled = !busy,
+                ),
                 onValueChange = { name = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.merchant_catalog_rename_dialog_label)) },
-                singleLine = true,
             )
         },
         confirmButton = {

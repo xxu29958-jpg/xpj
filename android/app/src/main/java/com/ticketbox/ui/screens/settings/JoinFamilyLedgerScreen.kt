@@ -12,7 +12,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -190,22 +189,11 @@ private fun JoinInvitationForm(
         icon = Icons.Filled.GroupAdd,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            if (serverUrlEntry?.showInput == true) {
-                OutlinedTextField(
-                    value = fields.serverUrl,
-                    onValueChange = actions.onServerUrlChange,
-                    label = { Text(stringResource(R.string.bind_server_field_url_label)) },
-                    placeholder = { Text(stringResource(R.string.bind_server_field_url_placeholder)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            OutlinedTextField(
-                value = fields.inviteToken,
-                onValueChange = actions.onInviteTokenChange,
-                label = { Text(stringResource(R.string.join_family_ledger_field_invite_token)) },
-                singleLine = false,
-                modifier = Modifier.fillMaxWidth(),
+            JoinInvitationAccessFields(
+                state = state,
+                serverUrlEntry = serverUrlEntry,
+                fields = fields,
+                actions = actions,
             )
             state.preview?.let { InvitationPreviewPanel(preview = it) }
             if (state.preview == null) {
@@ -220,20 +208,7 @@ private fun JoinInvitationForm(
                 text = stringResource(R.string.join_family_ledger_identity_title),
                 style = MaterialTheme.typography.titleSmall,
             )
-            OutlinedTextField(
-                value = fields.accountName,
-                onValueChange = actions.onAccountNameChange,
-                label = { Text(stringResource(R.string.join_family_ledger_field_account_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = fields.deviceName,
-                onValueChange = actions.onDeviceNameChange,
-                label = { Text(stringResource(R.string.join_family_ledger_field_device_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            JoinIdentityFields(state = state, fields = fields, actions = actions)
             JoinInvitationActions(
                 state = state,
                 previewEnabled = serverUrlEntry == null || fields.serverUrl.isNotBlank(),
@@ -246,6 +221,61 @@ private fun JoinInvitationForm(
 
 /** Preview/accept 按钮对 + 预览面板 + 「先预览」提示——从主函数抽出以守
  *  detekt CyclomaticComplexMethod(双宿主分支把主函数推过 14)。 */
+@Composable
+private fun JoinInvitationAccessFields(
+    state: JoinFamilyLedgerUiState,
+    serverUrlEntry: ServerUrlEntryConfig?,
+    fields: JoinInvitationFormFields,
+    actions: JoinInvitationFormActions,
+) {
+    if (serverUrlEntry?.showInput == true) {
+        SettingsDialogTextInput(
+            state = SettingsTextInputState(
+                label = stringResource(R.string.bind_server_field_url_label),
+                value = fields.serverUrl,
+                placeholder = stringResource(R.string.bind_server_field_url_placeholder),
+                enabled = !state.previewing && !state.submitting,
+            ),
+            onValueChange = actions.onServerUrlChange,
+        )
+    }
+    SettingsDialogTextInput(
+        state = SettingsTextInputState(
+            label = stringResource(R.string.join_family_ledger_field_invite_token),
+            value = fields.inviteToken,
+            enabled = !state.previewing && !state.submitting,
+            singleLine = false,
+            minLines = 2,
+            maxLines = 4,
+        ),
+        onValueChange = actions.onInviteTokenChange,
+    )
+}
+
+@Composable
+private fun JoinIdentityFields(
+    state: JoinFamilyLedgerUiState,
+    fields: JoinInvitationFormFields,
+    actions: JoinInvitationFormActions,
+) {
+    SettingsDialogTextInput(
+        state = SettingsTextInputState(
+            label = stringResource(R.string.join_family_ledger_field_account_name),
+            value = fields.accountName,
+            enabled = !state.previewing && !state.submitting,
+        ),
+        onValueChange = actions.onAccountNameChange,
+    )
+    SettingsDialogTextInput(
+        state = SettingsTextInputState(
+            label = stringResource(R.string.join_family_ledger_field_device_name),
+            value = fields.deviceName,
+            enabled = !state.previewing && !state.submitting,
+        ),
+        onValueChange = actions.onDeviceNameChange,
+    )
+}
+
 @Composable
 private fun JoinInvitationActions(
     state: JoinFamilyLedgerUiState,

@@ -22,7 +22,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -426,12 +425,14 @@ private fun RenameTagDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.tag_management_rename_dialog_title)) },
         text = {
-            OutlinedTextField(
-                value = name,
+            SettingsDialogTextInput(
+                state = SettingsTextInputState(
+                    label = stringResource(R.string.tag_management_rename_dialog_label),
+                    value = name,
+                    enabled = !busy,
+                ),
                 onValueChange = { name = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.tag_management_rename_dialog_label)) },
-                singleLine = true,
             )
         },
         confirmButton = {

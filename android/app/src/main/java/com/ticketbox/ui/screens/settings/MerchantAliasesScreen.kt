@@ -18,7 +18,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -271,13 +270,14 @@ private fun MerchantCatalogCreateSection(
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-                OutlinedTextField(
-                    value = catalogName,
+                SettingsDialogTextInput(
+                    state = SettingsTextInputState(
+                        label = stringResource(R.string.merchant_catalog_name_label),
+                        value = catalogName,
+                        placeholder = stringResource(R.string.merchant_catalog_name_placeholder),
+                        enabled = !busy,
+                    ),
                     onValueChange = onCatalogNameChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.merchant_catalog_name_label)) },
-                    placeholder = { Text(stringResource(R.string.merchant_catalog_name_placeholder)) },
-                    singleLine = true,
                 )
                 Button(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = onSubmit) {
                     Text(
@@ -305,21 +305,23 @@ private fun MerchantAliasCreateSection(
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-                OutlinedTextField(
-                    value = draft.canonicalMerchant,
+                SettingsDialogTextInput(
+                    state = SettingsTextInputState(
+                        label = stringResource(R.string.merchant_aliases_canonical_label),
+                        value = draft.canonicalMerchant,
+                        placeholder = stringResource(R.string.merchant_aliases_canonical_placeholder),
+                        enabled = !busy,
+                    ),
                     onValueChange = { onDraftChange(draft.copy(canonicalMerchant = it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.merchant_aliases_canonical_label)) },
-                    placeholder = { Text(stringResource(R.string.merchant_aliases_canonical_placeholder)) },
-                    singleLine = true,
                 )
-                OutlinedTextField(
-                    value = draft.aliasText,
+                SettingsDialogTextInput(
+                    state = SettingsTextInputState(
+                        label = stringResource(R.string.merchant_aliases_alias_label),
+                        value = draft.aliasText,
+                        placeholder = stringResource(R.string.merchant_aliases_alias_placeholder),
+                        enabled = !busy,
+                    ),
                     onValueChange = { onDraftChange(draft.copy(aliasText = it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.merchant_aliases_alias_label)) },
-                    placeholder = { Text(stringResource(R.string.merchant_aliases_alias_placeholder)) },
-                    singleLine = true,
                 )
                 Button(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = onSubmit) {
                     Text(
