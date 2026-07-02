@@ -5,15 +5,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -52,34 +49,17 @@ fun MonthPickerSheet(
         displayMonthLabel(selectedMonth)
     }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.cardPaddingSmall),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        MonthPickerHeader(description = description)
-        MonthPickerSelectionSummary(selectedLabel = selectedLabel)
-        MonthPickerOptions(
-            months = months,
-            selectedMonth = selectedMonth,
-            onSelectMonth = onSelectMonth,
-        )
-    }
-}
-
-@Composable
-private fun MonthPickerHeader(description: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        Text(
-            text = stringResource(R.string.components_month_picker_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        description.takeIf { it.isNotBlank() }?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+        AppSheetScaffold(
+            title = stringResource(R.string.components_month_picker_title),
+            subtitle = description,
+        ) {
+            MonthPickerSelectionSummary(selectedLabel = selectedLabel)
+            MonthPickerOptions(
+                months = months,
+                selectedMonth = selectedMonth,
+                onSelectMonth = onSelectMonth,
             )
         }
     }
@@ -119,29 +99,51 @@ private fun MonthPickerOptions(
     selectedMonth: String,
     onSelectMonth: (String) -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.heightIn(max = AppSpacing.controlMinHeight * 9.5f),
-        contentPadding = PaddingValues(bottom = AppSpacing.bottomContentPadding),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        item {
-            MonthOptionRow(
-                label = stringResource(R.string.components_month_picker_all_months),
-                selected = selectedMonth.isBlank(),
-                onClick = { onSelectMonth("") },
-            )
-        }
+        MonthOptionRow(
+            label = stringResource(R.string.components_month_picker_all_months),
+            selected = selectedMonth.isBlank(),
+            onClick = { onSelectMonth("") },
+        )
         if (months.isEmpty()) {
-            item { MonthPickerEmptyRow() }
+            MonthPickerEmptyRow()
         }
-        items(monthPickerEntries(months), key = { it.key }) { entry ->
+        val pendingRow = mutableListOf<String>()
+        monthPickerEntries(months).forEach { entry ->
             when (entry) {
-                is MonthPickerEntry.YearHeader -> MonthPickerYearHeader(entry.year)
-                is MonthPickerEntry.Month -> MonthOptionRow(
-                    label = displayMonthLabel(entry.month),
-                    selected = selectedMonth == entry.month,
-                    onClick = { onSelectMonth(entry.month) },
-                )
+                is MonthPickerEntry.YearHeader -> {
+                    if (pendingRow.isNotEmpty()) {
+                        MonthGridRow(
+                            months = pendingRow.toList(),
+                            selectedMonth = selectedMonth,
+                            onSelectMonth = onSelectMonth,
+                        )
+                        pendingRow.clear()
+                    }
+                    MonthPickerYearHeader(entry.year)
+                }
+                is MonthPickerEntry.Month -> {
+                    pendingRow += entry.month
+                    if (pendingRow.size == MonthGridColumns) {
+                        MonthGridRow(
+                            months = pendingRow.toList(),
+                            selectedMonth = selectedMonth,
+                            onSelectMonth = onSelectMonth,
+                        )
+                        pendingRow.clear()
+                    }
+                }
             }
+        }
+        if (pendingRow.isNotEmpty()) {
+            MonthGridRow(
+                months = pendingRow.toList(),
+                selectedMonth = selectedMonth,
+                onSelectMonth = onSelectMonth,
+            )
         }
     }
 }

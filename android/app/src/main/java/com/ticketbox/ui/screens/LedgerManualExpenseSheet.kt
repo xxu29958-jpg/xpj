@@ -6,17 +6,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,9 +40,11 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.LocalAppImeVisible
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.nowUtcIso
@@ -185,92 +184,85 @@ fun ManualExpenseSheet(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.contentGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        ManualExpenseHeader(keyboardVisible = keyboardVisible)
-        ExpenseCurrencyFields(
-            currency = currency,
-            onCurrencyChange = {
-                currency = it
-            },
-            amountText = amountText,
-            onAmountChange = { amountText = it },
-            options = ExpenseCurrencyFieldOptions(
-                enabled = !saving,
-                showFxHint = false,
-                showSectionTitle = false,
-            ),
-        )
-        val feedbackMessage = message ?: errorMessage
-        ManualExpenseActionSlot(
-            visible = keyboardVisible,
-            feedbackMessage = feedbackMessage,
-            saving = saving,
-            onDismiss = onDismiss,
-            onSubmit = ::submitDraft,
-        )
-        ManualRecentMerchantsSection(
-            recentMerchants = recentMerchants,
-            selectedMerchant = merchant,
-            onPick = { picked ->
-                // User-initiated quick fill, not AI/OCR auto-fill.
-                merchant = picked.merchant
-                category = picked.category
-            },
-        )
-        ExpenseEditTextField(
-            state = ExpenseEditTextFieldState(
-                label = stringResource(R.string.ledger_manual_merchant_label),
-                value = merchant,
-                placeholder = stringResource(R.string.ledger_manual_merchant_placeholder),
-                enabled = !saving,
-            ),
-            onValueChange = { merchant = it },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        ExpenseEditTextField(
-            state = ExpenseEditTextFieldState(
-                label = stringResource(R.string.ledger_manual_category_label),
-                value = category,
-                enabled = !saving,
-            ),
-            onValueChange = { category = it },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        ManualCategoryChoices(
-            categories = categories,
-            selectedCategory = category,
-            onCategoryChange = { category = it },
-        )
-        ExpenseEditTextField(
-            state = ExpenseEditTextFieldState(
-                label = stringResource(R.string.ledger_manual_note_label),
-                value = note,
-                enabled = !saving,
-                singleLine = false,
-                minLines = 2,
-            ),
-            onValueChange = { note = it },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        ManualExpenseTimeSection(
-            expenseTime = expenseTime,
-            onPickDate = { showDatePicker = true },
-            onPickTime = { showTimePicker = true },
-            onUseNow = { expenseTime = nowUtcIso() },
-        )
-        ManualExpenseActionSlot(
-            visible = !keyboardVisible,
-            feedbackMessage = feedbackMessage,
-            saving = saving,
-            onDismiss = onDismiss,
-            onSubmit = ::submitDraft,
-        )
+        AppSheetScaffold(
+            title = stringResource(R.string.ledger_manual_sheet_title),
+            subtitle = stringResource(R.string.ledger_manual_sheet_subtitle),
+            compact = keyboardVisible,
+        ) {
+            ExpenseCurrencyFields(
+                currency = currency,
+                onCurrencyChange = {
+                    currency = it
+                },
+                amountText = amountText,
+                onAmountChange = { amountText = it },
+                options = ExpenseCurrencyFieldOptions(
+                    enabled = !saving,
+                    showFxHint = false,
+                    showSectionTitle = false,
+                    supportingText = stringResource(R.string.ledger_manual_amount_supporting_text),
+                ),
+            )
+            val feedbackMessage = message ?: errorMessage
+            ManualExpenseActionSlot(
+                visible = true,
+                feedbackMessage = feedbackMessage,
+                saving = saving,
+                onDismiss = onDismiss,
+                onSubmit = ::submitDraft,
+            )
+            ManualRecentMerchantsSection(
+                recentMerchants = recentMerchants,
+                selectedMerchant = merchant,
+                onPick = { picked ->
+                    merchant = picked.merchant
+                    category = picked.category
+                },
+            )
+            ExpenseEditTextField(
+                state = ExpenseEditTextFieldState(
+                    label = stringResource(R.string.ledger_manual_merchant_label),
+                    value = merchant,
+                    placeholder = stringResource(R.string.ledger_manual_merchant_placeholder),
+                    enabled = !saving,
+                ),
+                onValueChange = { merchant = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            ExpenseEditTextField(
+                state = ExpenseEditTextFieldState(
+                    label = stringResource(R.string.ledger_manual_category_label),
+                    value = category,
+                    enabled = !saving,
+                ),
+                onValueChange = { category = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            ManualCategoryChoices(
+                categories = categories,
+                selectedCategory = category,
+                onCategoryChange = { category = it },
+            )
+            ExpenseEditTextField(
+                state = ExpenseEditTextFieldState(
+                    label = stringResource(R.string.ledger_manual_note_label),
+                    value = note,
+                    enabled = !saving,
+                    singleLine = false,
+                    minLines = 2,
+                ),
+                onValueChange = { note = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            ManualExpenseTimeSection(
+                expenseTime = expenseTime,
+                onPickDate = { showDatePicker = true },
+                onPickTime = { showTimePicker = true },
+                onUseNow = { expenseTime = nowUtcIso() },
+            )
+        }
     }
 }
 
@@ -315,44 +307,22 @@ private fun ManualExpenseActionRow(
     onSubmit: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        AppOutlinedButton(
+        QuietOutlinedButton(
+            text = stringResource(R.string.common_cancel),
             modifier = Modifier.weight(1f),
+            enabled = !saving,
             onClick = onDismiss,
-        ) {
-            Text(stringResource(R.string.common_cancel))
-        }
-        Button(
+        )
+        AppPrimaryButton(
+            text = if (saving) {
+                stringResource(R.string.ledger_manual_saving_button)
+            } else {
+                stringResource(R.string.ledger_manual_save_button)
+            },
+            icon = Icons.Filled.Check,
             modifier = Modifier.weight(1f),
             enabled = !saving,
             onClick = onSubmit,
-        ) {
-            Text(
-                if (saving) {
-                    stringResource(R.string.ledger_manual_saving_button)
-                } else {
-                    stringResource(R.string.ledger_manual_save_button)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ManualExpenseHeader(keyboardVisible: Boolean) {
-    val subtitle = stringResource(R.string.ledger_manual_sheet_subtitle)
-    Text(
-        stringResource(R.string.ledger_manual_sheet_title),
-        style = if (keyboardVisible) {
-            MaterialTheme.typography.titleMedium
-        } else {
-            MaterialTheme.typography.titleLarge
-        },
-    )
-    if (!keyboardVisible && subtitle.isNotBlank()) {
-        Text(
-            text = subtitle,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
         )
     }
 }

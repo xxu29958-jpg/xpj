@@ -2,7 +2,9 @@ package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,7 +22,9 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
@@ -43,8 +47,7 @@ internal fun MissingAmountSheetContent(
     val originalMinor = parseMinorAmount(input, currency)
     val invalid = input.isNotBlank() && (originalMinor == null || originalMinor <= 0)
     val canSave = originalMinor != null && originalMinor > 0 && !saving
-    // P1-2: auto-focus the single amount field so the keyboard pops on open
-    // (this is the highest-frequency补录 in the OCR flow).
+    // P1-2: auto-focus the single amount field in the OCR review flow.
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -78,7 +81,7 @@ internal fun MissingAmountSheetContent(
         ReviewSheetStatusMessage(chrome = chrome)
 
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            AppSecondaryButton(
+            QuietOutlinedButton(
                 text = stringResource(R.string.common_cancel),
                 modifier = Modifier.weight(1f),
                 enabled = !saving,
@@ -88,15 +91,20 @@ internal fun MissingAmountSheetContent(
                 text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_missing_amount_save_draft),
                 modifier = Modifier.weight(1f),
                 enabled = canSave,
+                leadingIcon = Icons.Filled.Save,
                 onClick = { originalMinor?.let(onSaveDraft) },
             )
-            Button(
+            AppPrimaryButton(
+                text = if (saving) {
+                    stringResource(R.string.pending_missing_amount_processing)
+                } else {
+                    stringResource(R.string.pending_missing_amount_save_and_confirm)
+                },
+                icon = Icons.Filled.Check,
                 modifier = Modifier.weight(1.2f),
                 enabled = canSave,
                 onClick = { originalMinor?.let(onSaveAndConfirm) },
-            ) {
-                Text(if (saving) stringResource(R.string.pending_missing_amount_processing) else stringResource(R.string.pending_missing_amount_save_and_confirm))
-            }
+            )
         }
     }
 }

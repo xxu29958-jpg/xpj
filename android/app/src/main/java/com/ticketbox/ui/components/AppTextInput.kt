@@ -160,7 +160,10 @@ private fun AppTextInputField(
         textStyle = appTextInputTextStyle(state),
         decorationBox = { innerTextField ->
             AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
-                if (state.value.isEmpty() && state.placeholder.isNotBlank()) {
+                val showPlaceholder = state.value.isEmpty() &&
+                    state.placeholder.isNotBlank() &&
+                    !(focusState.focused && state.emphasis == AppTextInputEmphasis.Amount)
+                if (showPlaceholder) {
                     Text(
                         text = state.placeholder,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.medium),

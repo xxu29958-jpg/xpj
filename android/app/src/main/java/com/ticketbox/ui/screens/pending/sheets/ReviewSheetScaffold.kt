@@ -1,16 +1,9 @@
 package com.ticketbox.ui.screens.pending.sheets
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.components.AppSheetScaffold
 
 @Composable
 internal fun ReviewSheetScaffold(
@@ -20,25 +13,12 @@ internal fun ReviewSheetScaffold(
     chrome: ReviewSheetChrome? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.cardPadding, vertical = AppSpacing.cardPaddingSmall),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
+    AppSheetScaffold(
+        title = title,
+        subtitle = subtitle,
+        modifier = modifier,
     ) {
         chrome?.let { ReviewQueueHeader(chrome = it) }
-        Text(
-            title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        subtitle.takeIf { it.isNotBlank() }?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
         content()
     }
 }

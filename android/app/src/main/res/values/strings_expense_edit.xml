@@ -38,6 +38,9 @@
     <string name="expense_edit_currency_card_title">金额与币种</string>
     <string name="expense_edit_amount_field_label">金额</string>
     <string name="expense_edit_amount_supporting_text"></string>
+    <string name="expense_edit_currency_label">币种</string>
+    <string name="expense_edit_currency_change_button">切换</string>
+    <string name="expense_edit_currency_collapse_button">收起</string>
     <string name="expense_edit_fx_hint">汇率同步后入账。</string>
     <string name="expense_edit_merchant_field_label">商家</string>
     <string name="expense_edit_category_field_label">分类</string>
