@@ -30,6 +30,13 @@
     <string name="income_plan_sheet_label_arrival_day">到账日 (1-31)</string>
     <string name="income_plan_sheet_submitting">提交中…</string>
     <string name="income_plan_sheet_save">保存</string>
+    <string name="income_plan_source_salary">工资</string>
+    <string name="income_plan_source_bonus">奖金</string>
+    <string name="income_plan_source_freelance">副业 / 接单</string>
+    <string name="income_plan_source_rental">租金</string>
+    <string name="income_plan_source_other">其它</string>
+    <string name="income_plan_frequency_monthly">每月固定</string>
+    <string name="income_plan_frequency_one_time">实际到账</string>
 
     <!-- GlobalSearchScreen：全局搜索 -->
     <string name="global_search_back">返回账本</string>

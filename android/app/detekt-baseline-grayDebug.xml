@@ -136,8 +136,6 @@
     <ID>LongParameterList:ExpenseRepositoryCore.kt:ExpenseRepositoryCore$suspend fun syncConfirmedFromService: List&lt;Expense&gt;</ID>
     <ID>LongParameterList:FamilyMembersScreen.kt:@Composable private fun FamilyMemberRow</ID>
     <ID>LongParameterList:IncomePlanRepository.kt:IncomePlanRepository$private suspend fun enqueueUpdateIncomePlan</ID>
-    <ID>LongParameterList:IncomePlanScreen.kt:@Composable private fun AddIncomePlanSheet</ID>
-    <ID>LongParameterList:IncomePlanScreen.kt:@Composable private fun IncomePlanCard</ID>
     <ID>LongParameterList:ItemsEditorSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ItemsEditorSheet</ID>
     <ID>LongParameterList:LedgerBulkEdit.kt:@Composable internal fun LedgerBulkEditSheet</ID>
     <ID>LongParameterList:LedgerFilters.kt:@Composable internal fun LedgerFilterPanel</ID>

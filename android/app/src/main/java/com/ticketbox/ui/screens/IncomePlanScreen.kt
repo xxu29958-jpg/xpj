@@ -1,8 +1,7 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.background
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,7 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,7 +42,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -53,19 +50,22 @@ import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppAmountInput
+import com.ticketbox.ui.components.AppAmountInputActions
+import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
-import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.updateDraftAmount
@@ -76,16 +76,24 @@ import kotlinx.coroutines.delay
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
 private const val FlashDismissMillis = 4000L
 
-/**
- * v1.1 收入计划 — Android 生活流：KPI 卡 → 卡片列 → 页头 CTA → 底部抽屉添加。
- *
- * 收口回共享骨架：列表与下拉刷新走 [AppSecondaryScrollableContent]，反馈走页头位的
- * [AppStatusBanner]（flashMessage→Success / error→Danger），添加入口收编到页头的
- * [PrimaryCtaButton]。不照搬 /web 的"表 + form"，按移动端单手操作模式：每条收入是
- * 一个卡片，添加进底部抽屉。共享 design token 通过 MaterialTheme + AppSpacing +
- * AppGlassCard（参考 [[feedback_three_surface_visual_sync]]：token 同步是硬约束；
- * layout 按端特点自决）。
- */
+private data class IncomePlanRowAction(
+    val icon: ImageVector,
+    val description: String,
+    val onClick: () -> Unit,
+)
+
+private data class AddIncomePlanSheetActions(
+    val onLabel: (String) -> Unit,
+    val onSourceType: (IncomeSourceType) -> Unit,
+    val onFrequency: (IncomeFrequency) -> Unit,
+    val onPreviousIncomeMonth: () -> Unit,
+    val onNextIncomeMonth: () -> Unit,
+    val onAmount: (String) -> Unit,
+    val onPayDay: (String) -> Unit,
+    val onSubmit: () -> Unit,
+    val onCancel: () -> Unit,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IncomePlanScreen(
@@ -121,7 +129,7 @@ fun IncomePlanScreen(
             backText = stringResource(R.string.income_plan_topbar_back),
             onBack = onBack,
             hasBottomBar = false,
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ),
         refresh = AppSecondaryRefreshState(
             isRefreshing = ReadableRefreshIndicator.isActive(
@@ -133,9 +141,9 @@ fun IncomePlanScreen(
         slots = AppSecondaryPageSlots(
             actions = {
                 if (state.canModify) {
-                    PrimaryCtaButton(
+                    AppSecondaryButton(
                         text = stringResource(R.string.income_plan_fab_add),
-                        icon = Icons.Default.Add,
+                        leadingIcon = Icons.Default.Add,
                         onClick = {
                             viewModel.resetDraft()
                             showAddSheet = true
@@ -154,7 +162,7 @@ fun IncomePlanScreen(
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         item {
-            IncomeTotalCard(totalCents = state.totalActiveAmountCents, currency = currency)
+            IncomeTotalSummary(totalCents = state.totalActiveAmountCents, currency = currency)
         }
         incomePlanSections(state = state, currency = currency, viewModel = viewModel)
     }
@@ -169,18 +177,21 @@ fun IncomePlanScreen(
         ) {
             AddIncomePlanSheet(
                 state = state,
-                onLabel = viewModel::updateDraftLabel,
-                onSourceType = viewModel::updateDraftSource,
-                onFrequency = viewModel::updateDraftFrequency,
-                onPreviousIncomeMonth = { viewModel.shiftDraftIncomeMonth(-1L) },
-                onNextIncomeMonth = { viewModel.shiftDraftIncomeMonth(1L) },
-                onAmount = viewModel::updateDraftAmount,
-                onPayDay = viewModel::updateDraftPayDay,
-                onSubmit = { viewModel.submitDraft() },
-                onCancel = {
-                    showAddSheet = false
-                    viewModel.resetDraft()
-                },
+                currency = currency,
+                actions = AddIncomePlanSheetActions(
+                    onLabel = viewModel::updateDraftLabel,
+                    onSourceType = viewModel::updateDraftSource,
+                    onFrequency = viewModel::updateDraftFrequency,
+                    onPreviousIncomeMonth = { viewModel.shiftDraftIncomeMonth(-1L) },
+                    onNextIncomeMonth = { viewModel.shiftDraftIncomeMonth(1L) },
+                    onAmount = viewModel::updateDraftAmount,
+                    onPayDay = viewModel::updateDraftPayDay,
+                    onSubmit = { viewModel.submitDraft() },
+                    onCancel = {
+                        showAddSheet = false
+                        viewModel.resetDraft()
+                    },
+                ),
             )
         }
     }
@@ -225,28 +236,25 @@ private fun IncomeMonthPicker(
     }
 }
 
-/**
- * 在用 / 已归档两组计划，挂进共享二级页列表：每条计划是
- * 一个独立 item，避免把整组塞进单个 item 造成嵌套过深；空态（无在用计划且加载完）
- * 渲染引导卡片。
- */
 private fun LazyListScope.incomePlanSections(
     state: IncomePlanUiState,
     currency: CurrencyDisplay,
     viewModel: IncomePlanViewModel,
 ) {
     if (state.activePlans.isEmpty() && !state.isLoading) {
-        item { EmptyStateCard() }
+        item { IncomePlanEmptyState() }
     } else {
         item { SectionEyebrow(stringResource(R.string.income_plan_section_active)) }
         items(state.activePlans, key = { "active-${it.publicId}" }) { plan ->
-            IncomePlanCard(
+            IncomePlanRow(
                 plan = plan,
                 currency = currency,
                 canModify = state.canModify,
-                trailingIcon = Icons.Default.DeleteOutline,
-                trailingDescription = stringResource(R.string.income_plan_card_archive_action),
-                onTrailing = { viewModel.archive(plan.publicId, plan.rowVersion) },
+                action = IncomePlanRowAction(
+                    icon = Icons.Default.DeleteOutline,
+                    description = stringResource(R.string.income_plan_card_archive_action),
+                    onClick = { viewModel.archive(plan.publicId, plan.rowVersion) },
+                ),
             )
         }
     }
@@ -254,13 +262,15 @@ private fun LazyListScope.incomePlanSections(
     if (state.archivedPlans.isNotEmpty()) {
         item { SectionEyebrow(stringResource(R.string.income_plan_section_archived)) }
         items(state.archivedPlans, key = { "archived-${it.publicId}" }) { plan ->
-            IncomePlanCard(
+            IncomePlanRow(
                 plan = plan,
                 currency = currency,
                 canModify = state.canModify,
-                trailingIcon = Icons.Default.Restore,
-                trailingDescription = stringResource(R.string.income_plan_card_restore_action),
-                onTrailing = { viewModel.restore(plan.publicId, plan.rowVersion) },
+                action = IncomePlanRowAction(
+                    icon = Icons.Default.Restore,
+                    description = stringResource(R.string.income_plan_card_restore_action),
+                    onClick = { viewModel.restore(plan.publicId, plan.rowVersion) },
+                ),
                 dimmed = true,
             )
         }
@@ -278,67 +288,67 @@ private fun SectionEyebrow(text: String) {
 }
 
 @Composable
-private fun IncomeTotalCard(totalCents: Long, currency: CurrencyDisplay) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(AppSpacing.cardPadding)) {
-            Text(
-                stringResource(R.string.income_plan_total_label),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.size(AppSpacing.miniGap))
-            Text(
-                formatDisplayAmount(totalCents, currency),
-                style = MaterialTheme.typography.displaySmall.tabularNum(),
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.miniGap))
-            Text(
-                stringResource(R.string.income_plan_total_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun IncomeTotalSummary(totalCents: Long, currency: CurrencyDisplay) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            stringResource(R.string.income_plan_total_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(AppSpacing.miniGap))
+        Text(
+            formatDisplayAmount(totalCents, currency),
+            style = MaterialTheme.typography.displaySmall.tabularNum(),
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.size(AppSpacing.miniGap))
+        Text(
+            stringResource(R.string.income_plan_total_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(AppSpacing.compactGap))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
 @Composable
-private fun IncomePlanCard(
+private fun IncomePlanRow(
     plan: IncomePlan,
     currency: CurrencyDisplay,
     canModify: Boolean,
-    trailingIcon: ImageVector,
-    trailingDescription: String,
-    onTrailing: () -> Unit,
+    action: IncomePlanRowAction,
     dimmed: Boolean = false,
 ) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(AppSpacing.cardPadding),
+                .padding(vertical = AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IncomePlanCardSummary(plan = plan, dimmed = dimmed, modifier = Modifier.weight(1f))
+            IncomePlanRowSummary(plan = plan, dimmed = dimmed, modifier = Modifier.weight(1f))
             Text(
                 formatDisplayAmount(plan.amountCents, currency),
-                style = MaterialTheme.typography.titleLarge.tabularNum(),
+                style = MaterialTheme.typography.titleMedium.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
                 color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.End,
             )
             if (canModify) {
                 Spacer(Modifier.width(AppSpacing.smallGap))
-                IconButton(onClick = onTrailing) {
-                    Icon(trailingIcon, contentDescription = trailingDescription)
+                IconButton(onClick = action.onClick) {
+                    Icon(action.icon, contentDescription = action.description)
                 }
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
 @Composable
-private fun IncomePlanCardSummary(
+private fun IncomePlanRowSummary(
     plan: IncomePlan,
     dimmed: Boolean,
     modifier: Modifier = Modifier,
@@ -352,19 +362,15 @@ private fun IncomePlanCardSummary(
             else MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
             Text(
-                plan.sourceType.displayName,
+                stringResource(incomeSourceTypeLabelRes(plan.sourceType)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.width(AppSpacing.smallGap))
-            Box(
-                modifier = Modifier
-                    .size(width = 1.dp, height = 12.dp)
-                    .background(MaterialTheme.colorScheme.outlineVariant),
-            )
-            Spacer(Modifier.width(AppSpacing.smallGap))
             Text(
                 if (plan.frequency == IncomeFrequency.ONE_TIME) {
                     stringResource(
@@ -383,43 +389,29 @@ private fun IncomePlanCardSummary(
 }
 
 @Composable
-private fun EmptyStateCard() {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AppSpacing.sectionGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            MascotEmptyIllustration()
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.income_plan_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.income_plan_empty_body),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun IncomePlanEmptyState() {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            stringResource(R.string.income_plan_empty_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.size(AppSpacing.smallGap))
+        Text(
+            stringResource(R.string.income_plan_empty_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(AppSpacing.compactGap))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
 @Composable
 private fun AddIncomePlanSheet(
     state: IncomePlanUiState,
-    onLabel: (String) -> Unit,
-    onSourceType: (IncomeSourceType) -> Unit,
-    onFrequency: (IncomeFrequency) -> Unit,
-    onPreviousIncomeMonth: () -> Unit,
-    onNextIncomeMonth: () -> Unit,
-    onAmount: (String) -> Unit,
-    onPayDay: (String) -> Unit,
-    onSubmit: () -> Unit,
-    onCancel: () -> Unit,
+    currency: CurrencyDisplay,
+    actions: AddIncomePlanSheetActions,
 ) {
     val draft = state.addDraft
     Column(
@@ -436,9 +428,10 @@ private fun AddIncomePlanSheet(
 
         OutlinedTextField(
             value = draft.label,
-            onValueChange = onLabel,
+            onValueChange = actions.onLabel,
             label = { Text(stringResource(R.string.income_plan_sheet_label_name)) },
             singleLine = true,
+            enabled = !state.isSubmitting,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.size(AppSpacing.compactGap))
@@ -449,14 +442,19 @@ private fun AddIncomePlanSheet(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
-        Row(modifier = Modifier.fillMaxWidth()) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        ) {
             IncomeSourceType.entries.forEach { source ->
-                FilterChip(
-                    selected = draft.sourceType == source,
-                    onClick = { onSourceType(source) },
-                    label = { Text(source.displayName) },
-                    modifier = Modifier.padding(end = AppSpacing.miniGap),
-                )
+                item(source.wireValue) {
+                    AppFilterChip(
+                        selected = draft.sourceType == source,
+                        onClick = { actions.onSourceType(source) },
+                        label = stringResource(incomeSourceTypeLabelRes(source)),
+                        enabled = !state.isSubmitting,
+                    )
+                }
             }
         }
         Spacer(Modifier.size(AppSpacing.compactGap))
@@ -467,14 +465,19 @@ private fun AddIncomePlanSheet(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
-        Row(modifier = Modifier.fillMaxWidth()) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        ) {
             listOf(IncomeFrequency.ONE_TIME, IncomeFrequency.MONTHLY).forEach { frequency ->
-                FilterChip(
-                    selected = draft.frequency == frequency,
-                    onClick = { onFrequency(frequency) },
-                    label = { Text(frequency.displayName) },
-                    modifier = Modifier.padding(end = AppSpacing.miniGap),
-                )
+                item(frequency.wireValue) {
+                    AppFilterChip(
+                        selected = draft.frequency == frequency,
+                        onClick = { actions.onFrequency(frequency) },
+                        label = stringResource(incomeFrequencyLabelRes(frequency)),
+                        enabled = !state.isSubmitting,
+                    )
+                }
             }
         }
         Spacer(Modifier.size(AppSpacing.compactGap))
@@ -482,33 +485,34 @@ private fun AddIncomePlanSheet(
         if (draft.frequency == IncomeFrequency.ONE_TIME) {
             IncomeMonthPicker(
                 value = draft.incomeMonthInput,
-                onPrevious = onPreviousIncomeMonth,
-                onNext = onNextIncomeMonth,
+                onPrevious = actions.onPreviousIncomeMonth,
+                onNext = actions.onNextIncomeMonth,
             )
             Spacer(Modifier.size(AppSpacing.compactGap))
         }
 
-        OutlinedTextField(
-            value = draft.amountYuanInput,
-            onValueChange = onAmount,
-            label = {
-                Text(
-                    if (draft.frequency == IncomeFrequency.ONE_TIME) {
-                        stringResource(R.string.income_plan_sheet_label_amount_one_time)
-                    } else {
-                        stringResource(R.string.income_plan_sheet_label_amount_monthly)
-                    },
-                )
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
+        AppAmountInput(
+            state = AppAmountInputState(
+                label = if (draft.frequency == IncomeFrequency.ONE_TIME) {
+                    stringResource(R.string.income_plan_sheet_label_amount_one_time)
+                } else {
+                    stringResource(R.string.income_plan_sheet_label_amount_monthly)
+                },
+                currency = currency.homeCurrency,
+                value = draft.amountYuanInput,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                enabled = !state.isSubmitting,
+                isError = draft.validationError != null,
+            ),
+            actions = AppAmountInputActions(
+                onValueChange = actions.onAmount,
+            ),
         )
         Spacer(Modifier.size(AppSpacing.compactGap))
 
         OutlinedTextField(
             value = draft.payDayInput,
-            onValueChange = onPayDay,
+            onValueChange = actions.onPayDay,
             label = {
                 Text(
                     if (draft.frequency == IncomeFrequency.ONE_TIME) {
@@ -520,6 +524,7 @@ private fun AddIncomePlanSheet(
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            enabled = !state.isSubmitting,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -537,12 +542,17 @@ private fun AddIncomePlanSheet(
         Spacer(Modifier.size(AppSpacing.compactGap))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
-            Spacer(Modifier.width(AppSpacing.smallGap))
+            AppSecondaryButton(
+                text = stringResource(R.string.common_cancel),
+                modifier = Modifier.weight(1f),
+                enabled = !state.isSubmitting,
+                onClick = actions.onCancel,
+            )
             Button(
-                onClick = onSubmit,
+                modifier = Modifier.weight(1f),
+                onClick = actions.onSubmit,
                 enabled = !state.isSubmitting,
             ) {
                 Text(
@@ -557,3 +567,20 @@ private fun AddIncomePlanSheet(
         Spacer(Modifier.size(AppSpacing.compactGap))
     }
 }
+
+@StringRes
+private fun incomeSourceTypeLabelRes(source: IncomeSourceType): Int =
+    when (source) {
+        IncomeSourceType.SALARY -> R.string.income_plan_source_salary
+        IncomeSourceType.BONUS -> R.string.income_plan_source_bonus
+        IncomeSourceType.FREELANCE -> R.string.income_plan_source_freelance
+        IncomeSourceType.RENTAL -> R.string.income_plan_source_rental
+        IncomeSourceType.OTHER -> R.string.income_plan_source_other
+    }
+
+@StringRes
+private fun incomeFrequencyLabelRes(frequency: IncomeFrequency): Int =
+    when (frequency) {
+        IncomeFrequency.MONTHLY -> R.string.income_plan_frequency_monthly
+        IncomeFrequency.ONE_TIME -> R.string.income_plan_frequency_one_time
+    }
