@@ -41,10 +41,12 @@ fun networkDiagnosticMessage(error: IOException, serverUrl: String?): String {
  *  the HTTPS / non-local rules can never fork between the two. */
 fun validateServerUrlInput(serverUrl: String): String {
     val normalized = serverUrl.trim().trimEnd('/')
+    val allowDebugLocalDevelopmentUrl = BuildConfig.DEBUG && isLocalDevelopmentServerUrl(normalized)
     val allowInternalInsecureBinding = BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS
+    val allowInsecureBinding = allowInternalInsecureBinding || allowDebugLocalDevelopmentUrl
     require(normalized.isNotBlank()) { "请输入账本地址。" }
-    require(allowInternalInsecureBinding || !isLocalOnlyServerUrl(normalized)) { "请填写可在手机上访问的地址。" }
-    require(allowInternalInsecureBinding || normalized.startsWith("https://", ignoreCase = true)) { "请使用 HTTPS 地址。" }
+    require(allowInsecureBinding || !isLocalDevelopmentServerUrl(normalized)) { "请填写可在手机上访问的地址。" }
+    require(allowInsecureBinding || normalized.startsWith("https://", ignoreCase = true)) { "请使用 HTTPS 地址。" }
     return normalized
 }
 
@@ -56,5 +58,12 @@ fun validateBindingInput(serverUrl: String, pairingCode: String): String {
 
 fun isLocalOnlyServerUrl(serverUrl: String): Boolean {
     return serverUrl.contains("127.0.0.1") ||
-        serverUrl.contains("localhost", ignoreCase = true)
+        serverUrl.contains("localhost", ignoreCase = true) ||
+        serverUrl.contains("[::1]") ||
+        serverUrl.contains("::1")
+}
+
+fun isLocalDevelopmentServerUrl(serverUrl: String): Boolean {
+    return isLocalOnlyServerUrl(serverUrl) ||
+        serverUrl.contains("10.0.2.2")
 }

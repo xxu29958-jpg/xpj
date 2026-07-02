@@ -100,7 +100,7 @@ class NetworkErrorMapperTest {
 
     @Test
     fun rejectsLocalOnlyBindingServerUrl() {
-        if (allowsInternalInsecureBinding()) {
+        if (allowsDebugLocalDevelopmentBinding()) {
             assertEquals(
                 "http://127.0.0.1:8000",
                 validateBindingInput(serverUrl = "http://127.0.0.1:8000", pairingCode = "123456"),
@@ -108,6 +108,22 @@ class NetworkErrorMapperTest {
         } else {
             val error = assertFailsWith<IllegalArgumentException> {
                 validateBindingInput(serverUrl = "http://127.0.0.1:8000", pairingCode = "123456")
+            }
+
+            assertEquals("请填写可在手机上访问的地址。", error.message)
+        }
+    }
+
+    @Test
+    fun allowsEmulatorHostUrlForDebugBinding() {
+        if (allowsDebugLocalDevelopmentBinding()) {
+            assertEquals(
+                "http://10.0.2.2:8000",
+                validateBindingInput(serverUrl = "http://10.0.2.2:8000", pairingCode = "123456"),
+            )
+        } else {
+            val error = assertFailsWith<IllegalArgumentException> {
+                validateBindingInput(serverUrl = "http://10.0.2.2:8000", pairingCode = "123456")
             }
 
             assertEquals("请填写可在手机上访问的地址。", error.message)
@@ -141,5 +157,9 @@ class NetworkErrorMapperTest {
 
     private fun allowsInternalInsecureBinding(): Boolean {
         return BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS
+    }
+
+    private fun allowsDebugLocalDevelopmentBinding(): Boolean {
+        return BuildConfig.DEBUG
     }
 }
