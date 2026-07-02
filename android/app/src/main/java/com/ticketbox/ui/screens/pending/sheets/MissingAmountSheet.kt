@@ -1,7 +1,8 @@
 package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Save
@@ -18,17 +19,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppPrimaryButton
-import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.formatMinorAmount
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.tabularNum
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,12 +42,15 @@ internal fun MissingAmountSheetContent(
     chrome: ReviewSheetChrome,
     onSaveDraft: (Long) -> Unit,
     onSaveAndConfirm: (Long) -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val saving = chrome.saving
     val currency = expense.originalCurrencyCode
+    val suggestedMinor = expense.originalAmountMinor?.takeIf { it > 0 }
+    val suggestedInput = remember(expense.id, suggestedMinor, currency) {
+        formatMinorAmountInput(suggestedMinor, currency)
+    }
     var input by remember(expense.id) {
-        mutableStateOf(formatMinorAmountInput(expense.originalAmountMinor ?: expense.amountCents, currency))
+        mutableStateOf("")
     }
     val originalMinor = parseMinorAmount(input, currency)
     val invalid = input.isNotBlank() && (originalMinor == null || originalMinor <= 0)
@@ -56,6 +64,13 @@ internal fun MissingAmountSheetContent(
         subtitle = stringResource(R.string.pending_missing_amount_hint),
         chrome = chrome,
     ) {
+        MissingAmountSuggestion(
+            suggestedMinor = suggestedMinor,
+            currency = currency,
+            enabled = !saving && suggestedInput.isNotBlank(),
+            onUseSuggestion = { input = suggestedInput },
+        )
+
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.pending_missing_amount_field_label),
@@ -80,31 +95,59 @@ internal fun MissingAmountSheetContent(
 
         ReviewSheetStatusMessage(chrome = chrome)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            QuietOutlinedButton(
-                text = stringResource(R.string.common_cancel),
-                modifier = Modifier.weight(1f),
-                enabled = !saving,
-                onClick = onDismiss,
-            )
-            AppSecondaryButton(
-                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_missing_amount_save_draft),
-                modifier = Modifier.weight(1f),
-                enabled = canSave,
-                leadingIcon = Icons.Filled.Save,
-                onClick = { originalMinor?.let(onSaveDraft) },
-            )
-            AppPrimaryButton(
+        AppSheetActionRow(
+            primary = AppSheetAction(
                 text = if (saving) {
                     stringResource(R.string.pending_missing_amount_processing)
                 } else {
                     stringResource(R.string.pending_missing_amount_save_and_confirm)
                 },
-                icon = Icons.Filled.Check,
-                modifier = Modifier.weight(1.2f),
                 enabled = canSave,
+                icon = Icons.Filled.Check,
                 onClick = { originalMinor?.let(onSaveAndConfirm) },
+            ),
+            secondary = AppSheetAction(
+                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_missing_amount_save_draft),
+                enabled = canSave,
+                icon = Icons.Filled.Save,
+                onClick = { originalMinor?.let(onSaveDraft) },
+            ),
+        )
+    }
+}
+
+@Composable
+private fun MissingAmountSuggestion(
+    suggestedMinor: Long?,
+    currency: CurrencyCode,
+    enabled: Boolean,
+    onUseSuggestion: () -> Unit,
+) {
+    if (suggestedMinor == null) return
+    AppListRow(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = if (enabled) onUseSuggestion else null,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            Text(
+                text = stringResource(R.string.pending_missing_amount_suggestion_label),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                text = formatMinorAmount(suggestedMinor, currency),
+                style = MaterialTheme.typography.titleLarge.tabularNum(),
+                fontWeight = AppTextHierarchy.body.weight,
             )
         }
+        Text(
+            text = stringResource(R.string.pending_missing_amount_use_suggestion),
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = AppTextHierarchy.body.weight,
+        )
     }
 }

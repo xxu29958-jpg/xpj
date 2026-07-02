@@ -2,11 +2,8 @@ package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +15,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -59,30 +57,21 @@ internal fun QuickCategorySheetContent(
 
         ReviewSheetStatusMessage(chrome = chrome)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            AppSecondaryButton(
-                text = stringResource(R.string.common_cancel),
-                modifier = Modifier.weight(1f),
-                enabled = !saving,
-                onClick = onDismiss,
-            )
-            Button(
-                modifier = Modifier.weight(1f),
+        AppSheetActionRow(
+            primary = AppSheetAction(
+                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.quick_category_save_button),
                 enabled = !saving && (custom.trim().isNotEmpty() || selected.isNotBlank()),
                 onClick = {
                     val choice = custom.trim().ifBlank { selected }.trim()
                     if (choice.isNotEmpty()) onSave(choice)
                 },
-            ) {
-                Text(
-                    if (saving) {
-                        stringResource(R.string.common_saving)
-                    } else {
-                        stringResource(R.string.quick_category_save_button)
-                    },
-                )
-            }
-        }
+            ),
+            secondary = AppSheetAction(
+                text = stringResource(R.string.common_cancel),
+                enabled = !saving,
+                onClick = onDismiss,
+            ),
+        )
     }
 }
 

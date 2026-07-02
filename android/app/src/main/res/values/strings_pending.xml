@@ -161,6 +161,8 @@
     <string name="pending_missing_amount_title">补全金额</string>
     <string name="pending_missing_amount_hint"></string>
     <string name="pending_missing_amount_field_label">金额</string>
+    <string name="pending_missing_amount_suggestion_label">识别候选</string>
+    <string name="pending_missing_amount_use_suggestion">填入</string>
     <string name="pending_missing_amount_invalid">请输入大于 0 的金额</string>
     <string name="pending_missing_amount_save_draft">仅保存</string>
     <string name="pending_missing_amount_processing">处理中</string>

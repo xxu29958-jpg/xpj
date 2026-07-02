@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -12,7 +11,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -54,21 +54,18 @@ internal fun BulkConfirmSheetContent(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            AppSecondaryButton(
-                text = stringResource(R.string.common_cancel),
-                modifier = Modifier.weight(1f),
-                enabled = !inProgress,
-                onClick = onDismiss,
-            )
-            Button(
-                modifier = Modifier.weight(1.4f),
+        AppSheetActionRow(
+            primary = AppSheetAction(
+                text = confirmButtonLabel(inProgress, confirmedCount, totalCount, readyCount),
                 enabled = !inProgress && readyCount > 0,
                 onClick = onConfirmReady,
-            ) {
-                Text(confirmButtonLabel(inProgress, confirmedCount, totalCount, readyCount))
-            }
-        }
+            ),
+            secondary = AppSheetAction(
+                text = stringResource(R.string.common_cancel),
+                enabled = !inProgress,
+                onClick = onDismiss,
+            ),
+        )
     }
 }
 

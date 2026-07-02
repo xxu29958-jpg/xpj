@@ -2,9 +2,7 @@ package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,7 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.duplicateNoticeBody
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -28,7 +27,6 @@ internal fun DuplicateConfirmSheetContent(
     inProgress: Boolean,
     onKeepBoth: () -> Unit,
     onIgnoreCurrent: () -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
@@ -60,28 +58,21 @@ internal fun DuplicateConfirmSheetContent(
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            Button(
-                modifier = Modifier.fillMaxWidth(),
+        AppSheetActionRow(
+            primary = AppSheetAction(
+                text = if (inProgress) {
+                    stringResource(R.string.pending_duplicate_sheet_processing)
+                } else {
+                    stringResource(R.string.pending_duplicate_sheet_keep_both)
+                },
                 enabled = !inProgress,
                 onClick = onKeepBoth,
-            ) {
-                Text(if (inProgress) stringResource(R.string.pending_duplicate_sheet_processing) else stringResource(R.string.pending_duplicate_sheet_keep_both))
-            }
-            AppSecondaryButton(
+            ),
+            secondary = AppSheetAction(
                 text = if (inProgress) stringResource(R.string.pending_duplicate_sheet_processing) else stringResource(R.string.pending_duplicate_sheet_ignore_current),
-                modifier = Modifier.fillMaxWidth(),
                 enabled = !inProgress,
                 onClick = onIgnoreCurrent,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                AppSecondaryButton(
-                    text = stringResource(R.string.common_cancel),
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !inProgress,
-                    onClick = onDismiss,
-                )
-            }
-        }
+            ),
+        )
     }
 }

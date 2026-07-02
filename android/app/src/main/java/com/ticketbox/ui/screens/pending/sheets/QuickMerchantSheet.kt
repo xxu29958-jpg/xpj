@@ -1,10 +1,7 @@
 package com.ticketbox.ui.screens.pending.sheets
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,12 +16,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppTextInputDecorations
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
-import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 internal fun QuickMerchantSheetContent(
@@ -73,20 +70,17 @@ internal fun QuickMerchantSheetContent(
 
         ReviewSheetStatusMessage(chrome = chrome)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            AppSecondaryButton(
-                text = stringResource(R.string.common_cancel),
-                modifier = Modifier.weight(1f),
-                enabled = !saving,
-                onClick = onDismiss,
-            )
-            Button(
-                modifier = Modifier.weight(1f),
+        AppSheetActionRow(
+            primary = AppSheetAction(
+                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_quick_merchant_save_button),
                 enabled = !saving && cleaned.isNotEmpty(),
                 onClick = { onSave(cleaned) },
-            ) {
-                Text(if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_quick_merchant_save_button))
-            }
-        }
+            ),
+            secondary = AppSheetAction(
+                text = stringResource(R.string.common_cancel),
+                enabled = !saving,
+                onClick = onDismiss,
+            ),
+        )
     }
 }

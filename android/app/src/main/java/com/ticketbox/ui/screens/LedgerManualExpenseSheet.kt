@@ -40,11 +40,11 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.LocalAppImeVisible
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.nowUtcIso
@@ -200,27 +200,13 @@ fun ManualExpenseSheet(
                 onAmountChange = { amountText = it },
                 options = ExpenseCurrencyFieldOptions(
                     enabled = !saving,
+                    autoFocusAmount = false,
                     showFxHint = false,
                     showSectionTitle = false,
                     supportingText = stringResource(R.string.ledger_manual_amount_supporting_text),
                 ),
             )
             val feedbackMessage = message ?: errorMessage
-            ManualExpenseActionSlot(
-                visible = true,
-                feedbackMessage = feedbackMessage,
-                saving = saving,
-                onDismiss = onDismiss,
-                onSubmit = ::submitDraft,
-            )
-            ManualRecentMerchantsSection(
-                recentMerchants = recentMerchants,
-                selectedMerchant = merchant,
-                onPick = { picked ->
-                    merchant = picked.merchant
-                    category = picked.category
-                },
-            )
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_merchant_label),
@@ -230,6 +216,14 @@ fun ManualExpenseSheet(
                 ),
                 onValueChange = { merchant = it },
                 modifier = Modifier.fillMaxWidth(),
+            )
+            ManualRecentMerchantsSection(
+                recentMerchants = recentMerchants,
+                selectedMerchant = merchant,
+                onPick = { picked ->
+                    merchant = picked.merchant
+                    category = picked.category
+                },
             )
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
@@ -251,7 +245,7 @@ fun ManualExpenseSheet(
                     value = note,
                     enabled = !saving,
                     singleLine = false,
-                    minLines = 2,
+                    minLines = 1,
                 ),
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -261,6 +255,12 @@ fun ManualExpenseSheet(
                 onPickDate = { showDatePicker = true },
                 onPickTime = { showTimePicker = true },
                 onUseNow = { expenseTime = nowUtcIso() },
+            )
+            ManualExpenseActionSlot(
+                feedbackMessage = feedbackMessage,
+                saving = saving,
+                onDismiss = onDismiss,
+                onSubmit = ::submitDraft,
             )
         }
     }
@@ -306,36 +306,32 @@ private fun ManualExpenseActionRow(
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        QuietOutlinedButton(
-            text = stringResource(R.string.common_cancel),
-            modifier = Modifier.weight(1f),
-            enabled = !saving,
-            onClick = onDismiss,
-        )
-        AppPrimaryButton(
+    AppSheetActionRow(
+        primary = AppSheetAction(
             text = if (saving) {
                 stringResource(R.string.ledger_manual_saving_button)
             } else {
                 stringResource(R.string.ledger_manual_save_button)
             },
             icon = Icons.Filled.Check,
-            modifier = Modifier.weight(1f),
             enabled = !saving,
             onClick = onSubmit,
-        )
-    }
+        ),
+        secondary = AppSheetAction(
+            text = stringResource(R.string.common_cancel),
+            enabled = !saving,
+            onClick = onDismiss,
+        ),
+    )
 }
 
 @Composable
 private fun ManualExpenseActionSlot(
-    visible: Boolean,
     feedbackMessage: String?,
     saving: Boolean,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
 ) {
-    if (!visible) return
     feedbackMessage?.let {
         Text(it, color = MaterialTheme.colorScheme.secondary)
     }

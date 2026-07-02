@@ -68,7 +68,6 @@ internal fun PendingReviewSheetHost(
                 chrome = chromeFor(sheet.expense.id),
                 onSaveDraft = { cents -> onSaveAmountDraft(sheet.expense.id, cents) },
                 onSaveAndConfirm = { cents -> onSaveAmountAndConfirm(sheet.expense.id, cents) },
-                onDismiss = onDismiss,
             )
         }
         is PendingSheet.Duplicate -> ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -77,7 +76,6 @@ internal fun PendingReviewSheetHost(
                 inProgress = sheet.expense.id in actionInProgressIds,
                 onKeepBoth = { onKeepBoth(sheet.expense) },
                 onIgnoreCurrent = { onIgnoreCurrent(sheet.expense) },
-                onDismiss = onDismiss,
             )
         }
         is PendingSheet.BulkConfirm -> ModalBottomSheet(onDismissRequest = onDismiss) {
