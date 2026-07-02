@@ -37,17 +37,18 @@ class ReportsAnswerModelTest {
     }
 
     @Test
-    fun trendEvidenceUsesSparseModeForOneOrTwoActiveBuckets() {
+    fun trendEvidenceUsesSparseModeForUpToThreeActiveBuckets() {
         val evidence = reportsTrendEvidence(
             listOf(
                 ReportTrendChartPoint(x = 0, label = "6/1", amountCents = 0L, count = 0),
                 ReportTrendChartPoint(x = 1, label = "6/2", amountCents = 1_000L, count = 1),
                 ReportTrendChartPoint(x = 2, label = "6/3", amountCents = 2_000L, count = 1),
+                ReportTrendChartPoint(x = 3, label = "6/4", amountCents = 1_500L, count = 1),
             ),
         )
 
         assertEquals(ReportsTrendMode.Sparse, evidence.mode)
-        assertEquals(2, evidence.positiveBucketCount)
+        assertEquals(3, evidence.positiveBucketCount)
     }
 
     @Test
@@ -57,6 +58,7 @@ class ReportsAnswerModelTest {
                 ReportTrendChartPoint(x = 0, label = "6/1", amountCents = 9_000L, count = 1),
                 ReportTrendChartPoint(x = 1, label = "6/2", amountCents = 500L, count = 1),
                 ReportTrendChartPoint(x = 2, label = "6/3", amountCents = 500L, count = 1),
+                ReportTrendChartPoint(x = 3, label = "6/4", amountCents = 500L, count = 1),
             ),
         )
         val balanced = reportsTrendEvidence(
@@ -64,11 +66,12 @@ class ReportsAnswerModelTest {
                 ReportTrendChartPoint(x = 0, label = "6/1", amountCents = 4_000L, count = 1),
                 ReportTrendChartPoint(x = 1, label = "6/2", amountCents = 3_000L, count = 1),
                 ReportTrendChartPoint(x = 2, label = "6/3", amountCents = 2_000L, count = 1),
+                ReportTrendChartPoint(x = 3, label = "6/4", amountCents = 1_000L, count = 1),
             ),
         )
 
         assertEquals(ReportsTrendMode.DominantPeak, dominant.mode)
-        assertEquals(90, dominant.peakSharePercent)
+        assertEquals(85, dominant.peakSharePercent)
         assertEquals(ReportsTrendMode.Chart, balanced.mode)
     }
 

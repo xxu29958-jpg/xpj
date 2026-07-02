@@ -23,6 +23,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.tabularNum
 
 private const val HeroTrendDominantPeakPercent = 75
+private const val HeroTrendSparsePointLimit = 3
 
 @Composable
 internal fun HeroSpendTrend(
@@ -259,9 +260,9 @@ private data class HeroSpendTrendSummary(
     val otherAverageAmountCents: Long,
 ) {
     val shouldUseSparseBreakdown: Boolean =
-        positivePointCount in 1..2
+        positivePointCount in 1..HeroTrendSparsePointLimit
     val shouldUseDominanceBreakdown: Boolean =
-        positivePointCount >= 3 && peakSharePercent >= HeroTrendDominantPeakPercent
+        positivePointCount > HeroTrendSparsePointLimit && peakSharePercent >= HeroTrendDominantPeakPercent
 }
 
 private fun heroSpendTrendSummary(points: List<StatsSpendChartPoint>): HeroSpendTrendSummary {

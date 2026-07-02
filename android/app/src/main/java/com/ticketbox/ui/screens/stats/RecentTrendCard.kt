@@ -28,6 +28,7 @@ import com.ticketbox.ui.design.tabularNum
 import kotlin.math.abs
 
 private const val RecentTrendDominantPeakPercent = 75
+private const val RecentTrendSparseDayLimit = 3
 
 @Composable
 internal fun RecentTrendCard(trend: List<DailySpend>) {
@@ -62,17 +63,22 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
             )
         } else {
             RecentTrendComparison(summary)
-            RecentTrendDayChart(points = chartPoints, chartA11y = chartA11y)
-            RecentTrendMetricStrip(summary)
-            if (summary.shouldUseSparseBreakdown) {
-                RecentTrendSparseBreakdown(
-                    points = chartPoints,
-                    positiveDayCount = summary.positiveDayCount,
-                    chartA11y = chartA11y,
-                )
-            }
-            if (summary.shouldUseDominanceBreakdown) {
-                RecentTrendDominanceBreakdown(summary = summary)
+            when {
+                summary.shouldUseSparseBreakdown -> {
+                    RecentTrendSparseBreakdown(
+                        points = chartPoints,
+                        positiveDayCount = summary.positiveDayCount,
+                        chartA11y = chartA11y,
+                    )
+                }
+                summary.shouldUseDominanceBreakdown -> {
+                    RecentTrendMetricStrip(summary)
+                    RecentTrendDominanceBreakdown(summary = summary)
+                }
+                else -> {
+                    RecentTrendDayChart(points = chartPoints, chartA11y = chartA11y)
+                    RecentTrendMetricStrip(summary)
+                }
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
@@ -295,9 +301,9 @@ private data class RecentTrendSummary(
     val previousThreeAmountCents: Long,
 ) {
     val shouldUseSparseBreakdown: Boolean =
-        positiveDayCount in 1..2
+        positiveDayCount in 1..RecentTrendSparseDayLimit
     val shouldUseDominanceBreakdown: Boolean =
-        positiveDayCount >= 3 && peakSharePercent >= RecentTrendDominantPeakPercent
+        positiveDayCount > RecentTrendSparseDayLimit && peakSharePercent >= RecentTrendDominantPeakPercent
 }
 
 private fun recentTrendSummary(trend: List<DailySpend>): RecentTrendSummary {

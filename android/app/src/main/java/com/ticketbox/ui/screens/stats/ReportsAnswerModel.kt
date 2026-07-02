@@ -5,6 +5,7 @@ import com.ticketbox.domain.model.ReportGranularity
 import kotlin.math.abs
 
 private const val DominantPeakPercent = 75
+private const val SparseTrendBucketLimit = 3
 
 internal enum class ReportsTrendMode {
     Empty,
@@ -24,7 +25,7 @@ internal data class ReportsTrendEvidence(
 ) {
     val mode: ReportsTrendMode = when {
         totalAmountCents <= 0L || positiveBucketCount == 0 -> ReportsTrendMode.Empty
-        positiveBucketCount <= 2 -> ReportsTrendMode.Sparse
+        positiveBucketCount <= SparseTrendBucketLimit -> ReportsTrendMode.Sparse
         peakSharePercent >= DominantPeakPercent -> ReportsTrendMode.DominantPeak
         else -> ReportsTrendMode.Chart
     }
