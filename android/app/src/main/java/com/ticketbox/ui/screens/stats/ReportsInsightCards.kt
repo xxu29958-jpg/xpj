@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportGranularity
+import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppSegmentedControl
@@ -42,6 +43,7 @@ internal fun ReportsInsightCard(
     modifier: Modifier = Modifier,
     recentTrend: List<DailySpend> = emptyList(),
     onGranularityChange: (ReportGranularity) -> Unit = {},
+    onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
 ) {
     val model = remember(overview) { reportsAnswerModel(overview) }
     val hasCurrentSpend = model.count > 0 && model.totalAmountCents > 0L
@@ -62,6 +64,7 @@ internal fun ReportsInsightCard(
             MerchantRankingBlock(
                 rows = overview.merchantRanking.take(5),
                 rankingMetric = overview.rankingMetric,
+                onRankingMetricChange = onRankingMetricChange,
             )
         }
         if (hasCurrentSpend && overview.categoryComparison.isNotEmpty()) {

@@ -22,6 +22,7 @@ private data class StatsReportsRefreshKey(
     val month: String,
     val selectedTag: String,
     val granularity: ReportGranularity,
+    val rankingMetric: ReportRankingMetric,
 )
 
 class StatsReportsViewModel(
@@ -43,6 +44,7 @@ class StatsReportsViewModel(
     // 轴3 粒度切换:本 VM 是粒度的唯一持有方,UI 的 selected 用服务端回显
     // (overview.granularity)而非另存 state 字段——加载中 segmented 短暂显示旧值可接受。
     private var granularity: ReportGranularity = ReportGranularity.Day
+    private var rankingMetric: ReportRankingMetric = ReportRankingMetric.Count
 
     fun refresh(month: String, selectedTag: String) {
         val selectedMonth = month.trim().ifBlank { YearMonth.now().toString() }
@@ -63,7 +65,7 @@ class StatsReportsViewModel(
             clearReportSlice()
             return
         }
-        val key = StatsReportsRefreshKey(selectedMonth, cleanTag, granularity)
+        val key = currentRefreshKey(selectedMonth, cleanTag)
         if (inFlightRefreshKey == key) return
         requestGeneration += 1
         val generation = requestGeneration
@@ -101,12 +103,33 @@ class StatsReportsViewModel(
         val state = _uiState.value
         val reportsRepo = reportsRepository ?: return
         if (state.month.isBlank() || state.selectedTag.isNotBlank()) return
-        val key = StatsReportsRefreshKey(state.month, "", granularity)
+        val key = currentRefreshKey(state.month, "")
         if (inFlightRefreshKey == key) return
         requestGeneration += 1
         inFlightRefreshKey = key
         loadReports(reportsRepo, requestGeneration, key)
     }
+
+    fun setRankingMetric(value: ReportRankingMetric) {
+        if (value == rankingMetric) return
+        rankingMetric = value
+        val state = _uiState.value
+        val reportsRepo = reportsRepository ?: return
+        if (state.month.isBlank() || state.selectedTag.isNotBlank()) return
+        val key = currentRefreshKey(state.month, "")
+        if (inFlightRefreshKey == key) return
+        requestGeneration += 1
+        inFlightRefreshKey = key
+        loadReports(reportsRepo, requestGeneration, key)
+    }
+
+    private fun currentRefreshKey(month: String, selectedTag: String): StatsReportsRefreshKey =
+        StatsReportsRefreshKey(
+            month = month,
+            selectedTag = selectedTag,
+            granularity = granularity,
+            rankingMetric = rankingMetric,
+        )
 
     private fun clearReportSlice() {
         _uiState.update {
@@ -177,7 +200,7 @@ class StatsReportsViewModel(
                     ReportsOverviewQuery(
                         month = key.month,
                         granularity = key.granularity,
-                        rankingMetric = ReportRankingMetric.Count,
+                        rankingMetric = key.rankingMetric,
                     ),
                 )
                 if (!isCurrent(generation)) {

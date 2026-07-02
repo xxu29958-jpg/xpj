@@ -229,6 +229,8 @@
     <string name="stats_reports_comparison_a11y">分类对比：%1$s</string>
     <string name="stats_reports_merchant_frequency_title">高频商家</string>
     <string name="stats_reports_merchant_spend_title">商家支出排行</string>
+    <string name="stats_reports_merchant_metric_count">按次数</string>
+    <string name="stats_reports_merchant_metric_amount">按金额</string>
     <string name="stats_reports_merchant_fallback">未填写商家</string>
     <string name="stats_reports_merchant_total_amount">合计 %1$s</string>
     <string name="stats_reports_category_comparison_title">分类对比</string>

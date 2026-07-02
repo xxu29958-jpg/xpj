@@ -23,6 +23,7 @@ import com.ticketbox.domain.model.DASHBOARD_CARD_RECURRING
 import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.ReportGranularity
+import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
@@ -75,6 +76,7 @@ fun StatsScreen(
     onDrillToLedger: (String) -> Unit = {},
     // 轴3 粒度切换:动态图表卡的日/周档切换,交给 StatsReportsViewModel 重拉。
     onGranularityChange: (ReportGranularity) -> Unit = {},
+    onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var selectedStatsTab by rememberSaveable { mutableStateOf(StatsTab.Overview) }
@@ -264,6 +266,7 @@ fun StatsScreen(
                                     overview = overview,
                                     recentTrend = state.dailyTrend,
                                     onGranularityChange = onGranularityChange,
+                                    onRankingMetricChange = onRankingMetricChange,
                                 )
                             }
                             state.selectedTag.isNotBlank() -> item {

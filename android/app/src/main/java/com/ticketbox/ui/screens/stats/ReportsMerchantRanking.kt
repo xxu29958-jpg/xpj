@@ -20,6 +20,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportRankingMetric
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
@@ -33,14 +35,14 @@ import com.ticketbox.ui.design.tabularNum
 internal fun MerchantRankingBlock(
     rows: List<ReportMerchantRanking>,
     rankingMetric: ReportRankingMetric,
+    onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
 ) {
     val maxValue = merchantRankingMaxValue(rows, rankingMetric)
     val merchantFallback = stringResource(R.string.stats_reports_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap + AppSpacing.tinyGap)) {
-        Text(
-            text = stringResource(merchantRankingTitleRes(rankingMetric)),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.body.weight,
+        MerchantRankingHeader(
+            rankingMetric = rankingMetric,
+            onRankingMetricChange = onRankingMetricChange,
         )
         rows.forEach { row ->
             MerchantRankingRow(
@@ -50,6 +52,34 @@ internal fun MerchantRankingBlock(
                 maxValue = maxValue,
             )
         }
+    }
+}
+
+@Composable
+private fun MerchantRankingHeader(
+    rankingMetric: ReportRankingMetric,
+    onRankingMetricChange: (ReportRankingMetric) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(
+            text = stringResource(merchantRankingTitleRes(rankingMetric)),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.body.weight,
+        )
+        AppSegmentedControl(
+            options = listOf(
+                AppSegmentedItem(
+                    ReportRankingMetric.Count,
+                    stringResource(R.string.stats_reports_merchant_metric_count),
+                ),
+                AppSegmentedItem(
+                    ReportRankingMetric.Amount,
+                    stringResource(R.string.stats_reports_merchant_metric_amount),
+                ),
+            ),
+            selectedValue = rankingMetric,
+            onValueChange = onRankingMetricChange,
+        )
     }
 }
 

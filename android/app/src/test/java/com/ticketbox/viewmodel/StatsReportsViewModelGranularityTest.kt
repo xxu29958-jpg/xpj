@@ -45,12 +45,20 @@ class StatsReportsViewModelGranularityTest {
     }
 
     @Test
-    fun refreshQueriesWithDayGranularityByDefault() = reportsTest { repo ->
+    fun refreshQueriesWithDefaultGranularityAndMerchantMetric() = reportsTest { repo ->
         val vm = StatsReportsViewModel(repo)
         vm.refresh(month = "2026-06", selectedTag = "")
         advanceUntilIdle()
         assertEquals(listOf(ReportGranularity.Day), repo.overviewQueries.map { it.granularity })
         assertEquals(listOf(ReportRankingMetric.Count), repo.overviewQueries.map { it.rankingMetric })
+
+        vm.setRankingMetric(ReportRankingMetric.Amount)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(ReportRankingMetric.Count, ReportRankingMetric.Amount),
+            repo.overviewQueries.map { it.rankingMetric },
+        )
     }
 
     @Test
