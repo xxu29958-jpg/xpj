@@ -78,9 +78,9 @@ fun AppAmountInput(
             singleLine = true,
             enabled = state.enabled,
             isError = state.isError,
-            supportingText = supportingText,
             textStyle = MaterialTheme.typography.titleLarge.tabularNum(),
             shape = RoundedCornerShape(AppRadius.extraSmall),
         )
+        supportingText?.invoke()
     }
 }

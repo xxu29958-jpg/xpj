@@ -3,6 +3,8 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.annotation.StringRes
@@ -26,6 +28,7 @@ import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 
 @Immutable
@@ -35,6 +38,17 @@ internal data class ExpenseCurrencyFieldOptions(
     val onAmountFocusChanged: (Boolean) -> Unit = {},
     val supportingText: String? = null,
     val statusText: String? = null,
+)
+
+@Immutable
+internal data class ExpenseEditTextFieldState(
+    val label: String,
+    val value: String,
+    val enabled: Boolean = true,
+    val singleLine: Boolean = true,
+    val minLines: Int = 1,
+    val placeholder: String = "",
+    val keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 )
 
 @Composable
@@ -106,6 +120,41 @@ internal fun ExpenseCurrencyFields(
 }
 
 @Composable
+internal fun ExpenseEditTextField(
+    state: ExpenseEditTextFieldState,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        Text(
+            text = state.label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelLarge,
+        )
+        OutlinedTextField(
+            value = state.value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = if (state.placeholder.isNotBlank()) {
+                { Text(state.placeholder) }
+            } else {
+                null
+            },
+            singleLine = state.singleLine,
+            minLines = state.minLines,
+            maxLines = if (state.singleLine) 1 else 3,
+            enabled = state.enabled,
+            keyboardOptions = state.keyboardOptions,
+            textStyle = MaterialTheme.typography.bodyLarge,
+            shape = RoundedCornerShape(AppRadius.extraSmall),
+        )
+    }
+}
+
+@Composable
 private fun AmountSupportingText(text: String) {
     Text(
         text = text,
@@ -129,13 +178,13 @@ internal fun ExpenseEditMerchantField(
     onMerchantChange: (String) -> Unit,
     enabled: Boolean = true,
 ) {
-    OutlinedTextField(
-        value = merchant,
+    ExpenseEditTextField(
+        state = ExpenseEditTextFieldState(
+            label = stringResource(R.string.expense_edit_merchant_field_label),
+            value = merchant,
+            enabled = enabled,
+        ),
         onValueChange = onMerchantChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.expense_edit_merchant_field_label)) },
-        singleLine = true,
-        enabled = enabled,
     )
 }
 
@@ -146,13 +195,13 @@ internal fun ExpenseEditCategoryField(
     onCategoryChange: (String) -> Unit,
     enabled: Boolean = true,
 ) {
-    OutlinedTextField(
-        value = category,
+    ExpenseEditTextField(
+        state = ExpenseEditTextFieldState(
+            label = stringResource(R.string.expense_edit_category_field_label),
+            value = category,
+            enabled = enabled,
+        ),
         onValueChange = onCategoryChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.expense_edit_category_field_label)) },
-        singleLine = true,
-        enabled = enabled,
     )
     if (categories.isNotEmpty()) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
@@ -174,12 +223,15 @@ internal fun ExpenseEditNoteField(
     onNoteChange: (String) -> Unit,
     enabled: Boolean = true,
 ) {
-    OutlinedTextField(
-        value = note,
+    ExpenseEditTextField(
+        state = ExpenseEditTextFieldState(
+            label = stringResource(R.string.expense_edit_note_field_label),
+            value = note,
+            enabled = enabled,
+            singleLine = false,
+            minLines = 2,
+        ),
         onValueChange = onNoteChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.expense_edit_note_field_label)) },
-        enabled = enabled,
     )
 }
 

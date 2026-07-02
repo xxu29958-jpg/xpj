@@ -86,7 +86,10 @@
     <string name="expense_edit_more_tags_label">标签</string>
     <string name="expense_edit_more_tags_placeholder">真香、必要支出</string>
     <string name="expense_edit_more_value_score_label">值不值评分，1-5</string>
+    <string name="expense_edit_more_value_score_short_label">值不值</string>
     <string name="expense_edit_more_regret_score_label">后悔指数，1-5</string>
+    <string name="expense_edit_more_regret_score_short_label">后悔指数</string>
+    <string name="expense_edit_more_score_placeholder">1-5</string>
     <string name="expense_edit_more_raw_text_collapse_button">收起识别原文</string>
     <string name="expense_edit_more_raw_text_expand_button">查看识别原文</string>
     <string name="expense_edit_more_recognize_running_button">识别中</string>
