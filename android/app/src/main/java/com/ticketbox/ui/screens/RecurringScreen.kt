@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -38,19 +39,20 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.ListItemSkeleton
-import com.ticketbox.ui.components.SafeBadge
+import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.RecurringUiState
@@ -101,7 +103,14 @@ fun RecurringScreen(
             onRefresh = onRefresh,
         ),
         slots = AppSecondaryPageSlots(
-            actions = { SafeBadge() },
+            actions = {
+                RecurringStatusBadge(
+                    state = state,
+                    activeCount = activeItems.size,
+                    pausedCount = state.items.count { it.status == "paused" },
+                    hasReadableData = hasReadableData,
+                )
+            },
         ),
     ) {
         item {
@@ -140,6 +149,26 @@ fun RecurringScreen(
 }
 
 @Composable
+private fun RecurringStatusBadge(
+    state: RecurringUiState,
+    activeCount: Int,
+    pausedCount: Int,
+    hasReadableData: Boolean,
+) {
+    val tones = LocalStateTokens.current
+    val (text, tone) = when {
+        state.loading && !hasReadableData -> stringResource(R.string.recurring_badge_loading) to tones.info
+        state.message != null && !hasReadableData -> stringResource(R.string.recurring_badge_refresh_needed) to tones.warn
+        !state.canModify -> stringResource(R.string.recurring_badge_readonly) to tones.warn
+        state.candidates.isNotEmpty() -> stringResource(R.string.recurring_badge_candidates, state.candidates.size) to tones.info
+        activeCount > 0 -> stringResource(R.string.recurring_badge_active, activeCount) to tones.success
+        pausedCount > 0 -> stringResource(R.string.recurring_badge_paused, pausedCount) to tones.info
+        else -> stringResource(R.string.recurring_badge_empty) to tones.neutral
+    }
+    StatusPill(text = text, tone = tone)
+}
+
+@Composable
 private fun RecurringTabRow(
     selected: RecurringTab,
     onSelect: (RecurringTab) -> Unit,
@@ -174,9 +203,11 @@ private fun RecurringItemsCard(
     onArchive: (String) -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
-    AppGlassCard(containerAlpha = 0.94f) {
+    AppSectionGroup(
+        contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
         Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Row(
@@ -319,9 +350,12 @@ private fun RecurringCandidatesCard(
     canModify: Boolean,
     onConfirmCandidate: (RecurringCandidate) -> Unit,
 ) {
-    AppGlassCard(containerAlpha = 0.94f) {
+    AppSectionGroup(
+        contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        showTopDivider = false,
+    ) {
         Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Text(

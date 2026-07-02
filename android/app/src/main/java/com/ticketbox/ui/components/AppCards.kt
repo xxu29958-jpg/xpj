@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -82,6 +83,28 @@ fun AppContentCard(
             verticalArrangement = verticalArrangement,
             content = content,
         )
+    }
+}
+
+@Composable
+fun AppSectionGroup(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(vertical = AppSpacing.contentGap),
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(AppSpacing.compactGap),
+    showTopDivider: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium)
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (showTopDivider) {
+            HorizontalDivider(color = dividerColor)
+        }
+        Column(
+            modifier = Modifier.padding(contentPadding),
+            verticalArrangement = verticalArrangement,
+            content = content,
+        )
+        HorizontalDivider(color = dividerColor)
     }
 }
 

@@ -615,7 +615,7 @@
     <string name="stats_empty_skeleton_frequent_merchants">高频商家</string>
 
     <!-- RecurringScreen：固定支出独立屏 -->
-    <string name="recurring_back_to_stats">返回统计</string>
+    <string name="recurring_back_to_stats">返回洞察</string>
     <string name="recurring_header_title">固定支出</string>
     <string name="recurring_header_subtitle">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</string>
     <string name="recurring_items_card_title">%1$s 固定支出</string>
@@ -628,15 +628,22 @@
     <string name="recurring_action_archive">归档</string>
     <string name="recurring_action_archive_description">归档固定支出</string>
     <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
-    <string name="recurring_candidates_card_subtitle">根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。</string>
+    <string name="recurring_candidates_card_subtitle">识别自最近账单，确认后才进入正式固定支出。</string>
     <string name="recurring_candidates_empty">还没有新的固定支出候选。</string>
     <string name="recurring_candidate_merchant_fallback">未填写商家</string>
     <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
     <string name="recurring_candidate_confirm">确认</string>
     <string name="recurring_candidate_confirm_description">确认固定支出候选</string>
+    <string name="recurring_badge_loading">读取中</string>
+    <string name="recurring_badge_refresh_needed">待刷新</string>
+    <string name="recurring_badge_readonly">只读</string>
+    <string name="recurring_badge_candidates">%1$d 个候选</string>
+    <string name="recurring_badge_active">%1$d 个活跃</string>
+    <string name="recurring_badge_paused">%1$d 个暂停</string>
+    <string name="recurring_badge_empty">未设置</string>
 
     <!-- BudgetHeader / MonthSwitcher：预算屏头部 + 月份切换 -->
-    <string name="budget_back_to_stats">返回统计</string>
+    <string name="budget_back_to_stats">返回洞察</string>
     <string name="budget_header_title">预算</string>
     <string name="budget_header_subtitle">%1$s 月度可花额度</string>
     <string name="budget_month_previous">上月</string>
