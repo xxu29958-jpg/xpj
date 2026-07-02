@@ -62,6 +62,7 @@
     <string name="components_month_picker_current_label">当前</string>
     <string name="components_month_picker_all_months">全部月份</string>
     <string name="components_month_label">%1$s年%2$s月</string>
+    <string name="components_month_picker_month_cell">%1$s月</string>
     <string name="components_month_picker_year_header">%1$s 年</string>
     <string name="components_month_picker_empty">更新后会显示可选月份。</string>
 

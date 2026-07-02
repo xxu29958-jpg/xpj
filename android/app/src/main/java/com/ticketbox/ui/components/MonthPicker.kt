@@ -1,40 +1,28 @@
 package com.ticketbox.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
-import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 fun MonthPickerSheet(
@@ -67,29 +55,20 @@ fun MonthPickerSheet(
 
 @Composable
 private fun MonthPickerSelectionSummary(selectedLabel: String) {
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.smallGap),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.components_month_picker_current_label),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
-            Text(
-                text = selectedLabel,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
+    AppListRow {
+        Text(
+            text = stringResource(R.string.components_month_picker_current_label),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = selectedLabel,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -101,7 +80,7 @@ private fun MonthPickerOptions(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         MonthOptionRow(
             label = stringResource(R.string.components_month_picker_all_months),
@@ -154,19 +133,10 @@ private fun MonthOptionRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val visuals = LocalThemeVisuals.current
-    Row(
+    AppListRow(
         modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = AppSpacing.controlMinHeight)
-            .clip(RoundedCornerShape(AppRadius.extraSmall))
-            .background(
-                if (selected) visuals.chipSelected.copy(alpha = AppAlpha.soft) else Color.Transparent,
-            )
-            .clickable(onClick = onClick)
-            .semantics { this.selected = selected }
-            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.smallGap),
-        verticalAlignment = Alignment.CenterVertically,
+            .semantics { this.selected = selected },
+        onClick = onClick,
     ) {
         Text(
             label,
@@ -186,7 +156,6 @@ private fun MonthOptionRow(
             )
         }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
 }
 
 @Composable
@@ -223,6 +192,12 @@ private fun MonthPickerEmptyRow() {
 fun displayMonthLabel(month: String): String {
     val parts = monthLabelParts(month) ?: return month
     return stringResource(R.string.components_month_label, parts.year, parts.monthNumber)
+}
+
+@Composable
+internal fun displayMonthCellLabel(month: String): String {
+    val parts = monthLabelParts(month) ?: return displayMonthLabel(month)
+    return stringResource(R.string.components_month_picker_month_cell, parts.monthNumber)
 }
 
 internal fun monthLabelParts(month: String): MonthLabelParts? {

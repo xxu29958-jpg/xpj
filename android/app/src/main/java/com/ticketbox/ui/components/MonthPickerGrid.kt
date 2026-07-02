@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,11 +35,14 @@ internal fun MonthGridRow(
     selectedMonth: String,
     onSelectMonth: (String) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
         months.forEach { month ->
             MonthGridCell(
                 modifier = Modifier.weight(1f),
-                label = displayMonthLabel(month),
+                label = displayMonthCellLabel(month),
                 selected = selectedMonth == month,
                 onClick = { onSelectMonth(month) },
             )
@@ -88,4 +92,4 @@ private fun MonthGridCell(
     }
 }
 
-internal const val MonthGridColumns = 3
+internal const val MonthGridColumns = 4
