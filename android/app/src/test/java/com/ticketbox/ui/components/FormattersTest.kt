@@ -34,6 +34,14 @@ class FormattersTest {
     }
 
     @Test
+    fun sanitizesAmountInputPerCurrencyMinorUnit() {
+        assertEquals("123.45", sanitizeMinorAmountInput(" ¥123.45abc ", CurrencyCode.CNY))
+        assertEquals("12.34", sanitizeMinorAmountInput("12..34", CurrencyCode.USD))
+        assertEquals("123", sanitizeMinorAmountInput("123.45", CurrencyCode.JPY))
+        assertEquals("123456", sanitizeMinorAmountInput("123456789", CurrencyCode.CNY, maxLength = 6))
+    }
+
+    @Test
     fun formatsDisplayCurrencyAmounts() {
         assertEquals("¥123.45", formatAmount(12345, CurrencyCode.CNY))
         assertEquals("$123.45", formatAmount(12345, CurrencyCode.USD))

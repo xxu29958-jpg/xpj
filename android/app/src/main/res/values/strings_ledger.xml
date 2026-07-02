@@ -10,6 +10,7 @@
     <string name="ledger_manual_amount_invalid">请填写正确金额。</string>
     <string name="ledger_manual_sheet_title">手动记一笔</string>
     <string name="ledger_manual_sheet_subtitle">适合现金、零散消费，保存后直接进入账本。</string>
+    <string name="ledger_manual_amount_supporting_text">按实际支付金额填写，保存后进入账本。</string>
     <string name="ledger_manual_merchant_label">商家</string>
     <string name="ledger_manual_merchant_placeholder">便利店</string>
     <string name="ledger_manual_category_label">分类</string>

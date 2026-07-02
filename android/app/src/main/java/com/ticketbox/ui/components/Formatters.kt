@@ -72,6 +72,29 @@ fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String {
     }
 }
 
+fun sanitizeMinorAmountInput(input: String, currency: CurrencyCode, maxLength: Int = 12): String {
+    val trimmed = input.trim()
+    if (currency.noFractionDigits) {
+        return trimmed
+            .takeWhile { it != '.' }
+            .filter(Char::isDigit)
+            .take(maxLength)
+    }
+    val builder = StringBuilder()
+    var hasDecimal = false
+    for (char in trimmed) {
+        when {
+            char.isDigit() -> builder.append(char)
+            char == '.' && !hasDecimal -> {
+                builder.append(char)
+                hasDecimal = true
+            }
+        }
+        if (builder.length >= maxLength) break
+    }
+    return builder.toString()
+}
+
 fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
     val trimmed = input.trim()
     if (trimmed.isBlank()) return null

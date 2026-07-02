@@ -25,6 +25,7 @@ import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.LocalAppImeVisible
+import com.ticketbox.ui.components.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 
 @Immutable
@@ -32,14 +33,16 @@ internal data class ExpenseCurrencyFieldOptions(
     val enabled: Boolean = true,
     val autoFocusAmount: Boolean = true,
     val onAmountFocusChanged: (Boolean) -> Unit = {},
+    val supportingText: String? = null,
+    val statusText: String? = null,
 )
 
 @Composable
 internal fun ExpenseCurrencyFields(
     currency: CurrencyCode,
     onCurrencyChange: (CurrencyCode) -> Unit,
-    originalAmountText: String,
-    onOriginalAmountChange: (String) -> Unit,
+    amountText: String,
+    onAmountChange: (String) -> Unit,
     options: ExpenseCurrencyFieldOptions = ExpenseCurrencyFieldOptions(),
 ) {
     // The manual-entry sheet can opt into immediate amount entry, while existing
@@ -59,17 +62,22 @@ internal fun ExpenseCurrencyFields(
         Text(stringResource(R.string.expense_edit_currency_card_title), style = MaterialTheme.typography.titleSmall)
         AppAmountInput(
             state = AppAmountInputState(
-                label = stringResource(R.string.expense_edit_original_amount_field_label),
+                label = stringResource(R.string.expense_edit_amount_field_label),
                 currency = currency,
-                value = originalAmountText,
+                value = amountText,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 enabled = options.enabled,
             ),
             actions = AppAmountInputActions(
-                onValueChange = onOriginalAmountChange,
+                onValueChange = { raw ->
+                    onAmountChange(sanitizeMinorAmountInput(raw, currency))
+                },
                 onFocusChanged = { options.onAmountFocusChanged(it.isFocused) },
             ),
             focusRequester = amountFocus,
+            supportingText = options.supportingText?.let { text ->
+                { AmountSupportingText(text) }
+            },
         )
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -77,12 +85,16 @@ internal fun ExpenseCurrencyFields(
             items(CurrencyCode.entries, key = { it.storageKey }) { code ->
                 AppFilterChip(
                     selected = currency == code,
-                    onClick = { onCurrencyChange(code) },
+                    onClick = {
+                        onCurrencyChange(code)
+                        onAmountChange(sanitizeMinorAmountInput(amountText, code))
+                    },
                     label = "${code.symbol} ${code.storageKey}",
                     enabled = options.enabled,
                 )
             }
         }
+        options.statusText?.let { AmountStatusText(it) }
         if (currency != FxContract.HomeCurrency) {
             Text(
                 text = stringResource(R.string.expense_edit_fx_hint),
@@ -91,6 +103,24 @@ internal fun ExpenseCurrencyFields(
             )
         }
     }
+}
+
+@Composable
+private fun AmountSupportingText(text: String) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+@Composable
+private fun AmountStatusText(text: String) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.labelMedium,
+    )
 }
 
 @Composable

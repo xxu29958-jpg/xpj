@@ -197,9 +197,12 @@ fun ManualExpenseSheet(
             onCurrencyChange = {
                 currency = it
             },
-            originalAmountText = amountText,
-            onOriginalAmountChange = { amountText = it },
-            options = ExpenseCurrencyFieldOptions(enabled = !saving),
+            amountText = amountText,
+            onAmountChange = { amountText = it },
+            options = ExpenseCurrencyFieldOptions(
+                enabled = !saving,
+                supportingText = stringResource(R.string.ledger_manual_amount_supporting_text),
+            ),
         )
         val feedbackMessage = message ?: errorMessage
         ManualExpenseActionSlot(

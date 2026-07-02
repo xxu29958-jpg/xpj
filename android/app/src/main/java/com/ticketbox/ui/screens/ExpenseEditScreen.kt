@@ -34,9 +34,11 @@ import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetActions
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetState
@@ -176,7 +178,7 @@ fun ExpenseEditScreen(
     var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.originalCurrencyCode)
     }
-    var originalAmountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(
             formatMinorAmountInput(
                 currentExpense.originalAmountMinor ?: currentExpense.amountCents,
@@ -212,6 +214,7 @@ fun ExpenseEditScreen(
     val previewImage = state.fullImage ?: state.thumbnail
     val readOnly = state.readOnly
     val haptics = rememberAppHaptics()
+    val currencyDisplay = LocalCurrencyDisplay.current
     // ADR-0044: stringResource is @Composable-only, but the validation messages
     // below are assigned inside non-composable local functions / onClick lambdas.
     // Hoist the resolved strings (the out-of-range one as a format template) here.
@@ -257,8 +260,8 @@ fun ExpenseEditScreen(
     }
 
     fun draftOrMessage(): ExpenseDraft? {
-        val originalMinor = parseMinorAmount(originalAmountText, currency)
-        if (originalAmountText.isNotBlank() && originalMinor == null) {
+        val originalMinor = parseMinorAmount(amountText, currency)
+        if (amountText.isNotBlank() && originalMinor == null) {
             message = amountInvalidMessage
             return null
         }
@@ -395,12 +398,24 @@ fun ExpenseEditScreen(
             onCurrencyChange = {
                 currency = it
             },
-            originalAmountText = originalAmountText,
-            onOriginalAmountChange = { originalAmountText = it },
+            amountText = amountText,
+            onAmountChange = { amountText = it },
             options = ExpenseCurrencyFieldOptions(
                 enabled = !readOnly,
                 autoFocusAmount = false,
                 onAmountFocusChanged = { amountFocused = it },
+                supportingText = stringResource(R.string.expense_edit_amount_supporting_text),
+                statusText = if (currentExpense.originalAmountMinor != null ||
+                    currentExpense.homeAmountCents != null ||
+                    currentExpense.amountCents != null
+                ) {
+                    stringResource(
+                        R.string.expense_edit_amount_current_record,
+                        formatExpensePrimaryAmount(currentExpense, currencyDisplay),
+                    )
+                } else {
+                    null
+                },
             ),
         )
         ExpenseEditMerchantField(

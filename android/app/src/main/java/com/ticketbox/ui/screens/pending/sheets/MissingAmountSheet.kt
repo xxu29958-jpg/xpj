@@ -23,6 +23,7 @@ import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.ui.components.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,9 +64,7 @@ internal fun MissingAmountSheetContent(
             ),
             actions = AppAmountInputActions(
                 onValueChange = { raw ->
-                    input = raw
-                        .filter { c -> c.isDigit() || (!currency.noFractionDigits && c == '.') }
-                        .take(12)
+                    input = sanitizeMinorAmountInput(raw, currency)
                 },
             ),
             focusRequester = focusRequester,
