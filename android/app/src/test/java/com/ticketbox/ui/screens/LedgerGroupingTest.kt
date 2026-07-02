@@ -69,9 +69,10 @@ class LedgerGroupingTest {
 
     @Test
     fun compactDayGroupsOnlyStartsForLongLedgerLists() {
-        assertFalse(shouldCompactLedgerDayGroups(groupCount = 4, itemCount = 8))
-        assertTrue(shouldCompactLedgerDayGroups(groupCount = 4, itemCount = 9))
-        assertTrue(shouldCompactLedgerDayGroups(groupCount = 2, itemCount = 13))
+        assertFalse(shouldCompactLedgerDayGroups(groupCount = 1, itemCount = 8))
+        assertFalse(shouldCompactLedgerDayGroups(groupCount = 2, itemCount = 8))
+        assertTrue(shouldCompactLedgerDayGroups(groupCount = 2, itemCount = 9))
+        assertTrue(shouldCompactLedgerDayGroups(groupCount = 1, itemCount = 13))
     }
 }
 
