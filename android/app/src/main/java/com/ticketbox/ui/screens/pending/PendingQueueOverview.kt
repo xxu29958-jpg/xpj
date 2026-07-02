@@ -1,20 +1,23 @@
 package com.ticketbox.ui.screens.pending
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -83,10 +86,11 @@ internal fun PendingQueueOverview(
             .padding(vertical = AppSpacing.tinyGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Text(
-            text = stringResource(R.string.pending_queue_overview_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
+        PendingQueueOverviewHeader(
+            model = model,
+            readOnly = readOnly,
+            bulkRunning = bulkRunning,
+            onOpenBulkConfirm = onOpenBulkConfirm,
         )
         Text(
             text = pendingQueuePriorityText(model),
@@ -97,30 +101,61 @@ internal fun PendingQueueOverview(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
-            PendingQueueMetric(
-                label = stringResource(R.string.pending_queue_overview_ready_label),
-                value = model.readyCount,
-            )
-            PendingQueueMetric(
-                label = stringResource(R.string.pending_queue_overview_review_label),
-                value = model.reviewCount,
-            )
+            if (model.readyCount > 0) {
+                PendingQueueMetric(
+                    label = stringResource(R.string.pending_queue_overview_ready_label),
+                    value = model.readyCount,
+                )
+            }
+            if (model.reviewCount > 0) {
+                PendingQueueMetric(
+                    label = stringResource(R.string.pending_queue_overview_review_label),
+                    value = model.reviewCount,
+                )
+            }
             if (model.hasReviewSignals) {
                 PendingQueueIssue(model.needsAmount, R.string.pending_queue_overview_amount_issue)
                 PendingQueueIssue(model.needsMerchant, R.string.pending_queue_overview_merchant_issue)
                 PendingQueueIssue(model.duplicate, R.string.pending_queue_overview_duplicate_issue)
             }
         }
+    }
+}
+
+@Composable
+private fun PendingQueueOverviewHeader(
+    model: PendingQueueOverviewModel,
+    readOnly: Boolean,
+    bulkRunning: Boolean,
+    onOpenBulkConfirm: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.pending_queue_overview_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Spacer(modifier = Modifier.weight(1f))
         if (!readOnly && model.readyCount > 0) {
-            AppSecondaryButton(
-                text = if (bulkRunning) {
-                    stringResource(R.string.pending_queue_overview_bulk_running)
-                } else {
-                    stringResource(R.string.pending_queue_overview_bulk_confirm, model.readyCount)
-                },
+            TextButton(
                 enabled = !bulkRunning,
                 onClick = onOpenBulkConfirm,
-            )
+                contentPadding = PaddingValues(horizontal = AppSpacing.miniGap),
+            ) {
+                Text(
+                    text = if (bulkRunning) {
+                        stringResource(R.string.pending_queue_overview_bulk_running)
+                    } else {
+                        stringResource(R.string.pending_queue_overview_bulk_confirm, model.readyCount)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                )
+            }
         }
     }
 }

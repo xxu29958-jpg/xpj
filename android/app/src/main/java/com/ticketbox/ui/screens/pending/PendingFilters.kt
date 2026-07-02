@@ -1,13 +1,12 @@
 package com.ticketbox.ui.screens.pending
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,6 +43,22 @@ internal data class PendingQueueCounts(
     val readyToConfirm: Int,
 )
 
+internal fun visibleNeedsReviewFilters(
+    counts: PendingQueueCounts,
+    selected: NeedsReviewFilter,
+): List<NeedsReviewFilter> {
+    val visible = mutableListOf(NeedsReviewFilter.All)
+    pendingSignalFilters.forEach { filter ->
+        if (counts.countFor(filter) > 0) {
+            visible += filter
+        }
+    }
+    if (selected !in visible) {
+        visible += selected
+    }
+    return visible
+}
+
 internal fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFilter): List<Expense> {
     return when (filter) {
         NeedsReviewFilter.All -> items
@@ -54,36 +69,26 @@ internal fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFil
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun NeedsReviewFilterBar(
     selected: NeedsReviewFilter,
     counts: PendingQueueCounts,
     onSelect: (NeedsReviewFilter) -> Unit,
 ) {
-    val scroll = rememberScrollState()
-    Row(
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(scroll)
             .padding(horizontal = AppSpacing.tinyGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        val countOf: (NeedsReviewFilter) -> Int = { f ->
-            when (f) {
-                NeedsReviewFilter.All -> counts.all
-                NeedsReviewFilter.NeedsAmount -> counts.needsAmount
-                NeedsReviewFilter.NeedsMerchant -> counts.needsMerchant
-                NeedsReviewFilter.Duplicate -> counts.duplicate
-                NeedsReviewFilter.ReadyToConfirm -> counts.readyToConfirm
-            }
-        }
-        NeedsReviewFilter.values().forEach { f ->
+        visibleNeedsReviewFilters(counts, selected).forEach { f ->
             AppFilterChip(
                 label = stringResource(
                     R.string.pending_filter_chip_label,
                     stringResource(f.labelRes),
-                    countOf(f),
+                    counts.countFor(f),
                 ),
                 selected = f == selected,
                 onClick = { onSelect(f) },
@@ -91,6 +96,21 @@ internal fun NeedsReviewFilterBar(
         }
     }
 }
+
+private fun PendingQueueCounts.countFor(filter: NeedsReviewFilter): Int = when (filter) {
+    NeedsReviewFilter.All -> all
+    NeedsReviewFilter.NeedsAmount -> needsAmount
+    NeedsReviewFilter.NeedsMerchant -> needsMerchant
+    NeedsReviewFilter.Duplicate -> duplicate
+    NeedsReviewFilter.ReadyToConfirm -> readyToConfirm
+}
+
+private val pendingSignalFilters = listOf(
+    NeedsReviewFilter.Duplicate,
+    NeedsReviewFilter.NeedsAmount,
+    NeedsReviewFilter.NeedsMerchant,
+    NeedsReviewFilter.ReadyToConfirm,
+)
 
 @Composable
 internal fun NeedsReviewEmptyFilterCard(filter: NeedsReviewFilter) {

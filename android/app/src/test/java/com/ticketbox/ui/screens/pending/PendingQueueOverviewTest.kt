@@ -5,6 +5,44 @@ import kotlin.test.assertEquals
 
 class PendingQueueOverviewTest {
     @Test
+    fun visibleFiltersHideZeroSignals() {
+        val filters = visibleNeedsReviewFilters(
+            PendingQueueCounts(
+                all = 1,
+                needsAmount = 0,
+                needsMerchant = 0,
+                duplicate = 0,
+                readyToConfirm = 1,
+            ),
+            selected = NeedsReviewFilter.All,
+        )
+
+        assertEquals(
+            listOf(NeedsReviewFilter.All, NeedsReviewFilter.ReadyToConfirm),
+            filters,
+        )
+    }
+
+    @Test
+    fun visibleFiltersKeepSelectedZeroFilterReachable() {
+        val filters = visibleNeedsReviewFilters(
+            PendingQueueCounts(
+                all = 1,
+                needsAmount = 0,
+                needsMerchant = 0,
+                duplicate = 0,
+                readyToConfirm = 1,
+            ),
+            selected = NeedsReviewFilter.Duplicate,
+        )
+
+        assertEquals(
+            listOf(NeedsReviewFilter.All, NeedsReviewFilter.ReadyToConfirm, NeedsReviewFilter.Duplicate),
+            filters,
+        )
+    }
+
+    @Test
     fun duplicatePriorityWinsOverOtherReviewSignals() {
         val model = pendingQueueOverviewModel(
             PendingQueueCounts(
