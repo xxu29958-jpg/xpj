@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -164,6 +166,33 @@ internal fun StatsSpendDistributionRows(
 }
 
 @Composable
+internal fun StatsSparseSpendRows(
+    points: List<StatsSpendChartPoint>,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    val rows = remember(points) {
+        points
+            .map { StatsSpendDistributionRow(label = it.label, amountCents = it.amountCents.coerceAtLeast(0L)) }
+            .filter { it.amountCents > 0L }
+    }
+    if (rows.isEmpty()) {
+        return
+    }
+    Column(
+        modifier = modifier.semantics { this.contentDescription = contentDescription },
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        rows.forEachIndexed { index, row ->
+            StatsSparseSpendRowView(row)
+            if (index != rows.lastIndex) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatsSpendDistributionRowView(
     label: String,
     amountCents: Long,
@@ -207,6 +236,34 @@ private fun StatsSpendDistributionRowView(
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelMedium.tabularNum(),
             fontWeight = if (highlighted) AppTextHierarchy.heading.weight else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+        )
+    }
+}
+
+@Composable
+private fun StatsSparseSpendRowView(row: StatsSpendDistributionRow) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = row.label,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = formatDisplayAmount(row.amountCents, currencyDisplay),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall.tabularNum(),
+            fontWeight = AppTextHierarchy.body.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.End,

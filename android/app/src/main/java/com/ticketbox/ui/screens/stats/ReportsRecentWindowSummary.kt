@@ -150,14 +150,9 @@ private fun ReportsRecentWindowSparseRows(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        StatsSpendDistributionRows(
+        StatsSparseSpendRows(
             points = points.filter { it.amountCents > 0L },
-            spec = StatsSpendDistributionSpec(
-                maxRows = ReportsRecentWindowLayout.SparseActiveDayLimit,
-                sortByAmount = false,
-                includeZeros = false,
-                contentDescription = chartA11y,
-            ),
+            contentDescription = chartA11y,
         )
     }
 }

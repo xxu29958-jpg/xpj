@@ -145,16 +145,11 @@ private fun ReportsSparseTrend(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyMedium,
     )
-    StatsSpendDistributionRows(
+    StatsSparseSpendRows(
         points = points
             .filter { it.amountCents > 0L }
             .map { StatsSpendChartPoint(label = it.label, amountCents = it.amountCents) },
-        spec = StatsSpendDistributionSpec(
-            maxRows = 2,
-            sortByAmount = false,
-            includeZeros = false,
-            contentDescription = sparseA11y,
-        ),
+        contentDescription = sparseA11y,
     )
 }
 

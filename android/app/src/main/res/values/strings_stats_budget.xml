@@ -189,8 +189,8 @@
     <string name="stats_reports_answer_no_previous">上月无确认支出</string>
     <string name="stats_reports_answer_peak_caption">%1$s 占 %2$d%%</string>
     <string name="stats_reports_answer_no_trend">暂无波动</string>
-    <string name="stats_reports_trend_title">月内变化</string>
-    <string name="stats_reports_trend_subtitle">本月集中点与最近 7 天变化</string>
+    <string name="stats_reports_trend_title">趋势报表</string>
+    <string name="stats_reports_trend_subtitle">本月集中点与最近 7 天</string>
     <string name="stats_reports_chart_title">本月支出趋势</string>
     <string name="stats_reports_chart_subtitle">%1$s · %2$d 笔已确认</string>
     <string name="stats_reports_chart_peak">峰值 %1$s</string>
@@ -211,7 +211,7 @@
     <string name="stats_reports_legend_previous_month">上月</string>
     <string name="stats_reports_legend_year_over_year_month">去年同月</string>
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
-    <string name="stats_reports_chart_sparse">本月只有 %1$d 天有确认支出，先显示发生支出的日期和金额；数据多起来后会按时间段汇总。</string>
+    <string name="stats_reports_chart_sparse">本月 %1$d 天有确认支出，显示日期与金额；样本足够后展示时间段趋势。</string>
     <string name="stats_reports_recent_window_title">最近 7 天</string>
     <string name="stats_reports_recent_window_source">最近记录</string>
     <string name="stats_reports_recent_window_peak_share">%1$s 占 7 天 %2$d%%，其余日均 %3$s</string>
@@ -221,7 +221,7 @@
     <string name="stats_reports_recent_window_active_days">有支出</string>
     <string name="stats_reports_recent_window_active_days_value">%1$d 天</string>
     <string name="stats_reports_recent_window_peak">峰值 %1$s</string>
-    <string name="stats_reports_recent_window_sparse">7 天里只有 %1$d 天有支出，先显示发生日和金额。</string>
+    <string name="stats_reports_recent_window_sparse">最近 7 天 %1$d 天有支出，显示日期与金额。</string>
     <!-- WCAG 1.1.1 图表文本替代（screen reader / TalkBack 用）：自绘柱图仍是图形节点，给图表节点
          补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y 去年同月Z」逐档拼接；
          _with_zeros 变体把零额档汇总成「其余 N 档无支出」，避免日粒度下逐日朗读 ¥0.00。 -->
