@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -64,6 +65,13 @@ enum class AppTextInputEmphasis {
 data class AppTextInputActions(
     val onValueChange: (String) -> Unit,
     val onFocusChanged: (FocusState) -> Unit = {},
+    val keyboardActions: KeyboardActions = KeyboardActions.Default,
+)
+
+data class AppTextInputDecorations(
+    val leadingContent: (@Composable () -> Unit)? = null,
+    val trailingContent: (@Composable () -> Unit)? = null,
+    val supportingText: (@Composable () -> Unit)? = null,
 )
 
 @Composable
@@ -72,9 +80,16 @@ fun AppTextInput(
     actions: AppTextInputActions,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    supportingText: (@Composable () -> Unit)? = null,
+    decorations: AppTextInputDecorations = AppTextInputDecorations(),
 ) {
     var focused by remember { mutableStateOf(false) }
+    val focusState = AppTextInputFocusState(
+        focused = focused,
+        onFocusChanged = {
+            focused = it.isFocused
+            actions.onFocusChanged(it)
+        },
+    )
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
@@ -84,14 +99,17 @@ fun AppTextInput(
             state = state,
             actions = actions,
             focusRequester = focusRequester,
-            focused = focused,
-        ) {
-            focused = it.isFocused
-            actions.onFocusChanged(it)
-        }
-        supportingText?.invoke()
+            focusState = focusState,
+            decorations = decorations,
+        )
+        decorations.supportingText?.invoke()
     }
 }
+
+private data class AppTextInputFocusState(
+    val focused: Boolean,
+    val onFocusChanged: (FocusState) -> Unit,
+)
 
 @Composable
 private fun AppTextInputHeader(state: AppTextInputState) {
@@ -123,8 +141,8 @@ private fun AppTextInputField(
     state: AppTextInputState,
     actions: AppTextInputActions,
     focusRequester: FocusRequester?,
-    focused: Boolean,
-    onFocusChanged: (FocusState) -> Unit,
+    focusState: AppTextInputFocusState,
+    decorations: AppTextInputDecorations,
 ) {
     BasicTextField(
         value = state.value,
@@ -132,15 +150,16 @@ private fun AppTextInputField(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged(onFocusChanged),
+            .onFocusChanged(focusState.onFocusChanged),
         enabled = state.enabled,
         singleLine = state.singleLine,
         minLines = if (state.singleLine) 1 else state.minLines,
         maxLines = if (state.singleLine) 1 else state.maxLines,
         keyboardOptions = state.keyboardOptions,
+        keyboardActions = actions.keyboardActions,
         textStyle = appTextInputTextStyle(state),
         decorationBox = { innerTextField ->
-            AppTextInputFrame(state = state, focused = focused) {
+            AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
                 if (state.value.isEmpty() && state.placeholder.isNotBlank()) {
                     Text(
                         text = state.placeholder,
@@ -158,6 +177,7 @@ private fun AppTextInputField(
 private fun AppTextInputFrame(
     state: AppTextInputState,
     focused: Boolean,
+    decorations: AppTextInputDecorations,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(AppRadius.extraSmall)
@@ -177,12 +197,31 @@ private fun AppTextInputFrame(
     } else {
         baseModifier.border(1.dp, borderColor, shape)
     }
-    Box(
-        modifier = framedModifier
-            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = verticalPadding),
-        contentAlignment = if (state.singleLine) Alignment.CenterStart else Alignment.TopStart,
-    ) {
-        content()
+    val contentAlignment = if (state.singleLine) Alignment.CenterStart else Alignment.TopStart
+    val contentModifier = framedModifier
+        .padding(horizontal = AppSpacing.cardPaddingTight, vertical = verticalPadding)
+    if (decorations.leadingContent == null && decorations.trailingContent == null) {
+        Box(
+            modifier = contentModifier,
+            contentAlignment = contentAlignment,
+        ) {
+            content()
+        }
+    } else {
+        Row(
+            modifier = contentModifier,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            verticalAlignment = if (state.singleLine) Alignment.CenterVertically else Alignment.Top,
+        ) {
+            decorations.leadingContent?.invoke()
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = contentAlignment,
+            ) {
+                content()
+            }
+            decorations.trailingContent?.invoke()
+        }
     }
 }
 

@@ -23,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +46,10 @@ import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
@@ -171,33 +174,40 @@ private fun SearchControlCard(
         contentPadding = PaddingValues(AppSpacing.cardPaddingSmall),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = actions.onQueryChange,
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.global_search_field_label),
+                value = state.query,
+                placeholder = stringResource(R.string.global_search_field_placeholder),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            ),
+            actions = AppTextInputActions(
+                onValueChange = actions.onQueryChange,
+                keyboardActions = KeyboardActions(onSearch = { actions.onCommitSearch() }),
+            ),
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(SearchLayout.IconSize),
-                )
-            },
-            trailingIcon = {
-                if (state.query.isNotBlank()) {
-                    IconButton(onClick = { actions.onQueryChange("") }) {
-                        Icon(
-                            Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.global_search_clear_action),
-                        )
+            decorations = AppTextInputDecorations(
+                leadingContent = {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(SearchLayout.IconSize),
+                    )
+                },
+                trailingContent = if (state.query.isNotBlank()) {
+                    {
+                        IconButton(onClick = { actions.onQueryChange("") }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.global_search_clear_action),
+                            )
+                        }
                     }
-                }
-            },
-            label = { Text(stringResource(R.string.global_search_field_label)) },
-            placeholder = { Text(stringResource(R.string.global_search_field_placeholder)) },
-            supportingText = { Text(stringResource(R.string.global_search_filter_amount_hint)) },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { actions.onCommitSearch() }),
+                } else {
+                    null
+                },
+                supportingText = { Text(stringResource(R.string.global_search_filter_amount_hint)) },
+            ),
         )
         SearchFilterChips(
             state = state,

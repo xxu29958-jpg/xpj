@@ -21,6 +21,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
@@ -56,9 +57,18 @@ internal fun QuickMerchantSheetContent(
             actions = AppTextInputActions(onValueChange = { value = it.take(40) }),
             modifier = Modifier.fillMaxWidth(),
             focusRequester = focusRequester,
-            supportingText = if (value.isNotEmpty() && cleaned.isEmpty()) {
-                { Text(stringResource(R.string.pending_quick_merchant_blank_error), color = MaterialTheme.colorScheme.error) }
-            } else null,
+            decorations = AppTextInputDecorations(
+                supportingText = if (value.isNotEmpty() && cleaned.isEmpty()) {
+                    {
+                        Text(
+                            stringResource(R.string.pending_quick_merchant_blank_error),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                } else {
+                    null
+                },
+            ),
         )
 
         ReviewSheetStatusMessage(chrome = chrome)

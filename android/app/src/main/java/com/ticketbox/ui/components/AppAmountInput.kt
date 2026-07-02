@@ -49,6 +49,6 @@ fun AppAmountInput(
         ),
         modifier = modifier,
         focusRequester = focusRequester,
-        supportingText = supportingText,
+        decorations = AppTextInputDecorations(supportingText = supportingText),
     )
 }

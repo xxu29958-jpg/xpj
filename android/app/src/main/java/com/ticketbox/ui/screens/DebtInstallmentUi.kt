@@ -21,6 +21,7 @@ import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -75,7 +76,9 @@ internal fun DebtInstallmentCountField(kind: String, countInput: String, onValue
         ),
         actions = AppTextInputActions(onValueChange = onValueChange),
         modifier = Modifier.fillMaxWidth(),
-        supportingText = { Text(stringResource(R.string.debt_create_installment_count_hint)) },
+        decorations = AppTextInputDecorations(
+            supportingText = { Text(stringResource(R.string.debt_create_installment_count_hint)) },
+        ),
     )
 }
 
@@ -95,7 +98,9 @@ internal fun DebtInstallmentPeriodField(kind: String, periodInput: String, onVal
         ),
         actions = AppTextInputActions(onValueChange = onValueChange),
         modifier = Modifier.fillMaxWidth(),
-        supportingText = { Text(stringResource(R.string.debt_create_installment_period_hint)) },
+        decorations = AppTextInputDecorations(
+            supportingText = { Text(stringResource(R.string.debt_create_installment_period_hint)) },
+        ),
     )
 }
 

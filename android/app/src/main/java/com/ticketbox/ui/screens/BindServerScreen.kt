@@ -2,33 +2,34 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppSolidCard
+import com.ticketbox.ui.components.AppPageHeader
+import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.PageRole
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.design.AppSpacing
 
 /**
@@ -53,78 +54,78 @@ fun BindServerScreen(
 ) {
     var serverUrl by remember(serverUrlEntry.defaultUrl) { mutableStateOf(serverUrlEntry.defaultUrl) }
     var pairingCode by remember { mutableStateOf("") }
+    val canBind = !loading && serverUrl.isNotBlank() && pairingCode.length == BindingCodeLength
+    val submitBind = {
+        if (canBind) onBind(serverUrl, pairingCode)
+    }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .safeDrawingPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = AppSpacing.screenHorizontal),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+    AppPageScrollableColumn(
+        role = PageRole.Auth,
+        hasBottomBar = false,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
-        AuthScreenHeader(
+        AppPageHeader(
             title = stringResource(R.string.bind_server_header_title),
             subtitle = stringResource(R.string.bind_server_header_subtitle),
         )
-        Spacer(Modifier.height(18.dp))
-        AppSolidCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(AppSpacing.cardPadding),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    if (serverUrlEntry.showInput) {
-                        stringResource(R.string.bind_server_hint_with_url)
-                    } else {
-                        stringResource(R.string.bind_server_hint_no_url)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (serverUrlEntry.showInput) {
-                    OutlinedTextField(
-                        value = serverUrl,
-                        onValueChange = { serverUrl = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.bind_server_field_url_label)) },
-                        placeholder = { Text(stringResource(R.string.bind_server_field_url_placeholder)) },
-                        singleLine = true,
-                    )
-                }
-                OutlinedTextField(
-                    value = pairingCode,
-                    onValueChange = { pairingCode = it.filter(Char::isDigit).take(8) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.bind_server_field_code_label)) },
-                    placeholder = { Text(stringResource(R.string.bind_server_field_code_placeholder)) },
-                    singleLine = true,
-                )
-                Button(
-                    enabled = !loading && serverUrl.isNotBlank() && pairingCode.length == 8,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onBind(serverUrl, pairingCode) },
-                ) {
-                    Text(
-                        if (loading) {
-                            stringResource(R.string.bind_server_button_binding)
-                        } else {
-                            stringResource(R.string.bind_server_button_bind)
-                        },
-                    )
-                }
-                TextButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onJoinWithInvitation,
-                ) {
-                    Text(stringResource(R.string.bind_server_button_join_with_invitation))
-                }
-            }
+        AppStatusBanner(message = message, tone = MessageTone.Danger)
+        Text(
+            text = if (serverUrlEntry.showInput) {
+                stringResource(R.string.bind_server_hint_with_url)
+            } else {
+                stringResource(R.string.bind_server_hint_no_url)
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (serverUrlEntry.showInput) {
+            AppTextInput(
+                state = AppTextInputState(
+                    label = stringResource(R.string.bind_server_field_url_label),
+                    value = serverUrl,
+                    placeholder = stringResource(R.string.bind_server_field_url_placeholder),
+                    enabled = !loading,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                ),
+                actions = AppTextInputActions(onValueChange = { serverUrl = it }),
+            )
         }
-        message?.let {
-            Spacer(Modifier.height(12.dp))
-            Text(it.asString(), color = MaterialTheme.colorScheme.error)
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.bind_server_field_code_label),
+                value = pairingCode,
+                placeholder = stringResource(R.string.bind_server_field_code_placeholder),
+                enabled = !loading,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.NumberPassword,
+                    imeAction = ImeAction.Done,
+                ),
+            ),
+            actions = AppTextInputActions(
+                onValueChange = { pairingCode = it.filter(Char::isDigit).take(BindingCodeLength) },
+                keyboardActions = KeyboardActions(onDone = { submitBind() }),
+            ),
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            AppPrimaryButton(
+                text = if (loading) {
+                    stringResource(R.string.bind_server_button_binding)
+                } else {
+                    stringResource(R.string.bind_server_button_bind)
+                },
+                icon = Icons.Default.CheckCircle,
+                enabled = canBind,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = submitBind,
+            )
+            QuietOutlinedButton(
+                text = stringResource(R.string.bind_server_button_join_with_invitation),
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onJoinWithInvitation,
+            )
         }
     }
 }
+
+private const val BindingCodeLength = 8

@@ -7,7 +7,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimeInput
@@ -22,6 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
@@ -157,16 +160,24 @@ internal fun ExpenseEditRecognizeTextDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.expense_edit_recognize_dialog_title)) },
         text = {
-            OutlinedTextField(
-                value = text,
+            AppTextInput(
+                state = AppTextInputState(
+                    label = stringResource(R.string.expense_edit_recognize_field_label),
+                    value = text,
+                    placeholder = stringResource(R.string.expense_edit_recognize_field_placeholder),
+                    singleLine = false,
+                    minLines = 4,
+                    maxLines = 8,
+                ),
                 // Cap at the server's max_length so we don't round-trip a body
                 // the route will 422; ~20k chars is far past any real receipt.
-                onValueChange = { if (it.length <= MAX_RECOGNIZE_TEXT_LENGTH) text = it },
+                actions = AppTextInputActions(
+                    onValueChange = { if (it.length <= MAX_RECOGNIZE_TEXT_LENGTH) text = it },
+                ),
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.expense_edit_recognize_field_label)) },
-                placeholder = { Text(stringResource(R.string.expense_edit_recognize_field_placeholder)) },
-                supportingText = { Text(stringResource(R.string.expense_edit_recognize_supporting_text)) },
-                maxLines = 8,
+                decorations = AppTextInputDecorations(
+                    supportingText = { Text(stringResource(R.string.expense_edit_recognize_supporting_text)) },
+                ),
             )
         },
         confirmButton = {
