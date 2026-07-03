@@ -137,11 +137,11 @@
     <string name="ledger_day_preview_separator">、</string>
 
     <!-- LedgerToolsSheet：筛选与更新 sheet -->
-    <string name="ledger_tools_title">账本工具</string>
-    <string name="ledger_tools_subtitle">筛选、显示与数据操作</string>
+    <string name="ledger_tools_title">筛选账本</string>
+    <string name="ledger_tools_subtitle">分类、标签、搜索</string>
     <string name="ledger_tools_view_title">显示方式</string>
     <string name="ledger_tools_search_label">筛选关键词</string>
-    <string name="ledger_tools_search_placeholder">搜索备注</string>
+    <string name="ledger_tools_search_placeholder">商家、分类、备注</string>
     <string name="ledger_tools_global_search">全局搜索</string>
     <string name="ledger_tools_exporting">导出中</string>
     <string name="ledger_tools_export">导出表格</string>
@@ -149,7 +149,7 @@
     <string name="ledger_tools_update_ledger">更新账本</string>
     <string name="ledger_tools_relationship_title">关系账与清算</string>
     <string name="ledger_tools_filter_title">筛选与搜索</string>
-    <string name="ledger_tools_actions_title">同步与导出</string>
+    <string name="ledger_tools_actions_title">更新与导出</string>
     <!-- 工具表入口刻意用 hub 式「拆账中心」而非短词「拆账」(屏页头 bill_split_topbar_title /
          设置入口 settings_root_entry_bill_splits_title / web 侧栏 base 用「拆账」):本入口夹在
          导出/更新等动作按钮之间,「拆账」会被读成动作(去拆一笔),「中心」点明它是收发箱目的地。

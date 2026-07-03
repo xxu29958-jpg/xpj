@@ -428,6 +428,10 @@ that actually ships the fix.
   state instead of a sparse capsule grid. True-device evidence: `245-month-picker-after.png`
   and `247-ledger-month-picker-after.png`. Broader secondary-page parity remains
   open.
+- Progress 2026-07-03: Ledger's filter sheet now opens expanded and filter-first:
+  search, global search, and category/tag row groups come before display,
+  export, and relationship tools. True-device evidence:
+  `262-ledger-filter-sheet-after-install.png`.
 
 ### ANDROID-2026-07-01-insights-budget-goal-drill-semantics
 

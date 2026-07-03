@@ -1,26 +1,38 @@
 package com.ticketbox.ui.screens.ledger
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppSegmentedControl
@@ -29,10 +41,11 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.screens.CategoryFilterRow
-import com.ticketbox.ui.screens.SelectableFilterChip
+import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
 
@@ -59,18 +72,6 @@ internal fun LedgerToolsSheet(
         title = stringResource(R.string.ledger_tools_title),
         subtitle = stringResource(R.string.ledger_tools_subtitle),
     ) {
-        LedgerRelationshipTools(
-            onOpenBillSplit = onOpenBillSplit,
-            onOpenDebts = onOpenDebts,
-            onOpenReceivables = onOpenReceivables,
-            onOpenRepaymentDrafts = onOpenRepaymentDrafts,
-        )
-        LedgerToolDivider()
-        LedgerViewTools(
-            selectedMode = state.viewMode,
-            onViewModeChange = onViewModeChange,
-        )
-        LedgerToolDivider()
         LedgerFilterTools(
             state = state,
             onCategoryChange = onCategoryChange,
@@ -79,11 +80,23 @@ internal fun LedgerToolsSheet(
             onOpenGlobalSearch = onOpenGlobalSearch,
         )
         LedgerToolDivider()
+        LedgerViewTools(
+            selectedMode = state.viewMode,
+            onViewModeChange = onViewModeChange,
+        )
+        LedgerToolDivider()
         LedgerDataTools(
             state = state,
             canExport = canExport,
             onSync = onSync,
             onExportCsv = onExportCsv,
+        )
+        LedgerToolDivider()
+        LedgerRelationshipTools(
+            onOpenBillSplit = onOpenBillSplit,
+            onOpenDebts = onOpenDebts,
+            onOpenReceivables = onOpenReceivables,
+            onOpenRepaymentDrafts = onOpenRepaymentDrafts,
         )
         LedgerToolsFooter(
             hasUserFilters = hasUserFilters,
@@ -153,18 +166,6 @@ private fun LedgerFilterTools(
     onOpenGlobalSearch: () -> Unit,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_filter_title)) {
-        CategoryFilterRow(
-            categories = state.categories,
-            selectedCategory = state.categoryFilter,
-            onCategoryChange = onCategoryChange,
-        )
-        if (state.tags.isNotEmpty() || state.tagFilter.isNotBlank()) {
-            TagFilterRow(
-                tags = state.tags,
-                selectedTag = state.tagFilter,
-                onTagChange = onTagChange,
-            )
-        }
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.ledger_tools_search_label),
@@ -181,6 +182,37 @@ private fun LedgerFilterTools(
             onClick = onOpenGlobalSearch,
             icon = Icons.Default.Search,
         )
+        val categoryOptions = if (state.categoryFilter.isNotBlank() && state.categoryFilter !in state.categories) {
+            listOf(state.categoryFilter) + state.categories
+        } else {
+            state.categories
+        }
+        LedgerOptionList(
+            state = LedgerOptionListState(
+                title = stringResource(R.string.ledger_category_filter_label),
+                allLabel = stringResource(R.string.ledger_category_filter_all),
+                options = categoryOptions,
+                selectedValue = state.categoryFilter,
+            ),
+            onValueChange = onCategoryChange,
+        )
+        if (state.tags.isNotEmpty() || state.tagFilter.isNotBlank()) {
+            val tagOptions = if (state.tagFilter.isNotBlank() && state.tagFilter !in state.tags) {
+                listOf(state.tagFilter) + state.tags
+            } else {
+                state.tags
+            }
+            LedgerOptionList(
+                state = LedgerOptionListState(
+                    title = stringResource(R.string.ledger_tools_tag_label),
+                    allLabel = stringResource(R.string.ledger_tools_tag_all),
+                    options = tagOptions,
+                    selectedValue = state.tagFilter,
+                    labelPrefix = "#",
+                ),
+                onValueChange = onTagChange,
+            )
+        }
     }
 }
 
@@ -302,33 +334,84 @@ private fun LedgerRelationshipTools(
     }
 }
 
+@Immutable
+private data class LedgerOptionListState(
+    val title: String,
+    val allLabel: String,
+    val options: List<String>,
+    val selectedValue: String,
+    val labelPrefix: String = "",
+)
+
 @Composable
-private fun TagFilterRow(
-    tags: List<String>,
-    selectedTag: String,
-    onTagChange: (String) -> Unit,
+private fun LedgerOptionList(
+    state: LedgerOptionListState,
+    onValueChange: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
-            text = stringResource(R.string.ledger_tools_tag_label),
+            text = state.title,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            item {
-                SelectableFilterChip(
-                    selected = selectedTag.isBlank(),
-                    label = stringResource(R.string.ledger_tools_tag_all),
-                    onClick = { onTagChange("") },
+        Column(modifier = Modifier.fillMaxWidth()) {
+            LedgerOptionRow(
+                label = state.allLabel,
+                selected = state.selectedValue.isBlank(),
+                onClick = { onValueChange("") },
+            )
+            state.options.forEach { option ->
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
+                LedgerOptionRow(
+                    label = "${state.labelPrefix}$option",
+                    selected = state.selectedValue == option,
+                    onClick = { onValueChange(option) },
                 )
             }
-            items(tags, key = { it }) { tag ->
-                SelectableFilterChip(
-                    selected = selectedTag == tag,
-                    label = "#$tag",
-                    onClick = { onTagChange(tag) },
-                )
-            }
+        }
+    }
+}
+
+@Composable
+private fun LedgerOptionRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val visuals = LocalThemeVisuals.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = AppSpacing.controlMinHeight)
+            .clip(RoundedCornerShape(AppRadius.extraSmall))
+            .then(
+                if (selected) {
+                    Modifier.background(visuals.chipSelected.copy(alpha = AppAlpha.soft))
+                } else {
+                    Modifier
+                },
+            )
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = AppSpacing.compactPadding, vertical = AppSpacing.smallGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) AppTextHierarchy.heading.weight else AppTextHierarchy.body.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }

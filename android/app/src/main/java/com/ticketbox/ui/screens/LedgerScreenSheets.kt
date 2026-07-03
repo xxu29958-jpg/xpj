@@ -86,7 +86,8 @@ private fun LedgerToolsSheetHost(
     canExport: Boolean,
 ) {
     if (!chromeState.showLedgerTools) return
-    ModalBottomSheet(onDismissRequest = { chromeState.showLedgerTools = false }) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = { chromeState.showLedgerTools = false }, sheetState = sheetState) {
         val openSecondaryPage: (() -> Unit) -> Unit = { open ->
             chromeState.showLedgerTools = false
             open()
