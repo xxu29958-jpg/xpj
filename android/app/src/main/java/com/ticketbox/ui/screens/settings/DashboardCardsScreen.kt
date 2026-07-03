@@ -306,6 +306,10 @@ private fun DashboardCardRow(
             AppSwitch(
                 checked = row.card.visible,
                 enabled = row.enabled,
+                contentDescription = stringResource(
+                    R.string.dashboard_cards_toggle_content_description,
+                    row.card.title,
+                ),
                 onCheckedChange = { actions.onVisibleChange(row.card.key, it) },
             )
         }

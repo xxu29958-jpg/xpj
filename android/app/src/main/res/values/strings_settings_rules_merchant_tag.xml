@@ -163,6 +163,7 @@
     <string name="dashboard_cards_save_button">保存</string>
     <string name="dashboard_cards_move_up_content_description">上移%1$s</string>
     <string name="dashboard_cards_move_down_content_description">下移%1$s</string>
+    <string name="dashboard_cards_toggle_content_description">显示或隐藏%1$s</string>
     <string name="dashboard_cards_card_visible">已显示</string>
     <string name="dashboard_cards_card_hidden">已隐藏</string>
     <string name="dashboard_cards_load_failed">首页模块暂时打不开。</string>

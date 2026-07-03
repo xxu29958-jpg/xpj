@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens.ledger
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -145,19 +144,10 @@ private fun LedgerMonthStepper(
     actions: LedgerMonthStepperActions,
     modifier: Modifier = Modifier,
 ) {
-    val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.small)
     Row(
         modifier = modifier
-            .heightIn(min = 44.dp)
-            .clip(shape)
-            .background(visuals.solidCard.copy(alpha = AppAlpha.opaque))
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
-                shape = shape,
-            )
-            .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.miniGap),
+            .heightIn(min = 40.dp)
+            .padding(vertical = AppSpacing.tinyGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LedgerMonthStepButton(
@@ -208,7 +198,7 @@ private fun LedgerMonthStepButton(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(32.dp)
             .alpha(if (enabled) 1f else 0.36f)
             .clip(RoundedCornerShape(AppRadius.extraSmall))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
@@ -230,31 +220,22 @@ private fun LedgerFilterToolButton(
     onClick: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.small)
+    val shape = RoundedCornerShape(AppRadius.extraSmall)
     val labelColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier
-            .heightIn(min = 44.dp)
+            .heightIn(min = 40.dp)
             .widthIn(min = 84.dp)
             .clip(shape)
-            .background(
+            .then(
                 if (selected) {
-                    visuals.chipSelected.copy(alpha = AppAlpha.strong)
+                    Modifier.background(visuals.chipSelected.copy(alpha = AppAlpha.medium))
                 } else {
-                    visuals.solidCard.copy(alpha = AppAlpha.opaque)
+                    Modifier
                 },
-            )
-            .border(
-                width = 1.dp,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = AppAlpha.medium)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium)
-                },
-                shape = shape,
             )
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
+            .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.smallGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {

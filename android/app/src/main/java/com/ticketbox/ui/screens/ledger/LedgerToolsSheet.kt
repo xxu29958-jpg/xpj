@@ -4,11 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
@@ -24,8 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.AppTextInput
@@ -58,15 +55,10 @@ internal fun LedgerToolsSheet(
     onDismiss: () -> Unit,
 ) {
     val hasUserFilters = state.categoryFilter.isNotBlank() || state.tagFilter.isNotBlank() || state.query.isNotBlank()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.compactGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    AppSheetScaffold(
+        title = stringResource(R.string.ledger_tools_title),
+        subtitle = stringResource(R.string.ledger_tools_subtitle),
     ) {
-        LedgerToolsHeader(state = state)
-        LedgerToolDivider()
         LedgerRelationshipTools(
             onOpenBillSplit = onOpenBillSplit,
             onOpenDebts = onOpenDebts,
@@ -124,24 +116,6 @@ private fun LedgerViewTools(
             },
             selectedValue = selectedMode,
             onValueChange = onViewModeChange,
-        )
-    }
-}
-
-@Composable
-private fun LedgerToolsHeader(state: LedgerUiState) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        Text(
-            text = stringResource(R.string.ledger_tools_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = ledgerCombinedStatusLine(state),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
