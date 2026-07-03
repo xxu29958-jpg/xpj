@@ -603,8 +603,9 @@ that actually ships the fix.
 - Resolution: Android defaults Reports overview to `ranking_metric=count`,
   renders the ranking title/value from the returned metric, and keeps amount as
   supporting context for frequency rows. True-device screenshot
-  `269-insights-merchant-count-list-final.png` verifies populated merchant rows
-  show the count-led "高频商家" view by default.
+  `269-insights-merchant-count-list-final.png`, rechecked with
+  `308-insights-trend-merchant-clean.png`, verifies populated merchant rows show
+  the count-led "高频商家" view by default.
 
 ### ANDROID-2026-07-01-root-page-density
 
