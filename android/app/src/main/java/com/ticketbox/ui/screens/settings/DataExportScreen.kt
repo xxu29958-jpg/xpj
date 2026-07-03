@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
@@ -33,10 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppAlpha
@@ -197,58 +196,83 @@ private fun DataExportActions(
     onClearCacheClick: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Row(
+        AppPrimaryButton(
+            text = stringResource(
+                if (busy) {
+                    R.string.settings_data_export_button_refreshing
+                } else {
+                    R.string.settings_data_export_button_refresh
+                },
+            ),
+            icon = Icons.Filled.RestartAlt,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            AppPrimaryButton(
-                text = stringResource(
-                    if (busy) {
-                        R.string.settings_data_export_button_refreshing
-                    } else {
-                        R.string.settings_data_export_button_refresh
-                    },
-                ),
-                icon = Icons.Filled.RestartAlt,
-                modifier = Modifier.weight(1f),
-                enabled = !busy,
-                onClick = onSync,
-            )
-            DataExportClearCacheButton(
-                modifier = Modifier.weight(1f),
-                onClick = onClearCacheClick,
-            )
-        }
-        Text(
-            text = stringResource(R.string.settings_data_export_action_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
+            enabled = !busy,
+            onClick = onSync,
+        )
+        DataExportClearCacheRow(
+            onClick = onClearCacheClick,
         )
     }
 }
 
 @Composable
-private fun DataExportClearCacheButton(
-    modifier: Modifier = Modifier,
+private fun DataExportClearCacheRow(
     onClick: () -> Unit,
 ) {
-    AppOutlinedButton(
-        modifier = modifier,
-        danger = true,
-        onClick = onClick,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadius.small))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = AppSpacing.smallGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.Top,
     ) {
-        Icon(
-            imageVector = Icons.Filled.DeleteOutline,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-        )
-        Box(modifier = Modifier.width(AppSpacing.smallGap))
+        DataExportIconBox(icon = Icons.Filled.DeleteOutline)
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            DataExportClearCacheTitle()
+            Text(
+                text = stringResource(R.string.settings_data_export_clear_row_body),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DataExportClearCacheTitle() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
-            text = stringResource(R.string.settings_data_export_button_clear_cache),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            softWrap = false,
+            text = stringResource(R.string.settings_data_export_clear_row_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+            modifier = Modifier.weight(1f),
         )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.DeleteOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(17.dp),
+            )
+            Text(
+                text = stringResource(R.string.settings_data_export_clear_row_action),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+        }
     }
 }
 

@@ -116,21 +116,22 @@
 
     <!-- 数据与导出页（DataExportScreen） -->
     <string name="settings_data_export_clear_dialog_title">清除离线副本？</string>
-    <string name="settings_data_export_clear_dialog_text">只会移除这台设备保存的离线账本副本，不会删除已入账记录。重新更新后可再次离线查看。</string>
+    <string name="settings_data_export_clear_dialog_text">仅移除这台设备保存的离线副本，不会删除已入账记录。</string>
     <string name="settings_data_export_clear_dialog_confirm">清除副本</string>
     <string name="settings_data_export_page_title">数据与导出</string>
-    <string name="settings_data_export_page_subtitle">管理已入账记录的更新、离线副本与导出范围。</string>
-    <string name="settings_data_export_section_refresh_cache">账本数据与离线副本</string>
+    <string name="settings_data_export_page_subtitle">管理更新、离线副本与导出范围。</string>
+    <string name="settings_data_export_section_refresh_cache">数据更新与导出</string>
     <string name="settings_data_export_authority_label">已入账记录</string>
-    <string name="settings_data_export_authority_body">以同步完成的账本记录为准，金额、分类和标签不在本页改写。</string>
+    <string name="settings_data_export_authority_body">以已同步账本记录为准，本页不改写金额、分类或标签。</string>
     <string name="settings_data_export_cache_label">离线副本</string>
-    <string name="settings_data_export_cache_body">这台设备会保存已入账记录的副本，用于连接不可用时查看。</string>
+    <string name="settings_data_export_cache_body">本机保存已入账记录副本，连接不可用时可查看。</string>
     <string name="settings_data_export_export_label">导出范围</string>
-    <string name="settings_data_export_export_body">从账本页按月份、分类和标签导出已入账记录；无匹配记录时导出不可用。</string>
+    <string name="settings_data_export_export_body">从账本页按月份、分类和标签导出记录。</string>
     <string name="settings_data_export_button_refreshing">更新中</string>
-    <string name="settings_data_export_button_refresh">重新更新</string>
-    <string name="settings_data_export_button_clear_cache">清除副本</string>
-    <string name="settings_data_export_action_hint">重新更新会获取最新已入账记录；清除副本不会影响账本记录。</string>
+    <string name="settings_data_export_button_refresh">更新数据</string>
+    <string name="settings_data_export_clear_row_title">清除本机副本</string>
+    <string name="settings_data_export_clear_row_body">移除这台设备的离线副本，账本记录不受影响。</string>
+    <string name="settings_data_export_clear_row_action">清除</string>
 
     <!-- 安全与隐私页（SecurityPrivacyScreen） -->
     <string name="settings_security_clear_dialog_title">清除离线副本？</string>
