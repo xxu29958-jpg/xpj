@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSheetScaffold
@@ -193,10 +193,10 @@ internal fun DebtKindCreateField(selected: String, onSelect: (String) -> Unit) {
     Spacer(Modifier.size(AppSpacing.miniGap))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         DebtKinds.ORDERED.forEach { kind ->
-            FilterChip(
+            AppFilterChip(
                 selected = selected == kind,
                 onClick = { onSelect(kind) },
-                label = { Text(stringResource(debtKindLabelRes(kind))) },
+                label = stringResource(debtKindLabelRes(kind)),
             )
         }
     }

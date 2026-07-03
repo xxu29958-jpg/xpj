@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
@@ -39,6 +38,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSectionGroup
@@ -433,13 +433,15 @@ private fun DebtDirectionField(selected: String, onSelect: (String) -> Unit) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
             listOf(DebtDirections.I_OWE, DebtDirections.OWED_TO_ME).forEach { direction ->
-                FilterChip(
+                AppFilterChip(
                     selected = selected == direction,
                     onClick = { onSelect(direction) },
-                    label = { Text(stringResource(debtDirectionLabelRes(direction))) },
-                    modifier = Modifier.padding(end = AppSpacing.smallGap),
+                    label = stringResource(debtDirectionLabelRes(direction)),
                 )
             }
         }

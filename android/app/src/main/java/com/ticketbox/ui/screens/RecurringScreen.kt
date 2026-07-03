@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +38,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -182,10 +182,10 @@ private fun RecurringTabRow(
                 RecurringTab.Active -> activeCount
                 RecurringTab.Paused -> pausedCount
             }
-            FilterChip(
+            AppFilterChip(
                 selected = selected == tab,
                 onClick = { onSelect(tab) },
-                label = { Text(stringResource(R.string.recurring_tab_label_count, stringResource(tab.labelRes), count)) },
+                label = stringResource(R.string.recurring_tab_label_count, stringResource(tab.labelRes), count),
             )
         }
     }

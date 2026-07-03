@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +37,7 @@ import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -135,15 +135,15 @@ private fun BillSplitTabRow(
     sentCount: Int,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        FilterChip(
+        AppFilterChip(
             selected = selectedTab == 0,
             onClick = { onSelect(0) },
-            label = { Text(stringResource(R.string.bill_split_tab_inbox, inboxCount)) },
+            label = stringResource(R.string.bill_split_tab_inbox, inboxCount),
         )
-        FilterChip(
+        AppFilterChip(
             selected = selectedTab == 1,
             onClick = { onSelect(1) },
-            label = { Text(stringResource(R.string.bill_split_tab_sent, sentCount)) },
+            label = stringResource(R.string.bill_split_tab_sent, sentCount),
         )
     }
 }

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -32,6 +31,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSectionGroup
@@ -352,17 +352,19 @@ private fun DebtActionForm(
 
 @Composable
 private fun DebtAdjustmentSignChips(increase: Boolean, onSelect: (Boolean) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        FilterChip(
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        AppFilterChip(
             selected = increase,
             onClick = { onSelect(true) },
-            label = { Text(stringResource(R.string.debt_action_adjustment_increase)) },
-            modifier = Modifier.padding(end = AppSpacing.smallGap),
+            label = stringResource(R.string.debt_action_adjustment_increase),
         )
-        FilterChip(
+        AppFilterChip(
             selected = !increase,
             onClick = { onSelect(false) },
-            label = { Text(stringResource(R.string.debt_action_adjustment_decrease)) },
+            label = stringResource(R.string.debt_action_adjustment_decrease),
         )
     }
 }
