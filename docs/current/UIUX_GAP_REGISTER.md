@@ -305,6 +305,10 @@ that actually ships the fix.
   Compact mode no longer expands duplicate-warning blocks or inline action
   buttons, so the first viewport supports queue scanning instead of full-detail
   reading.
+- Progress 2026-07-03: empty Pending now treats upload as a compact tool action
+  instead of a full-width capsule, and "upload method" / refresh are lightweight
+  text actions. True-device evidence: `253-pending-empty-final.png`,
+  `254-pending-empty-guide-final.png`.
 - Remaining QA: continue official-package review for cache/read-only copy,
   scroll position, bottom-nav safety, and the Comfortable detail mode.
 
@@ -500,9 +504,10 @@ that actually ships the fix.
   instead of reusing the generic expense card. The row keeps thumbnail/category,
   merchant, time, true issue signals, full amount, and the next action visible
   from the same `Expense` state.
-- Remaining QA: reconnect a physical device with real pending items and verify
-  density, amount fitting, swipe actions, read-only state, and offline/cache
-  labels.
+- Remaining QA: reconnect or seed a physical device with real pending items and
+  verify density, amount fitting, swipe actions, read-only state, and
+  offline/cache labels. Current production-backed device state is empty, so this
+  row is not closed by the empty-state screenshots.
 
 ### ANDROID-2026-07-01-edit-keyboard-action-density
 

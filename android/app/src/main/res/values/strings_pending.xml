@@ -22,13 +22,13 @@
     <string name="pending_empty_card_body">新截图上传后会进入这里，确认后才会入账。</string>
 
     <!-- 空态：按钮 + iPhone 引导 -->
-    <string name="pending_empty_guide_collapse">收起 iPhone 方法</string>
-    <string name="pending_empty_guide_expand">iPhone 快捷指令</string>
+    <string name="pending_empty_guide_collapse">收起方法</string>
+    <string name="pending_empty_guide_expand">上传方法</string>
     <string name="pending_empty_refresh_button">刷新</string>
     <string name="pending_empty_guide_title">iPhone 上传方法</string>
-    <string name="pending_empty_guide_step1">1. 打开账单截图，点分享。</string>
+    <string name="pending_empty_guide_step1">1. 打开账单截图，使用系统分享。</string>
     <string name="pending_empty_guide_step2">2. 选择「上传到小票夹」快捷指令。</string>
-    <string name="pending_empty_guide_step3">3. 上传成功后回到这里刷新。</string>
+    <string name="pending_empty_guide_step3">3. 上传后返回此页刷新。</string>
 
     <!-- Needs Review 筛选条 chip 标签 -->
     <string name="pending_filter_label_all">全部</string>

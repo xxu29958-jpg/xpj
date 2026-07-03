@@ -21,7 +21,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -82,7 +81,6 @@ internal fun PendingTop(
                     if (!readOnly) {
                         PendingUploadAction(
                             uploading = uploading,
-                            prominent = false,
                             onUploadScreenshot = onUploadScreenshot,
                         )
                     }
@@ -90,11 +88,12 @@ internal fun PendingTop(
             }
 
             !readOnly -> {
-                PendingUploadAction(
-                    uploading = uploading,
-                    prominent = true,
-                    onUploadScreenshot = onUploadScreenshot,
-                )
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    PendingUploadAction(
+                        uploading = uploading,
+                        onUploadScreenshot = onUploadScreenshot,
+                    )
+                }
             }
         }
     }
@@ -130,7 +129,6 @@ private fun PendingCountMetric(
 @Composable
 private fun PendingUploadAction(
     uploading: Boolean,
-    prominent: Boolean,
     onUploadScreenshot: () -> Unit,
 ) {
     val text = if (uploading) {
@@ -138,22 +136,12 @@ private fun PendingUploadAction(
     } else {
         stringResource(R.string.pending_top_cta_upload)
     }
-    if (prominent) {
-        PrimaryCtaButton(
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uploading,
-            icon = Icons.Filled.AddPhotoAlternate,
-            text = text,
-            onClick = onUploadScreenshot,
-        )
-    } else {
-        AppSecondaryButton(
-            enabled = !uploading,
-            leadingIcon = Icons.Filled.AddPhotoAlternate,
-            text = text,
-            onClick = onUploadScreenshot,
-        )
-    }
+    AppSecondaryButton(
+        enabled = !uploading,
+        leadingIcon = Icons.Filled.AddPhotoAlternate,
+        text = text,
+        onClick = onUploadScreenshot,
+    )
 }
 
 @Composable

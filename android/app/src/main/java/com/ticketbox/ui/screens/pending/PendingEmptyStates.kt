@@ -2,22 +2,26 @@ package com.ticketbox.ui.screens.pending
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -72,27 +76,16 @@ internal fun EmptyPendingState(
         if (loading) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            if (!readOnly) {
-                AppSecondaryButton(
-                    text = if (showUploadGuide) {
-                        stringResource(R.string.pending_empty_guide_collapse)
-                    } else {
-                        stringResource(R.string.pending_empty_guide_expand)
-                    },
-                    modifier = Modifier.weight(1.25f),
-                    leadingIcon = Icons.Filled.Info,
-                    enabled = !loading,
-                    onClick = onToggleGuide,
-                )
-            }
-            AppSecondaryButton(
-                text = stringResource(R.string.pending_empty_refresh_button),
-                modifier = Modifier.weight(if (readOnly) 1f else 0.75f),
-                enabled = !uploading && !loading,
-                onClick = onRefresh,
-            )
-        }
+        PendingEmptyActions(
+            state = PendingEmptyActionState(
+                uploading = uploading,
+                loading = loading,
+                readOnly = readOnly,
+                showUploadGuide = showUploadGuide,
+            ),
+            onToggleGuide = onToggleGuide,
+            onRefresh = onRefresh,
+        )
         if (showUploadGuide && !readOnly) {
             PendingUploadGuide()
         }
@@ -107,13 +100,89 @@ private fun PendingUploadGuide() {
     ) {
         Text(
             text = stringResource(R.string.pending_empty_guide_title),
-            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.labelLarge,
             fontWeight = AppTextHierarchy.heading.weight,
         )
-        Text(stringResource(R.string.pending_empty_guide_step1))
-        Text(stringResource(R.string.pending_empty_guide_step2))
-        Text(stringResource(R.string.pending_empty_guide_step3))
+        PendingGuideStep(text = stringResource(R.string.pending_empty_guide_step1))
+        PendingGuideStep(text = stringResource(R.string.pending_empty_guide_step2))
+        PendingGuideStep(text = stringResource(R.string.pending_empty_guide_step3))
     }
+}
+
+@Composable
+private fun PendingEmptyActions(
+    state: PendingEmptyActionState,
+    onToggleGuide: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!state.readOnly) {
+            PendingInlineAction(
+                text = if (state.showUploadGuide) {
+                    stringResource(R.string.pending_empty_guide_collapse)
+                } else {
+                    stringResource(R.string.pending_empty_guide_expand)
+                },
+                icon = Icons.Filled.Info,
+                enabled = !state.loading,
+                onClick = onToggleGuide,
+            )
+        }
+        PendingInlineAction(
+            text = stringResource(R.string.pending_empty_refresh_button),
+            icon = Icons.Filled.Refresh,
+            enabled = !state.uploading && !state.loading,
+            onClick = onRefresh,
+        )
+    }
+}
+
+private data class PendingEmptyActionState(
+    val uploading: Boolean,
+    val loading: Boolean,
+    val readOnly: Boolean,
+    val showUploadGuide: Boolean,
+)
+
+@Composable
+private fun PendingInlineAction(
+    text: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    TextButton(
+        enabled = enabled,
+        onClick = onClick,
+        contentPadding = PaddingValues(
+            horizontal = AppSpacing.smallGap,
+            vertical = AppSpacing.tinyGap,
+        ),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+        )
+        Spacer(modifier = Modifier.width(AppSpacing.tinyGap))
+        Text(
+            text = text,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+    }
+}
+
+@Composable
+private fun PendingGuideStep(text: String) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable
