@@ -1,29 +1,14 @@
 package com.ticketbox.ui.components
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -35,11 +20,6 @@ fun MonthPickerSheet(
     description: String,
     onSelectMonth: (String) -> Unit,
 ) {
-    val selectedLabel = if (selectedMonth.isBlank()) {
-        stringResource(R.string.components_month_picker_all_months)
-    } else {
-        displayMonthLabel(selectedMonth)
-    }
     Column(
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -47,54 +27,12 @@ fun MonthPickerSheet(
             title = stringResource(R.string.components_month_picker_title),
             subtitle = description,
         ) {
-            MonthPickerSelectionSummary(
-                selectedLabel = selectedLabel,
-                allSelected = selectedMonth.isBlank(),
-                onSelectAll = { onSelectMonth("") },
-            )
             MonthPickerOptions(
                 months = months,
                 selectedMonth = selectedMonth,
                 onSelectMonth = onSelectMonth,
             )
         }
-    }
-}
-
-@Composable
-private fun MonthPickerSelectionSummary(
-    selectedLabel: String,
-    allSelected: Boolean,
-    onSelectAll: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(
-                text = stringResource(R.string.components_month_picker_current_label),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
-            Text(
-                text = selectedLabel,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        MonthPickerAllMonthsButton(
-            selected = allSelected,
-            onClick = onSelectAll,
-        )
     }
 }
 
@@ -106,76 +44,27 @@ private fun MonthPickerOptions(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
+        MonthPickerOptionRow(
+            label = stringResource(R.string.components_month_picker_all_months),
+            selected = selectedMonth.isBlank(),
+            onClick = { onSelectMonth("") },
+        )
         if (months.isEmpty()) {
             MonthPickerEmptyRow()
         }
-        val pendingRow = mutableListOf<String>()
         monthPickerEntries(months).forEach { entry ->
             when (entry) {
-                is MonthPickerEntry.YearHeader -> {
-                    if (pendingRow.isNotEmpty()) {
-                        MonthGridRow(
-                            months = pendingRow.toList(),
-                            selectedMonth = selectedMonth,
-                            onSelectMonth = onSelectMonth,
-                        )
-                        pendingRow.clear()
-                    }
-                    MonthPickerYearHeader(entry.year)
-                }
+                is MonthPickerEntry.YearHeader -> MonthPickerYearHeader(entry.year)
                 is MonthPickerEntry.Month -> {
-                    pendingRow += entry.month
-                    if (pendingRow.size == MonthGridColumns) {
-                        MonthGridRow(
-                            months = pendingRow.toList(),
-                            selectedMonth = selectedMonth,
-                            onSelectMonth = onSelectMonth,
-                        )
-                        pendingRow.clear()
-                    }
+                    MonthPickerOptionRow(
+                        label = displayMonthLabel(entry.month),
+                        selected = selectedMonth == entry.month,
+                        onClick = { onSelectMonth(entry.month) },
+                    )
                 }
             }
-        }
-        if (pendingRow.isNotEmpty()) {
-            MonthGridRow(
-                months = pendingRow.toList(),
-                selectedMonth = selectedMonth,
-                onSelectMonth = onSelectMonth,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MonthPickerAllMonthsButton(
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .semantics { this.selected = selected }
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.smallGap),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        Text(
-            text = stringResource(R.string.components_month_picker_all_months),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            fontWeight = if (selected) AppTextHierarchy.heading.weight else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (selected) {
-            Icon(
-                imageVector = Icons.Filled.Check,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp),
-            )
         }
     }
 }
@@ -196,30 +85,9 @@ private fun MonthPickerYearHeader(year: String) {
 }
 
 @Composable
-private fun MonthPickerEmptyRow() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactGap),
-    ) {
-        Text(
-            text = stringResource(R.string.components_month_picker_empty),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
-
-@Composable
 fun displayMonthLabel(month: String): String {
     val parts = monthLabelParts(month) ?: return month
     return stringResource(R.string.components_month_label, parts.year, parts.monthNumber)
-}
-
-@Composable
-internal fun displayMonthCellLabel(month: String): String {
-    val parts = monthLabelParts(month) ?: return displayMonthLabel(month)
-    return stringResource(R.string.components_month_picker_month_cell, parts.monthNumber)
 }
 
 internal fun monthLabelParts(month: String): MonthLabelParts? {

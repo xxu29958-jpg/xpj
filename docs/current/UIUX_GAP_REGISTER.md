@@ -419,6 +419,11 @@ that actually ships the fix.
   product pattern, then close pages one by one. Each page needs the same title,
   back, state, section, row-density, chip/button alignment, and bottom-safe
   behavior as the root tabs while keeping its own product job clear.
+- Progress 2026-07-03: the shared MonthPicker used by Insights and Ledger now
+  opens as a compact list-style bottom sheet with year grouping and selected-row
+  state instead of a sparse capsule grid. True-device evidence: `245-month-picker-after.png`
+  and `247-ledger-month-picker-after.png`. Broader secondary-page parity remains
+  open.
 
 ### ANDROID-2026-07-01-insights-budget-goal-drill-semantics
 
