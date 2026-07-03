@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -178,24 +179,48 @@ internal fun ExpenseEditCategoryField(
     onCategoryChange: (String) -> Unit,
     enabled: Boolean = true,
 ) {
-    ExpenseEditTextField(
-        state = ExpenseEditTextFieldState(
-            label = stringResource(R.string.expense_edit_category_field_label),
-            value = category,
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        ExpenseEditTextField(
+            state = ExpenseEditTextFieldState(
+                label = stringResource(R.string.expense_edit_category_field_label),
+                value = category,
+                enabled = enabled,
+            ),
+            onValueChange = onCategoryChange,
+        )
+        ExpenseEditCategoryChoices(
+            category = category,
+            categories = categories,
             enabled = enabled,
-        ),
-        onValueChange = onCategoryChange,
-    )
-    if (categories.isNotEmpty()) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            items(categories, key = { it }) { item ->
-                SelectableCategoryChip(
-                    selected = category == item,
-                    label = item,
-                    enabled = enabled,
-                    onClick = { onCategoryChange(item) },
-                )
-            }
+            onCategoryChange = onCategoryChange,
+        )
+    }
+}
+
+@Composable
+private fun ExpenseEditCategoryChoices(
+    category: String,
+    categories: List<String>,
+    enabled: Boolean,
+    onCategoryChange: (String) -> Unit,
+) {
+    if (categories.isEmpty()) return
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.miniGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    ) {
+        items(categories, key = { it }) { item ->
+            SelectableCategoryChip(
+                selected = category == item,
+                label = item,
+                enabled = enabled,
+                onClick = { onCategoryChange(item) },
+            )
         }
     }
 }

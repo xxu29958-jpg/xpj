@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,8 @@ import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
+
+private val ExpenseEditActionInlineMinWidth = 380.dp
 
 /**
  * 编辑页操作栏的可见状态（哪些动作可用 + 是否保存中 + 两类提示）。
@@ -122,11 +125,7 @@ internal fun ExpenseEditActionBar(
             state.statusMessage?.let {
                 ExpenseEditActionMessage(it, MaterialTheme.colorScheme.secondary)
             }
-            if (compactMode) {
-                ExpenseEditKeyboardActionRow(state = state, actions = actions)
-            } else {
-                ExpenseEditActionForwardRow(state = state, actions = actions)
-            }
+            ExpenseEditResponsiveActionRows(state = state, actions = actions, compactMode = compactMode)
         }
     }
 }
@@ -138,6 +137,84 @@ private fun ExpenseEditActionMessage(message: String, color: Color) {
         color = color,
         style = MaterialTheme.typography.bodySmall,
     )
+}
+
+@Composable
+private fun ExpenseEditResponsiveActionRows(
+    state: ExpenseEditActionBarState,
+    actions: ExpenseEditActionBarActions,
+    compactMode: Boolean,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val actionCount = listOf(state.allowReject, state.allowSave, state.allowConfirm).count { it }
+        val shouldStack = maxWidth < ExpenseEditActionInlineMinWidth && actionCount >= 3
+        when {
+            shouldStack -> ExpenseEditStackedActionRows(state = state, actions = actions)
+            compactMode -> ExpenseEditKeyboardActionRow(state = state, actions = actions)
+            else -> ExpenseEditActionForwardRow(state = state, actions = actions)
+        }
+    }
+}
+
+@Composable
+private fun ExpenseEditStackedActionRows(
+    state: ExpenseEditActionBarState,
+    actions: ExpenseEditActionBarActions,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        ExpenseEditSecondaryActionRow(state = state, actions = actions)
+        if (state.allowConfirm) {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = AppSpacing.controlMinHeight),
+                enabled = !state.saving,
+                contentPadding = CompactActionPadding,
+                onClick = actions.onConfirm,
+            ) {
+                ExpenseEditActionLabel(
+                    text = stringResource(R.string.expense_edit_confirm_button),
+                    icon = Icons.Filled.Check,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpenseEditSecondaryActionRow(
+    state: ExpenseEditActionBarState,
+    actions: ExpenseEditActionBarActions,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        if (state.allowReject) {
+            CompactTextAction(
+                text = stringResource(R.string.expense_edit_reject_button),
+                weight = 0.82f,
+                enabled = !state.saving,
+                danger = true,
+                onClick = actions.onRequestReject,
+            )
+        }
+        if (state.allowSave) {
+            CompactOutlinedAction(
+                text = if (state.saving) {
+                    stringResource(R.string.expense_edit_primary_saving_button)
+                } else {
+                    stringResource(R.string.expense_edit_primary_save_button)
+                },
+                weight = 1f,
+                enabled = !state.saving,
+                onClick = actions.onSave,
+            )
+        }
+    }
 }
 
 @Composable

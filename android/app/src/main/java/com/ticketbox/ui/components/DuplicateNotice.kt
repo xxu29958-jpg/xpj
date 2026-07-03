@@ -1,22 +1,44 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalStateTokens
 
 @Composable
 fun DuplicateNotice(
     reason: String?,
     modifier: Modifier = Modifier,
 ) {
-    AppContentCard(modifier = modifier.fillMaxWidth()) {
+    val tone = LocalStateTokens.current.warn
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val stroke = AppSpacing.tinyGap.toPx()
+                drawLine(
+                    color = tone.fg,
+                    start = Offset(0f, 0f),
+                    end = Offset(0f, size.height),
+                    strokeWidth = stroke,
+                )
+            }
+            .padding(start = AppSpacing.contentGap, top = AppSpacing.tinyGap, bottom = AppSpacing.tinyGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
         Text(
             text = stringResource(R.string.components_duplicate_notice_title),
-            color = MaterialTheme.colorScheme.error,
+            color = tone.fg,
             style = MaterialTheme.typography.labelLarge,
         )
         Text(
