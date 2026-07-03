@@ -36,15 +36,15 @@ internal data class CategoryComparisonChartRow(
 
 /**
  * 轴3 对比图数据(纯函数,单测直测):负值钳零(图不画负柱);
- * 历史系列必须有后端 count 才可展示,避免把缺失历史样本画成 0 对比。
+ * 历史系列必须有后端 count 和正向金额才可展示,避免把缺失历史样本画成 0 对比。
  */
 internal fun categoryComparisonChartRows(
     rows: List<ReportCategoryComparison>,
 ): List<CategoryComparisonChartRow> =
     rows.asSequence()
         .map { row ->
-            val hasPrevious = row.previousCount > 0
-            val hasYearOverYear = row.yearOverYearCount > 0
+            val hasPrevious = row.previousCount > 0 && row.previousAmountCents > 0L
+            val hasYearOverYear = row.yearOverYearCount > 0 && row.yearOverYearAmountCents > 0L
             CategoryComparisonChartRow(
                 category = row.category,
                 currentAmountCents = row.amountCents.coerceAtLeast(0L),

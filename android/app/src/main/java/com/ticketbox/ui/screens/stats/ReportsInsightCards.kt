@@ -181,7 +181,7 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
 
 @Composable
 private fun categoryYearOverYearText(row: ReportCategoryComparison): String? {
-    if (row.yearOverYearCount <= 0) return null
+    if (row.yearOverYearCount <= 0 || row.yearOverYearAmountCents <= 0L) return null
     val currencyDisplay = LocalCurrencyDisplay.current
     return when {
         row.yearOverYearDeltaAmountCents > 0L -> stringResource(
@@ -200,16 +200,17 @@ private fun categoryYearOverYearText(row: ReportCategoryComparison): String? {
 private fun categoryComparisonValues(row: ReportCategoryComparison): String? {
     val currencyDisplay = LocalCurrencyDisplay.current
     return when {
-        row.previousCount > 0 && row.yearOverYearCount > 0 -> stringResource(
+        row.previousCount > 0 && row.previousAmountCents > 0L &&
+            row.yearOverYearCount > 0 && row.yearOverYearAmountCents > 0L -> stringResource(
             R.string.stats_reports_category_comparison_values,
             formatDisplayAmount(row.previousAmountCents, currencyDisplay),
             formatDisplayAmount(row.yearOverYearAmountCents, currencyDisplay),
         )
-        row.previousCount > 0 -> stringResource(
+        row.previousCount > 0 && row.previousAmountCents > 0L -> stringResource(
             R.string.stats_reports_category_comparison_previous_only,
             formatDisplayAmount(row.previousAmountCents, currencyDisplay),
         )
-        row.yearOverYearCount > 0 -> stringResource(
+        row.yearOverYearCount > 0 && row.yearOverYearAmountCents > 0L -> stringResource(
             R.string.stats_reports_category_comparison_yoy_only,
             formatDisplayAmount(row.yearOverYearAmountCents, currencyDisplay),
         )

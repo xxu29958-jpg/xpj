@@ -175,6 +175,10 @@ that actually ships the fix.
   Reports recent-window summary. The month trend chart keeps native Canvas
   rendering but adds a product takeaway, average guide, and peak emphasis before
   the supporting facts; no new chart dependency was added.
+- Progress 2026-07-03: report answer, category comparison, and lead insight
+  now require a positive historical amount before showing previous-period or
+  year-over-year comparison. Rows with only zero-amount history stay factual and
+  no longer imply a usable historical baseline.
 
 ### ANDROID-2026-07-02-refresh-latency-priority
 

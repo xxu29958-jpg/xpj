@@ -77,6 +77,19 @@ class ReportsInsightCardsTest {
                     yearOverYearDeltaAmountCents = -600L,
                     yearOverYearDeltaCount = 0,
                 ),
+                ReportCategoryComparison(
+                    category = "零元历史",
+                    amountCents = 500L,
+                    count = 1,
+                    previousAmountCents = 0L,
+                    previousCount = 2,
+                    deltaAmountCents = 500L,
+                    deltaCount = 1,
+                    yearOverYearAmountCents = 0L,
+                    yearOverYearCount = 3,
+                    yearOverYearDeltaAmountCents = 500L,
+                    yearOverYearDeltaCount = 1,
+                ),
             ),
         )
         assertEquals(
@@ -84,6 +97,7 @@ class ReportsInsightCardsTest {
                 CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L, hasPrevious = true, hasYearOverYear = true),
                 CategoryComparisonChartRow("交通", 0L, 800L, 0L, hasPrevious = true, hasYearOverYear = false),
                 CategoryComparisonChartRow("日用品", 0L, 0L, 600L, hasPrevious = false, hasYearOverYear = true),
+                CategoryComparisonChartRow("零元历史", 500L, 0L, 0L, hasPrevious = false, hasYearOverYear = false),
             ),
             rows,
         )

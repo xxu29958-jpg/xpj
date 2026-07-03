@@ -156,7 +156,7 @@ private fun monthDeltaLeadLine(
 private fun variableLeadLine(overview: ReportsOverview?): StatsLeadLine? {
     if (overview == null) return null
     val category = overview.categoryComparison
-        .filter { it.previousCount > 0 && it.deltaAmountCents != 0L }
+        .filter { it.previousCount > 0 && it.previousAmountCents > 0L && it.deltaAmountCents != 0L }
         .maxByOrNull { abs(it.deltaAmountCents) }
     if (category != null) {
         return StatsLeadLine(

@@ -53,7 +53,8 @@ internal data class ReportsAnswerModel(
 internal fun reportsAnswerModel(overview: ReportsOverview): ReportsAnswerModel {
     val trendPoints = reportTrendChartPoints(overview.trend)
     val monthDelta = overview.totalAmountCents - overview.previousTotalAmountCents
-    val hasPreviousMonthComparison = overview.previousCount > 0
+    val hasPreviousMonthComparison = overview.previousCount > 0 && overview.previousTotalAmountCents > 0L
+    val hasYearOverYearComparison = overview.yearOverYearCount > 0 && overview.yearOverYearTotalAmountCents > 0L
     return ReportsAnswerModel(
         month = overview.month,
         granularity = overview.granularity,
@@ -69,8 +70,8 @@ internal fun reportsAnswerModel(overview: ReportsOverview): ReportsAnswerModel {
             null
         },
         yearOverYearMonth = overview.yearOverYearMonth,
-        hasYearOverYearComparison = overview.yearOverYearCount > 0,
-        yearOverYearDeltaAmountCents = overview.yearOverYearDeltaAmountCents,
+        hasYearOverYearComparison = hasYearOverYearComparison,
+        yearOverYearDeltaAmountCents = if (hasYearOverYearComparison) overview.yearOverYearDeltaAmountCents else 0L,
         trendPoints = trendPoints,
         trendEvidence = reportsTrendEvidence(trendPoints),
     )

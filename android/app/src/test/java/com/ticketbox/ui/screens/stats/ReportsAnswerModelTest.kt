@@ -53,6 +53,33 @@ class ReportsAnswerModelTest {
     }
 
     @Test
+    fun answerModelRequiresPositiveYearOverYearBaselineBeforeShowingComparison() {
+        val model = reportsAnswerModel(
+            overview(totalAmountCents = 12_000L).copy(
+                yearOverYearTotalAmountCents = 0L,
+                yearOverYearCount = 2,
+            ),
+        )
+
+        assertEquals(false, model.hasYearOverYearComparison)
+        assertEquals(0L, model.yearOverYearDeltaAmountCents)
+    }
+
+    @Test
+    fun answerModelShowsYearOverYearWhenBaselineHasAmount() {
+        val model = reportsAnswerModel(
+            overview(totalAmountCents = 12_000L).copy(
+                yearOverYearTotalAmountCents = 8_000L,
+                yearOverYearCount = 2,
+                yearOverYearDeltaAmountCents = 4_000L,
+            ),
+        )
+
+        assertEquals(true, model.hasYearOverYearComparison)
+        assertEquals(4_000L, model.yearOverYearDeltaAmountCents)
+    }
+
+    @Test
     fun trendEvidenceUsesSparseModeForUpToThreeActiveBuckets() {
         val evidence = reportsTrendEvidence(
             listOf(
