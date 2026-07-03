@@ -1,6 +1,7 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -33,6 +35,8 @@ data class AppSheetAction(
     val enabled: Boolean = true,
     val icon: ImageVector = Icons.Filled.Check,
 )
+
+private val PairedSheetActionInlineMinWidth = 380.dp
 
 @Composable
 fun AppSheetScaffold(
@@ -79,27 +83,70 @@ fun AppSheetActionRow(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        ) {
-            if (secondary != null) {
-                QuietOutlinedButton(
-                    text = secondary.text,
-                    modifier = Modifier.weight(1f),
-                    enabled = secondary.enabled,
-                    onClick = secondary.onClick,
-                )
+        if (secondary == null) {
+            SheetPrimaryAction(action = primary, modifier = Modifier.fillMaxWidth())
+        } else {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                if (maxWidth < PairedSheetActionInlineMinWidth) {
+                    StackedSheetActions(primary = primary, secondary = secondary)
+                } else {
+                    InlineSheetActions(primary = primary, secondary = secondary)
+                }
             }
-            AppPrimaryButton(
-                text = primary.text,
-                icon = primary.icon,
-                modifier = Modifier.weight(1f),
-                enabled = primary.enabled,
-                onClick = primary.onClick,
-            )
         }
     }
+}
+
+@Composable
+private fun StackedSheetActions(
+    primary: AppSheetAction,
+    secondary: AppSheetAction,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+        SheetSecondaryAction(action = secondary, modifier = Modifier.fillMaxWidth())
+        SheetPrimaryAction(action = primary, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun InlineSheetActions(
+    primary: AppSheetAction,
+    secondary: AppSheetAction,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+    ) {
+        SheetSecondaryAction(action = secondary, modifier = Modifier.weight(1f))
+        SheetPrimaryAction(action = primary, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SheetSecondaryAction(
+    action: AppSheetAction,
+    modifier: Modifier,
+) {
+    QuietOutlinedButton(
+        text = action.text,
+        modifier = modifier,
+        enabled = action.enabled,
+        onClick = action.onClick,
+    )
+}
+
+@Composable
+private fun SheetPrimaryAction(
+    action: AppSheetAction,
+    modifier: Modifier,
+) {
+    AppPrimaryButton(
+        text = action.text,
+        icon = action.icon,
+        modifier = modifier,
+        enabled = action.enabled,
+        onClick = action.onClick,
+    )
 }
 
 @Composable
