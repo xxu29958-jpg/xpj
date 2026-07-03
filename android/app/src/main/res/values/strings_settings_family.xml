@@ -4,15 +4,15 @@
 
     <!-- FamilyMembersScreen：设置→家庭成员 屏 -->
     <string name="family_members_page_title">家庭成员</string>
-    <string name="family_members_page_subtitle_manage">管理当前账本成员、角色和拥有者。</string>
-    <string name="family_members_page_subtitle_view">查看当前账本成员和权限状态。只有拥有者能管理成员。</string>
+    <string name="family_members_page_subtitle_manage">成员、角色和访问状态。</string>
+    <string name="family_members_page_subtitle_view">成员、角色和访问状态。</string>
     <string name="family_members_section_members">当前账本成员</string>
     <string name="family_members_loading_title">正在同步成员</string>
     <string name="family_members_loading_body">同步完成后显示最新成员和权限。</string>
     <string name="family_members_members_empty">还没有可显示的成员。</string>
     <string name="family_members_refresh_loading">刷新中…</string>
-    <string name="family_members_refresh_members_and_audit">刷新成员和记录</string>
-    <string name="family_members_refresh_members">刷新成员</string>
+    <string name="family_members_refresh_members_and_audit">刷新</string>
+    <string name="family_members_refresh_members">刷新</string>
     <string name="family_members_section_audit">成员记录</string>
     <string name="family_members_audit_loading_title">正在同步成员记录</string>
     <string name="family_members_audit_loading_body">同步完成后显示最近变更。</string>
@@ -56,14 +56,15 @@
     <!-- FamilyMembersScreen：轴7 发邀请区（owner-only；此前发邀请唯一入口在 /owner 控制台）。
          结果卡标题 %1$s=角色标签。明文只显示一次，复制反馈依赖系统剪贴板浮窗（Android 13+）。 -->
     <string name="family_members_section_invite">邀请家人</string>
-    <string name="family_members_invite_intro">生成邀请发给家人，对方在绑定页粘贴接受后加入当前账本。</string>
+    <string name="family_members_invite_intro">对方接受后加入当前账本。</string>
     <string name="family_members_invite_as_member">邀请为成员</string>
     <string name="family_members_invite_as_viewer">邀请为只读</string>
+    <string name="family_members_invite_create_action">生成</string>
     <string name="family_members_invite_creating">生成中…</string>
     <string name="family_members_invite_created_title">邀请已生成（%1$s）</string>
     <string name="family_members_invite_expires_at">有效期至：%1$s</string>
     <string name="family_members_invite_once_hint">邀请明文只显示这一次，复制后发给家人。</string>
-    <string name="family_members_invite_copy">复制邀请</string>
+    <string name="family_members_invite_copy">复制</string>
     <string name="family_members_invite_dismiss">收起</string>
     <string name="family_members_message_invite_failed">邀请没有生成，请稍后再试。</string>
 

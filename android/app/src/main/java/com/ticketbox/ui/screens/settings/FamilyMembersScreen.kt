@@ -1,16 +1,22 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -18,7 +24,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,8 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.FamilyInvitationCreated
@@ -153,6 +160,12 @@ fun FamilyMembersScreen(
                         onClick = { viewModel.refresh(activeLedgerId, currentRole) },
                         enabled = !state.loading && state.busyMemberId == null,
                     ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(AppSpacing.tinyGap))
                         Text(
                             if (state.loading) {
                                 stringResource(R.string.family_members_refresh_loading)
@@ -228,14 +241,7 @@ private fun InviteFamilySection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
-            InviteRoleButtons(creating = creating, onCreate = onCreate)
-            if (creating) {
-                Text(
-                    text = stringResource(R.string.family_members_invite_creating),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+            InviteRoleActions(creating = creating, onCreate = onCreate)
             createdInvite?.let { invite ->
                 CreatedInviteResult(
                     invite = invite,
@@ -248,28 +254,80 @@ private fun InviteFamilySection(
 }
 
 @Composable
-private fun InviteRoleButtons(
+private fun InviteRoleActions(
     creating: Boolean,
     onCreate: (String) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-    ) {
-        OutlinedButton(
+    Column {
+        InviteRoleActionRow(
+            text = stringResource(R.string.family_members_invite_as_member),
+            icon = Icons.Filled.PersonAdd,
+            enabled = !creating,
+            trailing = if (creating) {
+                stringResource(R.string.family_members_invite_creating)
+            } else {
+                stringResource(R.string.family_members_invite_create_action)
+            },
             onClick = { onCreate(LEDGER_ROLE_MEMBER) },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+        InviteRoleActionRow(
+            text = stringResource(R.string.family_members_invite_as_viewer),
+            icon = Icons.Filled.Visibility,
             enabled = !creating,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(stringResource(R.string.family_members_invite_as_member))
-        }
-        OutlinedButton(
+            trailing = if (creating) {
+                stringResource(R.string.family_members_invite_creating)
+            } else {
+                stringResource(R.string.family_members_invite_create_action)
+            },
             onClick = { onCreate(LEDGER_ROLE_VIEWER) },
-            enabled = !creating,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(stringResource(R.string.family_members_invite_as_viewer))
-        }
+        )
+    }
+}
+
+@Composable
+private fun InviteRoleActionRow(
+    text: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    trailing: String,
+    onClick: () -> Unit,
+) {
+    val contentColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = AppSpacing.smallGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = contentColor,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = trailing,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -279,6 +337,7 @@ private fun CreatedInviteResult(
     onCopy: () -> Unit,
     onDismissResult: () -> Unit,
 ) {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
     Text(
         text = stringResource(
             R.string.family_members_invite_created_title,
@@ -289,7 +348,7 @@ private fun CreatedInviteResult(
     )
     Text(
         text = invite.inviteToken,
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurface,
     )
     invite.expiresAt?.let { expiresAt ->
@@ -306,10 +365,10 @@ private fun CreatedInviteResult(
     )
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedButton(onClick = onCopy, modifier = Modifier.weight(1f)) {
+        TextButton(onClick = onCopy) {
             Text(stringResource(R.string.family_members_invite_copy))
         }
         TextButton(onClick = onDismissResult) {
