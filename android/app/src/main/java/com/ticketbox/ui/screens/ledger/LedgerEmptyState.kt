@@ -13,13 +13,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.mascot.MascotEmptyIllustration
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.LedgerUiState
 import com.valentinilk.shimmer.shimmer
 
@@ -56,17 +57,25 @@ internal fun EmptyLedgerState(
             .fillMaxWidth()
             .padding(
                 top = AppSpacing.compactGap,
-                bottom = AppSpacing.bottomContentPadding + AppSpacing.sectionGap,
+                bottom = AppSpacing.bottomContentPadding,
             ),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        horizontalAlignment = Alignment.Start,
     ) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
-        MascotEmptyIllustration()
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
         Text(
             text = body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = ledgerFilterSummary(state),

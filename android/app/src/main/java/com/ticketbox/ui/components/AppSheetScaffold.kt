@@ -24,7 +24,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -48,12 +50,12 @@ fun AppSheetScaffold(
     compact: Boolean = LocalAppImeVisible.current,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val verticalGap = if (compact) AppSpacing.smallGap else AppSpacing.contentGap
-    val topPadding = if (compact) AppSpacing.smallGap else AppSpacing.cardPaddingSmall
+    val verticalGap = if (compact) AppSpacing.smallGap else AppSpacing.compactGap
+    val topPadding = if (compact) AppSpacing.smallGap else AppSpacing.compactGap
     val bottomPadding = if (compact) {
         AppSpacing.compactGap
     } else {
-        AppSpacing.bottomContentPadding + AppSpacing.sectionGap
+        AppSpacing.bottomContentPadding
     }
     Column(
         modifier = modifier
@@ -169,17 +171,30 @@ private fun AppSheetHeader(
     subtitle: String?,
     compact: Boolean,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) AppSpacing.tinyGap else AppSpacing.miniGap)) {
         Text(
             text = title,
-            style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = AppTextHierarchy.heading.size,
+                lineHeight = 24.sp,
+                letterSpacing = 0.sp,
+            ),
             fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         subtitle?.takeIf { it.isNotBlank() }?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = AppTextHierarchy.caption.size,
+                    lineHeight = 18.sp,
+                    letterSpacing = 0.sp,
+                ),
+                fontWeight = AppTextHierarchy.caption.weight,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

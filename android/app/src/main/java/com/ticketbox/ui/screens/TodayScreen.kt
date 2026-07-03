@@ -225,20 +225,36 @@ private fun TodayMonthSummary(stats: MonthlyStats?, syncValue: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        Text(
-            text = stats?.totalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
-                ?: stringResource(R.string.today_month_empty_value),
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = 18.sp,
-                maxFontSize = AppAmountRole.Hero.role.size,
-                stepSize = 1.sp,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-        )
+        val amount = stats?.totalAmountCents
+        if (amount == null) {
+            Text(
+                text = stringResource(R.string.today_month_empty_value),
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = AppTextHierarchy.heading.size,
+                    lineHeight = 24.sp,
+                    letterSpacing = 0.sp,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            Text(
+                text = formatDisplayAmount(amount, currencyDisplay),
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 18.sp,
+                    maxFontSize = AppAmountRole.Hero.role.size,
+                    stepSize = 1.sp,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+            )
+        }
         Text(
             text = stringResource(R.string.today_month_count_with_status, stats?.count ?: 0, syncValue),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
