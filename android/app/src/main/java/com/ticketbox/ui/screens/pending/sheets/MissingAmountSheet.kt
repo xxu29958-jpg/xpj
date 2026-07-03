@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -15,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.stringResource
@@ -24,9 +26,9 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatMinorAmount
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
@@ -124,9 +126,10 @@ private fun MissingAmountSuggestion(
     onUseSuggestion: () -> Unit,
 ) {
     if (suggestedMinor == null) return
-    AppListRow(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        onClick = if (enabled) onUseSuggestion else null,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
             modifier = Modifier.weight(1f),
@@ -143,11 +146,10 @@ private fun MissingAmountSuggestion(
                 fontWeight = AppTextHierarchy.body.weight,
             )
         }
-        Text(
+        QuietOutlinedButton(
             text = stringResource(R.string.pending_missing_amount_use_suggestion),
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = AppTextHierarchy.body.weight,
+            enabled = enabled,
+            onClick = onUseSuggestion,
         )
     }
 }
