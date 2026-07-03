@@ -16,10 +16,10 @@
 
     <!-- 空态：内容面板 -->
     <string name="pending_empty_card_title_loading">正在整理待确认账单</string>
-    <string name="pending_empty_card_title">暂无待确认账单</string>
-    <string name="pending_empty_card_body_readonly">当前没有待确认账单。</string>
-    <string name="pending_empty_card_body_loading">同步中，暂显示离线数据。</string>
-    <string name="pending_empty_card_body">新截图上传后会进入这里，确认后才会入账。</string>
+    <string name="pending_empty_card_title">队列已清空</string>
+    <string name="pending_empty_card_body_readonly">当前队列为空。</string>
+    <string name="pending_empty_card_body_loading">同步中，显示最近一次状态。</string>
+    <string name="pending_empty_card_body">新截图会先待确认，确认后入账。</string>
 
     <!-- 空态：按钮 + iPhone 引导 -->
     <string name="pending_empty_guide_collapse">收起方法</string>
@@ -45,8 +45,8 @@
     <!-- 页头 PendingTop -->
     <string name="pending_top_title">待确认</string>
     <string name="pending_top_subtitle_has_items">逐条核对后入账</string>
-    <string name="pending_top_subtitle_empty">暂无待确认账单</string>
-    <string name="pending_top_subtitle_empty_readonly">暂无待确认账单</string>
+    <string name="pending_top_subtitle_empty">截图上传后逐条确认</string>
+    <string name="pending_top_subtitle_empty_readonly">当前可查看待确认状态</string>
     <string name="pending_top_metric_caption">待核对截图</string>
     <string name="pending_top_duplicate_caption">疑似重复</string>
     <string name="pending_top_cta_readonly">只读角色不能上传</string>
@@ -60,7 +60,7 @@
     <string name="pending_queue_overview_priority_merchant">补全商家后，筛选与统计更准确。</string>
     <string name="pending_queue_overview_priority_ready">%1$d 条可直接确认入账。</string>
     <string name="pending_queue_overview_priority_review">当前队列需要逐条核对。</string>
-    <string name="pending_queue_overview_priority_empty">暂无待确认账单。</string>
+    <string name="pending_queue_overview_priority_empty">队列已清空。</string>
     <string name="pending_queue_overview_ready_label">可确认</string>
     <string name="pending_queue_overview_review_label">需核对</string>
     <string name="pending_queue_overview_metric_count">%1$d 条</string>
