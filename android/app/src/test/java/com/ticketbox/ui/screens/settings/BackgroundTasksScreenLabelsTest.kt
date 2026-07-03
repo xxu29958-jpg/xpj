@@ -6,6 +6,7 @@ import com.ticketbox.domain.model.BACKGROUND_TASK_COMPLETED
 import com.ticketbox.domain.model.BACKGROUND_TASK_FAILED
 import com.ticketbox.domain.model.BACKGROUND_TASK_QUEUED
 import com.ticketbox.domain.model.BACKGROUND_TASK_RUNNING
+import com.ticketbox.domain.model.BackgroundTask
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -25,4 +26,50 @@ class BackgroundTasksScreenLabelsTest {
         assertEquals(R.string.background_tasks_type_csv_import, backgroundTaskTypeLabelRes("csv_import"))
         assertEquals(R.string.background_tasks_type_unknown, backgroundTaskTypeLabelRes("internal_worker_v2"))
     }
+
+    @Test
+    fun summaryModelUsesServerTaskStateWithoutInventingStatus() {
+        assertEquals(
+            BackgroundTasksSummaryState.Loading,
+            backgroundTasksSummaryModel(tasks = emptyList(), loading = true).state,
+        )
+        assertEquals(
+            BackgroundTasksSummaryState.Empty,
+            backgroundTasksSummaryModel(tasks = emptyList(), loading = false).state,
+        )
+
+        val summary = backgroundTasksSummaryModel(
+            tasks = listOf(
+                task(BACKGROUND_TASK_QUEUED),
+                task(BACKGROUND_TASK_RUNNING, cancellationRequestedAt = "2026-07-03T08:00:00Z"),
+                task(BACKGROUND_TASK_FAILED),
+                task(BACKGROUND_TASK_COMPLETED),
+            ),
+            loading = false,
+        )
+
+        assertEquals(4, summary.totalCount)
+        assertEquals(2, summary.activeCount)
+        assertEquals(1, summary.failedCount)
+        assertEquals(1, summary.cancellableCount)
+        assertEquals(BackgroundTasksSummaryState.Failed, summary.state)
+    }
+
+    private fun task(
+        status: String,
+        cancellationRequestedAt: String? = null,
+    ): BackgroundTask = BackgroundTask(
+        publicId = "task-$status-${cancellationRequestedAt.orEmpty()}",
+        taskType = "csv_import",
+        status = status,
+        progressCurrent = 0,
+        progressTotal = null,
+        progressMessage = null,
+        errorCode = null,
+        errorMessage = null,
+        createdAt = "2026-07-03T07:00:00Z",
+        startedAt = null,
+        completedAt = null,
+        cancellationRequestedAt = cancellationRequestedAt,
+    )
 }
