@@ -221,6 +221,21 @@ fun ExpenseEditScreen(
     val scoreOutOfRangeTemplate = stringResource(R.string.expense_edit_score_out_of_range)
     val amountInvalidMessage = stringResource(R.string.expense_edit_amount_invalid)
     val amountRequiredMessage = stringResource(R.string.expense_edit_amount_required)
+    val isPendingExpense = currentExpense.status == "pending"
+    val headerTitle = stringResource(
+        if (isPendingExpense) {
+            R.string.expense_edit_header_title
+        } else {
+            R.string.expense_edit_header_title_confirmed
+        }
+    )
+    val headerSubtitle = stringResource(
+        if (isPendingExpense) {
+            R.string.expense_edit_header_subtitle
+        } else {
+            R.string.expense_edit_header_subtitle_confirmed
+        }
+    )
 
     if (showDatePicker) {
         ExpenseEditDatePicker(
@@ -305,8 +320,8 @@ fun ExpenseEditScreen(
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Edit,
-            title = stringResource(R.string.expense_edit_header_title),
-            subtitle = stringResource(R.string.expense_edit_header_subtitle),
+            title = headerTitle,
+            subtitle = headerSubtitle,
             backText = stringResource(R.string.expense_edit_primary_back_button),
             onBack = handleBack,
             hasBottomBar = false,
@@ -317,7 +332,7 @@ fun ExpenseEditScreen(
         slots = AppSecondaryPageSlots(
             actions = {
                 StatusPill(
-                    if (currentExpense.status == "pending") {
+                    if (isPendingExpense) {
                         stringResource(R.string.expense_edit_status_pending)
                     } else {
                         stringResource(R.string.expense_edit_status_confirmed)

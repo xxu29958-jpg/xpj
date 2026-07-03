@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -42,10 +41,8 @@ import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.LocalAppImeVisible
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.LocalThemeVisuals
 
 /**
  * 编辑页操作栏的可见状态（哪些动作可用 + 是否保存中 + 两类提示）。
@@ -95,7 +92,6 @@ internal fun ExpenseEditActionBar(
     state: ExpenseEditActionBarState,
     actions: ExpenseEditActionBarActions,
 ) {
-    val visuals = LocalThemeVisuals.current
     val keyboardVisible = LocalAppImeVisible.current
     val compactMode = keyboardVisible || state.forceCompact
     Surface(
@@ -106,8 +102,7 @@ internal fun ExpenseEditActionBar(
                 horizontal = AppSpacing.screenHorizontal,
                 vertical = if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap,
             ),
-        shape = RoundedCornerShape(if (compactMode) AppRadius.small else 0.dp),
-        color = if (compactMode) visuals.solidCard.copy(alpha = 0.92f) else Color.Transparent,
+        color = Color.Transparent,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -115,14 +110,12 @@ internal fun ExpenseEditActionBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = if (compactMode) AppSpacing.cardPaddingTight else 0.dp,
-                    vertical = if (compactMode) AppSpacing.miniGap else 0.dp,
+                    horizontal = 0.dp,
+                    vertical = 0.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap),
         ) {
-            if (!compactMode) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
-            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
             state.validationMessage?.let {
                 ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
             }

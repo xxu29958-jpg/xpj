@@ -4,7 +4,9 @@
 
     <!-- ExpenseEditScreen：确认/编辑账单主屏 -->
     <string name="expense_edit_header_title">确认账单</string>
-    <string name="expense_edit_header_subtitle">识别只是草稿，补全后再正式入账</string>
+    <string name="expense_edit_header_subtitle">核对金额、商家和分类后入账</string>
+    <string name="expense_edit_header_title_confirmed">编辑账单</string>
+    <string name="expense_edit_header_subtitle_confirmed">修改已入账记录，保存后更新账本</string>
     <string name="expense_edit_status_pending">待确认</string>
     <string name="expense_edit_status_confirmed">已入账</string>
     <string name="expense_edit_large_image_loading">原图加载中</string>

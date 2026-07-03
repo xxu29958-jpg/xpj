@@ -3,7 +3,9 @@ package com.ticketbox.ui.navigation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,12 +18,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppEmptyStateCard
-import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppOutlinedButton
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryScrollableColumn
+import com.ticketbox.ui.components.SkeletonBlock
+import com.ticketbox.ui.components.SkeletonScaffold
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.viewmodel.ExpenseEditUiState
@@ -137,50 +139,95 @@ private fun ExpenseEditLoadingRoute(
     onBack: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    AppPageScrollableColumn(
-        role = AppPageRole.Edit,
-        hasBottomBar = false,
-        includeStatusBarPadding = true,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        AppPageHeader(
+    AppSecondaryScrollableColumn(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Edit,
             title = stringResource(R.string.expense_edit_loading_header_title),
             subtitle = stringResource(R.string.expense_edit_loading_header_subtitle),
-            eyebrow = "",
-        )
-
+            backText = stringResource(R.string.expense_edit_loading_back_button),
+            onBack = onBack,
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        ),
+    ) {
         if (state.expenseLoading) {
-            AppLoadingState(
+            ExpenseEditLoadingInline(
                 title = stringResource(R.string.expense_edit_loading_state_title),
                 body = stringResource(R.string.expense_edit_loading_state_body),
             )
         } else {
-            AppEmptyStateCard {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                ) {
-                    Text(
-                        text = stringResource(R.string.expense_edit_loading_empty_title),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = state.message?.asString() ?: stringResource(R.string.expense_edit_loading_empty_fallback),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onRetry,
-                    ) {
-                        Text(stringResource(R.string.expense_edit_loading_reload_button))
-                    }
-                    AppOutlinedButton(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onBack,
-                    ) {
-                        Text(stringResource(R.string.expense_edit_loading_back_button))
-                    }
+            ExpenseEditLoadFailedInline(
+                title = stringResource(R.string.expense_edit_loading_empty_title),
+                body = state.message?.asString() ?: stringResource(R.string.expense_edit_loading_empty_fallback),
+                onBack = onBack,
+                onRetry = onRetry,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExpenseEditLoadingInline(
+    title: String,
+    body: String,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f))
+        Text(text = title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        SkeletonScaffold(
+            isLoading = true,
+            skeleton = {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    SkeletonBlock(modifier = Modifier.fillMaxWidth(0.74f).height(AppSpacing.compactGap))
+                    SkeletonBlock(modifier = Modifier.fillMaxWidth(0.46f).height(AppSpacing.compactGap))
                 }
+            },
+            content = {},
+        )
+    }
+}
+
+@Composable
+private fun ExpenseEditLoadFailedInline(
+    title: String,
+    body: String,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f))
+        Text(text = title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
+            AppOutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = onBack,
+            ) {
+                Text(stringResource(R.string.expense_edit_loading_back_button))
+            }
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = onRetry,
+            ) {
+                Text(stringResource(R.string.expense_edit_loading_reload_button))
             }
         }
     }
