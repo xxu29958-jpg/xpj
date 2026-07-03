@@ -2,24 +2,16 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun AppearanceOverviewSection(
@@ -33,75 +25,31 @@ internal fun AppearanceOverviewSection(
         icon = Icons.Filled.Palette,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                AppearanceOverviewMetric(
-                    label = stringResource(R.string.appearance_overview_skin_label),
-                    value = stringResource(appSkinNameRes(currentSkin)),
-                    caption = stringResource(R.string.appearance_overview_skin_caption),
-                    modifier = Modifier.weight(1f),
-                )
-                AppearanceOverviewMetric(
-                    label = stringResource(R.string.appearance_overview_currency_label),
-                    value = currentCurrency.storageKey,
-                    caption = stringResource(R.string.appearance_overview_currency_caption),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                AppearanceOverviewMetric(
-                    label = stringResource(R.string.appearance_overview_background_label),
-                    value = backgroundSourceLabel(backgroundSettings),
-                    caption = stringResource(backgroundCaptionRes(summary.backgroundKind)),
-                    modifier = Modifier.weight(1f),
-                )
-                AppearanceOverviewMetric(
-                    label = stringResource(R.string.appearance_overview_motion_label),
-                    value = stringResource(motionLabelRes(summary.motionKind)),
-                    caption = stringResource(motionCaptionRes(summary.motionKind)),
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            SettingsMetricGrid(
+                metrics = listOf(
+                    SettingsMetricData(
+                        label = stringResource(R.string.appearance_overview_skin_label),
+                        value = stringResource(appSkinNameRes(currentSkin)),
+                        caption = stringResource(R.string.appearance_overview_skin_caption),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.appearance_overview_currency_label),
+                        value = currentCurrency.storageKey,
+                        caption = stringResource(R.string.appearance_overview_currency_caption),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.appearance_overview_background_label),
+                        value = backgroundSourceLabel(backgroundSettings),
+                        caption = stringResource(backgroundCaptionRes(summary.backgroundKind)),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.appearance_overview_motion_label),
+                        value = stringResource(motionLabelRes(summary.motionKind)),
+                        caption = stringResource(motionCaptionRes(summary.motionKind)),
+                    ),
+                ),
+            )
         }
-    }
-}
-
-@Composable
-private fun AppearanceOverviewMetric(
-    label: String,
-    value: String,
-    caption: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = caption,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

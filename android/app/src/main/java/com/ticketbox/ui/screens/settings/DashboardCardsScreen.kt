@@ -37,7 +37,6 @@ import com.ticketbox.ui.components.DraggableReorderColumn
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.DashboardCardsUiState
 import com.valentinilk.shimmer.shimmer
 
@@ -78,23 +77,20 @@ private fun DashboardCardsOverviewSection(cards: List<DashboardCard>) {
         icon = Icons.Filled.DashboardCustomize,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                DashboardCardsMetric(
-                    label = stringResource(R.string.dashboard_cards_overview_visible_label),
-                    value = summary.visibleCount.toString(),
-                    caption = stringResource(R.string.dashboard_cards_overview_visible_caption, summary.totalCount),
-                    modifier = Modifier.weight(1f),
-                )
-                DashboardCardsMetric(
-                    label = stringResource(R.string.dashboard_cards_overview_hidden_label),
-                    value = summary.hiddenCount.toString(),
-                    caption = stringResource(R.string.dashboard_cards_overview_hidden_caption),
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            SettingsMetricGrid(
+                metrics = listOf(
+                    SettingsMetricData(
+                        label = stringResource(R.string.dashboard_cards_overview_visible_label),
+                        value = summary.visibleCount.toString(),
+                        caption = stringResource(R.string.dashboard_cards_overview_visible_caption, summary.totalCount),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.dashboard_cards_overview_hidden_label),
+                        value = summary.hiddenCount.toString(),
+                        caption = stringResource(R.string.dashboard_cards_overview_hidden_caption),
+                    ),
+                ),
+            )
             Text(
                 text = summary.firstVisibleTitle?.let {
                     stringResource(R.string.dashboard_cards_overview_first_visible, it)
@@ -103,39 +99,6 @@ private fun DashboardCardsOverviewSection(cards: List<DashboardCard>) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
-}
-
-@Composable
-private fun DashboardCardsMetric(
-    label: String,
-    value: String,
-    caption: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-        )
-        Text(
-            text = caption,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

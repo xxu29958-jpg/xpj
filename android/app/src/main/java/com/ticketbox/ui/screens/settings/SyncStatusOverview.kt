@@ -1,22 +1,15 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.tabularNum
 
 internal data class SyncStatusOverview(
     val queuedCount: Int,
@@ -44,71 +37,31 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus) {
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-            SyncStatusOverviewStrip(overview)
+            SettingsMetricGrid(
+                metrics = listOf(
+                    SettingsMetricData(
+                        label = stringResource(R.string.sync_status_overview_queued_label),
+                        value = overview.queuedCount.toString(),
+                        caption = stringResource(R.string.sync_status_overview_queued_caption),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.sync_status_overview_conflicts_label),
+                        value = overview.conflictCount.toString(),
+                        caption = stringResource(R.string.sync_status_overview_conflicts_caption),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.sync_status_overview_failed_label),
+                        value = overview.failedCount.toString(),
+                        caption = stringResource(R.string.sync_status_overview_failed_caption),
+                    ),
+                ),
+            )
             Text(
                 text = overviewCaption(overview),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
-}
-
-@Composable
-private fun SyncStatusOverviewStrip(overview: SyncStatusOverview) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        SyncStatusOverviewMetric(
-            label = stringResource(R.string.sync_status_overview_queued_label),
-            value = overview.queuedCount,
-            caption = stringResource(R.string.sync_status_overview_queued_caption),
-            modifier = Modifier.weight(1f),
-        )
-        SyncStatusOverviewMetric(
-            label = stringResource(R.string.sync_status_overview_conflicts_label),
-            value = overview.conflictCount,
-            caption = stringResource(R.string.sync_status_overview_conflicts_caption),
-            modifier = Modifier.weight(1f),
-        )
-        SyncStatusOverviewMetric(
-            label = stringResource(R.string.sync_status_overview_failed_label),
-            value = overview.failedCount,
-            caption = stringResource(R.string.sync_status_overview_failed_caption),
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun SyncStatusOverviewMetric(
-    label: String,
-    value: Int,
-    caption: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-        )
-        Text(
-            text = value.toString(),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = caption,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 2,
-        )
     }
 }
 
