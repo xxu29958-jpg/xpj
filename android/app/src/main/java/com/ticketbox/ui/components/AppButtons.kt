@@ -10,14 +10,16 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ButtonDefaults
@@ -42,10 +44,11 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalThemeVisuals
 
 private const val ControlBorderIdleAlpha = 0.28f
 private const val ControlBorderPressedAlpha = 0.62f
@@ -167,8 +170,12 @@ fun QuietOutlinedButton(
     onClick: () -> Unit,
 ) {
     AppOutlinedButton(
-        modifier = modifier,
+        modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
         enabled = enabled,
+        contentPadding = PaddingValues(
+            horizontal = AppSpacing.compactGap,
+            vertical = AppSpacing.miniGap,
+        ),
         onClick = onClick,
     ) {
         leadingIcon?.let {
@@ -177,6 +184,9 @@ fun QuietOutlinedButton(
         }
         Text(
             text = text,
+            style = MaterialTheme.typography.labelLarge,
+            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 1.sp),
+            fontWeight = AppTextHierarchy.heading.weight,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis,
