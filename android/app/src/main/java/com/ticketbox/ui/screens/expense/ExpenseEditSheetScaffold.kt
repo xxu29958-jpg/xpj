@@ -2,12 +2,9 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,7 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -50,37 +49,12 @@ internal fun ExpenseEditSheetScaffold(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(
-                horizontal = AppSpacing.screenHorizontal,
-                vertical = AppSpacing.contentGap,
-            ),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    AppSheetScaffold(
+        title = title,
+        subtitle = subtitle,
+        modifier = modifier,
     ) {
-        ExpenseEditSheetHeader(title = title, subtitle = subtitle)
         content()
-    }
-}
-
-@Composable
-private fun ExpenseEditSheetHeader(
-    title: String,
-    subtitle: String,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -89,25 +63,18 @@ internal fun ExpenseEditSheetActions(
     state: ExpenseEditSheetActionState,
     handlers: ExpenseEditSheetActionHandlers,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        AppOutlinedButton(
-            onClick = handlers.onDismiss,
-            enabled = !state.saving,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(stringResource(R.string.common_cancel))
-        }
-        Button(
-            onClick = handlers.onSubmit,
+    AppSheetActionRow(
+        primary = AppSheetAction(
+            text = if (state.saving) state.savingText else state.primaryText,
             enabled = state.primaryEnabled && !state.saving,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(if (state.saving) state.savingText else state.primaryText)
-        }
-    }
+            onClick = handlers.onSubmit,
+        ),
+        secondary = AppSheetAction(
+            text = stringResource(R.string.common_cancel),
+            enabled = !state.saving,
+            onClick = handlers.onDismiss,
+        ),
+    )
 }
 
 @Composable
