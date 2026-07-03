@@ -50,13 +50,13 @@ class StatsReportsViewModelGranularityTest {
         vm.refresh(month = "2026-06", selectedTag = "")
         advanceUntilIdle()
         assertEquals(listOf(ReportGranularity.Day), repo.overviewQueries.map { it.granularity })
-        assertEquals(listOf(ReportRankingMetric.Amount), repo.overviewQueries.map { it.rankingMetric })
+        assertEquals(listOf(ReportRankingMetric.Count), repo.overviewQueries.map { it.rankingMetric })
 
-        vm.setRankingMetric(ReportRankingMetric.Count)
+        vm.setRankingMetric(ReportRankingMetric.Amount)
         advanceUntilIdle()
 
         assertEquals(
-            listOf(ReportRankingMetric.Amount, ReportRankingMetric.Count),
+            listOf(ReportRankingMetric.Count, ReportRankingMetric.Amount),
             repo.overviewQueries.map { it.rankingMetric },
         )
     }

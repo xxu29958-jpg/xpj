@@ -26,7 +26,7 @@ data class ReportsOverviewQuery(
     val granularity: ReportGranularity = ReportGranularity.Day,
     val topN: Int = 8,
     val merchantCategory: String? = null,
-    val rankingMetric: ReportRankingMetric = ReportRankingMetric.Amount,
+    val rankingMetric: ReportRankingMetric = ReportRankingMetric.Count,
 )
 
 data class ReportTrendPoint(
