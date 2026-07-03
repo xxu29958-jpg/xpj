@@ -241,6 +241,7 @@
     <string name="stats_reports_merchant_metric_amount">按金额</string>
     <string name="stats_reports_merchant_fallback">未填写商家</string>
     <string name="stats_reports_merchant_total_amount">合计 %1$s</string>
+    <string name="stats_reports_category_current_title">分类支出</string>
     <string name="stats_reports_category_comparison_title">分类对比</string>
     <string name="stats_reports_category_delta_more">多 %1$s</string>
     <string name="stats_reports_category_delta_less">少 %1$s</string>

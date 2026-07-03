@@ -69,7 +69,7 @@ internal fun ReportsInsightCard(
         }
         if (hasCurrentSpend && overview.categoryComparison.isNotEmpty()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-            CategoryComparisonBlock(rows = overview.categoryComparison.take(5))
+            CategoryComparisonBlock(rows = overview.categoryComparison)
         }
     }
 }
@@ -158,19 +158,22 @@ private fun ReportsSparseTrend(
 
 @Composable
 private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
-    val maxAmount = rows.maxOfOrNull { it.amountCents } ?: 0L
+    val chartRows = remember(rows) { categoryComparisonChartRows(rows) }
+    val maxAmount = chartRows.maxOfOrNull { it.currentAmountCents } ?: 0L
+    val titleRes = when (categoryComparisonMode(chartRows)) {
+        CategoryComparisonMode.Comparison -> R.string.stats_reports_category_comparison_title
+        CategoryComparisonMode.CurrentOnly -> R.string.stats_reports_category_current_title
+    }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap + AppSpacing.tinyGap)) {
         Text(
-            stringResource(R.string.stats_reports_category_comparison_title),
+            stringResource(titleRes),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.body.weight,
         )
-        // 轴3 三柱对比:本月 vs 上月 vs 去年同月 grouped columns 给「形状」,下面的行制保留精确值。
-        // 两月皆零的行画不出对比,纯函数已过滤;全被滤光时只剩行制(不画空图)。
-        rows.forEach { row ->
+        chartRows.forEach { row ->
             AmountBarRow(
                 label = row.category,
-                amountCents = row.amountCents,
+                amountCents = row.currentAmountCents,
                 maxAmountCents = maxAmount,
                 trailingText = categoryYearOverYearText(row),
                 supportingText = categoryComparisonValues(row),
@@ -180,37 +183,37 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
 }
 
 @Composable
-private fun categoryYearOverYearText(row: ReportCategoryComparison): String? {
-    if (row.yearOverYearCount <= 0 || row.yearOverYearAmountCents <= 0L) return null
+private fun categoryYearOverYearText(row: CategoryComparisonChartRow): String? {
+    if (!row.hasYearOverYear) return null
     val currencyDisplay = LocalCurrencyDisplay.current
+    val deltaAmountCents = row.currentAmountCents - row.yearOverYearAmountCents
     return when {
-        row.yearOverYearDeltaAmountCents > 0L -> stringResource(
+        deltaAmountCents > 0L -> stringResource(
             R.string.stats_reports_category_yoy_more,
-            formatDisplayAmount(row.yearOverYearDeltaAmountCents, currencyDisplay),
+            formatDisplayAmount(deltaAmountCents, currencyDisplay),
         )
-        row.yearOverYearDeltaAmountCents < 0L -> stringResource(
+        deltaAmountCents < 0L -> stringResource(
             R.string.stats_reports_category_yoy_less,
-            formatDisplayAmount(abs(row.yearOverYearDeltaAmountCents), currencyDisplay),
+            formatDisplayAmount(abs(deltaAmountCents), currencyDisplay),
         )
         else -> stringResource(R.string.stats_reports_category_yoy_flat)
     }
 }
 
 @Composable
-private fun categoryComparisonValues(row: ReportCategoryComparison): String? {
+private fun categoryComparisonValues(row: CategoryComparisonChartRow): String? {
     val currencyDisplay = LocalCurrencyDisplay.current
     return when {
-        row.previousCount > 0 && row.previousAmountCents > 0L &&
-            row.yearOverYearCount > 0 && row.yearOverYearAmountCents > 0L -> stringResource(
+        row.hasPrevious && row.hasYearOverYear -> stringResource(
             R.string.stats_reports_category_comparison_values,
             formatDisplayAmount(row.previousAmountCents, currencyDisplay),
             formatDisplayAmount(row.yearOverYearAmountCents, currencyDisplay),
         )
-        row.previousCount > 0 && row.previousAmountCents > 0L -> stringResource(
+        row.hasPrevious -> stringResource(
             R.string.stats_reports_category_comparison_previous_only,
             formatDisplayAmount(row.previousAmountCents, currencyDisplay),
         )
-        row.yearOverYearCount > 0 && row.yearOverYearAmountCents > 0L -> stringResource(
+        row.hasYearOverYear -> stringResource(
             R.string.stats_reports_category_comparison_yoy_only,
             formatDisplayAmount(row.yearOverYearAmountCents, currencyDisplay),
         )

@@ -34,6 +34,18 @@ internal data class CategoryComparisonChartRow(
     val hasYearOverYear: Boolean,
 )
 
+internal enum class CategoryComparisonMode {
+    CurrentOnly,
+    Comparison,
+}
+
+internal fun categoryComparisonMode(rows: List<CategoryComparisonChartRow>): CategoryComparisonMode =
+    if (rows.any { it.hasPrevious || it.hasYearOverYear }) {
+        CategoryComparisonMode.Comparison
+    } else {
+        CategoryComparisonMode.CurrentOnly
+    }
+
 /**
  * 轴3 对比图数据(纯函数,单测直测):负值钳零(图不画负柱);
  * 历史系列必须有后端 count 和正向金额才可展示,避免把缺失历史样本画成 0 对比。
