@@ -82,7 +82,11 @@
     <string name="merchant_management_overview_usage_label">历史笔数</string>
     <string name="merchant_management_overview_usage_caption">引用</string>
     <string name="merchant_management_overview_body">合并只调整目录关系和后续统计，历史账单商家名保持原样；已合并 %1$d 个。</string>
-    <string name="merchant_catalog_section_create">新增商家</string>
+    <string name="merchant_management_section_tools">整理工具</string>
+    <string name="merchant_management_tools_prompt_title">目录与别名</string>
+    <string name="merchant_management_tools_prompt_body">统一商家展示，归并不同写法。</string>
+    <string name="merchant_management_tools_add_catalog">新增商家</string>
+    <string name="merchant_management_tools_add_alias">新增别名</string>
     <string name="merchant_catalog_name_label">商家名称</string>
     <string name="merchant_catalog_name_placeholder">星巴克</string>
     <string name="merchant_catalog_create_validation">请填写商家名称。</string>
@@ -117,7 +121,6 @@
     <string name="merchant_catalog_merge_alias_policy_create_source_alias">以后统计归到目标商家</string>
     <string name="merchant_catalog_merge_alias_policy_hint">选择统计归并会新增一条别名；账单原始商家名保持不变。</string>
     <string name="merchant_catalog_merge_dialog_confirm">合并</string>
-    <string name="merchant_aliases_section_create">新增别名</string>
     <string name="merchant_aliases_canonical_label">标准商家名</string>
     <string name="merchant_aliases_canonical_placeholder">星巴克</string>
     <string name="merchant_aliases_alias_label">别名</string>

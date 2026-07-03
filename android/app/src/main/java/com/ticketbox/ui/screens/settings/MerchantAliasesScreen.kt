@@ -71,6 +71,7 @@ fun MerchantAliasesScreen(
     var aliasText by remember { mutableStateOf("") }
     var catalogMessage by remember { mutableStateOf<String?>(null) }
     var aliasMessage by remember { mutableStateOf<String?>(null) }
+    var activeCreateTool by remember { mutableStateOf<MerchantCreateTool?>(null) }
     val catalogDialogController = rememberMerchantCatalogDialogController()
     var deletingCatalog by remember { mutableStateOf<MerchantCatalog?>(null) }
     var deletingAlias by remember { mutableStateOf<MerchantAlias?>(null) }
@@ -212,45 +213,69 @@ fun MerchantAliasesScreen(
         )
 
         if (!readOnly) {
-            MerchantCatalogCreateSection(
-                catalogName = catalogName,
-                busy = busy,
-                message = catalogMessage,
-                onCatalogNameChange = { catalogName = it },
-                onSubmit = {
-                    if (catalogName.isBlank()) {
-                        catalogMessage = catalogValidationMessage
-                        return@MerchantCatalogCreateSection
-                    }
-                    catalogMessage = null
-                    onCreateCatalog(catalogName)
-                    catalogName = ""
-                },
-            )
-            MerchantAliasCreateSection(
-                draft = MerchantAliasDraft(
-                    canonicalMerchant = canonicalMerchant,
-                    aliasText = aliasText,
+            MerchantManagementToolsSection(
+                state = MerchantManagementToolState(
+                    activeTool = activeCreateTool,
+                    catalogName = catalogName,
+                    aliasDraft = MerchantAliasDraft(
+                        canonicalMerchant = canonicalMerchant,
+                        aliasText = aliasText,
+                    ),
+                    busy = busy,
+                    catalogMessage = catalogMessage,
+                    aliasMessage = aliasMessage,
                 ),
-                busy = busy,
-                message = aliasMessage,
-                onDraftChange = {
-                    canonicalMerchant = it.canonicalMerchant
-                    aliasText = it.aliasText
-                },
-                onSubmit = {
-                    if (canonicalMerchant.isBlank() || aliasText.isBlank()) {
-                        aliasMessage = createValidationMessage
-                        return@MerchantAliasCreateSection
-                    }
-                    aliasMessage = null
-                    onCreateAlias(canonicalMerchant, aliasText)
-                    canonicalMerchant = ""
-                    aliasText = ""
-                },
+                actions = MerchantManagementToolActions(
+                    onStartCatalog = {
+                        activeCreateTool = MerchantCreateTool.Catalog
+                        catalogMessage = null
+                        aliasMessage = null
+                    },
+                    onStartAlias = {
+                        activeCreateTool = MerchantCreateTool.Alias
+                        catalogMessage = null
+                        aliasMessage = null
+                    },
+                    onCatalogNameChange = { catalogName = it },
+                    onAliasDraftChange = {
+                        canonicalMerchant = it.canonicalMerchant
+                        aliasText = it.aliasText
+                    },
+                    onSubmitCatalog = {
+                        if (catalogName.isBlank()) {
+                            catalogMessage = catalogValidationMessage
+                        } else {
+                            catalogMessage = null
+                            onCreateCatalog(catalogName)
+                            catalogName = ""
+                            activeCreateTool = null
+                        }
+                    },
+                    onSubmitAlias = {
+                        if (canonicalMerchant.isBlank() || aliasText.isBlank()) {
+                            aliasMessage = createValidationMessage
+                        } else {
+                            aliasMessage = null
+                            onCreateAlias(canonicalMerchant, aliasText)
+                            canonicalMerchant = ""
+                            aliasText = ""
+                            activeCreateTool = null
+                        }
+                    },
+                    onCancel = {
+                        activeCreateTool = null
+                        catalogMessage = null
+                        aliasMessage = null
+                    },
+                ),
             )
         }
     }
+}
+
+private enum class MerchantCreateTool {
+    Catalog,
+    Alias,
 }
 
 private data class MerchantAliasDraft(
@@ -258,82 +283,196 @@ private data class MerchantAliasDraft(
     val aliasText: String,
 )
 
+private data class MerchantManagementToolState(
+    val activeTool: MerchantCreateTool?,
+    val catalogName: String,
+    val aliasDraft: MerchantAliasDraft,
+    val busy: Boolean,
+    val catalogMessage: String?,
+    val aliasMessage: String?,
+)
+
+private data class MerchantManagementToolActions(
+    val onStartCatalog: () -> Unit,
+    val onStartAlias: () -> Unit,
+    val onCatalogNameChange: (String) -> Unit,
+    val onAliasDraftChange: (MerchantAliasDraft) -> Unit,
+    val onSubmitCatalog: () -> Unit,
+    val onSubmitAlias: () -> Unit,
+    val onCancel: () -> Unit,
+)
+
 @Composable
-private fun MerchantCatalogCreateSection(
-    catalogName: String,
-    busy: Boolean,
-    message: String?,
-    onCatalogNameChange: (String) -> Unit,
-    onSubmit: () -> Unit,
+private fun MerchantManagementToolsSection(
+    state: MerchantManagementToolState,
+    actions: MerchantManagementToolActions,
 ) {
-    SettingsSection(title = stringResource(R.string.merchant_catalog_section_create), icon = Icons.Filled.Tune) {
-        SettingsOpenPanel(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-                SettingsDialogTextInput(
-                    state = SettingsTextInputState(
-                        label = stringResource(R.string.merchant_catalog_name_label),
-                        value = catalogName,
-                        placeholder = stringResource(R.string.merchant_catalog_name_placeholder),
-                        enabled = !busy,
-                    ),
-                    onValueChange = onCatalogNameChange,
-                )
-                Button(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = onSubmit) {
+    SettingsSection(title = stringResource(R.string.merchant_management_section_tools), icon = Icons.Filled.Tune) {
+        when (state.activeTool) {
+            null -> SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                ) {
                     Text(
-                        if (busy) {
-                            stringResource(R.string.merchant_catalog_create_busy)
-                        } else {
-                            stringResource(R.string.merchant_catalog_create_button)
-                        },
+                        text = stringResource(R.string.merchant_management_tools_prompt_title),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.merchant_management_tools_prompt_body),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(enabled = !state.busy, onClick = actions.onStartCatalog) {
+                        Text(stringResource(R.string.merchant_management_tools_add_catalog))
+                    }
+                    TextButton(enabled = !state.busy, onClick = actions.onStartAlias) {
+                        Text(stringResource(R.string.merchant_management_tools_add_alias))
+                    }
+                }
+            }
+            MerchantCreateTool.Catalog -> MerchantCatalogCreateSection(
+                state = MerchantCatalogCreateState(
+                    catalogName = state.catalogName,
+                    busy = state.busy,
+                    message = state.catalogMessage,
+                ),
+                actions = MerchantCatalogCreateActions(
+                    onCatalogNameChange = actions.onCatalogNameChange,
+                    onSubmit = actions.onSubmitCatalog,
+                    onCancel = actions.onCancel,
+                ),
+            )
+            MerchantCreateTool.Alias -> MerchantAliasCreateSection(
+                state = MerchantAliasCreateState(
+                    draft = state.aliasDraft,
+                    busy = state.busy,
+                    message = state.aliasMessage,
+                ),
+                actions = MerchantAliasCreateActions(
+                    onDraftChange = actions.onAliasDraftChange,
+                    onSubmit = actions.onSubmitAlias,
+                    onCancel = actions.onCancel,
+                ),
+            )
         }
     }
 }
 
+private data class MerchantCatalogCreateState(
+    val catalogName: String,
+    val busy: Boolean,
+    val message: String?,
+)
+
+private data class MerchantCatalogCreateActions(
+    val onCatalogNameChange: (String) -> Unit,
+    val onSubmit: () -> Unit,
+    val onCancel: () -> Unit,
+)
+
+@Composable
+private fun MerchantCatalogCreateSection(
+    state: MerchantCatalogCreateState,
+    actions: MerchantCatalogCreateActions,
+) {
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        SettingsDialogTextInput(
+            state = SettingsTextInputState(
+                label = stringResource(R.string.merchant_catalog_name_label),
+                value = state.catalogName,
+                placeholder = stringResource(R.string.merchant_catalog_name_placeholder),
+                enabled = !state.busy,
+            ),
+            onValueChange = actions.onCatalogNameChange,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(modifier = Modifier.weight(1f), enabled = !state.busy, onClick = actions.onSubmit) {
+                Text(
+                    text = if (state.busy) {
+                        stringResource(R.string.merchant_catalog_create_busy)
+                    } else {
+                        stringResource(R.string.merchant_catalog_create_button)
+                    },
+                )
+            }
+            TextButton(enabled = !state.busy, onClick = actions.onCancel) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        }
+        state.message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
+    }
+}
+
+private data class MerchantAliasCreateState(
+    val draft: MerchantAliasDraft,
+    val busy: Boolean,
+    val message: String?,
+)
+
+private data class MerchantAliasCreateActions(
+    val onDraftChange: (MerchantAliasDraft) -> Unit,
+    val onSubmit: () -> Unit,
+    val onCancel: () -> Unit,
+)
+
 @Composable
 private fun MerchantAliasCreateSection(
-    draft: MerchantAliasDraft,
-    busy: Boolean,
-    message: String?,
-    onDraftChange: (MerchantAliasDraft) -> Unit,
-    onSubmit: () -> Unit,
+    state: MerchantAliasCreateState,
+    actions: MerchantAliasCreateActions,
 ) {
-    SettingsSection(title = stringResource(R.string.merchant_aliases_section_create), icon = Icons.Filled.Tune) {
-        SettingsOpenPanel(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    SettingsOpenPanel(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        SettingsDialogTextInput(
+            state = SettingsTextInputState(
+                label = stringResource(R.string.merchant_aliases_canonical_label),
+                value = state.draft.canonicalMerchant,
+                placeholder = stringResource(R.string.merchant_aliases_canonical_placeholder),
+                enabled = !state.busy,
+            ),
+            onValueChange = { actions.onDraftChange(state.draft.copy(canonicalMerchant = it)) },
+        )
+        SettingsDialogTextInput(
+            state = SettingsTextInputState(
+                label = stringResource(R.string.merchant_aliases_alias_label),
+                value = state.draft.aliasText,
+                placeholder = stringResource(R.string.merchant_aliases_alias_placeholder),
+                enabled = !state.busy,
+            ),
+            onValueChange = { actions.onDraftChange(state.draft.copy(aliasText = it)) },
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-                SettingsDialogTextInput(
-                    state = SettingsTextInputState(
-                        label = stringResource(R.string.merchant_aliases_canonical_label),
-                        value = draft.canonicalMerchant,
-                        placeholder = stringResource(R.string.merchant_aliases_canonical_placeholder),
-                        enabled = !busy,
-                    ),
-                    onValueChange = { onDraftChange(draft.copy(canonicalMerchant = it)) },
+            Button(modifier = Modifier.weight(1f), enabled = !state.busy, onClick = actions.onSubmit) {
+                Text(
+                    text = if (state.busy) {
+                        stringResource(R.string.merchant_aliases_create_busy)
+                    } else {
+                        stringResource(R.string.merchant_aliases_create_button)
+                    },
                 )
-                SettingsDialogTextInput(
-                    state = SettingsTextInputState(
-                        label = stringResource(R.string.merchant_aliases_alias_label),
-                        value = draft.aliasText,
-                        placeholder = stringResource(R.string.merchant_aliases_alias_placeholder),
-                        enabled = !busy,
-                    ),
-                    onValueChange = { onDraftChange(draft.copy(aliasText = it)) },
-                )
-                Button(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = onSubmit) {
-                    Text(
-                        if (busy) {
-                            stringResource(R.string.merchant_aliases_create_busy)
-                        } else {
-                            stringResource(R.string.merchant_aliases_create_button)
-                        },
-                    )
-                }
-                message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
+            }
+            TextButton(enabled = !state.busy, onClick = actions.onCancel) {
+                Text(stringResource(R.string.common_cancel))
+            }
         }
+        state.message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
     }
 }
 
