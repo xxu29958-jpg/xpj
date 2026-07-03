@@ -25,9 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -39,8 +39,6 @@ data class AppAction(
 )
 
 typealias AppSheetAction = AppAction
-
-private val PairedSheetActionInlineMinWidth = 320.dp
 
 @Composable
 fun AppSheetScaffold(
@@ -94,7 +92,7 @@ fun AppActionRow(
             SheetPrimaryAction(action = primary, modifier = Modifier.fillMaxWidth())
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                if (maxWidth < PairedSheetActionInlineMinWidth) {
+                if (maxWidth < AppAdaptiveBreakpoints.pairedActionInlineMinWidth) {
                     StackedSheetActions(primary = primary, secondary = secondary)
                 } else {
                     InlineSheetActions(primary = primary, secondary = secondary)

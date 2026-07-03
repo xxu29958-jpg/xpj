@@ -3,14 +3,13 @@ package com.ticketbox.ui.screens
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,11 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -52,16 +48,21 @@ import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFormFieldGroup
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
@@ -212,12 +213,6 @@ private fun IncomeMonthPicker(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
 ) {
-    Text(
-        stringResource(R.string.income_plan_sheet_label_income_month),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.size(AppSpacing.miniGap))
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -435,18 +430,7 @@ private fun AddIncomePlanSheet(
     actions: AddIncomePlanSheetActions,
 ) {
     val draft = state.addDraft
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(AppSpacing.cardPadding),
-    ) {
-        Text(
-            stringResource(R.string.income_plan_sheet_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.size(AppSpacing.cardPadding))
-
+    AppSheetScaffold(title = stringResource(R.string.income_plan_sheet_title)) {
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.income_plan_sheet_label_name),
@@ -457,61 +441,53 @@ private fun AddIncomePlanSheet(
             actions = AppTextInputActions(onValueChange = actions.onLabel),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.size(AppSpacing.compactGap))
 
-        Text(
-            stringResource(R.string.income_plan_sheet_label_type),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.size(AppSpacing.miniGap))
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        ) {
-            IncomeSourceType.entries.forEach { source ->
-                item(source.wireValue) {
-                    AppFilterChip(
-                        selected = draft.sourceType == source,
-                        onClick = { actions.onSourceType(source) },
-                        label = stringResource(incomeSourceTypeLabelRes(source)),
-                        enabled = !state.isSubmitting,
-                    )
+        AppFormFieldGroup(label = stringResource(R.string.income_plan_sheet_label_type)) {
+            AppCompactChips {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                ) {
+                    IncomeSourceType.entries.forEach { source ->
+                        AppFilterChip(
+                            selected = draft.sourceType == source,
+                            onClick = { actions.onSourceType(source) },
+                            label = stringResource(incomeSourceTypeLabelRes(source)),
+                            enabled = !state.isSubmitting,
+                        )
+                    }
                 }
             }
         }
-        Spacer(Modifier.size(AppSpacing.compactGap))
 
-        Text(
-            stringResource(R.string.income_plan_sheet_label_frequency),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.size(AppSpacing.miniGap))
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        ) {
-            listOf(IncomeFrequency.ONE_TIME, IncomeFrequency.MONTHLY).forEach { frequency ->
-                item(frequency.wireValue) {
-                    AppFilterChip(
-                        selected = draft.frequency == frequency,
-                        onClick = { actions.onFrequency(frequency) },
-                        label = stringResource(incomeFrequencyLabelRes(frequency)),
-                        enabled = !state.isSubmitting,
-                    )
+        AppFormFieldGroup(label = stringResource(R.string.income_plan_sheet_label_frequency)) {
+            AppCompactChips {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                ) {
+                    listOf(IncomeFrequency.ONE_TIME, IncomeFrequency.MONTHLY).forEach { frequency ->
+                        AppFilterChip(
+                            selected = draft.frequency == frequency,
+                            onClick = { actions.onFrequency(frequency) },
+                            label = stringResource(incomeFrequencyLabelRes(frequency)),
+                            enabled = !state.isSubmitting,
+                        )
+                    }
                 }
             }
         }
-        Spacer(Modifier.size(AppSpacing.compactGap))
 
         if (draft.frequency == IncomeFrequency.ONE_TIME) {
-            IncomeMonthPicker(
-                value = draft.incomeMonthInput,
-                onPrevious = actions.onPreviousIncomeMonth,
-                onNext = actions.onNextIncomeMonth,
-            )
-            Spacer(Modifier.size(AppSpacing.compactGap))
+            AppFormFieldGroup(label = stringResource(R.string.income_plan_sheet_label_income_month)) {
+                IncomeMonthPicker(
+                    value = draft.incomeMonthInput,
+                    onPrevious = actions.onPreviousIncomeMonth,
+                    onNext = actions.onNextIncomeMonth,
+                )
+            }
         }
 
         AppAmountInput(
@@ -531,7 +507,6 @@ private fun AddIncomePlanSheet(
                 onValueChange = actions.onAmount,
             ),
         )
-        Spacer(Modifier.size(AppSpacing.compactGap))
 
         AppTextInput(
             state = AppTextInputState(
@@ -550,7 +525,6 @@ private fun AddIncomePlanSheet(
         )
 
         if (draft.validationError != null) {
-            Spacer(Modifier.size(AppSpacing.smallGap))
             Text(
                 draft.validationError.asString(),
                 style = MaterialTheme.typography.bodySmall,
@@ -558,42 +532,22 @@ private fun AddIncomePlanSheet(
             )
         }
 
-        Spacer(Modifier.size(AppSpacing.cardPadding))
-        HorizontalDivider()
-        Spacer(Modifier.size(AppSpacing.compactGap))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            AppSecondaryButton(
-                text = stringResource(R.string.common_cancel),
-                modifier = Modifier.weight(1f),
-                enabled = !state.isSubmitting,
-                onClick = actions.onCancel,
-            )
-            Button(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = AppSpacing.controlMinHeight),
+        AppSheetActionRow(
+            primary = AppAction(
+                text = if (state.isSubmitting) {
+                    stringResource(R.string.income_plan_sheet_submitting)
+                } else {
+                    stringResource(R.string.income_plan_sheet_save)
+                },
                 onClick = actions.onSubmit,
                 enabled = !state.isSubmitting,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(ButtonDefaults.IconSize),
-                )
-                Spacer(Modifier.width(AppSpacing.smallGap))
-                Text(
-                    if (state.isSubmitting) {
-                        stringResource(R.string.income_plan_sheet_submitting)
-                    } else {
-                        stringResource(R.string.income_plan_sheet_save)
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.size(AppSpacing.compactGap))
+            ),
+            secondary = AppAction(
+                text = stringResource(R.string.common_cancel),
+                onClick = actions.onCancel,
+                enabled = !state.isSubmitting,
+            ),
+        )
     }
 }
 
