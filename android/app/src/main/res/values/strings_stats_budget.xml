@@ -180,6 +180,8 @@
     <!-- ReportsInsightCards：动态图表 + 月度目标 -->
     <string name="stats_reports_answer_title">本月结论</string>
     <string name="stats_reports_answer_subtitle">%1$s · %2$d 笔已确认</string>
+    <string name="stats_reports_answer_current_label">本月记录</string>
+    <string name="stats_reports_answer_count_value">%1$d 笔</string>
     <string name="stats_reports_answer_previous_label">较上月</string>
     <string name="stats_reports_answer_yoy_label">同比</string>
     <string name="stats_reports_answer_active_label">月内活跃</string>
@@ -189,6 +191,7 @@
     <string name="stats_reports_answer_delta_flat">持平</string>
     <string name="stats_reports_answer_percent">%1$d%%</string>
     <string name="stats_reports_answer_no_previous">上月无确认支出</string>
+    <string name="stats_reports_answer_no_previous_caption">暂无上月基线</string>
     <string name="stats_reports_answer_peak_caption">%1$s 占 %2$d%%</string>
     <string name="stats_reports_answer_no_trend">暂无波动</string>
     <string name="stats_reports_trend_title">趋势报表</string>
@@ -217,8 +220,8 @@
     <string name="stats_reports_recent_window_title">最近 7 天</string>
     <string name="stats_reports_recent_window_source">最近记录</string>
     <string name="stats_reports_recent_window_peak_share">%1$s 占 7 天 %2$d%%，其余日均 %3$s</string>
-    <string name="stats_reports_recent_window_previous_three">前3天</string>
-    <string name="stats_reports_recent_window_recent_three">近3天</string>
+    <string name="stats_reports_recent_window_previous_three">前 3 天</string>
+    <string name="stats_reports_recent_window_recent_three">近 3 天</string>
     <string name="stats_reports_recent_window_no_spend">无支出</string>
     <string name="stats_reports_recent_window_active_days">有支出</string>
     <string name="stats_reports_recent_window_active_days_value">%1$d 天</string>

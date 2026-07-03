@@ -1,7 +1,5 @@
 package com.ticketbox.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -10,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
@@ -28,11 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 fun MonthPickerSheet(
@@ -73,19 +67,10 @@ private fun MonthPickerSelectionSummary(
     allSelected: Boolean,
     onSelectAll: () -> Unit,
 ) {
-    val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.small)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(visuals.solidCard.copy(alpha = AppAlpha.opaque))
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
-                shape = shape,
-            )
-            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactGap),
+            .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.compactGap),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
@@ -168,30 +153,11 @@ private fun MonthPickerAllMonthsButton(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.extraSmall)
     Row(
         modifier = Modifier
             .semantics { this.selected = selected }
-            .clip(shape)
-            .background(
-                if (selected) {
-                    visuals.chipSelected.copy(alpha = AppAlpha.strong)
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = AppAlpha.soft)
-                },
-            )
-            .border(
-                width = 1.dp,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = AppAlpha.medium)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium)
-                },
-                shape = shape,
-            )
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
+            .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {

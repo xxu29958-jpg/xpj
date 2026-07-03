@@ -84,12 +84,21 @@ private fun ReportsAnswerMetrics(model: ReportsAnswerModel) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        ReportsAnswerMetric(
-            label = stringResource(R.string.stats_reports_answer_previous_label),
-            value = monthDeltaValue(model),
-            caption = monthDeltaCaption(model),
-            modifier = Modifier.weight(1f),
-        )
+        if (model.hasPreviousMonthComparison) {
+            ReportsAnswerMetric(
+                label = stringResource(R.string.stats_reports_answer_previous_label),
+                value = monthDeltaValue(model),
+                caption = monthDeltaCaption(model),
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            ReportsAnswerMetric(
+                label = stringResource(R.string.stats_reports_answer_current_label),
+                value = stringResource(R.string.stats_reports_answer_count_value, model.count),
+                caption = stringResource(R.string.stats_reports_answer_no_previous_caption),
+                modifier = Modifier.weight(1f),
+            )
+        }
         if (model.hasYearOverYearComparison) {
             ReportsAnswerMetric(
                 label = stringResource(R.string.stats_reports_answer_yoy_label),

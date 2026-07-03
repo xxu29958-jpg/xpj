@@ -133,11 +133,11 @@ private fun monthDeltaLeadLine(
     overview: ReportsOverview?,
     comparison: MonthComparison?,
 ): StatsLeadLine? {
-    val previousAmount = overview?.previousTotalAmountCents ?: comparison?.previousAmountCents
-    val delta = overview?.let { it.totalAmountCents - it.previousTotalAmountCents } ?: comparison?.deltaAmountCents
-    if (previousAmount == null || delta == null) return null
+    val evidence = monthDeltaEvidence(overview, comparison) ?: return null
     val currencyDisplay = LocalCurrencyDisplay.current
-    val percent = comparison?.percentChange?.let(::abs) ?: monthDeltaPercent(delta, previousAmount)
+    val delta = evidence.deltaAmountCents
+    val percent = evidence.percentChange?.let(::abs)
+        ?: monthDeltaPercent(delta, evidence.previousAmountCents)
     return StatsLeadLine(
         label = monthDeltaLabel(delta),
         value = if (delta == 0L) {
@@ -146,7 +146,6 @@ private fun monthDeltaLeadLine(
             formatDisplayAmount(abs(delta), currencyDisplay)
         },
         caption = when {
-            previousAmount <= 0L -> stringResource(R.string.stats_lead_month_delta_no_previous)
             delta == 0L -> stringResource(R.string.stats_lead_delta_flat)
             else -> stringResource(R.string.stats_lead_month_delta_percent_hint, percent)
         },
@@ -157,7 +156,7 @@ private fun monthDeltaLeadLine(
 private fun variableLeadLine(overview: ReportsOverview?): StatsLeadLine? {
     if (overview == null) return null
     val category = overview.categoryComparison
-        .filter { it.deltaAmountCents != 0L }
+        .filter { it.previousCount > 0 && it.deltaAmountCents != 0L }
         .maxByOrNull { abs(it.deltaAmountCents) }
     if (category != null) {
         return StatsLeadLine(

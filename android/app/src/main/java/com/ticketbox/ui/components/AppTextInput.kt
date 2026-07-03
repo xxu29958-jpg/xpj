@@ -167,7 +167,11 @@ private fun AppTextInputField(
                     Text(
                         text = state.placeholder,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.medium),
-                        style = appTextInputTextStyle(state),
+                        style = if (state.emphasis == AppTextInputEmphasis.Amount) {
+                            MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                        } else {
+                            appTextInputTextStyle(state)
+                        },
                     )
                 }
                 innerTextField()

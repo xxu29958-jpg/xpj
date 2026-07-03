@@ -34,7 +34,22 @@ class ReportsAnswerModelTest {
 
         assertEquals(12_000L, model.monthDeltaAmountCents)
         assertNull(model.monthDeltaPercent)
+        assertEquals(false, model.hasPreviousMonthComparison)
         assertEquals(false, model.hasYearOverYearComparison)
+    }
+
+    @Test
+    fun answerModelRequiresPreviousMonthCountBeforeShowingComparison() {
+        val model = reportsAnswerModel(
+            overview(
+                totalAmountCents = 12_000L,
+                previousTotalAmountCents = 8_000L,
+                previousCount = 0,
+            ),
+        )
+
+        assertEquals(false, model.hasPreviousMonthComparison)
+        assertNull(model.monthDeltaPercent)
     }
 
     @Test
@@ -80,6 +95,7 @@ class ReportsAnswerModelTest {
         granularity: ReportGranularity = ReportGranularity.Day,
         totalAmountCents: Long = 0L,
         previousTotalAmountCents: Long = 0L,
+        previousCount: Int? = null,
     ) = ReportsOverview(
         month = "2026-06",
         timezone = "Asia/Shanghai",
@@ -88,7 +104,7 @@ class ReportsAnswerModelTest {
         count = if (totalAmountCents > 0L) 3 else 0,
         previousMonth = "2026-05",
         previousTotalAmountCents = previousTotalAmountCents,
-        previousCount = if (previousTotalAmountCents > 0L) 2 else 0,
+        previousCount = previousCount ?: if (previousTotalAmountCents > 0L) 2 else 0,
         yearOverYearMonth = "2025-06",
         yearOverYearTotalAmountCents = 0L,
         yearOverYearCount = 0,

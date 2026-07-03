@@ -1,7 +1,6 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +21,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -67,15 +65,6 @@ private fun MonthGridCell(
             .heightIn(min = AppSpacing.controlMinHeight)
             .clip(shape)
             .background(if (selected) visuals.chipSelected.copy(alpha = AppAlpha.soft) else Color.Transparent)
-            .border(
-                width = 1.dp,
-                color = if (selected) {
-                    visuals.primary.copy(alpha = AppAlpha.medium)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle)
-                },
-                shape = shape,
-            )
             .clickable(onClick = onClick)
             .semantics { this.selected = selected }
             .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.smallGap),

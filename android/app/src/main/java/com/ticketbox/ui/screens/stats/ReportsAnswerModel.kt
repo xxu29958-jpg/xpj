@@ -39,6 +39,7 @@ internal data class ReportsAnswerModel(
     val totalAmountCents: Long,
     val count: Int,
     val previousMonth: String,
+    val hasPreviousMonthComparison: Boolean,
     val previousTotalAmountCents: Long,
     val monthDeltaAmountCents: Long,
     val monthDeltaPercent: Int?,
@@ -52,15 +53,21 @@ internal data class ReportsAnswerModel(
 internal fun reportsAnswerModel(overview: ReportsOverview): ReportsAnswerModel {
     val trendPoints = reportTrendChartPoints(overview.trend)
     val monthDelta = overview.totalAmountCents - overview.previousTotalAmountCents
+    val hasPreviousMonthComparison = overview.previousCount > 0
     return ReportsAnswerModel(
         month = overview.month,
         granularity = overview.granularity,
         totalAmountCents = overview.totalAmountCents.coerceAtLeast(0L),
         count = overview.count.coerceAtLeast(0),
         previousMonth = overview.previousMonth,
+        hasPreviousMonthComparison = hasPreviousMonthComparison,
         previousTotalAmountCents = overview.previousTotalAmountCents.coerceAtLeast(0L),
         monthDeltaAmountCents = monthDelta,
-        monthDeltaPercent = percentChange(monthDelta, overview.previousTotalAmountCents),
+        monthDeltaPercent = if (hasPreviousMonthComparison) {
+            percentChange(monthDelta, overview.previousTotalAmountCents)
+        } else {
+            null
+        },
         yearOverYearMonth = overview.yearOverYearMonth,
         hasYearOverYearComparison = overview.yearOverYearCount > 0,
         yearOverYearDeltaAmountCents = overview.yearOverYearDeltaAmountCents,
