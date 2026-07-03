@@ -35,26 +35,22 @@ internal fun BackgroundTasksOverview(summary: BackgroundTasksSummaryModel) {
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            BackgroundTaskMetric(
-                label = stringResource(R.string.background_tasks_summary_total_label),
-                value = summary.totalCount,
-                modifier = Modifier.weight(1f),
-            )
-            BackgroundTaskMetric(
-                label = stringResource(R.string.background_tasks_summary_active_label),
-                value = summary.activeCount,
-                modifier = Modifier.weight(1f),
-            )
-            BackgroundTaskMetric(
-                label = stringResource(R.string.background_tasks_summary_failed_label),
-                value = summary.failedCount,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        SettingsMetricGrid(
+            metrics = listOf(
+                SettingsMetricData(
+                    label = stringResource(R.string.background_tasks_summary_total_label),
+                    value = stringResource(R.string.background_tasks_summary_count, summary.totalCount),
+                ),
+                SettingsMetricData(
+                    label = stringResource(R.string.background_tasks_summary_active_label),
+                    value = stringResource(R.string.background_tasks_summary_count, summary.activeCount),
+                ),
+                SettingsMetricData(
+                    label = stringResource(R.string.background_tasks_summary_failed_label),
+                    value = stringResource(R.string.background_tasks_summary_count, summary.failedCount),
+                ),
+            ),
+        )
         Text(
             text = backgroundTasksSummaryCaption(summary),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -124,31 +120,6 @@ internal fun BackgroundTasksRefreshAction(
             color = color,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = AppTextHierarchy.heading.weight,
-        )
-    }
-}
-
-@Composable
-private fun BackgroundTaskMetric(
-    label: String,
-    value: Int,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = stringResource(R.string.background_tasks_summary_count, value),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-        )
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
         )
     }
 }

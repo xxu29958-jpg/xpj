@@ -168,52 +168,23 @@ private fun RecycleBinOverview(state: RecycleBinUiState) {
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            RecycleBinMetric(
-                label = stringResource(R.string.recycle_bin_summary_total_label),
-                value = summary.totalCount,
-                modifier = Modifier.weight(1f),
-            )
-            RecycleBinMetric(
-                label = stringResource(R.string.recycle_bin_summary_limited_label),
-                value = summary.shortWindowCount,
-                modifier = Modifier.weight(1f),
-            )
-            RecycleBinMetric(
-                label = stringResource(R.string.recycle_bin_summary_long_label),
-                value = summary.longTermCount,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        SettingsMetricGrid(
+            metrics = listOf(
+                SettingsMetricData(
+                    label = stringResource(R.string.recycle_bin_summary_total_label),
+                    value = stringResource(R.string.recycle_bin_summary_count, summary.totalCount),
+                ),
+                SettingsMetricData(
+                    label = stringResource(R.string.recycle_bin_summary_limited_label),
+                    value = stringResource(R.string.recycle_bin_summary_count, summary.shortWindowCount),
+                ),
+                SettingsMetricData(
+                    label = stringResource(R.string.recycle_bin_summary_long_label),
+                    value = stringResource(R.string.recycle_bin_summary_count, summary.longTermCount),
+                ),
+            ),
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-    }
-}
-
-@Composable
-private fun RecycleBinMetric(
-    label: String,
-    value: Int,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = stringResource(R.string.recycle_bin_summary_count, value),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-        )
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
     }
 }
 

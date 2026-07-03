@@ -35,7 +35,6 @@ import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.TagUndoHandle
 
 @Immutable
@@ -94,67 +93,31 @@ internal fun TagOverviewSection(tags: List<ManagedTag>) {
         icon = Icons.AutoMirrored.Filled.Label,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                TagOverviewMetric(
-                    label = stringResource(R.string.tag_management_overview_total_label),
-                    value = summary.totalCount,
-                    caption = stringResource(R.string.tag_management_overview_total_caption),
-                    modifier = Modifier.weight(1f),
-                )
-                TagOverviewMetric(
-                    label = stringResource(R.string.tag_management_overview_active_label),
-                    value = summary.activeCount,
-                    caption = stringResource(R.string.tag_management_overview_active_caption),
-                    modifier = Modifier.weight(1f),
-                )
-                TagOverviewMetric(
-                    label = stringResource(R.string.tag_management_overview_unused_label),
-                    value = summary.unusedCount,
-                    caption = stringResource(R.string.tag_management_overview_unused_caption),
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            SettingsMetricGrid(
+                metrics = listOf(
+                    SettingsMetricData(
+                        label = stringResource(R.string.tag_management_overview_total_label),
+                        value = summary.totalCount.toString(),
+                        caption = stringResource(R.string.tag_management_overview_total_caption),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.tag_management_overview_active_label),
+                        value = summary.activeCount.toString(),
+                        caption = stringResource(R.string.tag_management_overview_active_caption),
+                    ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.tag_management_overview_unused_label),
+                        value = summary.unusedCount.toString(),
+                        caption = stringResource(R.string.tag_management_overview_unused_caption),
+                    ),
+                ),
+            )
             Text(
                 text = stringResource(R.string.tag_management_overview_body),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
-}
-
-@Composable
-private fun TagOverviewMetric(
-    label: String,
-    value: Int,
-    caption: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
-        Text(
-            text = value.toString(),
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-        )
-        Text(
-            text = caption,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 2,
-        )
     }
 }
 
