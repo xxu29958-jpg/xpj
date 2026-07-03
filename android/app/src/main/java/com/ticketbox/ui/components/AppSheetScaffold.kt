@@ -29,12 +29,14 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-data class AppSheetAction(
+data class AppAction(
     val text: String,
     val onClick: () -> Unit,
     val enabled: Boolean = true,
     val icon: ImageVector = Icons.Filled.Check,
 )
+
+typealias AppSheetAction = AppAction
 
 private val PairedSheetActionInlineMinWidth = 380.dp
 
@@ -73,16 +75,19 @@ fun AppSheetScaffold(
 }
 
 @Composable
-fun AppSheetActionRow(
-    primary: AppSheetAction,
+fun AppActionRow(
+    primary: AppAction,
     modifier: Modifier = Modifier,
-    secondary: AppSheetAction? = null,
+    secondary: AppAction? = null,
+    showDivider: Boolean = true,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
+        if (showDivider) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
+        }
         if (secondary == null) {
             SheetPrimaryAction(action = primary, modifier = Modifier.fillMaxWidth())
         } else {
@@ -98,9 +103,18 @@ fun AppSheetActionRow(
 }
 
 @Composable
-private fun StackedSheetActions(
+fun AppSheetActionRow(
     primary: AppSheetAction,
-    secondary: AppSheetAction,
+    modifier: Modifier = Modifier,
+    secondary: AppSheetAction? = null,
+) {
+    AppActionRow(primary = primary, modifier = modifier, secondary = secondary)
+}
+
+@Composable
+private fun StackedSheetActions(
+    primary: AppAction,
+    secondary: AppAction,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         SheetSecondaryAction(action = secondary, modifier = Modifier.fillMaxWidth())
@@ -110,8 +124,8 @@ private fun StackedSheetActions(
 
 @Composable
 private fun InlineSheetActions(
-    primary: AppSheetAction,
-    secondary: AppSheetAction,
+    primary: AppAction,
+    secondary: AppAction,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -124,7 +138,7 @@ private fun InlineSheetActions(
 
 @Composable
 private fun SheetSecondaryAction(
-    action: AppSheetAction,
+    action: AppAction,
     modifier: Modifier,
 ) {
     QuietOutlinedButton(
@@ -137,7 +151,7 @@ private fun SheetSecondaryAction(
 
 @Composable
 private fun SheetPrimaryAction(
-    action: AppSheetAction,
+    action: AppAction,
     modifier: Modifier,
 ) {
     AppPrimaryButton(

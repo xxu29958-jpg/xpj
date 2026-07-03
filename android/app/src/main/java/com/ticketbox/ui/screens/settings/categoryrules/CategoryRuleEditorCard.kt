@@ -4,9 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -14,6 +12,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.SettingsDialogTextInput
 import com.ticketbox.ui.screens.settings.SettingsOpenPanel
@@ -109,26 +109,19 @@ private fun CategoryRuleEditorActions(
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-    ) {
-        if (form.editingRule != null) {
-            OutlinedButton(
-                modifier = Modifier.weight(1f),
-                onClick = onCancel,
-            ) {
-                Text(stringResource(R.string.category_rule_editor_cancel))
-            }
-        }
-        Button(
-            modifier = Modifier.weight(1f),
+    AppActionRow(
+        primary = AppAction(
+            text = categoryRuleSubmitLabel(busy = busy, editing = form.editingRule != null),
             enabled = !busy,
             onClick = onSubmit,
-        ) {
-            Text(categoryRuleSubmitLabel(busy = busy, editing = form.editingRule != null))
-        }
-    }
+        ),
+        secondary = form.editingRule?.let {
+            AppAction(
+                text = stringResource(R.string.category_rule_editor_cancel),
+                onClick = onCancel,
+            )
+        },
+    )
 }
 
 @Composable

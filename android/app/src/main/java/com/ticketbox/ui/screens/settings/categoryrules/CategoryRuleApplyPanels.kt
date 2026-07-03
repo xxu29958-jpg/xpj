@@ -5,10 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -20,6 +18,9 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.RuleApplyPreviewItem
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -44,26 +45,22 @@ internal fun ConfirmedRuleApplyPanel(
             preview?.let { result ->
                 ConfirmedRulePreviewSummary(result)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-                OutlinedButton(
-                    enabled = !busy,
-                    onClick = onPreview,
-                ) {
-                    Text(
-                        if (busy) {
-                            stringResource(R.string.category_rule_apply_preview_busy)
-                        } else {
-                            stringResource(R.string.category_rule_apply_preview_button)
-                        },
-                    )
-                }
-                Button(
+            AppActionRow(
+                primary = AppAction(
+                    text = stringResource(R.string.category_rule_apply_confirm_button),
                     enabled = !busy && !readOnly && (preview?.changedCount ?: 0) > 0,
                     onClick = onConfirm,
-                ) {
-                    Text(stringResource(R.string.category_rule_apply_confirm_button))
-                }
-            }
+                ),
+                secondary = AppAction(
+                    text = if (busy) {
+                        stringResource(R.string.category_rule_apply_preview_busy)
+                    } else {
+                        stringResource(R.string.category_rule_apply_preview_button)
+                    },
+                    enabled = !busy,
+                    onClick = onPreview,
+                ),
+            )
             if (readOnly) {
                 Text(
                     text = stringResource(R.string.category_rule_apply_panel_readonly),
@@ -200,12 +197,11 @@ private fun RuleApplicationRow(
                 )
             }
             if (!readOnly && !application.isRolledBack) {
-                OutlinedButton(
+                QuietOutlinedButton(
+                    text = stringResource(R.string.category_rule_apply_history_rollback_button),
                     enabled = !busy,
                     onClick = onRollback,
-                ) {
-                    Text(stringResource(R.string.category_rule_apply_history_rollback_button))
-                }
+                )
             }
     }
 }

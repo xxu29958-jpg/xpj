@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,6 +30,8 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
@@ -349,32 +351,23 @@ private fun CategoryRuleCreatePrompt(
     onStartCreate: () -> Unit,
 ) {
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = stringResource(R.string.category_rules_create_prompt_title),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    text = stringResource(R.string.category_rules_create_prompt_body),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Button(
+        Text(
+            text = stringResource(R.string.category_rules_create_prompt_title),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = stringResource(R.string.category_rules_create_prompt_body),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        AppActionRow(
+            primary = AppAction(
+                text = stringResource(R.string.category_rule_editor_submit_create),
                 enabled = !busy,
+                icon = Icons.Filled.Add,
                 onClick = onStartCreate,
-            ) {
-                Text(stringResource(R.string.category_rule_editor_submit_create))
-            }
-        }
+            ),
+        )
     }
 }
 
