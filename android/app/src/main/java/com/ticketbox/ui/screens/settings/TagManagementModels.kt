@@ -19,3 +19,17 @@ internal fun tagManagementSummaryModel(tags: List<ManagedTag>): TagManagementSum
         usageCount = tags.sumOf { it.usageCount.coerceAtLeast(0) },
     )
 }
+
+internal fun mergeTargetOptions(
+    tags: List<ManagedTag>,
+    source: ManagedTag,
+    freshTarget: ManagedTag?,
+): List<ManagedTag> = tags
+    .filter { it.publicId != source.publicId }
+    .map { tag ->
+        if (freshTarget != null && tag.publicId == freshTarget.publicId) {
+            freshTarget
+        } else {
+            tag
+        }
+    }

@@ -36,6 +36,25 @@ class TagManagementScreenModelTest {
         assertEquals(0, summary.usageCount)
     }
 
-    private fun tag(id: String, usage: Int): ManagedTag =
-        ManagedTag(publicId = id, name = id, usageCount = usage, rowVersion = 1L)
+    @Test
+    fun mergeTargetsUseFreshConflictTokenForSuggestedTarget() {
+        val source = tag("source", usage = 1)
+        val staleTarget = tag("target", usage = 2, rowVersion = 1L)
+        val freshTarget = tag("target", usage = 3, rowVersion = 9L)
+        val other = tag("other", usage = 4)
+
+        val targets = mergeTargetOptions(
+            tags = listOf(source, staleTarget, other),
+            source = source,
+            freshTarget = freshTarget,
+        )
+
+        assertEquals(listOf(freshTarget, other), targets)
+    }
+
+    private fun tag(
+        id: String,
+        usage: Int,
+        rowVersion: Long = 1L,
+    ): ManagedTag = ManagedTag(publicId = id, name = id, usageCount = usage, rowVersion = rowVersion)
 }
