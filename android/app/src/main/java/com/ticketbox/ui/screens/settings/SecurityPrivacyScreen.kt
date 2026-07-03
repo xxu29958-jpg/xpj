@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -34,11 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -308,51 +307,65 @@ private fun SecurityDangerRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadius.small))
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = AppSpacing.smallGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         SecurityIconBox(icon = icon)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
-            Text(
-                text = stringResource(action.titleRes),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
+            SecurityDangerTitleRow(action = action)
             Text(
                 text = stringResource(action.bodyRes),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        SecurityDangerButton(action = action, onClick = onClick)
     }
 }
 
 @Composable
-private fun SecurityDangerButton(action: SecurityDangerActionModel, onClick: () -> Unit) {
+private fun SecurityDangerTitleRow(action: SecurityDangerActionModel) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(action.titleRes),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+            modifier = Modifier.weight(1f),
+        )
+        SecurityDangerInlineAction(action = action)
+    }
+}
+
+@Composable
+private fun SecurityDangerInlineAction(action: SecurityDangerActionModel) {
     val icon = when (action.kind) {
         SecurityDangerActionKind.ClearOfflineCopy -> Icons.Filled.DeleteOutline
         SecurityDangerActionKind.LeaveLedger -> Icons.AutoMirrored.Filled.Logout
     }
-    AppOutlinedButton(
-        danger = true,
-        onClick = onClick,
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = stringResource(action.contentDescriptionRes),
-            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(17.dp),
         )
-        Box(modifier = Modifier.width(AppSpacing.smallGap))
         Text(
             text = stringResource(action.buttonRes),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            softWrap = false,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = AppTextHierarchy.heading.weight,
         )
     }
 }
