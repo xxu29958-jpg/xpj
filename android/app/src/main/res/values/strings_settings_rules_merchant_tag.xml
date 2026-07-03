@@ -88,7 +88,7 @@
     <string name="merchant_management_tools_add_catalog">新增商家</string>
     <string name="merchant_management_tools_add_alias">新增别名</string>
     <string name="merchant_catalog_name_label">商家名称</string>
-    <string name="merchant_catalog_name_placeholder">星巴克</string>
+    <string name="merchant_catalog_name_placeholder">输入商家名称</string>
     <string name="merchant_catalog_create_validation">请填写商家名称。</string>
     <string name="merchant_catalog_create_busy">处理中</string>
     <string name="merchant_catalog_create_button">添加商家</string>
@@ -122,9 +122,9 @@
     <string name="merchant_catalog_merge_alias_policy_hint">选择统计归并会新增一条别名；账单原始商家名保持不变。</string>
     <string name="merchant_catalog_merge_dialog_confirm">合并</string>
     <string name="merchant_aliases_canonical_label">标准商家名</string>
-    <string name="merchant_aliases_canonical_placeholder">星巴克</string>
+    <string name="merchant_aliases_canonical_placeholder">输入标准商家名</string>
     <string name="merchant_aliases_alias_label">别名</string>
-    <string name="merchant_aliases_alias_placeholder">Starbucks</string>
+    <string name="merchant_aliases_alias_placeholder">输入别名写法</string>
     <string name="merchant_aliases_create_validation">请填写标准商家名和别名。</string>
     <string name="merchant_aliases_create_busy">处理中</string>
     <string name="merchant_aliases_create_button">添加别名</string>

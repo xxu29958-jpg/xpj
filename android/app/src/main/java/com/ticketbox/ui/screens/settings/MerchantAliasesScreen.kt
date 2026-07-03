@@ -8,10 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +37,8 @@ import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -324,18 +326,20 @@ private fun MerchantManagementToolsSection(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(enabled = !state.busy, onClick = actions.onStartCatalog) {
-                        Text(stringResource(R.string.merchant_management_tools_add_catalog))
-                    }
-                    TextButton(enabled = !state.busy, onClick = actions.onStartAlias) {
-                        Text(stringResource(R.string.merchant_management_tools_add_alias))
-                    }
-                }
+                AppActionRow(
+                    primary = AppAction(
+                        text = stringResource(R.string.merchant_management_tools_add_catalog),
+                        enabled = !state.busy,
+                        icon = Icons.Filled.Add,
+                        onClick = actions.onStartCatalog,
+                    ),
+                    secondary = AppAction(
+                        text = stringResource(R.string.merchant_management_tools_add_alias),
+                        enabled = !state.busy,
+                        icon = Icons.Filled.Add,
+                        onClick = actions.onStartAlias,
+                    ),
+                )
             }
             MerchantCreateTool.Catalog -> MerchantCatalogCreateSection(
                 state = MerchantCatalogCreateState(
@@ -394,24 +398,22 @@ private fun MerchantCatalogCreateSection(
             ),
             onValueChange = actions.onCatalogNameChange,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Button(modifier = Modifier.weight(1f), enabled = !state.busy, onClick = actions.onSubmit) {
-                Text(
-                    text = if (state.busy) {
-                        stringResource(R.string.merchant_catalog_create_busy)
-                    } else {
-                        stringResource(R.string.merchant_catalog_create_button)
-                    },
-                )
-            }
-            TextButton(enabled = !state.busy, onClick = actions.onCancel) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        }
+        AppActionRow(
+            primary = AppAction(
+                text = if (state.busy) {
+                    stringResource(R.string.merchant_catalog_create_busy)
+                } else {
+                    stringResource(R.string.merchant_catalog_create_button)
+                },
+                enabled = !state.busy,
+                onClick = actions.onSubmit,
+            ),
+            secondary = AppAction(
+                text = stringResource(R.string.common_cancel),
+                enabled = !state.busy,
+                onClick = actions.onCancel,
+            ),
+        )
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
     }
 }
@@ -454,24 +456,22 @@ private fun MerchantAliasCreateSection(
             ),
             onValueChange = { actions.onDraftChange(state.draft.copy(aliasText = it)) },
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Button(modifier = Modifier.weight(1f), enabled = !state.busy, onClick = actions.onSubmit) {
-                Text(
-                    text = if (state.busy) {
-                        stringResource(R.string.merchant_aliases_create_busy)
-                    } else {
-                        stringResource(R.string.merchant_aliases_create_button)
-                    },
-                )
-            }
-            TextButton(enabled = !state.busy, onClick = actions.onCancel) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        }
+        AppActionRow(
+            primary = AppAction(
+                text = if (state.busy) {
+                    stringResource(R.string.merchant_aliases_create_busy)
+                } else {
+                    stringResource(R.string.merchant_aliases_create_button)
+                },
+                enabled = !state.busy,
+                onClick = actions.onSubmit,
+            ),
+            secondary = AppAction(
+                text = stringResource(R.string.common_cancel),
+                enabled = !state.busy,
+                onClick = actions.onCancel,
+            ),
+        )
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
     }
 }
