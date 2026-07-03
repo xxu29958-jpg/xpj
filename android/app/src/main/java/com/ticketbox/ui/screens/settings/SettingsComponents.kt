@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
 import android.graphics.BitmapFactory
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -88,11 +87,11 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
-import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppBackButton
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
@@ -185,25 +184,21 @@ internal fun SettingsPageFrame(
     content: @Composable () -> Unit,
 ) {
     val isSecondaryPage = onBack != null
-    BackHandler(enabled = onBack != null) {
-        onBack?.invoke()
-    }
 
-    AppPageScrollableColumn(
-        role = AppPageRole.Settings,
+    AppSecondaryScrollableColumn(
+        chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Settings,
+            title = title,
+            subtitle = subtitle,
+            backText = stringResource(R.string.settings_page_back_to_settings),
+            onBack = onBack,
+            hasBottomBar = !isSecondaryPage,
+            verticalArrangement = Arrangement.spacedBy(
+                if (isSecondaryPage) AppSpacing.smallGap else AppSpacing.sectionGap,
+            ),
+        ),
+        slots = AppSecondaryPageSlots(status = status),
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) AppSpacing.smallGap else 0.dp),
-        ) {
-            onBack?.let { back ->
-                AppBackButton(
-                    text = stringResource(R.string.settings_page_back_to_settings),
-                    onClick = back,
-                )
-            }
-            AppPageHeader(title = title, subtitle = subtitle)
-        }
-        status?.invoke()
         content()
     }
 }
