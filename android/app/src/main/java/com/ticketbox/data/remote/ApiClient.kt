@@ -81,8 +81,7 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
         }
         val clientBuilder = OkHttpClient.Builder()
             .retryOnConnectionFailure(true)
-            .dns(DynamicNetworkDns(routeProvider))
-            .socketFactory(DynamicNetworkSocketFactory(routeProvider))
+            .dns(Ipv4FirstDns)
             .proxy(Proxy.NO_PROXY)
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(10, TimeUnit.SECONDS)
