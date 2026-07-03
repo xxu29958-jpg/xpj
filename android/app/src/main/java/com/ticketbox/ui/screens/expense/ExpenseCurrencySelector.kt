@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +14,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -45,10 +46,9 @@ internal fun ExpenseCurrencySelector(
     var expanded by rememberSaveable { mutableStateOf(currency != FxContract.HomeCurrency) }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        CurrencySummaryRow(
-            currency = currency,
+        CurrencyToggleRow(
             expanded = expanded,
             enabled = enabled,
             onToggle = { expanded = !expanded },
@@ -64,39 +64,31 @@ internal fun ExpenseCurrencySelector(
 }
 
 @Composable
-private fun CurrencySummaryRow(
-    currency: CurrencyCode,
+private fun CurrencyToggleRow(
     expanded: Boolean,
     enabled: Boolean,
     onToggle: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-            Text(
-                text = stringResource(R.string.expense_edit_currency_label),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
-            Text(
-                text = "${currency.symbol} ${currency.storageKey}",
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-        }
-        AppSecondaryButton(
-            text = if (expanded) {
-                stringResource(R.string.expense_edit_currency_collapse_button)
-            } else {
-                stringResource(R.string.expense_edit_currency_change_button)
-            },
+        TextButton(
             enabled = enabled,
             onClick = onToggle,
-        )
+            contentPadding = PaddingValues(horizontal = AppSpacing.tinyGap, vertical = 0.dp),
+        ) {
+            Text(
+                text = if (expanded) {
+                    stringResource(R.string.expense_edit_currency_collapse_button)
+                } else {
+                    stringResource(R.string.expense_edit_currency_change_button)
+                },
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = AppTextHierarchy.body.weight,
+            )
+        }
     }
 }
 
