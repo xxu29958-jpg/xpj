@@ -9,6 +9,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.TimeZone
 
 class FormattersTest {
     @Test
@@ -165,6 +166,17 @@ class FormattersTest {
 
         assertTrue(rendered.contains("2026-05-03"))
         assertTrue(rendered.contains(":"))
+    }
+
+    @Test
+    fun displaysCompactTimeForDenseRows() {
+        val previous = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"))
+        try {
+            assertEquals("7/3 19:35", displayCompactTime("2026-07-03T11:35:00Z"))
+        } finally {
+            TimeZone.setDefault(previous)
+        }
     }
 
     @Test

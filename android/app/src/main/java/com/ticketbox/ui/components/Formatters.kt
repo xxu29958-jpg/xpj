@@ -169,6 +169,11 @@ fun displayTime(value: String?): String {
         .getOrElse { value.replace("T", " ").removeSuffix("Z") }
 }
 
+fun displayCompactTime(value: String?): String {
+    val localDateTime = parseLocalDateTime(value) ?: return displayTime(value)
+    return localDateTime.format(DateTimeFormatter.ofPattern("M/d HH:mm"))
+}
+
 fun displayDate(value: String?): String {
     if (value.isNullOrBlank()) return "未设置"
     val localZone = ZoneId.systemDefault()

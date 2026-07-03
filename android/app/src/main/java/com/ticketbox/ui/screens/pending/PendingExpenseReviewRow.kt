@@ -37,9 +37,9 @@ import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAsyncImage
+import com.ticketbox.ui.components.displayCompactTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
-import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
@@ -139,7 +139,7 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
         Text(
             text = stringResource(
                 R.string.pending_row_meta,
-                displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                displayCompactTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
             ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
