@@ -53,7 +53,7 @@
     <string name="settings_root_entry_security_subtitle_locked">本机验证、离线副本、退出账本</string>
     <string name="settings_root_entry_security_subtitle_unlocked">本机验证未开启、离线副本、退出账本</string>
     <string name="settings_root_entry_about_title">关于</string>
-    <string name="settings_root_entry_about_subtitle">版本、同步和产品边界</string>
+    <string name="settings_root_entry_about_subtitle">版本与记录规则</string>
 
     <!-- 设置 二级页框架（SettingsComponents：SettingsPageFrame）：返回按钮 -->
     <string name="settings_page_back_to_settings">返回设置</string>
@@ -182,15 +182,19 @@
 
     <!-- 关于页（AboutScreen） -->
     <string name="settings_about_page_title">关于小票夹</string>
-    <string name="settings_about_page_subtitle">私人半自动账本，确认后才记录。</string>
+    <string name="settings_about_page_subtitle">版本与记录规则</string>
+    <string name="settings_about_section_app_info">应用信息</string>
+    <string name="settings_about_label_app">应用</string>
+    <string name="settings_about_label_version">版本</string>
+    <string name="settings_about_section_boundaries">记录规则</string>
     <string name="settings_about_app_name">小票夹</string>
     <string name="settings_about_version">版本 %1$s · 构建 %2$d</string>
     <string name="settings_about_confirm_title">确认后入账</string>
-    <string name="settings_about_confirm_body">截图和识别结果只生成草稿；点确认后，才会进入账本。</string>
-    <string name="settings_about_authority_title">同步后为准</string>
-    <string name="settings_about_authority_body">离线保存会标记同步状态；完成同步后，金额、成员和统计才算正式记录。</string>
+    <string name="settings_about_confirm_body">截图先生成草稿，确认后进入账本。</string>
+    <string name="settings_about_authority_title">已同步为准</string>
+    <string name="settings_about_authority_body">同步成功后，金额、成员和统计才生效。</string>
     <string name="settings_about_privacy_title">截图用于复核</string>
-    <string name="settings_about_privacy_body">截图用于识别和人工核对，不会替你自动确认、忽略或改写历史账单。</string>
+    <string name="settings_about_privacy_body">截图只用于识别和核对，不自动改写账单。</string>
 
     <!-- 离线同步页（SyncStatusScreen） -->
     <string name="sync_status_page_title">离线同步</string>
