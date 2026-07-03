@@ -377,7 +377,7 @@ that actually ships the fix.
 ### ANDROID-2026-07-02-recycle-bin-secondary-parity
 
 - Surface: Android Settings -> Recycle Bin.
-- Status: implemented locally; true-device evidence still pending.
+- Status: populated true-device pass captured; edge-state QA still pending.
 - Gap: the Recycle Bin page had the right backend endpoint, but Android dropped
   the backend `short_window_count`, inferred urgency from the localized
   retention label, and wrapped the list/empty/refresh states in a single large
@@ -386,8 +386,9 @@ that actually ships the fix.
 - Resolution: repository and ViewModel now carry a `RecycleBinSnapshot` with
   backend-provided short-window count; the page shows a compact summary,
   explicit read-only/empty/load-failed states, divider rows, confirm-before-
-  restore, and resource-backed copy.
-- Remaining QA: capture empty, populated, restoring, and viewer/read-only states
+  restore, and resource-backed copy. The populated phone pass also removes the
+  large refresh/restore capsules from the default view.
+- Remaining QA: capture empty, restoring, failure, and viewer/read-only states
   on a physical device after installing the official package.
 
 ### ANDROID-2026-07-02-notification-preferences-secondary-parity

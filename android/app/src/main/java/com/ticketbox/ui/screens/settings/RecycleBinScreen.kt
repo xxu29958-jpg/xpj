@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,7 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Lock
@@ -28,19 +31,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecycleBinItem
-import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.ListItemSkeleton
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.RecycleBinUiState
@@ -107,17 +111,38 @@ private fun RecycleBinListSection(
             )
         }
         RecycleBinRows(state = state, onRestore = onRestore)
-        QuietOutlinedButton(
-            text = if (state.loading) {
-                stringResource(R.string.recycle_bin_refresh_loading)
-            } else {
-                stringResource(R.string.recycle_bin_refresh)
-            },
-            leadingIcon = Icons.Filled.Refresh,
-            onClick = onRefresh,
-            enabled = !state.loading && state.busyItemKey == null,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        val canRefresh = !state.loading && state.busyItemKey == null
+        val refreshColor = if (canRefresh) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(AppRadius.small))
+                .clickable(enabled = canRefresh, role = Role.Button, onClick = onRefresh)
+                .padding(vertical = AppSpacing.smallGap),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Refresh,
+                contentDescription = null,
+                tint = refreshColor,
+                modifier = Modifier.size(AppSpacing.cardPadding),
+            )
+            Text(
+                text = if (state.loading) {
+                    stringResource(R.string.recycle_bin_refresh_loading)
+                } else {
+                    stringResource(R.string.recycle_bin_refresh)
+                },
+                color = refreshColor,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+        }
     }
 }
 
@@ -336,7 +361,7 @@ private fun RecycleBinRestoreButton(
     busy: Boolean,
     onRestore: () -> Unit,
 ) {
-    AppOutlinedButton(
+    TextButton(
         onClick = onRestore,
         enabled = !busy,
         modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
