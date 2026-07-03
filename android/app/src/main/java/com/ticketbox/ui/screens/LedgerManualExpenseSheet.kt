@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
@@ -18,7 +17,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -40,21 +38,22 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
-import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.timePickerToUtcIso
-import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.expense.ExpenseDateControl
+import com.ticketbox.ui.screens.expense.ExpenseDateControlActions
+import com.ticketbox.ui.screens.expense.ExpenseDateControlLabels
+import com.ticketbox.ui.screens.expense.ExpenseDateControlState
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditTextField
@@ -273,31 +272,22 @@ private fun ManualExpenseTimeSection(
     onPickTime: () -> Unit,
     onUseNow: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        Text(stringResource(R.string.ledger_manual_time_section_title), style = MaterialTheme.typography.titleSmall)
-        Text(displayDateTime(expenseTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            AppSecondaryButton(
-                text = stringResource(R.string.ledger_manual_pick_date_button),
-                modifier = Modifier.weight(1f),
-                onClick = onPickDate,
-            )
-            AppSecondaryButton(
-                text = stringResource(R.string.ledger_manual_pick_time_button),
-                modifier = Modifier.weight(1f),
-                onClick = onPickTime,
-            )
-            AppSecondaryButton(
-                text = stringResource(R.string.ledger_manual_now_button),
-                modifier = Modifier.weight(1f),
-                onClick = onUseNow,
-            )
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-    }
+    ExpenseDateControl(
+        state = ExpenseDateControlState(
+            title = stringResource(R.string.ledger_manual_time_section_title),
+            expenseTime = expenseTime,
+        ),
+        labels = ExpenseDateControlLabels(
+            pickDate = stringResource(R.string.ledger_manual_pick_date_button),
+            pickTime = stringResource(R.string.ledger_manual_pick_time_button),
+            useNow = stringResource(R.string.ledger_manual_now_button),
+        ),
+        actions = ExpenseDateControlActions(
+            onPickDate = onPickDate,
+            onPickTime = onPickTime,
+            onUseNow = onUseNow,
+        ),
+    )
 }
 
 @Composable

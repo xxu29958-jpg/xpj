@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -16,7 +15,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,9 +32,7 @@ import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSectionHeader
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -292,55 +288,26 @@ internal fun ExpenseDateField(
     state: ExpenseDateFieldState,
     actions: ExpenseDateFieldActions,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        AppSectionHeader(title = stringResource(R.string.expense_edit_date_section_title))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                modifier = Modifier.weight(1f),
-                text = displayDateTime(state.expenseTime),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            AppSecondaryButton(
-                text = stringResource(R.string.expense_edit_date_pick_date_button),
-                modifier = Modifier.widthIn(min = AppSpacing.controlMinHeight),
-                enabled = state.enabled,
-                onClick = actions.onPickDate,
-            )
-        }
-        ExpenseDateQuickActions(state = state, actions = actions)
-        ExpenseEditRowDivider()
-    }
-}
-
-@Composable
-private fun ExpenseDateQuickActions(
-    state: ExpenseDateFieldState,
-    actions: ExpenseDateFieldActions,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        TextButton(enabled = state.enabled, onClick = actions.onPickTime) {
-            Text(stringResource(R.string.expense_edit_date_pick_time_button))
-        }
-        TextButton(enabled = state.enabled, onClick = actions.onUseNow) {
-            Text(stringResource(R.string.expense_edit_date_use_now_button))
-        }
-        TextButton(
-            enabled = state.enabled && state.expenseTime.isNotBlank(),
-            onClick = actions.onClear,
-        ) {
-            Text(stringResource(R.string.expense_edit_date_clear_button))
-        }
-    }
+    ExpenseDateControl(
+        state = ExpenseDateControlState(
+            title = stringResource(R.string.expense_edit_date_section_title),
+            expenseTime = state.expenseTime,
+            enabled = state.enabled,
+            showClear = state.expenseTime.isNotBlank(),
+        ),
+        labels = ExpenseDateControlLabels(
+            pickDate = stringResource(R.string.expense_edit_date_pick_date_button),
+            pickTime = stringResource(R.string.expense_edit_date_pick_time_button),
+            useNow = stringResource(R.string.expense_edit_date_use_now_button),
+            clear = stringResource(R.string.expense_edit_date_clear_button),
+        ),
+        actions = ExpenseDateControlActions(
+            onPickDate = actions.onPickDate,
+            onPickTime = actions.onPickTime,
+            onUseNow = actions.onUseNow,
+            onClear = actions.onClear,
+        ),
+    )
 }
 
 @Composable
