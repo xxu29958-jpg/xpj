@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -32,6 +33,20 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
 
+enum class AppChipDensity {
+    Standard,
+    Compact,
+}
+
+private val LocalAppChipDensity = compositionLocalOf { AppChipDensity.Standard }
+
+@Composable
+fun AppCompactChips(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalAppChipDensity provides AppChipDensity.Compact) {
+        content()
+    }
+}
+
 @Composable
 fun AppFilterChip(
     label: String,
@@ -44,12 +59,14 @@ fun AppFilterChip(
     trailingIcon: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
+    val chipDensity = LocalAppChipDensity.current
     val visuals = LocalThemeVisuals.current
     val shape = RoundedCornerShape(AppRadius.extraSmall)
     val metrics = appFilterChipMetrics(
         label = label,
         hasIcon = leadingIcon != null || trailingIcon != null,
         fontScale = density.fontScale,
+        chipDensity = chipDensity,
     )
     val containerColor = if (selected) {
         selectedContainerColor ?: visuals.chipSelected.copy(alpha = AppAlpha.opaque)
@@ -85,18 +102,37 @@ fun AppFilterChip(
     ) {
         CompositionLocalProvider(LocalContentColor provides contentColor) {
             leadingIcon?.invoke()
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 1.sp),
-                fontWeight = if (selected) AppTextHierarchy.heading.weight else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = contentColor,
+            AppFilterChipLabel(
+                label = label,
+                selected = selected,
+                contentColor = contentColor,
+                chipDensity = chipDensity,
             )
             trailingIcon?.invoke()
         }
     }
+}
+
+@Composable
+private fun AppFilterChipLabel(
+    label: String,
+    selected: Boolean,
+    contentColor: Color,
+    chipDensity: AppChipDensity,
+) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        autoSize = TextAutoSize.StepBased(
+            minFontSize = 11.sp,
+            maxFontSize = if (chipDensity == AppChipDensity.Compact) 13.sp else 14.sp,
+            stepSize = 1.sp,
+        ),
+        fontWeight = if (selected) AppTextHierarchy.heading.weight else FontWeight.Medium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        color = contentColor,
+    )
 }
 
 private data class AppFilterChipMetrics(
@@ -110,17 +146,51 @@ private fun appFilterChipMetrics(
     label: String,
     hasIcon: Boolean,
     fontScale: Float,
+    chipDensity: AppChipDensity,
+): AppFilterChipMetrics {
+    val enlargedText = fontScale >= 1.15f
+    return when (chipDensity) {
+        AppChipDensity.Compact -> compactAppFilterChipMetrics(label = label, hasIcon = hasIcon, enlargedText = enlargedText)
+        AppChipDensity.Standard -> standardAppFilterChipMetrics(label = label, hasIcon = hasIcon, enlargedText = enlargedText)
+    }
+}
+
+private fun compactAppFilterChipMetrics(
+    label: String,
+    hasIcon: Boolean,
+    enlargedText: Boolean,
 ): AppFilterChipMetrics {
     val longLabel = label.length >= 5
-    val enlargedText = fontScale >= 1.15f
+    return AppFilterChipMetrics(
+        minHeight = if (enlargedText) AppSpacing.controlMinHeight else 34.dp,
+        horizontalPadding = compactFilterChipHorizontalPadding(longLabel, hasIcon),
+        verticalPadding = if (enlargedText) AppSpacing.miniGap else AppSpacing.tinyGap,
+        iconGap = AppSpacing.tinyGap,
+    )
+}
+
+private fun standardAppFilterChipMetrics(
+    label: String,
+    hasIcon: Boolean,
+    enlargedText: Boolean,
+): AppFilterChipMetrics {
+    val longLabel = label.length >= 5
     return AppFilterChipMetrics(
         minHeight = if (enlargedText) 44.dp else AppSpacing.controlMinHeight,
-        horizontalPadding = when {
-            longLabel && hasIcon -> AppSpacing.smallGap
-            longLabel -> AppSpacing.contentGap
-            else -> AppSpacing.compactGap
-        },
+        horizontalPadding = standardFilterChipHorizontalPadding(longLabel, hasIcon),
         verticalPadding = if (enlargedText) AppSpacing.smallGap else AppSpacing.miniGap,
         iconGap = if (longLabel) AppSpacing.tinyGap else AppSpacing.miniGap,
     )
+}
+
+private fun compactFilterChipHorizontalPadding(longLabel: Boolean, hasIcon: Boolean): Dp = when {
+    longLabel && hasIcon -> AppSpacing.miniGap
+    longLabel -> AppSpacing.smallGap
+    else -> AppSpacing.contentGap
+}
+
+private fun standardFilterChipHorizontalPadding(longLabel: Boolean, hasIcon: Boolean): Dp = when {
+    longLabel && hasIcon -> AppSpacing.smallGap
+    longLabel -> AppSpacing.contentGap
+    else -> AppSpacing.compactGap
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
+import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -106,14 +107,16 @@ private fun ExpenseCurrencyChoices(
     enabled: Boolean,
     onCurrencySelect: (CurrencyCode) -> Unit,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        items(CurrencyCode.entries, key = { it.storageKey }) { code ->
-            ExpenseCurrencyChoice(
-                code = code,
-                selected = currency == code,
-                enabled = enabled,
-                onClick = { onCurrencySelect(code) },
-            )
+    AppCompactChips {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+            items(CurrencyCode.entries, key = { it.storageKey }) { code ->
+                ExpenseCurrencyChoice(
+                    code = code,
+                    selected = currency == code,
+                    enabled = enabled,
+                    onClick = { onCurrencySelect(code) },
+                )
+            }
         }
     }
 }
@@ -126,7 +129,7 @@ private fun ExpenseCurrencyChoice(
     onClick: () -> Unit,
 ) {
     AppFilterChip(
-        label = "${code.symbol} ${code.storageKey}",
+        label = code.storageKey,
         selected = selected,
         enabled = enabled,
         onClick = onClick,

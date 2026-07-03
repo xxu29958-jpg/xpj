@@ -14,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -82,17 +83,19 @@ private fun QuickCategoryOptions(
     custom: String,
     onSelect: (String) -> Unit,
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
-    ) {
-        options.forEach { option ->
-            AppFilterChip(
-                label = option,
-                selected = selected == option && custom.isBlank(),
-                onClick = { onSelect(option) },
-            )
+    AppCompactChips {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            options.forEach { option ->
+                AppFilterChip(
+                    label = option,
+                    selected = selected == option && custom.isBlank(),
+                    onClick = { onSelect(option) },
+                )
+            }
         }
     }
 }

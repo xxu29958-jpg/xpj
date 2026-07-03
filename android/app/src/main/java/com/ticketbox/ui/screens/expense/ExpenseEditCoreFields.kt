@@ -24,6 +24,7 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
@@ -208,19 +209,21 @@ private fun ExpenseEditCategoryChoices(
     onCategoryChange: (String) -> Unit,
 ) {
     if (categories.isEmpty()) return
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.miniGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-    ) {
-        items(categories, key = { it }) { item ->
-            SelectableCategoryChip(
-                selected = category == item,
-                label = item,
-                enabled = enabled,
-                onClick = { onCategoryChange(item) },
-            )
+    AppCompactChips {
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = AppSpacing.miniGap),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            items(categories, key = { it }) { item ->
+                SelectableCategoryChip(
+                    selected = category == item,
+                    label = item,
+                    enabled = enabled,
+                    onClick = { onCategoryChange(item) },
+                )
+            }
         }
     }
 }

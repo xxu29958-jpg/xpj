@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -16,8 +15,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +34,7 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -353,13 +351,15 @@ private fun ManualCategoryChoices(
     onCategoryChange: (String) -> Unit,
 ) {
     if (categories.isEmpty()) return
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        items(categories, key = { it }) { item ->
-            SelectableFilterChip(
-                selected = selectedCategory == item,
-                label = item,
-                onClick = { onCategoryChange(item) },
-            )
+    AppCompactChips {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+            items(categories, key = { it }) { item ->
+                SelectableFilterChip(
+                    selected = selectedCategory == item,
+                    label = item,
+                    onClick = { onCategoryChange(item) },
+                )
+            }
         }
     }
 }
@@ -382,13 +382,15 @@ private fun ManualRecentMerchants(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            items(recentMerchants, key = { it.merchant }) { recent ->
-                SelectableFilterChip(
-                    selected = selectedMerchant == recent.merchant,
-                    label = recent.merchant,
-                    onClick = { onPick(recent) },
-                )
+        AppCompactChips {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+                items(recentMerchants, key = { it.merchant }) { recent ->
+                    SelectableFilterChip(
+                        selected = selectedMerchant == recent.merchant,
+                        label = recent.merchant,
+                        onClick = { onPick(recent) },
+                    )
+                }
             }
         }
     }
@@ -406,20 +408,22 @@ fun CategoryFilterRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            item {
-                SelectableFilterChip(
-                    selected = selectedCategory.isBlank(),
-                    label = stringResource(R.string.ledger_category_filter_all),
-                    onClick = { onCategoryChange("") },
-                )
-            }
-            items(categories, key = { it }) { category ->
-                SelectableFilterChip(
-                    selected = selectedCategory == category,
-                    label = category,
-                    onClick = { onCategoryChange(category) },
-                )
+        AppCompactChips {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+                item {
+                    SelectableFilterChip(
+                        selected = selectedCategory.isBlank(),
+                        label = stringResource(R.string.ledger_category_filter_all),
+                        onClick = { onCategoryChange("") },
+                    )
+                }
+                items(categories, key = { it }) { category ->
+                    SelectableFilterChip(
+                        selected = selectedCategory == category,
+                        label = category,
+                        onClick = { onCategoryChange(category) },
+                    )
+                }
             }
         }
     }
@@ -435,17 +439,6 @@ fun SelectableFilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
-        leadingIcon = if (selected) {
-            {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(FilterChipDefaults.IconSize),
-                )
-            }
-        } else {
-            null
-        },
         selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
     )
 }

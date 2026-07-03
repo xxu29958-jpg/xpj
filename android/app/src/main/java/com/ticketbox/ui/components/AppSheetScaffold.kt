@@ -40,7 +40,7 @@ data class AppAction(
 
 typealias AppSheetAction = AppAction
 
-private val PairedSheetActionInlineMinWidth = 380.dp
+private val PairedSheetActionInlineMinWidth = 320.dp
 
 @Composable
 fun AppSheetScaffold(
