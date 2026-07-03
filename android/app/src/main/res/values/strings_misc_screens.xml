@@ -7,7 +7,7 @@
     <string name="income_plan_topbar_back">返回</string>
     <string name="income_plan_fab_add">添加收入</string>
     <string name="income_plan_intro_body">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</string>
-    <string name="income_plan_section_active">在用</string>
+    <string name="income_plan_section_active">已记录</string>
     <string name="income_plan_card_archive_action">归档</string>
     <string name="income_plan_section_archived">已归档</string>
     <string name="income_plan_card_restore_action">恢复</string>
@@ -134,7 +134,9 @@
     <string name="income_plan_header_subtitle_compact">到账与固定收入</string>
     <string name="income_plan_add_action_short">添加</string>
     <string name="income_plan_total_label_compact">本月到账</string>
-    <string name="income_plan_total_meta">在用 %1$d 项</string>
+    <string name="income_plan_total_meta">已记录 %1$d 项</string>
+    <string name="income_plan_loading_title">正在更新</string>
+    <string name="income_plan_loading_body">收入记录同步中。</string>
     <string name="income_plan_empty_body_compact">添加第一笔到账收入。</string>
     <string name="income_plan_sheet_name_placeholder">工资 / 奖金 / 接单</string>
     <string name="income_plan_sheet_day_placeholder">1-31</string>

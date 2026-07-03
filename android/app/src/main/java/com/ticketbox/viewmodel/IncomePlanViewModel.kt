@@ -22,8 +22,8 @@ import java.time.YearMonth
 /**
  * v1.1 income plan screen state + actions.
  *
- * UI pattern follows the Android "生活流" guidance: list of cards →
- * FAB → bottom-sheet add form. ViewModel keeps draft + validation
+ * UI pattern follows the Android secondary-page guidance: summary →
+ * row groups → bottom-sheet add form. ViewModel keeps draft + validation
  * state so the bottom sheet stays a pure render.
  */
 data class IncomePlanUiState(

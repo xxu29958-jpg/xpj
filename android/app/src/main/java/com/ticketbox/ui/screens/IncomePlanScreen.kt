@@ -250,21 +250,33 @@ private fun LazyListScope.incomePlanSections(
     currency: CurrencyDisplay,
     viewModel: IncomePlanViewModel,
 ) {
-    if (state.activePlans.isEmpty() && !state.isLoading) {
-        item { IncomePlanEmptyState() }
-    } else {
-        item { SectionEyebrow(stringResource(R.string.income_plan_section_active)) }
-        items(state.activePlans, key = { "active-${it.publicId}" }) { plan ->
-            IncomePlanRow(
-                plan = plan,
-                currency = currency,
-                canModify = state.canModify,
-                action = IncomePlanRowAction(
-                    icon = Icons.Default.DeleteOutline,
-                    description = stringResource(R.string.income_plan_card_archive_action),
-                    onClick = { viewModel.archive(plan.publicId, plan.rowVersion) },
-                ),
+    when {
+        state.activePlans.isEmpty() && state.isLoading -> item {
+            IncomePlanEmptyState(
+                title = stringResource(R.string.income_plan_loading_title),
+                body = stringResource(R.string.income_plan_loading_body),
             )
+        }
+        state.activePlans.isEmpty() -> item {
+            IncomePlanEmptyState(
+                title = stringResource(R.string.income_plan_empty_title),
+                body = stringResource(R.string.income_plan_empty_body_compact),
+            )
+        }
+        else -> {
+            item { SectionEyebrow(stringResource(R.string.income_plan_section_active)) }
+            items(state.activePlans, key = { "active-${it.publicId}" }) { plan ->
+                IncomePlanRow(
+                    plan = plan,
+                    currency = currency,
+                    canModify = state.canModify,
+                    action = IncomePlanRowAction(
+                        icon = Icons.Default.DeleteOutline,
+                        description = stringResource(R.string.income_plan_card_archive_action),
+                        onClick = { viewModel.archive(plan.publicId, plan.rowVersion) },
+                    ),
+                )
+            }
         }
     }
 
@@ -398,16 +410,16 @@ private fun IncomePlanRowSummary(
 }
 
 @Composable
-private fun IncomePlanEmptyState() {
+private fun IncomePlanEmptyState(title: String, body: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            stringResource(R.string.income_plan_empty_title),
+            title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.size(AppSpacing.smallGap))
         Text(
-            stringResource(R.string.income_plan_empty_body_compact),
+            body,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

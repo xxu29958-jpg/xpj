@@ -466,13 +466,18 @@ that actually ships the fix.
 ### ANDROID-2026-07-02-settings-income-entry-density
 
 - Surface: Android Settings root -> Income Record entry.
-- Status: registered.
+- Status: fixed.
 - Gap: the true-device Settings root pass shows the Income Record subtitle wrapping
   into a taller row, which breaks the otherwise scan-first settings rhythm.
 - Required handling: tighten the root subtitle during the Income Record secondary
   pass, inspect the drill page for card-heavy layout, and keep income data behind
   backend income-plan/record contracts. Do not change income semantics in Android
   just to shorten copy.
+- Resolution: Settings subtitle is now compact; Income Record uses “已记录” row
+  semantics and a real loading/empty block instead of exposing an empty “在用”
+  section. The monthly amount remains the backend `total_active_amount_cents`.
+  True-device evidence: `234-settings-income-entry-after.png`,
+  `235-income-plan-after.png`.
 
 ### ANDROID-2026-07-01-pending-real-item-card-density
 
