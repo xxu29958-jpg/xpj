@@ -8,10 +8,8 @@ import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.GroupAdd
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,6 +27,7 @@ import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppAlpha
@@ -55,8 +54,8 @@ private const val NAME_MAX = 120
  * is the freshly minted session token returned by the server.
  *
  * Dual-host: the settings tree mounts it on a bound device with
- * [serverUrlEntry] = null (historic behaviour); the cold-start「我有家庭邀请」
- * entry mounts it unbound with a non-null [serverUrlEntry] — the screen then
+ * [serverUrlEntry] = null (historic behaviour); the cold-start invitation
+ * entry mounts it unbound with a non-null [serverUrlEntry] so the screen then
  * collects (or silently defaults) the server URL and routes preview through
  * it, while the current-binding line is hidden because there is no binding.
  *
@@ -163,16 +162,10 @@ private fun CurrentBindingSection(
         title = stringResource(R.string.join_family_ledger_section_current),
         icon = Icons.Filled.Devices,
     ) {
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             JoinFamilyInfoRow(label = stringResource(R.string.join_family_ledger_current_ledger), value = ledgerName)
             JoinFamilyInfoRow(label = stringResource(R.string.join_family_ledger_current_account), value = accountName)
             JoinFamilyInfoRow(label = stringResource(R.string.join_family_ledger_current_role), value = role)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-            Text(
-                text = stringResource(R.string.join_family_ledger_current_note),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
     }
 }
@@ -188,7 +181,7 @@ private fun JoinInvitationForm(
         title = stringResource(R.string.join_family_ledger_section_invite),
         icon = Icons.Filled.GroupAdd,
     ) {
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             JoinInvitationAccessFields(
                 state = state,
                 serverUrlEntry = serverUrlEntry,
@@ -202,16 +195,18 @@ private fun JoinInvitationForm(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
+            } else {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+                Text(
+                    text = stringResource(R.string.join_family_ledger_identity_title),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                JoinIdentityFields(state = state, fields = fields, actions = actions)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-            Text(
-                text = stringResource(R.string.join_family_ledger_identity_title),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            JoinIdentityFields(state = state, fields = fields, actions = actions)
             JoinInvitationActions(
                 state = state,
-                previewEnabled = serverUrlEntry == null || fields.serverUrl.isNotBlank(),
+                previewEnabled = fields.inviteToken.isNotBlank() &&
+                    (serverUrlEntry == null || fields.serverUrl.isNotBlank()),
                 onPreview = actions.onPreview,
                 onAccept = actions.onAccept,
             )
@@ -219,8 +214,7 @@ private fun JoinInvitationForm(
     }
 }
 
-/** Preview/accept 按钮对 + 预览面板 + 「先预览」提示——从主函数抽出以守
- *  detekt CyclomaticComplexMethod(双宿主分支把主函数推过 14)。 */
+/** Keep preview-host branching out of the screen body for detekt complexity. */
 @Composable
 private fun JoinInvitationAccessFields(
     state: JoinFamilyLedgerUiState,
@@ -245,8 +239,8 @@ private fun JoinInvitationAccessFields(
             value = fields.inviteToken,
             enabled = !state.previewing && !state.submitting,
             singleLine = false,
-            minLines = 2,
-            maxLines = 4,
+            minLines = 1,
+            maxLines = 2,
         ),
         onValueChange = actions.onInviteTokenChange,
     )
@@ -283,37 +277,25 @@ private fun JoinInvitationActions(
     onPreview: () -> Unit,
     onAccept: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        OutlinedButton(
-            onClick = onPreview,
-            enabled = !state.previewing && !state.submitting && previewEnabled,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                if (state.previewing) {
-                    stringResource(R.string.join_family_ledger_preview_loading)
-                } else {
-                    stringResource(R.string.join_family_ledger_preview_button)
-                },
-            )
-        }
-        Button(
-            onClick = onAccept,
-            enabled = !state.submitting && !state.previewing && state.preview != null,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                if (state.submitting) {
-                    stringResource(R.string.join_family_ledger_accept_loading)
-                } else {
-                    stringResource(R.string.join_family_ledger_accept_button)
-                },
-            )
-        }
+    val previewing = state.preview == null
+    val enabled = if (previewing) {
+        !state.previewing && !state.submitting && previewEnabled
+    } else {
+        !state.submitting && !state.previewing
     }
+    val label = when {
+        state.previewing -> stringResource(R.string.join_family_ledger_preview_loading)
+        state.submitting -> stringResource(R.string.join_family_ledger_accept_loading)
+        previewing -> stringResource(R.string.join_family_ledger_preview_button)
+        else -> stringResource(R.string.join_family_ledger_accept_button)
+    }
+    AppPrimaryButton(
+        text = label,
+        icon = Icons.Filled.GroupAdd,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
+        onClick = if (previewing) onPreview else onAccept,
+    )
 }
 
 @Composable

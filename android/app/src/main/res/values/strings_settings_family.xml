@@ -70,22 +70,22 @@
 
     <!-- JoinFamilyLedgerScreen：设置→加入家庭账本 屏 -->
     <string name="join_family_ledger_page_title">加入家庭账本</string>
-    <string name="join_family_ledger_page_subtitle">先核对邀请目标，再加入对应账本。</string>
+    <string name="join_family_ledger_page_subtitle">验证邀请并切换账本。</string>
     <string name="join_family_ledger_section_current">当前设备</string>
     <string name="join_family_ledger_section_invite">邀请验证</string>
     <string name="join_family_ledger_current_ledger">账本</string>
     <string name="join_family_ledger_current_account">账号</string>
     <string name="join_family_ledger_current_role">角色</string>
-    <string name="join_family_ledger_current_note">加入成功后，此设备会切换到新账本。</string>
-    <string name="join_family_ledger_identity_title">加入身份</string>
+    <string name="join_family_ledger_current_note">接受后切换到账本。</string>
+    <string name="join_family_ledger_identity_title">显示身份</string>
     <string name="join_family_ledger_field_invite_token">邀请码</string>
-    <string name="join_family_ledger_field_account_name">你的显示名</string>
+    <string name="join_family_ledger_field_account_name">显示名</string>
     <string name="join_family_ledger_field_device_name">设备名</string>
     <string name="join_family_ledger_preview_loading">预览中…</string>
     <string name="join_family_ledger_preview_button">预览邀请</string>
     <string name="join_family_ledger_accept_loading">处理中…</string>
-    <string name="join_family_ledger_accept_button">接受邀请</string>
-    <string name="join_family_ledger_preview_required">预览通过后才可以加入；加入成功后，此设备会切换到邀请账本。</string>
+    <string name="join_family_ledger_accept_button">加入账本</string>
+    <string name="join_family_ledger_preview_required">预览后确认目标账本和角色。</string>
     <string name="join_family_ledger_preview_join_target">目标账本：%1$s</string>
     <string name="join_family_ledger_preview_ledger_unnamed">未命名账本</string>
     <string name="join_family_ledger_preview_role">邀请角色：%1$s</string>
