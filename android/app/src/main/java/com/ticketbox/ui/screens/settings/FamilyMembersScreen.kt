@@ -53,7 +53,6 @@ import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
-import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
@@ -341,7 +340,7 @@ private fun CreatedInviteResult(
     Text(
         text = stringResource(
             R.string.family_members_invite_created_title,
-            ledgerRoleLabel(invite.role),
+            settingsLedgerRoleLabel(invite.role),
         ),
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurface,
@@ -578,8 +577,8 @@ private val FamilyMember.canBeManaged: Boolean
 
 @Composable
 private fun roleChangeText(item: LedgerAuditEntry): String? {
-    val before = item.previousRole?.let { ledgerRoleLabel(it) }
-    val after = item.newRole?.let { ledgerRoleLabel(it) }
+    val before = item.previousRole?.let { settingsLedgerRoleLabel(it) }
+    val after = item.newRole?.let { settingsLedgerRoleLabel(it) }
     return when {
         before != null && after != null ->
             stringResource(R.string.family_members_audit_role_change, before, after)
@@ -600,7 +599,7 @@ private fun FamilyMemberActionDialog(
             stringResource(
                 R.string.family_members_dialog_change_role_text,
                 action.member.displayName,
-                ledgerRoleLabel(action.targetRole),
+                settingsLedgerRoleLabel(action.targetRole),
             ),
             stringResource(R.string.family_members_dialog_change_role_confirm),
         )

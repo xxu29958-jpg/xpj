@@ -6,10 +6,11 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
+import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.domain.model.ledgerRoleLabel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -151,13 +152,7 @@ class FamilyMembersViewModel(
                     memberId = action.member.memberId,
                     role = action.targetRole,
                     ledgerId = activeLedgerId,
-                ).map {
-                    UiText.res(
-                        R.string.family_members_message_role_changed,
-                        action.member.displayName,
-                        ledgerRoleLabel(action.targetRole),
-                    )
-                }
+                ).map { roleChangedMessage(action.member.displayName, action.targetRole) }
 
                 is FamilyMemberAction.Disable -> repository.disableFamilyMember(
                     memberId = action.member.memberId,
@@ -194,3 +189,14 @@ class FamilyMembersViewModel(
         }
     }
 }
+
+private fun roleChangedMessage(memberName: String, targetRole: String): UiText =
+    UiText.res(
+        when (targetRole.trim()) {
+            LEDGER_ROLE_OWNER -> R.string.family_members_message_role_changed_owner
+            LEDGER_ROLE_MEMBER -> R.string.family_members_message_role_changed_member
+            LEDGER_ROLE_VIEWER -> R.string.family_members_message_role_changed_viewer
+            else -> R.string.family_members_message_role_changed_unknown
+        },
+        memberName,
+    )

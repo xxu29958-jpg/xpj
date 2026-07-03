@@ -47,6 +47,10 @@
     <string name="family_members_message_members_load_failed">成员列表暂时打不开。</string>
     <string name="family_members_message_audit_load_failed">成员记录暂时打不开。</string>
     <string name="family_members_message_role_changed">已将%1$s设为%2$s。</string>
+    <string name="family_members_message_role_changed_owner">已将%1$s设为拥有者。</string>
+    <string name="family_members_message_role_changed_member">已将%1$s设为成员。</string>
+    <string name="family_members_message_role_changed_viewer">已将%1$s设为只读。</string>
+    <string name="family_members_message_role_changed_unknown">已更新%1$s的角色。</string>
     <string name="family_members_message_disabled">已停用%1$s。</string>
     <string name="family_members_message_owner_transferred">已将拥有者转让给%1$s。</string>
     <string name="family_members_message_action_failed">成员管理操作没有完成。</string>
@@ -105,15 +109,22 @@
 
     <!-- LedgerSwitcherScreen：设置→账本 屏 -->
     <string name="ledger_switcher_page_title">账本</string>
-    <string name="ledger_switcher_page_subtitle">切换个人账本和共享账本。</string>
+    <string name="ledger_switcher_page_subtitle">切换、新建和更新账本。</string>
+    <string name="ledger_switcher_section_overview">账本概况</string>
+    <string name="ledger_switcher_overview_total_label">已加入</string>
+    <string name="ledger_switcher_overview_current_label">当前</string>
+    <string name="ledger_switcher_overview_switchable_label">可切换</string>
+    <string name="ledger_switcher_overview_count_value">%1$d 个</string>
+    <string name="ledger_switcher_overview_current_unknown">未确认</string>
     <string name="ledger_switcher_section_joined">已加入的账本</string>
-    <string name="ledger_switcher_ledgers_empty">还没有可显示的账本。请稍后下拉刷新。</string>
+    <string name="ledger_switcher_empty_title">暂无账本</string>
+    <string name="ledger_switcher_ledgers_empty">更新后会显示可切换的账本。</string>
     <string name="ledger_switcher_row_current_badge">当前</string>
     <string name="ledger_switcher_row_switch_button">切换</string>
     <string name="ledger_switcher_refresh_loading">刷新中…</string>
     <string name="ledger_switcher_refresh_button">刷新列表</string>
     <string name="ledger_switcher_section_create">新建账本</string>
-    <string name="ledger_switcher_create_hint">账本名称最多 %1$d 个字。新建后不会自动切换，可以在上方点击「切换」。</string>
+    <string name="ledger_switcher_create_hint">最多 %1$d 个字；新建后可在列表中切换。</string>
     <string name="ledger_switcher_field_ledger_name">账本名称</string>
     <string name="ledger_switcher_create_button">新建账本</string>
     <!-- LedgerSwitcherViewModel：状态/反馈消息（ADR-0044 wave 2） -->
