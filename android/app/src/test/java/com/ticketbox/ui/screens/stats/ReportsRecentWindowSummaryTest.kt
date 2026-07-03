@@ -73,6 +73,27 @@ class ReportsRecentWindowSummaryTest {
     }
 
     @Test
+    fun threeActiveDaysStillUseSparseRowsInsteadOfAWeakBarChart() {
+        val summary = summarizeReportsRecentWindow(
+            listOf(
+                spend("6/24", 0L),
+                spend("6/25", 0L),
+                spend("6/26", 0L),
+                spend("6/27", 0L),
+                spend("6/28", 1200L),
+                spend("6/29", 300L),
+                spend("6/30", 100L),
+            ),
+        )
+
+        requireNotNull(summary)
+        assertEquals(3, summary.activeDayCount)
+        assertEquals(true, summary.shouldUseSparseRows)
+        assertEquals(true, summary.shouldShowSparseRows(avoidRepeatedSparseRows = false))
+        assertEquals(false, summary.shouldShowSparseRows(avoidRepeatedSparseRows = true))
+    }
+
+    @Test
     fun denseWindowKeepsFactRowEvenWhenMonthSparseRowsAreSuppressed() {
         val summary = summarizeReportsRecentWindow(
             listOf(

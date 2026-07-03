@@ -27,7 +27,7 @@ import kotlin.math.abs
 private object ReportsRecentWindowLayout {
     const val DominantPeakPercent = 50
     const val RecentWindowDays = 7
-    const val SparseActiveDayLimit = 2
+    const val SparseActiveDayLimit = 3
 }
 
 @Composable
