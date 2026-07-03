@@ -18,6 +18,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportCategoryComparison
+import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -166,10 +167,24 @@ private fun variableLeadLine(overview: ReportsOverview?): StatsLeadLine? {
         )
     }
     val topMerchant = overview.merchantRanking.firstOrNull() ?: return null
+    val currencyDisplay = LocalCurrencyDisplay.current
+    val amountText = formatDisplayAmount(topMerchant.amountCents, currencyDisplay)
+    val caption = when (overview.rankingMetric) {
+        ReportRankingMetric.Amount -> stringResource(
+            R.string.stats_lead_top_merchant_amount_caption,
+            amountText,
+            topMerchant.count,
+        )
+        ReportRankingMetric.Count -> stringResource(
+            R.string.stats_lead_top_merchant_count_caption,
+            topMerchant.count,
+            amountText,
+        )
+    }
     return StatsLeadLine(
-        label = stringResource(R.string.stats_lead_variable_label),
+        label = stringResource(R.string.stats_lead_top_merchant_label),
         value = topMerchant.merchant,
-        caption = stringResource(R.string.stats_lead_top_merchant_caption, topMerchant.count),
+        caption = caption,
     )
 }
 

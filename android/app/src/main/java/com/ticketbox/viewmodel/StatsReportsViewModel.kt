@@ -44,7 +44,7 @@ class StatsReportsViewModel(
     // 轴3 粒度切换:本 VM 是粒度的唯一持有方,UI 的 selected 用服务端回显
     // (overview.granularity)而非另存 state 字段——加载中 segmented 短暂显示旧值可接受。
     private var granularity: ReportGranularity = ReportGranularity.Day
-    private var rankingMetric: ReportRankingMetric = ReportRankingMetric.Count
+    private var rankingMetric: ReportRankingMetric = ReportRankingMetric.Amount
 
     fun refresh(month: String, selectedTag: String) {
         val selectedMonth = month.trim().ifBlank { YearMonth.now().toString() }

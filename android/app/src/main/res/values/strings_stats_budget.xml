@@ -52,7 +52,9 @@
     <string name="stats_lead_month_delta_percent_hint">约 %1$d%%</string>
     <string name="stats_lead_variable_label">变化最大</string>
     <string name="stats_lead_inline_value">%1$s · %2$s</string>
-    <string name="stats_lead_top_merchant_caption">%1$d 笔，按金额排行第一</string>
+    <string name="stats_lead_top_merchant_label">重点商家</string>
+    <string name="stats_lead_top_merchant_amount_caption">%1$s · %2$d 笔</string>
+    <string name="stats_lead_top_merchant_count_caption">%1$d 笔 · %2$s</string>
     <string name="stats_lead_delta_more">增加 %1$s</string>
     <string name="stats_lead_delta_less">减少 %1$s</string>
     <string name="stats_lead_delta_flat">持平</string>
