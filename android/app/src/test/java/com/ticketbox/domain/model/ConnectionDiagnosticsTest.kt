@@ -10,8 +10,8 @@ class ConnectionDiagnosticsTest {
     fun summarizesHealthyDiagnostics() {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
-                DiagnosticCheck("身份验证", DiagnosticStatus.Pass, "访问凭证有效", 12),
-                DiagnosticCheck("服务器状态", DiagnosticStatus.Pass, "小票夹服务正常", 20),
+                DiagnosticCheck(DiagnosticCheckKind.Auth, DiagnosticStatus.Pass, elapsedMs = 12),
+                DiagnosticCheck(DiagnosticCheckKind.ServerSettings, DiagnosticStatus.Pass, elapsedMs = 20),
             ),
         )
 
@@ -25,7 +25,7 @@ class ConnectionDiagnosticsTest {
     fun warningsDoNotMakeDiagnosticsUnhealthy() {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
-                DiagnosticCheck("受保护图片", DiagnosticStatus.Warn, "还没有待确认截图", 0),
+                DiagnosticCheck(DiagnosticCheckKind.ProtectedImage, DiagnosticStatus.Warn, elapsedMs = 0),
             ),
         )
 
@@ -37,7 +37,12 @@ class ConnectionDiagnosticsTest {
     fun failuresMakeDiagnosticsUnhealthy() {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
-                DiagnosticCheck("身份验证", DiagnosticStatus.Fail, "绑定已失效，请重新绑定账本。", 18),
+                DiagnosticCheck(
+                    kind = DiagnosticCheckKind.Auth,
+                    status = DiagnosticStatus.Fail,
+                    detail = "绑定已失效，请重新绑定账本。",
+                    elapsedMs = 18,
+                ),
             ),
         )
 

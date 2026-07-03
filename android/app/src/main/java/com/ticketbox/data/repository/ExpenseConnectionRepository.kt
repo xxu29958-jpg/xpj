@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticCheck
+import com.ticketbox.domain.model.DiagnosticCheckKind
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ServerSettings
@@ -26,8 +27,7 @@ internal class ExpenseConnectionRepository(
         val checks = mutableListOf<DiagnosticCheck>()
 
         suspend fun record(
-            name: String,
-            successDetail: String,
+            kind: DiagnosticCheckKind,
             block: suspend () -> Unit,
         ) {
             var failure: Throwable? = null
@@ -41,14 +41,13 @@ internal class ExpenseConnectionRepository(
             val error = failure
             checks += if (error == null) {
                 DiagnosticCheck(
-                    name = name,
+                    kind = kind,
                     status = DiagnosticStatus.Pass,
-                    detail = successDetail,
                     elapsedMs = elapsedMs,
                 )
             } else {
                 DiagnosticCheck(
-                    name = name,
+                    kind = kind,
                     status = DiagnosticStatus.Fail,
                     detail = core.diagnosticErrorMessage(error),
                     elapsedMs = elapsedMs,
@@ -58,39 +57,38 @@ internal class ExpenseConnectionRepository(
 
         var pending = emptyList<Expense>()
 
-        record("身份验证", "访问凭证有效") {
+        record(DiagnosticCheckKind.Auth) {
             service.checkAuth()
         }
-        record("账本状态", "小票夹服务正常") {
+        record(DiagnosticCheckKind.ServerSettings) {
             service.serverSettings()
         }
-        record("待确认账单", "可以读取待确认账单") {
+        record(DiagnosticCheckKind.PendingExpenses) {
             pending = service.pendingExpenses().map { it.toDomain() }
         }
-        record("已确认账单", "可以更新账本") {
+        record(DiagnosticCheckKind.ConfirmedExpenses) {
             service.confirmedExpenses(page = 1, pageSize = 1, timezone = core.currentTimezoneId())
         }
-        record("月度统计", "可以读取月度统计") {
+        record(DiagnosticCheckKind.MonthlyStats) {
             service.monthlyStats(month = null, timezone = core.currentTimezoneId())
         }
-        record("分类与月份", "可以读取分类和月份") {
+        record(DiagnosticCheckKind.CategoriesAndMonths) {
             service.categories()
             service.months(timezone = core.currentTimezoneId())
         }
-        record("疑似重复", "可以读取疑似重复账单") {
+        record(DiagnosticCheckKind.Duplicates) {
             service.duplicates()
         }
 
         val imageCandidate = pending.firstOrNull { it.imagePath != null || it.thumbnailPath != null }
         if (imageCandidate == null) {
             checks += DiagnosticCheck(
-                name = "受保护图片",
+                kind = DiagnosticCheckKind.ProtectedImage,
                 status = DiagnosticStatus.Warn,
-                detail = "还没有待确认截图，跳过图片检查。",
                 elapsedMs = 0,
             )
         } else {
-            record("受保护图片", "截图预览可以打开") {
+            record(DiagnosticCheckKind.ProtectedImage) {
                 core.readProtectedImage(service.expenseThumbnail(imageCandidate.id))
             }
         }

@@ -344,13 +344,16 @@ internal fun AdvancedStatusCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
-                                Text(check.name, color = color)
+                                Text(diagnosticCheckName(check), color = color)
                                 Text(
                                     text = stringResource(R.string.settings_account_diagnostics_elapsed, check.elapsedMs),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            Text(check.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = diagnosticCheckDetail(check),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }

@@ -661,6 +661,9 @@ that actually ships the fix.
 - Progress 2026-07-02: the Connection page now only treats server settings as
   confirmed when `serverSettingsFresh=true`; stale settings remain a marked
   cache fallback instead of lighting the confirmed state after refresh failure.
+- Progress 2026-07-03: connection diagnostics now pass typed check kinds through
+  the domain model. Success and skipped labels are UI resources; the repository
+  only keeps the backend call result and mapped failure detail.
 - Desired follow-up: reproduce with the official package on a physical device,
   capture online, VPN-on, VPN-off, and offline states, and ensure user-facing
   copy tells the user what changed without exposing repository or transport

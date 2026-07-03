@@ -463,10 +463,21 @@ enum class DiagnosticStatus {
     Fail,
 }
 
+enum class DiagnosticCheckKind {
+    Auth,
+    ServerSettings,
+    PendingExpenses,
+    ConfirmedExpenses,
+    MonthlyStats,
+    CategoriesAndMonths,
+    Duplicates,
+    ProtectedImage,
+}
+
 data class DiagnosticCheck(
-    val name: String,
+    val kind: DiagnosticCheckKind,
     val status: DiagnosticStatus,
-    val detail: String,
+    val detail: String? = null,
     val elapsedMs: Long,
 )
 
