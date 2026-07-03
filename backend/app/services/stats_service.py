@@ -404,14 +404,22 @@ def lifestyle_stats(
 
     alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
     merchant_counts: dict[str, int] = defaultdict(int)
+    merchant_amounts: dict[str, int] = defaultdict(int)
     for item in month_expenses:
         if item.merchant and item.merchant.strip():
-            merchant_counts[canonical_merchant_display(item.merchant, alias_map)] += 1
+            merchant = canonical_merchant_display(item.merchant, alias_map)
+            merchant_counts[merchant] += 1
+            merchant_amounts[merchant] += int(item.amount_cents or 0)
 
     frequent_merchants = [
-        {"merchant": merchant, "count": count}
+        {
+            "merchant": merchant,
+            "count": count,
+            "amount_cents": merchant_amounts[merchant],
+        }
         for merchant, count in sorted(
-            merchant_counts.items(), key=lambda pair: (-pair[1], pair[0])
+            merchant_counts.items(),
+            key=lambda pair: (-merchant_amounts[pair[0]], -pair[1], pair[0]),
         )[:5]
     ]
 

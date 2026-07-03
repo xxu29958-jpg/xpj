@@ -71,6 +71,15 @@ def test_lifestyle_stats_returns_value_and_regret_rankings(
     _post_manual_expense(client, identity.gray_app_headers, GRAY_EXPENSE)
 
     payload = _get_lifestyle_stats(client, identity.app_headers)
+    assert [item["merchant"] for item in payload["frequent_merchants"][:3]] == [
+        OWNER_EXPENSES[0]["merchant"],
+        OWNER_EXPENSES[2]["merchant"],
+        OWNER_EXPENSES[3]["merchant"],
+    ]
+    assert (
+        payload["frequent_merchants"][0]["amount_cents"]
+        == OWNER_EXPENSES[0]["amount_cents"]
+    )
     assert [item["merchant"] for item in payload["best_value_expenses"]] == [
         "真香年费",
         "真香小吃",

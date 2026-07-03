@@ -368,6 +368,7 @@ fun LifestyleStatsDto.toDomain(): LifestyleStats = LifestyleStats(
 fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(
     merchant = merchant,
     count = count,
+    amountCents = amountCents,
 )
 
 fun RecurringCandidateItemDto.toDomain(): RecurringCandidate = RecurringCandidate(

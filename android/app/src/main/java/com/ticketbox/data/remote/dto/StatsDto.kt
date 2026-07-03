@@ -60,4 +60,6 @@ data class LifestyleStatsDto(
 data class FrequentMerchantDto(
     val merchant: String,
     val count: Int,
+    @param:Json(name = "amount_cents")
+    val amountCents: Long = 0L,
 )

@@ -8363,6 +8363,29 @@
         "title": "LedgerSwitchResponse",
         "type": "object"
       },
+      "LifestyleFrequentMerchantResponse": {
+        "properties": {
+          "amount_cents": {
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "merchant": {
+            "title": "Merchant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant",
+          "count",
+          "amount_cents"
+        ],
+        "title": "LifestyleFrequentMerchantResponse",
+        "type": "object"
+      },
       "LifestyleStatsResponse": {
         "properties": {
           "ai_subscription_amount_cents": {
@@ -8382,17 +8405,7 @@
           },
           "frequent_merchants": {
             "items": {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "string"
-                  }
-                ]
-              },
-              "type": "object"
+              "$ref": "#/components/schemas/LifestyleFrequentMerchantResponse"
             },
             "title": "Frequent Merchants",
             "type": "array"

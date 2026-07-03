@@ -42,6 +42,7 @@ class StatsDtoContractTest {
         )
 
         assertEquals("真香年费", dto.bestValueExpenses.single().merchant)
+        assertEquals(29800L, dto.frequentMerchants.single().amountCents)
         assertEquals(5, dto.bestValueExpenses.single().valueScore)
         assertEquals("后悔桌搭", dto.mostRegrettedExpenses.single().merchant)
         assertEquals(5, dto.mostRegrettedExpenses.single().regretScore)
@@ -55,7 +56,9 @@ private val lifestyleStatsWithRankingsJson = """
   "digital_amount_cents": 8800,
   "max_expense": null,
   "recent_7_days_amount_cents": 38600,
-  "frequent_merchants": [],
+  "frequent_merchants": [
+    {"merchant": "真香年费", "count": 1, "amount_cents": 29800}
+  ],
   "best_value_expenses": [
     {
       "id": 42,

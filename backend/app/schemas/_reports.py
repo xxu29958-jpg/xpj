@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.schemas._expense import ExpenseResponse
 
 __all__ = [
+    "LifestyleFrequentMerchantResponse",
     "LifestyleStatsResponse",
     "ReportCategoryComparisonResponse",
     "ReportMerchantRankingResponse",
@@ -68,12 +69,18 @@ class ReportsOverviewResponse(BaseModel):
     category_comparison: list[ReportCategoryComparisonResponse]
 
 
+class LifestyleFrequentMerchantResponse(BaseModel):
+    merchant: str
+    count: int
+    amount_cents: int
+
+
 class LifestyleStatsResponse(BaseModel):
     month: str
     ai_subscription_amount_cents: int
     digital_amount_cents: int
     max_expense: ExpenseResponse | None
     recent_7_days_amount_cents: int
-    frequent_merchants: list[dict[str, int | str]]
+    frequent_merchants: list[LifestyleFrequentMerchantResponse]
     best_value_expenses: list[ExpenseResponse] = Field(default_factory=list)
     most_regretted_expenses: list[ExpenseResponse] = Field(default_factory=list)

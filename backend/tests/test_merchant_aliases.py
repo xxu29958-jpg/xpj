@@ -306,7 +306,11 @@ def test_lifestyle_stats_collapses_frequent_merchants_with_alias(client: TestCli
         headers=identity.app_headers,
     )
     assert response.status_code == 200, response.text
-    assert {"merchant": "Starbucks", "count": 2} in response.json()["frequent_merchants"]
+    assert {
+        "merchant": "Starbucks",
+        "count": 2,
+        "amount_cents": 3000,
+    } in response.json()["frequent_merchants"]
     assert all(item["merchant"] != "SBUX" for item in response.json()["frequent_merchants"])
 
 

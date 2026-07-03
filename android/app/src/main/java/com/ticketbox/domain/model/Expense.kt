@@ -257,6 +257,7 @@ data class MonthlyStats(
 data class FrequentMerchant(
     val merchant: String,
     val count: Int,
+    val amountCents: Long = 0L,
 )
 
 /**

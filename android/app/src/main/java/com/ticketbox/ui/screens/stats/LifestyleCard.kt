@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
@@ -73,10 +72,15 @@ private fun LifestyleHeader(
     currencyDisplay: CurrencyDisplay,
 ) {
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
+    val maxExpense = lifestyle.maxExpense
     val frequentMerchant = frequentMerchantDisplayRows(lifestyle.frequentMerchants).firstOrNull()
     val merchantCount = lifestyle.frequentMerchants.size
-    val maxExpense = lifestyle.maxExpense
     val caption = when {
+        maxExpense != null -> stringResource(
+            R.string.stats_lifestyle_header_largest,
+            formatDisplayAmount(maxExpense.amountCents, currencyDisplay),
+            maxExpense.merchant?.takeIf { it.isNotBlank() } ?: merchantFallback,
+        )
         frequentMerchant != null && frequentMerchant.count <= 1 && merchantCount > 1 -> stringResource(
             R.string.stats_lifestyle_header_merchant_spread,
             merchantCount,
@@ -85,11 +89,6 @@ private fun LifestyleHeader(
             R.string.stats_lifestyle_header_frequent,
             frequentMerchant.merchant.ifBlank { merchantFallback },
             frequentMerchant.count,
-        )
-        maxExpense != null -> stringResource(
-            R.string.stats_lifestyle_header_largest,
-            formatDisplayAmount(maxExpense.amountCents, currencyDisplay),
-            maxExpense.merchant?.takeIf { it.isNotBlank() } ?: merchantFallback,
         )
         else -> stringResource(R.string.stats_lifestyle_empty)
     }
@@ -191,12 +190,20 @@ private fun LifestyleMetricRow(
 private fun FrequentMerchantsSection(merchants: List<FrequentMerchant>) {
     val visuals = LocalThemeVisuals.current
     val visibleMerchants = frequentMerchantDisplayRows(merchants)
-    val maxCount = visibleMerchants.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
-    val minCount = visibleMerchants.minOfOrNull { it.count } ?: maxCount
-    val showBars = maxCount > minCount
+    val useAmount = visibleMerchants.any { it.amountCents > 0L }
+    val values = visibleMerchants.map {
+        if (useAmount) {
+            it.amountCents.coerceAtLeast(0L)
+        } else {
+            it.count.coerceAtLeast(0).toLong()
+        }
+    }
+    val maxValue = values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
+    val minValue = values.minOrNull() ?: maxValue
+    val showBars = maxValue > minValue
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(
-            text = stringResource(R.string.stats_frequent_merchants_title),
+            text = stringResource(R.string.stats_lead_top_merchant_label),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -207,9 +214,9 @@ private fun FrequentMerchantsSection(merchants: List<FrequentMerchant>) {
             FrequentMerchantRow(
                 merchant = merchant,
                 index = index,
-                maxCount = maxCount,
+                maxValue = maxValue,
                 showBar = showBars,
-                color = visuals.primary,
+                useAmount = useAmount,
             )
         }
     }
@@ -219,13 +226,24 @@ private fun FrequentMerchantsSection(merchants: List<FrequentMerchant>) {
 private fun FrequentMerchantRow(
     merchant: FrequentMerchant,
     index: Int,
-    maxCount: Int,
+    maxValue: Long,
     showBar: Boolean,
-    color: Color,
+    useAmount: Boolean,
 ) {
-    val track = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.faint)
-    val progress = (merchant.count.toFloat() / maxCount.toFloat()).coerceIn(0f, 1f)
+    val currencyDisplay = LocalCurrencyDisplay.current
+    val value = if (useAmount) {
+        merchant.amountCents.coerceAtLeast(0L)
+    } else {
+        merchant.count.coerceAtLeast(0).toLong()
+    }
+    val progress = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
+    val countText = stringResource(R.string.stats_frequent_merchants_count, merchant.count)
+    val valueText = if (useAmount) {
+        formatDisplayAmount(merchant.amountCents, currencyDisplay)
+    } else {
+        countText
+    }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -238,35 +256,35 @@ private fun FrequentMerchantRow(
                 style = MaterialTheme.typography.labelMedium.tabularNum(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = merchant.merchant.ifBlank { merchantFallback },
+            Column(
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = merchant.merchant.ifBlank { merchantFallback },
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (useAmount) {
+                    Text(
+                        text = countText,
+                        style = MaterialTheme.typography.labelMedium.tabularNum(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             Text(
-                text = stringResource(R.string.stats_frequent_merchants_count, merchant.count),
-                style = MaterialTheme.typography.labelMedium.tabularNum(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = valueText,
+                style = MaterialTheme.typography.labelLarge.tabularNum(),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
             )
         }
         if (showBar) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(AppSpacing.miniGap)
-                    .clip(RoundedCornerShape(AppRadius.pill))
-                    .background(track),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .height(AppSpacing.miniGap)
-                        .clip(RoundedCornerShape(AppRadius.pill))
-                        .background(color.copy(alpha = AppAlpha.opaque)),
-                )
-            }
+            StatsMerchantRankBar(progress = progress)
         }
     }
 }
@@ -387,15 +405,27 @@ private fun hasLifestyleSignals(lifestyle: LifestyleStats): Boolean =
 internal fun frequentMerchantDisplayRows(
     merchants: List<FrequentMerchant>,
     limit: Int = FrequentMerchantVisibleLimit,
-): List<FrequentMerchant> =
-    merchants
+): List<FrequentMerchant> {
+    val useAmount = merchants.any { it.amountCents > 0L }
+    return merchants
         .sortedWith(
-            compareByDescending<FrequentMerchant> {
-                it.count.coerceAtLeast(0)
-            }.thenBy {
-                it.merchant
+            if (useAmount) {
+                compareByDescending<FrequentMerchant> {
+                    it.amountCents.coerceAtLeast(0L)
+                }.thenByDescending {
+                    it.count.coerceAtLeast(0)
+                }.thenBy {
+                    it.merchant
+                }
+            } else {
+                compareByDescending<FrequentMerchant> {
+                    it.count.coerceAtLeast(0)
+                }.thenBy {
+                    it.merchant
+                }
             },
         )
         .take(limit)
+}
 
 private const val FrequentMerchantVisibleLimit = 5

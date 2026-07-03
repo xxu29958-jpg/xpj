@@ -142,17 +142,23 @@ class ReportsInsightCardsTest {
             merchantRankingVisibleRows(rankingRows, ReportRankingMetric.Amount).map { it.merchant },
         )
         val merchantRows = listOf(
-            FrequentMerchant(merchant = "C", count = 1),
-            FrequentMerchant(merchant = "A", count = 4),
-            FrequentMerchant(merchant = "B", count = 2),
-            FrequentMerchant(merchant = "D", count = 3),
-            FrequentMerchant(merchant = "E", count = 5),
-            FrequentMerchant(merchant = "F", count = 6),
+            FrequentMerchant(merchant = "C", count = 1, amountCents = 900L),
+            FrequentMerchant(merchant = "A", count = 4, amountCents = 100L),
+            FrequentMerchant(merchant = "B", count = 2, amountCents = 1_200L),
+            FrequentMerchant(merchant = "D", count = 3, amountCents = 500L),
+            FrequentMerchant(merchant = "E", count = 5, amountCents = 700L),
+            FrequentMerchant(merchant = "F", count = 6, amountCents = 600L),
         )
 
         assertEquals(
-            listOf("F", "E", "A", "D", "B"),
+            listOf("B", "C", "E", "F", "D"),
             frequentMerchantDisplayRows(merchantRows).map { it.merchant },
+        )
+        assertEquals(
+            listOf("F", "E", "A", "D", "B"),
+            frequentMerchantDisplayRows(
+                merchantRows.map { it.copy(amountCents = 0L) },
+            ).map { it.merchant },
         )
     }
 
