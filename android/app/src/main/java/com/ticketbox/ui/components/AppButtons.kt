@@ -200,7 +200,10 @@ fun AppOutlinedButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     danger: Boolean = false,
-    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    contentPadding: PaddingValues = PaddingValues(
+        horizontal = AppSpacing.compactGap,
+        vertical = AppSpacing.miniGap,
+    ),
     content: @Composable RowScope.() -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -222,7 +225,7 @@ fun AppOutlinedButton(
         label = "appOutlinedButtonContainer",
     )
     OutlinedButton(
-        modifier = modifier,
+        modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
         enabled = enabled,
         onClick = onClick,
         interactionSource = interactionSource,
