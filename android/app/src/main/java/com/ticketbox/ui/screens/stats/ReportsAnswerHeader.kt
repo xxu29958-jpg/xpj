@@ -90,12 +90,14 @@ private fun ReportsAnswerMetrics(model: ReportsAnswerModel) {
             caption = monthDeltaCaption(model),
             modifier = Modifier.weight(1f),
         )
-        ReportsAnswerMetric(
-            label = stringResource(R.string.stats_reports_answer_yoy_label),
-            value = signedDeltaValue(model.yearOverYearDeltaAmountCents),
-            caption = displayMonthLabel(model.yearOverYearMonth),
-            modifier = Modifier.weight(1f),
-        )
+        if (model.hasYearOverYearComparison) {
+            ReportsAnswerMetric(
+                label = stringResource(R.string.stats_reports_answer_yoy_label),
+                value = signedDeltaValue(model.yearOverYearDeltaAmountCents),
+                caption = displayMonthLabel(model.yearOverYearMonth),
+                modifier = Modifier.weight(1f),
+            )
+        }
         ReportsAnswerMetric(
             label = stringResource(R.string.stats_reports_answer_active_label),
             value = stringResource(

@@ -158,7 +158,6 @@ private fun ReportsSparseTrend(
 
 @Composable
 private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
-    val currencyDisplay = LocalCurrencyDisplay.current
     val maxAmount = rows.maxOfOrNull { it.amountCents } ?: 0L
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap + AppSpacing.tinyGap)) {
         Text(
@@ -169,39 +168,61 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
         // 轴3 三柱对比:本月 vs 上月 vs 去年同月 grouped columns 给「形状」,下面的行制保留精确值。
         // 两月皆零的行画不出对比,纯函数已过滤;全被滤光时只剩行制(不画空图)。
         rows.forEach { row ->
-            val deltaText = when {
-                row.yearOverYearDeltaAmountCents > 0L -> stringResource(
-                    R.string.stats_reports_category_yoy_more,
-                    formatDisplayAmount(row.yearOverYearDeltaAmountCents, currencyDisplay),
-                )
-                row.yearOverYearDeltaAmountCents < 0L -> stringResource(
-                    R.string.stats_reports_category_yoy_less,
-                    formatDisplayAmount(abs(row.yearOverYearDeltaAmountCents), currencyDisplay),
-                )
-                else -> stringResource(R.string.stats_reports_category_yoy_flat)
-            }
             AmountBarRow(
                 label = row.category,
                 amountCents = row.amountCents,
                 maxAmountCents = maxAmount,
-                trailingText = deltaText,
-                supportingText = stringResource(
-                    R.string.stats_reports_category_comparison_values,
-                    formatDisplayAmount(row.previousAmountCents, currencyDisplay),
-                    formatDisplayAmount(row.yearOverYearAmountCents, currencyDisplay),
-                ),
+                trailingText = categoryYearOverYearText(row),
+                supportingText = categoryComparisonValues(row),
             )
         }
     }
 }
 
-/** 图例:三色点+「本月/上月/去年同月」,与 grouped chart 的 series 色同源(chart tokens 前三槽)。 */
+@Composable
+private fun categoryYearOverYearText(row: ReportCategoryComparison): String? {
+    if (row.yearOverYearCount <= 0) return null
+    val currencyDisplay = LocalCurrencyDisplay.current
+    return when {
+        row.yearOverYearDeltaAmountCents > 0L -> stringResource(
+            R.string.stats_reports_category_yoy_more,
+            formatDisplayAmount(row.yearOverYearDeltaAmountCents, currencyDisplay),
+        )
+        row.yearOverYearDeltaAmountCents < 0L -> stringResource(
+            R.string.stats_reports_category_yoy_less,
+            formatDisplayAmount(abs(row.yearOverYearDeltaAmountCents), currencyDisplay),
+        )
+        else -> stringResource(R.string.stats_reports_category_yoy_flat)
+    }
+}
+
+@Composable
+private fun categoryComparisonValues(row: ReportCategoryComparison): String? {
+    val currencyDisplay = LocalCurrencyDisplay.current
+    return when {
+        row.previousCount > 0 && row.yearOverYearCount > 0 -> stringResource(
+            R.string.stats_reports_category_comparison_values,
+            formatDisplayAmount(row.previousAmountCents, currencyDisplay),
+            formatDisplayAmount(row.yearOverYearAmountCents, currencyDisplay),
+        )
+        row.previousCount > 0 -> stringResource(
+            R.string.stats_reports_category_comparison_previous_only,
+            formatDisplayAmount(row.previousAmountCents, currencyDisplay),
+        )
+        row.yearOverYearCount > 0 -> stringResource(
+            R.string.stats_reports_category_comparison_yoy_only,
+            formatDisplayAmount(row.yearOverYearAmountCents, currencyDisplay),
+        )
+        else -> null
+    }
+}
+
 @Composable
 private fun AmountBarRow(
     label: String,
     amountCents: Long,
     maxAmountCents: Long,
-    trailingText: String,
+    trailingText: String?,
     supportingText: String? = null,
 ) {
     val chartTokens = LocalChartTokens.current
@@ -213,29 +234,11 @@ private fun AmountBarRow(
     }
     val fillColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = label,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = formatDisplayAmount(amountCents, currencyDisplay),
-                style = MaterialTheme.typography.labelLarge.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
-            )
-            Text(
-                text = trailingText,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall.tabularNum(),
-            )
-        }
+        AmountBarHeader(
+            label = label,
+            amountText = formatDisplayAmount(amountCents, currencyDisplay),
+            trailingText = trailingText,
+        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -258,6 +261,39 @@ private fun AmountBarRow(
                 style = MaterialTheme.typography.labelSmall.tabularNum(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AmountBarHeader(
+    label: String,
+    amountText: String,
+    trailingText: String?,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = amountText,
+            style = MaterialTheme.typography.labelLarge.tabularNum(),
+            fontWeight = AppTextHierarchy.body.weight,
+        )
+        trailingText?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall.tabularNum(),
             )
         }
     }

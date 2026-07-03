@@ -34,6 +34,7 @@ class ReportsAnswerModelTest {
 
         assertEquals(12_000L, model.monthDeltaAmountCents)
         assertNull(model.monthDeltaPercent)
+        assertEquals(false, model.hasYearOverYearComparison)
     }
 
     @Test

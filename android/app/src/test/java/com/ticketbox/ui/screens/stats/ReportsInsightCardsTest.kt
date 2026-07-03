@@ -64,13 +64,26 @@ class ReportsInsightCardsTest {
                 comparisonRow(category = "退款", amountCents = -500L, previousAmountCents = 0L),
                 comparisonRow(category = "交通", amountCents = 0L, previousAmountCents = 800L),
                 comparisonRow(category = "日用品", amountCents = 0L, previousAmountCents = 0L, yearOverYearAmountCents = 600L),
+                ReportCategoryComparison(
+                    category = "历史缺样本",
+                    amountCents = 0L,
+                    count = 1,
+                    previousAmountCents = 0L,
+                    previousCount = 0,
+                    deltaAmountCents = 0L,
+                    deltaCount = 0,
+                    yearOverYearAmountCents = 600L,
+                    yearOverYearCount = 0,
+                    yearOverYearDeltaAmountCents = -600L,
+                    yearOverYearDeltaCount = 0,
+                ),
             ),
         )
         assertEquals(
             listOf(
-                CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L),
-                CategoryComparisonChartRow("交通", 0L, 800L, 0L),
-                CategoryComparisonChartRow("日用品", 0L, 0L, 600L),
+                CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L, hasPrevious = true, hasYearOverYear = true),
+                CategoryComparisonChartRow("交通", 0L, 800L, 0L, hasPrevious = true, hasYearOverYear = false),
+                CategoryComparisonChartRow("日用品", 0L, 0L, 600L, hasPrevious = false, hasYearOverYear = true),
             ),
             rows,
         )
@@ -180,8 +193,8 @@ class ReportsInsightCardsTest {
     fun comparisonA11yBodyInterleavesLabelsJoinedByFullwidthSemicolon() {
         val body = comparisonChartA11yBody(
             listOf(
-                CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L),
-                CategoryComparisonChartRow("交通", 0L, 800L, 0L),
+                CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L, hasPrevious = true, hasYearOverYear = true),
+                CategoryComparisonChartRow("交通", 0L, 800L, 0L, hasPrevious = true, hasYearOverYear = false),
             ),
             currentMonthLabel = "本月",
             previousMonthLabel = "上月",
@@ -193,8 +206,7 @@ class ReportsInsightCardsTest {
                 "上月 ${formatDisplayAmount(900L, currencyDisplay)} " +
                 "去年同月 ${formatDisplayAmount(1_000L, currencyDisplay)}；" +
                 "交通 本月 ${formatDisplayAmount(0L, currencyDisplay)} " +
-                "上月 ${formatDisplayAmount(800L, currencyDisplay)} " +
-                "去年同月 ${formatDisplayAmount(0L, currencyDisplay)}",
+                "上月 ${formatDisplayAmount(800L, currencyDisplay)}",
             body,
         )
     }
@@ -209,7 +221,7 @@ class ReportsInsightCardsTest {
         amountCents = amountCents,
         count = 1,
         previousAmountCents = previousAmountCents,
-        previousCount = 1,
+        previousCount = if (previousAmountCents > 0L) 1 else 0,
         deltaAmountCents = amountCents - previousAmountCents,
         deltaCount = 0,
         yearOverYearAmountCents = yearOverYearAmountCents,
