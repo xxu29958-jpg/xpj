@@ -27,6 +27,7 @@ data class AppSecondaryRefreshState(
 class AppSecondaryPageSlots(
     val status: (@Composable () -> Unit)? = null,
     val actions: (@Composable () -> Unit)? = null,
+    val bottomBar: (@Composable () -> Unit)? = null,
 )
 
 @Composable
@@ -68,6 +69,7 @@ fun AppSecondaryScrollableContent(
         modifier = modifier,
         hasBottomBar = chrome.hasBottomBar,
         verticalArrangement = chrome.verticalArrangement,
+        bottomBar = slots.bottomBar,
     ) {
         item { SecondaryHeader(chrome = chrome, slots = slots) }
         slots.status?.let { status -> item { status() } }

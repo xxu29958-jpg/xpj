@@ -4,11 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,8 +25,10 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppDataAuthorityStrip
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
@@ -86,7 +88,17 @@ fun CreateDebtGoalScreen(
             ),
             onRefresh = viewModel::reload,
         ),
-        slots = AppSecondaryPageSlots(status = { CreateDebtGoalStatusStack(state = state) }),
+        slots = AppSecondaryPageSlots(
+            status = { CreateDebtGoalStatusStack(state = state) },
+            bottomBar = {
+                CreateDebtGoalFooter(
+                    selectedCount = state.selectedDebtIds.size,
+                    canSubmit = state.canSubmit && state.canModify,
+                    isSubmitting = state.isSubmitting,
+                    onSubmit = viewModel::submit,
+                )
+            },
+        ),
     ) {
         item { CreateDebtGoalNameField(name = state.name, onNameChange = viewModel::updateName) }
         item {
@@ -104,14 +116,6 @@ fun CreateDebtGoalScreen(
             }
         }
         debtPickerSection(state = state, currency = currency, onToggle = viewModel::toggleDebt)
-        item {
-            CreateDebtGoalFooter(
-                selectedCount = state.selectedDebtIds.size,
-                canSubmit = state.canSubmit && state.canModify,
-                isSubmitting = state.isSubmitting,
-                onSubmit = viewModel::submit,
-            )
-        }
     }
 }
 
@@ -228,21 +232,22 @@ private fun CreateDebtGoalFooter(
     isSubmitting: Boolean,
     onSubmit: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+    AppFloatingActionBar {
         Text(
             stringResource(R.string.debt_goal_create_selected_count, selectedCount),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.size(AppSpacing.smallGap))
-        Button(onClick = onSubmit, enabled = canSubmit) {
-            Text(
-                if (isSubmitting) {
-                    stringResource(R.string.debt_goal_create_submitting)
-                } else {
-                    stringResource(R.string.debt_goal_create_save)
-                },
-            )
-        }
+        AppPrimaryButton(
+            text = if (isSubmitting) {
+                stringResource(R.string.debt_goal_create_submitting)
+            } else {
+                stringResource(R.string.debt_goal_create_save)
+            },
+            icon = Icons.Filled.Check,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = canSubmit,
+            onClick = onSubmit,
+        )
     }
 }

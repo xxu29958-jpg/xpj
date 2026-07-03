@@ -307,8 +307,13 @@ fun AppScrollableContent(
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = true,
     verticalArrangement: Arrangement.Vertical? = null,
+    bottomBar: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
+    val density = LocalDensity.current
+    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    var bottomBarHeight by remember { mutableStateOf(0.dp) }
+
     AppPageScaffold(
         role = role,
         modifier = modifier,
@@ -317,35 +322,48 @@ fun AppScrollableContent(
         includeStatusBarPadding = includeStatusBarPadding,
     ) { layout ->
         val refreshState = rememberPullToRefreshState()
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = onRefresh,
-            modifier = Modifier.fillMaxSize(),
-            state = refreshState,
-            indicator = {
-                // Material3 默认 indicator，避免下拉时只见手指不见反馈。
-                // 位置在 status bar 下方一格，与列表 contentPadding 一致。
-                PullToRefreshDefaults.Indicator(
-                    state = refreshState,
+        CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                PullToRefreshBox(
                     isRefreshing = isRefreshing,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = layout.statusPadding + 4.dp),
-                )
-            },
-        ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        top = layout.statusPadding,
-                        bottom = layout.bottomViewportPadding,
-                    ),
-                state = listState,
-                contentPadding = layout.scrollContentPadding(),
-                verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
-                content = content,
-            )
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                    state = refreshState,
+                    indicator = {
+                        // Material3 默认 indicator，避免下拉时只见手指不见反馈。
+                        // 位置在 status bar 下方一格，与列表 contentPadding 一致。
+                        PullToRefreshDefaults.Indicator(
+                            state = refreshState,
+                            isRefreshing = isRefreshing,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = layout.statusPadding + 4.dp),
+                        )
+                    },
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(
+                                top = layout.statusPadding,
+                                bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
+                            ),
+                        state = listState,
+                        contentPadding = layout.scrollContentPadding(),
+                        verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+                        content = content,
+                    )
+                }
+                if (bottomBar != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
+                    ) {
+                        bottomBar()
+                    }
+                }
+            }
         }
     }
 }
