@@ -171,7 +171,7 @@
     <string name="expense_edit_item_group_discount">优惠 / 折扣</string>
     <string name="expense_edit_item_group_tax">税</string>
     <string name="expense_edit_item_group_service_fee">服务费</string>
-    <string name="expense_edit_item_subtitle_unit_price">单价 %1$s</string>
+    <string name="expense_edit_item_subtitle_unit_price">单价</string>
     <string name="expense_edit_item_subtitle_ocr_draft">OCR草稿</string>
     <string name="expense_edit_item_subtitle_empty">未补充明细信息</string>
     <string name="expense_edit_split_subtitle_member_disabled">成员已停用</string>

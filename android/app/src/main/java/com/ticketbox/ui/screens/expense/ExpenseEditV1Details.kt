@@ -635,14 +635,22 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = itemSubtitle(item, currencyDisplay),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                itemSubtitle(item)?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+        }
+        item.unitPriceCents?.let {
+            ReconcileAmountLine(
+                label = stringResource(R.string.expense_edit_item_subtitle_unit_price),
+                amount = formatDisplayAmount(it, currencyDisplay),
+            )
         }
     }
 }
@@ -698,15 +706,14 @@ private fun DetailEmptyState(text: String) {
 }
 
 @Composable
-private fun itemSubtitle(item: ExpenseItem, currencyDisplay: CurrencyDisplay): String {
+private fun itemSubtitle(item: ExpenseItem): String? {
     val parts = mutableListOf<String>()
     item.quantityText?.takeIf { it.isNotBlank() }?.let { parts += it }
-    item.unitPriceCents?.let {
-        parts += stringResource(R.string.expense_edit_item_subtitle_unit_price, formatDisplayAmount(it, currencyDisplay))
-    }
     item.category.takeIf { it.isNotBlank() }?.let { parts += it }
     if (item.isOcrDraft) parts += stringResource(R.string.expense_edit_item_subtitle_ocr_draft)
-    return parts.joinToString(" · ").ifBlank { stringResource(R.string.expense_edit_item_subtitle_empty) }
+    return parts.joinToString(" · ").ifBlank {
+        if (item.unitPriceCents == null) stringResource(R.string.expense_edit_item_subtitle_empty) else null
+    }
 }
 
 @Composable
