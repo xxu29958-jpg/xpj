@@ -1,27 +1,21 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
@@ -78,8 +72,8 @@ private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
     onOpenReceivable: (Debt) -> Unit,
 ) {
-    if (state.receivables.isEmpty() && !state.isLoading) {
-        item { ReceivablesEmptyStateCard() }
+    if (state.receivables.isEmpty()) {
+        item { ReceivablesListStateCard(loading = state.isLoading) }
         return
     }
     // 全部是 member 应收(viewer_is_debtor=false → creditor 侧「我帮你垫的」)。⑤b-2 起可点进跨账本详情确认
@@ -91,23 +85,18 @@ private fun LazyListScope.receivablesSection(
 }
 
 @Composable
-private fun ReceivablesEmptyStateCard() {
+private fun ReceivablesListStateCard(loading: Boolean) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.sectionGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        AppListStateContent(
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            state = AppListStateSpec(
+                isEmpty = true,
+                loading = loading,
+                emptyText = stringResource(R.string.receivables_empty_body),
+                emptyTitle = stringResource(R.string.receivables_empty_title),
+                emptyBody = stringResource(R.string.receivables_empty_body),
+            ),
         ) {
-            Text(
-                stringResource(R.string.receivables_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.receivables_empty_body),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
