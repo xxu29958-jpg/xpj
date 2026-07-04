@@ -41,3 +41,18 @@ fun AppAdaptiveContentActionRow(
         }
     }
 }
+
+@Composable
+fun AppAdaptiveTrailingActionRow(
+    modifier: Modifier = Modifier,
+    action: @Composable (Modifier) -> Unit,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val actionModifier = if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
+            Modifier.fillMaxWidth()
+        } else {
+            Modifier.align(Alignment.CenterEnd)
+        }
+        action(actionModifier)
+    }
+}
