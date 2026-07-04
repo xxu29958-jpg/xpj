@@ -43,6 +43,7 @@ import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.displayCompactTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppDensity
@@ -55,7 +56,6 @@ import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
 
 private object PendingExpenseReviewLayout {
-    val AmountStackBreakpoint = 320.dp
     const val InlineAmountWeight = 0.62f
 }
 
@@ -93,7 +93,7 @@ internal fun PendingExpenseReviewRow(
         BoxWithConstraints(
             modifier = Modifier.padding(metrics.rowPadding),
         ) {
-            val stackAmount = maxWidth < PendingExpenseReviewLayout.AmountStackBreakpoint
+            val stackAmount = maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth
             Column(
                 verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
             ) {
@@ -211,8 +211,8 @@ private fun PendingExpenseAmountBlock(
         TextButton(
             enabled = actions.canMutate,
             onClick = actions.onPrimaryAction,
-            modifier = Modifier.heightIn(min = 32.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
+            contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.none),
         ) {
             Text(
                 text = stringResource(pendingPrimaryActionLabelRes(expense)),
