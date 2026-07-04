@@ -90,9 +90,8 @@ class FamilyMembersViewModel(
                     .onFailure { err ->
                         _uiState.update {
                             it.copy(
-                                auditItems = emptyList(),
-                                // Don't overwrite the member-fetch error message; only
-                                // surface the audit error if the members fetch was OK.
+                                // Keep already-rendered audit rows visible during a refresh failure.
+                                // Only surface the audit error if the members fetch was OK.
                                 message = if (memberResult.isSuccess) {
                                     err.toUiText(R.string.family_members_message_audit_load_failed)
                                 } else {

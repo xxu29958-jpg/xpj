@@ -110,6 +110,7 @@ internal class StubApi(
     var onLedgerMembers: (() -> Unit)? = null
     var onListLedgers: (() -> Unit)? = null
     var onAcceptInvitation: (() -> Unit)? = null
+    var auditError: Throwable? = null
 
     // issue #65 slice 6b device routes (body-level so the baselined ctor stays put).
     var devicesResult: com.ticketbox.data.remote.dto.MyDeviceListResponseDto? = null
@@ -164,6 +165,7 @@ internal class StubApi(
 
     override suspend fun ledgerAudit(ledgerId: String, limit: Int): LedgerAuditListResponseDto {
         auditRequests += ledgerId to limit
+        auditError?.let { throw it }
         return auditResult ?: error("Unexpected audit call")
     }
 
