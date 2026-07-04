@@ -1,16 +1,14 @@
 package com.ticketbox.ui.screens.pending.sheets
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 
 /**
  * 连续审阅快补 sheet 的共享「外壳」：保存中标记 + 「还剩 N 条」计数 + 状态文案 +
@@ -40,23 +38,25 @@ internal fun ReviewQueueHeader(
     modifier: Modifier = Modifier,
 ) {
     if (chrome.remaining <= 0) return
-    Row(
+    AppAdaptiveContentActionRow(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.pending_review_queue_remaining, chrome.remaining),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TextButton(
-            onClick = chrome.onSkip,
-            enabled = !chrome.saving,
-        ) {
-            Text(stringResource(R.string.pending_review_queue_skip_button))
-        }
-    }
+        content = {
+            Text(
+                text = stringResource(R.string.pending_review_queue_remaining, chrome.remaining),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        action = { actionModifier ->
+            TextButton(
+                modifier = actionModifier,
+                onClick = chrome.onSkip,
+                enabled = !chrome.saving,
+            ) {
+                Text(stringResource(R.string.pending_review_queue_skip_button))
+            }
+        },
+    )
 }
 
 /**

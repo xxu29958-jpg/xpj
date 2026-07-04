@@ -37,15 +37,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.LocalAppImeVisible
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
-
-private val ExpenseEditActionInlineMinWidth = 380.dp
 
 /**
  * 编辑页操作栏的可见状态（哪些动作可用 + 是否保存中 + 两类提示）。
@@ -106,15 +104,15 @@ internal fun ExpenseEditActionBar(
                 vertical = if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap,
             ),
         color = Color.Transparent,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        tonalElevation = AppSpacing.none,
+        shadowElevation = AppSpacing.none,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = 0.dp,
-                    vertical = 0.dp,
+                    horizontal = AppSpacing.none,
+                    vertical = AppSpacing.none,
                 ),
             verticalArrangement = Arrangement.spacedBy(if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap),
         ) {
@@ -147,7 +145,7 @@ private fun ExpenseEditResponsiveActionRows(
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val actionCount = listOf(state.allowReject, state.allowSave, state.allowConfirm).count { it }
-        val shouldStack = maxWidth < ExpenseEditActionInlineMinWidth && actionCount >= 3
+        val shouldStack = maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth && actionCount >= 3
         when {
             shouldStack -> ExpenseEditStackedActionRows(state = state, actions = actions)
             compactMode -> ExpenseEditKeyboardActionRow(state = state, actions = actions)
@@ -393,7 +391,7 @@ private fun ExpenseEditActionLabel(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icon?.let {
-            Icon(imageVector = it, contentDescription = null, modifier = Modifier.size(17.dp))
+            Icon(imageVector = it, contentDescription = null, modifier = Modifier.size(AppSpacing.cardPaddingSmall))
             Spacer(modifier = Modifier.width(AppSpacing.tinyGap))
         }
         Text(
@@ -406,4 +404,4 @@ private fun ExpenseEditActionLabel(
     }
 }
 
-private val CompactActionPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+private val CompactActionPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.none)

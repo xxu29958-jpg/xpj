@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -16,13 +15,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
@@ -126,30 +125,31 @@ private fun MissingAmountSuggestion(
     onUseSuggestion: () -> Unit,
 ) {
     if (suggestedMinor == null) return
-    Row(
+    AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(
-                text = stringResource(R.string.pending_missing_amount_suggestion_label),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
+        content = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = stringResource(R.string.pending_missing_amount_suggestion_label),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = formatMinorAmount(suggestedMinor, currency),
+                    style = MaterialTheme.typography.titleLarge.tabularNum(),
+                    fontWeight = AppTextHierarchy.body.weight,
+                )
+            }
+        },
+        action = { actionModifier ->
+            QuietOutlinedButton(
+                text = stringResource(R.string.pending_missing_amount_use_suggestion),
+                modifier = actionModifier,
+                enabled = enabled,
+                onClick = onUseSuggestion,
             )
-            Text(
-                text = formatMinorAmount(suggestedMinor, currency),
-                style = MaterialTheme.typography.titleLarge.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
-            )
-        }
-        QuietOutlinedButton(
-            text = stringResource(R.string.pending_missing_amount_use_suggestion),
-            enabled = enabled,
-            onClick = onUseSuggestion,
-        )
-    }
+        },
+    )
 }

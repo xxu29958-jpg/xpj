@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 object AppSpacing {
+    val none: Dp = 0.dp
     val tinyGap: Dp = 2.dp
     val miniGap: Dp = 4.dp
     val smallGap: Dp = 8.dp
