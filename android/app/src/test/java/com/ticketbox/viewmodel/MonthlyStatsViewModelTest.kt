@@ -28,17 +28,18 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class MonthlyStatsViewModelTest {
-    private fun statsTest(block: suspend TestScope.() -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
-        try {
-            block()
-        } finally {
-            Dispatchers.resetMain()
-        }
+private fun statsTest(block: suspend TestScope.() -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    try {
+        block()
+    } finally {
+        Dispatchers.resetMain()
     }
+}
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class MonthlyStatsViewModelTest {
     @Test
     fun staleMonthRefreshDoesNotOverwriteCurrentSelection() = statsTest {
         val mayResponse = CompletableDeferred<Result<MonthlyStats>>()
@@ -180,6 +181,47 @@ class MonthlyStatsViewModelTest {
         assertEquals(StatsSource.LocalFallback, viewModel.uiState.value.statsSource)
         // 审计 8.4: a usable local fallback is data, not an error — no error card.
         assertNull(viewModel.uiState.value.statsLoadError)
+    }
+
+    @Test
+    fun setTagMarksLocalFallbackUntilBackendTaggedStatsArrive() = statsTest {
+        val taggedResponse = CompletableDeferred<Result<MonthlyStats>>()
+        val stats = FakeStatsActions()
+        stats.confirmedFlow.value = listOf(
+            confirmedExpense(
+                publicId = "tagged",
+                amountCents = 2200L,
+                expenseTime = "2026-05-12T10:15:00Z",
+                tags = "coffee",
+            ),
+        )
+        stats.monthlyStatsResponder = { month, tag ->
+            if (tag == "coffee") {
+                taggedResponse.await()
+            } else {
+                Result.success(statsForMonth(month ?: "2026-05", total = 9900L))
+            }
+        }
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        viewModel.setMonth("2026-05")
+        advanceUntilIdle()
+        assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
+
+        viewModel.setTag("coffee")
+        runCurrent()
+
+        assertEquals(StatsSource.LocalFallback, viewModel.uiState.value.statsSource)
+        assertEquals(2200L, viewModel.uiState.value.stats?.totalAmountCents)
+        assertTrue(viewModel.uiState.value.loading)
+
+        taggedResponse.complete(Result.success(statsForMonth("2026-05", total = 3300L)))
+        advanceUntilIdle()
+
+        assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
+        assertEquals(3300L, viewModel.uiState.value.stats?.totalAmountCents)
     }
 
     @Test
@@ -391,6 +433,7 @@ private fun confirmedExpense(
     publicId: String,
     amountCents: Long,
     expenseTime: String,
+    tags: String? = null,
 ): Expense =
     Expense(
         id = publicId.hashCode().toLong(),
@@ -408,7 +451,7 @@ private fun confirmedExpense(
         duplicateStatus = "none",
         duplicateOfId = null,
         duplicateReason = null,
-        tags = "",
+        tags = tags.orEmpty(),
         valueScore = null,
         regretScore = null,
         status = "confirmed",

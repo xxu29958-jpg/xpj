@@ -182,6 +182,7 @@ class MonthlyStatsViewModel(
             it.copy(
                 selectedTag = cleanTag,
                 stats = localStats,
+                statsSource = if (localStats != null) StatsSource.LocalFallback else StatsSource.None,
                 dailyTrend = localDailyTrend(confirmedCache, it.month, cleanTag),
                 monthComparison = monthlySpendingComparison(tagFilteredExpenses, it.month),
                 categoryInsight = monthlyCategoryInsight(localStats),
