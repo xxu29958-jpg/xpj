@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,8 +19,10 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -92,18 +93,12 @@ private fun StatsLeadHero(
                 style = MaterialTheme.typography.labelMedium.tabularNum(),
             )
         }
-        Text(
+        AppAmountText(
+            modifier = Modifier.fillMaxWidth(),
             text = totalLine.value,
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.headlineMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = 22.sp,
-                maxFontSize = 34.sp,
-                stepSize = 1.sp,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
+            role = AppAmountRole.Hero,
+            minFontSize = 22.sp,
         )
         Text(
             text = totalLine.caption,
