@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -21,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppSpacing
@@ -87,16 +88,12 @@ fun SplitsEditorSheet(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                AppSecondaryButton(
-                    text = stringResource(R.string.expense_edit_splits_even_button),
-                    enabled = !saving && drafts.isNotEmpty(),
-                    onClick = onEvenSplit,
-                )
-            }
+            ExpenseDetailActionButtonRow(
+                text = stringResource(R.string.expense_edit_splits_even_button),
+                icon = Icons.AutoMirrored.Filled.CallSplit,
+                enabled = !saving && drafts.isNotEmpty(),
+                onClick = onEvenSplit,
+            )
             SplitsReconciliationFooter(drafts = drafts, parentAmountCents = parentAmountCents)
             // ADR-0042 P1: never enable Save with an empty draft list — the roster
             // hasn't loaded, and saving would send splits=[] which the backend

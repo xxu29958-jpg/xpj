@@ -1,12 +1,11 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
@@ -19,7 +18,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -31,6 +29,7 @@ import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.EditableItem
 import kotlin.math.abs
@@ -90,11 +89,11 @@ fun ItemsEditorSheet(
                     )
                 }
                 item {
-                    TextButton(onClick = onAddRow) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(Modifier.width(AppSpacing.tinyGap))
-                        Text(stringResource(R.string.expense_edit_items_add_row_button))
-                    }
+                    ExpenseDetailActionButtonRow(
+                        text = stringResource(R.string.expense_edit_items_add_row_button),
+                        icon = Icons.Filled.Add,
+                        onClick = onAddRow,
+                    )
                 }
             }
 
@@ -127,35 +126,43 @@ private fun ItemEditorRow(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            ExpenseEditTextField(
-                state = ExpenseEditTextFieldState(
-                    label = stringResource(R.string.expense_edit_items_row_name_label),
-                    value = draft.name,
-                    placeholder = stringResource(R.string.expense_edit_items_row_name_placeholder),
-                ),
-                onValueChange = { onUpdate(index, it, null, null) },
-                modifier = Modifier.weight(1.35f),
-            )
-            ExpenseEditTextField(
-                state = ExpenseEditTextFieldState(
-                    label = stringResource(R.string.expense_edit_items_row_amount_label),
-                    value = draft.amountText,
-                    placeholder = stringResource(R.string.components_amount_input_placeholder),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                ),
-                onValueChange = { onUpdate(index, null, it, null) },
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = onRemove) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.expense_edit_items_row_remove_desc),
-                    tint = MaterialTheme.colorScheme.error,
-                )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val stackFields = maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth
+            if (stackFields) {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                    ) {
+                        ItemNameField(
+                            index = index,
+                            draft = draft,
+                            onUpdate = onUpdate,
+                            modifier = Modifier.weight(1f),
+                        )
+                        ItemRemoveButton(onRemove = onRemove)
+                    }
+                    ItemAmountField(index = index, draft = draft, onUpdate = onUpdate)
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                ) {
+                    ItemNameField(
+                        index = index,
+                        draft = draft,
+                        onUpdate = onUpdate,
+                        modifier = Modifier.weight(1.35f),
+                    )
+                    ItemAmountField(
+                        index = index,
+                        draft = draft,
+                        onUpdate = onUpdate,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ItemRemoveButton(onRemove = onRemove)
+                }
             }
         }
         Text(
@@ -169,6 +176,54 @@ private fun ItemEditorRow(
             },
             selectedValue = draft.kind,
             onValueChange = { onUpdate(index, null, null, it) },
+        )
+    }
+}
+
+@Composable
+private fun ItemNameField(
+    index: Int,
+    draft: EditableItem,
+    onUpdate: (index: Int, name: String?, amountText: String?, kind: String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ExpenseEditTextField(
+        state = ExpenseEditTextFieldState(
+            label = stringResource(R.string.expense_edit_items_row_name_label),
+            value = draft.name,
+            placeholder = stringResource(R.string.expense_edit_items_row_name_placeholder),
+        ),
+        onValueChange = { onUpdate(index, it, null, null) },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun ItemAmountField(
+    index: Int,
+    draft: EditableItem,
+    onUpdate: (index: Int, name: String?, amountText: String?, kind: String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ExpenseEditTextField(
+        state = ExpenseEditTextFieldState(
+            label = stringResource(R.string.expense_edit_items_row_amount_label),
+            value = draft.amountText,
+            placeholder = stringResource(R.string.components_amount_input_placeholder),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        ),
+        onValueChange = { onUpdate(index, null, it, null) },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun ItemRemoveButton(onRemove: () -> Unit) {
+    IconButton(onClick = onRemove) {
+        Icon(
+            Icons.Filled.Close,
+            contentDescription = stringResource(R.string.expense_edit_items_row_remove_desc),
+            tint = MaterialTheme.colorScheme.error,
         )
     }
 }

@@ -11,15 +11,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.tabularNum
 
 @Immutable
 internal data class ExpenseEditSheetActionState(
@@ -113,15 +112,15 @@ private fun ExpenseEditReconciliationRow(row: ExpenseEditReconciliationLine) {
                 )
             }
         }
-        Text(
+        AppEndAlignedAmountText(
             text = row.value,
-            style = MaterialTheme.typography.bodyMedium.tabularNum(),
+            modifier = Modifier.weight(0.72f),
+            role = AppAmountRole.Compact,
             color = if (row.emphasis) {
                 MaterialTheme.colorScheme.error
             } else {
                 MaterialTheme.colorScheme.onSurface
             },
-            fontWeight = if (row.emphasis) FontWeight.SemiBold else AppTextHierarchy.body.weight,
         )
     }
 }
