@@ -55,6 +55,8 @@ import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFormFieldGroup
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
@@ -245,22 +247,18 @@ private fun LazyListScope.incomePlanSections(
     currency: CurrencyDisplay,
     viewModel: IncomePlanViewModel,
 ) {
-    when {
-        state.activePlans.isEmpty() && state.isLoading -> item {
-            IncomePlanEmptyState(
-                title = stringResource(R.string.income_plan_loading_title),
-                body = stringResource(R.string.income_plan_loading_body),
-            )
-        }
-        state.activePlans.isEmpty() -> item {
-            IncomePlanEmptyState(
-                title = stringResource(R.string.income_plan_empty_title),
-                body = stringResource(R.string.income_plan_empty_body_compact),
-            )
-        }
-        else -> {
-            item { SectionEyebrow(stringResource(R.string.income_plan_section_active)) }
-            items(state.activePlans, key = { "active-${it.publicId}" }) { plan ->
+    item(key = "income-plan-active") {
+        AppListStateContent(
+            state = AppListStateSpec(
+                isEmpty = state.activePlans.isEmpty(),
+                loading = state.isLoading,
+                emptyText = stringResource(R.string.income_plan_empty_body_compact),
+                emptyTitle = stringResource(R.string.income_plan_empty_title),
+                emptyBody = stringResource(R.string.income_plan_empty_body_compact),
+            ),
+        ) {
+            SectionEyebrow(stringResource(R.string.income_plan_section_active))
+            state.activePlans.forEach { plan ->
                 IncomePlanRow(
                     plan = plan,
                     currency = currency,
@@ -401,25 +399,6 @@ private fun IncomePlanRowSummary(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    }
-}
-
-@Composable
-private fun IncomePlanEmptyState(title: String, body: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.size(AppSpacing.smallGap))
-        Text(
-            body,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.size(AppSpacing.compactGap))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
