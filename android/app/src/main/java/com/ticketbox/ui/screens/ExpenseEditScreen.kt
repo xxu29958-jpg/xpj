@@ -2,6 +2,8 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,7 +25,6 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.normalizeExpenseCategory
-import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.DuplicateNotice
@@ -61,6 +62,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditRecognizeTextDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
+import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
 import com.ticketbox.ui.screens.expense.ExpenseRepaymentDraftPanel
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
@@ -363,9 +365,11 @@ fun ExpenseEditScreen(
         if (currentExpense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             DuplicateNotice(reason = currentExpense.duplicateReason)
             if (!readOnly) {
-                AppOutlinedButton(onClick = onKeepDuplicate) {
-                    Text(stringResource(R.string.expense_edit_keep_duplicate_button))
-                }
+                ExpenseDetailActionButtonRow(
+                    text = stringResource(R.string.expense_edit_keep_duplicate_button),
+                    icon = Icons.Filled.Check,
+                    onClick = onKeepDuplicate,
+                )
             }
         }
 
