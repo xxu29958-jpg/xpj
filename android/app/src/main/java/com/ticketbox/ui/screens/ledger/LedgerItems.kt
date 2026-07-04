@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
@@ -300,11 +301,11 @@ internal fun LedgerExpenseListRow(
                 onLongClick = onLongPress,
             ),
     ) {
-        BoxWithConstraints(
+        AppAdaptiveContentActionRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = rowMetrics.rowPadding),
-        ) {
-            val stackAmount = maxWidth < LedgerItemLayout.AmountStackBreakpoint
-            Column(verticalArrangement = Arrangement.spacedBy(rowMetrics.labelGap)) {
+            wideActionWeight = LedgerItemLayout.ListAmountInlineWeight,
+            verticalAlignment = Alignment.CenterVertically,
+            content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
@@ -319,23 +320,16 @@ internal fun LedgerExpenseListRow(
                         metaText = metaText,
                         modifier = Modifier.weight(1f),
                     )
-                    if (!stackAmount) {
-                        LedgerAmountOrPending(
-                            amountCents = expense.amountCents,
-                            presentation = LedgerAmountPresentation.ListRow,
-                            modifier = Modifier.weight(LedgerItemLayout.ListAmountInlineWeight),
-                        )
-                    }
                 }
-                if (stackAmount) {
-                    LedgerAmountOrPending(
-                        amountCents = expense.amountCents,
-                        presentation = LedgerAmountPresentation.ListRow,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        }
+            },
+            action = { amountModifier ->
+                LedgerAmountOrPending(
+                    amountCents = expense.amountCents,
+                    presentation = LedgerAmountPresentation.ListRow,
+                    modifier = amountModifier,
+                )
+            },
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
     }
 }
