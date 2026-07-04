@@ -4,9 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,12 +19,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.SkeletonScaffold
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.viewmodel.ExpenseEditUiState
@@ -175,7 +178,7 @@ private fun ExpenseEditLoadingInline(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
         Text(text = title, style = MaterialTheme.typography.titleMedium)
         Text(
             text = body,
@@ -206,29 +209,25 @@ private fun ExpenseEditLoadFailedInline(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
         Text(text = title, style = MaterialTheme.typography.titleMedium)
         Text(
             text = body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            AppOutlinedButton(
-                modifier = Modifier.weight(1f),
-                onClick = onBack,
-            ) {
-                Text(stringResource(R.string.expense_edit_loading_back_button))
-            }
-            Button(
-                modifier = Modifier.weight(1f),
+        AppActionRow(
+            primary = AppAction(
+                text = stringResource(R.string.expense_edit_loading_reload_button),
+                icon = Icons.Filled.Refresh,
                 onClick = onRetry,
-            ) {
-                Text(stringResource(R.string.expense_edit_loading_reload_button))
-            }
-        }
+            ),
+            secondary = AppAction(
+                text = stringResource(R.string.expense_edit_loading_back_button),
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                onClick = onBack,
+            ),
+            showDivider = false,
+        )
     }
 }
