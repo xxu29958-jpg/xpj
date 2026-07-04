@@ -1,25 +1,29 @@
 package com.ticketbox.ui.screens.budget
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetExcludedCategory
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun CategoryBudgetSection(
@@ -33,23 +37,21 @@ internal fun CategoryBudgetSection(
     ) {
         items.forEachIndexed { index, item ->
             if (index > 0) BudgetRowDivider()
+            val (amountLabel, amountValue) = if (item.overspentAmountCents > 0L) {
+                stringResource(R.string.budget_summary_metric_overspent) to
+                    formatDisplayAmount(item.overspentAmountCents, currencyDisplay)
+            } else {
+                stringResource(R.string.budget_summary_metric_remaining) to
+                    formatDisplayAmount(item.remainingAmountCents, currencyDisplay)
+            }
             AmountRow(
                 title = item.category,
                 detail = stringResource(
                     R.string.budget_category_spent,
                     formatDisplayAmount(item.spentAmountCents, currencyDisplay),
                 ),
-                amount = if (item.overspentAmountCents > 0L) {
-                    stringResource(
-                        R.string.budget_category_overspent,
-                        formatDisplayAmount(item.overspentAmountCents, currencyDisplay),
-                    )
-                } else {
-                    stringResource(
-                        R.string.budget_category_remaining,
-                        formatDisplayAmount(item.remainingAmountCents, currencyDisplay),
-                    )
-                },
+                amountLabel = amountLabel,
+                amountValue = amountValue,
             )
         }
     }
@@ -70,7 +72,8 @@ internal fun ExcludedBreakdownSection(
             AmountRow(
                 title = item.category,
                 detail = stringResource(R.string.budget_excluded_count, item.count),
-                amount = formatDisplayAmount(item.amountCents, currencyDisplay),
+                amountLabel = stringResource(R.string.budget_summary_metric_excluded),
+                amountValue = formatDisplayAmount(item.amountCents, currencyDisplay),
             )
         }
     }
@@ -103,39 +106,93 @@ private fun BudgetListSection(
 private fun AmountRow(
     title: String,
     detail: String,
-    amount: String,
+    amountLabel: String,
+    amountValue: String,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(end = AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = AppTextHierarchy.body.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = detail,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                AmountRowCopy(title = title, detail = detail)
+                BudgetTrailingAmount(
+                    label = amountLabel,
+                    amount = amountValue,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    AmountRowCopy(title = title, detail = detail)
+                }
+                BudgetTrailingAmount(
+                    label = amountLabel,
+                    amount = amountValue,
+                    modifier = Modifier.weight(0.44f),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun AmountRowCopy(
+    title: String,
+    detail: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
         Text(
-            text = amount,
-            style = MaterialTheme.typography.titleSmall.tabularNum(),
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
             fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = detail,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun BudgetTrailingAmount(
+    label: String,
+    amount: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
+        Text(
+            modifier = Modifier.fillMaxWidth(),
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        AppEndAlignedAmountText(
+            modifier = Modifier.fillMaxWidth(),
+            text = amount,
+            role = AppAmountRole.Compact,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }

@@ -6,10 +6,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun MetricPill(
@@ -26,11 +25,9 @@ internal fun MetricPill(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
         )
-        Text(
+        AppAmountText(
             text = value,
-            style = MaterialTheme.typography.titleSmall.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 2,
+            role = AppAmountRole.Compact,
         )
     }
 }
