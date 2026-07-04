@@ -21,7 +21,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportTrendPoint
@@ -39,7 +38,6 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.StatsSource
 
 internal data class StatsOverviewTrendData(
-    val dailyTrend: List<DailySpend> = emptyList(),
     val reportTrend: List<ReportTrendPoint> = emptyList(),
     val includeRecentUpload: Boolean = false,
     val lastUploadAt: String? = null,
@@ -56,8 +54,7 @@ internal fun StatsOverviewCard(
     val evidenceOnly = false
     val currencyDisplay = LocalCurrencyDisplay.current
     val hasCurrentConfirmedSpend = stats.count > 0 && stats.totalAmountCents > 0L
-    val hasTrendData = trendData.reportTrend.any { it.amountCents > 0L } ||
-        trendData.dailyTrend.any { it.amountCents > 0L }
+    val hasTrendData = trendData.reportTrend.any { it.amountCents > 0L }
 
     if (evidenceOnly && !hasTrendData) {
         return
@@ -106,7 +103,6 @@ internal fun StatsOverviewCard(
         }
         if (hasTrendData || !evidenceOnly) {
             HeroSpendTrend(
-                dailyTrend = trendData.dailyTrend,
                 reportTrend = trendData.reportTrend,
                 currencyDisplay = currencyDisplay,
             )

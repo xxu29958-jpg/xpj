@@ -14,7 +14,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -27,11 +26,10 @@ private const val HeroTrendSparsePointLimit = 3
 
 @Composable
 internal fun HeroSpendTrend(
-    dailyTrend: List<DailySpend>,
     reportTrend: List<ReportTrendPoint>,
     currencyDisplay: CurrencyDisplay,
 ) {
-    val points = remember(reportTrend, dailyTrend) { heroSpendTrendPoints(reportTrend, dailyTrend) }
+    val points = remember(reportTrend) { heroSpendTrendPoints(reportTrend) }
     val visiblePoints = rememberSpendWindowChartPoints(points = points, maxWindows = 6)
     val summary = remember(points) { heroSpendTrendSummary(points) }
     val chartA11y = remember(points, currencyDisplay) {
@@ -284,11 +282,10 @@ private fun heroSpendTrendSummary(points: List<StatsSpendChartPoint>): HeroSpend
     )
 }
 
-private fun heroSpendTrendPoints(
+internal fun heroSpendTrendPoints(
     reportTrend: List<ReportTrendPoint>,
-    dailyTrend: List<DailySpend>,
 ): List<StatsSpendChartPoint> {
-    val serverPoints = reportTrend
+    return reportTrend
         .filter { it.label.isNotBlank() || it.bucket.isNotBlank() }
         .map {
             StatsSpendChartPoint(
@@ -296,10 +293,4 @@ private fun heroSpendTrendPoints(
                 amountCents = it.amountCents.coerceAtLeast(0L),
             )
         }
-    if (serverPoints.isNotEmpty()) {
-        return serverPoints
-    }
-    return dailyTrend.map {
-        StatsSpendChartPoint(label = it.label.ifBlank { it.date }, amountCents = it.amountCents.coerceAtLeast(0L))
-    }
 }

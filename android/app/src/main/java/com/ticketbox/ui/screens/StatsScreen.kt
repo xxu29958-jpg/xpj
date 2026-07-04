@@ -212,14 +212,6 @@ fun StatsScreen(
                                 recent7DaysAmountCents = overviewRecent7DaysAmount(state),
                                 comparison = state.monthComparison,
                                 trendData = StatsOverviewTrendData(
-                                    dailyTrend = if (
-                                        state.statsSource == StatsSource.LocalFallback &&
-                                        state.reportsOverview == null
-                                    ) {
-                                        state.dailyTrend
-                                    } else {
-                                        emptyList()
-                                    },
                                     reportTrend = state.reportsOverview?.trend.orEmpty(),
                                     includeRecentUpload = recentUploadMergedIntoOverview,
                                     lastUploadAt = state.lastUploadAt,
