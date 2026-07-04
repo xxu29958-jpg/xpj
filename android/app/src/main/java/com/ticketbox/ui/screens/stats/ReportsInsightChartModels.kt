@@ -1,8 +1,11 @@
 package com.ticketbox.ui.screens.stats
 
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.ReportCategoryComparison
+import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportTrendPoint
+import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.ui.components.formatDisplayAmount
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -24,6 +27,17 @@ internal fun reportTrendChartPoints(trend: List<ReportTrendPoint>): List<ReportT
             count = point.count.coerceAtLeast(0),
         )
     }
+
+internal fun reportsRecentWindowTrend(overview: ReportsOverview): List<DailySpend> {
+    if (overview.granularity != ReportGranularity.Day) return emptyList()
+    return overview.trend.map { point ->
+        DailySpend(
+            date = point.bucket,
+            label = point.label.ifBlank { point.bucket.takeLast(5) },
+            amountCents = point.amountCents.coerceAtLeast(0L),
+        )
+    }
+}
 
 internal data class CategoryComparisonChartRow(
     val category: String,

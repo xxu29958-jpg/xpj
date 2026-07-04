@@ -266,7 +266,6 @@ fun StatsScreen(
                             overview != null -> item {
                                 ReportsInsightCard(
                                     overview = overview,
-                                    recentTrend = state.dailyTrend,
                                     onGranularityChange = onGranularityChange,
                                     onRankingMetricChange = onRankingMetricChange,
                                 )

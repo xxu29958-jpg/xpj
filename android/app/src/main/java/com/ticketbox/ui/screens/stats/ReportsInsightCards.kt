@@ -41,11 +41,11 @@ import kotlin.math.abs
 internal fun ReportsInsightCard(
     overview: ReportsOverview,
     modifier: Modifier = Modifier,
-    recentTrend: List<DailySpend> = emptyList(),
     onGranularityChange: (ReportGranularity) -> Unit = {},
     onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
 ) {
     val model = remember(overview) { reportsAnswerModel(overview) }
+    val recentTrend = remember(overview) { reportsRecentWindowTrend(overview) }
     val hasCurrentSpend = model.count > 0 && model.totalAmountCents > 0L
 
     Column(
