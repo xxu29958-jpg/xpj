@@ -266,7 +266,6 @@ fun StatsScreen(
                                 TagScopeInsight(
                                     stats = stats,
                                     selectedTag = state.selectedTag,
-                                    dailyTrend = state.dailyTrend,
                                     statsSource = state.statsSource,
                                 )
                             }

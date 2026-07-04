@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
-import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -31,28 +30,21 @@ internal data class TagScopeInsightModel(
     val month: String,
     val totalAmountCents: Long,
     val count: Int,
-    val recentAmountCents: Long,
-    val recentActiveDayCount: Int,
 ) {
     val hasSpend: Boolean = totalAmountCents > 0L && count > 0
-    val hasRecentSpend: Boolean = recentAmountCents > 0L && recentActiveDayCount > 0
 }
 
 internal fun tagScopeInsightModel(
     stats: MonthlyStats,
     selectedTag: String,
-    dailyTrend: List<DailySpend>,
 ): TagScopeInsightModel? {
     val cleanTag = selectedTag.trim()
     if (cleanTag.isBlank()) return null
-    val recent = dailyTrend.map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }
     return TagScopeInsightModel(
         tag = cleanTag,
         month = stats.month,
         totalAmountCents = stats.totalAmountCents.coerceAtLeast(0L),
         count = stats.count.coerceAtLeast(0),
-        recentAmountCents = recent.sumOf { it.amountCents },
-        recentActiveDayCount = recent.count { it.amountCents > 0L },
     )
 }
 
@@ -60,12 +52,11 @@ internal fun tagScopeInsightModel(
 internal fun TagScopeInsight(
     stats: MonthlyStats,
     selectedTag: String,
-    dailyTrend: List<DailySpend>,
     statsSource: StatsSource,
     modifier: Modifier = Modifier,
 ) {
-    val model = remember(stats, selectedTag, dailyTrend) {
-        tagScopeInsightModel(stats = stats, selectedTag = selectedTag, dailyTrend = dailyTrend)
+    val model = remember(stats, selectedTag) {
+        tagScopeInsightModel(stats = stats, selectedTag = selectedTag)
     } ?: return
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -73,7 +64,6 @@ internal fun TagScopeInsight(
     ) {
         TagScopeHeader(model = model, statsSource = statsSource)
         TagScopeMetrics(model = model)
-        RecentTrendCard(dailyTrend)
     }
 }
 
@@ -137,7 +127,6 @@ private fun TagScopeHeader(
 
 @Composable
 private fun TagScopeMetrics(model: TagScopeInsightModel) {
-    val currencyDisplay = LocalCurrencyDisplay.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
@@ -145,15 +134,6 @@ private fun TagScopeMetrics(model: TagScopeInsightModel) {
         TagScopeMetric(
             label = stringResource(R.string.stats_tag_scope_month_count_label),
             value = stringResource(R.string.stats_overview_count_value, model.count),
-            modifier = Modifier.weight(1f),
-        )
-        TagScopeMetric(
-            label = stringResource(R.string.stats_tag_scope_recent_label),
-            value = if (model.hasRecentSpend) {
-                formatDisplayAmount(model.recentAmountCents, currencyDisplay)
-            } else {
-                stringResource(R.string.stats_tag_scope_recent_empty)
-            },
             modifier = Modifier.weight(1f),
         )
     }
