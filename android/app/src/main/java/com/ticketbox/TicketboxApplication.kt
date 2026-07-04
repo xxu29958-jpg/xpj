@@ -6,13 +6,16 @@ import androidx.work.Configuration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 class TicketboxApplication : Application(), Configuration.Provider {
     lateinit var container: AppContainer
         private set
 
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val startupWorkersScheduled = AtomicBoolean(false)
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().build()
@@ -20,11 +23,12 @@ class TicketboxApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        scheduleStartupWorkers()
     }
 
-    private fun scheduleStartupWorkers() {
+    fun scheduleStartupWorkersAfterLaunchSettles() {
+        if (!startupWorkersScheduled.compareAndSet(false, true)) return
         startupScope.launch {
+            delay(STARTUP_WORK_AFTER_LAUNCH_SETTLES_DELAY_MS)
             scheduleStartupWork("outbox") {
                 container.outboxScheduler.ensurePeriodic(this@TicketboxApplication)
                 container.outboxScheduler.enqueueOnce(this@TicketboxApplication)
@@ -51,5 +55,8 @@ class TicketboxApplication : Application(), Configuration.Provider {
 
     private companion object {
         const val TAG = "TicketboxApplication"
+        // Periodic maintenance can wait; mutation call sites still enqueue their
+        // own immediate outbox drain, so this stays off the first-frame path.
+        const val STARTUP_WORK_AFTER_LAUNCH_SETTLES_DELAY_MS = 20_000L
     }
 }

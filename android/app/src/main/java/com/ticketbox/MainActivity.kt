@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.IntentCompat
+import androidx.core.view.doOnPreDraw
 import androidx.fragment.app.FragmentActivity
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.navigation.EXTRA_SHORTCUT_TARGET
@@ -71,6 +72,9 @@ class MainActivity : FragmentActivity() {
                 ),
                 biometricAuthManager = biometricAuthManager,
             )
+        }
+        window.decorView.doOnPreDraw {
+            (application as TicketboxApplication).scheduleStartupWorkersAfterLaunchSettles()
         }
     }
 

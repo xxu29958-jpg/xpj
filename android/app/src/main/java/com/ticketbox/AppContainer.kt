@@ -204,8 +204,9 @@ class AppContainer(context: Context) {
         //
         // PR-2g.3 round-9 P2: cancel ALSO drops the periodic worker.
         // Without immediately re-arming, the next 15-min heartbeat
-        // never fires until cold restart calls TicketboxApplication.
-        // onCreate again — meaning every mutation queued under the
+        // never fires until a cold launch calls
+        // TicketboxApplication.scheduleStartupWorkersAfterLaunchSettles
+        // again — meaning every mutation queued under the
         // new session would have to wait for an explicit
         // enqueueOnce trigger (or the next app launch) to drain.
         // Re-arm right here so the periodic tick survives the
@@ -461,7 +462,7 @@ class AppContainer(context: Context) {
     )
 
     // ADR-0046 Slice 5: 固定支出提醒检测源的 WorkManager 调度器。
-    // TicketboxApplication.onCreate 调 ensurePeriodic()（幂等）注册 24h 周期 worker。
+    // 启动稳定后由 TicketboxApplication 调 ensurePeriodic()（幂等）注册 24h 周期 worker。
     val recurringReminderScheduler = WorkManagerRecurringReminderScheduler()
 
     // ADR-0046 Slice 4: 提醒编排核心。source 只读 recurringRepository（active items），
@@ -515,7 +516,7 @@ class AppContainer(context: Context) {
 
     // 轴 6 主动性 · 备份超龄提醒（五类事件收官）：24h 周期 worker 唤醒 engine
     // （0046 边界契约——纯运维状态与记账动作无关，不走确认回调）。
-    // TicketboxApplication.onCreate 调 ensurePeriodic()（幂等）注册。
+    // 启动稳定后由 TicketboxApplication 调 ensurePeriodic()（幂等）注册。
     val backupStaleScheduler = WorkManagerBackupStaleScheduler()
 
     // status/private 的窄仓库：server 级端点（只要 app token），不绑 active ledger。
