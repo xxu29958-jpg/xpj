@@ -5,19 +5,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
@@ -99,20 +101,15 @@ private fun ExpenseItemsPanel(
             trailing = expenseItems?.itemsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
         )
         if (onEditItems != null && !loading) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onEditItems) {
-                    Text(
-                        if (expenseItems?.items.isNullOrEmpty()) {
-                            stringResource(R.string.expense_edit_v1_items_add_button)
-                        } else {
-                            stringResource(R.string.expense_edit_v1_items_edit_button)
-                        }
-                    )
-                }
-            }
+            ExpenseDetailActionButtonRow(
+                text = if (expenseItems?.items.isNullOrEmpty()) {
+                    stringResource(R.string.expense_edit_v1_items_add_button)
+                } else {
+                    stringResource(R.string.expense_edit_v1_items_edit_button)
+                },
+                icon = if (expenseItems?.items.isNullOrEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
+                onClick = onEditItems,
+            )
         }
         when {
             loading -> DetailLoadingState(
@@ -157,7 +154,7 @@ private fun ExpenseItemsPanel(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                             rows.forEach { item ->
                                 ExpenseItemRow(item, currencyDisplay)
                             }
@@ -173,7 +170,7 @@ private fun ExpenseItemsPanel(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                             rows.forEach { item -> ExpenseItemRow(item, currencyDisplay) }
                         }
                     }
@@ -199,8 +196,8 @@ private fun ItemsSumMismatchBanner(
     val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) } ?: ""
     AppEmptyStateCard {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.compactGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Text(
                 text = stringResource(R.string.expense_edit_v1_items_mismatch_title, diff),
@@ -213,9 +210,11 @@ private fun ItemsSumMismatchBanner(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(onClick = onAcknowledge) {
-                Text(stringResource(R.string.expense_edit_v1_items_mismatch_ack_button))
-            }
+            ExpenseDetailActionButtonRow(
+                text = stringResource(R.string.expense_edit_v1_items_mismatch_ack_button),
+                icon = Icons.Filled.Check,
+                onClick = onAcknowledge,
+            )
         }
     }
 }
@@ -228,8 +227,8 @@ private fun ItemsSumAcknowledgedBanner(
     val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) } ?: ""
     AppEmptyStateCard {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.compactGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
             Text(
                 text = stringResource(R.string.expense_edit_v1_items_mismatch_acknowledged, diff),
@@ -258,20 +257,15 @@ private fun ExpenseSplitsPanel(
             trailing = expenseSplits?.splitsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
         )
         if (onEditSplits != null && !loading) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onEditSplits) {
-                    Text(
-                        if (expenseSplits?.splits.isNullOrEmpty()) {
-                            stringResource(R.string.expense_edit_v1_splits_add_button)
-                        } else {
-                            stringResource(R.string.expense_edit_v1_splits_edit_button)
-                        }
-                    )
-                }
-            }
+            ExpenseDetailActionButtonRow(
+                text = if (expenseSplits?.splits.isNullOrEmpty()) {
+                    stringResource(R.string.expense_edit_v1_splits_add_button)
+                } else {
+                    stringResource(R.string.expense_edit_v1_splits_edit_button)
+                },
+                icon = if (expenseSplits?.splits.isNullOrEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
+                onClick = onEditSplits,
+            )
         }
         when {
             loading -> DetailLoadingState(
@@ -287,7 +281,7 @@ private fun ExpenseSplitsPanel(
                     mismatchCents = expenseSplits.mismatchCents,
                     currencyDisplay = currencyDisplay,
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                     expenseSplits.splits.forEach { split ->
                         ExpenseSplitRow(split, currencyDisplay)
                     }
@@ -334,14 +328,12 @@ internal fun ExpenseBillSplitInvitePanel(
                 onCancelInvite = onCancelInvite,
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            Button(onClick = onStartInvite, enabled = !loading) {
-                Text(stringResource(R.string.expense_edit_bill_split_start_button))
-            }
-        }
+        ExpenseDetailActionButtonRow(
+            text = stringResource(R.string.expense_edit_bill_split_start_button),
+            icon = Icons.Filled.GroupAdd,
+            enabled = !loading,
+            onClick = onStartInvite,
+        )
         ExpenseDetailDivider()
     }
 }
@@ -352,7 +344,7 @@ private fun BillSplitSentList(
     currencyDisplay: CurrencyDisplay,
     onCancelInvite: (publicId: String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         sent.forEach { row ->
             BillSplitSentRow(
                 row = row,
@@ -369,43 +361,50 @@ private fun BillSplitSentRow(
     currencyDisplay: CurrencyDisplay,
     onCancel: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            val receiverName = row.receiverDisplayNameSnapshot?.takeIf { it.isNotBlank() }
-            Text(
-                text = if (receiverName != null) {
-                    stringResource(R.string.expense_edit_bill_split_row_to, receiverName)
-                } else {
-                    stringResource(R.string.expense_edit_bill_split_row_to_unknown)
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = billSplitSentStatusLabel(row.status),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                val receiverName = row.receiverDisplayNameSnapshot?.takeIf { it.isNotBlank() }
+                Text(
+                    text = if (receiverName != null) {
+                        stringResource(R.string.expense_edit_bill_split_row_to, receiverName)
+                    } else {
+                        stringResource(R.string.expense_edit_bill_split_row_to_unknown)
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = billSplitSentStatusLabel(row.status),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            AppEndAlignedAmountText(
+                modifier = Modifier.weight(0.42f),
+                text = formatDisplayAmount(row.amountCents, currencyDisplay),
+                role = AppAmountRole.Compact,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
-        AppEndAlignedAmountText(
-            modifier = Modifier.weight(0.42f),
-            text = formatDisplayAmount(row.amountCents, currencyDisplay),
-            role = AppAmountRole.Compact,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
         if (row.status == BillSplitStatusValues.INVITED) {
-            TextButton(onClick = onCancel) {
-                Text(stringResource(R.string.expense_edit_bill_split_row_cancel))
-            }
+            ExpenseDetailActionButtonRow(
+                text = stringResource(R.string.expense_edit_bill_split_row_cancel),
+                icon = Icons.Filled.Close,
+                onClick = onCancel,
+            )
         }
     }
 }
@@ -429,7 +428,7 @@ private fun DetailHeader(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         verticalAlignment = Alignment.Top,
     ) {
         AppSectionHeader(
@@ -526,16 +525,16 @@ private fun ReconcileAmountLine(label: String, amount: String) {
 private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.Top,
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
                     text = item.name,
@@ -566,16 +565,16 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
 private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDisplay) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.Top,
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
                     text = split.accountName,
