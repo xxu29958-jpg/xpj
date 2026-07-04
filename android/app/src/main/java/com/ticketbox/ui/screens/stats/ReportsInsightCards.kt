@@ -25,10 +25,12 @@ import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -288,17 +290,23 @@ private fun AmountBarHeader(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
+        AppEndAlignedAmountText(
             text = amountText,
-            style = MaterialTheme.typography.labelLarge.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
+            modifier = Modifier.weight(ReportsCategoryAmountWeight),
+            role = AppAmountRole.Compact,
         )
         trailingText?.let {
             Text(
                 text = it,
+                modifier = Modifier.weight(ReportsCategoryTrailingWeight, fill = false),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall.tabularNum(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
 }
+
+private const val ReportsCategoryAmountWeight = 0.58f
+private const val ReportsCategoryTrailingWeight = 0.72f
