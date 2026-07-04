@@ -420,6 +420,28 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun loadBillSplitSentFailureKeepsExistingSentRows() = edit { fake ->
+        confirmedExpenseFake(fake)
+        var failNextLoad = false
+        fake.fetchBillSplitSentResponder = {
+            if (failNextLoad) {
+                Result.failure(RuntimeException("boom"))
+            } else {
+                Result.success(listOf(fake.sentInvite(publicId = "mine", senderExpenseId = 7L)))
+            }
+        }
+        val vm = viewModel(fake)
+
+        failNextLoad = true
+        vm.loadBillSplitSent()
+        advanceUntilIdle()
+
+        assertEquals(listOf("mine"), vm.uiState.value.billSplitSent.map { it.publicId })
+        assertNotNull(vm.uiState.value.billSplitMessage)
+        assertFalse(vm.uiState.value.billSplitLoading)
+    }
+
+    @Test
     fun sendBillSplitInviteSuccessCreatesWithMemberAccountIdAndRefreshes() = edit { fake ->
         confirmedExpenseFake(fake)
         fake.fetchBillSplitSentResponder = { Result.success(emptyList()) }

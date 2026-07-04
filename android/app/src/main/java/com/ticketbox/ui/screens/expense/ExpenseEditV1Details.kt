@@ -351,18 +351,26 @@ internal fun ExpenseBillSplitInvitePanel(
             subtitle = stringResource(R.string.expense_edit_bill_split_card_subtitle),
             trailing = null,
         )
-        when {
-            loading -> DetailLoadingState(
+        val messageText = message?.asString()
+        if (loading) {
+            DetailLoadingState(
                 title = stringResource(R.string.expense_edit_bill_split_loading),
                 body = stringResource(R.string.expense_edit_bill_split_card_subtitle),
             )
-            message != null -> DetailEmptyState(message.asString())
-            sent.isEmpty() -> DetailEmptyState(stringResource(R.string.expense_edit_bill_split_empty))
-            else -> BillSplitSentList(
-                sent = sent,
-                currencyDisplay = currencyDisplay,
-                onCancelInvite = onCancelInvite,
-            )
+        } else {
+            messageText?.let { DetailEmptyState(it) }
+            when {
+                sent.isEmpty() -> {
+                    if (messageText == null) {
+                        DetailEmptyState(stringResource(R.string.expense_edit_bill_split_empty))
+                    }
+                }
+                else -> BillSplitSentList(
+                    sent = sent,
+                    currencyDisplay = currencyDisplay,
+                    onCancelInvite = onCancelInvite,
+                )
+            }
         }
         ExpenseDetailActionButtonRow(
             text = stringResource(R.string.expense_edit_bill_split_start_button),
