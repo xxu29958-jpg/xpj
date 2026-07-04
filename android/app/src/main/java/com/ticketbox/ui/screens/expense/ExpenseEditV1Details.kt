@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +43,7 @@ import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -413,15 +416,10 @@ private fun BillSplitSentRow(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
+        ExpenseDetailAmountRow(
+            amount = formatDisplayAmount(row.amountCents, currencyDisplay),
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 val receiverName = row.receiverDisplayNameSnapshot?.takeIf { it.isNotBlank() }
                 Text(
                     text = if (receiverName != null) {
@@ -440,12 +438,6 @@ private fun BillSplitSentRow(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            AppEndAlignedAmountText(
-                modifier = Modifier.weight(0.42f),
-                text = formatDisplayAmount(row.amountCents, currencyDisplay),
-                role = AppAmountRole.Compact,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
         }
         if (row.status == BillSplitStatusValues.INVITED) {
             ExpenseDetailActionButtonRow(
@@ -475,23 +467,58 @@ private fun DetailHeader(
     subtitle: String,
     trailing: String?,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.Top,
-    ) {
+    if (trailing == null) {
         AppSectionHeader(
             title = title,
             subtitle = subtitle,
-            modifier = Modifier.weight(1f),
         )
-        trailing?.let {
-            AppEndAlignedAmountText(
-                modifier = Modifier.weight(0.42f),
-                text = it,
-                role = AppAmountRole.Compact,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+        return
+    }
+    ExpenseDetailAmountRow(amount = trailing) {
+        AppSectionHeader(
+            title = title,
+            subtitle = subtitle,
+        )
+    }
+}
+
+@Composable
+private fun ExpenseDetailAmountRow(
+    amount: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val stackAmount = maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth
+        if (stackAmount) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                content()
+                AppEndAlignedAmountText(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = amount,
+                    role = AppAmountRole.Compact,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    content()
+                }
+                AppEndAlignedAmountText(
+                    modifier = Modifier.weight(0.44f),
+                    text = amount,
+                    role = AppAmountRole.Compact,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }
@@ -576,15 +603,10 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.Top,
+        ExpenseDetailAmountRow(
+            amount = formatDisplayAmount(item.amountCents, currencyDisplay),
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 Text(
                     text = item.name,
                     style = MaterialTheme.typography.bodyLarge,
@@ -600,12 +622,6 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            AppEndAlignedAmountText(
-                modifier = Modifier.weight(0.44f),
-                text = formatDisplayAmount(item.amountCents, currencyDisplay),
-                role = AppAmountRole.Compact,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
         }
     }
 }
@@ -616,15 +632,10 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.Top,
+        ExpenseDetailAmountRow(
+            amount = formatDisplayAmount(split.amountCents, currencyDisplay),
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 Text(
                     text = split.accountName,
                     style = MaterialTheme.typography.bodyLarge,
@@ -640,12 +651,6 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            AppEndAlignedAmountText(
-                modifier = Modifier.weight(0.44f),
-                text = formatDisplayAmount(split.amountCents, currencyDisplay),
-                role = AppAmountRole.Compact,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
         }
     }
 }
