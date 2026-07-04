@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.displayTime
@@ -58,7 +58,7 @@ private object LedgerItemLayout {
     const val TableCategoryWeight = 0.72f
     const val TableAmountWeight = 0.88f
     const val ListAmountInlineWeight = 0.68f
-    val AmountStackBreakpoint = 320.dp
+    const val DayHeaderAmountInlineWeight = 0.42f
     val RowTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 }
 
@@ -90,7 +90,7 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
         ?.let { stringResource(R.string.ledger_day_count_with_preview, state.itemCount, it) }
         ?: stringResource(R.string.ledger_day_count, state.itemCount)
     Column(modifier = Modifier.fillMaxWidth()) {
-        BoxWithConstraints(
+        AppAdaptiveContentActionStateRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
@@ -101,38 +101,25 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
                     horizontal = AppSpacing.smallGap,
                     vertical = AppSpacing.tinyGap + AppSpacing.tinyGap,
                 ),
-        ) {
-            val stackAmount = maxWidth < LedgerItemLayout.AmountStackBreakpoint
-            if (stackAmount) {
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.weight(1f))
-                        LedgerDayHeaderToggleIcon(state)
-                    }
-                    LedgerDayHeaderAmount(
-                        state = state,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            } else {
+            wideActionWeight = LedgerItemLayout.DayHeaderAmountInlineWeight,
+            verticalAlignment = Alignment.CenterVertically,
+            content = {
+                LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.fillMaxWidth())
+            },
+            action = { amountModifier, _ ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = amountModifier,
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.weight(1f))
                     LedgerDayHeaderAmount(
                         state = state,
-                        modifier = Modifier.weight(0.42f),
+                        modifier = Modifier.weight(1f),
                     )
                     LedgerDayHeaderToggleIcon(state)
                 }
-            }
-        }
+            },
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
     }
 }
