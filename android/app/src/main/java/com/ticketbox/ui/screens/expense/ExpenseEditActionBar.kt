@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -21,12 +20,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 
@@ -105,13 +105,12 @@ private fun ExpenseEditResponsiveActionRows(
     actions: ExpenseEditActionBarActions,
     compactMode: Boolean,
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val actionCount = listOf(state.allowReject, state.allowSave, state.allowConfirm).count { it }
-        val shouldStack = maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth && actionCount >= 3
-        when {
-            shouldStack -> ExpenseEditStackedActionRows(state = state, actions = actions)
-            compactMode -> ExpenseEditKeyboardActionRow(state = state, actions = actions)
-            else -> ExpenseEditActionForwardRow(state = state, actions = actions)
+    val actionCount = listOf(state.allowReject, state.allowSave, state.allowConfirm).count { it }
+    AppAdaptiveEditActionLayout(actionCount = actionCount, compact = compactMode) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> ExpenseEditStackedActionRows(state = state, actions = actions)
+            AppAdaptiveEditActionMode.Compact -> ExpenseEditKeyboardActionRow(state = state, actions = actions)
+            AppAdaptiveEditActionMode.Inline -> ExpenseEditActionForwardRow(state = state, actions = actions)
         }
     }
 }

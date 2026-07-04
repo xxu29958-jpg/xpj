@@ -23,6 +23,12 @@ data class AppAdaptiveFieldPairWeights(
     val trailing: Float = 1f,
 )
 
+enum class AppAdaptiveEditActionMode {
+    Stacked,
+    Compact,
+    Inline,
+}
+
 @Composable
 fun AppAdaptiveContentActionRow(
     modifier: Modifier = Modifier,
@@ -70,6 +76,24 @@ fun AppAdaptiveContentActionStateRow(
                 action(wideActionWeight?.let { Modifier.weight(it) } ?: Modifier, false)
             }
         }
+    }
+}
+
+@Composable
+fun AppAdaptiveEditActionLayout(
+    actionCount: Int,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable (AppAdaptiveEditActionMode) -> Unit,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val mode = when {
+            maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth && actionCount >= 3 ->
+                AppAdaptiveEditActionMode.Stacked
+            compact -> AppAdaptiveEditActionMode.Compact
+            else -> AppAdaptiveEditActionMode.Inline
+        }
+        content(mode)
     }
 }
 
