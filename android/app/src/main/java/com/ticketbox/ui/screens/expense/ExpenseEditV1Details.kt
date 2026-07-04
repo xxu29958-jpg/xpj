@@ -31,14 +31,15 @@ import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.tabularNum
 
@@ -396,13 +397,10 @@ private fun BillSplitSentRow(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Text(
+        AppAmountText(
             text = formatDisplayAmount(row.amountCents, currencyDisplay),
+            role = AppAmountRole.Compact,
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyLarge.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         if (row.status == BillSplitStatusValues.INVITED) {
             TextButton(onClick = onCancel) {
@@ -440,13 +438,10 @@ private fun DetailHeader(
             modifier = Modifier.weight(1f),
         )
         trailing?.let {
-            Text(
+            AppAmountText(
                 text = it,
+                role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleMedium.tabularNum(),
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -517,13 +512,10 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
+            AppAmountText(
                 text = formatDisplayAmount(item.amountCents, currencyDisplay),
+                role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyLarge.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -559,13 +551,10 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
+            AppAmountText(
                 text = formatDisplayAmount(split.amountCents, currencyDisplay),
+                role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyLarge.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }

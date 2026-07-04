@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -31,15 +32,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAsyncImage
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayCompactTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
@@ -49,7 +51,6 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
-import com.ticketbox.ui.design.tabularNum
 
 @Immutable
 internal data class PendingExpenseReviewItem(
@@ -173,20 +174,29 @@ private fun PendingExpenseAmountBlock(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     val amount = expense.amountCents?.let { formatExpensePrimaryAmount(expense, currencyDisplay) }
-        ?: stringResource(R.string.pending_row_amount_missing)
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        Text(
-            text = amount,
+        Box(
             modifier = Modifier.widthIn(min = 118.dp),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleSmall
-                .copy(letterSpacing = 0.sp)
-                .tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            textAlign = TextAlign.End,
-        )
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            if (amount == null) {
+                Text(
+                    text = stringResource(R.string.pending_row_amount_missing),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                )
+            } else {
+                AppAmountText(
+                    text = amount,
+                    role = AppAmountRole.Compact,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
         formatExpenseExchangeMeta(expense)?.let {
             Text(
                 text = it,

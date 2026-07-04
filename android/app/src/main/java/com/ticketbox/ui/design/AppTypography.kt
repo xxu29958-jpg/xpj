@@ -82,9 +82,10 @@ fun TextStyle.tabularNum(): TextStyle = copy(fontFeatureSettings = "tnum")
  *
  * 此前各屏都手写 `MaterialTheme.typography.titleLarge.copy(fontSize = …,
  * lineHeight = …, letterSpacing = 0.sp, fontWeight = …).tabularNum()`，字号 /
- * 行高靠手感复制、容易漂。这里把"焦点金额"收成两档单源：
+ * 行高靠手感复制、容易漂。这里把"焦点金额"收成三档单源：
  *   - [Hero]   —— 每屏唯一的英雄数字（月度总支出等），38sp Black。
  *   - [Medium] —— 卡片 / 列表里的次级金额，24sp Bold。
+ *   - [Compact] —— 密集列表 / 明细行里的金额，15sp Medium。
  *
  * 字号 / 字重直接复用 [AppTypography] 的 `amountLarge` / `amountMedium`，
  * 不再写第二份字面量；只补金额特有的行高。配合 [asAmount] 使用。
@@ -92,6 +93,7 @@ fun TextStyle.tabularNum(): TextStyle = copy(fontFeatureSettings = "tnum")
 enum class AppAmountRole(val role: AppTextRole, val lineHeight: TextUnit) {
     Hero(AppTypography.amountLarge, 38.sp),
     Medium(AppTypography.amountMedium, 28.sp),
+    Compact(AppTextHierarchy.body, 20.sp),
 }
 
 /**

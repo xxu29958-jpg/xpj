@@ -40,4 +40,5 @@ private val AppAmountRole.defaultMinFontSize: TextUnit
     get() = when (this) {
         AppAmountRole.Hero -> 18.sp
         AppAmountRole.Medium -> 14.sp
+        AppAmountRole.Compact -> 11.sp
     }

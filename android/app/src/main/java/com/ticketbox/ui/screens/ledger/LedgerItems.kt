@@ -32,8 +32,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
@@ -41,7 +43,6 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.ui.design.tabularNum
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -55,6 +56,12 @@ private object LedgerItemLayout {
     const val TableCategoryWeight = 0.72f
     const val TableAmountWeight = 0.88f
     val RowTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+}
+
+private enum class LedgerAmountPresentation {
+    Card,
+    ListRow,
+    Table,
 }
 
 internal data class LedgerDayHeaderUi(
@@ -110,13 +117,13 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = formatAmount(state.dayTotalCents),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.labelLarge.tabularNum(),
-                fontWeight = AppTypography.cardTitle.weight,
-                maxLines = 1,
-            )
+            Box(contentAlignment = Alignment.CenterEnd) {
+                AppAmountText(
+                    text = formatAmount(state.dayTotalCents),
+                    role = AppAmountRole.Compact,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             LedgerDayHeaderToggleIcon(state)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
@@ -201,12 +208,9 @@ internal fun LedgerExpenseCard(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
-                Text(
-                    text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleMedium.tabularNum(),
-                    fontWeight = AppTypography.amountMedium.weight,
-                    maxLines = 1,
+                LedgerAmountOrPending(
+                    amountCents = expense.amountCents,
+                    presentation = LedgerAmountPresentation.Card,
                 )
                 Text(
                     text = expense.category,
@@ -274,14 +278,10 @@ internal fun LedgerExpenseListRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyLarge.tabularNum(),
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                softWrap = false,
-                textAlign = TextAlign.End,
+            LedgerAmountOrPending(
+                amountCents = expense.amountCents,
+                presentation = LedgerAmountPresentation.ListRow,
+                modifier = Modifier.weight(0.42f, fill = false),
             )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
@@ -347,18 +347,46 @@ internal fun LedgerExpenseTableRow(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
-            Text(
-                text = expense.amountCents?.let(::formatAmount) ?: stringResource(R.string.ledger_item_amount_pending),
+            LedgerAmountOrPending(
+                amountCents = expense.amountCents,
+                presentation = LedgerAmountPresentation.Table,
                 modifier = Modifier.weight(LedgerItemLayout.TableAmountWeight),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.labelLarge.tabularNum(),
-                fontWeight = AppTypography.amountMedium.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
             )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
+    }
+}
+
+@Composable
+private fun LedgerAmountOrPending(
+    amountCents: Long?,
+    presentation: LedgerAmountPresentation,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.CenterEnd) {
+        amountCents?.let {
+            AppAmountText(
+                text = formatAmount(it),
+                role = AppAmountRole.Compact,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        } ?: Text(
+            text = stringResource(R.string.ledger_item_amount_pending),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = when (presentation) {
+                LedgerAmountPresentation.Card -> MaterialTheme.typography.titleMedium
+                LedgerAmountPresentation.ListRow -> MaterialTheme.typography.bodyLarge
+                LedgerAmountPresentation.Table -> MaterialTheme.typography.labelLarge
+            },
+            fontWeight = when (presentation) {
+                LedgerAmountPresentation.Card,
+                LedgerAmountPresentation.Table -> AppTypography.amountMedium.weight
+                LedgerAmountPresentation.ListRow -> AppTextHierarchy.heading.weight
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+        )
     }
 }
 
