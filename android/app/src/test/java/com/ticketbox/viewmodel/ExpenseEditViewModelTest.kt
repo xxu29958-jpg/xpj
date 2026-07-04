@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.ReplaceItemsOutcome
 import com.ticketbox.data.repository.ReplaceSplitsOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -467,6 +468,35 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun sendBillSplitInviteSuccessKeepsReturnedRowWhenRefreshFails() = edit { fake ->
+        confirmedExpenseFake(fake)
+        var failNextSentRefresh = false
+        fake.fetchBillSplitSentResponder = {
+            if (failNextSentRefresh) {
+                Result.failure(RuntimeException("refresh failed"))
+            } else {
+                Result.success(emptyList())
+            }
+        }
+        fake.splitMembersResponder = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResponder = { _, _, _ -> Result.success(fake.sentInvite(publicId = "new")) }
+        val vm = viewModel(fake)
+
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("4.00")
+        failNextSentRefresh = true
+        vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        assertEquals(listOf("new"), vm.uiState.value.billSplitSent.map { it.publicId })
+        assertEquals(BillSplitStatusValues.INVITED, vm.uiState.value.billSplitSent.single().status)
+        assertNotNull(vm.uiState.value.billSplitMessage)
+        assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
+    }
+
+    @Test
     fun sendBillSplitInviteRejectsAmountOverRemainingWithoutCallingRepository() = edit { fake ->
         confirmedExpenseFake(fake)
         // 父金额 10.00，已有一条活跃(invited)拆账 8.00 → 剩余 2.00；发 5.00 必须本地拒。
@@ -530,6 +560,32 @@ internal class ExpenseEditViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(3L), vm.uiState.value.billSplitInviteMembers.map { it.memberId })
+    }
+
+    @Test
+    fun cancelBillSplitInvitationKeepsReturnedStatusWhenRefreshFails() = edit { fake ->
+        confirmedExpenseFake(fake)
+        var failNextSentRefresh = false
+        fake.fetchBillSplitSentResponder = {
+            if (failNextSentRefresh) {
+                Result.failure(RuntimeException("refresh failed"))
+            } else {
+                Result.success(listOf(fake.sentInvite(publicId = "mine", status = BillSplitStatusValues.INVITED)))
+            }
+        }
+        fake.cancelBillSplitResponder = { publicId ->
+            Result.success(fake.sentInvite(publicId = publicId, status = BillSplitStatusValues.CANCELLED))
+        }
+        val vm = viewModel(fake)
+
+        failNextSentRefresh = true
+        vm.cancelBillSplitInvitation("mine")
+        advanceUntilIdle()
+
+        assertEquals(listOf("mine"), vm.uiState.value.billSplitSent.map { it.publicId })
+        assertEquals(BillSplitStatusValues.CANCELLED, vm.uiState.value.billSplitSent.single().status)
+        assertNotNull(vm.uiState.value.billSplitMessage)
+        assertFalse(vm.uiState.value.billSplitLoading)
     }
 }
 

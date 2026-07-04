@@ -147,10 +147,11 @@ fun ExpenseEditViewModel.sendBillSplitInvite() {
     viewModelScope.launch {
         _uiState.update { it.copy(billSplitInviteSending = true, billSplitInviteMessage = null) }
         repository.createBillSplitInvitation(expense.id, member.accountId, amountCents)
-            .onSuccess {
+            .onSuccess { sent ->
                 // 关闭 sheet、刷新本票已发列表（让新邀请立刻出现在卡里）、顶部成功提示。
                 _uiState.update {
                     it.copy(
+                        billSplitSent = it.billSplitSent.upsertBillSplitSent(sent, expense.id),
                         billSplitInviteSheetOpen = false,
                         billSplitInviteSelectedMemberId = null,
                         billSplitInviteAmountText = "",
@@ -178,7 +179,17 @@ fun ExpenseEditViewModel.cancelBillSplitInvitation(publicId: String) {
     viewModelScope.launch {
         _uiState.update { it.copy(billSplitLoading = true, billSplitMessage = null) }
         repository.cancelBillSplitInvitation(publicId)
-            .onSuccess { loadBillSplitSent() }
+            .onSuccess { cancelled ->
+                _uiState.update { state ->
+                    val expenseId = state.expense?.id
+                    state.copy(
+                        billSplitSent = state.billSplitSent.upsertBillSplitSent(cancelled, expenseId),
+                        billSplitLoading = false,
+                        billSplitMessage = null,
+                    )
+                }
+                loadBillSplitSent()
+            }
             .onFailure { error ->
                 _uiState.update {
                     it.copy(
@@ -188,4 +199,14 @@ fun ExpenseEditViewModel.cancelBillSplitInvitation(publicId: String) {
                 }
             }
     }
+}
+
+private fun List<BillSplitSent>.upsertBillSplitSent(
+    updated: BillSplitSent,
+    expenseId: Long?,
+): List<BillSplitSent> {
+    if (expenseId == null || updated.senderExpenseId != expenseId) return this
+    val existingIndex = indexOfFirst { it.publicId == updated.publicId }
+    if (existingIndex == -1) return this + updated
+    return map { row -> if (row.publicId == updated.publicId) updated else row }
 }
