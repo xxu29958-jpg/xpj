@@ -6,14 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
@@ -41,7 +41,6 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.domain.model.DASHBOARD_CARD_GOALS
@@ -156,11 +155,11 @@ private fun StatsPlanningMenuTrigger(
                     true
                 })
             }
-            .size(40.dp)
+            .size(AppSpacing.controlMinHeight)
             .clip(RoundedCornerShape(AppRadius.pill))
             .background(visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha))
             .border(
-                width = 1.dp,
+                width = controlTokens.borderWidth,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha),
                 shape = RoundedCornerShape(AppRadius.pill),
             )
@@ -171,7 +170,7 @@ private fun StatsPlanningMenuTrigger(
             imageVector = Icons.Filled.Tune,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(AppSpacing.cardPadding),
         )
     }
 }
@@ -184,8 +183,12 @@ private fun StatsTabRow(
     tagFilterActive: Boolean,
     onTabChange: (StatsTab) -> Unit,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        items(StatsTab.entries, key = { it.name }) { tab ->
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        StatsTab.entries.forEach { tab ->
             StatsTextTab(
                 label = statsTabLabel(tab, dashboardCards),
                 selected = selectedTab == tab,
@@ -249,7 +252,7 @@ private fun StatsFilterRow(
             modifier = if (showTagFilter) {
                 Modifier.weight(1f)
             } else {
-                Modifier.widthIn(min = 168.dp)
+                Modifier.fillMaxWidth()
             },
             trailingIcon = {
                 FilterTrailingIcon(
@@ -319,6 +322,7 @@ private fun StatsTextTab(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val controlTokens = LocalStatsTokens.current.control
     val labelColor = when {
         !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
         selected -> MaterialTheme.colorScheme.primary
@@ -326,7 +330,8 @@ private fun StatsTextTab(
     }
     Column(
         modifier = Modifier
-            .height(36.dp)
+            .width(IntrinsicSize.Min)
+            .height(controlTokens.height + AppSpacing.tinyGap)
             .clip(RoundedCornerShape(AppRadius.extraSmall))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
@@ -342,7 +347,7 @@ private fun StatsTextTab(
         )
         Box(
             modifier = Modifier
-                .height(2.dp)
+                .height(AppSpacing.tinyGap)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
@@ -378,7 +383,7 @@ private fun StatsSelectablePill(
                 },
             )
             .border(
-                width = 1.dp,
+                width = controlTokens.borderWidth,
                 color = if (selected) {
                     MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha)
                 } else {
@@ -410,6 +415,6 @@ private fun FilterTrailingIcon(
     Icon(
         imageVector = icon,
         contentDescription = contentDescription,
-        modifier = Modifier.size(16.dp),
+        modifier = Modifier.size(AppSpacing.cardPaddingSmall),
     )
 }

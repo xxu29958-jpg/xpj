@@ -2,10 +2,9 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.annotation.StringRes
 import androidx.compose.material3.MaterialTheme
@@ -210,13 +209,14 @@ private fun ExpenseEditCategoryChoices(
 ) {
     if (categories.isEmpty()) return
     AppCompactChips {
-        LazyRow(
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = AppSpacing.miniGap),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
-            items(categories, key = { it }) { item ->
+            categories.forEach { item ->
                 SelectableCategoryChip(
                     selected = category == item,
                     label = item,

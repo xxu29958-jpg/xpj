@@ -2,11 +2,10 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -18,7 +17,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
@@ -77,7 +75,7 @@ private fun CurrencySummaryRow(
                 fontWeight = AppTextHierarchy.caption.weight,
             )
             Text(
-                text = "${currency.symbol} ${currency.storageKey}",
+                text = stringResource(R.string.expense_edit_currency_value, currency.symbol, currency.storageKey),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = AppTextHierarchy.body.weight,
@@ -86,7 +84,7 @@ private fun CurrencySummaryRow(
         TextButton(
             enabled = enabled,
             onClick = onToggle,
-            contentPadding = PaddingValues(horizontal = AppSpacing.tinyGap, vertical = 0.dp),
+            contentPadding = PaddingValues(horizontal = AppSpacing.tinyGap),
         ) {
             Text(
                 text = if (expanded) {
@@ -108,8 +106,12 @@ private fun ExpenseCurrencyChoices(
     onCurrencySelect: (CurrencyCode) -> Unit,
 ) {
     AppCompactChips {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            items(CurrencyCode.entries, key = { it.storageKey }) { code ->
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            CurrencyCode.entries.forEach { code ->
                 ExpenseCurrencyChoice(
                     code = code,
                     selected = currency == code,

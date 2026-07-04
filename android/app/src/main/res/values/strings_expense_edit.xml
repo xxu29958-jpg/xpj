@@ -41,6 +41,7 @@
     <string name="expense_edit_amount_field_label">金额</string>
     <string name="expense_edit_amount_supporting_text"></string>
     <string name="expense_edit_currency_label">币种</string>
+    <string name="expense_edit_currency_value">%1$s %2$s</string>
     <string name="expense_edit_currency_change_button">切换</string>
     <string name="expense_edit_currency_collapse_button">收起</string>
     <string name="expense_edit_fx_hint">汇率同步后入账。</string>

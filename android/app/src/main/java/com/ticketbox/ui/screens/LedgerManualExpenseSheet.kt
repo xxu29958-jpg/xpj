@@ -2,13 +2,12 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
@@ -352,8 +351,12 @@ private fun ManualCategoryChoices(
 ) {
     if (categories.isEmpty()) return
     AppCompactChips {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            items(categories, key = { it }) { item ->
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            categories.forEach { item ->
                 SelectableFilterChip(
                     selected = selectedCategory == item,
                     label = item,
@@ -383,8 +386,12 @@ private fun ManualRecentMerchants(
             style = MaterialTheme.typography.labelMedium,
         )
         AppCompactChips {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-                items(recentMerchants, key = { it.merchant }) { recent ->
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                recentMerchants.forEach { recent ->
                     SelectableFilterChip(
                         selected = selectedMerchant == recent.merchant,
                         label = recent.merchant,
@@ -409,15 +416,17 @@ fun CategoryFilterRow(
             style = MaterialTheme.typography.labelMedium,
         )
         AppCompactChips {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-                item {
-                    SelectableFilterChip(
-                        selected = selectedCategory.isBlank(),
-                        label = stringResource(R.string.ledger_category_filter_all),
-                        onClick = { onCategoryChange("") },
-                    )
-                }
-                items(categories, key = { it }) { category ->
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                SelectableFilterChip(
+                    selected = selectedCategory.isBlank(),
+                    label = stringResource(R.string.ledger_category_filter_all),
+                    onClick = { onCategoryChange("") },
+                )
+                categories.forEach { category ->
                     SelectableFilterChip(
                         selected = selectedCategory == category,
                         label = category,

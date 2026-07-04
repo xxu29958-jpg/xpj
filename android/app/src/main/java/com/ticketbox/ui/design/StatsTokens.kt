@@ -24,6 +24,7 @@ enum class StatsSurfaceTone {
 
 data class StatsControlTokens(
     val height: Dp,
+    val borderWidth: Dp,
     val horizontalPadding: Dp,
     val selectedAlpha: Float,
     val unselectedAlpha: Float,
@@ -85,6 +86,7 @@ private fun paperStatsTokens(): StatsTokens =
         ),
         control = StatsControlTokens(
             height = 34.dp,
+            borderWidth = 1.dp,
             horizontalPadding = 12.dp,
             selectedAlpha = 0.72f,
             unselectedAlpha = 0.44f,
@@ -111,6 +113,7 @@ private fun monoStatsTokens(): StatsTokens =
         ),
         control = StatsControlTokens(
             height = 34.dp,
+            borderWidth = 1.dp,
             horizontalPadding = 12.dp,
             selectedAlpha = 0.66f,
             unselectedAlpha = 0.40f,
@@ -137,6 +140,7 @@ private fun midnightStatsTokens(): StatsTokens =
         ),
         control = StatsControlTokens(
             height = 34.dp,
+            borderWidth = 1.dp,
             horizontalPadding = 12.dp,
             selectedAlpha = 0.42f,
             unselectedAlpha = 0.16f,
