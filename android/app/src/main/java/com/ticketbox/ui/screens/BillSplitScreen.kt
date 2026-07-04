@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -28,6 +27,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,16 +39,17 @@ import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.BillSplitTargetLedger
 import com.ticketbox.viewmodel.BillSplitViewModel
 import com.valentinilk.shimmer.shimmer
@@ -158,7 +159,9 @@ private fun InboxCard(
 ) {
     BillSplitListCard(isEmpty = inbox.isEmpty(), loading = loading, emptyRes = R.string.bill_split_inbox_empty) {
         inbox.forEachIndexed { index, row ->
-            if (index > 0) RowDivider()
+            if (index > 0) {
+                HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+            }
             InboxRow(
                 row = row,
                 onAccept = onAccept,
@@ -177,7 +180,9 @@ private fun SentCard(
 ) {
     BillSplitListCard(isEmpty = sent.isEmpty(), loading = loading, emptyRes = R.string.bill_split_sent_empty) {
         sent.forEachIndexed { index, row ->
-            if (index > 0) RowDivider()
+            if (index > 0) {
+                HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+            }
             SentRow(row = row, onCancel = onCancel)
         }
     }
@@ -213,12 +218,6 @@ private fun BillSplitListCard(
 }
 
 @Composable
-private fun RowDivider() {
-    val visuals = LocalThemeVisuals.current
-    HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
-}
-
-@Composable
 private fun InboxRow(
     row: BillSplitInbox,
     onAccept: (String, String) -> Unit,
@@ -230,14 +229,7 @@ private fun InboxRow(
     // instead of inviting a tap that can only 410.
     val locallyExpired = row.isInviteLocallyExpired()
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(row.senderDisplayName, fontWeight = FontWeight.SemiBold)
-            Text(formatAmount(row.amountCents), style = LocalTextStyle.current.tabularNum())
-        }
+        BillSplitPartyAmountRow(name = row.senderDisplayName, amountCents = row.amountCents)
         InboxMetaLine(row = row, locallyExpired = locallyExpired)
         if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -294,14 +286,7 @@ private fun SentRow(
     onCancel: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(row.receiverDisplayNameSnapshot ?: "—", fontWeight = FontWeight.SemiBold)
-            Text(formatAmount(row.amountCents), style = LocalTextStyle.current.tabularNum())
-        }
+        BillSplitPartyAmountRow(name = row.receiverDisplayNameSnapshot ?: "—", amountCents = row.amountCents)
         Text(
             text = "${row.merchantSnapshot ?: "—"} · ${billSplitStatusLabel(row.status)}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -312,6 +297,31 @@ private fun SentRow(
                 Text(stringResource(R.string.bill_split_sent_cancel))
             }
         }
+    }
+}
+
+@Composable
+private fun BillSplitPartyAmountRow(
+    name: String,
+    amountCents: Long,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = name,
+            modifier = Modifier.weight(1f),
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        AppEndAlignedAmountText(
+            text = formatAmount(amountCents),
+            modifier = Modifier.weight(BillSplitAmountWeight),
+            role = AppAmountRole.Compact,
+        )
     }
 }
 
@@ -350,3 +360,5 @@ private fun billSplitStatusLabel(status: String): String = stringResource(
         else -> R.string.bill_split_status_expired
     },
 )
+
+private const val BillSplitAmountWeight = 0.54f
