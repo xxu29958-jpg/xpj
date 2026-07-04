@@ -369,6 +369,7 @@ internal fun ExpenseBillSplitInvitePanel(
             else -> BillSplitSentList(
                 sent = sent,
                 currencyDisplay = currencyDisplay,
+                actionsEnabled = !loading,
                 onCancelInvite = onCancelInvite,
             )
         }
@@ -386,6 +387,7 @@ internal fun ExpenseBillSplitInvitePanel(
 private fun BillSplitSentList(
     sent: List<BillSplitSent>,
     currencyDisplay: CurrencyDisplay,
+    actionsEnabled: Boolean,
     onCancelInvite: (publicId: String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
@@ -393,6 +395,7 @@ private fun BillSplitSentList(
             BillSplitSentRow(
                 row = row,
                 currencyDisplay = currencyDisplay,
+                actionsEnabled = actionsEnabled,
                 onCancel = { onCancelInvite(row.publicId) },
             )
         }
@@ -403,6 +406,7 @@ private fun BillSplitSentList(
 private fun BillSplitSentRow(
     row: BillSplitSent,
     currencyDisplay: CurrencyDisplay,
+    actionsEnabled: Boolean,
     onCancel: () -> Unit,
 ) {
     Column(
@@ -447,6 +451,7 @@ private fun BillSplitSentRow(
             ExpenseDetailActionButtonRow(
                 text = stringResource(R.string.expense_edit_bill_split_row_cancel),
                 icon = Icons.Filled.Close,
+                enabled = actionsEnabled,
                 onClick = onCancel,
             )
         }
