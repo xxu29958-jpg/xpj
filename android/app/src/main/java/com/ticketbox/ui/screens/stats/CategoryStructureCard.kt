@@ -25,22 +25,22 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.TagStats
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun CategoryStructureCard(
@@ -100,12 +100,11 @@ internal fun CategoryStructureCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 topAmountLabel?.let {
-                    Text(
+                    AppEndAlignedAmountText(
                         text = it,
+                        modifier = Modifier.weight(CategoryStructureTopAmountWeight),
+                        role = AppAmountRole.Compact,
                         color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleSmall.tabularNum(),
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
                     )
                 }
             }
@@ -209,11 +208,11 @@ private fun CategoryStructureBarRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
+            AppEndAlignedAmountText(
                 text = formatDisplayAmount(category.amountCents, currencyDisplay),
-                style = MaterialTheme.typography.labelLarge.tabularNum(),
+                modifier = Modifier.weight(CategoryStructureRowAmountWeight),
+                role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
                 text = percentLabel,
@@ -385,11 +384,11 @@ private fun TagStatsContentRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
+        AppEndAlignedAmountText(
             text = formatDisplayAmount(tag.amountCents, currencyDisplay),
-            style = MaterialTheme.typography.labelLarge.tabularNum(),
+            modifier = Modifier.weight(CategoryStructureRowAmountWeight),
+            role = AppAmountRole.Compact,
             color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = AppTextHierarchy.body.weight,
         )
         Text(
             text = stringResource(R.string.stats_tag_distribution_percent_count, percent, tag.count),
@@ -436,6 +435,9 @@ private fun categoryShareLabel(
         else -> stringResource(R.string.stats_category_structure_percent, share.toInt().coerceIn(1, 100))
     }
 }
+
+private const val CategoryStructureTopAmountWeight = 0.58f
+private const val CategoryStructureRowAmountWeight = 0.52f
 
 @Composable
 private fun statsCategoryColors(): List<Color> {
