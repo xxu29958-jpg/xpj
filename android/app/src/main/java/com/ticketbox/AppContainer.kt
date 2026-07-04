@@ -108,9 +108,11 @@ class AppContainer(context: Context) {
     // payloads we serialise here MUST line up with the Retrofit DTOs
     // (same nullability + @Json names) since the dispatcher
     // deserialises a row back into the same DTO shape on replay.
-    private val outboxMoshi: Moshi = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
+    private val outboxMoshi: Moshi by lazy {
+        Moshi.Builder()
+            .add(KotlinJsonAdapterFactory())
+            .build()
+    }
 
     // PR-2g.3: the SAME adapter is shared between the call-site
     // serialiser (ExpenseRepository routes IOException → outbox.enqueue)
