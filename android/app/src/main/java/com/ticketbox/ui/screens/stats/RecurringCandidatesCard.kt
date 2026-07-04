@@ -23,11 +23,12 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
@@ -131,10 +132,10 @@ private fun RecurringItemSummaryRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
+            AppEndAlignedAmountText(
                 text = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
-                style = MaterialTheme.typography.titleSmall.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
+                modifier = Modifier.weight(RecurringAmountWeight),
+                role = AppAmountRole.Compact,
             )
         }
         Row(
@@ -178,10 +179,10 @@ private fun RecurringCandidateRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
+            AppEndAlignedAmountText(
                 text = formatDisplayAmount(candidate.amountCents, currencyDisplay),
-                style = MaterialTheme.typography.titleSmall.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
+                modifier = Modifier.weight(RecurringAmountWeight),
+                role = AppAmountRole.Compact,
             )
         }
         Row(
@@ -260,3 +261,5 @@ private fun recurringItemMeta(item: RecurringItem): String {
     }
     return stringResource(R.string.recurring_meta_combined, next, count, anomaly)
 }
+
+private const val RecurringAmountWeight = 0.58f
