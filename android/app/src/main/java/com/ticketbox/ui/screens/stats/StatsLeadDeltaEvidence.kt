@@ -28,5 +28,5 @@ internal fun monthDeltaEvidence(
 private fun hasPreviousBaseline(
     overview: ReportsOverview?,
     comparison: MonthComparison?,
-): Boolean = overview?.let { it.previousCount > 0 }
+): Boolean = overview?.let { it.previousCount > 0 && it.previousTotalAmountCents > 0L }
     ?: ((comparison?.previousAmountCents ?: 0L) > 0L)
