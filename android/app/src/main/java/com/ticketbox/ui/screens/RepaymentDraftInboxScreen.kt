@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -37,6 +36,8 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -136,25 +137,25 @@ private fun LazyListScope.repaymentDraftListSection(
     onOpenPicker: (RepaymentDraft) -> Unit,
     onDismiss: (String) -> Unit,
 ) {
-    if (state.drafts.isEmpty() && !state.isLoading) {
-        item { RepaymentDraftEmptyStateCard() }
-    } else {
-        items(state.drafts, key = { it.publicId }) { draft ->
-            val suggested = state.suggestedDebtByDraftId[draft.publicId]
-            RepaymentDraftCard(
-                draft = draft,
-                currency = currency,
-                suggestedDebt = suggested,
-                action = draftRowAction(state, draft.publicId),
-                callbacks = RepaymentDraftCardCallbacks(
-                    // With a suggestion the primary action confirms it directly; without one it
-                    // opens the picker (slice-3a behavior). "选其他欠款" always opens the picker.
-                    onConfirmSuggested = { if (suggested != null) onConfirmSuggested(draft, suggested) },
-                    onOpenPicker = { onOpenPicker(draft) },
-                    onDismiss = { onDismiss(draft.publicId) },
-                ),
-            )
-        }
+    if (state.drafts.isEmpty()) {
+        item { RepaymentDraftListStateCard(loading = state.isLoading) }
+        return
+    }
+    items(state.drafts, key = { it.publicId }) { draft ->
+        val suggested = state.suggestedDebtByDraftId[draft.publicId]
+        RepaymentDraftCard(
+            draft = draft,
+            currency = currency,
+            suggestedDebt = suggested,
+            action = draftRowAction(state, draft.publicId),
+            callbacks = RepaymentDraftCardCallbacks(
+                // With a suggestion the primary action confirms it directly; without one it
+                // opens the picker (slice-3a behavior). "选其他欠款" always opens the picker.
+                onConfirmSuggested = { if (suggested != null) onConfirmSuggested(draft, suggested) },
+                onOpenPicker = { onOpenPicker(draft) },
+                onDismiss = { onDismiss(draft.publicId) },
+            ),
+        )
     }
 }
 
@@ -270,23 +271,18 @@ private fun repaymentDraftPrimaryLabel(action: DraftRowAction, idleRes: Int): St
     }
 
 @Composable
-private fun RepaymentDraftEmptyStateCard() {
+private fun RepaymentDraftListStateCard(loading: Boolean) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.sectionGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        AppListStateContent(
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            state = AppListStateSpec(
+                isEmpty = true,
+                loading = loading,
+                emptyText = stringResource(R.string.repayment_draft_empty_body),
+                emptyTitle = stringResource(R.string.repayment_draft_empty_title),
+                emptyBody = stringResource(R.string.repayment_draft_empty_body),
+            ),
         ) {
-            Text(
-                stringResource(R.string.repayment_draft_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.repayment_draft_empty_body),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
