@@ -67,7 +67,12 @@ internal fun SearchResultCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${expense.category} · ${expense.source} · ${displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt)}",
+                    text = stringResource(
+                        R.string.global_search_result_meta,
+                        expense.category,
+                        expense.source,
+                        displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                    ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,

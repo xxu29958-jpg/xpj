@@ -3,13 +3,13 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,17 +33,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppContentCard
+import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.AppTextInput
@@ -59,8 +58,8 @@ import com.ticketbox.viewmodel.GlobalSearchScope
 import com.ticketbox.viewmodel.GlobalSearchUiState
 
 /**
- * Bundles the global-search user actions so the screen + its control card stay
- * within the parameter budget (mirrors SyncStatusActions / ExpenseEditActionBarActions).
+ * Bundles the global-search user actions so the screen + its control section
+ * stays within the parameter budget (mirrors SyncStatusActions / ExpenseEditActionBarActions).
  */
 data class GlobalSearchActionsUi(
     val onQueryChange: (String) -> Unit,
@@ -116,7 +115,7 @@ fun GlobalSearchScreen(
         ),
     ) {
         item {
-            SearchControlCard(
+            SearchControlSection(
                 state = state,
                 actions = actions,
                 onOpenMonthPicker = { showMonthPicker = true },
@@ -165,13 +164,13 @@ private fun LazyListScope.searchBody(
 }
 
 @Composable
-private fun SearchControlCard(
+private fun SearchControlSection(
     state: GlobalSearchUiState,
     actions: GlobalSearchActionsUi,
     onOpenMonthPicker: () -> Unit,
 ) {
-    AppContentCard(
-        contentPadding = PaddingValues(AppSpacing.cardPaddingSmall),
+    AppSectionGroup(
+        contentPadding = PaddingValues(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         AppTextInput(
@@ -191,7 +190,7 @@ private fun SearchControlCard(
                     Icon(
                         imageVector = Icons.Filled.Search,
                         contentDescription = null,
-                        modifier = Modifier.size(SearchLayout.IconSize),
+                        modifier = Modifier.size(FilterChipDefaults.IconSize),
                     )
                 },
                 trailingContent = if (state.query.isNotBlank()) {
@@ -247,9 +246,8 @@ private fun SearchScopeSelector(
 }
 
 /**
- * One scrollable row of filter chips below the search box: the month chip (opens
- * the shared [MonthPickerSheet]) followed by category chips. Mirrors the ledger
- * inline filter row so the two surfaces share one chip idiom + token palette.
+ * Adaptive filter chips below the search box: the month chip opens the shared
+ * [MonthPickerSheet], then category chips wrap instead of hiding options offscreen.
  */
 @Composable
 private fun SearchFilterChips(
@@ -257,8 +255,12 @@ private fun SearchFilterChips(
     onCategoryChange: (String) -> Unit,
     onOpenMonthPicker: () -> Unit,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        item {
+    AppCompactChips {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
             AppFilterChip(
                 selected = state.monthFilter.isNotBlank(),
                 onClick = onOpenMonthPicker,
@@ -273,20 +275,18 @@ private fun SearchFilterChips(
                     )
                 },
             )
-        }
-        item {
             SelectableFilterChip(
                 selected = state.categoryFilter.isBlank(),
                 label = stringResource(R.string.global_search_filter_category_all),
                 onClick = { onCategoryChange("") },
             )
-        }
-        items(state.availableCategories, key = { it }) { category ->
-            SelectableFilterChip(
-                selected = state.categoryFilter == category,
-                label = category,
-                onClick = { onCategoryChange(category) },
-            )
+            state.availableCategories.forEach { category ->
+                SelectableFilterChip(
+                    selected = state.categoryFilter == category,
+                    label = category,
+                    onClick = { onCategoryChange(category) },
+                )
+            }
         }
     }
 }
@@ -294,8 +294,8 @@ private fun SearchFilterChips(
 @Composable
 private fun SearchMessageCard(message: UiText) {
     val tone = LocalStateTokens.current.warn
-    AppContentCard(
-        contentPadding = PaddingValues(AppSpacing.cardPaddingSmall),
+    AppSectionGroup(
+        contentPadding = PaddingValues(vertical = AppSpacing.smallGap),
     ) {
         Text(
             text = message.asString(),
@@ -315,7 +315,10 @@ private fun SearchBlankState(
     onApplyRecentSearch: (String) -> Unit,
     onClearRecentSearches: () -> Unit,
 ) {
-    AppContentCard(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+    AppSectionGroup(
+        contentPadding = PaddingValues(vertical = AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(
                 text = stringResource(R.string.global_search_empty_blank_title),
@@ -362,13 +365,19 @@ private fun RecentSearchSection(
                 modifier = Modifier.clickable(onClick = onClearRecentSearches),
             )
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            items(recentSearches, key = { it }) { query ->
-                SelectableFilterChip(
-                    selected = false,
-                    label = query,
-                    onClick = { onApplyRecentSearch(query) },
-                )
+        AppCompactChips {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                recentSearches.forEach { query ->
+                    SelectableFilterChip(
+                        selected = false,
+                        label = query,
+                        onClick = { onApplyRecentSearch(query) },
+                    )
+                }
             }
         }
     }
@@ -379,7 +388,9 @@ private fun SearchEmptyCard(
     title: String,
     subtitle: String,
 ) {
-    AppContentCard {
+    AppSectionGroup(
+        contentPadding = PaddingValues(vertical = AppSpacing.smallGap),
+    ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
@@ -403,8 +414,4 @@ private fun SearchTruncatedFooter(limit: Int) {
             .fillMaxWidth()
             .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.miniGap),
     )
-}
-
-private object SearchLayout {
-    val IconSize: Dp = 20.dp
 }

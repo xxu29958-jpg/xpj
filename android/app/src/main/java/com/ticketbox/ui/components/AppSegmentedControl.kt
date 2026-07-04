@@ -1,8 +1,8 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.ticketbox.ui.design.AppSpacing
@@ -20,11 +20,12 @@ fun <T : Any> AppSegmentedControl(
     onValueChange: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyRow(
-        modifier = modifier,
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        items(options, key = { it.value }) { option ->
+        options.forEach { option ->
             AppFilterChip(
                 selected = selectedValue == option.value,
                 enabled = option.enabled,

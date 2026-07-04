@@ -52,13 +52,14 @@
     <string name="global_search_empty_blank_subtitle">商家、分类、备注、标签和原文都可以匹配。</string>
     <string name="global_search_empty_nomatch_title">没有匹配项</string>
     <string name="global_search_empty_nomatch_subtitle">换一个更短的商家名、分类名或备注关键词。</string>
+    <string name="global_search_result_meta">%1$s · %2$s · %3$s</string>
     <string name="global_search_result_matched">命中：%1$s</string>
     <string name="global_search_badge_pending">待确认</string>
     <string name="global_search_badge_confirmed">已确认</string>
     <string name="global_search_filter_category_all">全部分类</string>
     <string name="global_search_filter_month_all">全部月份</string>
-    <string name="global_search_filter_month_picker_description"></string>
-    <string name="global_search_filter_amount_hint">输入金额可按金额精确匹配，如 12.50</string>
+    <string name="global_search_filter_month_picker_description">选择月份</string>
+    <string name="global_search_filter_amount_hint">金额可精确匹配。</string>
     <string name="global_search_recent_title">最近搜索</string>
     <string name="global_search_recent_clear">清除</string>
     <string name="global_search_result_truncated">仅显示前 %1$d 条，可加筛选缩小范围。</string>
