@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.LedgerSummary
@@ -30,12 +29,10 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
-import com.valentinilk.shimmer.shimmer
 
 private const val LEDGER_NAME_MAX = 60
 
@@ -170,13 +167,16 @@ private fun LedgerListContent(
     onSwitch: (String) -> Unit,
 ) {
     when {
-        ledgers.isEmpty() && loading -> Column(modifier = Modifier.shimmer()) {
-            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-        }
-
-        ledgers.isEmpty() -> SettingsInlineEmpty(
-            title = stringResource(R.string.ledger_switcher_empty_title),
-            body = stringResource(R.string.ledger_switcher_ledgers_empty),
+        ledgers.isEmpty() -> SettingsListStateSlot(
+            loading = loading,
+            hasData = false,
+            copy = SettingsStateSlotCopy(
+                loadingTitle = stringResource(R.string.ledger_switcher_loading_title),
+                loadingBody = stringResource(R.string.ledger_switcher_loading_body),
+                emptyText = stringResource(R.string.ledger_switcher_ledgers_empty),
+                emptyTitle = stringResource(R.string.ledger_switcher_empty_title),
+                emptyBody = stringResource(R.string.ledger_switcher_ledgers_empty),
+            ),
         )
 
         else -> Column {

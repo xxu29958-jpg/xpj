@@ -41,7 +41,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecycleBinItem
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
@@ -50,7 +49,6 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.RecycleBinUiState
 import com.ticketbox.viewmodel.RecycleBinViewModel
 import com.ticketbox.viewmodel.busyKey
-import com.valentinilk.shimmer.shimmer
 
 @Composable
 fun RecycleBinScreen(
@@ -194,9 +192,17 @@ private fun RecycleBinRows(
     onRestore: (RecycleBinItem) -> Unit,
 ) {
     if (state.items.isEmpty() && state.loading) {
-        Column(modifier = Modifier.shimmer()) {
-            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-        }
+        SettingsListStateSlot(
+            loading = true,
+            hasData = false,
+            copy = SettingsStateSlotCopy(
+                loadingTitle = stringResource(R.string.recycle_bin_loading_title),
+                loadingBody = stringResource(R.string.recycle_bin_loading_body),
+                emptyText = stringResource(R.string.recycle_bin_empty_body),
+                emptyTitle = stringResource(R.string.recycle_bin_empty_title),
+                emptyBody = stringResource(R.string.recycle_bin_empty_body),
+            ),
+        )
         return
     }
     if (state.items.isEmpty() && state.loadFailed) {
@@ -208,10 +214,16 @@ private fun RecycleBinRows(
         return
     }
     if (state.items.isEmpty()) {
-        RecycleBinInlineState(
-            title = stringResource(R.string.recycle_bin_empty_title),
-            body = stringResource(R.string.recycle_bin_empty_body),
-            icon = Icons.Filled.DeleteOutline,
+        SettingsListStateSlot(
+            loading = false,
+            hasData = false,
+            copy = SettingsStateSlotCopy(
+                loadingTitle = stringResource(R.string.recycle_bin_loading_title),
+                loadingBody = stringResource(R.string.recycle_bin_loading_body),
+                emptyText = stringResource(R.string.recycle_bin_empty_body),
+                emptyTitle = stringResource(R.string.recycle_bin_empty_title),
+                emptyBody = stringResource(R.string.recycle_bin_empty_body),
+            ),
         )
         return
     }

@@ -117,6 +117,8 @@
     <string name="ledger_switcher_overview_count_value">%1$d 个</string>
     <string name="ledger_switcher_overview_current_unknown">未确认</string>
     <string name="ledger_switcher_section_joined">已加入的账本</string>
+    <string name="ledger_switcher_loading_title">正在同步账本</string>
+    <string name="ledger_switcher_loading_body">同步完成后显示可切换的账本。</string>
     <string name="ledger_switcher_empty_title">暂无账本</string>
     <string name="ledger_switcher_ledgers_empty">更新后会显示可切换的账本。</string>
     <string name="ledger_switcher_row_current_badge">当前</string>
@@ -239,6 +241,8 @@
     <string name="recycle_bin_summary_count">%1$d 项</string>
     <string name="recycle_bin_readonly_title">只读账本</string>
     <string name="recycle_bin_readonly_body">当前角色可以查看回收站；恢复项目需要拥有者或成员权限。</string>
+    <string name="recycle_bin_loading_title">正在同步回收站</string>
+    <string name="recycle_bin_loading_body">同步完成后显示可恢复项目。</string>
     <string name="recycle_bin_empty_title">暂无可恢复项目</string>
     <string name="recycle_bin_empty_body">归档预算、收入、目标和限期保留的规则会出现在这里。</string>
     <string name="recycle_bin_load_failed_title">回收站未更新</string>

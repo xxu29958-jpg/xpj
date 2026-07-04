@@ -9,6 +9,8 @@ internal data class SettingsStateSlotCopy(
     val loadingTitle: String,
     val loadingBody: String,
     val emptyText: String,
+    val emptyTitle: String? = null,
+    val emptyBody: String? = null,
 )
 
 @Composable
@@ -26,10 +28,20 @@ internal fun SettingsListStateSlot(
             modifier = modifier,
         )
     } else {
-        Text(
-            modifier = modifier,
-            text = copy.emptyText,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        val emptyTitle = copy.emptyTitle
+        val emptyBody = copy.emptyBody
+        if (emptyTitle != null && emptyBody != null) {
+            SettingsInlineEmpty(
+                title = emptyTitle,
+                body = emptyBody,
+                modifier = modifier,
+            )
+        } else {
+            Text(
+                modifier = modifier,
+                text = copy.emptyText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

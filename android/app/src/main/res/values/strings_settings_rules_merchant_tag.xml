@@ -155,6 +155,8 @@
     <string name="dashboard_cards_overview_first_visible">首个模块：%1$s</string>
     <string name="dashboard_cards_overview_none_visible">当前没有模块显示在首页。</string>
     <string name="dashboard_cards_section_order">卡片顺序</string>
+    <string name="dashboard_cards_loading_title">正在同步首页模块</string>
+    <string name="dashboard_cards_loading_body">同步完成后显示模块顺序和显隐。</string>
     <string name="dashboard_cards_empty_title">暂时没有模块配置</string>
     <string name="dashboard_cards_empty_body">刷新后仍为空时，可以恢复默认模块。</string>
     <string name="dashboard_cards_readonly_hint">当前角色为只读，无法修改账本展示偏好。</string>

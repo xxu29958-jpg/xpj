@@ -34,11 +34,9 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.DraggableReorderColumn
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.DashboardCardsUiState
-import com.valentinilk.shimmer.shimmer
 
 data class DashboardCardsScreenActions(
     val onMoveCard: (Int, Int) -> Unit,
@@ -112,24 +110,18 @@ private fun DashboardCardsOrderSection(
         icon = Icons.Filled.DashboardCustomize,
     ) {
         when {
-            state.loading && state.cards.isEmpty() -> DashboardCardsLoading()
-            state.cards.isEmpty() -> SettingsInlineEmpty(
-                title = stringResource(R.string.dashboard_cards_empty_title),
-                body = stringResource(R.string.dashboard_cards_empty_body),
+            state.cards.isEmpty() -> SettingsListStateSlot(
+                loading = state.loading,
+                hasData = false,
+                copy = SettingsStateSlotCopy(
+                    loadingTitle = stringResource(R.string.dashboard_cards_loading_title),
+                    loadingBody = stringResource(R.string.dashboard_cards_loading_body),
+                    emptyText = stringResource(R.string.dashboard_cards_empty_body),
+                    emptyTitle = stringResource(R.string.dashboard_cards_empty_title),
+                    emptyBody = stringResource(R.string.dashboard_cards_empty_body),
+                ),
             )
             else -> DashboardCardsList(state = state, actions = actions)
-        }
-    }
-}
-
-@Composable
-private fun DashboardCardsLoading() {
-    SettingsOpenPanel(
-        modifier = Modifier.shimmer(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-    ) {
-        repeat(DASHBOARD_CARDS_LOADING_ROWS) {
-            ListItemSkeleton(horizontalPadding = AppSpacing.miniGap)
         }
     }
 }
@@ -294,5 +286,3 @@ private fun DashboardCardMoveButton(
         Icon(icon, contentDescription = contentDescription)
     }
 }
-
-private const val DASHBOARD_CARDS_LOADING_ROWS = 4

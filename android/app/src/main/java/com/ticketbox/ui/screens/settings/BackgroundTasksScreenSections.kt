@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,12 +22,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.valentinilk.shimmer.shimmer
 
 @Composable
 internal fun BackgroundTasksOverview(summary: BackgroundTasksSummaryModel) {
@@ -69,10 +66,16 @@ internal fun BackgroundTasksRows(
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
         when {
-            tasks.isEmpty() && loading -> BackgroundTasksSkeleton()
-            tasks.isEmpty() -> SettingsInlineEmpty(
-                title = stringResource(R.string.background_tasks_empty_title),
-                body = stringResource(R.string.background_tasks_empty),
+            tasks.isEmpty() -> SettingsListStateSlot(
+                loading = loading,
+                hasData = false,
+                copy = SettingsStateSlotCopy(
+                    loadingTitle = stringResource(R.string.background_tasks_loading_title),
+                    loadingBody = stringResource(R.string.background_tasks_loading_body),
+                    emptyText = stringResource(R.string.background_tasks_empty),
+                    emptyTitle = stringResource(R.string.background_tasks_empty_title),
+                    emptyBody = stringResource(R.string.background_tasks_empty),
+                ),
             )
             else -> tasks.forEachIndexed { index, task ->
                 if (index > 0) {
@@ -140,10 +143,3 @@ private fun backgroundTasksSummaryCaption(summary: BackgroundTasksSummaryModel):
         )
         BackgroundTasksSummaryState.Settled -> stringResource(R.string.background_tasks_summary_settled)
     }
-
-@Composable
-private fun BackgroundTasksSkeleton() {
-    Column(modifier = Modifier.shimmer()) {
-        repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-    }
-}
