@@ -129,69 +129,69 @@ private fun ExpenseItemsPanel(
             )
         } else {
             messageText?.let { DetailEmptyState(it) }
-            when {
-                expenseItems == null || expenseItems.items.isEmpty() -> {
-                    if (messageText == null) {
-                        DetailEmptyState(stringResource(R.string.expense_edit_v1_items_empty))
-                    }
+        }
+        when {
+            expenseItems == null || expenseItems.items.isEmpty() -> {
+                if (!loading && messageText == null) {
+                    DetailEmptyState(stringResource(R.string.expense_edit_v1_items_empty))
                 }
-                else -> {
-                    TotalReconcileLine(
-                        parentAmountCents = expenseItems.parentAmountCents,
-                        detailTotalAmountCents = expenseItems.itemsTotalAmountCents,
+            }
+            else -> {
+                TotalReconcileLine(
+                    parentAmountCents = expenseItems.parentAmountCents,
+                    detailTotalAmountCents = expenseItems.itemsTotalAmountCents,
+                    mismatchCents = expenseItems.mismatchCents,
+                    currencyDisplay = currencyDisplay,
+                )
+                // ADR-0035 mismatch banner
+                if (expenseItems.mismatchKnown) {
+                    ItemsSumMismatchBanner(
+                        mismatchCents = expenseItems.mismatchCents,
+                        currencyDisplay = currencyDisplay,
+                        onAcknowledge = if (canEditItems) onAcknowledgeMismatch else null,
+                    )
+                } else if (expenseItems.mismatchAcknowledged) {
+                    ItemsSumAcknowledgedBanner(
                         mismatchCents = expenseItems.mismatchCents,
                         currencyDisplay = currencyDisplay,
                     )
-                    // ADR-0035 mismatch banner
-                    if (expenseItems.mismatchKnown) {
-                        ItemsSumMismatchBanner(
-                            mismatchCents = expenseItems.mismatchCents,
-                            currencyDisplay = currencyDisplay,
-                            onAcknowledge = if (canEditItems) onAcknowledgeMismatch else null,
-                        )
-                    } else if (expenseItems.mismatchAcknowledged) {
-                        ItemsSumAcknowledgedBanner(
-                            mismatchCents = expenseItems.mismatchCents,
-                            currencyDisplay = currencyDisplay,
-                        )
-                    }
-                    // ADR-0035: group items by kind (product / discount / tax / service_fee)
-                    val grouped = expenseItems.items.groupBy { it.kind }
-                    val orderedKinds = listOf(
-                        ExpenseItemKind.PRODUCT,
-                        ExpenseItemKind.DISCOUNT,
-                        ExpenseItemKind.TAX,
-                        ExpenseItemKind.SERVICE_FEE,
-                    )
-                    orderedKinds.forEach { kind ->
-                        val rows = grouped[kind].orEmpty()
-                        if (rows.isNotEmpty()) {
-                            Text(
-                                text = kindGroupTitle(kind),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                                rows.forEach { item ->
-                                    ExpenseItemRow(item, currencyDisplay)
-                                }
-                            }
-                        }
-                    }
-                    // Catch-all: unknown kinds (forward compatibility for v1.x)
-                    grouped
-                        .filterKeys { it !in orderedKinds }
-                        .forEach { (kind, rows) ->
-                            Text(
-                                text = kind,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                                rows.forEach { item -> ExpenseItemRow(item, currencyDisplay) }
-                            }
-                        }
                 }
+                // ADR-0035: group items by kind (product / discount / tax / service_fee)
+                val grouped = expenseItems.items.groupBy { it.kind }
+                val orderedKinds = listOf(
+                    ExpenseItemKind.PRODUCT,
+                    ExpenseItemKind.DISCOUNT,
+                    ExpenseItemKind.TAX,
+                    ExpenseItemKind.SERVICE_FEE,
+                )
+                orderedKinds.forEach { kind ->
+                    val rows = grouped[kind].orEmpty()
+                    if (rows.isNotEmpty()) {
+                        Text(
+                            text = kindGroupTitle(kind),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                            rows.forEach { item ->
+                                ExpenseItemRow(item, currencyDisplay)
+                            }
+                        }
+                    }
+                }
+                // Catch-all: unknown kinds (forward compatibility for v1.x)
+                grouped
+                    .filterKeys { it !in orderedKinds }
+                    .forEach { (kind, rows) ->
+                        Text(
+                            text = kind,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                            rows.forEach { item -> ExpenseItemRow(item, currencyDisplay) }
+                        }
+                    }
             }
         }
     }
@@ -267,7 +267,7 @@ private fun ExpenseSplitsPanel(
     currencyDisplay: CurrencyDisplay,
     onEditSplits: (() -> Unit)? = null,
 ) {
-    val canEditSplits = onEditSplits != null
+    val editSplitsAction = onEditSplits?.takeUnless { loading }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -277,7 +277,7 @@ private fun ExpenseSplitsPanel(
             subtitle = stringResource(R.string.expense_edit_v1_splits_subtitle),
             trailing = expenseSplits?.splitsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
         )
-        if (onEditSplits != null && !loading) {
+        editSplitsAction?.let {
             ExpenseDetailActionButtonRow(
                 text = if (expenseSplits?.splits.isNullOrEmpty()) {
                     stringResource(R.string.expense_edit_v1_splits_add_button)
@@ -285,10 +285,10 @@ private fun ExpenseSplitsPanel(
                     stringResource(R.string.expense_edit_v1_splits_edit_button)
                 },
                 icon = if (expenseSplits?.splits.isNullOrEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
-                onClick = onEditSplits,
+                onClick = it,
             )
         }
-        if (!canEditSplits) {
+        if (onEditSplits == null) {
             AppDataAuthorityStrip(
                 title = stringResource(R.string.components_data_authority_readonly_title),
                 body = stringResource(R.string.expense_edit_v1_splits_readonly_body),
@@ -303,23 +303,23 @@ private fun ExpenseSplitsPanel(
             )
         } else {
             messageText?.let { DetailEmptyState(it) }
-            when {
-                expenseSplits == null || expenseSplits.splits.isEmpty() -> {
-                    if (messageText == null) {
-                        DetailEmptyState(stringResource(R.string.expense_edit_v1_splits_empty))
-                    }
+        }
+        when {
+            expenseSplits == null || expenseSplits.splits.isEmpty() -> {
+                if (!loading && messageText == null) {
+                    DetailEmptyState(stringResource(R.string.expense_edit_v1_splits_empty))
                 }
-                else -> {
-                    TotalReconcileLine(
-                        parentAmountCents = expenseSplits.parentAmountCents,
-                        detailTotalAmountCents = expenseSplits.splitsTotalAmountCents,
-                        mismatchCents = expenseSplits.mismatchCents,
-                        currencyDisplay = currencyDisplay,
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                        expenseSplits.splits.forEach { split ->
-                            ExpenseSplitRow(split, currencyDisplay)
-                        }
+            }
+            else -> {
+                TotalReconcileLine(
+                    parentAmountCents = expenseSplits.parentAmountCents,
+                    detailTotalAmountCents = expenseSplits.splitsTotalAmountCents,
+                    mismatchCents = expenseSplits.mismatchCents,
+                    currencyDisplay = currencyDisplay,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    expenseSplits.splits.forEach { split ->
+                        ExpenseSplitRow(split, currencyDisplay)
                     }
                 }
             }
@@ -359,18 +359,18 @@ internal fun ExpenseBillSplitInvitePanel(
             )
         } else {
             messageText?.let { DetailEmptyState(it) }
-            when {
-                sent.isEmpty() -> {
-                    if (messageText == null) {
-                        DetailEmptyState(stringResource(R.string.expense_edit_bill_split_empty))
-                    }
+        }
+        when {
+            sent.isEmpty() -> {
+                if (!loading && messageText == null) {
+                    DetailEmptyState(stringResource(R.string.expense_edit_bill_split_empty))
                 }
-                else -> BillSplitSentList(
-                    sent = sent,
-                    currencyDisplay = currencyDisplay,
-                    onCancelInvite = onCancelInvite,
-                )
             }
+            else -> BillSplitSentList(
+                sent = sent,
+                currencyDisplay = currencyDisplay,
+                onCancelInvite = onCancelInvite,
+            )
         }
         ExpenseDetailActionButtonRow(
             text = stringResource(R.string.expense_edit_bill_split_start_button),
