@@ -328,6 +328,7 @@ internal fun SettingsDestinationHost(
 
         SettingsDestination.CategoryRules -> CategoryRulesScreen(
             rules = states.rules.categoryRules,
+            rulesLoading = states.rules.categoryRulesLoading,
             busy = states.rules.busy,
             readOnly = !ledgerRoleCanModify(states.settings.role),
             message = states.rules.message,
@@ -337,6 +338,7 @@ internal fun SettingsDestinationHost(
             onToggleRule = actions.onToggleRule,
             onDeleteRule = actions.onDeleteRule,
             applications = states.rules.ruleApplications,
+            applicationsLoading = states.rules.ruleApplicationsLoading,
             confirmedPreview = states.rules.confirmedRulesPreview,
             onPreviewApplyConfirmedRules = actions.onPreviewApplyConfirmedRules,
             onConfirmApplyConfirmedRules = actions.onConfirmApplyConfirmedRules,

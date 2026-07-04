@@ -12,6 +12,8 @@
     <string name="category_rules_section_list">规则列表</string>
     <string name="category_rules_section_confirmed_apply">已入账应用</string>
     <string name="category_rules_section_history">最近应用记录</string>
+    <string name="category_rules_loading_title">正在读取分类规则</string>
+    <string name="category_rules_loading_body">会同步当前账本的规则列表。</string>
     <string name="category_rules_create_prompt_title">需要新规则时再添加</string>
     <string name="category_rules_create_prompt_body">当前列表先展示已生效规则；新增只会在保存成功或进入待同步后生效。</string>
 
@@ -46,6 +48,8 @@
     <string name="category_rule_apply_preview_button">预览</string>
     <string name="category_rule_apply_confirm_button">确认应用</string>
     <string name="category_rule_apply_panel_readonly">当前角色为只读，不能应用到已入账账单。</string>
+    <string name="category_rule_apply_history_loading_title">正在读取应用记录</string>
+    <string name="category_rule_apply_history_loading_body">会显示最近的规则应用和回退记录。</string>
     <string name="category_rule_apply_history_empty">还没有应用记录。</string>
     <string name="category_rule_apply_preview_summary">扫描 %1$d 笔 · 可更新 %2$d 笔 · 未命中 %3$d 笔</string>
     <string name="category_rule_apply_preview_scan_limit">本次只扫描前 %1$d 笔。</string>

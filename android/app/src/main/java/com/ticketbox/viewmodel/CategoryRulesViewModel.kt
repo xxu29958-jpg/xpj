@@ -22,6 +22,8 @@ data class CategoryRulesUiState(
     val categoryRules: List<CategoryRule> = emptyList(),
     val ruleApplications: List<RuleApplicationBatch> = emptyList(),
     val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
+    val categoryRulesLoading: Boolean = false,
+    val ruleApplicationsLoading: Boolean = false,
     val busy: Boolean = false,
     val message: UiText? = null,
     // ADR-0038 undo: the just-(soft-)deleted rule, surfaced as a 5s 撤销
@@ -47,17 +49,37 @@ class CategoryRulesViewModel(
 
     fun loadCategoryRules() {
         viewModelScope.launch {
+            _uiState.update { it.copy(categoryRulesLoading = true, message = null) }
             ruleRepository.categoryRules()
-                .onSuccess { rules -> _uiState.update { it.copy(categoryRules = rules) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.category_rules_load_failed)) } }
+                .onSuccess { rules -> _uiState.update { it.copy(categoryRulesLoading = false, categoryRules = rules) } }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            categoryRulesLoading = false,
+                            message = error.toUiText(R.string.category_rules_load_failed),
+                        )
+                    }
+                }
         }
     }
 
     fun loadRuleApplications() {
         viewModelScope.launch {
+            _uiState.update { it.copy(ruleApplicationsLoading = true, message = null) }
             ruleRepository.ruleApplications()
-                .onSuccess { applications -> _uiState.update { it.copy(ruleApplications = applications) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.category_rules_applications_load_failed)) } }
+                .onSuccess { applications ->
+                    _uiState.update {
+                        it.copy(ruleApplicationsLoading = false, ruleApplications = applications)
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            ruleApplicationsLoading = false,
+                            message = error.toUiText(R.string.category_rules_applications_load_failed),
+                        )
+                    }
+                }
         }
     }
 

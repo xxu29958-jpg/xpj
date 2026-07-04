@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun CategoryRulesScreen(
     rules: List<CategoryRule>,
+    rulesLoading: Boolean,
     busy: Boolean,
     readOnly: Boolean,
     // No default: every caller must wire the ViewModel status channel.
@@ -56,6 +57,7 @@ fun CategoryRulesScreen(
     onToggleRule: (CategoryRule) -> Unit,
     onDeleteRule: (CategoryRule) -> Unit,
     applications: List<RuleApplicationBatch>,
+    applicationsLoading: Boolean,
     confirmedPreview: RuleApplyConfirmedResult?,
     onPreviewApplyConfirmedRules: () -> Unit,
     onConfirmApplyConfirmedRules: () -> Unit,
@@ -101,9 +103,11 @@ fun CategoryRulesScreen(
         CategoryRulesContent(
             state = CategoryRulesContentState(
                 rules = rules,
+                rulesLoading = rulesLoading,
                 busy = busy,
                 readOnly = readOnly,
                 applications = applications,
+                applicationsLoading = applicationsLoading,
                 confirmedPreview = confirmedPreview,
                 undoableRule = undoableRule,
             ),
@@ -134,9 +138,11 @@ private data class CategoryRulesActions(
 
 private data class CategoryRulesContentState(
     val rules: List<CategoryRule>,
+    val rulesLoading: Boolean,
     val busy: Boolean,
     val readOnly: Boolean,
     val applications: List<RuleApplicationBatch>,
+    val applicationsLoading: Boolean,
     val confirmedPreview: RuleApplyConfirmedResult?,
     val undoableRule: CategoryRule?,
 )
@@ -203,23 +209,12 @@ private fun CategoryRulesContent(
         readOnly = state.readOnly,
         actions = categoryRuleCreateActions(editor, actions),
     )
-    SettingsSection(title = stringResource(R.string.category_rules_section_list), icon = Icons.Filled.Category) {
-        CategoryRuleList(
-            rules = state.rules,
-            readOnly = state.readOnly,
-            onToggleRule = actions.onToggleRule,
-            onEditRule = { rule ->
-                if (!state.readOnly) {
-                    editor.onFormChange(CategoryRuleDraftForm.fromRule(rule))
-                }
-            },
-            onDeleteRule = { rule ->
-                if (!state.readOnly) {
-                    onRequestDelete(rule)
-                }
-            },
-        )
-    }
+    CategoryRuleListSection(
+        state = state,
+        editor = editor,
+        actions = actions,
+        onRequestDelete = onRequestDelete,
+    )
     SettingsSection(title = stringResource(R.string.category_rules_section_confirmed_apply), icon = Icons.Filled.RestartAlt) {
         ConfirmedRuleApplyPanel(
             preview = state.confirmedPreview,
@@ -229,13 +224,78 @@ private fun CategoryRulesContent(
             onConfirm = actions.onConfirmApplyConfirmedRules,
         )
     }
+    RuleApplicationHistorySection(
+        state = state,
+        onRequestRollback = onRequestRollback,
+    )
+}
+
+@Composable
+private fun CategoryRuleListSection(
+    state: CategoryRulesContentState,
+    editor: CategoryRulesEditorBinding,
+    actions: CategoryRulesActions,
+    onRequestDelete: (CategoryRule) -> Unit,
+) {
+    SettingsSection(title = stringResource(R.string.category_rules_section_list), icon = Icons.Filled.Category) {
+        if (state.rules.isEmpty()) {
+            SettingsListStateSlot(
+                loading = state.rulesLoading,
+                hasData = false,
+                copy = SettingsStateSlotCopy(
+                    loadingTitle = stringResource(R.string.category_rules_loading_title),
+                    loadingBody = stringResource(R.string.category_rules_loading_body),
+                    emptyText = stringResource(R.string.category_rule_list_empty),
+                    emptyTitle = stringResource(R.string.category_rules_summary_empty),
+                    emptyBody = stringResource(R.string.category_rule_list_empty),
+                ),
+            )
+        } else {
+            CategoryRuleList(
+                rules = state.rules,
+                readOnly = state.readOnly,
+                onToggleRule = actions.onToggleRule,
+                onEditRule = { rule ->
+                    if (!state.readOnly) {
+                        editor.onFormChange(CategoryRuleDraftForm.fromRule(rule))
+                    }
+                },
+                onDeleteRule = { rule ->
+                    if (!state.readOnly) {
+                        onRequestDelete(rule)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RuleApplicationHistorySection(
+    state: CategoryRulesContentState,
+    onRequestRollback: (RuleApplicationBatch) -> Unit,
+) {
     SettingsSection(title = stringResource(R.string.category_rules_section_history), icon = Icons.Filled.RestartAlt) {
-        RuleApplicationHistory(
-            applications = state.applications,
-            readOnly = state.readOnly,
-            busy = state.busy,
-            onRollback = onRequestRollback,
-        )
+        if (state.applications.isEmpty()) {
+            SettingsListStateSlot(
+                loading = state.applicationsLoading,
+                hasData = false,
+                copy = SettingsStateSlotCopy(
+                    loadingTitle = stringResource(R.string.category_rule_apply_history_loading_title),
+                    loadingBody = stringResource(R.string.category_rule_apply_history_loading_body),
+                    emptyText = stringResource(R.string.category_rule_apply_history_empty),
+                    emptyTitle = stringResource(R.string.category_rule_apply_history_empty),
+                    emptyBody = stringResource(R.string.category_rule_apply_history_empty),
+                ),
+            )
+        } else {
+            RuleApplicationHistory(
+                applications = state.applications,
+                readOnly = state.readOnly,
+                busy = state.busy,
+                onRollback = onRequestRollback,
+            )
+        }
     }
 }
 
