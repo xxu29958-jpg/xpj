@@ -214,14 +214,11 @@ private fun ItemsSumMismatchBanner(
     currencyDisplay: CurrencyDisplay,
     onAcknowledge: (() -> Unit)?,
 ) {
-    val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) } ?: ""
-    AppEmptyStateCard {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(AppSpacing.compactGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
+    val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) }
+    val bannerCopy: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             Text(
-                text = stringResource(R.string.expense_edit_v1_items_mismatch_title, diff),
+                text = stringResource(R.string.expense_edit_v1_items_mismatch_title),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
@@ -231,6 +228,20 @@ private fun ItemsSumMismatchBanner(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+    AppEmptyStateCard {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.compactGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
+            if (diff == null) {
+                bannerCopy()
+            } else {
+                ExpenseDetailAmountRow(amount = diff) {
+                    bannerCopy()
+                }
+            }
             onAcknowledge?.let {
                 ExpenseDetailActionButtonRow(
                     text = stringResource(R.string.expense_edit_v1_items_mismatch_ack_button),
@@ -247,17 +258,27 @@ private fun ItemsSumAcknowledgedBanner(
     mismatchCents: Long?,
     currencyDisplay: CurrencyDisplay,
 ) {
-    val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) } ?: ""
+    val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) }
     AppEmptyStateCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.compactGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
-            Text(
-                text = stringResource(R.string.expense_edit_v1_items_mismatch_acknowledged, diff),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (diff == null) {
+                Text(
+                    text = stringResource(R.string.expense_edit_v1_items_mismatch_acknowledged),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                ExpenseDetailAmountRow(amount = diff) {
+                    Text(
+                        text = stringResource(R.string.expense_edit_v1_items_mismatch_acknowledged),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
