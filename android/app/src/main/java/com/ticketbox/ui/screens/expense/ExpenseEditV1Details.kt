@@ -32,6 +32,7 @@ import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ItemsSumStatus
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
@@ -40,6 +41,7 @@ import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSectionHeader
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -124,18 +126,18 @@ private fun ExpenseItemsPanel(
                 tone = DataAuthorityTone.ReadOnly,
             )
         }
-        val messageText = message?.asString()
+        val hasMessage = message?.asString()?.isNotBlank() == true
         if (loading) {
             DetailLoadingState(
                 title = stringResource(R.string.expense_edit_v1_items_loading_title),
                 body = stringResource(R.string.expense_edit_v1_items_loading_body),
             )
         } else {
-            messageText?.let { DetailEmptyState(it) }
+            message?.let { DetailMessageState(message = it, visible = hasMessage) }
         }
         when {
             expenseItems == null || expenseItems.items.isEmpty() -> {
-                if (!loading && messageText == null) {
+                if (!loading && !hasMessage) {
                     DetailEmptyState(stringResource(R.string.expense_edit_v1_items_empty))
                 }
             }
@@ -319,18 +321,18 @@ private fun ExpenseSplitsPanel(
                 tone = DataAuthorityTone.ReadOnly,
             )
         }
-        val messageText = message?.asString()
+        val hasMessage = message?.asString()?.isNotBlank() == true
         if (loading) {
             DetailLoadingState(
                 title = stringResource(R.string.expense_edit_v1_splits_loading_title),
                 body = stringResource(R.string.expense_edit_v1_splits_loading_body),
             )
         } else {
-            messageText?.let { DetailEmptyState(it) }
+            message?.let { DetailMessageState(message = it, visible = hasMessage) }
         }
         when {
             expenseSplits == null || expenseSplits.splits.isEmpty() -> {
-                if (!loading && messageText == null) {
+                if (!loading && !hasMessage) {
                     DetailEmptyState(stringResource(R.string.expense_edit_v1_splits_empty))
                 }
             }
@@ -375,18 +377,18 @@ internal fun ExpenseBillSplitInvitePanel(
             subtitle = stringResource(R.string.expense_edit_bill_split_card_subtitle),
             trailing = null,
         )
-        val messageText = message?.asString()
+        val hasMessage = message?.asString()?.isNotBlank() == true
         if (loading) {
             DetailLoadingState(
                 title = stringResource(R.string.expense_edit_bill_split_loading),
                 body = stringResource(R.string.expense_edit_bill_split_card_subtitle),
             )
         } else {
-            messageText?.let { DetailEmptyState(it) }
+            message?.let { DetailMessageState(message = it, visible = hasMessage) }
         }
         when {
             sent.isEmpty() -> {
-                if (!loading && messageText == null) {
+                if (!loading && !hasMessage) {
                     DetailEmptyState(stringResource(R.string.expense_edit_bill_split_empty))
                 }
             }
@@ -696,13 +698,26 @@ private fun DetailLoadingState(
 }
 
 @Composable
-private fun DetailEmptyState(text: String) {
-    Text(
-        modifier = Modifier.fillMaxWidth(),
-        text = text,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodyMedium,
+private fun DetailMessageState(message: UiText, visible: Boolean) {
+    if (!visible) return
+    AppStatusBanner(
+        message = message,
+        tone = MessageTone.Neutral,
     )
+}
+
+@Composable
+private fun DetailEmptyState(text: String) {
+    AppEmptyStateCard {
+        Text(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpacing.cardPaddingTight),
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
 }
 
 @Composable
