@@ -69,15 +69,23 @@ class LedgerRepository(
         expenseDao,
     ),
 ) {
-    private val moshi: Moshi = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-    private val errorAdapter = moshi.adapter(ErrorDto::class.java)
-    private val ledgerListType = Types.newParameterizedType(
-        List::class.java,
-        LedgerDto::class.java,
-    )
-    private val ledgerListAdapter = moshi.adapter<List<LedgerDto>>(ledgerListType)
+    private val moshi: Moshi by lazy {
+        Moshi.Builder()
+            .add(KotlinJsonAdapterFactory())
+            .build()
+    }
+    private val errorAdapter by lazy {
+        moshi.adapter(ErrorDto::class.java)
+    }
+    private val ledgerListType by lazy {
+        Types.newParameterizedType(
+            List::class.java,
+            LedgerDto::class.java,
+        )
+    }
+    private val ledgerListAdapter by lazy {
+        moshi.adapter<List<LedgerDto>>(ledgerListType)
+    }
     private val switchLedgerMutex = Mutex()
 
     private fun api() = apiProvider.temporary(

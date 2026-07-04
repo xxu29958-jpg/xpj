@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 data class MerchantAliasDto(
     @param:Json(name = "public_id")
@@ -38,6 +39,7 @@ data class MerchantAliasRequest(
  * Carries the optimistic-concurrency token alongside the partial
  * update payload — server requires it.
  */
+@JsonClass(generateAdapter = true)
 data class MerchantAliasUpdateRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
@@ -53,6 +55,7 @@ data class MerchantAliasUpdateRequest(
  * Mirrors CategoryRuleDeleteRequest — DELETE carries a body so the
  * token travels through the same channel as PATCH.
  */
+@JsonClass(generateAdapter = true)
 data class MerchantAliasDeleteRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,

@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 data class ExpenseSplitDto(
     @param:Json(name = "public_id")
@@ -38,6 +39,7 @@ data class ExpenseSplitsResponseDto(
     val splits: List<ExpenseSplitDto>,
 )
 
+@JsonClass(generateAdapter = true)
 data class ExpenseSplitRequestDto(
     @param:Json(name = "member_id")
     val memberId: Long,
@@ -46,6 +48,7 @@ data class ExpenseSplitRequestDto(
     val note: String? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class ExpenseSplitReplaceRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,

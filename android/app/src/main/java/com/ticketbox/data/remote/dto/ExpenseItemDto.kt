@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 data class ExpenseItemDto(
     @param:Json(name = "public_id")
@@ -45,6 +46,7 @@ data class ExpenseItemsResponseDto(
     val items: List<ExpenseItemDto>,
 )
 
+@JsonClass(generateAdapter = true)
 data class ExpenseItemRequestDto(
     val name: String,
     val kind: String = "product",
@@ -60,6 +62,7 @@ data class ExpenseItemRequestDto(
     val confidence: Double? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class ExpenseItemReplaceRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,

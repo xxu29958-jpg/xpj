@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 data class ReportTrendPointDto(
     val bucket: String,
@@ -102,6 +103,7 @@ data class GoalCreateRequestDto(
  * is the client's last-seen ``row_version`` token; server returns 409 on
  * stale snapshot.
  */
+@JsonClass(generateAdapter = true)
 data class GoalUpdateRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,

@@ -354,6 +354,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.moshi)
     implementation(libs.moshi.kotlin)
+    ksp(libs.moshi.kotlin.codegen)
 
     implementation(libs.androidx.biometric)
     implementation(libs.coroutines.android)
@@ -451,6 +452,14 @@ detekt {
     config.setFrom(rootProject.file("detekt.yml"))
     baseline = file("detekt-baseline.xml")
     parallel = true
+}
+
+tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+    exclude { element ->
+        element.file.absolutePath
+            .replace('\\', '/')
+            .contains("/build/generated/")
+    }
 }
 
 tasks.register("assertAndroidTestCountEqualsBaseline") {

@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 data class CategoryRuleDto(
     val id: Long,
@@ -45,6 +46,7 @@ data class CategoryRuleRequest(
  * and this PATCH surfaces as 409 ``state_conflict`` instead of a
  * silent overwrite.
  */
+@JsonClass(generateAdapter = true)
 data class CategoryRuleUpdateRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
@@ -67,6 +69,7 @@ data class CategoryRuleUpdateRequest(
  * the optimistic-concurrency token travels through the same channel as
  * PATCH. Mirrors backend ``CategoryRuleDeleteRequest``.
  */
+@JsonClass(generateAdapter = true)
 data class CategoryRuleDeleteRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,

@@ -28,7 +28,9 @@ internal class NetworkErrorHandler(
     private val context: String,
     private val statusMessages: Map<Int, String> = emptyMap(),
 ) {
-    private val errorAdapter: JsonAdapter<ErrorDto> = MOSHI.adapter(ErrorDto::class.java)
+    private val errorAdapter: JsonAdapter<ErrorDto> by lazy {
+        MOSHI.adapter(ErrorDto::class.java)
+    }
 
     suspend fun <T> safeCall(
         serverUrlHint: String? = null,
@@ -114,9 +116,11 @@ internal class NetworkErrorHandler(
     private companion object {
         // LOG_TAG used to live here; codex round-9 moved Log.w
         // calls into [logNetworkWarning] which owns the tag.
-        val MOSHI: Moshi = Moshi.Builder()
-            .add(KotlinJsonAdapterFactory())
-            .build()
+        val MOSHI: Moshi by lazy {
+            Moshi.Builder()
+                .add(KotlinJsonAdapterFactory())
+                .build()
+        }
     }
 }
 

@@ -5,7 +5,6 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
@@ -108,11 +107,7 @@ class AppContainer(context: Context) {
     // payloads we serialise here MUST line up with the Retrofit DTOs
     // (same nullability + @Json names) since the dispatcher
     // deserialises a row back into the same DTO shape on replay.
-    private val outboxMoshi: Moshi by lazy {
-        Moshi.Builder()
-            .add(KotlinJsonAdapterFactory())
-            .build()
-    }
+    private val outboxMoshi: Moshi by lazy { Moshi.Builder().build() }
 
     // PR-2g.3: the SAME adapter is shared between the call-site
     // serialiser (ExpenseRepository routes IOException → outbox.enqueue)
@@ -279,103 +274,107 @@ class AppContainer(context: Context) {
      * dispatcher FAILED with ``no_dispatcher_registered:<wire>``
      * (codex round-1 P2#5).
      */
-    private val outboxDispatchers: List<OutboxMutationDispatcher> = listOf(
-        PatchExpenseDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = patchExpenseAdapter,
-        ),
-        // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual
-        // create). On success, write the server-assigned id/public_id/row_version
-        // back onto the optimistic local row (resolved by clientRef) so its domain
-        // id flips from the negative local stand-in to the real server id.
-        CreateExpenseDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = manualCreateAdapter,
-            applyServerIdentity = { ledgerId, clientRef, created ->
-                database.expenseDao().applyLocalCreateServerIdentity(
-                    ledgerId,
-                    created.toEntity(ledgerId).copy(clientRef = clientRef),
-                )
-            },
-        ),
-        // PR-2g.4: PATCH /api/rules/categories/{id} via outbox.
-        UpdateCategoryRuleDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = categoryRuleUpdateAdapter,
-        ),
-        // PR-2g.5: DELETE /api/rules/categories/{id} via outbox.
-        DeleteCategoryRuleDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = categoryRuleDeleteAdapter,
-        ),
-        // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
-        DeleteMerchantAliasDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = merchantAliasDeleteAdapter,
-        ),
-        // PR-2g.6: PATCH /api/merchants/aliases/{publicId} via outbox.
-        UpdateMerchantAliasDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = merchantAliasUpdateAdapter,
-        ),
-        // PR-2g.7: POST /api/expenses/{id}/confirm via outbox.
-        ConfirmExpenseDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = expenseStateTokenAdapter,
-        ),
-        // PR-2g.7: POST /api/expenses/{id}/reject via outbox.
-        RejectExpenseDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = expenseStateTokenAdapter,
-        ),
-        // PR-2g.8: POST /api/expenses/{id}/mark-not-duplicate via outbox.
-        MarkNotDuplicateDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = expenseStateTokenAdapter,
-        ),
-        // PR-2g.8: POST /api/expenses/{id}/ocr/retry via outbox.
-        RetryOcrDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = expenseStateTokenAdapter,
-        ),
-        // PR-2g.9: POST /api/expenses/{id}/items/acknowledge-mismatch via outbox.
-        AcknowledgeItemsMismatchDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = expenseStateTokenAdapter,
-        ),
-        // PR-D: PUT /api/expenses/{id}/items via outbox (offline items editor).
-        ReplaceItemsDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = replaceItemsAdapter,
-        ),
-        // ADR-0042 Slice E-1: PUT /api/expenses/{id}/splits via outbox
-        // (offline splits editor).
-        ReplaceSplitsDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = replaceSplitsAdapter,
-        ),
-        // ADR-0042 Slice E-2: POST /api/expenses/{id}/recognize-text via outbox
-        // (offline "粘贴文字识别").
-        RecognizeTextDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = recognizeTextAdapter,
-        ),
-        // ADR-0042 Slice F: PATCH /api/goals/{publicId} via outbox.
-        UpdateGoalDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = goalUpdateAdapter,
-        ),
-        // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
-        UpdateIncomePlanDispatcher(
-            apiProvider = { apiServiceProvider.current() },
-            payloadAdapter = incomePlanUpdateAdapter,
-        ),
-    )
+    private val outboxDispatchers: List<OutboxMutationDispatcher> by lazy {
+        listOf(
+            PatchExpenseDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = patchExpenseAdapter,
+            ),
+            // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual
+            // create). On success, write the server-assigned id/public_id/row_version
+            // back onto the optimistic local row (resolved by clientRef) so its domain
+            // id flips from the negative local stand-in to the real server id.
+            CreateExpenseDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = manualCreateAdapter,
+                applyServerIdentity = { ledgerId, clientRef, created ->
+                    database.expenseDao().applyLocalCreateServerIdentity(
+                        ledgerId,
+                        created.toEntity(ledgerId).copy(clientRef = clientRef),
+                    )
+                },
+            ),
+            // PR-2g.4: PATCH /api/rules/categories/{id} via outbox.
+            UpdateCategoryRuleDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = categoryRuleUpdateAdapter,
+            ),
+            // PR-2g.5: DELETE /api/rules/categories/{id} via outbox.
+            DeleteCategoryRuleDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = categoryRuleDeleteAdapter,
+            ),
+            // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
+            DeleteMerchantAliasDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = merchantAliasDeleteAdapter,
+            ),
+            // PR-2g.6: PATCH /api/merchants/aliases/{publicId} via outbox.
+            UpdateMerchantAliasDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = merchantAliasUpdateAdapter,
+            ),
+            // PR-2g.7: POST /api/expenses/{id}/confirm via outbox.
+            ConfirmExpenseDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = expenseStateTokenAdapter,
+            ),
+            // PR-2g.7: POST /api/expenses/{id}/reject via outbox.
+            RejectExpenseDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = expenseStateTokenAdapter,
+            ),
+            // PR-2g.8: POST /api/expenses/{id}/mark-not-duplicate via outbox.
+            MarkNotDuplicateDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = expenseStateTokenAdapter,
+            ),
+            // PR-2g.8: POST /api/expenses/{id}/ocr/retry via outbox.
+            RetryOcrDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = expenseStateTokenAdapter,
+            ),
+            // PR-2g.9: POST /api/expenses/{id}/items/acknowledge-mismatch via outbox.
+            AcknowledgeItemsMismatchDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = expenseStateTokenAdapter,
+            ),
+            // PR-D: PUT /api/expenses/{id}/items via outbox (offline items editor).
+            ReplaceItemsDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = replaceItemsAdapter,
+            ),
+            // ADR-0042 Slice E-1: PUT /api/expenses/{id}/splits via outbox
+            // (offline splits editor).
+            ReplaceSplitsDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = replaceSplitsAdapter,
+            ),
+            // ADR-0042 Slice E-2: POST /api/expenses/{id}/recognize-text via outbox
+            // (offline "粘贴文字识别").
+            RecognizeTextDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = recognizeTextAdapter,
+            ),
+            // ADR-0042 Slice F: PATCH /api/goals/{publicId} via outbox.
+            UpdateGoalDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = goalUpdateAdapter,
+            ),
+            // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
+            UpdateIncomePlanDispatcher(
+                apiProvider = { apiServiceProvider.current() },
+                payloadAdapter = incomePlanUpdateAdapter,
+            ),
+        )
+    }
 
-    val outboxDrainEngine = OutboxDrainEngine(
-        outbox = outboxRepository,
-        dispatchers = outboxDispatchers,
-    )
+    val outboxDrainEngine: OutboxDrainEngine by lazy {
+        OutboxDrainEngine(
+            outbox = outboxRepository,
+            dispatchers = outboxDispatchers,
+        )
+    }
 
     val expenseRepository = ExpenseRepository(
         expenseDao = database.expenseDao(),

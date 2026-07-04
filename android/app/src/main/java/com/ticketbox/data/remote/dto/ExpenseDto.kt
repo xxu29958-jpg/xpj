@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 data class UploadResponseDto(
     val id: Long,
@@ -119,6 +120,7 @@ data class ExpenseDto(
     val rejectedAt: String?,
 )
 
+@JsonClass(generateAdapter = true)
 data class ExpenseUpdateRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long? = null,
@@ -149,6 +151,7 @@ data class ExpenseUpdateRequest(
  * and does NOT declare ``expected_row_version``, so any non-null value would 422.
  * A separate type makes that contract structural instead of accidental.
  */
+@JsonClass(generateAdapter = true)
 data class ExpenseManualCreateRequestDto(
     @param:Json(name = "original_currency")
     val originalCurrency: String? = null,
@@ -184,6 +187,7 @@ data class ExpenseManualCreateRequestDto(
  * saw. Backend ``UPDATE WHERE row_version = expected_row_version``
  * rejects stale writes with HTTP 409 (ADR-0041).
  */
+@JsonClass(generateAdapter = true)
 data class ExpenseStateTokenRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
@@ -199,6 +203,7 @@ data class ExpenseStateTokenRequest(
  * outbox row strips it to ``0L`` and the dispatcher overwrites it from the row on
  * replay, so a KeepMine token refresh doesn't require re-serialising ``rawText``.
  */
+@JsonClass(generateAdapter = true)
 data class ExpenseRecognizeTextRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
