@@ -46,6 +46,7 @@ class StatsScreenRecentEvidenceTest {
         )
 
         assertTrue(shouldShowReportsUnavailableFallback(state))
+        assertFalse(shouldShowReportsUnavailableFallback(state.copy(reportsLoading = true)))
         assertFalse(shouldShowReportsUnavailableFallback(state.copy(selectedTag = "food")))
         assertFalse(shouldShowReportsUnavailableFallback(state.copy(reportsOverview = reportsOverview())))
     }

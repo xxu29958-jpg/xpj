@@ -346,7 +346,7 @@ internal fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
 }
 
 internal fun shouldShowReportsUnavailableFallback(state: StatsUiState): Boolean =
-    state.reportsOverview == null && state.selectedTag.isBlank()
+    state.reportsOverview == null && state.selectedTag.isBlank() && !state.reportsLoading
 
 internal object StatsRefreshIndicator {
     fun isActive(loading: Boolean, hasReadableData: Boolean): Boolean =
