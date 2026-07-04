@@ -1,6 +1,9 @@
 package com.ticketbox
 
 import android.content.Context
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.AppDatabase
@@ -115,62 +118,86 @@ class AppContainer(context: Context) {
     // replay). Sharing guarantees toJson/fromJson roundtrip — if we
     // built two independent adapters they'd be byte-compatible
     // today but could drift if Moshi options change in one place.
-    private val patchExpenseAdapter = outboxMoshi.adapter(ExpenseUpdateRequest::class.java)
+    private val patchExpenseAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(ExpenseUpdateRequest::class.java)
+    }
 
     // PR-2g.4: shared between [UpdateCategoryRuleDispatcher]
     // (deserialises on replay) and [RuleRepository.
     // updateCategoryRuleAllowingOffline] (serialises before
     // enqueue). Same roundtrip guarantee as patchExpenseAdapter.
-    private val categoryRuleUpdateAdapter = outboxMoshi.adapter(CategoryRuleUpdateRequest::class.java)
+    private val categoryRuleUpdateAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(CategoryRuleUpdateRequest::class.java)
+    }
 
     // PR-2g.5: DELETE adapters. Token-only payload shape; the
     // dispatcher rebuilds the token from row.expectedRowVersion on
     // replay (single source of truth — round-8 P3#5).
-    private val categoryRuleDeleteAdapter = outboxMoshi.adapter(CategoryRuleDeleteRequest::class.java)
-    private val merchantAliasDeleteAdapter = outboxMoshi.adapter(MerchantAliasDeleteRequest::class.java)
+    private val categoryRuleDeleteAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(CategoryRuleDeleteRequest::class.java)
+    }
+    private val merchantAliasDeleteAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(MerchantAliasDeleteRequest::class.java)
+    }
 
     // PR-2g.6: PATCH merchant alias adapter. Shared between
     // UpdateMerchantAliasDispatcher and
     // MerchantRepository.updateMerchantAliasAllowingOffline.
-    private val merchantAliasUpdateAdapter = outboxMoshi.adapter(MerchantAliasUpdateRequest::class.java)
+    private val merchantAliasUpdateAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(MerchantAliasUpdateRequest::class.java)
+    }
 
     // PR-2g.7: token-only adapter shared between the confirm / reject
     // dispatchers and ExpensePendingRepository's offline call sites.
     // POST /api/expenses/{id}/confirm and .../reject take the same
     // ExpenseStateTokenRequest body, so one adapter serves both.
-    private val expenseStateTokenAdapter = outboxMoshi.adapter(ExpenseStateTokenRequest::class.java)
+    private val expenseStateTokenAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(ExpenseStateTokenRequest::class.java)
+    }
 
     // PR-D: body-carrying adapter shared between ReplaceItemsDispatcher and
     // ExpenseDetailRepository's offline items-editor call site (PUT
     // /api/expenses/{id}/items). Same roundtrip guarantee as patchExpenseAdapter.
-    private val replaceItemsAdapter = outboxMoshi.adapter(ExpenseItemReplaceRequestDto::class.java)
+    private val replaceItemsAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(ExpenseItemReplaceRequestDto::class.java)
+    }
 
     // ADR-0042 Slice E-1: body-carrying adapter shared between
     // ReplaceSplitsDispatcher and ExpenseDetailRepository's offline
     // splits-editor call site (PUT /api/expenses/{id}/splits). Same roundtrip
     // guarantee as replaceItemsAdapter.
-    private val replaceSplitsAdapter = outboxMoshi.adapter(ExpenseSplitReplaceRequestDto::class.java)
+    private val replaceSplitsAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(ExpenseSplitReplaceRequestDto::class.java)
+    }
 
     // ADR-0042 Slice E-2: body-carrying adapter shared between
     // RecognizeTextDispatcher and ExpenseDetailRepository's offline
     // "粘贴文字识别" call site (POST /api/expenses/{id}/recognize-text). Same
     // roundtrip guarantee as replaceItemsAdapter.
-    private val recognizeTextAdapter = outboxMoshi.adapter(ExpenseRecognizeTextRequestDto::class.java)
+    private val recognizeTextAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(ExpenseRecognizeTextRequestDto::class.java)
+    }
 
     // issue #65 slice 4: body adapter shared between the offline-aware manual
     // create (ExpenseLedgerRepositoryActions / ExpenseRepositoryCore.enqueueLocalCreate)
     // and CreateExpenseDispatcher's replay. Same roundtrip guarantee as
     // patchExpenseAdapter.
-    private val manualCreateAdapter = outboxMoshi.adapter(ExpenseManualCreateRequestDto::class.java)
+    private val manualCreateAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(ExpenseManualCreateRequestDto::class.java)
+    }
 
     // ADR-0042 Slice F: PATCH /api/goals/{publicId} adapter. Shared between
     // UpdateGoalDispatcher and ReportsRepository.updateGoalAllowingOffline.
-    private val goalUpdateAdapter = outboxMoshi.adapter(GoalUpdateRequestDto::class.java)
+    private val goalUpdateAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(GoalUpdateRequestDto::class.java)
+    }
 
     // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} adapter. Shared
     // between UpdateIncomePlanDispatcher and
     // IncomePlanRepository.updateAllowingOffline.
-    private val incomePlanUpdateAdapter = outboxMoshi.adapter(IncomePlanUpdateRequestDto::class.java)
+    private val incomePlanUpdateAdapter = lazyJsonAdapter {
+        outboxMoshi.adapter(IncomePlanUpdateRequestDto::class.java)
+    }
 
     val outboxScheduler = OutboxScheduler()
 
@@ -553,3 +580,16 @@ class AppContainer(context: Context) {
         }
     }
 }
+
+private fun <T> lazyJsonAdapter(factory: () -> JsonAdapter<T>): JsonAdapter<T> =
+    object : JsonAdapter<T>() {
+        private val delegate: JsonAdapter<T> by lazy(factory)
+
+        override fun fromJson(reader: JsonReader): T? = delegate.fromJson(reader)
+
+        override fun toJson(writer: JsonWriter, value: T?) {
+            delegate.toJson(writer, value)
+        }
+
+        override fun toString(): String = "LazyJsonAdapter"
+    }
