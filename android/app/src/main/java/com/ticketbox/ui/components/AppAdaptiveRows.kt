@@ -15,6 +15,8 @@ import com.ticketbox.ui.design.AppSpacing
 @Composable
 fun AppAdaptiveContentActionRow(
     modifier: Modifier = Modifier,
+    wideActionWeight: Float? = null,
+    verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     content: @Composable () -> Unit,
     action: @Composable (Modifier) -> Unit,
 ) {
@@ -31,12 +33,12 @@ fun AppAdaptiveContentActionRow(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = verticalAlignment,
             ) {
                 Box(modifier = Modifier.weight(1f)) {
                     content()
                 }
-                action(Modifier)
+                action(wideActionWeight?.let { Modifier.weight(it) } ?: Modifier)
             }
         }
     }

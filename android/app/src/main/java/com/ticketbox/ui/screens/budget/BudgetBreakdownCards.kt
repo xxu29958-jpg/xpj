@@ -1,10 +1,7 @@
 package com.ticketbox.ui.screens.budget
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -18,9 +15,9 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetExcludedCategory
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -109,36 +106,19 @@ private fun AmountRow(
     amountLabel: String,
     amountValue: String,
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                AmountRowCopy(title = title, detail = detail)
-                BudgetTrailingAmount(
-                    label = amountLabel,
-                    amount = amountValue,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    AmountRowCopy(title = title, detail = detail)
-                }
-                BudgetTrailingAmount(
-                    label = amountLabel,
-                    amount = amountValue,
-                    modifier = Modifier.weight(0.44f),
-                )
-            }
-        }
-    }
+    AppAdaptiveContentActionRow(
+        modifier = Modifier.fillMaxWidth(),
+        wideActionWeight = BUDGET_AMOUNT_ROW_TRAILING_WEIGHT,
+        verticalAlignment = Alignment.Top,
+        content = { AmountRowCopy(title = title, detail = detail) },
+        action = { actionModifier ->
+            BudgetTrailingAmount(
+                label = amountLabel,
+                amount = amountValue,
+                modifier = actionModifier,
+            )
+        },
+    )
 }
 
 @Composable
@@ -167,6 +147,8 @@ private fun AmountRowCopy(
         )
     }
 }
+
+private const val BUDGET_AMOUNT_ROW_TRAILING_WEIGHT = 0.44f
 
 @Composable
 private fun BudgetTrailingAmount(
