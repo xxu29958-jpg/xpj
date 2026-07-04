@@ -23,9 +23,11 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -41,6 +43,11 @@ private data class GoalDisplayModel(
     val progressFraction: Float,
     val progressPercent: Int,
     val priority: Int,
+)
+
+private data class GoalAmountLine(
+    val label: String,
+    val value: String,
 )
 
 @Composable
@@ -206,18 +213,39 @@ private fun GoalPriorityRow(model: GoalDisplayModel) {
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            GoalStatusMark(tone = tone)
+            Box(
+                modifier = Modifier.size(width = 4.dp, height = 38.dp).clip(RoundedCornerShape(AppRadius.pill)).background(tone.fg),
+            )
             GoalPriorityTextColumn(model = model, modifier = Modifier.weight(1f))
-            Text(
-                text = if (debtEvaluation != null) {
-                    stringResource(R.string.stats_reports_goal_percent, model.progressPercent.coerceAtLeast(0))
-                } else {
-                    formatDisplayAmount(goal.targetAmountCents, currencyDisplay)
-                },
-                color = tone.fg,
-                style = MaterialTheme.typography.labelLarge.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
-                maxLines = 1,
+            if (debtEvaluation != null) {
+                Text(
+                    text = stringResource(R.string.stats_reports_goal_percent, model.progressPercent.coerceAtLeast(0)),
+                    color = tone.fg,
+                    style = MaterialTheme.typography.labelLarge.tabularNum(),
+                    fontWeight = AppTextHierarchy.body.weight,
+                    maxLines = 1,
+                )
+            } else {
+                AppEndAlignedAmountText(
+                    text = formatDisplayAmount(goal.targetAmountCents, currencyDisplay),
+                    modifier = Modifier.weight(0.56f),
+                    role = AppAmountRole.Compact,
+                    color = tone.fg,
+                )
+            }
+        }
+        if (debtEvaluation == null) {
+            GoalAmountRows(
+                lines = listOf(
+                    GoalAmountLine(
+                        stringResource(R.string.stats_reports_goal_spent_label),
+                        formatDisplayAmount(goal.spentAmountCents, currencyDisplay),
+                    ),
+                    GoalAmountLine(
+                        stringResource(R.string.stats_reports_goal_remaining_label),
+                        formatDisplayAmount(goal.remainingAmountCents, currencyDisplay),
+                    ),
+                ),
             )
         }
         AppProgressBar(
@@ -230,6 +258,33 @@ private fun GoalPriorityRow(model: GoalDisplayModel) {
                 model.progressPercent,
             ),
         )
+    }
+}
+
+@Composable
+private fun GoalAmountRows(lines: List<GoalAmountLine>) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        lines.forEach { line ->
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = line.label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                AppEndAlignedAmountText(
+                    text = line.value,
+                    role = AppAmountRole.Compact,
+                )
+            }
+        }
     }
 }
 
@@ -254,24 +309,14 @@ private fun GoalPriorityTextColumn(
             text = stringResource(
                 R.string.stats_reports_goal_meta_line,
                 goalStatusText(model.goal),
-                goalMetaText(model.goal),
+                goalContextText(model.goal),
             ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall.tabularNum(),
+            style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
-}
-
-@Composable
-private fun GoalStatusMark(tone: StateTone) {
-    Box(
-        modifier = Modifier
-            .size(width = 4.dp, height = 38.dp)
-            .clip(RoundedCornerShape(AppRadius.pill))
-            .background(tone.fg),
-    )
 }
 
 @Composable
@@ -293,9 +338,8 @@ private fun goalStatusText(goal: Goal): String {
 }
 
 @Composable
-private fun goalMetaText(goal: Goal): String {
+private fun goalContextText(goal: Goal): String {
     val debtEvaluation = goal.debtRepayment.takeIf { goal.isDebtRepayment }
-    val currencyDisplay = LocalCurrencyDisplay.current
     val goalTypeText = when {
         goal.isDebtRepayment -> stringResource(R.string.stats_reports_goal_type_debt)
         goal.isSpendingLimit -> stringResource(R.string.stats_reports_goal_type_spending)
@@ -313,8 +357,6 @@ private fun goalMetaText(goal: Goal): String {
             R.string.stats_reports_goal_progress,
             goalTypeText,
             goal.category ?: stringResource(R.string.stats_reports_goal_total),
-            formatDisplayAmount(goal.spentAmountCents, currencyDisplay),
-            formatDisplayAmount(goal.remainingAmountCents, currencyDisplay),
         )
     }
 }

@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -14,11 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -104,14 +104,10 @@ private fun TagScopeHeader(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Text(
+        AppAmountText(
             text = formatDisplayAmount(model.totalAmountCents, currencyDisplay),
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.headlineSmall.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            autoSize = TextAutoSize.StepBased(minFontSize = 18.sp, maxFontSize = 28.sp, stepSize = 1.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
+            role = AppAmountRole.Medium,
         )
         Text(
             text = if (model.hasSpend) {
