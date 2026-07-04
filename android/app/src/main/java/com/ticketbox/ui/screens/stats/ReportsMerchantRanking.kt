@@ -15,15 +15,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportRankingMetric
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -114,7 +115,11 @@ private fun MerchantRankingRow(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap)) {
-        MerchantRankingTopLine(label = label, primaryText = primaryText)
+        MerchantRankingTopLine(
+            label = label,
+            primaryText = primaryText,
+            primaryIsAmount = rankingMetric == ReportRankingMetric.Amount,
+        )
         MerchantRankingBar(progress = progress)
         Text(
             text = supportingText,
@@ -127,7 +132,11 @@ private fun MerchantRankingRow(
 }
 
 @Composable
-private fun MerchantRankingTopLine(label: String, primaryText: String) {
+private fun MerchantRankingTopLine(
+    label: String,
+    primaryText: String,
+    primaryIsAmount: Boolean,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -140,12 +149,20 @@ private fun MerchantRankingTopLine(label: String, primaryText: String) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = primaryText,
-            style = MaterialTheme.typography.labelLarge.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-        )
+        if (primaryIsAmount) {
+            AppEndAlignedAmountText(
+                text = primaryText,
+                modifier = Modifier.weight(MerchantRankingAmountWeight),
+                role = AppAmountRole.Compact,
+            )
+        } else {
+            Text(
+                text = primaryText,
+                style = MaterialTheme.typography.labelLarge.tabularNum(),
+                fontWeight = AppTextHierarchy.body.weight,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -214,3 +231,4 @@ private fun merchantRankingCaptionRes(rankingMetric: ReportRankingMetric): Int =
 }
 
 private const val MerchantRankingVisibleLimit = 5
+private const val MerchantRankingAmountWeight = 0.72f
