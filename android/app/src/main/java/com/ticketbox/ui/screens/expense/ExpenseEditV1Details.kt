@@ -512,7 +512,7 @@ private fun ExpenseDetailAmountRow(
     content: @Composable () -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val stackAmount = maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth
+        val stackAmount = maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth
         if (stackAmount) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
