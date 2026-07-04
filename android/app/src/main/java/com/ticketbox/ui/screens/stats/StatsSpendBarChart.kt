@@ -21,19 +21,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStatsTokens
-import com.ticketbox.ui.design.tabularNum
 import kotlin.math.ceil
 
 internal data class StatsSpendChartPoint(
@@ -230,15 +228,11 @@ private fun StatsSpendDistributionRowView(
             fillColor = fillColor,
             modifier = Modifier.weight(distributionTokens.trackWeight),
         )
-        Text(
+        AppEndAlignedAmountText(
             text = formatDisplayAmount(amountCents, currencyDisplay),
             modifier = Modifier.weight(distributionTokens.amountWeight),
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.labelMedium.tabularNum(),
-            fontWeight = if (highlighted) AppTextHierarchy.heading.weight else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
+            role = AppAmountRole.Compact,
         )
     }
 }
@@ -259,14 +253,11 @@ private fun StatsSparseSpendRowView(row: StatsSpendDistributionRow) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
+        AppEndAlignedAmountText(
             text = formatDisplayAmount(row.amountCents, currencyDisplay),
+            modifier = Modifier.weight(StatsSparseAmountWeight),
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleSmall.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
+            role = AppAmountRole.Compact,
         )
     }
 }
@@ -302,3 +293,5 @@ private fun StatsSpendDistributionValueBar(
         }
     }
 }
+
+private const val StatsSparseAmountWeight = 0.58f
