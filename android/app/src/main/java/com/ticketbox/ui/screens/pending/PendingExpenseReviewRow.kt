@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -38,12 +37,12 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.displayCompactTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
-import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppDensity
@@ -90,39 +89,34 @@ internal fun PendingExpenseReviewRow(
             .fillMaxWidth()
             .clickable(enabled = !item.busy, onClick = actions.onEdit),
     ) {
-        BoxWithConstraints(
+        Column(
             modifier = Modifier.padding(metrics.rowPadding),
+            verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
         ) {
-            val stackAmount = maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth
-            Column(
-                verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PendingExpenseLeadingMark(item)
-                    PendingExpenseTextBlock(item)
-                    if (!stackAmount) {
-                        PendingExpenseAmountBlock(
-                            expense = item.expense,
-                            actions = actions,
-                            modifier = Modifier.weight(PendingExpenseReviewLayout.InlineAmountWeight),
-                            stacked = false,
-                        )
+            AppAdaptiveContentActionStateRow(
+                wideActionWeight = PendingExpenseReviewLayout.InlineAmountWeight,
+                verticalAlignment = Alignment.CenterVertically,
+                content = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PendingExpenseLeadingMark(item)
+                        PendingExpenseTextBlock(item)
                     }
-                }
-                if (stackAmount) {
+                },
+                action = { amountModifier, stacked ->
                     PendingExpenseAmountBlock(
                         expense = item.expense,
                         actions = actions,
-                        modifier = Modifier.fillMaxWidth(),
-                        stacked = true,
+                        modifier = amountModifier,
+                        stacked = stacked,
                     )
-                }
-                if (item.showInlineActions) {
-                    PendingExpenseInlineActions(item.expense, actions)
-                }
+                },
+            )
+            if (item.showInlineActions) {
+                PendingExpenseInlineActions(item.expense, actions)
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))

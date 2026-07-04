@@ -24,6 +24,24 @@ fun AppAdaptiveContentActionRow(
     content: @Composable () -> Unit,
     action: @Composable (Modifier) -> Unit,
 ) {
+    AppAdaptiveContentActionStateRow(
+        modifier = modifier,
+        wideActionWeight = wideActionWeight,
+        verticalAlignment = verticalAlignment,
+        content = content,
+    ) { actionModifier, _ ->
+        action(actionModifier)
+    }
+}
+
+@Composable
+fun AppAdaptiveContentActionStateRow(
+    modifier: Modifier = Modifier,
+    wideActionWeight: Float? = null,
+    verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    content: @Composable () -> Unit,
+    action: @Composable (Modifier, Boolean) -> Unit,
+) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
             Column(
@@ -31,7 +49,7 @@ fun AppAdaptiveContentActionRow(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
                 content()
-                action(Modifier.fillMaxWidth())
+                action(Modifier.fillMaxWidth(), true)
             }
         } else {
             Row(
@@ -42,7 +60,7 @@ fun AppAdaptiveContentActionRow(
                 Box(modifier = Modifier.weight(1f)) {
                     content()
                 }
-                action(wideActionWeight?.let { Modifier.weight(it) } ?: Modifier)
+                action(wideActionWeight?.let { Modifier.weight(it) } ?: Modifier, false)
             }
         }
     }
