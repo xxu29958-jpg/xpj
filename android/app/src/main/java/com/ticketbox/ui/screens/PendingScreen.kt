@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -18,18 +17,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.rememberAppHaptics
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.SwipeActionConfig
 import com.ticketbox.ui.components.SwipeableActionRow
 import com.ticketbox.ui.design.AppSpacing
@@ -55,7 +54,6 @@ import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
-import com.valentinilk.shimmer.shimmer
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -242,11 +240,14 @@ fun PendingScreen(
         when {
             state.items.isEmpty() && blockingRefresh -> {
                 item {
-                    Column(modifier = Modifier.shimmer()) {
-                        repeat(5) {
-                            ListItemSkeleton(horizontalPadding = 0.dp)
-                        }
-                    }
+                    AppListStateContent(
+                        state = AppListStateSpec(
+                            isEmpty = true,
+                            loading = true,
+                            emptyText = stringResource(R.string.pending_empty_card_body_loading),
+                            skeletonRows = 5,
+                        ),
+                    ) {}
                 }
             }
 

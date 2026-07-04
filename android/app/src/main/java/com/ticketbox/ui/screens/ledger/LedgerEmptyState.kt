@@ -14,15 +14,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.ListItemSkeleton
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.LedgerUiState
-import com.valentinilk.shimmer.shimmer
 
 @Composable
 internal fun EmptyLedgerState(
@@ -152,7 +151,12 @@ internal fun LedgerEmptyOrFirstSync(
 /** First-ever-sync placeholder list (shimmer skeleton rows). Mirrors PendingScreen. */
 @Composable
 private fun LedgerFirstSyncSkeleton() {
-    Column(modifier = Modifier.shimmer()) {
-        repeat(6) { ListItemSkeleton(horizontalPadding = 0.dp) }
-    }
+    AppListStateContent(
+        state = AppListStateSpec(
+            isEmpty = true,
+            loading = true,
+            emptyText = stringResource(R.string.ledger_empty_body_default),
+            skeletonRows = 6,
+        ),
+    ) {}
 }
