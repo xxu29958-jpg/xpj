@@ -40,7 +40,6 @@ import com.ticketbox.ui.screens.stats.CategoryStructureCard
 import com.ticketbox.ui.screens.stats.EmptyStatsCard
 import com.ticketbox.ui.screens.stats.LifestyleCard
 import com.ticketbox.ui.screens.stats.PendingOverviewCard
-import com.ticketbox.ui.screens.stats.RecentTrendCard
 import com.ticketbox.ui.screens.stats.RecentUploadCard
 import com.ticketbox.ui.screens.stats.RecurringCandidatesCard
 import com.ticketbox.ui.screens.stats.RecurringItemsSummaryCard
@@ -269,7 +268,12 @@ fun StatsScreen(
                                     statsSource = state.statsSource,
                                 )
                             }
-                            else -> item { RecentTrendCard(state.dailyTrend) }
+                            shouldShowReportsUnavailableFallback(state) -> item {
+                                EmptyStatsCard(
+                                    title = stringResource(R.string.stats_reports_unavailable_title),
+                                    body = stringResource(R.string.stats_reports_unavailable_body),
+                                )
+                            }
                         }
                     }
                 }
@@ -340,6 +344,9 @@ internal fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
     if (state.statsSource != StatsSource.Backend) return null
     return state.lifestyleStats?.recent7DaysAmountCents?.coerceAtLeast(0L)
 }
+
+internal fun shouldShowReportsUnavailableFallback(state: StatsUiState): Boolean =
+    state.reportsOverview == null && state.selectedTag.isBlank()
 
 internal object StatsRefreshIndicator {
     fun isActive(loading: Boolean, hasReadableData: Boolean): Boolean =
