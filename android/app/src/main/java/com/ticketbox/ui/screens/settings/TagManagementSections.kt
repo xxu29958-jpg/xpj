@@ -124,15 +124,23 @@ internal fun TagOverviewSection(tags: List<ManagedTag>) {
 @Composable
 internal fun TagListSection(
     tags: List<ManagedTag>,
+    loading: Boolean,
     readOnly: Boolean,
     busy: Boolean,
     actions: TagRowActions,
 ) {
     SettingsSection(title = stringResource(R.string.tag_management_section_all), icon = Icons.Filled.Tune) {
         if (tags.isEmpty()) {
-            SettingsInlineEmpty(
-                title = stringResource(R.string.tag_management_summary_empty),
-                body = stringResource(R.string.tag_management_list_empty),
+            SettingsListStateSlot(
+                loading = loading,
+                hasData = false,
+                copy = SettingsStateSlotCopy(
+                    loadingTitle = stringResource(R.string.tag_management_loading_title),
+                    loadingBody = stringResource(R.string.tag_management_loading_body),
+                    emptyText = stringResource(R.string.tag_management_list_empty),
+                    emptyTitle = stringResource(R.string.tag_management_summary_empty),
+                    emptyBody = stringResource(R.string.tag_management_list_empty),
+                ),
             )
             return@SettingsSection
         }

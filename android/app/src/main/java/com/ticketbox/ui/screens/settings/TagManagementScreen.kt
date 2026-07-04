@@ -130,6 +130,7 @@ private fun TagManagementPageContent(
         TagOverviewSection(tags = state.tags)
         TagListSection(
             tags = state.tags,
+            loading = state.loading,
             readOnly = readOnly,
             busy = state.busy,
             actions = actions.rowActions,

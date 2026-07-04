@@ -192,6 +192,8 @@
     <string name="tag_management_overview_unused_caption">可整理</string>
     <string name="tag_management_overview_body">重命名、合并和删除会更新当前账本；删除和合并成功后可撤销。</string>
     <string name="tag_management_section_all">标签列表</string>
+    <string name="tag_management_loading_title">正在读取标签</string>
+    <string name="tag_management_loading_body">会从当前账本同步最新标签。</string>
     <string name="tag_management_list_empty">记账时给账单添加标签后，这里就能统一整理它们。</string>
     <string name="tag_management_delete_dialog_title">删除标签？</string>
     <string name="tag_management_delete_dialog_text_used">「%1$s」会从 %2$d 笔账单上移除。5 秒内可撤销。</string>

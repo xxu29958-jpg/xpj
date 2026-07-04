@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
  */
 data class TagManagementUiState(
     val tags: List<ManagedTag> = emptyList(),
+    val loading: Boolean = false,
     val busy: Boolean = false,
     val message: UiText? = null,
     val undoable: TagUndoHandle? = null,
@@ -66,9 +67,14 @@ class TagManagementViewModel(
 
     fun loadTags() {
         viewModelScope.launch {
+            _uiState.update { it.copy(loading = true, message = null) }
             tagRepository.tags()
-                .onSuccess { tags -> _uiState.update { it.copy(tags = tags.sortedByUsage()) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.tag_management_load_failed)) } }
+                .onSuccess { tags -> _uiState.update { it.copy(loading = false, tags = tags.sortedByUsage()) } }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(loading = false, message = error.toUiText(R.string.tag_management_load_failed))
+                    }
+                }
         }
     }
 

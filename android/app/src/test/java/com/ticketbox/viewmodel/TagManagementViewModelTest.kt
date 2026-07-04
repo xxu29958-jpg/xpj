@@ -15,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -34,6 +35,28 @@ class TagManagementViewModelTest {
 
     private fun tag(id: String, name: String, usage: Int, rv: Long = 1L) =
         ManagedTag(publicId = id, name = name, usageCount = usage, rowVersion = rv)
+
+    @Test
+    fun initShowsLoadingUntilTagsReturn() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeTagActions(listOf(tag("a", "餐饮", 5))).apply { tagsGate = gate }
+        val vm = TagManagementViewModel(repo)
+        runCurrent()
+        assertTrue(vm.uiState.value.loading)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(false, vm.uiState.value.loading)
+        assertEquals(listOf("餐饮"), vm.uiState.value.tags.map { it.name })
+    }
+
+    @Test
+    fun initFailureClearsLoadingAndShowsMessage() = runTest(dispatcher) {
+        val repo = FakeTagActions(emptyList()).apply { failNext = RuntimeException() }
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(false, vm.uiState.value.loading)
+        assertEquals(UiText.res(R.string.tag_management_load_failed), vm.uiState.value.message)
+    }
 
     @Test
     fun initLoadsTagsSortedByUsageDesc() = runTest(dispatcher) {
@@ -320,12 +343,14 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
     var mergeCalls = 0
     var undoCalls = 0
     var lastUndo: Pair<String, Long>? = null
+    var tagsGate: CompletableDeferred<Unit>? = null
 
     private fun consumeFailure(): Throwable? = failNext?.also { failNext = null }
 
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun tags(): Result<List<ManagedTag>> {
+        tagsGate?.await()
         consumeFailure()?.let { return Result.failure(it) }
         return Result.success(tags.toList())
     }
