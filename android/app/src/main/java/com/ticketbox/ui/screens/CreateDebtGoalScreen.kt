@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Checkbox
@@ -15,7 +13,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -27,6 +24,8 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -106,16 +105,13 @@ fun CreateDebtGoalScreen(
                 title = stringResource(R.string.debt_goal_create_picker_title),
                 subtitle = stringResource(R.string.debt_goal_create_picker_subtitle),
             ) {
-                if (state.isLoadingDebts && state.candidates.isEmpty()) {
-                    Text(
-                        stringResource(R.string.debt_goal_create_picker_loading),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                DebtGoalPickerContent(
+                    state = state,
+                    currency = currency,
+                    onToggle = viewModel::toggleDebt,
+                )
             }
         }
-        debtPickerSection(state = state, currency = currency, onToggle = viewModel::toggleDebt)
     }
 }
 
@@ -146,23 +142,30 @@ private fun CreateDebtGoalNameField(name: String, onNameChange: (String) -> Unit
     }
 }
 
-private fun LazyListScope.debtPickerSection(
+@Composable
+private fun DebtGoalPickerContent(
     state: CreateDebtGoalUiState,
     currency: CurrencyDisplay,
     onToggle: (String) -> Unit,
 ) {
-    if (state.candidates.isEmpty() && !state.isLoadingDebts) {
-        item { CreateDebtGoalPickerEmpty() }
-        return
-    }
-    itemsIndexed(state.candidates, key = { _, debt -> debt.publicId }) { index, debt ->
-        DebtPickerRow(
-            debt = debt,
-            selected = debt.publicId in state.selectedDebtIds,
-            currency = currency,
-            onToggle = { onToggle(debt.publicId) },
-            showDivider = index < state.candidates.lastIndex,
-        )
+    AppListStateContent(
+        state = AppListStateSpec(
+            isEmpty = state.candidates.isEmpty(),
+            loading = state.isLoadingDebts,
+            emptyText = stringResource(R.string.debt_goal_create_picker_empty_body),
+            emptyTitle = stringResource(R.string.debt_goal_create_picker_empty_title),
+            emptyBody = stringResource(R.string.debt_goal_create_picker_empty_body),
+        ),
+    ) {
+        state.candidates.forEachIndexed { index, debt ->
+            DebtPickerRow(
+                debt = debt,
+                selected = debt.publicId in state.selectedDebtIds,
+                currency = currency,
+                onToggle = { onToggle(debt.publicId) },
+                showDivider = index < state.candidates.lastIndex,
+            )
+        }
     }
 }
 
@@ -202,26 +205,6 @@ private fun DebtPickerRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    }
-}
-
-@Composable
-private fun CreateDebtGoalPickerEmpty() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        horizontalAlignment = Alignment.Start,
-    ) {
-        Text(
-            stringResource(R.string.debt_goal_create_picker_empty_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            stringResource(R.string.debt_goal_create_picker_empty_body),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

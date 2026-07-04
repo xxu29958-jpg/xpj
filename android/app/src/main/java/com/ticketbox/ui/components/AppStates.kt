@@ -30,6 +30,8 @@ data class AppListStateSpec(
     val loading: Boolean,
     val emptyText: String,
     val skeletonRows: Int = 3,
+    val emptyTitle: String? = null,
+    val emptyBody: String? = null,
 )
 
 /**
@@ -96,6 +98,21 @@ fun AppListStateContent(
                 repeat(state.skeletonRows.coerceAtLeast(1)) {
                     ListItemSkeleton(horizontalPadding = AppSpacing.none)
                 }
+            }
+            state.isEmpty && state.emptyTitle != null -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
+                Text(
+                    text = state.emptyTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
+                )
+                Text(
+                    text = state.emptyBody ?: state.emptyText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             state.isEmpty -> Text(
                 text = state.emptyText,
