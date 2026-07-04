@@ -127,17 +127,15 @@ fun FamilyMembersScreen(
             icon = Icons.Filled.Group,
         ) {
             SettingsOpenPanel {
-                if (state.members.isEmpty() && state.loading) {
-                    SettingsInlineEmpty(
-                        title = stringResource(R.string.family_members_loading_title),
-                        body = stringResource(R.string.family_members_loading_body),
-                    )
-                } else if (state.members.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.family_members_members_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                SettingsListStateSlot(
+                    loading = state.loading,
+                    hasData = state.members.isNotEmpty(),
+                    copy = SettingsStateSlotCopy(
+                        loadingTitle = stringResource(R.string.family_members_loading_title),
+                        loadingBody = stringResource(R.string.family_members_loading_body),
+                        emptyText = stringResource(R.string.family_members_members_empty),
+                    ),
+                )
                 state.members.forEachIndexed { index, member ->
                     FamilyMemberRow(
                         member = member,
@@ -190,17 +188,15 @@ fun FamilyMembersScreen(
                 icon = Icons.Filled.Info,
             ) {
                 SettingsOpenPanel {
-                    if (state.auditItems.isEmpty() && state.auditLoading) {
-                        SettingsInlineEmpty(
-                            title = stringResource(R.string.family_members_audit_loading_title),
-                            body = stringResource(R.string.family_members_audit_loading_body),
-                        )
-                    } else if (state.auditItems.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.family_members_audit_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    SettingsListStateSlot(
+                        loading = state.auditLoading,
+                        hasData = state.auditItems.isNotEmpty(),
+                        copy = SettingsStateSlotCopy(
+                            loadingTitle = stringResource(R.string.family_members_audit_loading_title),
+                            loadingBody = stringResource(R.string.family_members_audit_loading_body),
+                            emptyText = stringResource(R.string.family_members_audit_empty),
+                        ),
+                    )
                     state.auditItems.forEachIndexed { index, item ->
                         LedgerAuditRow(item = item)
                         if (index != state.auditItems.lastIndex) {

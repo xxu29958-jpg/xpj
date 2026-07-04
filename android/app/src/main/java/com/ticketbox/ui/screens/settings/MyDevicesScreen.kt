@@ -144,17 +144,15 @@ private fun DeviceListSection(
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            if (state.devices.isEmpty() && state.loading) {
-                SettingsInlineEmpty(
-                    title = stringResource(R.string.my_devices_loading_title),
-                    body = stringResource(R.string.my_devices_loading_body),
-                )
-            } else if (state.devices.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.my_devices_empty),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            SettingsListStateSlot(
+                loading = state.loading,
+                hasData = state.devices.isNotEmpty(),
+                copy = SettingsStateSlotCopy(
+                    loadingTitle = stringResource(R.string.my_devices_loading_title),
+                    loadingBody = stringResource(R.string.my_devices_loading_body),
+                    emptyText = stringResource(R.string.my_devices_empty),
+                ),
+            )
             state.devices.forEachIndexed { index, device ->
                 DeviceRow(
                     device = device,
