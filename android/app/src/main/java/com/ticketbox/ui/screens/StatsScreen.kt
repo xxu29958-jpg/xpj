@@ -336,11 +336,9 @@ private fun orderedStatsDashboardKeys(keys: List<String>): List<String> {
     return preferredOrder.filter { it in keys } + keys.filter { it !in preferredOrder }
 }
 
-private fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
-    if (state.statsSource == StatsSource.LocalFallback) {
-        return state.dailyTrend.sumOf { it.amountCents.coerceAtLeast(0L) }
-    }
-    return state.lifestyleStats?.recent7DaysAmountCents
+internal fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
+    if (state.statsSource != StatsSource.Backend) return null
+    return state.lifestyleStats?.recent7DaysAmountCents?.coerceAtLeast(0L)
 }
 
 internal object StatsRefreshIndicator {
