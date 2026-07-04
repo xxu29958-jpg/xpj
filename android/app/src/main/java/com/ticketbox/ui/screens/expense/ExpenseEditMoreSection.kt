@@ -2,19 +2,20 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.design.AppSpacing
 
 internal const val TAG_TAGS_FIELD = "expense-edit-tags-field"
@@ -102,31 +103,30 @@ private fun ExpenseEditMoreHeader(
     moreExpanded: Boolean,
     onToggleMore: () -> Unit,
 ) {
-    Row(
+    AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(stringResource(R.string.expense_edit_more_title), style = MaterialTheme.typography.titleSmall)
-            Text(
-                text = stringResource(R.string.expense_edit_more_subtitle),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        TextButton(onClick = onToggleMore) {
-            Text(
-                if (moreExpanded) {
+        content = {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(stringResource(R.string.expense_edit_more_title), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = stringResource(R.string.expense_edit_more_subtitle),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        action = { actionModifier ->
+            QuietOutlinedButton(
+                text = if (moreExpanded) {
                     stringResource(R.string.expense_edit_more_collapse_button)
                 } else {
                     stringResource(R.string.expense_edit_more_expand_button)
                 },
+                modifier = actionModifier,
+                onClick = onToggleMore,
             )
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -201,42 +201,37 @@ private fun ExpenseEditMoreOcrActions(
     state: MoreExpandedState,
     actions: MoreExpandedActions,
 ) {
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        TextButton(onClick = actions.onToggleRawText) {
-            Text(
-                if (state.rawTextExpanded) {
-                    stringResource(R.string.expense_edit_more_raw_text_collapse_button)
-                } else {
-                    stringResource(R.string.expense_edit_more_raw_text_expand_button)
-                },
-            )
-        }
+        QuietOutlinedButton(
+            text = if (state.rawTextExpanded) {
+                stringResource(R.string.expense_edit_more_raw_text_collapse_button)
+            } else {
+                stringResource(R.string.expense_edit_more_raw_text_expand_button)
+            },
+            onClick = actions.onToggleRawText,
+        )
         if (!state.readOnly && state.canRecognize) {
-            AppOutlinedButton(
-                modifier = Modifier.weight(1f),
+            QuietOutlinedButton(
+                text = if (state.ocrRunning) {
+                    stringResource(R.string.expense_edit_more_recognize_running_button)
+                } else {
+                    stringResource(R.string.expense_edit_more_recognize_retry_button)
+                },
                 enabled = !state.ocrRunning && !state.saving,
                 onClick = actions.onRetryOcr,
-            ) {
-                Text(
-                    if (state.ocrRunning) {
-                        stringResource(R.string.expense_edit_more_recognize_running_button)
-                    } else {
-                        stringResource(R.string.expense_edit_more_recognize_retry_button)
-                    },
-                )
-            }
+            )
         }
     }
     if (!state.readOnly && state.canRecognize) {
-        AppOutlinedButton(
+        QuietOutlinedButton(
+            text = stringResource(R.string.expense_edit_more_recognize_paste_button),
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.ocrRunning && !state.saving,
             onClick = actions.onRecognizeText,
-        ) {
-            Text(stringResource(R.string.expense_edit_more_recognize_paste_button))
-        }
+        )
     }
 }

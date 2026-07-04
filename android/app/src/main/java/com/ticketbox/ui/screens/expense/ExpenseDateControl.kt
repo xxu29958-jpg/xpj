@@ -4,24 +4,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.components.AppSectionHeader
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 internal data class ExpenseDateControlState(
     val title: String,
@@ -102,22 +96,9 @@ private fun ExpenseDateControlAction(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    TextButton(
-        modifier = Modifier
-            .heightIn(min = AppSpacing.controlMinHeight)
-            .widthIn(min = AppSpacing.controlMinHeight),
+    QuietOutlinedButton(
+        text = text,
         enabled = enabled,
-        contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
         onClick = onClick,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip,
-            autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 14.sp, stepSize = 1.sp),
-        )
-    }
+    )
 }
