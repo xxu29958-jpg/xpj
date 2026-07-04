@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.ledger
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,10 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.LedgerUiState
+
+private object LedgerHeaderLayout {
+    val KpiStackBreakpoint = 320.dp
+}
 
 @Composable
 internal fun LedgerHeader(
@@ -87,38 +92,68 @@ internal fun LedgerHeader(
             }
             LedgerStatusPill(text = statusText, active = summary.syncing)
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            LedgerKpiCell(
-                label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
-                value = formatAmount(summary.totalAmountCents),
-                modifier = Modifier.weight(1.35f),
-                emphasized = true,
-            )
-            LedgerKpiCell(
-                label = stringResource(R.string.ledger_header_count_label),
-                value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
-                modifier = Modifier.weight(0.78f),
-            )
-            if (!state.readOnly) {
-                Button(
-                    modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
-                    onClick = onManualAdd,
-                    contentPadding = PaddingValues(horizontal = AppSpacing.cardPaddingTight, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val stackKpis = maxWidth < LedgerHeaderLayout.KpiStackBreakpoint
+            if (stackKpis) {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    LedgerKpiCell(
+                        label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
+                        value = formatAmount(summary.totalAmountCents),
+                        modifier = Modifier.fillMaxWidth(),
+                        emphasized = true,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        LedgerKpiCell(
+                            label = stringResource(R.string.ledger_header_count_label),
+                            value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
+                            modifier = Modifier.weight(1f),
+                        )
+                        LedgerAddButton(readOnly = state.readOnly, onManualAdd = onManualAdd)
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                    verticalAlignment = Alignment.Bottom,
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
-                    Text(stringResource(R.string.ledger_header_add_button))
+                    LedgerKpiCell(
+                        label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
+                        value = formatAmount(summary.totalAmountCents),
+                        modifier = Modifier.weight(1.35f),
+                        emphasized = true,
+                    )
+                    LedgerKpiCell(
+                        label = stringResource(R.string.ledger_header_count_label),
+                        value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
+                        modifier = Modifier.weight(0.78f),
+                    )
+                    LedgerAddButton(readOnly = state.readOnly, onManualAdd = onManualAdd)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LedgerAddButton(readOnly: Boolean, onManualAdd: () -> Unit) {
+    if (readOnly) return
+    Button(
+        modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
+        onClick = onManualAdd,
+        contentPadding = PaddingValues(horizontal = AppSpacing.cardPaddingTight, vertical = 0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ),
+    ) {
+        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
+        Text(stringResource(R.string.ledger_header_add_button))
     }
 }
 
@@ -143,6 +178,7 @@ private fun LedgerKpiCell(
         )
         if (emphasized) {
             AppAmountText(
+                modifier = Modifier.fillMaxWidth(),
                 text = value,
                 color = MaterialTheme.colorScheme.onSurface,
                 role = AppAmountRole.Medium,

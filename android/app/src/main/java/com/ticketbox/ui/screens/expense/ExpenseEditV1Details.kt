@@ -31,7 +31,7 @@ import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSectionHeader
@@ -396,7 +396,8 @@ private fun BillSplitSentRow(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        AppAmountText(
+        AppEndAlignedAmountText(
+            modifier = Modifier.weight(0.42f),
             text = formatDisplayAmount(row.amountCents, currencyDisplay),
             role = AppAmountRole.Compact,
             color = MaterialTheme.colorScheme.onSurface,
@@ -437,7 +438,8 @@ private fun DetailHeader(
             modifier = Modifier.weight(1f),
         )
         trailing?.let {
-            AppAmountText(
+            AppEndAlignedAmountText(
+                modifier = Modifier.weight(0.42f),
                 text = it,
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -511,7 +513,7 @@ private fun ReconcileAmountLine(label: String, amount: String) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        AppAmountText(
+        AppEndAlignedAmountText(
             modifier = Modifier.weight(1f),
             text = amount,
             role = AppAmountRole.Compact,
@@ -550,7 +552,8 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            AppAmountText(
+            AppEndAlignedAmountText(
+                modifier = Modifier.weight(0.44f),
                 text = formatDisplayAmount(item.amountCents, currencyDisplay),
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -589,7 +592,8 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            AppAmountText(
+            AppEndAlignedAmountText(
+                modifier = Modifier.weight(0.44f),
                 text = formatDisplayAmount(split.amountCents, currencyDisplay),
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,

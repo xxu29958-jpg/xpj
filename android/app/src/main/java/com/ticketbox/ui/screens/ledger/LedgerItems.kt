@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,7 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -55,6 +56,8 @@ private object LedgerItemLayout {
     const val TableMerchantWeight = 1.35f
     const val TableCategoryWeight = 0.72f
     const val TableAmountWeight = 0.88f
+    const val ListAmountInlineWeight = 0.68f
+    val AmountStackBreakpoint = 320.dp
     val RowTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 }
 
@@ -86,7 +89,7 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
         ?.let { stringResource(R.string.ledger_day_count_with_preview, state.itemCount, it) }
         ?: stringResource(R.string.ledger_day_count, state.itemCount)
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
@@ -97,36 +100,82 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
                     horizontal = AppSpacing.smallGap,
                     vertical = AppSpacing.tinyGap + AppSpacing.tinyGap,
                 ),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(
-                    text = state.label,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = AppTypography.cardTitle.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = metaText,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            val stackAmount = maxWidth < LedgerItemLayout.AmountStackBreakpoint
+            if (stackAmount) {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.weight(1f))
+                        LedgerDayHeaderToggleIcon(state)
+                    }
+                    LedgerDayHeaderAmount(
+                        state = state,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.weight(1f))
+                    LedgerDayHeaderAmount(
+                        state = state,
+                        modifier = Modifier.weight(0.42f),
+                    )
+                    LedgerDayHeaderToggleIcon(state)
+                }
             }
-            Box(contentAlignment = Alignment.CenterEnd) {
-                AppAmountText(
-                    text = formatAmount(state.dayTotalCents),
-                    role = AppAmountRole.Compact,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            LedgerDayHeaderToggleIcon(state)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
+    }
+}
+
+@Composable
+private fun LedgerDayHeaderCopy(
+    state: LedgerDayHeaderUi,
+    metaText: String,
+    modifier: Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+        Text(
+            text = state.label,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTypography.cardTitle.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = metaText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun LedgerDayHeaderAmount(
+    state: LedgerDayHeaderUi,
+    modifier: Modifier,
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        AppEndAlignedAmountText(
+            modifier = Modifier.fillMaxWidth(),
+            text = formatAmount(state.dayTotalCents),
+            role = AppAmountRole.Compact,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -205,12 +254,14 @@ internal fun LedgerExpenseCard(
                 }
             }
             Column(
+                modifier = Modifier.weight(0.45f),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 LedgerAmountOrPending(
                     amountCents = expense.amountCents,
                     presentation = LedgerAmountPresentation.Card,
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
                     text = expense.category,
@@ -249,40 +300,41 @@ internal fun LedgerExpenseListRow(
                 onLongClick = onLongPress,
             ),
     ) {
-        Row(
+        BoxWithConstraints(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = rowMetrics.rowPadding),
-            horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (selectionMode) {
-                Checkbox(checked = selected, onCheckedChange = null)
+            val stackAmount = maxWidth < LedgerItemLayout.AmountStackBreakpoint
+            Column(verticalArrangement = Arrangement.spacedBy(rowMetrics.labelGap)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (selectionMode) {
+                        Checkbox(checked = selected, onCheckedChange = null)
+                    }
+                    LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
+                    LedgerListTextBlock(
+                        expense = expense,
+                        metaText = metaText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (!stackAmount) {
+                        LedgerAmountOrPending(
+                            amountCents = expense.amountCents,
+                            presentation = LedgerAmountPresentation.ListRow,
+                            modifier = Modifier.weight(LedgerItemLayout.ListAmountInlineWeight),
+                        )
+                    }
+                }
+                if (stackAmount) {
+                    LedgerAmountOrPending(
+                        amountCents = expense.amountCents,
+                        presentation = LedgerAmountPresentation.ListRow,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
-            LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(rowMetrics.labelGap),
-            ) {
-                Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ledger_item_merchant_empty),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = AppTextHierarchy.body.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = metaText,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            LedgerAmountOrPending(
-                amountCents = expense.amountCents,
-                presentation = LedgerAmountPresentation.ListRow,
-                modifier = Modifier.weight(0.42f, fill = false),
-            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
     }
@@ -365,7 +417,8 @@ private fun LedgerAmountOrPending(
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.CenterEnd) {
         amountCents?.let {
-            AppAmountText(
+            AppEndAlignedAmountText(
+                modifier = Modifier.fillMaxWidth(),
                 text = formatAmount(it),
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,

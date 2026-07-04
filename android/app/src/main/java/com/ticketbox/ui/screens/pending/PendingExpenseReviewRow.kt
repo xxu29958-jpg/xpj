@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -33,11 +34,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAsyncImage
-import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.displayCompactTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
@@ -51,6 +53,11 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
+
+private object PendingExpenseReviewLayout {
+    val AmountStackBreakpoint = 320.dp
+    const val InlineAmountWeight = 0.62f
+}
 
 @Immutable
 internal data class PendingExpenseReviewItem(
@@ -83,20 +90,39 @@ internal fun PendingExpenseReviewRow(
             .fillMaxWidth()
             .clickable(enabled = !item.busy, onClick = actions.onEdit),
     ) {
-        Column(
+        BoxWithConstraints(
             modifier = Modifier.padding(metrics.rowPadding),
-            verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
-                verticalAlignment = Alignment.CenterVertically,
+            val stackAmount = maxWidth < PendingExpenseReviewLayout.AmountStackBreakpoint
+            Column(
+                verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
             ) {
-                PendingExpenseLeadingMark(item)
-                PendingExpenseTextBlock(item)
-                PendingExpenseAmountBlock(item.expense, actions)
-            }
-            if (item.showInlineActions) {
-                PendingExpenseInlineActions(item.expense, actions)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PendingExpenseLeadingMark(item)
+                    PendingExpenseTextBlock(item)
+                    if (!stackAmount) {
+                        PendingExpenseAmountBlock(
+                            expense = item.expense,
+                            actions = actions,
+                            modifier = Modifier.weight(PendingExpenseReviewLayout.InlineAmountWeight),
+                            stacked = false,
+                        )
+                    }
+                }
+                if (stackAmount) {
+                    PendingExpenseAmountBlock(
+                        expense = item.expense,
+                        actions = actions,
+                        modifier = Modifier.fillMaxWidth(),
+                        stacked = true,
+                    )
+                }
+                if (item.showInlineActions) {
+                    PendingExpenseInlineActions(item.expense, actions)
+                }
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
@@ -171,43 +197,17 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
 private fun PendingExpenseAmountBlock(
     expense: Expense,
     actions: PendingExpenseReviewActions,
+    modifier: Modifier = Modifier,
+    stacked: Boolean = false,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val amount = expense.amountCents?.let { formatExpensePrimaryAmount(expense, currencyDisplay) }
-    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        Box(
-            modifier = Modifier.widthIn(min = 118.dp),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            if (amount == null) {
-                Text(
-                    text = stringResource(R.string.pending_row_amount_missing),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.End,
-                )
-            } else {
-                AppAmountText(
-                    text = amount,
-                    role = AppAmountRole.Compact,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-        formatExpenseExchangeMeta(expense)?.let {
-            Text(
-                text = it,
-                modifier = Modifier.widthIn(max = 132.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
-            )
-        }
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
+        PendingAmountValue(expense = expense, currencyDisplay = currencyDisplay)
+        PendingExpenseExchangeMetaText(expense = expense, stacked = stacked)
         TextButton(
             enabled = actions.canMutate,
             onClick = actions.onPrimaryAction,
@@ -220,6 +220,51 @@ private fun PendingExpenseAmountBlock(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+@Composable
+private fun PendingAmountValue(expense: Expense, currencyDisplay: CurrencyDisplay) {
+    val amount = expense.amountCents?.let { formatExpensePrimaryAmount(expense, currencyDisplay) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(min = 118.dp),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        if (amount == null) {
+            Text(
+                text = stringResource(R.string.pending_row_amount_missing),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = AppTextHierarchy.heading.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
+        } else {
+            AppEndAlignedAmountText(
+                modifier = Modifier.fillMaxWidth(),
+                text = amount,
+                role = AppAmountRole.Compact,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PendingExpenseExchangeMetaText(expense: Expense, stacked: Boolean) {
+    formatExpenseExchangeMeta(expense)?.let {
+        Text(
+            text = it,
+            modifier = if (stacked) Modifier.fillMaxWidth() else Modifier.widthIn(max = 132.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = if (stacked) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+        )
     }
 }
 
