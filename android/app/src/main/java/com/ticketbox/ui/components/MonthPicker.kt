@@ -1,9 +1,11 @@
 package com.ticketbox.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,19 +44,28 @@ private fun MonthPickerOptions(
     selectedMonth: String,
     onSelectMonth: (String) -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    val entries = monthPickerEntries(months)
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = AppSpacing.controlMinHeight * 7),
     ) {
-        MonthPickerOptionRow(
-            label = stringResource(R.string.components_month_picker_all_months),
-            selected = selectedMonth.isBlank(),
-            onClick = { onSelectMonth("") },
-        )
-        if (months.isEmpty()) {
-            MonthPickerEmptyRow()
+        item(key = "all-months") {
+            MonthPickerOptionRow(
+                label = stringResource(R.string.components_month_picker_all_months),
+                selected = selectedMonth.isBlank(),
+                onClick = { onSelectMonth("") },
+            )
         }
-        monthPickerEntries(months).forEach { entry ->
+        if (months.isEmpty()) {
+            item(key = "empty-months") {
+                MonthPickerEmptyRow()
+            }
+        }
+        items(
+            items = entries,
+            key = { entry -> entry.key },
+        ) { entry ->
             when (entry) {
                 is MonthPickerEntry.YearHeader -> MonthPickerYearHeader(entry.year)
                 is MonthPickerEntry.Month -> {
