@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -37,6 +36,7 @@ import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppEndAlignedAmountText
@@ -292,24 +292,25 @@ private fun BillSplitPartyAmountRow(
     name: String,
     amountCents: Long,
 ) {
-    Row(
+    AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = name,
-            modifier = Modifier.weight(1f),
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        AppEndAlignedAmountText(
-            text = formatAmount(amountCents),
-            modifier = Modifier.weight(BillSplitAmountWeight),
-            role = AppAmountRole.Compact,
-        )
-    }
+        wideActionWeight = BillSplitAmountWideWeight,
+        content = {
+            Text(
+                text = name,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        action = { actionModifier ->
+            AppEndAlignedAmountText(
+                text = formatAmount(amountCents),
+                modifier = actionModifier,
+                role = AppAmountRole.Compact,
+            )
+        },
+    )
 }
 
 @Composable
@@ -348,4 +349,4 @@ private fun billSplitStatusLabel(status: String): String = stringResource(
     },
 )
 
-private const val BillSplitAmountWeight = 0.54f
+private const val BillSplitAmountWideWeight = 0.54f
