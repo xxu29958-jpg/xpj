@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.ticketbox.ui.design.AppAmountRole
@@ -15,6 +16,12 @@ import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 
 private const val ADAPTIVE_AMOUNT_ROW_TRAILING_WEIGHT = 0.44f
+
+@Immutable
+data class AppAdaptiveFieldPairWeights(
+    val leading: Float = 1f,
+    val trailing: Float = 1f,
+)
 
 @Composable
 fun AppAdaptiveContentActionRow(
@@ -101,6 +108,44 @@ fun AppAdaptiveEditAmountRow(
                     role = AppAmountRole.Compact,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun AppAdaptiveFieldPairRow(
+    modifier: Modifier = Modifier,
+    weights: AppAdaptiveFieldPairWeights = AppAdaptiveFieldPairWeights(),
+    leading: @Composable (Modifier) -> Unit,
+    trailing: @Composable (Modifier) -> Unit,
+    action: @Composable () -> Unit,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    leading(Modifier.weight(1f))
+                    action()
+                }
+                trailing(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                leading(Modifier.weight(weights.leading))
+                trailing(Modifier.weight(weights.trailing))
+                action()
             }
         }
     }

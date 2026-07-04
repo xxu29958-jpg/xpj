@@ -1,9 +1,7 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,11 +23,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.ExpenseItemKind
+import com.ticketbox.ui.components.AppAdaptiveFieldPairRow
+import com.ticketbox.ui.components.AppAdaptiveFieldPairWeights
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.EditableItem
@@ -44,6 +43,8 @@ private val ITEM_KINDS: List<Pair<String, Int>> = listOf(
     ExpenseItemKind.TAX to R.string.expense_edit_items_kind_tax,
     ExpenseItemKind.SERVICE_FEE to R.string.expense_edit_items_kind_service_fee,
 )
+
+private val ITEM_FIELD_WEIGHTS = AppAdaptiveFieldPairWeights(leading = 1.35f, trailing = 1f)
 
 private fun draftSignedCents(draft: EditableItem): Long {
     val magnitude = parseAmountCents(draft.amountText) ?: 0L
@@ -127,45 +128,26 @@ private fun ItemEditorRow(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val stackFields = maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth
-            if (stackFields) {
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                    ) {
-                        ItemNameField(
-                            index = index,
-                            draft = draft,
-                            onUpdate = onUpdate,
-                            modifier = Modifier.weight(1f),
-                        )
-                        ItemRemoveButton(onRemove = onRemove)
-                    }
-                    ItemAmountField(index = index, draft = draft, onUpdate = onUpdate)
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                ) {
-                    ItemNameField(
-                        index = index,
-                        draft = draft,
-                        onUpdate = onUpdate,
-                        modifier = Modifier.weight(1.35f),
-                    )
-                    ItemAmountField(
-                        index = index,
-                        draft = draft,
-                        onUpdate = onUpdate,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ItemRemoveButton(onRemove = onRemove)
-                }
-            }
-        }
+        AppAdaptiveFieldPairRow(
+            weights = ITEM_FIELD_WEIGHTS,
+            leading = { fieldModifier ->
+                ItemNameField(
+                    index = index,
+                    draft = draft,
+                    onUpdate = onUpdate,
+                    modifier = fieldModifier,
+                )
+            },
+            trailing = { fieldModifier ->
+                ItemAmountField(
+                    index = index,
+                    draft = draft,
+                    onUpdate = onUpdate,
+                    modifier = fieldModifier,
+                )
+            },
+            action = { ItemRemoveButton(onRemove = onRemove) },
+        )
         Text(
             text = stringResource(R.string.expense_edit_items_row_kind_label),
             style = MaterialTheme.typography.labelMedium,
