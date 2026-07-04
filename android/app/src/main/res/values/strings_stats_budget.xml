@@ -127,24 +127,12 @@
     <string name="stats_tag_scope_recent_label">最近 7 天</string>
     <string name="stats_tag_scope_recent_empty">暂无支出</string>
 
-    <!-- RecentTrendCard / RecentUploadCard：最近趋势 + 最近上传 -->
-    <string name="stats_recent_trend_title">最近 7 天趋势</string>
-    <string name="stats_recent_trend_source">最近记录</string>
-    <string name="stats_recent_trend_empty">暂无最近支出，更新后显示每日变化。</string>
-    <string name="stats_recent_trend_total">7 天合计</string>
-    <string name="stats_recent_trend_average">日均</string>
-    <string name="stats_recent_trend_peak">峰值</string>
-    <string name="stats_recent_trend_peak_day">峰值 %1$s</string>
-    <string name="stats_recent_trend_peak_share">%1$s 占 7 天 %2$d%%</string>
+    <!-- ReportsRecentWindowSummary / RecentUploadCard：报表窗口摘要 + 最近上传 -->
     <string name="stats_recent_trend_other_days">其余 %1$d 天</string>
-    <string name="stats_recent_trend_other_average">非峰值日均</string>
     <string name="stats_recent_trend_vs_previous_up">近 3 天比前 3 天多 %1$s</string>
     <string name="stats_recent_trend_vs_previous_down">近 3 天比前 3 天少 %1$s</string>
     <string name="stats_recent_trend_vs_previous_flat">近 3 天与前 3 天持平</string>
     <string name="stats_recent_trend_vs_previous_new">近 3 天开始有支出</string>
-    <string name="stats_recent_trend_sparse">7 天里只有 %1$d 天有支出，先展示发生日与金额。</string>
-    <!-- Per-bar TalkBack description: date + daily amount (the bar height is not readable). -->
-    <string name="stats_recent_trend_bar_a11y">%1$s %2$s</string>
     <string name="stats_chart_window_label">%1$s-%2$s</string>
     <string name="stats_chart_distribution_remaining">其余 %1$d 天</string>
     <string name="stats_recent_upload_title">最近上传</string>
