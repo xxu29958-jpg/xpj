@@ -1,8 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,6 +34,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEmptyStateCard
@@ -45,7 +44,6 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -235,7 +233,7 @@ private fun ItemsSumMismatchBanner(
             if (diff == null) {
                 bannerCopy()
             } else {
-                ExpenseDetailAmountRow(amount = diff) {
+                AppAdaptiveEditAmountRow(amount = diff) {
                     bannerCopy()
                 }
             }
@@ -268,7 +266,7 @@ private fun ItemsSumAcknowledgedBanner(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                ExpenseDetailAmountRow(amount = diff) {
+                AppAdaptiveEditAmountRow(amount = diff) {
                     Text(
                         text = stringResource(R.string.expense_edit_v1_items_mismatch_acknowledged),
                         style = MaterialTheme.typography.bodyMedium,
@@ -425,7 +423,7 @@ private fun BillSplitSentRow(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        ExpenseDetailAmountRow(
+        AppAdaptiveEditAmountRow(
             amount = formatDisplayAmount(row.amountCents, currencyDisplay),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
@@ -483,52 +481,11 @@ private fun DetailHeader(
         )
         return
     }
-    ExpenseDetailAmountRow(amount = trailing) {
+    AppAdaptiveEditAmountRow(amount = trailing) {
         AppSectionHeader(
             title = title,
             subtitle = subtitle,
         )
-    }
-}
-
-@Composable
-private fun ExpenseDetailAmountRow(
-    amount: String,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val stackAmount = maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth
-        if (stackAmount) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                content()
-                AppEndAlignedAmountText(
-                    modifier = Modifier.fillMaxWidth(),
-                    text = amount,
-                    role = AppAmountRole.Compact,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    content()
-                }
-                AppEndAlignedAmountText(
-                    modifier = Modifier.weight(0.44f),
-                    text = amount,
-                    role = AppAmountRole.Compact,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
     }
 }
 
@@ -612,7 +569,7 @@ private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) 
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        ExpenseDetailAmountRow(
+        AppAdaptiveEditAmountRow(
             amount = formatDisplayAmount(item.amountCents, currencyDisplay),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
@@ -649,7 +606,7 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        ExpenseDetailAmountRow(
+        AppAdaptiveEditAmountRow(
             amount = formatDisplayAmount(split.amountCents, currencyDisplay),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
