@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppLoadingState
@@ -31,10 +31,10 @@ import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.tabularNum
 
 internal data class EditDraftPreviewState(
     val expense: Expense,
@@ -122,13 +122,12 @@ private fun EditDraftPreviewDetails(
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Text(
+        AppAmountText(
+            modifier = Modifier.fillMaxWidth(),
             text = formatExpensePrimaryAmount(expense, currencyDisplay),
-            style = MaterialTheme.typography.headlineMedium.tabularNum(),
             color = MaterialTheme.colorScheme.onSurface,
-            autoSize = TextAutoSize.StepBased(minFontSize = 18.sp, maxFontSize = 28.sp, stepSize = 1.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
+            role = AppAmountRole.Medium,
+            minFontSize = 18.sp,
         )
         formatExpenseExchangeMeta(expense)?.let { meta ->
             Text(
