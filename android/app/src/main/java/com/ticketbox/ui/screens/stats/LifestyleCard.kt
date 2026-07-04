@@ -24,8 +24,10 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -177,11 +179,11 @@ private fun LifestyleMetricRow(
                 )
             }
         }
-        Text(
+        AppEndAlignedAmountText(
             text = value,
-            style = MaterialTheme.typography.labelLarge.tabularNum(),
+            modifier = Modifier.weight(LifestyleRowAmountWeight),
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            role = AppAmountRole.Compact,
         )
     }
 }
@@ -231,19 +233,10 @@ private fun FrequentMerchantRow(
     useAmount: Boolean,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val value = if (useAmount) {
-        merchant.amountCents.coerceAtLeast(0L)
-    } else {
-        merchant.count.coerceAtLeast(0).toLong()
-    }
+    val value = if (useAmount) merchant.amountCents.coerceAtLeast(0L) else merchant.count.coerceAtLeast(0).toLong()
     val progress = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
     val countText = stringResource(R.string.stats_frequent_merchants_count, merchant.count)
-    val valueText = if (useAmount) {
-        formatDisplayAmount(merchant.amountCents, currencyDisplay)
-    } else {
-        countText
-    }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -276,12 +269,21 @@ private fun FrequentMerchantRow(
                     )
                 }
             }
-            Text(
-                text = valueText,
-                style = MaterialTheme.typography.labelLarge.tabularNum(),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
+            if (useAmount) {
+                AppEndAlignedAmountText(
+                    text = formatDisplayAmount(merchant.amountCents, currencyDisplay),
+                    modifier = Modifier.weight(LifestyleMerchantAmountWeight),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    role = AppAmountRole.Compact,
+                )
+            } else {
+                Text(
+                    text = countText,
+                    style = MaterialTheme.typography.labelLarge.tabularNum(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
         }
         if (showBar) {
             StatsMerchantRankBar(progress = progress)
@@ -379,11 +381,14 @@ private fun ValueRegretRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
+        Column(
+            modifier = Modifier.weight(LifestyleValueAmountWeight, fill = false),
+            horizontalAlignment = Alignment.End,
+        ) {
+            AppEndAlignedAmountText(
                 text = formatDisplayAmount(expense.amountCents, currencyDisplay),
-                style = MaterialTheme.typography.labelLarge.tabularNum(),
-                maxLines = 1,
+                modifier = Modifier.fillMaxWidth(),
+                role = AppAmountRole.Compact,
             )
             scoreText?.let {
                 Text(
@@ -429,3 +434,6 @@ internal fun frequentMerchantDisplayRows(
 }
 
 private const val FrequentMerchantVisibleLimit = 5
+private const val LifestyleRowAmountWeight = 0.58f
+private const val LifestyleMerchantAmountWeight = 0.58f
+private const val LifestyleValueAmountWeight = 0.62f
