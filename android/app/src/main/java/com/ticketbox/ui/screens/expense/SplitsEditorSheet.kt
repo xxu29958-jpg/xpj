@@ -26,6 +26,7 @@ import com.ticketbox.R
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.EditableSplit
 
 /**
@@ -176,24 +177,25 @@ private fun SplitsReconciliationFooter(
     drafts: List<EditableSplit>,
     parentAmountCents: Long?,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val total = drafts.filter { it.included }.sumOf { parseAmountCents(it.amountText) ?: 0L }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(
             ExpenseEditReconciliationLine(
                 label = stringResource(R.string.expense_edit_splits_footer_total_label),
-                value = formatDisplayAmount(total),
+                value = formatDisplayAmount(total, currencyDisplay),
             ),
             parentAmountCents?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_splits_footer_bill_label),
-                    value = formatDisplayAmount(it),
+                    value = formatDisplayAmount(it, currencyDisplay),
                 )
             },
             diff?.takeIf { it != 0L }?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_splits_footer_diff_label),
-                    value = formatDisplayAmount(it),
+                    value = formatDisplayAmount(it, currencyDisplay),
                     emphasis = true,
                     hint = stringResource(R.string.expense_edit_splits_footer_even_hint),
                 )

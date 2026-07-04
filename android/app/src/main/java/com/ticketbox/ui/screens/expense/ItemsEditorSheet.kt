@@ -31,6 +31,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.EditableItem
 import kotlin.math.abs
 
@@ -233,24 +234,25 @@ private fun ReconciliationFooter(
     drafts: List<EditableItem>,
     parentAmountCents: Long?,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val total = drafts.sumOf { draftSignedCents(it) }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(
             ExpenseEditReconciliationLine(
                 label = stringResource(R.string.expense_edit_items_footer_total_label),
-                value = formatDisplayAmount(total),
+                value = formatDisplayAmount(total, currencyDisplay),
             ),
             parentAmountCents?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_items_footer_bill_label),
-                    value = formatDisplayAmount(it),
+                    value = formatDisplayAmount(it, currencyDisplay),
                 )
             },
             diff?.takeIf { it != 0L }?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_items_footer_diff_label),
-                    value = formatDisplayAmount(it),
+                    value = formatDisplayAmount(it, currencyDisplay),
                     emphasis = true,
                 )
             },

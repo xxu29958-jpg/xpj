@@ -27,6 +27,7 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 
 /**
  * UI/UX 第三波 批 13：跨账本拆账发起 sheet（ADR-0029）。从一笔已确认账单向**本账本
@@ -117,6 +118,7 @@ private fun BillSplitInviteAmountField(
     sending: Boolean,
     onUpdateAmount: (String) -> Unit,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     ExpenseEditTextField(
         state = ExpenseEditTextFieldState(
             label = stringResource(R.string.expense_edit_bill_split_sheet_amount_label),
@@ -132,7 +134,7 @@ private fun BillSplitInviteAmountField(
             rows = listOf(
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_bill_split_sheet_remaining),
-                    value = formatDisplayAmount(it),
+                    value = formatDisplayAmount(it, currencyDisplay),
                 ),
             ),
         )
