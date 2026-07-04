@@ -33,10 +33,12 @@ import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSectionHeader
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -91,6 +93,7 @@ private fun ExpenseItemsPanel(
     onAcknowledgeMismatch: () -> Unit,
     onEditItems: (() -> Unit)? = null,
 ) {
+    val canEditItems = onEditItems != null
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -109,6 +112,13 @@ private fun ExpenseItemsPanel(
                 },
                 icon = if (expenseItems?.items.isNullOrEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
                 onClick = onEditItems,
+            )
+        }
+        if (!canEditItems) {
+            AppDataAuthorityStrip(
+                title = stringResource(R.string.components_data_authority_readonly_title),
+                body = stringResource(R.string.expense_edit_v1_items_readonly_body),
+                tone = DataAuthorityTone.ReadOnly,
             )
         }
         when {
@@ -130,7 +140,7 @@ private fun ExpenseItemsPanel(
                     ItemsSumMismatchBanner(
                         mismatchCents = expenseItems.mismatchCents,
                         currencyDisplay = currencyDisplay,
-                        onAcknowledge = onAcknowledgeMismatch,
+                        onAcknowledge = if (canEditItems) onAcknowledgeMismatch else null,
                     )
                 } else if (expenseItems.mismatchAcknowledged) {
                     ItemsSumAcknowledgedBanner(
@@ -191,7 +201,7 @@ private fun kindGroupTitle(kind: String): String = when (kind) {
 private fun ItemsSumMismatchBanner(
     mismatchCents: Long?,
     currencyDisplay: CurrencyDisplay,
-    onAcknowledge: () -> Unit,
+    onAcknowledge: (() -> Unit)?,
 ) {
     val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) } ?: ""
     AppEmptyStateCard {
@@ -210,11 +220,13 @@ private fun ItemsSumMismatchBanner(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            ExpenseDetailActionButtonRow(
-                text = stringResource(R.string.expense_edit_v1_items_mismatch_ack_button),
-                icon = Icons.Filled.Check,
-                onClick = onAcknowledge,
-            )
+            onAcknowledge?.let {
+                ExpenseDetailActionButtonRow(
+                    text = stringResource(R.string.expense_edit_v1_items_mismatch_ack_button),
+                    icon = Icons.Filled.Check,
+                    onClick = it,
+                )
+            }
         }
     }
 }
@@ -247,6 +259,7 @@ private fun ExpenseSplitsPanel(
     currencyDisplay: CurrencyDisplay,
     onEditSplits: (() -> Unit)? = null,
 ) {
+    val canEditSplits = onEditSplits != null
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -265,6 +278,13 @@ private fun ExpenseSplitsPanel(
                 },
                 icon = if (expenseSplits?.splits.isNullOrEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
                 onClick = onEditSplits,
+            )
+        }
+        if (!canEditSplits) {
+            AppDataAuthorityStrip(
+                title = stringResource(R.string.components_data_authority_readonly_title),
+                body = stringResource(R.string.expense_edit_v1_splits_readonly_body),
+                tone = DataAuthorityTone.ReadOnly,
             )
         }
         when {
