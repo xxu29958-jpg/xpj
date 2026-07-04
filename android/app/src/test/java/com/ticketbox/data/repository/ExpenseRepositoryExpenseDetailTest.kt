@@ -62,12 +62,14 @@ class ExpenseRepositoryExpenseDetailTest {
         assertEquals(1L, apiService.itemReplaceRequests.single().expectedRowVersion)
         assertEquals("item-1", items.items.single().publicId)
         assertEquals("item-1", replacedItems.items.single().publicId)
+        assertEquals(1L, replacedItems.parentRowVersion)
         assertEquals(9L, apiService.splitFetchIds.single())
         assertEquals("9", apiService.splitReplaceIds.single())
         assertEquals("一起吃饭", apiService.splitReplaceRequests.single().splits.single().note)
         assertEquals(1L, apiService.splitReplaceRequests.single().expectedRowVersion)
         assertEquals("split-1", splits.splits.single().publicId)
         assertEquals("split-1", replacedSplits.splits.single().publicId)
+        assertEquals(1L, replacedSplits.parentRowVersion)
     }
 
     @Test

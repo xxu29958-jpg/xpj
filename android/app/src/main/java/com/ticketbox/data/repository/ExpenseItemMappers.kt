@@ -15,6 +15,7 @@ fun ExpenseItemsResponseDto.toDomain(): ExpenseItems = ExpenseItems(
     mismatchCents = mismatchCents,
     itemsSumStatus = itemsSumStatus,
     items = items.map { it.toDomain() },
+    parentRowVersion = rowVersion,
 )
 
 fun ExpenseItemDto.toDomain(): ExpenseItem = ExpenseItem(

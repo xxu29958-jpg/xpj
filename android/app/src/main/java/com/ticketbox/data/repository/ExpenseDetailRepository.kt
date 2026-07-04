@@ -103,9 +103,9 @@ internal class ExpenseDetailRepository(
     /**
      * ADR-0038 PR-2g.9: offline-aware "原小票如此" acknowledge. Token-only
      * POST like confirm/reject, but the response is [ExpenseItems] (not
-     * an Expense) and the server bumps the parent's ``updated_at``
-     * WITHOUT returning it — so the online success path follows up with
-     * a [fetchExpense] (the ViewModel does that, only on Synced).
+     * an Expense). The response carries the parent's post-mutation
+     * ``row_version`` so the ViewModel can refresh the local OCC token without
+     * a second GET.
      *
      *  - direct 2xx → [ItemsAckOutcome.Synced] with the server items.
      *  - IOException → [ItemsAckOutcome.Queued] with [currentItems]
@@ -639,9 +639,9 @@ internal class ExpenseDetailRepository(
  * [ExpenseDetailRepository.acknowledgeItemsMismatchAllowingOffline].
  * Carries [ExpenseItems] (not Expense) — parallel-defined alongside
  * [ExpenseStateOutcome] rather than reused, same convention as the
- * other outcome types. On [Synced] the ViewModel additionally
- * re-fetches the parent expense for its bumped token; on [Queued] it
- * keeps the current (pre-ack) token and shows the optimistic items.
+ * other outcome types. On [Synced] the response carries the parent's bumped
+ * row_version; on [Queued] the ViewModel keeps the current token and shows
+ * the optimistic items.
  */
 sealed interface ItemsAckOutcome {
     val items: ExpenseItems

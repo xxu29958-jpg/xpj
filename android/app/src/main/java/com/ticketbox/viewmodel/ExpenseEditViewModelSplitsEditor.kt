@@ -153,14 +153,9 @@ fun ExpenseEditViewModel.saveSplits() {
             .onSuccess { outcome ->
                 when (outcome) {
                     is ReplaceSplitsOutcome.Synced -> {
-                        // Replace bumps the parent's row_version server-side;
-                        // refresh the token so later same-page mutations don't
-                        // race a stale one. Inline refresh (not loadExpense)
-                        // keeps the success banner visible.
-                        val refreshed = repository.fetchExpense(expense.id).getOrNull()
                         _uiState.update {
                             it.copy(
-                                expense = refreshed ?: it.expense,
+                                expense = it.expense?.withParentRowVersion(outcome.splits.parentRowVersion),
                                 expenseSplits = outcome.splits,
                                 splitEditorOpen = false,
                                 splitDrafts = emptyList(),

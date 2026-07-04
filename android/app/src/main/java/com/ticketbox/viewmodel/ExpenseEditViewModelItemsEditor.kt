@@ -39,22 +39,9 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
             .onSuccess { outcome ->
                 when (outcome) {
                     is ItemsAckOutcome.Synced -> {
-                        // ADR-0038 PR-2e: ack bumps the parent expense's
-                        // ``updated_at`` server-side. Refresh ``_uiState.expense``
-                        // so subsequent same-page mutations (PATCH / confirm /
-                        // reject / OCR retry) pick up the new token instead of
-                        // racing themselves with a now-stale one.
-                        //
-                        // Refresh inline INSTEAD of calling ``loadExpense()``:
-                        // ``loadExpense`` flips ``message`` to ``null`` at the
-                        // start of its coroutine, which would erase the success
-                        // banner we set below. We only need the new
-                        // ``updatedAt`` here, so a surgical update keeps the
-                        // success message visible.
-                        val refreshedExpense = repository.fetchExpense(expense.id).getOrNull()
                         _uiState.update {
                             it.copy(
-                                expense = refreshedExpense ?: it.expense,
+                                expense = it.expense?.withParentRowVersion(outcome.items.parentRowVersion),
                                 expenseItems = outcome.items,
                                 itemsLoading = false,
                                 message = UiText.res(R.string.expense_edit_items_ack_synced),
@@ -156,14 +143,9 @@ fun ExpenseEditViewModel.saveItems() {
             .onSuccess { outcome ->
                 when (outcome) {
                     is ReplaceItemsOutcome.Synced -> {
-                        // Replace bumps the parent's updated_at server-side;
-                        // refresh the token so later same-page mutations don't
-                        // race a stale one. Inline refresh (not loadExpense)
-                        // keeps the success banner visible.
-                        val refreshed = repository.fetchExpense(expense.id).getOrNull()
                         _uiState.update {
                             it.copy(
-                                expense = refreshed ?: it.expense,
+                                expense = it.expense?.withParentRowVersion(outcome.items.parentRowVersion),
                                 expenseItems = outcome.items,
                                 itemEditorOpen = false,
                                 itemDrafts = emptyList(),

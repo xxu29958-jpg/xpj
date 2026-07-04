@@ -142,6 +142,7 @@ data class ExpenseItems(
     val mismatchCents: Long?,
     val itemsSumStatus: String = ItemsSumStatus.NO_ITEMS,
     val items: List<ExpenseItem>,
+    val parentRowVersion: Long = 0L,
 ) {
     val hasMismatch: Boolean
         get() = mismatchCents != null && mismatchCents != 0L
@@ -198,6 +199,7 @@ data class ExpenseSplits(
     val splitsTotalAmountCents: Long?,
     val mismatchCents: Long?,
     val splits: List<ExpenseSplit>,
+    val parentRowVersion: Long = 0L,
 ) {
     val hasMismatch: Boolean
         get() = mismatchCents != null && mismatchCents != 0L

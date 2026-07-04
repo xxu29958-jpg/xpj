@@ -281,22 +281,41 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
-    fun saveItemsSyncedRefreshesTheParentToken() = edit { fake ->
+    fun saveItemsSyncedUsesResponseParentToken() = edit { fake ->
         val vm = viewModel(fake)
         vm.openItemsEditor()
-        val refreshed = fake.baseExpense.copy(rowVersion = 9L)
-        fake.fetchExpenseResponder = { Result.success(refreshed) }
         fake.replaceItemsResponder = { _, _, _ ->
-            Result.success(ReplaceItemsOutcome.Synced(fake.items()))
+            Result.success(ReplaceItemsOutcome.Synced(fake.items(parentRowVersion = 9L)))
         }
 
         vm.saveItems()
         advanceUntilIdle()
 
-        // Synced refresh pulls the bumped parent token so later same-page
-        // mutations don't race a stale row_version.
-        assertEquals(refreshed, vm.uiState.value.expense)
+        // The items response already carries the bumped parent token, so same-page
+        // follow-up mutations do not depend on a second GET.
+        assertEquals(9L, vm.uiState.value.expense?.rowVersion)
         assertFalse(vm.uiState.value.itemEditorOpen)
+        assertNotNull(vm.uiState.value.message)
+    }
+
+    @Test
+    fun saveSplitsSyncedUsesResponseParentToken() = edit { fake ->
+        val vm = viewModel(fake)
+        vm._uiState.update {
+            it.copy(
+                splitEditorOpen = true,
+                splitDrafts = listOf(EditableSplit(memberId = 1L, displayName = "甲", included = true, amountText = "4.00")),
+            )
+        }
+        fake.replaceSplitsResponder = { _, _, _ ->
+            Result.success(ReplaceSplitsOutcome.Synced(fake.splits(parentRowVersion = 10L)))
+        }
+
+        vm.saveSplits()
+        advanceUntilIdle()
+
+        assertEquals(10L, vm.uiState.value.expense?.rowVersion)
+        assertFalse(vm.uiState.value.splitEditorOpen)
         assertNotNull(vm.uiState.value.message)
     }
 
@@ -623,20 +642,22 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         rejectedAt = null,
     )
 
-    fun items(expenseId: Long = 7L): ExpenseItems = ExpenseItems(
+    fun items(expenseId: Long = 7L, parentRowVersion: Long = 1L): ExpenseItems = ExpenseItems(
         expenseId = expenseId,
         parentAmountCents = 1000L,
         itemsTotalAmountCents = null,
         mismatchCents = null,
         items = emptyList(),
+        parentRowVersion = parentRowVersion,
     )
 
-    fun splits(parentAmountCents: Long? = 1000L): ExpenseSplits = ExpenseSplits(
+    fun splits(parentAmountCents: Long? = 1000L, parentRowVersion: Long = 1L): ExpenseSplits = ExpenseSplits(
         expenseId = 7L,
         parentAmountCents = parentAmountCents,
         splitsTotalAmountCents = null,
         mismatchCents = null,
         splits = emptyList<ExpenseSplit>(),
+        parentRowVersion = parentRowVersion,
     )
 
     fun member(

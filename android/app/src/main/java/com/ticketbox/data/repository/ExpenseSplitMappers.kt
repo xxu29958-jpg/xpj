@@ -13,6 +13,7 @@ fun ExpenseSplitsResponseDto.toDomain(): ExpenseSplits = ExpenseSplits(
     splitsTotalAmountCents = splitsTotalAmountCents,
     mismatchCents = mismatchCents,
     splits = splits.map { it.toDomain() },
+    parentRowVersion = rowVersion,
 )
 
 fun ExpenseSplitDto.toDomain(): ExpenseSplit = ExpenseSplit(

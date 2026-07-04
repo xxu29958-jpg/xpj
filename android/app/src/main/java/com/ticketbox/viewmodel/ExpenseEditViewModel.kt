@@ -561,3 +561,10 @@ class ExpenseEditViewModel(
         return BigDecimal(abs(cents)).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
     }
 }
+
+internal fun Expense.withParentRowVersion(parentRowVersion: Long): Expense =
+    if (parentRowVersion > 0L && parentRowVersion != rowVersion) {
+        copy(rowVersion = parentRowVersion)
+    } else {
+        this
+    }
