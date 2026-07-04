@@ -15,8 +15,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -62,18 +64,11 @@ private fun ReportsAnswerTotal(model: ReportsAnswerModel) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Text(
+        AppAmountText(
             text = formatDisplayAmount(model.totalAmountCents, currencyDisplay),
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.headlineSmall.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = 18.sp,
-                maxFontSize = 28.sp,
-                stepSize = 1.sp,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
+            role = AppAmountRole.Medium,
+            minFontSize = 18.sp,
         )
     }
 }
