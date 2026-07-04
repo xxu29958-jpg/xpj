@@ -159,8 +159,10 @@
     <string name="expense_edit_v1_splits_loading_body">家庭成员分摊加载完成后会显示在这里。</string>
     <string name="expense_edit_v1_splits_empty">还没有家庭拆账</string>
     <string name="expense_edit_v1_reconcile_match_pill">合计一致</string>
-    <string name="expense_edit_v1_reconcile_diff_pill">差额 %1$s</string>
-    <string name="expense_edit_v1_reconcile_amounts">账单 %1$s · 明细 %2$s</string>
+    <string name="expense_edit_v1_reconcile_diff_pill">有差额</string>
+    <string name="expense_edit_v1_reconcile_parent_label">账单</string>
+    <string name="expense_edit_v1_reconcile_detail_label">明细</string>
+    <string name="expense_edit_v1_reconcile_diff_label">差额</string>
 
     <!-- ADR-0044 wave 2：明细分组标题 / 行副标题（原 V1Details 非 @Composable helper） -->
     <string name="expense_edit_item_group_product">商品</string>

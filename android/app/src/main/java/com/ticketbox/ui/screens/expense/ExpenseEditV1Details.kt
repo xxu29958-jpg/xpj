@@ -41,7 +41,6 @@ import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.design.tabularNum
 
 @Composable
 internal fun ExpenseEditV1DetailsSection(
@@ -455,29 +454,68 @@ private fun TotalReconcileLine(
     currencyDisplay: CurrencyDisplay,
 ) {
     val mismatch = mismatchCents ?: 0L
+    val parentLabel = stringResource(R.string.expense_edit_v1_reconcile_parent_label)
+    val detailLabel = stringResource(R.string.expense_edit_v1_reconcile_detail_label)
+    val diffLabel = stringResource(R.string.expense_edit_v1_reconcile_diff_label)
+    val amountRows = buildList {
+        add(
+            parentLabel to
+                formatDisplayAmount(parentAmountCents, currencyDisplay),
+        )
+        add(
+            detailLabel to
+                formatDisplayAmount(detailTotalAmountCents, currencyDisplay),
+        )
+        if (mismatch != 0L) {
+            add(
+                diffLabel to
+                    formatDisplayAmount(mismatch, currencyDisplay),
+            )
+        }
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.Top,
     ) {
         StatusPill(
             if (mismatch == 0L) {
                 stringResource(R.string.expense_edit_v1_reconcile_match_pill)
             } else {
-                stringResource(R.string.expense_edit_v1_reconcile_diff_pill, formatDisplayAmount(mismatch, currencyDisplay))
+                stringResource(R.string.expense_edit_v1_reconcile_diff_pill)
             },
             active = mismatch == 0L,
         )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            amountRows.forEach { (label, amount) ->
+                ReconcileAmountLine(label = label, amount = amount)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReconcileAmountLine(label: String, amount: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
-            text = stringResource(
-                R.string.expense_edit_v1_reconcile_amounts,
-                formatDisplayAmount(parentAmountCents, currencyDisplay),
-                formatDisplayAmount(detailTotalAmountCents, currencyDisplay),
-            ),
+            text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall.tabularNum(),
+            style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+        AppAmountText(
+            modifier = Modifier.weight(1f),
+            text = amount,
+            role = AppAmountRole.Compact,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
