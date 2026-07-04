@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -36,6 +35,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppDataAuthorityStrip
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -50,7 +50,6 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.MonthlyStatsUiState
 import com.ticketbox.viewmodel.PendingUiState
@@ -241,18 +240,11 @@ private fun TodayMonthSummary(stats: MonthlyStats?, syncValue: String) {
                 overflow = TextOverflow.Ellipsis,
             )
         } else {
-            Text(
+            AppAmountText(
                 text = formatDisplayAmount(amount, currencyDisplay),
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
-                autoSize = TextAutoSize.StepBased(
-                    minFontSize = 18.sp,
-                    maxFontSize = AppAmountRole.Hero.role.size,
-                    stepSize = 1.sp,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
+                role = AppAmountRole.Hero,
             )
         }
         Text(

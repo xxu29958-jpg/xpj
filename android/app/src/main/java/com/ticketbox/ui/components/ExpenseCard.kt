@@ -56,7 +56,6 @@ import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.asAmount
 
 enum class ExpensePreviewMode {
     Compact,
@@ -167,13 +166,21 @@ fun ExpenseCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = if (expense.amountCents == null) stringResource(R.string.components_expense_card_amount_placeholder) else formatExpensePrimaryAmount(expense, currencyDisplay),
-                        style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Medium),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (expense.amountCents == null) {
+                        Text(
+                            text = stringResource(R.string.components_expense_card_amount_placeholder),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        AppAmountText(
+                            text = formatExpensePrimaryAmount(expense, currencyDisplay),
+                            role = AppAmountRole.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                     exchangeMeta?.let {
                         Text(
                             text = it,

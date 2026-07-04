@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,6 +25,7 @@ import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportTrendPoint
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -35,7 +35,6 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.StatsSource
 
@@ -130,18 +129,12 @@ private fun OverviewAmountHeader(
             showLocalBadge = statsSource == StatsSource.LocalFallback,
         )
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            Text(
+            AppAmountText(
                 modifier = Modifier.fillMaxWidth(),
                 text = formatDisplayAmount(stats.totalAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Hero),
-                autoSize = TextAutoSize.StepBased(
-                    minFontSize = 22.sp,
-                    maxFontSize = AppAmountRole.Hero.role.size,
-                    stepSize = 1.sp,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
+                role = AppAmountRole.Hero,
+                minFontSize = 22.sp,
             )
             when {
                 hasCurrentConfirmedSpend -> comparison?.let { MonthDeltaPill(it, currencyDisplay) }

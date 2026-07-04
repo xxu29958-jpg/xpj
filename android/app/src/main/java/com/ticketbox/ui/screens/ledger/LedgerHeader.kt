@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens.ledger
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -30,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -37,7 +37,6 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -143,17 +142,11 @@ private fun LedgerKpiCell(
             overflow = TextOverflow.Ellipsis,
         )
         if (emphasized) {
-            Text(
+            AppAmountText(
                 text = value,
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge.asAmount(AppAmountRole.Medium),
-                autoSize = TextAutoSize.StepBased(
-                    minFontSize = 16.sp,
-                    maxFontSize = AppAmountRole.Medium.role.size,
-                    stepSize = 1.sp,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
+                role = AppAmountRole.Medium,
+                minFontSize = 16.sp,
             )
         } else {
             Text(
