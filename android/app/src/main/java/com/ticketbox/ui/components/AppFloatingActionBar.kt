@@ -22,16 +22,16 @@ import com.ticketbox.ui.design.AppSpacing
 @Composable
 fun AppFloatingActionBar(
     modifier: Modifier = Modifier,
+    compact: Boolean = LocalAppImeVisible.current,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val compactMode = LocalAppImeVisible.current
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime))
             .padding(
                 horizontal = AppSpacing.screenHorizontal,
-                vertical = if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap,
+                vertical = if (compact) AppSpacing.miniGap else AppSpacing.smallGap,
             ),
         color = Color.Transparent,
         tonalElevation = 0.dp,
@@ -40,7 +40,7 @@ fun AppFloatingActionBar(
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(
-                if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap,
+                if (compact) AppSpacing.miniGap else AppSpacing.smallGap,
             ),
         ) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))

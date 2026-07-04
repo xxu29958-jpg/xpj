@@ -3,44 +3,29 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -78,15 +63,14 @@ internal data class ExpenseEditActionBarActions(
  *   resource key 沿用既有 `expense_edit_reject_button`，只改文案值。）
  *
  * 层级：
- *  - 动作行：忽略（低强调 danger text，仅 allowReject）+ 保存（tonal outlined）
+ *  - 动作行：忽略（低强调 danger outlined，仅 allowReject）+ 保存（tonal outlined）
  *    + 确认入账（filled primary，主操作，仅 allowConfirm）。返回放在页头，
  *    避免底部重复一个大按钮把二级页压得太重。
  *  - message 校验/状态提示锚在按钮上沿，"点确认→缺金额"永远在视野内。
  *
  * 软键盘 inset 由外层 [com.ticketbox.ui.components.AppPageScaffold] 的
- * `imePadding()` 统一处理。本栏底部补「导航栏 ∖ 键盘」(navigationBars.exclude(ime))：
- * 键盘收起时补满导航栏高度（浮在系统导航栏之上）；键盘弹出时键盘已覆盖导航栏区域，
- * 这段归零——否则导航栏 inset 会与外层 imePadding 叠加，把底栏顶离键盘、留出空隙。
+ * `imePadding()` 统一处理。底部浮动栏容器走 `AppFloatingActionBar`，导航栏与键盘
+ * inset 只在共享组件里处理，避免每个二级页复制一套避让逻辑。
  */
 @Composable
 internal fun ExpenseEditActionBar(
@@ -95,36 +79,14 @@ internal fun ExpenseEditActionBar(
 ) {
     val keyboardVisible = LocalAppImeVisible.current
     val compactMode = keyboardVisible || state.forceCompact
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime))
-            .padding(
-                horizontal = AppSpacing.screenHorizontal,
-                vertical = if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap,
-            ),
-        color = Color.Transparent,
-        tonalElevation = AppSpacing.none,
-        shadowElevation = AppSpacing.none,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = AppSpacing.none,
-                    vertical = AppSpacing.none,
-                ),
-            verticalArrangement = Arrangement.spacedBy(if (compactMode) AppSpacing.miniGap else AppSpacing.smallGap),
-        ) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
-            state.validationMessage?.let {
-                ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
-            }
-            state.statusMessage?.let {
-                ExpenseEditActionMessage(it, MaterialTheme.colorScheme.secondary)
-            }
-            ExpenseEditResponsiveActionRows(state = state, actions = actions, compactMode = compactMode)
+    AppFloatingActionBar(compact = compactMode) {
+        state.validationMessage?.let {
+            ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
         }
+        state.statusMessage?.let {
+            ExpenseEditActionMessage(it, MaterialTheme.colorScheme.secondary)
+        }
+        ExpenseEditResponsiveActionRows(state = state, actions = actions, compactMode = compactMode)
     }
 }
 
@@ -165,19 +127,13 @@ private fun ExpenseEditStackedActionRows(
     ) {
         ExpenseEditSecondaryActionRow(state = state, actions = actions)
         if (state.allowConfirm) {
-            Button(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = AppSpacing.controlMinHeight),
+            AppPrimaryButton(
+                text = stringResource(R.string.expense_edit_confirm_button),
+                icon = Icons.Filled.Check,
+                modifier = Modifier.fillMaxWidth(),
                 enabled = !state.saving,
-                contentPadding = CompactActionPadding,
                 onClick = actions.onConfirm,
-            ) {
-                ExpenseEditActionLabel(
-                    text = stringResource(R.string.expense_edit_confirm_button),
-                    icon = Icons.Filled.Check,
-                )
-            }
+            )
         }
     }
 }
@@ -235,36 +191,26 @@ private fun ExpenseEditActionForwardRow(
             )
         }
         if (state.allowSave) {
-            AppOutlinedButton(
-                modifier = Modifier
-                    .weight(if (state.allowConfirm) 0.92f else 1f)
-                    .heightIn(min = AppSpacing.controlMinHeight),
+            QuietOutlinedButton(
+                modifier = Modifier.weight(if (state.allowConfirm) 0.92f else 1f),
+                text = if (state.saving) {
+                    stringResource(R.string.expense_edit_primary_saving_button)
+                } else {
+                    stringResource(R.string.expense_edit_primary_save_button)
+                },
+                leadingIcon = Icons.Filled.Save,
                 enabled = !state.saving,
                 onClick = actions.onSave,
-            ) {
-                ExpenseEditActionLabel(
-                    text = if (state.saving) {
-                        stringResource(R.string.expense_edit_primary_saving_button)
-                    } else {
-                        stringResource(R.string.expense_edit_primary_save_button)
-                    },
-                    icon = Icons.Filled.Save,
-                )
-            }
+            )
         }
         if (state.allowConfirm) {
-            Button(
-                modifier = Modifier
-                    .weight(if (state.allowSave) 1.24f else 1f)
-                    .heightIn(min = AppSpacing.controlMinHeight),
+            AppPrimaryButton(
+                text = stringResource(R.string.expense_edit_confirm_button),
+                icon = Icons.Filled.Check,
+                modifier = Modifier.weight(if (state.allowSave) 1.24f else 1f),
                 enabled = !state.saving,
                 onClick = actions.onConfirm,
-            ) {
-                ExpenseEditActionLabel(
-                    text = stringResource(R.string.expense_edit_confirm_button),
-                    icon = Icons.Filled.Check,
-                )
-            }
+            )
         }
     }
 }
@@ -326,16 +272,12 @@ private fun RowScope.CompactOutlinedAction(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    AppOutlinedButton(
-        modifier = Modifier
-            .weight(weight)
-            .heightIn(min = AppSpacing.controlMinHeight),
+    QuietOutlinedButton(
+        modifier = Modifier.weight(weight),
+        text = text,
         enabled = enabled,
-        contentPadding = CompactActionPadding,
         onClick = onClick,
-    ) {
-        ExpenseEditActionLabel(text)
-    }
+    )
 }
 
 @Composable
@@ -345,16 +287,13 @@ private fun RowScope.CompactFilledAction(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    Button(
-        modifier = Modifier
-            .weight(weight)
-            .heightIn(min = AppSpacing.controlMinHeight),
+    AppPrimaryButton(
+        text = text,
+        icon = Icons.Filled.Check,
+        modifier = Modifier.weight(weight),
         enabled = enabled,
-        contentPadding = CompactActionPadding,
         onClick = onClick,
-    ) {
-        ExpenseEditActionLabel(text)
-    }
+    )
 }
 
 @Composable
@@ -365,16 +304,10 @@ private fun RowScope.CompactTextAction(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
-    TextButton(
-        modifier = Modifier
-            .weight(weight)
-            .heightIn(min = AppSpacing.controlMinHeight),
+    AppOutlinedButton(
+        modifier = Modifier.weight(weight),
         enabled = enabled,
-        contentPadding = CompactActionPadding,
-        colors = ButtonDefaults.textButtonColors(
-            contentColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f),
-        ),
+        danger = danger,
         onClick = onClick,
     ) {
         ExpenseEditActionLabel(text)
@@ -382,26 +315,12 @@ private fun RowScope.CompactTextAction(
 }
 
 @Composable
-private fun ExpenseEditActionLabel(
-    text: String,
-    icon: ImageVector? = null,
-) {
-    Row(
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        icon?.let {
-            Icon(imageVector = it, contentDescription = null, modifier = Modifier.size(AppSpacing.cardPaddingSmall))
-            Spacer(modifier = Modifier.width(AppSpacing.tinyGap))
-        }
-        Text(
-            text = text,
-            maxLines = 1,
-            softWrap = false,
-            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 1.sp),
-            overflow = TextOverflow.Clip,
-        )
-    }
+private fun ExpenseEditActionLabel(text: String) {
+    Text(
+        text = text,
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 1.sp),
+        overflow = TextOverflow.Clip,
+    )
 }
-
-private val CompactActionPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.none)
