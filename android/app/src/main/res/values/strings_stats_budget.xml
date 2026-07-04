@@ -284,7 +284,6 @@
     <string name="debt_goal_metric_debt_count">%1$d 笔</string>
     <string name="debt_goal_list_title">目标列表</string>
     <string name="debt_goal_list_subtitle">还债目标与开销目标分开管理；当前页只处理欠款清偿。</string>
-    <string name="debt_goal_list_loading">正在读取目标。</string>
     <string name="debt_goal_empty_title">还没有还债目标</string>
     <string name="debt_goal_empty_body">把一笔或多笔欠款关联到目标后，这里会显示它们的清偿进度。</string>
     <string name="debt_goal_card_needs_review">需要复核</string>

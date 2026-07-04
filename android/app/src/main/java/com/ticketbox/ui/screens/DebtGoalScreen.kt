@@ -32,6 +32,8 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -185,32 +187,31 @@ private fun LazyListScope.debtGoalListSection(
     state: DebtGoalUiState,
     viewModel: DebtGoalViewModel,
 ) {
-    val summary = debtGoalListSummary(goals = state.goals, isLoading = state.isLoading)
+    val summary = debtGoalListSummary(goals = state.goals)
     item { DebtGoalOverviewSection(summary = summary) }
     item {
         DebtGoalOpenSection(
             title = stringResource(R.string.debt_goal_list_title),
             subtitle = stringResource(R.string.debt_goal_list_subtitle),
         ) {
-            if (summary.loadingWithoutData) {
-                Text(
-                    stringResource(R.string.debt_goal_list_loading),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            AppListStateContent(
+                state = AppListStateSpec(
+                    isEmpty = state.goals.isEmpty(),
+                    loading = state.isLoading,
+                    emptyText = stringResource(R.string.debt_goal_empty_body),
+                    emptyTitle = stringResource(R.string.debt_goal_empty_title),
+                    emptyBody = stringResource(R.string.debt_goal_empty_body),
+                ),
+            ) {
+                state.goals.forEachIndexed { index, goal ->
+                    DebtGoalListRow(
+                        goal = goal,
+                        onClick = { viewModel.openDetail(goal) },
+                        showDivider = index < state.goals.lastIndex,
+                    )
+                }
             }
         }
-    }
-    if (state.goals.isEmpty() && !state.isLoading) {
-        item { DebtGoalEmptyState() }
-        return
-    }
-    itemsIndexed(state.goals, key = { _, goal -> goal.publicId }) { index, goal ->
-        DebtGoalListRow(
-            goal = goal,
-            onClick = { viewModel.openDetail(goal) },
-            showDivider = index < state.goals.lastIndex,
-        )
     }
 }
 
@@ -315,26 +316,6 @@ private fun DebtGoalListRow(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun DebtGoalEmptyState() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        horizontalAlignment = Alignment.Start,
-    ) {
-        Text(
-            stringResource(R.string.debt_goal_empty_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            stringResource(R.string.debt_goal_empty_body),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

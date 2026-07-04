@@ -12,8 +12,6 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class DebtGoalScreenModelsTest {
     @Test
@@ -29,7 +27,6 @@ class DebtGoalScreenModelsTest {
                 debtGoal("archived", archived = true, links = listOf(link("d"))),
                 spendingGoal(),
             ),
-            isLoading = false,
         )
 
         assertEquals(2, summary.activeGoalCount)
@@ -45,21 +42,20 @@ class DebtGoalScreenModelsTest {
                 debtGoal("review", needsReview = true, links = listOf(link("a"))),
                 debtGoal("not-evaluable", state = DebtGoalEvaluationStates.NOT_EVALUABLE, links = listOf(link("b"))),
             ),
-            isLoading = false,
         )
 
         assertEquals(2, summary.reviewGoalCount)
     }
 
     @Test
-    fun summaryOnlyShowsInitialLoadingWhenThereIsNoReadableGoal() {
-        assertTrue(debtGoalListSummary(emptyList(), isLoading = true).loadingWithoutData)
-        assertFalse(
-            debtGoalListSummary(
-                goals = listOf(debtGoal("existing", links = listOf(link("a")))),
-                isLoading = true,
-            ).loadingWithoutData,
-        )
+    fun summaryReturnsZeroCountsForEmptyList() {
+        val summary = debtGoalListSummary(emptyList())
+
+        assertEquals(0, summary.activeGoalCount)
+        assertEquals(0, summary.achievedGoalCount)
+        assertEquals(0, summary.reviewGoalCount)
+        assertEquals(0, summary.linkedDebtCount)
+        assertEquals(0, summary.openDebtCount)
     }
 }
 
