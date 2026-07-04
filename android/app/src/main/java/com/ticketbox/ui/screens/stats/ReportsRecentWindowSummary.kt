@@ -11,17 +11,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.DailySpend
+import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStatsTokens
-import com.ticketbox.ui.design.tabularNum
 import kotlin.math.abs
 
 private object ReportsRecentWindowLayout {
@@ -139,6 +140,7 @@ private fun ReportsRecentWindowSummaryRow(
                 ReportsRecentWindowFact(
                     label = stringResource(R.string.stats_reports_recent_window_peak, summary.peakLabel),
                     value = formatDisplayAmount(summary.peakAmountCents, LocalCurrencyDisplay.current),
+                    isAmount = true,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -199,26 +201,30 @@ private fun ReportsRecentWindowComparisonRows(summary: ReportsRecentWindowSummar
     val currencyDisplay = LocalCurrencyDisplay.current
     val previousLabel = stringResource(R.string.stats_reports_recent_window_previous_three)
     val recentLabel = stringResource(R.string.stats_reports_recent_window_recent_three)
+    val hasPreviousSpend = summary.previousThreeAmountCents > 0L
+    val hasRecentSpend = summary.recentThreeAmountCents > 0L
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         ReportsRecentWindowFact(
             label = previousLabel,
-            value = if (summary.previousThreeAmountCents > 0L) {
+            value = if (hasPreviousSpend) {
                 formatDisplayAmount(summary.previousThreeAmountCents, currencyDisplay)
             } else {
                 stringResource(R.string.stats_reports_recent_window_no_spend)
             },
+            isAmount = hasPreviousSpend,
             modifier = Modifier.weight(1f),
         )
         ReportsRecentWindowFact(
             label = recentLabel,
-            value = if (summary.recentThreeAmountCents > 0L) {
+            value = if (hasRecentSpend) {
                 formatDisplayAmount(summary.recentThreeAmountCents, currencyDisplay)
             } else {
                 stringResource(R.string.stats_reports_recent_window_no_spend)
             },
+            isAmount = hasRecentSpend,
             modifier = Modifier.weight(1f),
         )
     }
@@ -254,11 +260,9 @@ private fun ReportsRecentWindowValueColumn(
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
-        Text(
+        AppEndAlignedAmountText(
             text = formatDisplayAmount(summary.totalAmountCents, currencyDisplay),
-            style = MaterialTheme.typography.titleSmall.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
+            role = AppAmountRole.Compact,
         )
         Text(
             text = insight,
@@ -275,6 +279,7 @@ private fun ReportsRecentWindowValueColumn(
 private fun ReportsRecentWindowFact(
     label: String,
     value: String,
+    isAmount: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -288,14 +293,21 @@ private fun ReportsRecentWindowFact(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (isAmount) {
+            AppAmountText(
+                text = value,
+                role = AppAmountRole.Compact,
+            )
+        } else {
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = AppTextHierarchy.body.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
