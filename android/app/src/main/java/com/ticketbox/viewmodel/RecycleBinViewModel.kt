@@ -73,6 +73,7 @@ class RecycleBinViewModel(
             _uiState.update { it.copy(busyItemKey = key, message = null) }
             repository.restoreRecycleBinItem(item)
                 .onSuccess { message ->
+                    _uiState.update { it.withRestoredItemRemoved(key) }
                     repository.refreshRecycleBin()
                         .onSuccess { snapshot ->
                             _uiState.update {
@@ -111,3 +112,12 @@ class RecycleBinViewModel(
 }
 
 fun RecycleBinItem.busyKey(): String = "$kind:$resourceId"
+
+private fun RecycleBinUiState.withRestoredItemRemoved(key: String): RecycleBinUiState {
+    val remainingItems = items.filterNot { it.busyKey() == key }
+    return copy(
+        items = remainingItems,
+        shortWindowCount = shortWindowCount.coerceIn(0, remainingItems.size),
+        loadFailed = false,
+    )
+}

@@ -109,6 +109,36 @@ class RecycleBinViewModelTest {
     }
 
     @Test
+    fun restoreSuccessKeepsRestoredRowRemovedWhenRefreshFails() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val restoredItem = recycleItem(title = "旧工资", resourceId = "r1")
+            val remainingItem = recycleItem(title = "旧预算", resourceId = "r2")
+            val api = StubApi().apply {
+                recycleBinResult = RecycleBinListResponseDto(
+                    items = listOf(restoredItem, remainingItem),
+                    shortWindowCount = 1,
+                )
+                recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "收入记录已恢复。")
+            }
+            val vm = harness(api)
+
+            vm.refresh()
+            vm.uiState.first { it.items.size == 2 }
+            api.recycleBinError = RuntimeException("offline")
+            vm.restore(restoredItem.toDomain())
+            val state = vm.uiState.first { it.loadFailed && it.busyItemKey == null }
+
+            assertEquals(2, api.recycleBinRefreshCount.size)
+            assertEquals(listOf("旧预算"), state.items.map { it.title })
+            assertEquals(1, state.shortWindowCount)
+            assertTrue(state.loadFailed)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun restoreAsViewerIsNoOp() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
