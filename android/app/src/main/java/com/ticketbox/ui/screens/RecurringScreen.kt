@@ -39,13 +39,14 @@ import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppSectionGroup
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -56,7 +57,6 @@ import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.RecurringUiState
-import com.valentinilk.shimmer.shimmer
 
 private enum class RecurringTab(@param:StringRes val labelRes: Int) {
     Upcoming(R.string.recurring_tab_upcoming),
@@ -226,19 +226,14 @@ private fun RecurringItemsCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            if (items.isEmpty()) {
-                if (loading) {
-                    Column(modifier = Modifier.shimmer()) {
-                        repeat(4) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                    }
-                } else {
-                    Text(
-                        text = stringResource(R.string.recurring_items_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            } else {
+            AppListStateContent(
+                state = AppListStateSpec(
+                    isEmpty = items.isEmpty(),
+                    loading = loading,
+                    emptyText = stringResource(R.string.recurring_items_empty),
+                    skeletonRows = 4,
+                ),
+            ) {
                 items.forEachIndexed { index, item ->
                     if (index > 0) HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
                     RecurringItemRow(
@@ -368,19 +363,13 @@ private fun RecurringCandidatesCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (candidates.isEmpty()) {
-                if (loading) {
-                    Column(modifier = Modifier.shimmer()) {
-                        repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
-                    }
-                } else {
-                    Text(
-                        text = stringResource(R.string.recurring_candidates_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            } else {
+            AppListStateContent(
+                state = AppListStateSpec(
+                    isEmpty = candidates.isEmpty(),
+                    loading = loading,
+                    emptyText = stringResource(R.string.recurring_candidates_empty),
+                ),
+            ) {
                 candidates.take(8).forEach { candidate ->
                     CandidateRow(candidate, currencyDisplay, canModify, onConfirmCandidate)
                 }

@@ -1,10 +1,8 @@
 package com.ticketbox.ui.screens
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +35,8 @@ import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppEndAlignedAmountText
@@ -44,7 +44,6 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
-import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
@@ -52,7 +51,6 @@ import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.BillSplitTargetLedger
 import com.ticketbox.viewmodel.BillSplitViewModel
-import com.valentinilk.shimmer.shimmer
 
 /**
  * ADR-0029 bill split UI: two tabs (Inbox / Sent), actions per row.
@@ -157,17 +155,26 @@ private fun InboxCard(
     onReject: (String) -> Unit,
     candidates: List<BillSplitTargetLedger>,
 ) {
-    BillSplitListCard(isEmpty = inbox.isEmpty(), loading = loading, emptyRes = R.string.bill_split_inbox_empty) {
-        inbox.forEachIndexed { index, row ->
-            if (index > 0) {
-                HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+    AppGlassCard(containerAlpha = 0.94f) {
+        AppListStateContent(
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            state = AppListStateSpec(
+                isEmpty = inbox.isEmpty(),
+                loading = loading,
+                emptyText = stringResource(R.string.bill_split_inbox_empty),
+            ),
+        ) {
+            inbox.forEachIndexed { index, row ->
+                if (index > 0) {
+                    HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+                }
+                InboxRow(
+                    row = row,
+                    onAccept = onAccept,
+                    onReject = onReject,
+                    candidates = candidates,
+                )
             }
-            InboxRow(
-                row = row,
-                onAccept = onAccept,
-                onReject = onReject,
-                candidates = candidates,
-            )
         }
     }
 }
@@ -178,40 +185,20 @@ private fun SentCard(
     loading: Boolean,
     onCancel: (String) -> Unit,
 ) {
-    BillSplitListCard(isEmpty = sent.isEmpty(), loading = loading, emptyRes = R.string.bill_split_sent_empty) {
-        sent.forEachIndexed { index, row ->
-            if (index > 0) {
-                HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
-            }
-            SentRow(row = row, onCancel = onCancel)
-        }
-    }
-}
-
-/** One card holding a list: shimmer skeleton while loading-empty, an empty line
- *  when settled-empty, else the divider-separated [rows]. Mirrors RecurringItemsCard. */
-@Composable
-private fun BillSplitListCard(
-    isEmpty: Boolean,
-    loading: Boolean,
-    @StringRes emptyRes: Int,
-    rows: @Composable ColumnScope.() -> Unit,
-) {
     AppGlassCard(containerAlpha = 0.94f) {
-        Column(
+        AppListStateContent(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            state = AppListStateSpec(
+                isEmpty = sent.isEmpty(),
+                loading = loading,
+                emptyText = stringResource(R.string.bill_split_sent_empty),
+            ),
         ) {
-            when {
-                isEmpty && loading -> Column(modifier = Modifier.shimmer()) {
-                    repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
+            sent.forEachIndexed { index, row ->
+                if (index > 0) {
+                    HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
                 }
-                isEmpty -> Text(
-                    text = stringResource(emptyRes),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                else -> rows()
+                SentRow(row = row, onCancel = onCancel)
             }
         }
     }

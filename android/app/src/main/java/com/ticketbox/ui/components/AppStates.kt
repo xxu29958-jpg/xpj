@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
@@ -20,6 +22,15 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalStateTokens
+import com.valentinilk.shimmer.shimmer
+
+@Immutable
+data class AppListStateSpec(
+    val isEmpty: Boolean,
+    val loading: Boolean,
+    val emptyText: String,
+    val skeletonRows: Int = 3,
+)
 
 /**
  * 统一加载占位组件。
@@ -66,6 +77,32 @@ fun AppLoadingState(
                 },
                 content = {},
             )
+        }
+    }
+}
+
+@Composable
+fun AppListStateContent(
+    state: AppListStateSpec,
+    modifier: Modifier = Modifier,
+    rows: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+    ) {
+        when {
+            state.isEmpty && state.loading -> Column(modifier = Modifier.shimmer()) {
+                repeat(state.skeletonRows.coerceAtLeast(1)) {
+                    ListItemSkeleton(horizontalPadding = AppSpacing.none)
+                }
+            }
+            state.isEmpty -> Text(
+                text = state.emptyText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            else -> rows()
         }
     }
 }
