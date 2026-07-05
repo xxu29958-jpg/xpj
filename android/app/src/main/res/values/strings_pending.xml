@@ -20,6 +20,8 @@
     <string name="pending_empty_card_body_readonly">当前队列为空。</string>
     <string name="pending_empty_card_body_loading">同步中，显示最近一次状态。</string>
     <string name="pending_empty_card_body">新截图会先待确认，确认后入账。</string>
+    <string name="pending_load_failed_title">待确认账单暂时打不开</string>
+    <string name="pending_load_failed_body">没有拿到服务端队列，先别把它当成已清空。</string>
 
     <!-- 空态：按钮 + iPhone 引导 -->
     <string name="pending_empty_guide_collapse">收起方法</string>

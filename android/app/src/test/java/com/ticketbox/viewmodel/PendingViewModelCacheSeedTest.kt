@@ -57,6 +57,24 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         assertTrue(vm.uiState.value.showingCachedSnapshot)
         assertTrue(vm.uiState.value.hasLoadedOnce)
         assertFalse(vm.uiState.value.loading)
+        assertEquals(PendingListLoadState.Failed, vm.uiState.value.listLoadState)
+        assertTrue(vm.uiState.value.message != null)
+    }
+
+    @Test
+    fun emptyCacheWithInitialSyncFailureDoesNotLookLikeLoadedEmpty() = review {
+        val fake = FakeReviewActions()
+        fake.cachedPending = emptyList()
+        fake.fetchPendingResponder = { Result.failure(IOException("offline")) }
+
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.items.isEmpty())
+        assertFalse(vm.uiState.value.showingCachedSnapshot)
+        assertTrue(vm.uiState.value.hasLoadedOnce)
+        assertFalse(vm.uiState.value.loading)
+        assertEquals(PendingListLoadState.Failed, vm.uiState.value.listLoadState)
         assertTrue(vm.uiState.value.message != null)
     }
 
@@ -93,9 +111,10 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         runCurrent()
 
         assertTrue(vm.uiState.value.loading)
-        assertTrue(vm.uiState.value.hasLoadedOnce)
-        assertTrue(vm.uiState.value.showingCachedSnapshot)
-        assertFalse(vm.uiState.value.showPageRefresh)
+        assertFalse(vm.uiState.value.hasLoadedOnce)
+        assertFalse(vm.uiState.value.showingCachedSnapshot)
+        assertTrue(vm.uiState.value.showPageRefresh)
+        assertEquals(PendingListLoadState.Loading, vm.uiState.value.listLoadState)
 
         networkResponse.complete(Result.success(listOf(expense(id = 1L, merchant = "Fresh"))))
         advanceUntilIdle()
@@ -103,6 +122,7 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         assertEquals(listOf("Fresh"), vm.uiState.value.items.map { it.merchant })
         assertFalse(vm.uiState.value.showingCachedSnapshot)
         assertTrue(vm.uiState.value.hasLoadedOnce)
+        assertEquals(PendingListLoadState.Loaded, vm.uiState.value.listLoadState)
     }
 
     @Test

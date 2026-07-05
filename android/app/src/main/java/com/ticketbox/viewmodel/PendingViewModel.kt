@@ -45,12 +45,20 @@ data class BulkConfirmRunState(
     val running: Boolean = false,
 )
 
+enum class PendingListLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
+
 data class PendingUiState(
     val items: List<Expense> = emptyList(),
     val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
     val actionInProgressIds: Set<Long> = emptySet(),
     val readOnly: Boolean = false,
     val showingCachedSnapshot: Boolean = false,
+    val listLoadState: PendingListLoadState = PendingListLoadState.Unknown,
     val hasLoadedOnce: Boolean = false,
     val loading: Boolean = false,
     val uploading: Boolean = false,
@@ -94,7 +102,7 @@ data class PendingUiState(
     val reviewRemaining: Int = 0,
 ) {
     val showPageRefresh: Boolean
-        get() = loading && !hasLoadedOnce
+        get() = loading && items.isEmpty() && !showingCachedSnapshot
 }
 
 class PendingViewModel(
@@ -155,6 +163,7 @@ class PendingViewModel(
                     _uiState.value = PendingUiState(
                         readOnly = readOnly,
                         loading = true,
+                        listLoadState = PendingListLoadState.Loading,
                         message = if (readOnly) readOnlyMessage() else null,
                     )
                     refresh()
@@ -203,7 +212,7 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             val skipEpoch = refreshSkipEpoch
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update { it.copy(loading = true, listLoadState = PendingListLoadState.Loading, message = null) }
             // A3: 先用本地缓存铺首屏（仅首次 / 换账本后那次），再走网络 write-through。
             // 顺序在同一协程里：种子完成后才发网络 → 飞行模式下网络失败时缓存仍留在
             // 列表里（onFailure 不动 items），无竞态。
@@ -231,6 +240,7 @@ class PendingViewModel(
                         it.copy(
                             hasLoadedOnce = true,
                             loading = false,
+                            listLoadState = PendingListLoadState.Failed,
                             message = error.toUiText(R.string.pending_msg_load_failed),
                         )
                     }
@@ -249,7 +259,7 @@ class PendingViewModel(
         pendingCacheSeeded = true
         repository.getCachedPending().onSuccess { cached ->
             if (requestGeneration != generation) return@onSuccess
-            if (_uiState.value.items.isEmpty()) {
+            if (_uiState.value.items.isEmpty() && cached.isNotEmpty()) {
                 _uiState.update {
                     it.copy(
                         items = cached,

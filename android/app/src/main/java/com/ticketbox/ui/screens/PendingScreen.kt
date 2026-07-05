@@ -23,6 +23,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
@@ -44,6 +45,7 @@ import com.ticketbox.ui.screens.pending.PendingExpenseReviewActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
+import com.ticketbox.ui.screens.pending.PendingListBodyState
 import com.ticketbox.ui.screens.pending.PendingQueueEvidence
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueOverview
@@ -53,6 +55,7 @@ import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
+import com.ticketbox.ui.screens.pending.pendingListBodyState
 import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
 
@@ -97,6 +100,10 @@ fun PendingScreen(
     )
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
+    val bodyState = pendingListBodyState(
+        hasRows = state.items.isNotEmpty(),
+        loadState = state.listLoadState,
+    )
     val haptics = rememberAppHaptics()
 
     fun resolvePrimaryAction(expense: Expense) {
@@ -235,7 +242,7 @@ fun PendingScreen(
             }
         }
 
-        state.message?.let { message ->
+        state.message?.takeIf { bodyState != PendingListBodyState.LoadFailed }?.let { message ->
             item { PendingMessageCard(message = message.asString()) }
         }
 
@@ -244,7 +251,7 @@ fun PendingScreen(
         }
 
         when {
-            state.items.isEmpty() && blockingRefresh -> {
+            bodyState == PendingListBodyState.Loading -> {
                 item {
                     AppListStateContent(
                         state = AppListStateSpec(
@@ -257,7 +264,17 @@ fun PendingScreen(
                 }
             }
 
-            state.items.isEmpty() -> {
+            bodyState == PendingListBodyState.LoadFailed -> {
+                item {
+                    AppErrorState(
+                        title = stringResource(R.string.pending_load_failed_title),
+                        body = stringResource(R.string.pending_load_failed_body),
+                        onRetry = onRefresh,
+                    )
+                }
+            }
+
+            bodyState == PendingListBodyState.Empty -> {
                 item {
                     EmptyPendingState(
                         uploading = state.uploading,
@@ -270,7 +287,7 @@ fun PendingScreen(
                 }
             }
 
-            else -> {
+            bodyState == PendingListBodyState.Content -> {
                 if (shouldShowNeedsReviewFilterBar(queueCounts, needsReviewFilter)) {
                     item {
                         NeedsReviewFilterBar(
