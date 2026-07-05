@@ -332,6 +332,7 @@ internal fun SettingsDestinationHost(
             busy = states.rules.busy,
             readOnly = !ledgerRoleCanModify(states.settings.role),
             message = states.rules.message,
+            messageTone = states.rules.messageTone,
             onBack = { route = SettingsDestination.Root },
             onCreateRule = actions.onCreateRule,
             onUpdateRule = actions.onUpdateRule,

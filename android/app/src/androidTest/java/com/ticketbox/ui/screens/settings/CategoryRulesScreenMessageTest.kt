@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Rule
@@ -44,15 +45,18 @@ class CategoryRulesScreenMessageTest {
             TicketboxTheme(skin = AppSkin.Default) {
                 CategoryRulesScreen(
                     rules = emptyList(),
+                    rulesLoading = false,
                     busy = false,
                     readOnly = false,
                     message = message,
+                    messageTone = MessageTone.Danger,
                     onBack = {},
                     onCreateRule = { _, _, _ -> },
                     onUpdateRule = { _, _, _, _ -> },
                     onToggleRule = {},
                     onDeleteRule = {},
                     applications = emptyList(),
+                    applicationsLoading = false,
                     confirmedPreview = null,
                     onPreviewApplyConfirmedRules = {},
                     onConfirmApplyConfirmedRules = {},

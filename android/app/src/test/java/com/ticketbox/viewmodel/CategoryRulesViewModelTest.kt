@@ -4,8 +4,12 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleDto
+import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeExpenseDao
@@ -13,6 +17,7 @@ import com.ticketbox.data.repository.FakeSessionTokenStore
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +98,69 @@ class CategoryRulesViewModelTest {
 
         assertFalse(state.categoryRulesLoading)
         assertEquals(UiText.res(R.string.category_rules_load_failed), state.message)
+        assertEquals(MessageTone.Danger, state.messageTone)
+    }
+
+    @Test
+    fun createRuleSuccessShowsSuccessTone() = runTest(dispatcher) {
+        val vm = harness(
+            object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+                override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto =
+                    categoryRuleDto(
+                        keyword = requireNotNull(request.keyword),
+                        category = requireNotNull(request.category),
+                        priority = requireNotNull(request.priority),
+                    )
+            },
+        )
+        runCurrent()
+
+        vm.createCategoryRule(keyword = "高德", category = "交通", priority = 8)
+        val state = vm.uiState.first { it.message == UiText.res(R.string.category_rules_added) }
+
+        assertFalse(state.busy)
+        assertEquals(MessageTone.Success, state.messageTone)
+        assertEquals(listOf("高德"), state.categoryRules.map { it.keyword })
+    }
+
+    @Test
+    fun previewApplyFailureShowsDangerToneAndClearsBusy() = runTest(dispatcher) {
+        val vm = harness(
+            object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+                override suspend fun applyConfirmedRules(
+                    request: RuleApplyConfirmedRequestDto,
+                    limit: Int,
+                    maxScan: Int,
+                ): RuleApplyConfirmedResponseDto {
+                    throw RepositoryException("")
+                }
+            },
+        )
+        runCurrent()
+
+        vm.previewApplyConfirmedRules()
+        val state = vm.uiState.first { !it.busy && it.message != null }
+
+        assertEquals(UiText.res(R.string.category_rules_apply_preview_failed), state.message)
+        assertEquals(MessageTone.Danger, state.messageTone)
+    }
+
+    @Test
+    fun rollbackFailureShowsDangerToneAndClearsBusy() = runTest(dispatcher) {
+        val vm = harness(
+            object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+                override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto {
+                    throw RepositoryException("")
+                }
+            },
+        )
+        val application = vm.uiState.first { it.ruleApplications.isNotEmpty() }.ruleApplications.single()
+
+        vm.rollbackRuleApplication(application)
+        val state = vm.uiState.first { !it.busy && it.message != null }
+
+        assertEquals(UiText.res(R.string.category_rules_rollback_failed), state.message)
+        assertEquals(MessageTone.Danger, state.messageTone)
     }
 
     private fun harness(api: ApiService): CategoryRulesViewModel {
@@ -131,12 +199,16 @@ class CategoryRulesViewModelTest {
     }
 
     private companion object {
-        fun categoryRuleDto(): CategoryRuleDto = CategoryRuleDto(
+        fun categoryRuleDto(
+            keyword: String = "OpenAI",
+            category: String = "AI订阅",
+            priority: Int = 10,
+        ): CategoryRuleDto = CategoryRuleDto(
             id = 1L,
-            keyword = "OpenAI",
-            category = "AI订阅",
+            keyword = keyword,
+            category = category,
             enabled = true,
-            priority = 10,
+            priority = priority,
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = "2026-05-01T00:05:00Z",
             rowVersion = 1L,

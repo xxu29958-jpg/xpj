@@ -51,6 +51,7 @@ fun CategoryRulesScreen(
     readOnly: Boolean,
     // No default: every caller must wire the ViewModel status channel.
     message: UiText?,
+    messageTone: MessageTone,
     onBack: () -> Unit,
     onCreateRule: (String, String, Int) -> Unit,
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
@@ -98,7 +99,7 @@ fun CategoryRulesScreen(
         title = stringResource(R.string.category_rules_page_title),
         subtitle = categoryRuleSummary(rules),
         onBack = onBack,
-        status = { AppStatusBanner(message = message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = message, tone = messageTone) },
     ) {
         CategoryRulesContent(
             state = CategoryRulesContentState(
