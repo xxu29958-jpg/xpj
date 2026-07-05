@@ -185,6 +185,7 @@
 
     <!-- BackgroundTasksViewModel：后台任务屏操作结果文案（ADR-0044 wave 2 经 UiText 外置） -->
     <string name="background_tasks_message_load_failed">任务列表暂时打不开。</string>
+    <string name="background_tasks_message_refresh_failed_with_data">已保留上次读取的任务记录，刷新暂时没成功。</string>
     <string name="background_tasks_message_cancel_requested">已请求取消任务。</string>
     <string name="background_tasks_message_cancel_failed">取消任务失败。</string>
 </resources>

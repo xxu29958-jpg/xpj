@@ -15,7 +15,6 @@ import com.ticketbox.domain.model.BACKGROUND_TASK_COMPLETED
 import com.ticketbox.domain.model.BACKGROUND_TASK_FAILED
 import com.ticketbox.domain.model.BACKGROUND_TASK_QUEUED
 import com.ticketbox.domain.model.BACKGROUND_TASK_RUNNING
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
 
@@ -34,7 +33,7 @@ fun BackgroundTasksScreen(
         title = stringResource(R.string.background_tasks_page_title),
         subtitle = stringResource(R.string.background_tasks_page_subtitle),
         onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         SettingsSection(title = stringResource(R.string.background_tasks_section_recent_title), icon = Icons.Filled.Tune) {
             val summary = remember(state.tasks, state.loading) {

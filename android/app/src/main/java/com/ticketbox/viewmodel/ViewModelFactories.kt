@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DashboardCardsActions
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtProposalActions
+import com.ticketbox.data.repository.ExpenseRepositoryBackgroundTaskActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.ExpenseRepositorySettingsActions
 import com.ticketbox.data.repository.IncomePlanActions
@@ -275,7 +276,7 @@ fun backgroundTasksViewModelFactory(
     repository: ExpenseRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BackgroundTasksViewModel(repository) as T
+        return BackgroundTasksViewModel(ExpenseRepositoryBackgroundTaskActions(repository)) as T
     }
 }
 
