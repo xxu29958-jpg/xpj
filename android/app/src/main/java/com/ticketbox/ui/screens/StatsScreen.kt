@@ -22,6 +22,7 @@ import com.ticketbox.domain.model.DASHBOARD_CARD_RECENT_UPLOADS
 import com.ticketbox.domain.model.DASHBOARD_CARD_RECURRING
 import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
 import com.ticketbox.domain.model.DashboardCard
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.StatsTab
@@ -33,6 +34,7 @@ import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.displayMonthLabel
@@ -153,8 +155,8 @@ fun StatsScreen(
             item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
         }
         if (selectedStatsTab == StatsTab.Trend) {
-            state.reportsMessage?.let {
-                item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
+            reportsTrendStatusMessage(state)?.let {
+                item { AppStatusBanner(message = it, tone = MessageTone.Danger) }
             }
         }
         state.dashboardCardsMessage?.let {
@@ -347,6 +349,9 @@ internal fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
 
 internal fun shouldShowReportsUnavailableFallback(state: StatsUiState): Boolean =
     state.reportsOverview == null && state.selectedTag.isBlank() && !state.reportsLoading
+
+internal fun reportsTrendStatusMessage(state: StatsUiState) =
+    state.reportsMessage.takeUnless { shouldShowReportsUnavailableFallback(state) }
 
 internal object StatsRefreshIndicator {
     fun isActive(loading: Boolean, hasReadableData: Boolean): Boolean =

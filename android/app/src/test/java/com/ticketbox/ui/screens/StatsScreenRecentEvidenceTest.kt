@@ -1,10 +1,12 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.R
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsUiState
 import kotlin.test.Test
@@ -49,6 +51,27 @@ class StatsScreenRecentEvidenceTest {
         assertFalse(shouldShowReportsUnavailableFallback(state.copy(reportsLoading = true)))
         assertFalse(shouldShowReportsUnavailableFallback(state.copy(selectedTag = "food")))
         assertFalse(shouldShowReportsUnavailableFallback(state.copy(reportsOverview = reportsOverview())))
+    }
+
+    @Test
+    fun reportsTrendStatusMessageUsesUnavailableFallbackWhenOverviewIsMissing() {
+        val message = UiText.res(R.string.stats_message_trend_failed)
+        val state = StatsUiState(reportsMessage = message)
+
+        assertTrue(shouldShowReportsUnavailableFallback(state))
+        assertNull(reportsTrendStatusMessage(state))
+    }
+
+    @Test
+    fun reportsTrendStatusMessageSurfacesPartialFailureWhenOverviewIsReadable() {
+        val message = UiText.res(R.string.stats_message_reports_failed)
+        val state = StatsUiState(
+            reportsOverview = reportsOverview(),
+            reportsMessage = message,
+        )
+
+        assertFalse(shouldShowReportsUnavailableFallback(state))
+        assertEquals(message, reportsTrendStatusMessage(state))
     }
 
     private fun lifestyle(recent7DaysAmountCents: Long): LifestyleStats =
