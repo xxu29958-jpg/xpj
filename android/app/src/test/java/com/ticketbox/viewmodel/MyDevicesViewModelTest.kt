@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.remote.dto.MyDeviceDto
 import com.ticketbox.data.remote.dto.MyDeviceListResponseDto
 import com.ticketbox.data.remote.dto.PairingCodeResponseDto
@@ -10,6 +11,8 @@ import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.StubApi
 import com.ticketbox.domain.model.AccountDevice
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -98,6 +101,72 @@ class MyDevicesViewModelTest {
             assertTrue(state.devices.first().isCurrent)
             assertEquals(ledger, api.deviceListRequests.single())
             assertNull(state.message)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun initialRefreshFailureShowsDangerLoadMessage() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply { devicesError = RuntimeException() }
+            val vm = harness(api)
+
+            vm.refresh(ledger)
+            val state = vm.uiState.first { !it.loading && it.message != null }
+
+            assertTrue(state.devices.isEmpty())
+            assertEquals(UiText.res(R.string.my_devices_message_load_failed), state.message)
+            assertEquals(MessageTone.Danger, state.messageTone)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun refreshFailureAfterLoadedDevicesKeepsRowsAndShowsStaleMessage() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply {
+                devicesResult = MyDeviceListResponseDto(listOf(deviceDto("d1", "本机", isCurrent = true)))
+            }
+            val vm = harness(api)
+            vm.refresh(ledger)
+            vm.uiState.first { !it.loading && it.devices.isNotEmpty() }
+            api.devicesError = RuntimeException()
+
+            vm.refresh(ledger)
+            val state = vm.uiState.first { !it.loading && it.message != null }
+
+            assertEquals(listOf("d1"), state.devices.map { it.publicId })
+            assertEquals(UiText.res(R.string.my_devices_message_refresh_failed_with_data), state.message)
+            assertEquals(MessageTone.Danger, state.messageTone)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun mutationSuccessWithRefreshFailureKeepsRowsAndShowsStaleMessage() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply {
+                devicesResult = MyDeviceListResponseDto(listOf(deviceDto("d2", "旧名字")))
+                renameDeviceResult = deviceDto("d2", "新名字")
+            }
+            val vm = harness(api)
+            vm.refresh(ledger)
+            vm.uiState.first { !it.loading && it.devices.isNotEmpty() }
+            api.devicesError = RuntimeException()
+
+            vm.rename(accountDevice("d2", "旧名字"), "新名字", ledger)
+            val state = vm.uiState.first { it.message != null }
+
+            assertEquals(listOf("旧名字"), state.devices.map { it.deviceName })
+            assertEquals(UiText.res(R.string.my_devices_message_refresh_failed_with_data), state.message)
+            assertEquals(MessageTone.Danger, state.messageTone)
+            assertNull(state.busyDeviceId)
         } finally {
             Dispatchers.resetMain()
         }

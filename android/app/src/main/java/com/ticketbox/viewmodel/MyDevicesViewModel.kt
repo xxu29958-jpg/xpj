@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +29,7 @@ data class MyDevicesUiState(
     /** publicId of the device whose rename/revoke is in flight (禁双击)。 */
     val busyDeviceId: String? = null,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
     val pairingCreating: Boolean = false,
     /**
      * 最近一次生成的配对码(明文只在创建响应出现一次,服务端只存哈希)。非 null 时
@@ -48,10 +51,17 @@ class MyDevicesViewModel(
         repository.currentLedgerRole() == LEDGER_ROLE_OWNER
 
     fun refresh(activeLedgerId: String?) {
+        if (_uiState.value.loading) return
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
             val error = loadDevices(activeLedgerId)
-            _uiState.update { it.copy(loading = false, message = error) }
+            _uiState.update {
+                it.copy(
+                    loading = false,
+                    message = error,
+                    messageTone = if (error == null) MessageTone.Neutral else MessageTone.Danger,
+                )
+            }
         }
     }
 
@@ -59,11 +69,16 @@ class MyDevicesViewModel(
         if (!deviceIsOwner()) return
         val cleanName = newName.trim()
         if (cleanName.isEmpty()) {
-            _uiState.update { it.copy(message = UiText.res(R.string.my_devices_message_name_required)) }
+            _uiState.update {
+                it.copy(
+                    message = UiText.res(R.string.my_devices_message_name_required),
+                    messageTone = MessageTone.Danger,
+                )
+            }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(busyDeviceId = device.publicId, message = null) }
+            _uiState.update { it.copy(busyDeviceId = device.publicId, message = null, messageTone = MessageTone.Neutral) }
             repository.renameDevice(device.publicId, cleanName, activeLedgerId)
                 .onSuccess { applyMutationSuccess(activeLedgerId, UiText.res(R.string.my_devices_message_renamed, cleanName)) }
                 .onFailure { err -> finishWithError(err) }
@@ -73,7 +88,7 @@ class MyDevicesViewModel(
     fun revoke(device: AccountDevice, activeLedgerId: String?) {
         if (!deviceIsOwner()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(busyDeviceId = device.publicId, message = null) }
+            _uiState.update { it.copy(busyDeviceId = device.publicId, message = null, messageTone = MessageTone.Neutral) }
             repository.revokeDevice(device.publicId, activeLedgerId)
                 .onSuccess { applyMutationSuccess(activeLedgerId, UiText.res(R.string.my_devices_message_revoked, device.deviceName)) }
                 .onFailure { err -> finishWithError(err) }
@@ -85,7 +100,7 @@ class MyDevicesViewModel(
     fun delete(device: AccountDevice, activeLedgerId: String?) {
         if (!deviceIsOwner()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(busyDeviceId = device.publicId, message = null) }
+            _uiState.update { it.copy(busyDeviceId = device.publicId, message = null, messageTone = MessageTone.Neutral) }
             repository.deleteDevice(device.publicId, activeLedgerId)
                 .onSuccess { applyMutationSuccess(activeLedgerId, UiText.res(R.string.my_devices_message_deleted, device.deviceName)) }
                 .onFailure { err -> finishWithError(err) }
@@ -95,8 +110,14 @@ class MyDevicesViewModel(
     /** Re-list (so the row reflects the new state) BEFORE surfacing [success] —
      * the reload must not clobber the message the user just earned. */
     private suspend fun applyMutationSuccess(activeLedgerId: String?, success: UiText) {
-        loadDevices(activeLedgerId)
-        _uiState.update { it.copy(busyDeviceId = null, message = success) }
+        val error = loadDevices(activeLedgerId)
+        _uiState.update {
+            it.copy(
+                busyDeviceId = null,
+                message = error ?: success,
+                messageTone = if (error == null) MessageTone.Success else MessageTone.Danger,
+            )
+        }
     }
 
     /** Fetch the device list into state; returns a load-error message or null. */
@@ -104,21 +125,42 @@ class MyDevicesViewModel(
         var error: UiText? = null
         repository.refreshDevices(activeLedgerId)
             .onSuccess { fetched -> _uiState.update { it.copy(devices = fetched) } }
-            .onFailure { err -> error = err.toUiText(R.string.my_devices_message_load_failed) }
+            .onFailure { err ->
+                val fallback = if (_uiState.value.devices.isEmpty()) {
+                    R.string.my_devices_message_load_failed
+                } else {
+                    R.string.my_devices_message_refresh_failed_with_data
+                }
+                error = if ((err as? RepositoryException)?.errorCode.isNullOrBlank()) {
+                    UiText.res(fallback)
+                } else {
+                    err.toUiText(fallback)
+                }
+            }
         return error
     }
 
     fun createPairingCode(activeLedgerId: String?) {
         if (!deviceIsOwner()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(pairingCreating = true, message = null) }
+            _uiState.update { it.copy(pairingCreating = true, message = null, messageTone = MessageTone.Neutral) }
             repository.createDevicePairingCode(activeLedgerId)
                 .onSuccess { created ->
-                    _uiState.update { it.copy(pairingCreating = false, createdPairingCode = created) }
+                    _uiState.update {
+                        it.copy(
+                            pairingCreating = false,
+                            createdPairingCode = created,
+                            messageTone = MessageTone.Neutral,
+                        )
+                    }
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        it.copy(pairingCreating = false, message = err.toUiText(R.string.my_devices_message_pairing_failed))
+                        it.copy(
+                            pairingCreating = false,
+                            message = err.toUiText(R.string.my_devices_message_pairing_failed),
+                            messageTone = MessageTone.Danger,
+                        )
                     }
                 }
         }
@@ -131,7 +173,11 @@ class MyDevicesViewModel(
 
     private fun finishWithError(err: Throwable) {
         _uiState.update {
-            it.copy(busyDeviceId = null, message = err.toUiText(R.string.my_devices_message_action_failed))
+            it.copy(
+                busyDeviceId = null,
+                message = err.toUiText(R.string.my_devices_message_action_failed),
+                messageTone = MessageTone.Danger,
+            )
         }
     }
 }

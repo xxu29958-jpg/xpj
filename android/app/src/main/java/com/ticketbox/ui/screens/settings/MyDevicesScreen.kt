@@ -39,7 +39,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
@@ -111,7 +110,7 @@ fun MyDevicesScreen(
             stringResource(R.string.my_devices_page_subtitle_view)
         },
         onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         DeviceListSection(
             state = state,

@@ -224,6 +224,7 @@
     <string name="my_devices_delete_dialog_text">「%1$s」已停用。移除后将从设备列表中永久删除，无法恢复。</string>
     <string name="my_devices_delete_dialog_confirm">移除</string>
     <string name="my_devices_message_load_failed">加载设备列表失败，请稍后再试。</string>
+    <string name="my_devices_message_refresh_failed_with_data">已保留上次读取的设备列表，刷新暂时没成功。</string>
     <string name="my_devices_message_action_failed">操作失败，请稍后再试。</string>
     <string name="my_devices_message_name_required">设备名称不能为空。</string>
     <string name="my_devices_message_renamed">已重命名为「%1$s」。</string>
