@@ -39,6 +39,12 @@ data class AppListStateSpec(
 )
 
 @Immutable
+data class AppListStateMessage(
+    val text: UiText,
+    val tone: MessageTone = MessageTone.Neutral,
+)
+
+@Immutable
 data class AppContentStateCopy(
     val loadingTitle: String,
     val loadingBody: String? = null,
@@ -116,8 +122,10 @@ fun AppLoadingState(
 fun AppListStateContent(
     state: AppListStateSpec,
     modifier: Modifier = Modifier,
+    message: AppListStateMessage? = null,
     rows: @Composable ColumnScope.() -> Unit,
 ) {
+    val visibleMessage = message?.takeIf { it.text.asString().isNotBlank() }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
@@ -128,6 +136,21 @@ fun AppListStateContent(
                     ListItemSkeleton(horizontalPadding = AppSpacing.none)
                 }
             }
+            state.isEmpty && visibleMessage != null -> AppContentStateSlot(
+                state = AppContentStateSpec(
+                    loading = false,
+                    hasData = false,
+                    copy = AppContentStateCopy(
+                        loadingTitle = "",
+                        emptyText = state.emptyText,
+                        emptyTitle = state.emptyTitle,
+                        emptyBody = state.emptyBody,
+                    ),
+                    message = visibleMessage.text,
+                    messageTone = visibleMessage.tone,
+                    presentation = AppContentStatePresentation.Inline,
+                ),
+            )
             state.isEmpty -> AppContentStateSlot(
                 state = AppContentStateSpec(
                     loading = false,

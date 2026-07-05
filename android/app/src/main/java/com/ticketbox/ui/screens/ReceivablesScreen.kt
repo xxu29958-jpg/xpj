@@ -13,8 +13,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -62,7 +64,7 @@ fun ReceivablesScreen(
             onRefresh = viewModel::refresh,
         ),
     ) {
-        state.error?.let { err ->
+        readableListInlineError(hasRows = state.receivables.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         receivablesSection(state = state, onOpenReceivable = onOpenReceivable)
@@ -72,8 +74,18 @@ private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
     onOpenReceivable: (Debt) -> Unit,
 ) {
-    if (state.receivables.isEmpty()) {
-        item { ReceivablesListStateCard(loading = state.isLoading) }
+    val bodyState = readableListBodyState(
+        hasRows = state.receivables.isNotEmpty(),
+        isLoading = state.isLoading,
+        error = state.error,
+    )
+    if (bodyState != ReadableListBodyState.Content) {
+        item {
+            ReceivablesListStateCard(
+                loading = bodyState == ReadableListBodyState.Loading,
+                error = state.error.takeIf { bodyState == ReadableListBodyState.LoadFailed },
+            )
+        }
         return
     }
     // 全部是 member 应收(viewer_is_debtor=false → creditor 侧「我帮你垫的」)。⑤b-2 起可点进跨账本详情确认
@@ -85,7 +97,10 @@ private fun LazyListScope.receivablesSection(
 }
 
 @Composable
-private fun ReceivablesListStateCard(loading: Boolean) {
+private fun ReceivablesListStateCard(
+    loading: Boolean,
+    error: UiText?,
+) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         AppListStateContent(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
@@ -96,6 +111,7 @@ private fun ReceivablesListStateCard(loading: Boolean) {
                 emptyTitle = stringResource(R.string.receivables_empty_title),
                 emptyBody = stringResource(R.string.receivables_empty_body),
             ),
+            message = error?.let { AppListStateMessage(text = it, tone = MessageTone.Danger) },
         ) {
         }
     }

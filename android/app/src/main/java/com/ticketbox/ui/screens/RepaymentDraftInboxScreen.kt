@@ -35,8 +35,10 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
@@ -101,7 +103,7 @@ fun RepaymentDraftInboxScreen(
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }
-        state.error?.let { err ->
+        readableListInlineError(hasRows = state.drafts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         repaymentDraftListSection(
@@ -137,8 +139,18 @@ private fun LazyListScope.repaymentDraftListSection(
     onOpenPicker: (RepaymentDraft) -> Unit,
     onDismiss: (String) -> Unit,
 ) {
-    if (state.drafts.isEmpty()) {
-        item { RepaymentDraftListStateCard(loading = state.isLoading) }
+    val bodyState = readableListBodyState(
+        hasRows = state.drafts.isNotEmpty(),
+        isLoading = state.isLoading,
+        error = state.error,
+    )
+    if (bodyState != ReadableListBodyState.Content) {
+        item {
+            RepaymentDraftListStateCard(
+                loading = bodyState == ReadableListBodyState.Loading,
+                error = state.error.takeIf { bodyState == ReadableListBodyState.LoadFailed },
+            )
+        }
         return
     }
     items(state.drafts, key = { it.publicId }) { draft ->
@@ -271,7 +283,10 @@ private fun repaymentDraftPrimaryLabel(action: DraftRowAction, idleRes: Int): St
     }
 
 @Composable
-private fun RepaymentDraftListStateCard(loading: Boolean) {
+private fun RepaymentDraftListStateCard(
+    loading: Boolean,
+    error: UiText?,
+) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         AppListStateContent(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
@@ -282,6 +297,7 @@ private fun RepaymentDraftListStateCard(loading: Boolean) {
                 emptyTitle = stringResource(R.string.repayment_draft_empty_title),
                 emptyBody = stringResource(R.string.repayment_draft_empty_body),
             ),
+            message = error?.let { AppListStateMessage(text = it, tone = MessageTone.Danger) },
         ) {
         }
     }
