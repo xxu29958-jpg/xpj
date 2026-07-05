@@ -225,6 +225,7 @@ fun StatsScreen(
                     item {
                         StatsMetricGrid(
                             budget = state.budgetProgress,
+                            budgetStatus = state.budgetProgressStatus,
                             onOpenBudget = onOpenBudget,
                         )
                     }

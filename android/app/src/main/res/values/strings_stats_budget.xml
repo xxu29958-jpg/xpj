@@ -96,6 +96,12 @@
     <string name="stats_budget_progress_remaining">还可花 %1$s</string>
     <string name="stats_budget_progress_percent">%1$d%%</string>
     <string name="stats_budget_progress_hint">预算只用于提醒，不影响账单金额。</string>
+    <string name="stats_budget_progress_unavailable_status">暂无预算进度</string>
+    <string name="stats_budget_progress_unavailable_body">预算已启用，但本月可用额度暂不适合显示进度条。可在预算页查看明细。</string>
+    <string name="stats_budget_unknown_status">预算状态待同步</string>
+    <string name="stats_budget_unknown_badge">待同步</string>
+    <string name="stats_budget_unknown_body">预算信息还没有同步完成，刷新或打开预算页查看最新状态。</string>
+    <string name="stats_budget_open_action">查看预算</string>
     <string name="stats_budget_empty_status">未设置预算</string>
     <string name="stats_budget_empty_badge">未启用</string>
     <string name="stats_budget_empty_body">设置后可查看剩余额度、超支风险和提醒。</string>

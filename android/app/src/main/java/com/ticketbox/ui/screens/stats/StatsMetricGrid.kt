@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetProgress
+import com.ticketbox.domain.model.BudgetProgressStatus
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -34,23 +35,29 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 @Composable
 internal fun StatsMetricGrid(
     budget: BudgetProgress?,
+    budgetStatus: BudgetProgressStatus,
     onOpenBudget: () -> Unit,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
     StatsInsightSurface {
-        if (budget == null) {
-            BudgetEmptySection(onOpenBudget = onOpenBudget)
-        } else {
+        if (budget != null) {
             BudgetProgressSection(budget, currencyDisplay)
+        } else {
+            BudgetStatusSection(
+                budgetStatus = budgetStatus,
+                onOpenBudget = onOpenBudget,
+            )
         }
     }
 }
 
 @Composable
-private fun BudgetEmptySection(
+private fun BudgetStatusSection(
+    budgetStatus: BudgetProgressStatus,
     onOpenBudget: () -> Unit,
 ) {
+    val copy = budgetStatusCopy(budgetStatus)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -64,31 +71,66 @@ private fun BudgetEmptySection(
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
-                    text = stringResource(R.string.stats_budget_empty_status),
+                    text = stringResource(copy.status),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
             Text(
-                text = stringResource(R.string.stats_budget_empty_badge),
+                text = stringResource(copy.badge),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
             )
         }
         Text(
-            text = stringResource(R.string.stats_budget_empty_body),
+            text = stringResource(copy.body),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
         AppPrimaryButton(
-            text = stringResource(R.string.stats_budget_empty_action),
+            text = stringResource(copy.action),
             icon = Icons.Filled.Tune,
             modifier = Modifier.fillMaxWidth(),
             onClick = onOpenBudget,
         )
     }
 }
+
+private data class BudgetStatusCopy(
+    val status: Int,
+    val badge: Int,
+    val body: Int,
+    val action: Int,
+)
+
+private fun budgetStatusCopy(budgetStatus: BudgetProgressStatus): BudgetStatusCopy =
+    when (budgetStatus) {
+        BudgetProgressStatus.ConfiguredWithoutProgress -> BudgetStatusCopy(
+            status = R.string.stats_budget_progress_unavailable_status,
+            badge = R.string.stats_budget_progress_configured,
+            body = R.string.stats_budget_progress_unavailable_body,
+            action = R.string.stats_budget_open_action,
+        )
+        BudgetProgressStatus.Unknown -> BudgetStatusCopy(
+            status = R.string.stats_budget_unknown_status,
+            badge = R.string.stats_budget_unknown_badge,
+            body = R.string.stats_budget_unknown_body,
+            action = R.string.stats_budget_open_action,
+        )
+        BudgetProgressStatus.Progress -> BudgetStatusCopy(
+            status = R.string.stats_budget_progress_configured,
+            badge = R.string.stats_budget_progress_configured,
+            body = R.string.stats_budget_progress_hint,
+            action = R.string.stats_budget_open_action,
+        )
+        BudgetProgressStatus.Unconfigured -> BudgetStatusCopy(
+            status = R.string.stats_budget_empty_status,
+            badge = R.string.stats_budget_empty_badge,
+            body = R.string.stats_budget_empty_body,
+            action = R.string.stats_budget_empty_action,
+        )
+    }
 
 @Composable
 private fun BudgetProgressSection(

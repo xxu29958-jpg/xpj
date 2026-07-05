@@ -49,6 +49,13 @@ data class BudgetMonthly(
     }
 }
 
+enum class BudgetProgressStatus {
+    Unknown,
+    Unconfigured,
+    ConfiguredWithoutProgress,
+    Progress,
+}
+
 data class BudgetCategoryDraft(
     val category: String,
     val amountCents: Long,
@@ -62,7 +69,14 @@ data class BudgetMonthlyUpdate(
     val categoryBudgets: List<BudgetCategoryDraft> = emptyList(),
 )
 
+fun BudgetMonthly.toBudgetProgressStatus(): BudgetProgressStatus = when {
+    !configured -> BudgetProgressStatus.Unconfigured
+    availableAmountCents <= 0L -> BudgetProgressStatus.ConfiguredWithoutProgress
+    else -> BudgetProgressStatus.Progress
+}
+
 fun BudgetMonthly.toBudgetProgress(): BudgetProgress? {
+    if (!configured) return null
     val budget = availableAmountCents.takeIf { it > 0L } ?: return null
     return BudgetProgress(
         month = month,

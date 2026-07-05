@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.domain.model.BudgetProgress
+import com.ticketbox.domain.model.BudgetProgressStatus
 import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.DashboardCard
@@ -30,6 +31,7 @@ data class StatsUiState(
     val dailyTrend: List<DailySpend> = emptyList(),
     val monthComparison: MonthComparison? = null,
     val budgetProgress: BudgetProgress? = null,
+    val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
     val categoryInsight: CategoryInsight? = null,
     val recurringItems: List<RecurringItem> = emptyList(),
     val recurringCandidates: List<RecurringCandidate> = emptyList(),
@@ -88,6 +90,7 @@ data class MonthlyStatsUiState(
 
 data class StatsBudgetUiState(
     val budgetProgress: BudgetProgress? = null,
+    val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
     val month: String = "",
     val ledgerId: String? = null,
 )
@@ -122,6 +125,11 @@ internal fun mergeStatsUiState(
         dailyTrend = monthly.dailyTrend,
         monthComparison = monthly.monthComparison,
         budgetProgress = if (budgetMatch) budget.budgetProgress else null,
+        budgetProgressStatus = if (budgetMatch) {
+            budget.budgetProgressStatus
+        } else {
+            BudgetProgressStatus.Unknown
+        },
         categoryInsight = monthly.categoryInsight,
         recurringItems = monthly.recurringItems,
         recurringCandidates = monthly.recurringCandidates,
