@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.annotation.StringRes
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,8 +21,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppContentStateCopy
+import com.ticketbox.ui.components.AppContentStatePresentation
+import com.ticketbox.ui.components.AppContentStateSpec
+import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -60,6 +65,9 @@ internal fun GoalsSummaryCard(
 ) {
     val visibleGoals = remember(goals) { goalDisplayModels(goals) }
     val attentionCount = visibleGoals.count { it.priority <= 1 }
+    val bodyKind = remember(loadState, visibleGoals.size) {
+        goalsSummaryBodyKind(loadState = loadState, visibleGoalCount = visibleGoals.size)
+    }
     val averagePercent = if (visibleGoals.isEmpty()) {
         0
     } else {
@@ -73,31 +81,21 @@ internal fun GoalsSummaryCard(
                 attentionCount = attentionCount,
                 loadState = loadState,
             )
-            when {
-                loadState == ReportGoalsLoadState.Failed -> GoalsSummaryEmpty(
-                    titleRes = R.string.stats_reports_goals_unavailable,
-                    hintRes = R.string.stats_reports_goals_unavailable_hint,
+            GoalsSummaryStateSlot(kind = bodyKind)
+            if (bodyKind == GoalsSummaryBodyKind.Data) {
+                GoalPortfolioRail(
+                    goalCount = visibleGoals.size,
+                    attentionCount = attentionCount,
+                    averagePercent = averagePercent,
                 )
-                loadState != ReportGoalsLoadState.Loaded -> GoalsSummaryEmpty(
-                    titleRes = R.string.stats_reports_goals_loading,
-                    hintRes = R.string.stats_reports_goals_loading_hint,
-                )
-                visibleGoals.isEmpty() -> GoalsSummaryEmpty()
-                else -> {
-                    GoalPortfolioRail(
-                        goalCount = visibleGoals.size,
-                        attentionCount = attentionCount,
-                        averagePercent = averagePercent,
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                        visibleGoals.take(4).forEachIndexed { index, model ->
-                            if (index > 0) {
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle),
-                                )
-                            }
-                            GoalPriorityRow(model = model)
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                    visibleGoals.take(4).forEachIndexed { index, model ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle),
+                            )
                         }
+                        GoalPriorityRow(model = model)
                     }
                 }
             }
@@ -169,23 +167,33 @@ private fun GoalsSummaryHeader(
 }
 
 @Composable
-private fun GoalsSummaryEmpty(
-    @StringRes titleRes: Int = R.string.stats_reports_goals_empty,
-    @StringRes hintRes: Int = R.string.stats_reports_goals_empty_hint,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(
-            text = stringResource(titleRes),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.body.weight,
-        )
-        Text(
-            text = stringResource(hintRes),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
+private fun GoalsSummaryStateSlot(kind: GoalsSummaryBodyKind) {
+    val (titleRes, bodyRes) = when (kind) {
+        GoalsSummaryBodyKind.Loading -> R.string.stats_reports_goals_loading to R.string.stats_reports_goals_loading_hint
+        GoalsSummaryBodyKind.Failed -> R.string.stats_reports_goals_unavailable to R.string.stats_reports_goals_unavailable_hint
+        GoalsSummaryBodyKind.Empty -> R.string.stats_reports_goals_empty to R.string.stats_reports_goals_empty_hint
+        GoalsSummaryBodyKind.Data -> return
     }
+    AppContentStateSlot(
+        state = AppContentStateSpec(
+            loading = kind == GoalsSummaryBodyKind.Loading,
+            hasData = false,
+            copy = AppContentStateCopy(
+                loadingTitle = stringResource(titleRes),
+                loadingBody = stringResource(bodyRes),
+                emptyText = stringResource(bodyRes),
+                emptyTitle = stringResource(titleRes),
+                emptyBody = stringResource(bodyRes),
+            ),
+            message = if (kind == GoalsSummaryBodyKind.Failed) {
+                UiText.compound(listOf(UiText.res(titleRes), UiText.res(bodyRes)), " ")
+            } else {
+                null
+            },
+            messageTone = MessageTone.Danger,
+            presentation = AppContentStatePresentation.Inline,
+        ),
+    )
 }
 
 @Composable

@@ -55,6 +55,42 @@ class GoalsSummaryCardTest {
     }
 
     @Test
+    fun bodyKindSeparatesLoadTruthFromLoadedEmptyAndData() {
+        assertEquals(
+            GoalsSummaryBodyKind.Loading,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Unknown, visibleGoalCount = 0),
+        )
+        assertEquals(
+            GoalsSummaryBodyKind.Loading,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Unknown, visibleGoalCount = 2),
+        )
+        assertEquals(
+            GoalsSummaryBodyKind.Loading,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Loading, visibleGoalCount = 0),
+        )
+        assertEquals(
+            GoalsSummaryBodyKind.Loading,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Loading, visibleGoalCount = 2),
+        )
+        assertEquals(
+            GoalsSummaryBodyKind.Failed,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Failed, visibleGoalCount = 0),
+        )
+        assertEquals(
+            GoalsSummaryBodyKind.Failed,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Failed, visibleGoalCount = 2),
+        )
+        assertEquals(
+            GoalsSummaryBodyKind.Empty,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Loaded, visibleGoalCount = 0),
+        )
+        assertEquals(
+            GoalsSummaryBodyKind.Data,
+            goalsSummaryBodyKind(loadState = ReportGoalsLoadState.Loaded, visibleGoalCount = 1),
+        )
+    }
+
+    @Test
     fun attentionBeatsStableWhenGoalsNeedReview() {
         assertEquals(
             GoalsHeaderStatus.Attention,
