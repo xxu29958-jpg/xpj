@@ -89,6 +89,8 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.design.AppSpacing
@@ -156,20 +158,68 @@ fun BackgroundGalleryScreen(
             }
         }
         SettingsSection(title = stringResource(R.string.background_gallery_section_custom_title), icon = Icons.Filled.PhotoLibrary) {
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                BackgroundActionButton(
-                    text = stringResource(R.string.background_gallery_pick_image),
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = Icons.Filled.PhotoLibrary,
+            BackgroundGalleryCustomActions(
+                onPickCustomImage = onPickCustomImage,
+                onPreviewThemeDefault = onPreviewThemeDefault,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BackgroundGalleryCustomActions(
+    onPickCustomImage: () -> Unit,
+    onPreviewThemeDefault: () -> Unit,
+) {
+    AppAdaptiveEditActionLayout(actionCount = 2, compact = false, stackTwoActionsOnNarrow = true) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                BackgroundGalleryPickImageButton(
+                    modifier = Modifier.fillMaxWidth(),
                     onClick = onPickCustomImage,
                 )
-                BackgroundActionButton(
-                    text = stringResource(R.string.background_gallery_theme_default),
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = Icons.Filled.RestartAlt,
+                BackgroundGalleryThemeDefaultButton(
+                    modifier = Modifier.fillMaxWidth(),
                     onClick = onPreviewThemeDefault,
                 )
             }
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+            ) {
+                BackgroundGalleryPickImageButton(onClick = onPickCustomImage)
+                BackgroundGalleryThemeDefaultButton(onClick = onPreviewThemeDefault)
+            }
         }
     }
+}
+
+@Composable
+private fun BackgroundGalleryPickImageButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    BackgroundActionButton(
+        text = stringResource(R.string.background_gallery_pick_image),
+        modifier = modifier,
+        leadingIcon = Icons.Filled.PhotoLibrary,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun BackgroundGalleryThemeDefaultButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    BackgroundActionButton(
+        text = stringResource(R.string.background_gallery_theme_default),
+        modifier = modifier,
+        leadingIcon = Icons.Filled.RestartAlt,
+        onClick = onClick,
+    )
 }
