@@ -4,10 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +29,8 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -222,28 +222,55 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             showTopDivider = false,
         ) {
-            Row(
+            DebtActionButtons(onAction = onAction)
+        }
+    }
+}
+
+@Composable
+private fun DebtActionButtons(onAction: (DebtAction) -> Unit) {
+    AppAdaptiveEditActionLayout(actionCount = 3, compact = false) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 AppPrimaryButton(
                     text = stringResource(R.string.debt_action_repayment_title),
                     icon = Icons.Filled.Check,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     onClick = { onAction(DebtAction.Repayment) },
                 )
                 QuietOutlinedButton(
                     text = stringResource(R.string.debt_action_adjustment_title),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     onClick = { onAction(DebtAction.Adjustment) },
                 )
+                AppOutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onAction(DebtAction.Void) },
+                    danger = true,
+                ) {
+                    Text(stringResource(R.string.debt_action_void_title))
+                }
             }
-            AppOutlinedButton(
-                onClick = { onAction(DebtAction.Void) },
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
                 modifier = Modifier.fillMaxWidth(),
-                danger = true,
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
             ) {
-                Text(stringResource(R.string.debt_action_void_title))
+                AppPrimaryButton(
+                    text = stringResource(R.string.debt_action_repayment_title),
+                    icon = Icons.Filled.Check,
+                    onClick = { onAction(DebtAction.Repayment) },
+                )
+                QuietOutlinedButton(
+                    text = stringResource(R.string.debt_action_adjustment_title),
+                    onClick = { onAction(DebtAction.Adjustment) },
+                )
+                AppOutlinedButton(onClick = { onAction(DebtAction.Void) }, danger = true) {
+                    Text(stringResource(R.string.debt_action_void_title))
+                }
             }
         }
     }
