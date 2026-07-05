@@ -59,7 +59,6 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
-import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.updateDraftAmount
@@ -170,7 +169,7 @@ private fun DebtListContent(
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }
-        state.error?.let { err ->
+        debtListInlineError(state)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         debtListSection(state = state, currency = currency, onOpenDebt = callbacks.onOpenDebt)
@@ -225,11 +224,30 @@ private fun LazyListScope.debtListSection(
     currency: CurrencyDisplay,
     onOpenDebt: (Debt) -> Unit,
 ) {
-    if (state.debts.isEmpty() && !state.isLoading) {
-        item { DebtEmptyStateSection() }
-        return
+    when (debtListBodyState(state)) {
+        DebtListBodyState.Loading -> item(key = "debt-list-loading") {
+            DebtListNoRowsStateSection(loading = true)
+        }
+        DebtListBodyState.LoadFailed -> item(key = "debt-list-error") {
+            state.error?.let { DebtListLoadFailedSection(error = it) }
+        }
+        DebtListBodyState.Empty -> item(key = "debt-list-empty") {
+            DebtListNoRowsStateSection(loading = false)
+        }
+        DebtListBodyState.Content -> debtRowsSection(
+            debts = state.debts,
+            currency = currency,
+            onOpenDebt = onOpenDebt,
+        )
     }
-    val (members, externals) = groupDebtsForList(state.debts)
+}
+
+private fun LazyListScope.debtRowsSection(
+    debts: List<Debt>,
+    currency: CurrencyDisplay,
+    onOpenDebt: (Debt) -> Unit,
+) {
+    val (members, externals) = groupDebtsForList(debts)
     // Keep family debts and external debts in separate scan groups.
     if (members.isNotEmpty()) {
         item(key = "debt-section-family") {
@@ -315,34 +333,6 @@ private fun ExternalDebtRow(
                     R.string.debt_list_card_principal,
                     formatDisplayAmount(debt.principalAmountCents, currency),
                 ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DebtEmptyStateSection() {
-    AppSectionGroup(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(vertical = AppSpacing.sectionGap),
-        showTopDivider = false,
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            MascotEmptyIllustration()
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.debt_list_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.debt_list_empty_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
