@@ -100,8 +100,57 @@ internal class ExpenseEditViewModelTest {
         assertEquals(pending, state.expense, "a negative id must load from the local cache")
         assertEquals(1, fake.localCacheCalls, "the local-cache path must be used, not the server fetch")
         assertNull(state.thumbnail, "no server image load for a pending row")
-        assertNull(state.expenseItems, "no server items load for a pending row")
-        assertNull(state.expenseSplits, "no server splits load for a pending row")
+        assertEquals(0, fake.fetchItemsCalls, "no server items load for a pending row")
+        assertEquals(0, fake.fetchSplitsCalls, "no server splits load for a pending row")
+        assertEquals(ExpenseDetailDataLoadState.Loaded, state.itemsLoadState)
+        assertEquals(ExpenseDetailDataLoadState.Loaded, state.splitsLoadState)
+        val items = assertNotNull(state.expenseItems, "local-only pending rows expose an explicit empty item model")
+        val splits = assertNotNull(state.expenseSplits, "local-only pending rows expose an explicit empty split model")
+        assertTrue(items.items.isEmpty())
+        assertTrue(splits.splits.isEmpty())
+        assertEquals(pending.id, items.expenseId)
+        assertEquals(pending.id, splits.expenseId)
+        assertEquals(pending.amountCents, items.parentAmountCents)
+        assertEquals(pending.amountCents, splits.parentAmountCents)
+        assertEquals(pending.rowVersion, items.parentRowVersion)
+        assertEquals(pending.rowVersion, splits.parentRowVersion)
+    }
+
+    @Test
+    fun detailChildLoadsMarkSuccessfulEmptyResponsesAsLoaded() = edit { fake ->
+        val vm = viewModel(fake)
+
+        val state = vm.uiState.value
+        assertEquals(ExpenseDetailDataLoadState.Loaded, state.itemsLoadState)
+        assertEquals(ExpenseDetailDataLoadState.Loaded, state.splitsLoadState)
+        val items = assertNotNull(state.expenseItems)
+        val splits = assertNotNull(state.expenseSplits)
+        assertTrue(items.items.isEmpty())
+        assertTrue(splits.splits.isEmpty())
+        assertNull(state.itemsMessage)
+        assertNull(state.splitsMessage)
+        assertEquals(1, fake.fetchItemsCalls)
+        assertEquals(1, fake.fetchSplitsCalls)
+    }
+
+    @Test
+    fun detailChildLoadFailuresStayFailedInsteadOfLoadedEmpty() = edit { fake ->
+        fake.fetchItemsResponder = { Result.failure(RuntimeException("items failed")) }
+        fake.fetchSplitsResponder = { Result.failure(RuntimeException("splits failed")) }
+
+        val vm = viewModel(fake)
+
+        val state = vm.uiState.value
+        assertEquals(ExpenseDetailDataLoadState.Failed, state.itemsLoadState)
+        assertEquals(ExpenseDetailDataLoadState.Failed, state.splitsLoadState)
+        assertNull(state.expenseItems)
+        assertNull(state.expenseSplits)
+        assertNotNull(state.itemsMessage)
+        assertNotNull(state.splitsMessage)
+        assertEquals(MessageTone.Danger, state.itemsMessageTone)
+        assertEquals(MessageTone.Danger, state.splitsMessageTone)
+        assertEquals(1, fake.fetchItemsCalls)
+        assertEquals(1, fake.fetchSplitsCalls)
     }
 
     @Test
@@ -763,6 +812,8 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     var fetchExpenseResponder: (suspend (Long) -> Result<Expense>)? = null
     // issue #65 slice 5: the negative-id (offline-create) local-cache load path.
     var localCacheResponder: (suspend (Long) -> Result<Expense>)? = null
+    var fetchItemsResponder: (suspend (Long) -> Result<ExpenseItems>)? = null
+    var fetchSplitsResponder: (suspend (Long) -> Result<ExpenseSplits>)? = null
     var saveOfflineResponder: (suspend (Long, ExpenseDraft, Expense) -> Result<SaveOutcome>)? = null
     var confirmOfflineResponder: (suspend (Expense) -> Result<ExpenseStateOutcome>)? = null
     var ackResponder: (suspend (Expense, ExpenseItems) -> Result<ItemsAckOutcome>)? = null
@@ -796,6 +847,10 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     var repaymentDraftExpense: Expense? = null
         private set
     var localCacheCalls: Int = 0
+        private set
+    var fetchItemsCalls: Int = 0
+        private set
+    var fetchSplitsCalls: Int = 0
         private set
 
     override fun canModifyLedger(): Boolean = canModifyLedgerFlag
@@ -857,7 +912,10 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
             ?: error("repaymentDraftResponder not set")
     }
 
-    override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = Result.success(items(id))
+    override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> {
+        fetchItemsCalls += 1
+        return fetchItemsResponder?.invoke(id) ?: Result.success(items(id))
+    }
 
     override suspend fun acknowledgeItemsMismatchAllowingOffline(
         expense: Expense,
@@ -875,7 +933,10 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
             ?: error("replaceItemsResponder not set")
     }
 
-    override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = Result.success(splits())
+    override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> {
+        fetchSplitsCalls += 1
+        return fetchSplitsResponder?.invoke(id) ?: Result.success(splits())
+    }
 
     override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> =
         splitMembersResponder?.invoke() ?: Result.success(emptyList())

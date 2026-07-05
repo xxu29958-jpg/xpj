@@ -63,6 +63,13 @@ enum class BillSplitSentLoadState {
     Failed,
 }
 
+enum class ExpenseDetailDataLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
+
 data class ExpenseEditUiState(
     val expense: Expense? = null,
     val expenseLoading: Boolean = true,
@@ -75,6 +82,8 @@ data class ExpenseEditUiState(
     val imageLoading: Boolean = false,
     val itemsLoading: Boolean = false,
     val splitsLoading: Boolean = false,
+    val itemsLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
+    val splitsLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
     val ocrRunning: Boolean = false,
     val saving: Boolean = false,
     val itemEditorOpen: Boolean = false,
@@ -145,6 +154,8 @@ class ExpenseEditViewModel(
             loadThumbnail()
             loadExpenseItems()
             loadExpenseSplits()
+        } else {
+            markLocalOnlyDetailLoadsLoaded(expense = null)
         }
     }
 
@@ -174,6 +185,9 @@ class ExpenseEditViewModel(
                             messageTone = MessageTone.Neutral,
                         )
                     }
+                    if (expenseId < 0) {
+                        markLocalOnlyDetailLoadsLoaded(expense)
+                    }
                     // 批 13：仅已确认/有金额/非收到拆账/可写的票才拉本票已发邀请，
                     // 给「找家人分摊」卡填列表（pending/received 票不发无谓请求）。
                     if (expense.canInitiateBillSplit(_uiState.value.readOnly)) {
@@ -189,6 +203,40 @@ class ExpenseEditViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    private fun markLocalOnlyDetailLoadsLoaded(expense: Expense?) {
+        val localExpenseId = expense?.id ?: expenseId
+        val parentAmountCents = expense?.amountCents
+        val parentRowVersion = expense?.rowVersion ?: 0L
+        _uiState.update {
+            it.copy(
+                expenseItems = ExpenseItems(
+                    expenseId = localExpenseId,
+                    parentAmountCents = parentAmountCents,
+                    itemsTotalAmountCents = null,
+                    mismatchCents = null,
+                    items = emptyList(),
+                    parentRowVersion = parentRowVersion,
+                ),
+                expenseSplits = ExpenseSplits(
+                    expenseId = localExpenseId,
+                    parentAmountCents = parentAmountCents,
+                    splitsTotalAmountCents = null,
+                    mismatchCents = null,
+                    splits = emptyList(),
+                    parentRowVersion = parentRowVersion,
+                ),
+                itemsLoading = false,
+                splitsLoading = false,
+                itemsLoadState = ExpenseDetailDataLoadState.Loaded,
+                splitsLoadState = ExpenseDetailDataLoadState.Loaded,
+                itemsMessage = null,
+                splitsMessage = null,
+                itemsMessageTone = MessageTone.Neutral,
+                splitsMessageTone = MessageTone.Neutral,
+            )
         }
     }
 
@@ -226,7 +274,12 @@ class ExpenseEditViewModel(
     private fun loadExpenseItems() {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(itemsLoading = true, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
+                it.copy(
+                    itemsLoading = true,
+                    itemsLoadState = ExpenseDetailDataLoadState.Loading,
+                    itemsMessage = null,
+                    itemsMessageTone = MessageTone.Neutral,
+                )
             }
             repository.fetchExpenseItems(expenseId)
                 .onSuccess { items ->
@@ -234,6 +287,7 @@ class ExpenseEditViewModel(
                         it.copy(
                             expenseItems = items,
                             itemsLoading = false,
+                            itemsLoadState = ExpenseDetailDataLoadState.Loaded,
                             itemsMessageTone = MessageTone.Neutral,
                         )
                     }
@@ -242,6 +296,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             itemsLoading = false,
+                            itemsLoadState = ExpenseDetailDataLoadState.Failed,
                             itemsMessage = error.toUiText(R.string.expense_edit_items_load_failed),
                             itemsMessageTone = MessageTone.Danger,
                         )
@@ -253,7 +308,12 @@ class ExpenseEditViewModel(
     private fun loadExpenseSplits() {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(splitsLoading = true, splitsMessage = null, splitsMessageTone = MessageTone.Neutral)
+                it.copy(
+                    splitsLoading = true,
+                    splitsLoadState = ExpenseDetailDataLoadState.Loading,
+                    splitsMessage = null,
+                    splitsMessageTone = MessageTone.Neutral,
+                )
             }
             repository.fetchExpenseSplits(expenseId)
                 .onSuccess { splits ->
@@ -261,6 +321,7 @@ class ExpenseEditViewModel(
                         it.copy(
                             expenseSplits = splits,
                             splitsLoading = false,
+                            splitsLoadState = ExpenseDetailDataLoadState.Loaded,
                             splitsMessageTone = MessageTone.Neutral,
                         )
                     }
@@ -269,6 +330,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             splitsLoading = false,
+                            splitsLoadState = ExpenseDetailDataLoadState.Failed,
                             splitsMessage = error.toUiText(R.string.expense_edit_splits_load_failed),
                             splitsMessageTone = MessageTone.Danger,
                         )

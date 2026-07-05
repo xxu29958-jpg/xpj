@@ -50,6 +50,7 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
                                 expense = it.expense?.withParentRowVersion(outcome.items.parentRowVersion),
                                 expenseItems = outcome.items,
                                 itemsLoading = false,
+                                itemsLoadState = ExpenseDetailDataLoadState.Loaded,
                                 message = UiText.res(R.string.expense_edit_items_ack_synced),
                                 messageTone = MessageTone.Success,
                             )
@@ -63,6 +64,7 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
                             it.copy(
                                 expenseItems = outcome.items,
                                 itemsLoading = false,
+                                itemsLoadState = ExpenseDetailDataLoadState.Loaded,
                                 message = UiText.res(R.string.expense_edit_items_ack_offline_queued),
                                 messageTone = MessageTone.Info,
                             )
@@ -178,6 +180,7 @@ private fun ExpenseEditViewModel.applyItemsSaveOutcome(outcome: ReplaceItemsOutc
         it.copy(
             expense = synced?.let { sync -> it.expense?.withParentRowVersion(sync.items.parentRowVersion) } ?: it.expense,
             expenseItems = outcome.items,
+            itemsLoadState = ExpenseDetailDataLoadState.Loaded,
             itemEditorOpen = false,
             itemDrafts = emptyList(),
             itemsSaving = false,

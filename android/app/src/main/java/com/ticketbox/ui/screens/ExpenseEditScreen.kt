@@ -468,6 +468,8 @@ fun ExpenseEditScreen(
             expenseSplits = state.expenseSplits,
             itemsLoading = state.itemsLoading,
             splitsLoading = state.splitsLoading,
+            itemsLoadState = state.itemsLoadState,
+            splitsLoadState = state.splitsLoadState,
             itemsMessage = state.itemsMessage,
             splitsMessage = state.splitsMessage,
             itemsMessageTone = state.itemsMessageTone,

@@ -189,6 +189,7 @@ private fun ExpenseEditViewModel.applySplitsSaveOutcome(outcome: ReplaceSplitsOu
         it.copy(
             expense = synced?.let { sync -> it.expense?.withParentRowVersion(sync.splits.parentRowVersion) } ?: it.expense,
             expenseSplits = outcome.splits,
+            splitsLoadState = ExpenseDetailDataLoadState.Loaded,
             splitEditorOpen = false,
             splitDrafts = emptyList(),
             splitsSaving = false,
