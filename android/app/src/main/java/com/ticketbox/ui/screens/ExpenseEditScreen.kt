@@ -71,6 +71,7 @@ import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.OcrProgressCard
 import com.ticketbox.ui.screens.expense.SplitsEditorSheet
+import com.ticketbox.viewmodel.BillSplitSentLoadState
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -157,6 +158,7 @@ fun ExpenseEditScreen(
                 messageTone = state.billSplitInviteMessageTone,
             ),
             remainingCents = billSplitRemainingCents(state),
+            remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
             actions = BillSplitInviteSheetActions(
                 onSelectMember = onSelectBillSplitMember,
                 onUpdateAmount = onUpdateBillSplitAmount,
@@ -488,6 +490,7 @@ fun ExpenseEditScreen(
             ExpenseBillSplitInvitePanel(
                 state = ExpenseBillSplitInvitePanelState(
                     sent = state.billSplitSent,
+                    loadState = state.billSplitSentLoadState,
                     loading = state.billSplitLoading,
                     message = state.billSplitMessage,
                     messageTone = state.billSplitMessageTone,
@@ -529,7 +532,8 @@ fun ExpenseEditScreen(
  * 仅作 sheet 内的非阻塞提示；金额上限的权威校验在 VM + 后端 split_total_exceeds_parent。
  * 账单无金额时返回 null（卡片本就不会出现，此处只为安全）。
  */
-private fun billSplitRemainingCents(state: ExpenseEditUiState): Long? {
+internal fun billSplitRemainingCents(state: ExpenseEditUiState): Long? {
+    if (state.billSplitSentLoadState != BillSplitSentLoadState.Loaded) return null
     val parent = state.expense?.amountCents ?: return null
     val active = state.billSplitSent
         .filter { it.status == BillSplitStatusValues.INVITED || it.status == BillSplitStatusValues.ACCEPTED }

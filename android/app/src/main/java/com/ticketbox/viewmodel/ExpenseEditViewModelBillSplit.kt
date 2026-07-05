@@ -47,6 +47,7 @@ fun ExpenseEditViewModel.loadBillSplitSent() {
         _uiState.update {
             it.copy(
                 billSplitLoading = true,
+                billSplitSentLoadState = BillSplitSentLoadState.Loading,
                 billSplitMessage = null,
                 billSplitMessageTone = MessageTone.Neutral,
             )
@@ -56,6 +57,7 @@ fun ExpenseEditViewModel.loadBillSplitSent() {
                 _uiState.update {
                     it.copy(
                         billSplitSent = sent.filter { row -> row.senderExpenseId == expense.id },
+                        billSplitSentLoadState = BillSplitSentLoadState.Loaded,
                         billSplitLoading = false,
                         billSplitMessageTone = MessageTone.Neutral,
                     )
@@ -64,6 +66,7 @@ fun ExpenseEditViewModel.loadBillSplitSent() {
             .onFailure { error ->
                 _uiState.update {
                     it.copy(
+                        billSplitSentLoadState = BillSplitSentLoadState.Failed,
                         billSplitLoading = false,
                         billSplitMessage = error.toUiText(R.string.expense_edit_bill_split_load_failed),
                         billSplitMessageTone = MessageTone.Danger,
@@ -175,6 +178,8 @@ fun ExpenseEditViewModel.sendBillSplitInvite() {
                 _uiState.update {
                     it.copy(
                         billSplitSent = it.billSplitSent.upsertBillSplitSent(sent, request.expenseId),
+                        billSplitSentLoadState = BillSplitSentLoadState.Loading,
+                        billSplitLoading = true,
                         billSplitInviteSheetOpen = false,
                         billSplitInviteSelectedMemberId = null,
                         billSplitInviteAmountText = "",
@@ -223,9 +228,11 @@ private fun ExpenseEditViewModel.currentBillSplitInviteRequest(): BillSplitInvit
     if (amountCents == null || amountCents <= 0L) {
         return reject(UiText.res(R.string.expense_edit_bill_split_amount_invalid))
     }
-    val remaining = expense.amountCents - _uiState.value.billSplitSent.activeSplitCentsFor(expense.id)
-    if (amountCents > remaining) {
-        return reject(UiText.res(R.string.expense_edit_bill_split_amount_exceeds))
+    if (_uiState.value.billSplitSentLoadState == BillSplitSentLoadState.Loaded) {
+        val remaining = expense.amountCents - _uiState.value.billSplitSent.activeSplitCentsFor(expense.id)
+        if (amountCents > remaining) {
+            return reject(UiText.res(R.string.expense_edit_bill_split_amount_exceeds))
+        }
     }
     return BillSplitInviteRequest(expenseId = expense.id, receiverAccountId = member.accountId, amountCents = amountCents)
 }
@@ -246,7 +253,8 @@ fun ExpenseEditViewModel.cancelBillSplitInvitation(publicId: String) {
                     val expenseId = state.expense?.id
                     state.copy(
                         billSplitSent = state.billSplitSent.upsertBillSplitSent(cancelled, expenseId),
-                        billSplitLoading = false,
+                        billSplitSentLoadState = BillSplitSentLoadState.Loading,
+                        billSplitLoading = true,
                         billSplitMessage = null,
                         billSplitMessageTone = MessageTone.Neutral,
                     )

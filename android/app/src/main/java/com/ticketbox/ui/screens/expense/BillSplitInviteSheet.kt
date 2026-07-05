@@ -59,6 +59,7 @@ internal data class BillSplitInviteSheetActions(
 internal fun BillSplitInviteSheet(
     state: BillSplitInviteSheetState,
     remainingCents: Long?,
+    remainingUnavailable: Boolean,
     actions: BillSplitInviteSheetActions,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -77,6 +78,7 @@ internal fun BillSplitInviteSheet(
             BillSplitInviteAmountField(
                 amountText = state.amountText,
                 remainingCents = remainingCents,
+                remainingUnavailable = remainingUnavailable,
                 sending = state.sending,
                 onUpdateAmount = actions.onUpdateAmount,
             )
@@ -111,6 +113,7 @@ private fun BillSplitInviteMemberLabel() {
 private fun BillSplitInviteAmountField(
     amountText: String,
     remainingCents: Long?,
+    remainingUnavailable: Boolean,
     sending: Boolean,
     onUpdateAmount: (String) -> Unit,
 ) {
@@ -125,14 +128,19 @@ private fun BillSplitInviteAmountField(
         ),
         onValueChange = onUpdateAmount,
     )
-    remainingCents?.let {
+    if (remainingCents != null) {
         ExpenseEditReconciliationRows(
             rows = listOf(
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_bill_split_sheet_remaining),
-                    value = formatDisplayAmount(it, currencyDisplay),
+                    value = formatDisplayAmount(remainingCents, currencyDisplay),
                 ),
             ),
+        )
+    } else if (remainingUnavailable) {
+        AppStatusBanner(
+            message = UiText.res(R.string.expense_edit_bill_split_sheet_remaining_unknown),
+            tone = MessageTone.Info,
         )
     }
 }

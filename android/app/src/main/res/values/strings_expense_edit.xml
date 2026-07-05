@@ -254,6 +254,7 @@
     <string name="expense_edit_bill_split_sheet_no_members">本账本暂时没有可分摊的家人。先邀请家人加入本账本，再发起拆账。</string>
     <string name="expense_edit_bill_split_sheet_amount_label">分摊金额</string>
     <string name="expense_edit_bill_split_sheet_remaining">本笔还可分摊</string>
+    <string name="expense_edit_bill_split_sheet_remaining_unknown">暂时无法确认剩余可分摊金额；发送时仍会由服务器校验。</string>
     <string name="expense_edit_bill_split_sheet_send_button">发送邀请</string>
     <string name="expense_edit_bill_split_sheet_sending_button">发送中…</string>
 

@@ -46,9 +46,11 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.viewmodel.BillSplitSentLoadState
 
 internal data class ExpenseBillSplitInvitePanelState(
     val sent: List<BillSplitSent>,
+    val loadState: BillSplitSentLoadState,
     val loading: Boolean,
     val message: UiText?,
     val messageTone: MessageTone,
@@ -362,6 +364,7 @@ internal fun ExpenseBillSplitInvitePanel(
     actions: ExpenseBillSplitInvitePanelActions,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
+    val hasSentDataOrPendingTruth = state.sent.isNotEmpty() || state.loadState != BillSplitSentLoadState.Loaded
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -373,7 +376,7 @@ internal fun ExpenseBillSplitInvitePanel(
         )
         DetailStateSlot(
             state = DetailLoadState(state.loading, state.message, state.messageTone),
-            hasData = state.sent.isNotEmpty(),
+            hasData = hasSentDataOrPendingTruth,
             copy = DetailStateCopy(
                 loadingTitle = stringResource(R.string.expense_edit_bill_split_loading),
                 loadingBody = stringResource(R.string.expense_edit_bill_split_card_subtitle),

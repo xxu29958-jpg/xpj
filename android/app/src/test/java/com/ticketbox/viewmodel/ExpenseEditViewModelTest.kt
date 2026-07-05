@@ -453,6 +453,7 @@ internal class ExpenseEditViewModelTest {
         val vm = viewModel(fake)
 
         assertEquals(listOf("mine"), vm.uiState.value.billSplitSent.map { it.publicId })
+        assertEquals(BillSplitSentLoadState.Loaded, vm.uiState.value.billSplitSentLoadState)
     }
 
     @Test
@@ -476,6 +477,7 @@ internal class ExpenseEditViewModelTest {
         assertNotNull(vm.uiState.value.billSplitMessage)
         assertEquals(MessageTone.Danger, vm.uiState.value.billSplitMessageTone)
         assertFalse(vm.uiState.value.billSplitLoading)
+        assertEquals(BillSplitSentLoadState.Failed, vm.uiState.value.billSplitSentLoadState)
     }
 
     @Test
@@ -559,6 +561,26 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun sendBillSplitInviteWithUnknownSentListLetsServerValidateRemaining() = edit { fake ->
+        confirmedExpenseFake(fake)
+        fake.fetchBillSplitSentResponder = { Result.failure(RuntimeException("sent list unavailable")) }
+        fake.splitMembersResponder = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResponder = { _, _, _ -> Result.success(fake.sentInvite(publicId = "server-checked")) }
+        val vm = viewModel(fake)
+
+        assertEquals(BillSplitSentLoadState.Failed, vm.uiState.value.billSplitSentLoadState)
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("50.00")
+        vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        assertEquals(1, fake.createBillSplitCalls)
+        assertEquals(Triple(7L, 333L, 5000L), fake.lastCreateBillSplitArgs)
+    }
+
+    @Test
     fun sendBillSplitInviteFailureShowsErrorInSheet() = edit { fake ->
         confirmedExpenseFake(fake)
         fake.fetchBillSplitSentResponder = { Result.success(emptyList()) }
@@ -627,6 +649,7 @@ internal class ExpenseEditViewModelTest {
         assertNotNull(vm.uiState.value.billSplitMessage)
         assertEquals(MessageTone.Danger, vm.uiState.value.billSplitMessageTone)
         assertFalse(vm.uiState.value.billSplitLoading)
+        assertEquals(BillSplitSentLoadState.Failed, vm.uiState.value.billSplitSentLoadState)
     }
 }
 

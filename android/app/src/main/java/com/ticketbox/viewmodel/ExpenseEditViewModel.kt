@@ -56,6 +56,13 @@ data class EditableSplit(
     val disabled: Boolean = false,
 )
 
+enum class BillSplitSentLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
+
 data class ExpenseEditUiState(
     val expense: Expense? = null,
     val expenseLoading: Boolean = true,
@@ -85,6 +92,7 @@ data class ExpenseEditUiState(
     // inviteSheetOpen 控制发起 sheet；inviteMembers 是可选收件人（已剔自己/停用）；
     // inviteSelectedMemberId/inviteAmountText 是 sheet 表单态；inviteSending 是发送中。
     val billSplitSent: List<BillSplitSent> = emptyList(),
+    val billSplitSentLoadState: BillSplitSentLoadState = BillSplitSentLoadState.Unknown,
     val billSplitLoading: Boolean = false,
     val billSplitMessage: UiText? = null,
     val billSplitMessageTone: MessageTone = MessageTone.Neutral,
