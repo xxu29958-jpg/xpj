@@ -38,7 +38,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecycleBinItem
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayTime
@@ -78,7 +77,7 @@ fun RecycleBinScreen(
         status = {
             AppStatusBanner(
                 message = state.message,
-                tone = if (state.loadFailed) MessageTone.Danger else MessageTone.Neutral,
+                tone = state.messageTone,
             )
         },
     ) {

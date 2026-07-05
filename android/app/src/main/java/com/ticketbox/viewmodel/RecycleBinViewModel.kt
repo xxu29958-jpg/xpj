@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecycleBinItem
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,7 @@ data class RecycleBinUiState(
     val loadFailed: Boolean = false,
     val busyItemKey: String? = null,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
     val canModify: Boolean = false,
 )
 
@@ -38,6 +40,7 @@ class RecycleBinViewModel(
                     loading = true,
                     loadFailed = false,
                     message = null,
+                    messageTone = MessageTone.Neutral,
                     canModify = repository.canModifyLedger(),
                 )
             }
@@ -49,6 +52,7 @@ class RecycleBinViewModel(
                             shortWindowCount = snapshot.shortWindowCount,
                             loading = false,
                             loadFailed = false,
+                            messageTone = MessageTone.Neutral,
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -60,6 +64,7 @@ class RecycleBinViewModel(
                             loadFailed = true,
                             canModify = repository.canModifyLedger(),
                             message = err.toUiText(R.string.recycle_bin_message_load_failed),
+                            messageTone = MessageTone.Danger,
                         )
                     }
                 }
@@ -70,7 +75,13 @@ class RecycleBinViewModel(
         if (!repository.canModifyLedger()) return
         val key = item.busyKey()
         viewModelScope.launch {
-            _uiState.update { it.copy(busyItemKey = key, message = null) }
+            _uiState.update {
+                it.copy(
+                    busyItemKey = key,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                )
+            }
             repository.restoreRecycleBinItem(item)
                 .onSuccess { message ->
                     _uiState.update { it.withRestoredItemRemoved(key) }
@@ -83,6 +94,7 @@ class RecycleBinViewModel(
                                     loadFailed = false,
                                     busyItemKey = null,
                                     message = UiText.raw(message),
+                                    messageTone = MessageTone.Success,
                                     canModify = repository.canModifyLedger(),
                                 )
                             }
@@ -93,6 +105,7 @@ class RecycleBinViewModel(
                                     busyItemKey = null,
                                     loadFailed = true,
                                     message = err.toUiText(R.string.recycle_bin_message_load_failed),
+                                    messageTone = MessageTone.Danger,
                                     canModify = repository.canModifyLedger(),
                                 )
                             }
@@ -103,6 +116,7 @@ class RecycleBinViewModel(
                         it.copy(
                             busyItemKey = null,
                             message = err.toUiText(R.string.recycle_bin_message_restore_failed),
+                            messageTone = MessageTone.Danger,
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -119,5 +133,6 @@ private fun RecycleBinUiState.withRestoredItemRemoved(key: String): RecycleBinUi
         items = remainingItems,
         shortWindowCount = shortWindowCount.coerceIn(0, remainingItems.size),
         loadFailed = false,
+        messageTone = MessageTone.Neutral,
     )
 }

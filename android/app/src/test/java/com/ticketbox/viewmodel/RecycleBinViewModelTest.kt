@@ -9,6 +9,7 @@ import com.ticketbox.data.repository.LedgerFakeTokenStore
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.StubApi
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -77,6 +78,7 @@ class RecycleBinViewModelTest {
             assertEquals(1, api.recycleBinRefreshCount.size)
             assertTrue(state.canModify)
             assertNull(state.message)
+            assertEquals(MessageTone.Neutral, state.messageTone)
         } finally {
             Dispatchers.resetMain()
         }
@@ -102,6 +104,7 @@ class RecycleBinViewModelTest {
             assertEquals(1, api.recycleBinRefreshCount.size)
             assertEquals(emptyList(), state.items)
             assertEquals(UiText.raw("收入记录已恢复。"), state.message)
+            assertEquals(MessageTone.Success, state.messageTone)
             assertNull(state.busyItemKey)
         } finally {
             Dispatchers.resetMain()
@@ -133,6 +136,7 @@ class RecycleBinViewModelTest {
             assertEquals(listOf("旧预算"), state.items.map { it.title })
             assertEquals(1, state.shortWindowCount)
             assertTrue(state.loadFailed)
+            assertEquals(MessageTone.Danger, state.messageTone)
         } finally {
             Dispatchers.resetMain()
         }
@@ -165,6 +169,7 @@ class RecycleBinViewModelTest {
 
             assertTrue(state.loadFailed)
             assertEquals(emptyList(), state.items)
+            assertEquals(MessageTone.Danger, state.messageTone)
         } finally {
             Dispatchers.resetMain()
         }
@@ -182,6 +187,7 @@ class RecycleBinViewModelTest {
 
             assertEquals(1, api.recycleBinRestoreRequests.size)
             assertNull(state.busyItemKey)
+            assertEquals(MessageTone.Danger, state.messageTone)
         } finally {
             Dispatchers.resetMain()
         }
