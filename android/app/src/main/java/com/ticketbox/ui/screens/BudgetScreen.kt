@@ -8,12 +8,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.AppSpacing
@@ -26,6 +28,7 @@ import com.ticketbox.ui.screens.budget.BudgetSummarySection
 import com.ticketbox.ui.screens.budget.CategoryBudgetSection
 import com.ticketbox.ui.screens.budget.ExcludedBreakdownSection
 import com.ticketbox.ui.screens.budget.MonthSwitcher
+import com.ticketbox.ui.screens.budget.budgetInlineLoadError
 import com.ticketbox.ui.screens.budget.budgetPageDecision
 import com.ticketbox.viewmodel.BudgetUiState
 
@@ -91,6 +94,9 @@ private fun BudgetScreenContent(
         }
         state.message?.let { message ->
             item { Text(message.asString(), color = MaterialTheme.colorScheme.secondary) }
+        }
+        budgetInlineLoadError(state)?.let { error ->
+            item { AppStatusBanner(message = error, tone = MessageTone.Info) }
         }
         item {
             BudgetSummarySection(

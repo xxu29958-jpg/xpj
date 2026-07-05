@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.budget
 
 import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.viewmodel.BudgetUiState
 
 internal enum class BudgetPageStatus {
@@ -20,10 +21,13 @@ internal fun budgetPageDecision(state: BudgetUiState): BudgetPageDecision {
     return BudgetPageDecision(
         status = when {
             state.loading && state.budget == null -> BudgetPageStatus.Loading
-            state.budget == null && state.loadError != null -> BudgetPageStatus.LoadFailed
+            state.loadError != null && !state.loading -> BudgetPageStatus.LoadFailed
             budget == null -> BudgetPageStatus.NotEnabled
             else -> BudgetPageStatus.Active
         },
         configuredBudget = budget,
     )
 }
+
+internal fun budgetInlineLoadError(state: BudgetUiState): UiText? =
+    state.loadError?.takeIf { state.budget != null && !state.loading }

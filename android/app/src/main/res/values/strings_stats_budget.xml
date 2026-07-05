@@ -751,6 +751,7 @@
 
     <!-- BudgetViewModel：预算屏 Snackbar/提示文案 -->
     <string name="budget_message_load_failed">预算暂时打不开，请稍后再试。</string>
+    <string name="budget_message_refresh_failed_with_data">已保留上次读取的预算，刷新暂时没成功。</string>
     <string name="budget_message_content_invalid">预算内容不正确。</string>
     <string name="budget_message_saved">预算已保存。</string>
 

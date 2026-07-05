@@ -152,6 +152,29 @@ class BudgetViewModelTest {
     }
 
     @Test
+    fun refreshFailureAfterLoadedBudgetKeepsDataAndShowsRefreshError() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        fake.monthlyBudgetResponder = { Result.failure(RuntimeException()) }
+        vm.refresh()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertFalse(state.loading)
+        assertNull(state.message)
+        assertEquals(500000L, state.budget?.totalAmountCents)
+        assertEquals("5000", state.form.totalAmount)
+        assertEquals(UiText.res(R.string.budget_message_refresh_failed_with_data), state.loadError)
+
+        vm.save()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.loadError)
+    }
+
+    @Test
     fun monthChangeLoadsRequestedMonth() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(month = "2026-05"))
         val vm = BudgetViewModel(fake, initialMonth = "2026-05")

@@ -38,8 +38,9 @@ data class BudgetUiState(
     val saving: Boolean = false,
     val message: UiText? = null,
     /**
-     * 本月预算**加载失败**且无数据时的错误说明（区别于 [message]：后者还承载保存成功 /
-     * 校验提示等）。仅当 [budget] 为空、非 [loading] 时由概况卡渲染为可重试错误态（审计 8.4）。
+     * 本月预算读取 / 刷新失败说明（区别于 [message]：后者还承载保存成功 /
+     * 校验提示等）。无 [budget] 时由概况卡渲染为可重试错误态；已有 [budget] 时保留旧数据并以内联
+     * 提示说明刷新失败。
      */
     val loadError: UiText? = null,
     val canModify: Boolean = true,
@@ -111,12 +112,16 @@ class BudgetViewModel(
                 .onFailure { error ->
                     _uiState.update {
                         if (requestGeneration != generation || it.month != month) return@update it
-                        // Load failure with no budget → a retryable error state, not the
-                        // permanent "正在读取预算。" loading copy (audit 8.4). Distinct from
-                        // [message] which carries save-flow / validation feedback.
+                        // Initial failure → a retryable error state; refresh failure with
+                        // readable data keeps the previous budget and surfaces a stale notice.
+                        val fallback = if (it.budget == null) {
+                            R.string.budget_message_load_failed
+                        } else {
+                            R.string.budget_message_refresh_failed_with_data
+                        }
                         it.copy(
                             loading = false,
-                            loadError = error.toUiText(R.string.budget_message_load_failed),
+                            loadError = error.toUiText(fallback),
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -195,6 +200,7 @@ class BudgetViewModel(
                             budget = budget,
                             form = budget.toFormState(),
                             message = UiText.res(R.string.budget_message_saved),
+                            loadError = null,
                             canModify = repository.canModifyLedger(),
                         )
                     }

@@ -41,6 +41,19 @@ class BudgetScreenModelsTest {
         assertEquals(BudgetPageStatus.LoadFailed, failed.status)
     }
 
+    @Test
+    fun decisionKeepsExecutionBudgetVisibleWhenRefreshFailsAfterDataLoaded() {
+        val state = BudgetUiState(
+            budget = budget(configured = true),
+            loadError = UiText.res(R.string.budget_message_refresh_failed_with_data),
+        )
+        val decision = budgetPageDecision(state)
+
+        assertEquals(BudgetPageStatus.LoadFailed, decision.status)
+        assertNotNull(decision.configuredBudget)
+        assertEquals(state.loadError, budgetInlineLoadError(state))
+    }
+
     private fun budget(configured: Boolean): BudgetMonthly = BudgetMonthly(
         ledgerId = "ledger-1",
         month = "2026-07",
