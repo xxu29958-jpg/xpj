@@ -3,9 +3,7 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -152,7 +150,7 @@ fun StatsScreen(
             }
         }
         state.message?.let {
-            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
+            item { AppStatusBanner(message = it, tone = MessageTone.Neutral) }
         }
         if (selectedStatsTab == StatsTab.Trend) {
             reportsTrendStatusMessage(state)?.let {
@@ -160,7 +158,7 @@ fun StatsScreen(
             }
         }
         state.dashboardCardsMessage?.let {
-            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
+            item { AppStatusBanner(message = it, tone = MessageTone.Danger) }
         }
         val stats = state.stats
         if (stats == null) {
