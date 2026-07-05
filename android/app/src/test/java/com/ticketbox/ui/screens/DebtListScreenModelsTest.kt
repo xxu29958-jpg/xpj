@@ -16,13 +16,13 @@ class DebtListScreenModelsTest {
 
     @Test
     fun bodyStateSeparatesInitialLoadingFailureEmptyAndContent() {
-        assertEquals(DebtListBodyState.Loading, debtListBodyState(DebtListUiState(isLoading = true)))
+        assertEquals(ReadableListBodyState.Loading, debtListBodyState(DebtListUiState(isLoading = true)))
         assertEquals(
-            DebtListBodyState.LoadFailed,
+            ReadableListBodyState.LoadFailed,
             debtListBodyState(DebtListUiState(error = loadFailed())),
         )
-        assertEquals(DebtListBodyState.Empty, debtListBodyState(DebtListUiState()))
-        assertEquals(DebtListBodyState.Content, debtListBodyState(DebtListUiState(debts = listOf(debt()))))
+        assertEquals(ReadableListBodyState.Empty, debtListBodyState(DebtListUiState()))
+        assertEquals(ReadableListBodyState.Content, debtListBodyState(DebtListUiState(debts = listOf(debt()))))
     }
 
     @Test
@@ -34,6 +34,16 @@ class DebtListScreenModelsTest {
     }
 
     private fun loadFailed(): UiText = UiText.res(R.string.debt_list_load_failed)
+
+    private fun debtListBodyState(state: DebtListUiState): ReadableListBodyState =
+        readableListBodyState(
+            hasRows = state.debts.isNotEmpty(),
+            isLoading = state.isLoading,
+            error = state.error,
+        )
+
+    private fun debtListInlineError(state: DebtListUiState): UiText? =
+        readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)
 
     private fun debt(): Debt = Debt(
         publicId = "debt_1",

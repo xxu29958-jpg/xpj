@@ -169,7 +169,7 @@ private fun DebtListContent(
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }
-        debtListInlineError(state)?.let { err ->
+        readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
         debtListSection(state = state, currency = currency, onOpenDebt = callbacks.onOpenDebt)
@@ -224,17 +224,23 @@ private fun LazyListScope.debtListSection(
     currency: CurrencyDisplay,
     onOpenDebt: (Debt) -> Unit,
 ) {
-    when (debtListBodyState(state)) {
-        DebtListBodyState.Loading -> item(key = "debt-list-loading") {
+    when (
+        readableListBodyState(
+            hasRows = state.debts.isNotEmpty(),
+            isLoading = state.isLoading,
+            error = state.error,
+        )
+    ) {
+        ReadableListBodyState.Loading -> item(key = "debt-list-loading") {
             DebtListNoRowsStateSection(loading = true)
         }
-        DebtListBodyState.LoadFailed -> item(key = "debt-list-error") {
+        ReadableListBodyState.LoadFailed -> item(key = "debt-list-error") {
             state.error?.let { DebtListLoadFailedSection(error = it) }
         }
-        DebtListBodyState.Empty -> item(key = "debt-list-empty") {
+        ReadableListBodyState.Empty -> item(key = "debt-list-empty") {
             DebtListNoRowsStateSection(loading = false)
         }
-        DebtListBodyState.Content -> debtRowsSection(
+        ReadableListBodyState.Content -> debtRowsSection(
             debts = state.debts,
             currency = currency,
             onOpenDebt = onOpenDebt,

@@ -27,15 +27,21 @@ data class LedgerSwitcherUiState(
     val loading: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
+    val listLoadState: LedgerListLoadState = LedgerListLoadState.Unknown,
 )
+
+enum class LedgerListLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
 
 class LedgerSwitcherViewModel(
     private val repository: LedgerRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        LedgerSwitcherUiState(ledgers = repository.cachedLedgers()),
-    )
+    private val _uiState = MutableStateFlow(cachedInitialState(repository.cachedLedgers()))
     val uiState: StateFlow<LedgerSwitcherUiState> = _uiState.asStateFlow()
 
     fun refresh() {
@@ -47,14 +53,25 @@ class LedgerSwitcherViewModel(
     private suspend fun refreshLedgers(clearMessage: Boolean) {
         _uiState.update {
             if (clearMessage) {
-                it.copy(loading = true, message = null, messageTone = MessageTone.Neutral)
+                it.copy(
+                    loading = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    listLoadState = LedgerListLoadState.Loading,
+                )
             } else {
-                it.copy(loading = true)
+                it.copy(loading = true, listLoadState = LedgerListLoadState.Loading)
             }
         }
         repository.refreshLedgers()
             .onSuccess { ledgers ->
-                _uiState.update { it.copy(loading = false, ledgers = ledgers) }
+                _uiState.update {
+                    it.copy(
+                        loading = false,
+                        ledgers = ledgers,
+                        listLoadState = LedgerListLoadState.Loaded,
+                    )
+                }
             }
             .onFailure { err ->
                 _uiState.update {
@@ -62,6 +79,7 @@ class LedgerSwitcherViewModel(
                         loading = false,
                         message = err.toUiText(R.string.ledger_switcher_message_load_failed),
                         messageTone = MessageTone.Danger,
+                        listLoadState = LedgerListLoadState.Failed,
                     )
                 }
             }
@@ -132,3 +150,13 @@ class LedgerSwitcherViewModel(
         _uiState.update { it.copy(message = message, messageTone = MessageTone.Danger) }
     }
 }
+
+private fun cachedInitialState(ledgers: List<LedgerSummary>): LedgerSwitcherUiState =
+    LedgerSwitcherUiState(
+        ledgers = ledgers,
+        listLoadState = if (ledgers.isEmpty()) {
+            LedgerListLoadState.Unknown
+        } else {
+            LedgerListLoadState.Loaded
+        },
+    )

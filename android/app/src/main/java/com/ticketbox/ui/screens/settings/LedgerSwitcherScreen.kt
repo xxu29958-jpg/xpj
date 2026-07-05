@@ -32,6 +32,8 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.viewmodel.LedgerListLoadState
+import com.ticketbox.viewmodel.LedgerSwitcherUiState
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 
 private const val LEDGER_NAME_MAX = 60
@@ -72,8 +74,7 @@ fun LedgerSwitcherScreen(
     ) {
         LedgerSwitcherOverviewSection(summary)
         LedgerListSection(
-            ledgers = state.ledgers,
-            loading = state.loading,
+            state = state,
             activeLedgerId = activeLedgerId,
             onRefresh = viewModel::refresh,
             onSwitch = { ledgerId -> viewModel.switchTo(ledgerId, onSwitched) },
@@ -127,8 +128,7 @@ private fun LedgerSwitcherOverviewSection(summary: LedgerSwitcherSummary) {
 
 @Composable
 private fun LedgerListSection(
-    ledgers: List<LedgerSummary>,
-    loading: Boolean,
+    state: LedgerSwitcherUiState,
     activeLedgerId: String?,
     onRefresh: () -> Unit,
     onSwitch: (String) -> Unit,
@@ -139,20 +139,19 @@ private fun LedgerListSection(
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             LedgerListContent(
-                ledgers = ledgers,
-                loading = loading,
+                state = state,
                 activeLedgerId = activeLedgerId,
                 onSwitch = onSwitch,
             )
             QuietOutlinedButton(
-                text = if (loading) {
+                text = if (state.loading) {
                     stringResource(R.string.ledger_switcher_refresh_loading)
                 } else {
                     stringResource(R.string.ledger_switcher_refresh_button)
                 },
                 leadingIcon = Icons.Filled.Refresh,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !loading,
+                enabled = !state.loading,
                 onClick = onRefresh,
             )
         }
@@ -161,14 +160,14 @@ private fun LedgerListSection(
 
 @Composable
 private fun LedgerListContent(
-    ledgers: List<LedgerSummary>,
-    loading: Boolean,
+    state: LedgerSwitcherUiState,
     activeLedgerId: String?,
     onSwitch: (String) -> Unit,
 ) {
+    val ledgers = state.ledgers
     when {
         ledgers.isEmpty() -> SettingsListStateSlot(
-            loading = loading,
+            loading = ledgerSwitcherEmptySlotLoading(state),
             hasData = false,
             copy = SettingsStateSlotCopy(
                 loadingTitle = stringResource(R.string.ledger_switcher_loading_title),
@@ -177,6 +176,9 @@ private fun LedgerListContent(
                 emptyTitle = stringResource(R.string.ledger_switcher_empty_title),
                 emptyBody = stringResource(R.string.ledger_switcher_ledgers_empty),
             ),
+            message = state.message
+                .takeIf { state.listLoadState == LedgerListLoadState.Failed }
+                ?.let { SettingsStateSlotMessage(text = it, tone = state.messageTone) },
         )
 
         else -> Column {
@@ -187,13 +189,17 @@ private fun LedgerListContent(
                 LedgerRow(
                     ledger = ledger,
                     isActive = ledger.ledgerId == activeLedgerId,
-                    loading = loading,
+                    loading = state.loading,
                     onSwitch = onSwitch,
                 )
             }
         }
     }
 }
+
+private fun ledgerSwitcherEmptySlotLoading(state: LedgerSwitcherUiState): Boolean =
+    state.listLoadState != LedgerListLoadState.Failed &&
+        (state.loading || state.listLoadState != LedgerListLoadState.Loaded)
 
 @Composable
 private fun LedgerRow(

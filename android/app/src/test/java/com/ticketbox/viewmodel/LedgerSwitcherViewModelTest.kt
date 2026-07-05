@@ -42,6 +42,32 @@ class LedgerSwitcherViewModelTest {
 
             assertNotNull(state.message)
             assertEquals(MessageTone.Danger, state.messageTone)
+            assertEquals(LedgerListLoadState.Failed, state.listLoadState)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun refreshFailureKeepsCachedRowsButMarksListFailed() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi(
+                listLedgersResult = LedgerListResponseDto(
+                    listOf(ledgerDto(ledger, "My receipts"), ledgerDto("L_family", "Family ledger")),
+                ),
+            )
+            val vm = harness(api)
+
+            vm.refresh()
+            vm.uiState.first { !it.loading && it.ledgers.size == 2 }
+
+            api.listLedgersError = RuntimeException("offline")
+            vm.refresh()
+            val failed = vm.uiState.first { !it.loading && it.messageTone == MessageTone.Danger }
+
+            assertEquals(listOf(ledger, "L_family"), failed.ledgers.map { it.ledgerId })
+            assertEquals(LedgerListLoadState.Failed, failed.listLoadState)
         } finally {
             Dispatchers.resetMain()
         }
