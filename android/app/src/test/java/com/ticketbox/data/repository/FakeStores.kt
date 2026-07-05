@@ -4,6 +4,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,7 @@ internal class FakeTicketboxSettingsStore(
     private val lastConfirmedSyncAtByLedger = mutableMapOf<String, String>()
     private var lastUploadAt: String? = null
     private var monthlyBudgetCents: Long? = null
+    private var notificationPreferences: NotificationPreferences = NotificationPreferences()
     private var appSkinKey: String? = null
     var onSaveIdentity: (() -> Unit)? = null
     var backgroundWriteFailure: Throwable? = null
@@ -49,6 +51,12 @@ internal class FakeTicketboxSettingsStore(
 
     override fun saveMonthlyBudgetCents(amountCents: Long?) {
         monthlyBudgetCents = amountCents
+    }
+
+    override fun notificationPreferences(): NotificationPreferences = notificationPreferences
+
+    override fun saveNotificationPreferences(preferences: NotificationPreferences) {
+        notificationPreferences = preferences
     }
 
     override suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
