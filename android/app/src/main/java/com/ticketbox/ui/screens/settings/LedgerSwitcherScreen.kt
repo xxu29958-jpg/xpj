@@ -27,6 +27,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
@@ -202,32 +203,46 @@ private fun LedgerRow(
     loading: Boolean,
     onSwitch: (String) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            Text(
-                text = ledger.name,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            LedgerBadgeRow(ledger = ledger, isActive = isActive)
-        }
-        if (!isActive) {
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = AppSpacing.smallGap)
+
+    if (isActive) {
+        LedgerRowContent(ledger = ledger, isActive = true, modifier = rowModifier)
+    } else {
+        AppAdaptiveContentActionRow(
+            modifier = rowModifier,
+            content = {
+                LedgerRowContent(ledger = ledger, isActive = false)
+            },
+        ) { actionModifier ->
             QuietOutlinedButton(
                 text = stringResource(R.string.ledger_switcher_row_switch_button),
+                modifier = actionModifier,
                 enabled = !loading,
                 onClick = { onSwitch(ledger.ledgerId) },
             )
         }
+    }
+}
+
+@Composable
+private fun LedgerRowContent(
+    ledger: LedgerSummary,
+    isActive: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        Text(
+            text = ledger.name,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        LedgerBadgeRow(ledger = ledger, isActive = isActive)
     }
 }
 
