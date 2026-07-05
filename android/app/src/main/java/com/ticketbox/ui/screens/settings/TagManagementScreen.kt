@@ -10,7 +10,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.viewmodel.TagManagementUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
@@ -112,7 +111,7 @@ private fun TagManagementPageContent(
         title = stringResource(R.string.tag_management_page_title),
         subtitle = tagSummary(state.tags),
         onBack = actions.onBack,
-        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         state.undoable?.let { handle ->
             TagUndoPanel(handle = handle, busy = state.busy, onUndo = actions.onUndo)

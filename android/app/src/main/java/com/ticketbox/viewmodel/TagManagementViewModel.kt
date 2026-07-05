@@ -6,6 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.TagActions
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,7 @@ data class TagManagementUiState(
     val loading: Boolean = false,
     val busy: Boolean = false,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
     val undoable: TagUndoHandle? = null,
     // 契约 5: a rename that collided with an existing live tag — the screen opens
     // the merge dialog preselected on [MergeSuggestion.target] (still user-
@@ -67,12 +69,20 @@ class TagManagementViewModel(
 
     fun loadTags() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
             tagRepository.tags()
-                .onSuccess { tags -> _uiState.update { it.copy(loading = false, tags = tags.sortedByUsage()) } }
+                .onSuccess { tags ->
+                    _uiState.update {
+                        it.copy(loading = false, tags = tags.sortedByUsage(), messageTone = MessageTone.Neutral)
+                    }
+                }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(loading = false, message = error.toUiText(R.string.tag_management_load_failed))
+                        it.copy(
+                            loading = false,
+                            message = error.toUiText(R.string.tag_management_load_failed),
+                            messageTone = MessageTone.Danger,
+                        )
                     }
                 }
         }
@@ -82,11 +92,13 @@ class TagManagementViewModel(
         if (_uiState.value.busy) return
         if (newName.trim() == tag.name) return
         if (!tagRepository.canModifyLedger()) {
-            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
+            _uiState.update {
+                it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
+            }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             tagRepository.renameTag(tag.publicId, tag.rowVersion, newName)
                 .onSuccess { finishWithReload(message = UiText.res(R.string.tag_management_renamed, newName.trim())) }
                 .onFailure { error -> handleRenameFailure(error, source = tag, attemptedName = newName) }
@@ -119,6 +131,7 @@ class TagManagementViewModel(
                     it.copy(
                         busy = false,
                         message = UiText.res(R.string.tag_management_rename_conflict_merge_prompt, target.name),
+                        messageTone = MessageTone.Info,
                         mergeSuggestion = MergeSuggestion(source, target),
                     )
                 }
@@ -138,11 +151,13 @@ class TagManagementViewModel(
     fun deleteTag(tag: ManagedTag) {
         if (_uiState.value.busy) return
         if (!tagRepository.canModifyLedger()) {
-            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
+            _uiState.update {
+                it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
+            }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             tagRepository.deleteTag(tag.publicId, tag.rowVersion)
                 .onSuccess { result ->
                     finishWithReload(
@@ -158,11 +173,13 @@ class TagManagementViewModel(
         if (_uiState.value.busy) return
         if (source.publicId == target.publicId) return
         if (!tagRepository.canModifyLedger()) {
-            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger)) }
+            _uiState.update {
+                it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
+            }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             tagRepository.mergeTags(source.publicId, source.rowVersion, target.publicId, target.rowVersion)
                 .onSuccess { result ->
                     finishWithReload(
@@ -184,7 +201,7 @@ class TagManagementViewModel(
         // Consume the affordance synchronously so a rapid second tap early-returns
         // above — the undo token is single-use; a double-fire would make the loser's
         // 404 overwrite the winner's success message.
-        _uiState.update { it.copy(undoable = null, busy = true) }
+        _uiState.update { it.copy(undoable = null, busy = true, message = null, messageTone = MessageTone.Neutral) }
         viewModelScope.launch {
             tagRepository.undoTagMutation(handle.mutationPublicId, handle.rowVersion)
                 .onSuccess { result ->
@@ -193,11 +210,18 @@ class TagManagementViewModel(
                     } else {
                         UiText.res(R.string.tag_management_undo_done, handle.label)
                     }
-                    finishWithReload(message = msg)
+                    val tone = if (result.skipped > 0) MessageTone.Info else MessageTone.Success
+                    finishWithReload(message = msg, tone = tone)
                 }
                 .onFailure { error ->
                     // Window elapsed (tag_undo_not_found) or token stale → degrade.
-                    _uiState.update { it.copy(busy = false, message = tagErrorMessage(error)) }
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            message = tagErrorMessage(error),
+                            messageTone = tagErrorTone(error),
+                        )
+                    }
                 }
         }
     }
@@ -207,13 +231,18 @@ class TagManagementViewModel(
         _uiState.update { it.copy(undoable = null) }
     }
 
-    private suspend fun finishWithReload(message: UiText, undoable: TagUndoHandle? = null) {
+    private suspend fun finishWithReload(
+        message: UiText,
+        undoable: TagUndoHandle? = null,
+        tone: MessageTone = MessageTone.Success,
+    ) {
         val tags = tagRepository.tags().getOrNull()?.sortedByUsage() ?: _uiState.value.tags
         _uiState.update {
             it.copy(
                 tags = tags,
                 busy = false,
                 message = message,
+                messageTone = tone,
                 undoable = undoable,
                 // Every path here is a committed tag mutation (rename/delete/merge/
                 // undo success) → signal the stats tab to re-pull its tag list (P4).
@@ -223,7 +252,9 @@ class TagManagementViewModel(
     }
 
     private fun failWith(error: Throwable) {
-        _uiState.update { it.copy(busy = false, message = tagErrorMessage(error)) }
+        _uiState.update {
+            it.copy(busy = false, message = tagErrorMessage(error), messageTone = tagErrorTone(error))
+        }
     }
 }
 
@@ -235,6 +266,11 @@ private fun tagErrorMessage(error: Throwable): UiText {
     val code = (error as? RepositoryException)?.errorCode
     if (code == "state_conflict") return UiText.res(R.string.tag_management_error_state_conflict)
     return error.toUiText(R.string.tag_management_action_failed)
+}
+
+private fun tagErrorTone(error: Throwable): MessageTone {
+    val code = (error as? RepositoryException)?.errorCode
+    return if (code == "tag_conflict") MessageTone.Info else MessageTone.Danger
 }
 
 private fun List<ManagedTag>.sortedByUsage(): List<ManagedTag> =

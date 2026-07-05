@@ -6,6 +6,7 @@ import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.TagActions
 import com.ticketbox.data.repository.TagConflictDetails
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.TagMutationResult
 import com.ticketbox.domain.model.TagUndoResult
 import com.ticketbox.domain.model.UiText
@@ -56,6 +57,7 @@ class TagManagementViewModelTest {
         advanceUntilIdle()
         assertEquals(false, vm.uiState.value.loading)
         assertEquals(UiText.res(R.string.tag_management_load_failed), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -86,6 +88,7 @@ class TagManagementViewModelTest {
         advanceUntilIdle()
         assertEquals(0, repo.renameCalls)
         assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -102,6 +105,7 @@ class TagManagementViewModelTest {
         assertEquals(3L, undo.rowVersion) // source token = expected + 1
         assertEquals("出差", undo.label)
         assertTrue(state.tags.none { it.publicId == "a" }) // reloaded list drops it
+        assertEquals(MessageTone.Success, state.messageTone)
     }
 
     @Test
@@ -116,6 +120,7 @@ class TagManagementViewModelTest {
         assertEquals(1, repo.undoCalls)
         assertEquals("mut-delete" to 3L, repo.lastUndo)
         assertNull(vm.uiState.value.undoable)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -181,6 +186,7 @@ class TagManagementViewModelTest {
         // R.string.error_tag_conflict ("标签名已被占用，请改用合并。"), byte-identical
         // to the prior resolved message.
         assertEquals(UiText.res(R.string.error_tag_conflict), vm.uiState.value.message)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
         // The colliding key isn't a live tag in the list (e.g. soft-deleted) →
         // no merge prefill, just the steering message (契约 5 fallback).
         assertNull(vm.uiState.value.mergeSuggestion)
@@ -200,6 +206,7 @@ class TagManagementViewModelTest {
         assertTrue(sug != null)
         assertEquals("a", sug.source.publicId)
         assertEquals("b", sug.target.publicId)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
         // consume clears it (screen opened the dialog).
         vm.consumeMergeSuggestion()
         assertNull(vm.uiState.value.mergeSuggestion)
@@ -259,6 +266,7 @@ class TagManagementViewModelTest {
         vm.deleteTag(tag("a", "出差", 1))
         advanceUntilIdle()
         assertEquals(UiText.res(R.string.tag_management_error_state_conflict), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 
     // P4 stale-refresh: a committed tag mutation bumps tagsChangedRevision so the
@@ -313,6 +321,7 @@ class TagManagementViewModelTest {
         vm.renameTag(tag("a", "餐饮", 5), "餐厅")
         advanceUntilIdle()
         assertEquals(1, vm.uiState.value.tagsChangedRevision)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
     }
 
     @Test
