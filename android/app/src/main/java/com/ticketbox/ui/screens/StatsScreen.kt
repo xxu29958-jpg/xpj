@@ -21,8 +21,10 @@ import com.ticketbox.domain.model.DASHBOARD_CARD_RECURRING
 import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
+import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
@@ -60,6 +62,7 @@ import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsFilterOptionsLoadState
 import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -217,7 +220,7 @@ fun StatsScreen(
                                 stats = stats,
                                 statsSource = state.statsSource,
                                 recent7DaysAmountCents = overviewRecent7DaysAmount(state),
-                                comparison = state.monthComparison,
+                                comparison = overviewMonthComparison(state),
                                 trendData = StatsOverviewTrendData(
                                     reportTrend = state.reportsOverview?.trend.orEmpty(),
                                     includeRecentUpload = recentUploadMergedIntoOverview,
@@ -357,6 +360,28 @@ private fun orderedStatsDashboardKeys(keys: List<String>): List<String> {
 internal fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
     if (state.statsSource != StatsSource.Backend) return null
     return state.lifestyleStats?.recent7DaysAmountCents?.coerceAtLeast(0L)
+}
+
+internal fun overviewMonthComparison(state: StatsUiState): MonthComparison? {
+    if (state.statsSource != StatsSource.Backend) return null
+    val overview = state.reportsOverview ?: return null
+    if (overview.month != state.month) return null
+    return overview.toAuthoritativeMonthComparison()
+}
+
+private fun ReportsOverview.toAuthoritativeMonthComparison(): MonthComparison? {
+    if (previousCount <= 0 || previousTotalAmountCents <= 0L) return null
+    val currentAmount = totalAmountCents.coerceAtLeast(0L)
+    val previousAmount = previousTotalAmountCents
+    val delta = currentAmount - previousAmount
+    return MonthComparison(
+        currentMonth = month,
+        previousMonth = previousMonth,
+        currentAmountCents = currentAmount,
+        previousAmountCents = previousAmount,
+        deltaAmountCents = delta,
+        percentChange = ((delta.toDouble() / previousAmount.toDouble()) * 100).roundToInt(),
+    )
 }
 
 internal fun shouldShowReportsUnavailableFallback(state: StatsUiState): Boolean =
