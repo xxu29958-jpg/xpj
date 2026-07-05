@@ -96,6 +96,26 @@ class AppAdaptiveRowsTest {
     }
 
     @Test
+    fun statusContentRowsStackBelowInlineBreakpoint() {
+        assertEquals(
+            AppAdaptiveStatusContentMode.Stacked,
+            resolveAppAdaptiveStatusContentMode(
+                maxWidth = AppAdaptiveBreakpoints.contentActionInlineMinWidth - 1.dp,
+            ),
+        )
+    }
+
+    @Test
+    fun statusContentRowsStayInlineAtInlineBreakpoint() {
+        assertEquals(
+            AppAdaptiveStatusContentMode.Inline,
+            resolveAppAdaptiveStatusContentMode(
+                maxWidth = AppAdaptiveBreakpoints.contentActionInlineMinWidth,
+            ),
+        )
+    }
+
+    @Test
     fun amountRowsExposeSharedDefaultsWithoutChangingCurrentValues() {
         assertEquals(AppAdaptiveBreakpoints.editActionInlineMinWidth, AppAdaptiveBreakpoints.amountRowInlineMinWidth)
         assertEquals(0.44f, AppAdaptiveAmountRowDefaults.trailingWeight)

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -53,6 +54,11 @@ internal enum class AppAdaptiveContentActionMode {
 }
 
 internal enum class AppAdaptiveAmountRowMode {
+    Stacked,
+    Inline,
+}
+
+internal enum class AppAdaptiveStatusContentMode {
     Stacked,
     Inline,
 }
@@ -195,6 +201,48 @@ internal fun resolveAppAdaptiveAmountRowMode(maxWidth: Dp): AppAdaptiveAmountRow
         AppAdaptiveAmountRowMode.Stacked
     } else {
         AppAdaptiveAmountRowMode.Inline
+    }
+
+@Composable
+fun AppAdaptiveStatusContentRow(
+    modifier: Modifier = Modifier,
+    statusMinWidth: Dp = AppAdaptiveAmountRowDefaults.statusMinWidth,
+    status: @Composable () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        when (resolveAppAdaptiveStatusContentMode(maxWidth)) {
+            AppAdaptiveStatusContentMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            ) {
+                status()
+                content()
+            }
+            AppAdaptiveStatusContentMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(
+                    modifier = Modifier.widthIn(min = statusMinWidth),
+                    contentAlignment = Alignment.TopStart,
+                ) {
+                    status()
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    content()
+                }
+            }
+        }
+    }
+}
+
+internal fun resolveAppAdaptiveStatusContentMode(maxWidth: Dp): AppAdaptiveStatusContentMode =
+    if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
+        AppAdaptiveStatusContentMode.Stacked
+    } else {
+        AppAdaptiveStatusContentMode.Inline
     }
 
 @Composable
