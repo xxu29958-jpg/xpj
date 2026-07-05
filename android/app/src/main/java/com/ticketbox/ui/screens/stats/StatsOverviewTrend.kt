@@ -15,7 +15,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ReportTrendPoint
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -142,6 +146,7 @@ private fun HeroTrendFactStrip(
         HeroTrendFact(
             label = stringResource(R.string.stats_overview_trend_other_average_label),
             value = formatDisplayAmount(summary.otherAverageAmountCents, currencyDisplay),
+            isAmount = true,
             modifier = Modifier.weight(1f),
         )
     }
@@ -151,6 +156,7 @@ private fun HeroTrendFactStrip(
 private fun HeroTrendFact(
     label: String,
     value: String,
+    isAmount: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -164,14 +170,21 @@ private fun HeroTrendFact(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (isAmount) {
+            AppAmountText(
+                text = value,
+                role = AppAmountRole.Compact,
+            )
+        } else {
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium.tabularNum(),
+                fontWeight = AppTextHierarchy.body.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -205,21 +218,23 @@ private fun HeroTrendBreakdownRow(
     amountCents: Long,
     currencyDisplay: CurrencyDisplay,
 ) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
+    AppAdaptiveContentActionRow(
+        modifier = Modifier.fillMaxWidth(),
+        content = {
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    ) { amountModifier ->
+        AppEndAlignedAmountText(
             text = formatDisplayAmount(amountCents, currencyDisplay),
+            modifier = amountModifier,
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            role = AppAmountRole.Compact,
         )
     }
 }
