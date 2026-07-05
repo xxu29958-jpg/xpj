@@ -114,8 +114,14 @@ fun JoinFamilyLedgerScreen(
                     inviteToken = value.take(INVITE_TOKEN_MAX)
                     viewModel.onTokenChanged()
                 },
-                onAccountNameChange = { value -> accountName = value.take(NAME_MAX) },
-                onDeviceNameChange = { value -> deviceName = value.take(NAME_MAX) },
+                onAccountNameChange = { value ->
+                    accountName = value.take(NAME_MAX)
+                    viewModel.onIdentityChanged()
+                },
+                onDeviceNameChange = { value ->
+                    deviceName = value.take(NAME_MAX)
+                    viewModel.onIdentityChanged()
+                },
                 onPreview = {
                     viewModel.previewInvitation(
                         inviteToken = inviteToken,
@@ -207,6 +213,7 @@ private fun JoinInvitationForm(
                 state = state,
                 previewEnabled = fields.inviteToken.isNotBlank() &&
                     (serverUrlEntry == null || fields.serverUrl.isNotBlank()),
+                identityReady = joinIdentityInputsReady(fields.accountName, fields.deviceName),
                 onPreview = actions.onPreview,
                 onAccept = actions.onAccept,
             )
@@ -274,27 +281,21 @@ private fun JoinIdentityFields(
 private fun JoinInvitationActions(
     state: JoinFamilyLedgerUiState,
     previewEnabled: Boolean,
+    identityReady: Boolean,
     onPreview: () -> Unit,
     onAccept: () -> Unit,
 ) {
-    val previewing = state.preview == null
-    val enabled = if (previewing) {
-        !state.previewing && !state.submitting && previewEnabled
-    } else {
-        !state.submitting && !state.previewing
-    }
-    val label = when {
-        state.previewing -> stringResource(R.string.join_family_ledger_preview_loading)
-        state.submitting -> stringResource(R.string.join_family_ledger_accept_loading)
-        previewing -> stringResource(R.string.join_family_ledger_preview_button)
-        else -> stringResource(R.string.join_family_ledger_accept_button)
-    }
+    val model = joinInvitationActionModel(
+        state = state,
+        previewInputsReady = previewEnabled,
+        identityInputsReady = identityReady,
+    )
     AppPrimaryButton(
-        text = label,
+        text = stringResource(model.labelRes),
         icon = Icons.Filled.GroupAdd,
         modifier = Modifier.fillMaxWidth(),
-        enabled = enabled,
-        onClick = if (previewing) onPreview else onAccept,
+        enabled = model.enabled,
+        onClick = if (model.action == JoinInvitationPrimaryAction.Preview) onPreview else onAccept,
     )
 }
 

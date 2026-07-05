@@ -56,12 +56,18 @@ class JoinFamilyLedgerViewModel(
         get() = repository.currentLedgerRole()
 
     fun onTokenChanged() {
-        _uiState.update { it.copy(preview = null, success = null) }
+        previewedServerUrlOverride = null
+        _uiState.update { it.copy(preview = null, error = null, success = null) }
     }
 
     /** A server-URL edit invalidates the preview (it belongs to the old URL). */
     fun onServerUrlChanged() {
-        _uiState.update { it.copy(preview = null, success = null) }
+        previewedServerUrlOverride = null
+        _uiState.update { it.copy(preview = null, error = null, success = null) }
+    }
+
+    fun onIdentityChanged() {
+        _uiState.update { it.copy(error = null, success = null) }
     }
 
     /** Back to a fresh state. The unbound entry calls this when the flow is

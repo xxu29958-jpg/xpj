@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.LedgerFakeTokenStore
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.StubApi
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -129,6 +130,59 @@ class JoinFamilyLedgerViewModelTest {
                 onConsumed = {},
             )
             advanceUntilIdle()
+            assertTrue(api.acceptRequests.isEmpty())
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun tokenEditAfterPreviewFailureClearsStaleError() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi(previewError = IOException("offline"))
+            val (viewModel, _, _) = unboundHarness(api)
+
+            viewModel.previewInvitation("bad", serverUrlOverride = "https://join.example.com")
+            viewModel.uiState.first { it.error != null }
+
+            viewModel.onTokenChanged()
+
+            assertEquals(JoinFamilyLedgerUiState(), viewModel.uiState.value)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun identityEditAfterAcceptValidationFailureKeepsPreviewAndClearsError() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi(
+                previewResult = InvitationPreviewResponseDto(
+                    ledgerId = "L_family",
+                    ledgerName = "瀹跺涵璐︽湰",
+                    role = "member",
+                    expiresAt = null,
+                ),
+            )
+            val (viewModel, _, _) = unboundHarness(api)
+
+            viewModel.previewInvitation("inv_VM", serverUrlOverride = "https://join.example.com")
+            viewModel.uiState.first { it.preview != null || it.error != null }
+            viewModel.acceptInvitation(
+                inviteToken = "inv_VM",
+                accountName = " ",
+                deviceName = "Pixel 9",
+                onAccepted = {},
+                onConsumed = {},
+            )
+            viewModel.uiState.first { it.error != null }
+
+            viewModel.onIdentityChanged()
+
+            assertNotNull(viewModel.uiState.value.preview)
+            assertNull(viewModel.uiState.value.error)
             assertTrue(api.acceptRequests.isEmpty())
         } finally {
             Dispatchers.resetMain()
