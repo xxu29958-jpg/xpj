@@ -53,6 +53,7 @@ fun MerchantAliasesScreen(
     busy: Boolean,
     readOnly: Boolean,
     message: UiText?,
+    messageTone: MessageTone = MessageTone.Neutral,
     onBack: () -> Unit,
     onCreateCatalog: (String) -> Unit,
     onRenameCatalog: (MerchantCatalog, String) -> Unit,
@@ -158,7 +159,7 @@ fun MerchantAliasesScreen(
         title = stringResource(R.string.merchant_aliases_page_title),
         subtitle = merchantAliasSummary(catalog, aliases),
         onBack = onBack,
-        status = { AppStatusBanner(message = message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = message, tone = messageTone) },
     ) {
         // Online deletes expose a short undo window.
         undoableAlias?.let { undoable ->

@@ -355,6 +355,7 @@ internal fun SettingsDestinationHost(
             busy = states.merchant.busy,
             readOnly = !ledgerRoleCanModify(states.settings.role),
             message = states.merchant.message,
+            messageTone = states.merchant.messageTone,
             onBack = { route = SettingsDestination.Root },
             onCreateCatalog = actions.onCreateMerchantCatalog,
             onRenameCatalog = actions.onRenameMerchantCatalog,

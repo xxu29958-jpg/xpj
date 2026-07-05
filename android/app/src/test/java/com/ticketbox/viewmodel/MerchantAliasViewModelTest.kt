@@ -13,6 +13,7 @@ import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -55,6 +56,7 @@ class MerchantAliasViewModelTest {
         assertEquals("蓝瓶咖啡", harness.api.merchantCatalogCreateRequests.single().displayName)
         assertTrue(state.merchantCatalog.any { it.publicId == "catalog-created" })
         assertEquals(UiText.res(R.string.merchant_catalog_added), state.message)
+        assertEquals(MessageTone.Success, state.messageTone)
     }
 
     @Test
@@ -75,6 +77,7 @@ class MerchantAliasViewModelTest {
         assertEquals("hidden", harness.api.merchantCatalogUpdateRequests.single().status)
         assertEquals("hidden", state.merchantCatalog.single().status)
         assertEquals(UiText.res(R.string.merchant_catalog_hidden), state.message)
+        assertEquals(MessageTone.Success, state.messageTone)
     }
 
     @Test
@@ -94,6 +97,7 @@ class MerchantAliasViewModelTest {
         assertEquals(1L, harness.api.merchantCatalogDeleteRequests.single().expectedRowVersion)
         assertTrue(state.merchantCatalog.none { it.publicId == "catalog-1" })
         assertEquals(UiText.res(R.string.merchant_catalog_deleted), state.message)
+        assertEquals(MessageTone.Success, state.messageTone)
     }
 
     @Test
@@ -124,6 +128,7 @@ class MerchantAliasViewModelTest {
         val state = harness.vm.uiState.first { it.mergeSuggestion != null }
 
         assertEquals(UiText.res(R.string.merchant_catalog_rename_conflict_merge_prompt, "蓝瓶咖啡"), state.message)
+        assertEquals(MessageTone.Info, state.messageTone)
         val suggestion = requireNotNull(state.mergeSuggestion)
         assertEquals("source", suggestion.source.publicId)
         assertEquals("target", suggestion.target.publicId)
@@ -157,6 +162,7 @@ class MerchantAliasViewModelTest {
             UiText.res(R.string.merchant_catalog_merged_with_alias, "星巴克", "蓝瓶咖啡"),
             state.message,
         )
+        assertEquals(MessageTone.Success, state.messageTone)
     }
 
     @Test
@@ -178,6 +184,7 @@ class MerchantAliasViewModelTest {
         assertTrue(harness.api.merchantCatalogMergeRequests.isEmpty())
         assertTrue(harness.api.merchantCatalogDeleteRequests.isEmpty())
         assertEquals(UiText.res(R.string.common_readonly_ledger), harness.vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, harness.vm.uiState.value.messageTone)
     }
 
     private fun harness(
