@@ -24,6 +24,8 @@ class ReportsRecentWindowSummaryTest {
         assertEquals(2_800L, summary.totalAmountCents)
         assertEquals(900L, summary.previousThreeAmountCents)
         assertEquals(1_800L, summary.recentThreeAmountCents)
+        assertEquals(3, summary.previousThreeDayCount)
+        assertEquals(true, summary.hasPreviousThreeWindowEvidence)
         assertEquals("6/30", summary.peakLabel)
         assertEquals(25, summary.peakSharePercent)
         assertEquals(false, summary.shouldUseSparseRows)
@@ -43,10 +45,30 @@ class ReportsRecentWindowSummaryTest {
         requireNotNull(summary)
         assertEquals(900L, summary.totalAmountCents)
         assertEquals(0L, summary.previousThreeAmountCents)
+        assertEquals(1, summary.previousThreeDayCount)
+        assertEquals(false, summary.hasPreviousThreeWindowEvidence)
         assertEquals(900L, summary.recentThreeAmountCents)
         assertEquals(1, summary.activeDayCount)
         assertEquals(true, summary.shouldUseSparseRows)
         assertNull(summarizeReportsRecentWindow(listOf(spend("6/24", -100L), spend("6/25", 0L))))
+    }
+
+    @Test
+    fun recentWindowDoesNotTreatMissingPreviousBucketsAsZeroSpend() {
+        val summary = summarizeReportsRecentWindow(
+            listOf(
+                spend("6/27", 0L),
+                spend("6/28", 100L),
+                spend("6/29", 200L),
+                spend("6/30", 300L),
+            ),
+        )
+
+        requireNotNull(summary)
+        assertEquals(0L, summary.previousThreeAmountCents)
+        assertEquals(1, summary.previousThreeDayCount)
+        assertEquals(false, summary.hasPreviousThreeWindowEvidence)
+        assertEquals(600L, summary.recentThreeAmountCents)
     }
 
     @Test

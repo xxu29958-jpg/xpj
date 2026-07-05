@@ -91,6 +91,9 @@ private fun reportsRecentWindowInsight(
             summary.peakSharePercent,
             formatDisplayAmount(summary.otherAverageAmountCents, currencyDisplay),
         )
+        !summary.hasPreviousThreeWindowEvidence -> stringResource(
+            R.string.stats_reports_recent_window_previous_unknown,
+        )
         summary.previousThreeAmountCents == 0L && summary.recentThreeAmountCents > 0L ->
             stringResource(R.string.stats_recent_trend_vs_previous_new)
         diff > 0L -> stringResource(R.string.stats_recent_trend_vs_previous_up, formatDisplayAmount(abs(diff), currencyDisplay))
@@ -201,6 +204,7 @@ private fun ReportsRecentWindowComparisonRows(summary: ReportsRecentWindowSummar
     val currencyDisplay = LocalCurrencyDisplay.current
     val previousLabel = stringResource(R.string.stats_reports_recent_window_previous_three)
     val recentLabel = stringResource(R.string.stats_reports_recent_window_recent_three)
+    val hasPreviousEvidence = summary.hasPreviousThreeWindowEvidence
     val hasPreviousSpend = summary.previousThreeAmountCents > 0L
     val hasRecentSpend = summary.recentThreeAmountCents > 0L
     Row(
@@ -209,12 +213,12 @@ private fun ReportsRecentWindowComparisonRows(summary: ReportsRecentWindowSummar
     ) {
         ReportsRecentWindowFact(
             label = previousLabel,
-            value = if (hasPreviousSpend) {
-                formatDisplayAmount(summary.previousThreeAmountCents, currencyDisplay)
-            } else {
-                stringResource(R.string.stats_reports_recent_window_no_spend)
+            value = when {
+                !hasPreviousEvidence -> stringResource(R.string.stats_reports_recent_window_insufficient_data)
+                hasPreviousSpend -> formatDisplayAmount(summary.previousThreeAmountCents, currencyDisplay)
+                else -> stringResource(R.string.stats_reports_recent_window_no_spend)
             },
-            isAmount = hasPreviousSpend,
+            isAmount = hasPreviousEvidence && hasPreviousSpend,
             modifier = Modifier.weight(1f),
         )
         ReportsRecentWindowFact(
@@ -320,9 +324,12 @@ internal data class ReportsRecentWindowSummaryData(
     val otherAverageAmountCents: Long,
     val recentThreeAmountCents: Long,
     val previousThreeAmountCents: Long,
+    val previousThreeDayCount: Int,
 ) {
     val shouldUseSparseRows: Boolean =
         activeDayCount in 1..ReportsRecentWindowLayout.SparseActiveDayLimit
+
+    val hasPreviousThreeWindowEvidence: Boolean = previousThreeDayCount >= 3
 
     fun shouldShowSparseRows(avoidRepeatedSparseRows: Boolean): Boolean =
         shouldUseSparseRows && !avoidRepeatedSparseRows
@@ -346,6 +353,8 @@ internal fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecen
         index != peakIndex && day.amountCents > 0L
     }
     val otherTotal = otherPositiveDays.sumOf { it.amountCents }
+    val recentThree = normalized.takeLast(3)
+    val previousThree = normalized.dropLast(3).takeLast(3)
     return ReportsRecentWindowSummaryData(
         totalAmountCents = total,
         peakLabel = peak.label,
@@ -353,7 +362,8 @@ internal fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecen
         peakSharePercent = ((peak.amountCents * 100L) / total).toInt(),
         activeDayCount = normalized.count { it.amountCents > 0L },
         otherAverageAmountCents = if (otherPositiveDays.isNotEmpty()) otherTotal / otherPositiveDays.size else 0L,
-        recentThreeAmountCents = normalized.takeLast(3).sumOf { it.amountCents },
-        previousThreeAmountCents = normalized.dropLast(3).takeLast(3).sumOf { it.amountCents },
+        recentThreeAmountCents = recentThree.sumOf { it.amountCents },
+        previousThreeAmountCents = previousThree.sumOf { it.amountCents },
+        previousThreeDayCount = previousThree.size,
     )
 }
