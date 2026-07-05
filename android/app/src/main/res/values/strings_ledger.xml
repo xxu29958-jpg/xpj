@@ -81,6 +81,7 @@
     <string name="ledger_header_eyebrow">小票夹</string>
     <string name="ledger_header_title">账本</string>
     <string name="ledger_header_total_suffix">%1$s 支出</string>
+    <string name="ledger_header_total_current_list">当前列表合计</string>
     <string name="ledger_header_count_label">账单</string>
     <string name="ledger_header_count_value">%1$d 笔</string>
     <string name="ledger_header_subtitle">筛选、搜索、导出</string>

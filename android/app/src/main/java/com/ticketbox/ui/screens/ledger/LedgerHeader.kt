@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
@@ -51,16 +50,8 @@ internal fun LedgerHeader(
     onManualAdd: () -> Unit,
 ) {
     val summary = state.summary
-    val monthLabel = summary.monthFilter.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
-        ?: stringResource(R.string.ledger_header_month_all)
-    val statusText = when {
-        summary.syncing -> stringResource(R.string.ledger_header_status_syncing)
-        summary.lastSyncAt != null -> stringResource(
-            R.string.ledger_header_status_synced,
-            ledgerSyncClock(summary.lastSyncAt),
-        )
-        else -> stringResource(R.string.ledger_header_status_offline)
-    }
+    val statusEvidence = ledgerSyncEvidence(state)
+    val statusText = ledgerHeaderStatusText(state, statusEvidence)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -90,14 +81,14 @@ internal fun LedgerHeader(
                     maxLines = 1,
                 )
             }
-            LedgerStatusPill(text = statusText, active = summary.syncing)
+            LedgerStatusPill(text = statusText, active = statusEvidence == LedgerSyncEvidence.Refreshing)
         }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val stackKpis = maxWidth < LedgerHeaderLayout.KpiStackBreakpoint
             if (stackKpis) {
                 Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                     LedgerKpiCell(
-                        label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
+                        label = stringResource(R.string.ledger_header_total_current_list),
                         value = formatAmount(summary.totalAmountCents),
                         modifier = Modifier.fillMaxWidth(),
                         emphasized = true,
@@ -122,7 +113,7 @@ internal fun LedgerHeader(
                     verticalAlignment = Alignment.Bottom,
                 ) {
                     LedgerKpiCell(
-                        label = stringResource(R.string.ledger_header_total_suffix, monthLabel),
+                        label = stringResource(R.string.ledger_header_total_current_list),
                         value = formatAmount(summary.totalAmountCents),
                         modifier = Modifier.weight(1.35f),
                         emphasized = true,
@@ -136,6 +127,17 @@ internal fun LedgerHeader(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ledgerHeaderStatusText(state: LedgerUiState, evidence: LedgerSyncEvidence): String {
+    return when (evidence) {
+        LedgerSyncEvidence.Refreshing -> stringResource(R.string.ledger_header_status_syncing)
+        LedgerSyncEvidence.BackendSynced -> state.lastSyncAt?.let {
+            stringResource(R.string.ledger_header_status_synced, ledgerSyncClock(it))
+        } ?: stringResource(R.string.components_data_authority_backend_title)
+        LedgerSyncEvidence.LocalCache -> stringResource(R.string.ledger_header_status_offline)
     }
 }
 
