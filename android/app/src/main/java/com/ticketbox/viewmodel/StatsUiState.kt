@@ -24,6 +24,8 @@ import java.time.YearMonth
  */
 enum class StatsSource { None, Backend, LocalFallback }
 
+enum class ReportGoalsLoadState { Unknown, Loading, Loaded, Failed }
+
 data class StatsUiState(
     val stats: MonthlyStats? = null,
     val statsSource: StatsSource = StatsSource.None,
@@ -37,6 +39,7 @@ data class StatsUiState(
     val recurringCandidates: List<RecurringCandidate> = emptyList(),
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
+    val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
     val lastUploadAt: String? = null,
     val dashboardCards: List<DashboardCard> = emptyList(),
     val dashboardCardsLoading: Boolean = false,
@@ -98,6 +101,7 @@ data class StatsBudgetUiState(
 data class StatsReportsUiState(
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
+    val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
     val dashboardCards: List<DashboardCard> = emptyList(),
     val dashboardCardsLoading: Boolean = false,
     val dashboardCardsMessage: UiText? = null,
@@ -135,6 +139,11 @@ internal fun mergeStatsUiState(
         recurringCandidates = monthly.recurringCandidates,
         reportsOverview = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportsOverview else null,
         reportGoals = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportGoals else emptyList(),
+        reportGoalsLoadState = if (reportsMatch && monthly.selectedTag.isBlank()) {
+            reports.reportGoalsLoadState
+        } else {
+            ReportGoalsLoadState.Unknown
+        },
         lastUploadAt = monthly.lastUploadAt,
         dashboardCards = reports.dashboardCards,
         dashboardCardsLoading = reports.dashboardCardsLoading,

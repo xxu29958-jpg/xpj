@@ -136,6 +136,7 @@ class StatsReportsViewModel(
             it.copy(
                 reportsOverview = null,
                 reportGoals = emptyList(),
+                reportGoalsLoadState = ReportGoalsLoadState.Unknown,
                 reportsLoading = false,
                 reportsMessage = null,
             )
@@ -194,15 +195,12 @@ class StatsReportsViewModel(
     ) {
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(reportsLoading = true, reportsMessage = null) }
+                _uiState.update {
+                    it.copy(reportGoals = emptyList(), reportGoalsLoadState = ReportGoalsLoadState.Loading, reportsLoading = true, reportsMessage = null)
+                }
                 val goalsDeferred = async { reportsRepo.goals(month = key.month) }
-                val overviewResult = reportsRepo.reportsOverview(
-                    ReportsOverviewQuery(
-                        month = key.month,
-                        granularity = key.granularity,
-                        rankingMetric = key.rankingMetric,
-                    ),
-                )
+                val query = ReportsOverviewQuery(month = key.month, granularity = key.granularity, rankingMetric = key.rankingMetric)
+                val overviewResult = reportsRepo.reportsOverview(query)
                 if (!isCurrent(generation)) {
                     goalsDeferred.cancel()
                     return@launch
@@ -224,6 +222,7 @@ class StatsReportsViewModel(
                 _uiState.update {
                     it.copy(
                         reportGoals = goalsResult.getOrDefault(emptyList()),
+                        reportGoalsLoadState = if (goalsResult.isSuccess) ReportGoalsLoadState.Loaded else ReportGoalsLoadState.Failed,
                         reportsMessage = when {
                             overviewResult.isFailure && goalsResult.isFailure ->
                                 UiText.res(R.string.stats_message_reports_failed)

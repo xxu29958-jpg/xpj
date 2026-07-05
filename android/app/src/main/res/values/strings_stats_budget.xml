@@ -253,8 +253,16 @@
     <string name="stats_reports_goals_title">开销目标</string>
     <string name="stats_reports_goals_empty">本月还没有开销目标。</string>
     <string name="stats_reports_goals_empty_hint">设置后会显示支出上限、进度和风险。还债目标在规划菜单单独管理。</string>
+    <string name="stats_reports_goals_loading">正在读取本月目标。</string>
+    <string name="stats_reports_goals_loading_hint">目标读取完成后再显示进度和风险。</string>
+    <string name="stats_reports_goals_unavailable">目标暂时打不开。</string>
+    <string name="stats_reports_goals_unavailable_hint">本月目标需要服务端响应，稍后刷新再试。</string>
     <string name="stats_reports_goals_count">本月 %1$d 个开销目标</string>
+    <string name="stats_reports_goals_loading_count">正在读取目标</string>
+    <string name="stats_reports_goals_unavailable_count">目标状态暂不可用</string>
     <string name="stats_reports_goals_attention">%1$d 个要看</string>
+    <string name="stats_reports_goals_reading">读取中</string>
+    <string name="stats_reports_goals_unavailable_badge">暂不可用</string>
     <string name="stats_reports_goals_unset">未设置</string>
     <string name="stats_reports_goals_stable">节奏稳定</string>
     <string name="stats_reports_goals_average_label">整体进度</string>

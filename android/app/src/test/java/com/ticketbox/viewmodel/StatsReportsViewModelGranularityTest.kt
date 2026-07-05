@@ -107,10 +107,26 @@ class StatsReportsViewModelGranularityTest {
         assertFalse(vm.uiState.value.reportsLoading)
         assertEquals("2026-06", vm.uiState.value.reportsOverview?.month)
         assertEquals(emptyList(), vm.uiState.value.reportGoals)
+        assertEquals(ReportGoalsLoadState.Loading, vm.uiState.value.reportGoalsLoadState)
 
         goalsGate.complete(Result.success(emptyList()))
         advanceUntilIdle()
         assertFalse(vm.uiState.value.reportsLoading)
+        assertEquals(ReportGoalsLoadState.Loaded, vm.uiState.value.reportGoalsLoadState)
+    }
+
+    @Test
+    fun goalsFailureDoesNotMasqueradeAsEmptyGoalSet() = reportsTest { repo ->
+        repo.overviewResult = Result.success(overview(month = "2026-06"))
+        repo.goalsResponder = { Result.failure(RuntimeException("goals unavailable")) }
+        val vm = StatsReportsViewModel(repo)
+
+        vm.refresh(month = "2026-06", selectedTag = "")
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), vm.uiState.value.reportGoals)
+        assertEquals(ReportGoalsLoadState.Failed, vm.uiState.value.reportGoalsLoadState)
+        assertNull(vm.uiState.value.reportsMessage)
     }
 
     @Test

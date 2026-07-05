@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.annotation.StringRes
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,6 +37,7 @@ import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.StateTone
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.screens.debtGoalEvaluationLabelRes
+import com.ticketbox.viewmodel.ReportGoalsLoadState
 import kotlin.math.roundToInt
 
 private data class GoalDisplayModel(
@@ -53,6 +55,7 @@ private data class GoalAmountLine(
 @Composable
 internal fun GoalsSummaryCard(
     goals: List<Goal>,
+    loadState: ReportGoalsLoadState,
     modifier: Modifier = Modifier,
 ) {
     val visibleGoals = remember(goals) { goalDisplayModels(goals) }
@@ -65,23 +68,36 @@ internal fun GoalsSummaryCard(
 
     StatsInsightSurface(modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            GoalsSummaryHeader(goalCount = visibleGoals.size, attentionCount = attentionCount)
-            if (visibleGoals.isEmpty()) {
-                GoalsSummaryEmpty()
-            } else {
-                GoalPortfolioRail(
-                    goalCount = visibleGoals.size,
-                    attentionCount = attentionCount,
-                    averagePercent = averagePercent,
+            GoalsSummaryHeader(
+                goalCount = visibleGoals.size,
+                attentionCount = attentionCount,
+                loadState = loadState,
+            )
+            when {
+                loadState == ReportGoalsLoadState.Failed -> GoalsSummaryEmpty(
+                    titleRes = R.string.stats_reports_goals_unavailable,
+                    hintRes = R.string.stats_reports_goals_unavailable_hint,
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                    visibleGoals.take(4).forEachIndexed { index, model ->
-                        if (index > 0) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle),
-                            )
+                loadState != ReportGoalsLoadState.Loaded -> GoalsSummaryEmpty(
+                    titleRes = R.string.stats_reports_goals_loading,
+                    hintRes = R.string.stats_reports_goals_loading_hint,
+                )
+                visibleGoals.isEmpty() -> GoalsSummaryEmpty()
+                else -> {
+                    GoalPortfolioRail(
+                        goalCount = visibleGoals.size,
+                        attentionCount = attentionCount,
+                        averagePercent = averagePercent,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                        visibleGoals.take(4).forEachIndexed { index, model ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle),
+                                )
+                            }
+                            GoalPriorityRow(model = model)
                         }
-                        GoalPriorityRow(model = model)
                     }
                 }
             }
@@ -93,10 +109,17 @@ internal fun GoalsSummaryCard(
 private fun GoalsSummaryHeader(
     goalCount: Int,
     attentionCount: Int,
+    loadState: ReportGoalsLoadState,
 ) {
     val goalTokens = LocalGoalTokens.current
-    val status = goalsHeaderStatus(goalCount = goalCount, attentionCount = attentionCount)
+    val status = goalsHeaderStatus(
+        goalCount = goalCount,
+        attentionCount = attentionCount,
+        loadState = loadState,
+    )
     val tone = when (status) {
+        GoalsHeaderStatus.Loading -> goalTokens.idle
+        GoalsHeaderStatus.Unavailable -> goalTokens.nearLimit
         GoalsHeaderStatus.Empty -> goalTokens.idle
         GoalsHeaderStatus.Attention -> goalTokens.nearLimit
         GoalsHeaderStatus.Stable -> goalTokens.onTrack
@@ -106,17 +129,18 @@ private fun GoalsSummaryHeader(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             Text(
                 text = stringResource(R.string.stats_reports_goals_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
-                text = stringResource(R.string.stats_reports_goals_count, goalCount),
+                text = when (status) {
+                    GoalsHeaderStatus.Loading -> stringResource(R.string.stats_reports_goals_loading_count)
+                    GoalsHeaderStatus.Unavailable -> stringResource(R.string.stats_reports_goals_unavailable_count)
+                    else -> stringResource(R.string.stats_reports_goals_count, goalCount)
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
             )
@@ -130,31 +154,34 @@ private fun GoalsSummaryHeader(
         ) {
             Text(
                 text = when (status) {
+                    GoalsHeaderStatus.Loading -> stringResource(R.string.stats_reports_goals_reading)
+                    GoalsHeaderStatus.Unavailable -> stringResource(R.string.stats_reports_goals_unavailable_badge)
                     GoalsHeaderStatus.Empty -> stringResource(R.string.stats_reports_goals_unset)
                     GoalsHeaderStatus.Attention -> stringResource(R.string.stats_reports_goals_attention, attentionCount)
                     GoalsHeaderStatus.Stable -> stringResource(R.string.stats_reports_goals_stable)
                 },
                 color = tone.fg,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
     }
 }
 
 @Composable
-private fun GoalsSummaryEmpty() {
+private fun GoalsSummaryEmpty(
+    @StringRes titleRes: Int = R.string.stats_reports_goals_empty,
+    @StringRes hintRes: Int = R.string.stats_reports_goals_empty_hint,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(
-            text = stringResource(R.string.stats_reports_goals_empty),
+            text = stringResource(titleRes),
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.body.weight,
         )
         Text(
-            text = stringResource(R.string.stats_reports_goals_empty_hint),
+            text = stringResource(hintRes),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )

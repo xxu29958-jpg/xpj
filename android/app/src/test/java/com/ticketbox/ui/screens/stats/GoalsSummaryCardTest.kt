@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.stats
 
+import com.ticketbox.viewmodel.ReportGoalsLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -9,7 +10,47 @@ class GoalsSummaryCardTest {
     fun emptyGoalSetIsNotTreatedAsStable() {
         assertEquals(
             GoalsHeaderStatus.Empty,
-            goalsHeaderStatus(goalCount = 0, attentionCount = 0),
+            goalsHeaderStatus(
+                goalCount = 0,
+                attentionCount = 0,
+                loadState = ReportGoalsLoadState.Loaded,
+            ),
+        )
+        assertEquals(
+            GoalsHeaderStatus.Loading,
+            goalsHeaderStatus(
+                goalCount = 0,
+                attentionCount = 0,
+                loadState = ReportGoalsLoadState.Loading,
+            ),
+        )
+        assertEquals(
+            GoalsHeaderStatus.Loading,
+            goalsHeaderStatus(
+                goalCount = 0,
+                attentionCount = 0,
+                loadState = ReportGoalsLoadState.Unknown,
+            ),
+        )
+    }
+
+    @Test
+    fun failedGoalLoadIsNotTreatedAsUnset() {
+        assertEquals(
+            GoalsHeaderStatus.Unavailable,
+            goalsHeaderStatus(
+                goalCount = 0,
+                attentionCount = 0,
+                loadState = ReportGoalsLoadState.Failed,
+            ),
+        )
+        assertEquals(
+            GoalsHeaderStatus.Unavailable,
+            goalsHeaderStatus(
+                goalCount = 2,
+                attentionCount = 0,
+                loadState = ReportGoalsLoadState.Failed,
+            ),
         )
     }
 
@@ -17,7 +58,11 @@ class GoalsSummaryCardTest {
     fun attentionBeatsStableWhenGoalsNeedReview() {
         assertEquals(
             GoalsHeaderStatus.Attention,
-            goalsHeaderStatus(goalCount = 3, attentionCount = 1),
+            goalsHeaderStatus(
+                goalCount = 3,
+                attentionCount = 1,
+                loadState = ReportGoalsLoadState.Loaded,
+            ),
         )
     }
 
@@ -25,7 +70,11 @@ class GoalsSummaryCardTest {
     fun stableRequiresAtLeastOneGoalAndNoAttentionItems() {
         assertEquals(
             GoalsHeaderStatus.Stable,
-            goalsHeaderStatus(goalCount = 2, attentionCount = 0),
+            goalsHeaderStatus(
+                goalCount = 2,
+                attentionCount = 0,
+                loadState = ReportGoalsLoadState.Loaded,
+            ),
         )
     }
 }
