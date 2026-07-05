@@ -17,6 +17,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -132,6 +133,25 @@ class StatsReportsViewModelGranularityTest {
         advanceUntilIdle()
         assertEquals(2, repo.overviewQueries.size)
     }
+
+    @Test
+    fun tagFilterClearsReportSliceWithoutQueryingUntaggedOverview() = reportsTest { repo ->
+        repo.overviewResult = Result.success(overview(month = "2026-06"))
+        val vm = StatsReportsViewModel(repo)
+        vm.refresh(month = "2026-06", selectedTag = "")
+        advanceUntilIdle()
+        assertEquals(1, repo.overviewQueries.size)
+        assertEquals("2026-06", vm.uiState.value.reportsOverview?.month)
+
+        vm.refresh(month = "2026-06", selectedTag = "coffee")
+        advanceUntilIdle()
+
+        assertEquals(1, repo.overviewQueries.size)
+        assertEquals(2, repo.dashboardCardCalls)
+        assertNull(vm.uiState.value.reportsOverview)
+        assertFalse(vm.uiState.value.reportsLoading)
+        assertNull(vm.uiState.value.reportsMessage)
+    }
 }
 
 // Top-level (not nested) so the detekt TooManyFunctions baseline entry matches —
@@ -141,6 +161,7 @@ private class RecordingReportsActions : ReportsActions {
     var overviewResult: Result<ReportsOverview> = Result.failure(RuntimeException("overview unavailable in this fake"))
     var overviewResponder: (suspend () -> Result<ReportsOverview>)? = null
     var goalsResponder: (suspend () -> Result<List<Goal>>)? = null
+    var dashboardCardCalls = 0
 
     override fun canModifyLedger(): Boolean = true
 
@@ -192,7 +213,7 @@ private class RecordingReportsActions : ReportsActions {
     ): Result<Goal> = Result.failure(UnsupportedOperationException())
 
     override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
-        Result.success(DashboardCards(surface = surface, items = emptyList()))
+        Result.success(DashboardCards(surface = surface, items = emptyList())).also { dashboardCardCalls++ }
 
     override suspend fun updateDashboardCards(
         updates: List<DashboardCardUpdate>,

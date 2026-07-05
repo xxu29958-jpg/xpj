@@ -97,7 +97,7 @@ private fun TagScopeHeader(
                 )
             }
             Text(
-                text = tagScopeSourceLabel(statsSource),
+                text = stringResource(tagScopeSourceLabelRes(statsSource)),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
@@ -163,10 +163,8 @@ private fun TagScopeMetric(
     }
 }
 
-@Composable
-private fun tagScopeSourceLabel(statsSource: StatsSource): String =
-    if (statsSource == StatsSource.LocalFallback) {
-        stringResource(R.string.stats_tag_scope_source_local)
-    } else {
-        stringResource(R.string.stats_tag_scope_source_monthly)
-    }
+internal fun tagScopeSourceLabelRes(statsSource: StatsSource): Int = when (statsSource) {
+    StatsSource.Backend -> R.string.stats_tag_scope_source_monthly
+    StatsSource.LocalFallback -> R.string.stats_tag_scope_source_local
+    StatsSource.None -> R.string.stats_tag_scope_source_pending
+}

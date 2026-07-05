@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens.stats
 
+import com.ticketbox.R
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.viewmodel.StatsSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -52,5 +54,12 @@ class TagScopeInsightModelTest {
         requireNotNull(model)
         assertEquals(0L, model.totalAmountCents)
         assertEquals(0, model.count)
+    }
+
+    @Test
+    fun tagScopeSourceLabelNamesOnlyBackendStatsAsServerBacked() {
+        assertEquals(R.string.stats_tag_scope_source_monthly, tagScopeSourceLabelRes(StatsSource.Backend))
+        assertEquals(R.string.stats_tag_scope_source_local, tagScopeSourceLabelRes(StatsSource.LocalFallback))
+        assertEquals(R.string.stats_tag_scope_source_pending, tagScopeSourceLabelRes(StatsSource.None))
     }
 }
