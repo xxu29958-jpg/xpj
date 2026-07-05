@@ -111,7 +111,7 @@ fun DebtDetailScreen(
             onClose = viewModel::dismissAction,
         )
     }
-    if (debt != null && proposalState.activeForm != null) {
+    if (debt?.isMember == true && proposalState.activeForm != null) {
         ProposalFormSheet(
             state = proposalState,
             currency = currency,

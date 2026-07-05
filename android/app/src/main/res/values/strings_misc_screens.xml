@@ -104,6 +104,10 @@
 
     <!-- IncomePlanViewModel：收入计划 VM 状态/结果文案（ADR-0044 wave 2） -->
     <string name="income_plan_load_failed">加载收入记录失败。</string>
+    <string name="income_plan_archived_load_failed">归档收入暂时打不开。</string>
+    <string name="income_plan_loading_title">正在读取收入记录</string>
+    <string name="income_plan_loading_body">会重新读取到账与固定收入。</string>
+    <string name="income_plan_load_failed_hint">刷新后再显示本月到账与收入记录。</string>
     <string name="income_plan_validation_error">请填写名称、合法金额、日期；单笔收入还要填到账月份。</string>
     <string name="income_plan_added">已添加收入</string>
     <string name="income_plan_add_failed">添加失败，请稍后重试。</string>

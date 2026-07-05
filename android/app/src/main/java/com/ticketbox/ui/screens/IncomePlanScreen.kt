@@ -47,11 +47,17 @@ import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppContentStateCopy
+import com.ticketbox.ui.components.AppContentStatePresentation
+import com.ticketbox.ui.components.AppContentStateSpec
+import com.ticketbox.ui.components.AppContentStateSlot
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFormFieldGroup
@@ -112,6 +118,11 @@ fun IncomePlanScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val bodyState = incomePlanBodyState(
+        loadState = state.loadState,
+        activeCount = state.activePlans.size,
+        archivedCount = state.archivedPlans.size,
+    )
 
     // 成功提示在页头横幅展示数秒后自动收起；error 由下一次 refresh 清掉，与既有语义一致。
     LaunchedEffect(state.flashMessage) {
@@ -166,17 +177,30 @@ fun IncomePlanScreen(
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }
-        state.error?.let { err ->
+        incomePlanInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
-        item {
-            IncomeTotalSummary(
-                totalCents = state.totalActiveAmountCents,
-                activeCount = state.activePlans.size,
-                currency = currency,
-            )
+        if (incomePlanShowsSummary(bodyState)) {
+            item {
+                IncomeTotalSummary(
+                    totalCents = state.totalActiveAmountCents,
+                    activeCount = state.activePlans.size,
+                    currency = currency,
+                )
+            }
         }
-        incomePlanSections(state = state, currency = currency, viewModel = viewModel)
+        when (bodyState) {
+            IncomePlanBodyState.Loading,
+            IncomePlanBodyState.LoadFailed -> item {
+                IncomePlanBodyStateSlot(
+                    bodyState = bodyState,
+                    error = state.error,
+                    onRetry = viewModel::refresh,
+                )
+            }
+            IncomePlanBodyState.Empty,
+            IncomePlanBodyState.Content -> incomePlanSections(state = state, currency = currency, viewModel = viewModel)
+        }
     }
 
     if (showAddSheet) {
@@ -288,6 +312,35 @@ private fun LazyListScope.incomePlanSections(
                 dimmed = true,
             )
         }
+    }
+}
+
+@Composable
+private fun IncomePlanBodyStateSlot(
+    bodyState: IncomePlanBodyState,
+    error: UiText?,
+    onRetry: () -> Unit,
+) {
+    when (bodyState) {
+        IncomePlanBodyState.Loading -> AppContentStateSlot(
+            state = AppContentStateSpec(
+                loading = true,
+                hasData = false,
+                copy = AppContentStateCopy(
+                    loadingTitle = stringResource(R.string.income_plan_loading_title),
+                    loadingBody = stringResource(R.string.income_plan_loading_body),
+                    emptyText = stringResource(R.string.income_plan_empty_body_compact),
+                ),
+                presentation = AppContentStatePresentation.Card,
+            ),
+        )
+        IncomePlanBodyState.LoadFailed -> AppErrorState(
+            title = error?.asString() ?: stringResource(R.string.income_plan_load_failed),
+            body = stringResource(R.string.income_plan_load_failed_hint),
+            onRetry = onRetry,
+        )
+        IncomePlanBodyState.Empty,
+        IncomePlanBodyState.Content -> Unit
     }
 }
 

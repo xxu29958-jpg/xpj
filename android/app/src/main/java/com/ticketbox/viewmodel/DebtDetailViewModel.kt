@@ -88,7 +88,23 @@ class DebtDetailViewModel(
     private var latestRefreshGeneration = 0L
 
     fun loadDebt(publicId: String) {
+        val previousPublicId = loadedPublicId
         loadedPublicId = publicId
+        if (previousPublicId != publicId) {
+            _state.update {
+                it.copy(
+                    debt = null,
+                    error = null,
+                    activeAction = null,
+                    amountInput = "",
+                    reasonInput = "",
+                    adjustmentIncrease = true,
+                    validationError = null,
+                    isSubmitting = false,
+                    flashMessage = null,
+                )
+            }
+        }
         refresh()
     }
 

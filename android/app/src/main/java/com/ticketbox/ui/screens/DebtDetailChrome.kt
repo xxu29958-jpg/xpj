@@ -8,6 +8,13 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppContentStateCopy
+import com.ticketbox.ui.components.AppContentStatePresentation
+import com.ticketbox.ui.components.AppContentStateSpec
+import com.ticketbox.ui.components.AppContentStateSlot
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
@@ -35,6 +42,12 @@ internal fun DebtDetailContent(
     callbacks: DebtDetailScreenCallbacks,
 ) {
     val debt = state.debt
+    val bodyState = debtDetailBodyState(
+        hasDebt = debt != null,
+        isLoading = state.isLoading,
+        error = state.error,
+    )
+    val readableProposalState = if (debt?.isMember == true) proposalState else MemberProposalUiState()
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
@@ -53,22 +66,36 @@ internal fun DebtDetailContent(
             onRefresh = callbacks.onRefresh,
         ),
     ) {
-        debtDetailStatusItems(state = state, proposalState = proposalState)
-        debt?.let { loaded ->
-            if (loaded.isMember) {
-                debtDetailMemberItems(
-                    debt = loaded,
-                    proposalState = proposalState,
-                    proposalViewModel = proposalViewModel,
-                    currency = currency,
+        debtDetailStatusItems(
+            state = state,
+            proposalState = readableProposalState,
+            bodyState = bodyState,
+        )
+        when (bodyState) {
+            DebtDetailBodyState.Loading,
+            DebtDetailBodyState.LoadFailed -> item {
+                DebtDetailBodyStateSlot(
+                    bodyState = bodyState,
+                    error = state.error,
+                    onRetry = callbacks.onRefresh,
                 )
-            } else {
-                debtDetailExternalItems(
-                    debt = loaded,
-                    canModify = state.canModify,
-                    currency = currency,
-                    callbacks = callbacks,
-                )
+            }
+            DebtDetailBodyState.Content -> debt?.let { loaded ->
+                if (loaded.isMember) {
+                    debtDetailMemberItems(
+                        debt = loaded,
+                        proposalState = readableProposalState,
+                        proposalViewModel = proposalViewModel,
+                        currency = currency,
+                    )
+                } else {
+                    debtDetailExternalItems(
+                        debt = loaded,
+                        canModify = state.canModify,
+                        currency = currency,
+                        callbacks = callbacks,
+                    )
+                }
             }
         }
     }
@@ -90,11 +117,42 @@ private fun debtDetailSubtitle(debt: Debt?): String? = debt?.let { loaded ->
 private fun LazyListScope.debtDetailStatusItems(
     state: DebtDetailUiState,
     proposalState: MemberProposalUiState,
+    bodyState: DebtDetailBodyState,
 ) {
     state.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
     proposalState.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
-    state.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
+    debtDetailInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->
+        item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
+    }
     proposalState.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
+}
+
+@Composable
+private fun DebtDetailBodyStateSlot(
+    bodyState: DebtDetailBodyState,
+    error: UiText?,
+    onRetry: () -> Unit,
+) {
+    when (bodyState) {
+        DebtDetailBodyState.Loading -> AppContentStateSlot(
+            state = AppContentStateSpec(
+                loading = true,
+                hasData = false,
+                copy = AppContentStateCopy(
+                    loadingTitle = stringResource(R.string.debt_detail_loading_title),
+                    loadingBody = stringResource(R.string.debt_detail_loading_body),
+                    emptyText = stringResource(R.string.debt_detail_loading_body),
+                ),
+                presentation = AppContentStatePresentation.Card,
+            ),
+        )
+        DebtDetailBodyState.LoadFailed -> AppErrorState(
+            title = error?.asString() ?: stringResource(R.string.debt_detail_load_failed),
+            body = stringResource(R.string.debt_detail_load_failed_hint),
+            onRetry = onRetry,
+        )
+        DebtDetailBodyState.Content -> Unit
+    }
 }
 
 private fun LazyListScope.debtDetailMemberItems(

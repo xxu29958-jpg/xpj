@@ -411,6 +411,9 @@
     <string name="debt_detail_status">状态</string>
     <string name="debt_detail_closed_note">这笔欠款已结清或作废，无需再记账。</string>
     <string name="debt_detail_load_failed">欠款详情加载失败，请稍后再试。</string>
+    <string name="debt_detail_loading_title">正在读取欠款详情</string>
+    <string name="debt_detail_loading_body">会按当前账本重新读取最新状态。</string>
+    <string name="debt_detail_load_failed_hint">刷新后再显示剩余金额、状态和可用操作。</string>
     <string name="debt_action_repayment_title">记还款</string>
     <string name="debt_action_adjustment_title">调整本金</string>
     <string name="debt_action_void_title">作废欠款</string>

@@ -28,6 +28,7 @@ import java.time.YearMonth
  */
 data class IncomePlanUiState(
     val isLoading: Boolean = false,
+    val loadState: IncomePlanLoadState = IncomePlanLoadState.Unknown,
     val canModify: Boolean = true,
     val activePlans: List<IncomePlan> = emptyList(),
     val archivedPlans: List<IncomePlan> = emptyList(),
@@ -44,6 +45,13 @@ data class IncomePlanUiState(
      */
     val addSucceeded: Boolean = false,
 )
+
+enum class IncomePlanLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
 
 data class IncomePlanDraftUi(
     val label: String = "",
@@ -90,7 +98,13 @@ class IncomePlanViewModel(
     }
 
     fun refresh() {
-        _state.update { it.copy(isLoading = true, error = null) }
+        _state.update {
+            it.copy(
+                isLoading = true,
+                loadState = IncomePlanLoadState.Loading,
+                error = null,
+            )
+        }
         viewModelScope.launch {
             val active = repository.listActive()
             val archived = repository.listIncluding(
@@ -98,18 +112,21 @@ class IncomePlanViewModel(
             )
             val nextState = active.fold(
                 onSuccess = { listing ->
+                    val archivedError = archived.exceptionOrNull()?.toUiText(R.string.income_plan_archived_load_failed)
                     _state.value.copy(
                         isLoading = false,
+                        loadState = IncomePlanLoadState.Loaded,
                         canModify = repository.canModifyLedger(),
                         activePlans = listing.plans,
                         archivedPlans = archived.getOrDefault(emptyList()),
                         totalActiveAmountCents = listing.totalActiveAmountCents,
-                        error = null,
+                        error = archivedError,
                     )
                 },
                 onFailure = { err ->
                     _state.value.copy(
                         isLoading = false,
+                        loadState = IncomePlanLoadState.Failed,
                         error = err.toUiText(R.string.income_plan_load_failed),
                     )
                 },
