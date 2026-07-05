@@ -22,8 +22,17 @@ data class RecurringUiState(
     val messageTone: MessageTone = MessageTone.Neutral,
     val items: List<RecurringItem> = emptyList(),
     val candidates: List<RecurringCandidate> = emptyList(),
+    val itemsLoadState: RecurringListLoadState = RecurringListLoadState.Unknown,
+    val candidatesLoadState: RecurringListLoadState = RecurringListLoadState.Unknown,
     val canModify: Boolean = true,
 )
+
+enum class RecurringListLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
 
 class RecurringViewModel(
     private val repository: RecurringActions,
@@ -46,6 +55,8 @@ class RecurringViewModel(
                     requestGeneration += 1
                     _uiState.value = RecurringUiState(
                         loading = true,
+                        itemsLoadState = RecurringListLoadState.Loading,
+                        candidatesLoadState = RecurringListLoadState.Loading,
                         canModify = repository.canModifyLedger(),
                     )
                     refresh()
@@ -59,6 +70,8 @@ class RecurringViewModel(
             _uiState.update {
                 it.copy(
                     loading = true,
+                    itemsLoadState = RecurringListLoadState.Loading,
+                    candidatesLoadState = RecurringListLoadState.Loading,
                     message = null,
                     messageTone = MessageTone.Neutral,
                     canModify = repository.canModifyLedger(),
@@ -78,6 +91,8 @@ class RecurringViewModel(
                     messageTone = if (message == null) MessageTone.Neutral else MessageTone.Danger,
                     items = itemsResult.getOrElse { state.items },
                     candidates = candidatesResult.getOrElse { state.candidates },
+                    itemsLoadState = itemsResult.toRecurringListLoadState(),
+                    candidatesLoadState = candidatesResult.toRecurringListLoadState(),
                     canModify = repository.canModifyLedger(),
                 )
             }
@@ -94,30 +109,35 @@ class RecurringViewModel(
             }
             return
         }
-        mutate {
-            repository.confirmCandidate(candidate)
-        }
+        mutate(
+            action = { repository.confirmCandidate(candidate) },
+            onSuccessState = { state, item ->
+                state.copy(
+                    items = state.items.withRecurringItem(item),
+                    candidates = state.candidates.filterNot { it == candidate },
+                )
+            },
+        )
     }
 
     fun pause(publicId: String, expectedRowVersion: Long) {
-        mutate {
-            repository.pause(publicId, expectedRowVersion)
-        }
+        mutate(action = { repository.pause(publicId, expectedRowVersion) })
     }
 
     fun resume(publicId: String, expectedRowVersion: Long) {
-        mutate {
-            repository.resume(publicId, expectedRowVersion)
-        }
+        mutate(action = { repository.resume(publicId, expectedRowVersion) })
     }
 
     fun archive(publicId: String) {
-        mutate {
-            repository.archive(publicId)
-        }
+        mutate(action = { repository.archive(publicId) })
     }
 
-    private fun mutate(action: suspend () -> Result<RecurringItem>) {
+    private fun mutate(
+        action: suspend () -> Result<RecurringItem>,
+        onSuccessState: (RecurringUiState, RecurringItem) -> RecurringUiState = { state, item ->
+            state.copy(items = state.items.withRecurringItem(item))
+        },
+    ) {
         if (!repository.canModifyLedger()) {
             _uiState.update {
                 it.copy(
@@ -134,11 +154,16 @@ class RecurringViewModel(
             val result = action()
             if (requestGeneration != generation) return@launch
             result.fold(
-                onSuccess = {
+                onSuccess = { item ->
                     _uiState.update { state ->
-                        state.copy(
-                            message = UiText.res(R.string.recurring_message_updated),
-                            messageTone = MessageTone.Success,
+                        onSuccessState(
+                            state.copy(
+                                loading = false,
+                                message = UiText.res(R.string.recurring_message_updated),
+                                messageTone = MessageTone.Success,
+                                canModify = repository.canModifyLedger(),
+                            ),
+                            item,
                         )
                     }
                     refresh()
@@ -157,3 +182,13 @@ class RecurringViewModel(
         }
     }
 }
+
+private fun <T> Result<T>.toRecurringListLoadState(): RecurringListLoadState =
+    if (isSuccess) RecurringListLoadState.Loaded else RecurringListLoadState.Failed
+
+private fun List<RecurringItem>.withRecurringItem(item: RecurringItem): List<RecurringItem> =
+    if (any { it.publicId == item.publicId }) {
+        map { existing -> if (existing.publicId == item.publicId) item else existing }
+    } else {
+        listOf(item) + this
+    }

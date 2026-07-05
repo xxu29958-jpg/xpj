@@ -34,6 +34,80 @@ class RecurringViewModelTest {
     }
 
     @Test
+    fun initialFailureMarksBothListsFailedWithoutFabricatingEmpty() = recurringTest {
+        val fake = FakeRecurringActions(
+            itemsResult = Result.failure(IllegalStateException("items offline")),
+            candidatesResult = Result.failure(IllegalStateException("candidates offline")),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), vm.uiState.value.items)
+        assertEquals(emptyList(), vm.uiState.value.candidates)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun itemsLoadedEmptyAndCandidatesFailureRemainIndependent() = recurringTest {
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(emptyList()),
+            candidatesResult = Result.failure(IllegalStateException("candidates offline")),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+        assertEquals(emptyList(), vm.uiState.value.items)
+        assertEquals(emptyList(), vm.uiState.value.candidates)
+    }
+
+    @Test
+    fun refreshFailureKeepsExistingRowsAndMarksListsFailed() = recurringTest {
+        val existingItem = item(merchant = "Cloud Storage")
+        val existingCandidate = candidate("Video Plan")
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(existingItem)),
+            candidatesResult = Result.success(listOf(existingCandidate)),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        fake.itemsResult = Result.failure(IllegalStateException("items offline"))
+        fake.candidatesResult = Result.failure(IllegalStateException("candidates offline"))
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf(existingItem), vm.uiState.value.items)
+        assertEquals(listOf(existingCandidate), vm.uiState.value.candidates)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+    }
+
+    @Test
+    fun confirmCandidateKeepsReturnedItemWhenFollowUpRefreshFails() = recurringTest {
+        val targetCandidate = candidate("Gym")
+        val fake = FakeRecurringActions(
+            candidatesResult = Result.success(listOf(targetCandidate)),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        fake.itemsResult = Result.failure(IllegalStateException("items offline"))
+        fake.candidatesResult = Result.failure(IllegalStateException("candidates offline"))
+        vm.confirmCandidate(targetCandidate)
+        advanceUntilIdle()
+
+        assertEquals(1, fake.confirmCalls)
+        assertEquals(listOf(item(merchant = "Gym")), vm.uiState.value.items)
+        assertEquals(emptyList(), vm.uiState.value.candidates)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+    }
+
+    @Test
     fun activeLedgerChangeClearsCandidatesAndRejectsStaleCandidate() = recurringTest {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val oldCandidate = candidate("Old Gym")

@@ -641,7 +641,11 @@
     <string name="recurring_header_subtitle">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</string>
     <string name="recurring_items_card_title">%1$s 固定支出</string>
     <string name="recurring_items_card_count">%1$d 项</string>
+    <string name="recurring_items_card_count_loading">读取中</string>
+    <string name="recurring_items_card_count_unavailable">待刷新</string>
     <string name="recurring_items_empty">还没有这一类固定支出。</string>
+    <string name="recurring_items_load_failed_title">固定支出暂时打不开</string>
+    <string name="recurring_items_load_failed_body">没有拿到服务端列表，先别把它当成没有固定支出。</string>
     <string name="recurring_item_merchant_fallback">未填写商家</string>
     <string name="recurring_item_anomaly_higher">本月偏高 %1$d%%</string>
     <string name="recurring_action_pause">暂停</string>
@@ -651,6 +655,8 @@
     <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
     <string name="recurring_candidates_card_subtitle">识别自最近账单，确认后才进入正式固定支出。</string>
     <string name="recurring_candidates_empty">还没有新的固定支出候选。</string>
+    <string name="recurring_candidates_load_failed_title">候选暂时打不开</string>
+    <string name="recurring_candidates_load_failed_body">没有拿到服务端候选，先别把它当成没有可确认项。</string>
     <string name="recurring_candidate_merchant_fallback">未填写商家</string>
     <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
     <string name="recurring_candidate_meta_summary">%1$d &#27425; &#183; %2$s</string>
