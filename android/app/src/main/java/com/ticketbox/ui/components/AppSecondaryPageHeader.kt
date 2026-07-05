@@ -2,14 +2,15 @@ package com.ticketbox.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
@@ -62,41 +63,62 @@ private fun AppSecondaryTitleBlock(
     subtitle: String?,
     actions: @Composable (() -> Unit)?,
 ) {
-    Row(
+    if (actions == null) {
+        AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
+        return
+    }
+
+    AppAdaptiveContentActionStateRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        verticalAlignment = Alignment.CenterVertically,
+        content = {
+            AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
+        },
+    ) { actionModifier, stacked ->
+        Box(
+            modifier = actionModifier,
+            contentAlignment = if (stacked) Alignment.CenterStart else Alignment.CenterEnd,
         ) {
+            actions()
+        }
+    }
+}
+
+@Composable
+private fun AppSecondaryTitleText(
+    title: String,
+    subtitle: String?,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = AppTextHierarchy.heading.size,
+                lineHeight = 24.sp,
+                letterSpacing = 0.sp,
+            ),
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        subtitle?.takeIf { it.isNotBlank() }?.let {
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = AppTextHierarchy.heading.size,
-                    lineHeight = 24.sp,
+                text = it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.heavy),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = AppTextHierarchy.caption.size,
+                    lineHeight = 18.sp,
                     letterSpacing = 0.sp,
                 ),
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
+                fontWeight = AppTextHierarchy.caption.weight,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            subtitle?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.heavy),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = AppTextHierarchy.caption.size,
-                        lineHeight = 18.sp,
-                        letterSpacing = 0.sp,
-                    ),
-                    fontWeight = AppTextHierarchy.caption.weight,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
-        actions?.invoke()
     }
 }
 

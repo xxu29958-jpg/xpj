@@ -1,12 +1,10 @@
 package com.ticketbox.ui.screens.ledger
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
@@ -28,8 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -38,7 +36,6 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
 
@@ -56,47 +53,26 @@ internal fun LedgerSelectionBar(
     onEdit: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        BoxWithConstraints(
+        AppAdaptiveContentActionStateRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.smallGap),
-        ) {
-            val shouldStackActions = maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth
-            if (shouldStackActions) {
-                Column(
+            verticalAlignment = Alignment.CenterVertically,
+            content = {
+                LedgerSelectionSummary(
+                    selectedCount = selectedCount,
+                    applying = applying,
+                    onExit = onExit,
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                ) {
-                    LedgerSelectionSummary(selectedCount = selectedCount, applying = applying, onExit = onExit)
-                    LedgerSelectionActions(
-                        expanded = true,
-                        selectedCount = selectedCount,
-                        applying = applying,
-                        onSelectAll = onSelectAll,
-                        onEdit = onEdit,
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    LedgerSelectionSummary(
-                        selectedCount = selectedCount,
-                        applying = applying,
-                        onExit = onExit,
-                        modifier = Modifier.weight(1f),
-                    )
-                    LedgerSelectionActions(
-                        expanded = false,
-                        selectedCount = selectedCount,
-                        applying = applying,
-                        onSelectAll = onSelectAll,
-                        onEdit = onEdit,
-                    )
-                }
-            }
+                )
+            },
+        ) { actionModifier, stacked ->
+            LedgerSelectionActions(
+                modifier = actionModifier,
+                stacked = stacked,
+                state = LedgerSelectionActionState(selectedCount = selectedCount, applying = applying),
+                actions = LedgerSelectionActionCallbacks(onSelectAll = onSelectAll, onEdit = onEdit),
+            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
     }
@@ -125,32 +101,42 @@ private fun LedgerSelectionSummary(
     }
 }
 
+@Immutable
+private data class LedgerSelectionActionState(
+    val selectedCount: Int,
+    val applying: Boolean,
+)
+
+private data class LedgerSelectionActionCallbacks(
+    val onSelectAll: () -> Unit,
+    val onEdit: () -> Unit,
+)
+
 @Composable
 private fun LedgerSelectionActions(
-    expanded: Boolean,
-    selectedCount: Int,
-    applying: Boolean,
-    onSelectAll: () -> Unit,
-    onEdit: () -> Unit,
+    modifier: Modifier,
+    stacked: Boolean,
+    state: LedgerSelectionActionState,
+    actions: LedgerSelectionActionCallbacks,
 ) {
     Row(
-        modifier = if (expanded) Modifier.fillMaxWidth() else Modifier,
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val buttonModifier = if (expanded) Modifier.weight(1f) else Modifier.widthIn(min = 88.dp)
+        val buttonModifier = if (stacked) Modifier.weight(1f) else Modifier
         QuietOutlinedButton(
             text = stringResource(R.string.ledger_selection_select_all),
-            enabled = !applying,
+            enabled = !state.applying,
             modifier = buttonModifier,
-            onClick = onSelectAll,
+            onClick = actions.onSelectAll,
         )
         AppPrimaryButton(
             text = stringResource(R.string.ledger_selection_edit),
             icon = Icons.Filled.Edit,
-            enabled = selectedCount > 0 && !applying,
+            enabled = state.selectedCount > 0 && !state.applying,
             modifier = buttonModifier,
-            onClick = onEdit,
+            onClick = actions.onEdit,
         )
     }
 }
