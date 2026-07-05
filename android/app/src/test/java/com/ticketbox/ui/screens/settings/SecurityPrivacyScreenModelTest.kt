@@ -40,5 +40,27 @@ class SecurityPrivacyScreenModelTest {
             ),
             actions.map { it.buttonRes },
         )
+        assertEquals(
+            listOf(
+                R.string.settings_security_clear_dialog_confirm,
+                R.string.settings_security_logout_dialog_confirm,
+            ),
+            actions.map { it.dialogConfirmRes },
+        )
+        assertEquals(listOf(true, true), actions.map { it.enabled })
+    }
+
+    @Test
+    fun dangerActionsAreDisabledWhileSettingsWorkIsBusy() {
+        val actions = securityDangerActions(actionsEnabled = false)
+
+        assertEquals(
+            listOf(
+                SecurityDangerActionKind.ClearOfflineCopy,
+                SecurityDangerActionKind.LeaveLedger,
+            ),
+            actions.map { it.kind },
+        )
+        assertEquals(listOf(false, false), actions.map { it.enabled })
     }
 }

@@ -419,6 +419,7 @@ internal fun SettingsDestinationHost(
             onBack = { route = SettingsDestination.Root },
             onClearCache = actions.onClearCache,
             onBindingCleared = actions.onBindingCleared,
+            busy = states.settings.busy,
             // Revives the previously silent clear-cache / logout feedback.
             status = { AppStatusBanner(message = states.settings.message, tone = states.settings.messageTone) },
         )

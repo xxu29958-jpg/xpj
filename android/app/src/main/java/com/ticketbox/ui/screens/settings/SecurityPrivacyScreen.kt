@@ -54,11 +54,6 @@ internal enum class SecurityDangerActionKind {
     LeaveLedger,
 }
 
-private enum class SecurityPendingDialog {
-    ClearOfflineCopy,
-    LeaveLedger,
-}
-
 internal data class SecurityPrivacyInfoRowModel(
     val kind: SecurityPrivacyInfoKind,
     @param:StringRes val titleRes: Int,
@@ -71,6 +66,10 @@ internal data class SecurityDangerActionModel(
     @param:StringRes val bodyRes: Int,
     @param:StringRes val buttonRes: Int,
     @param:StringRes val contentDescriptionRes: Int,
+    @param:StringRes val dialogTitleRes: Int,
+    @param:StringRes val dialogTextRes: Int,
+    @param:StringRes val dialogConfirmRes: Int,
+    val enabled: Boolean,
 )
 
 internal fun securityPrivacyInfoRows(requireLocalUnlock: Boolean): List<SecurityPrivacyInfoRowModel> = listOf(
@@ -99,13 +98,17 @@ internal fun securityPrivacyInfoRows(requireLocalUnlock: Boolean): List<Security
     ),
 )
 
-internal fun securityDangerActions(): List<SecurityDangerActionModel> = listOf(
+internal fun securityDangerActions(actionsEnabled: Boolean = true): List<SecurityDangerActionModel> = listOf(
     SecurityDangerActionModel(
         kind = SecurityDangerActionKind.ClearOfflineCopy,
         titleRes = R.string.settings_security_danger_clear_copy_label,
         bodyRes = R.string.settings_security_danger_clear_copy_body,
         buttonRes = R.string.settings_security_button_clear_data,
         contentDescriptionRes = R.string.settings_security_clear_data_icon_desc,
+        dialogTitleRes = R.string.settings_security_clear_dialog_title,
+        dialogTextRes = R.string.settings_security_clear_dialog_text,
+        dialogConfirmRes = R.string.settings_security_clear_dialog_confirm,
+        enabled = actionsEnabled,
     ),
     SecurityDangerActionModel(
         kind = SecurityDangerActionKind.LeaveLedger,
@@ -113,6 +116,10 @@ internal fun securityDangerActions(): List<SecurityDangerActionModel> = listOf(
         bodyRes = R.string.settings_security_danger_logout_body,
         buttonRes = R.string.settings_security_button_logout,
         contentDescriptionRes = R.string.settings_security_logout_icon_desc,
+        dialogTitleRes = R.string.settings_security_logout_dialog_title,
+        dialogTextRes = R.string.settings_security_logout_dialog_text,
+        dialogConfirmRes = R.string.settings_security_logout_dialog_confirm,
+        enabled = actionsEnabled,
     ),
 )
 
@@ -121,16 +128,20 @@ fun SecurityPrivacyScreen(
     onBack: () -> Unit,
     onClearCache: () -> Unit,
     onBindingCleared: () -> Unit,
+    busy: Boolean = false,
     // Page-header status feedback (this screen used to render none; the host
     // builds an AppStatusBanner from SettingsViewModel's message + tone.
     status: (@Composable () -> Unit)? = null,
 ) {
-    var pendingDialog by remember { mutableStateOf<SecurityPendingDialog?>(null) }
+    var pendingActionKind by remember { mutableStateOf<SecurityDangerActionKind?>(null) }
+    val actionsEnabled = !busy
+    val actions = remember(actionsEnabled) { securityDangerActions(actionsEnabled) }
+    val pendingAction = pendingActionKind?.let { kind -> actions.firstOrNull { it.kind == kind } }
 
-    pendingDialog?.let { dialog ->
+    pendingAction?.let { action ->
         SecurityConfirmDialog(
-            dialog = dialog,
-            onDismiss = { pendingDialog = null },
+            action = action,
+            onDismiss = { pendingActionKind = null },
             onClearCache = onClearCache,
             onBindingCleared = onBindingCleared,
         )
@@ -148,51 +159,36 @@ fun SecurityPrivacyScreen(
     ) {
         SecurityInfoSection(requireLocalUnlock = BuildConfig.REQUIRE_LOCAL_UNLOCK)
         SecurityDangerSection(
-            onActionClick = { action ->
-                pendingDialog = when (action) {
-                    SecurityDangerActionKind.ClearOfflineCopy -> SecurityPendingDialog.ClearOfflineCopy
-                    SecurityDangerActionKind.LeaveLedger -> SecurityPendingDialog.LeaveLedger
-                }
-            },
+            actions = actions,
+            onActionClick = { action -> pendingActionKind = action },
         )
     }
 }
 
 @Composable
 private fun SecurityConfirmDialog(
-    dialog: SecurityPendingDialog,
+    action: SecurityDangerActionModel,
     onDismiss: () -> Unit,
     onClearCache: () -> Unit,
     onBindingCleared: () -> Unit,
 ) {
-    val copy = when (dialog) {
-        SecurityPendingDialog.ClearOfflineCopy -> SecurityDialogCopy(
-            titleRes = R.string.settings_security_clear_dialog_title,
-            textRes = R.string.settings_security_clear_dialog_text,
-            confirmRes = R.string.settings_security_clear_dialog_confirm,
-        )
-        SecurityPendingDialog.LeaveLedger -> SecurityDialogCopy(
-            titleRes = R.string.settings_security_logout_dialog_title,
-            textRes = R.string.settings_security_logout_dialog_text,
-            confirmRes = R.string.settings_security_logout_dialog_confirm,
-        )
-    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(copy.titleRes)) },
-        text = { Text(stringResource(copy.textRes)) },
+        title = { Text(stringResource(action.dialogTitleRes)) },
+        text = { Text(stringResource(action.dialogTextRes)) },
         confirmButton = {
             TextButton(
+                enabled = action.enabled,
                 onClick = {
                     onDismiss()
-                    when (dialog) {
-                        SecurityPendingDialog.ClearOfflineCopy -> onClearCache()
-                        SecurityPendingDialog.LeaveLedger -> onBindingCleared()
+                    when (action.kind) {
+                        SecurityDangerActionKind.ClearOfflineCopy -> onClearCache()
+                        SecurityDangerActionKind.LeaveLedger -> onBindingCleared()
                     }
                 },
             ) {
                 Text(
-                    text = stringResource(copy.confirmRes),
+                    text = stringResource(action.dialogConfirmRes),
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -275,12 +271,14 @@ private fun SecurityIconBox(icon: ImageVector) {
 }
 
 @Composable
-private fun SecurityDangerSection(onActionClick: (SecurityDangerActionKind) -> Unit) {
+private fun SecurityDangerSection(
+    actions: List<SecurityDangerActionModel>,
+    onActionClick: (SecurityDangerActionKind) -> Unit,
+) {
     SettingsSection(
         title = stringResource(R.string.settings_security_section_danger),
         icon = Icons.Filled.DeleteOutline,
     ) {
-        val actions = remember { securityDangerActions() }
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             actions.forEachIndexed { index, action ->
                 if (index > 0) {
@@ -308,7 +306,7 @@ private fun SecurityDangerRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.small))
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = action.enabled, role = Role.Button, onClick = onClick)
             .padding(vertical = AppSpacing.smallGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.Top,
@@ -351,6 +349,11 @@ private fun SecurityDangerInlineAction(action: SecurityDangerActionModel) {
         SecurityDangerActionKind.ClearOfflineCopy -> Icons.Filled.DeleteOutline
         SecurityDangerActionKind.LeaveLedger -> Icons.AutoMirrored.Filled.Logout
     }
+    val actionColor = if (action.enabled) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Row(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         verticalAlignment = Alignment.CenterVertically,
@@ -358,20 +361,14 @@ private fun SecurityDangerInlineAction(action: SecurityDangerActionModel) {
         Icon(
             imageVector = icon,
             contentDescription = stringResource(action.contentDescriptionRes),
-            tint = MaterialTheme.colorScheme.error,
+            tint = actionColor,
             modifier = Modifier.size(17.dp),
         )
         Text(
             text = stringResource(action.buttonRes),
-            color = MaterialTheme.colorScheme.error,
+            color = actionColor,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = AppTextHierarchy.heading.weight,
         )
     }
 }
-
-private data class SecurityDialogCopy(
-    @param:StringRes val titleRes: Int,
-    @param:StringRes val textRes: Int,
-    @param:StringRes val confirmRes: Int,
-)
