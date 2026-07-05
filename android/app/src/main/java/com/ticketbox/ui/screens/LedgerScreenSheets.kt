@@ -7,9 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
+import com.ticketbox.viewmodel.LedgerMonthsLoadState
 import com.ticketbox.viewmodel.LedgerUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,12 +46,20 @@ private fun LedgerMonthPickerHost(
             months = state.months,
             selectedMonth = state.monthFilter,
             description = stringResource(R.string.ledger_month_picker_description),
+            listState = ledgerMonthPickerListState(state.monthsLoadState),
             onSelectMonth = { month ->
                 actions.onMonthChange(month)
                 chromeState.showMonthPicker = false
             },
         )
     }
+}
+
+internal fun ledgerMonthPickerListState(loadState: LedgerMonthsLoadState): MonthPickerListState = when (loadState) {
+    LedgerMonthsLoadState.Unknown -> MonthPickerListState.Unknown
+    LedgerMonthsLoadState.Loading -> MonthPickerListState.Loading
+    LedgerMonthsLoadState.Loaded -> MonthPickerListState.Loaded
+    LedgerMonthsLoadState.Failed -> MonthPickerListState.Failed
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

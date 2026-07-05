@@ -27,6 +27,13 @@ enum class LedgerViewMode {
     Table,
 }
 
+enum class LedgerMonthsLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
+
 data class LedgerSummaryUi(
     val totalAmountCents: Long = 0L,
     val itemCount: Int = 0,
@@ -55,6 +62,7 @@ data class LedgerUiState(
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
     val tags: List<String> = emptyList(),
     val months: List<String> = emptyList(),
+    val monthsLoadState: LedgerMonthsLoadState = LedgerMonthsLoadState.Unknown,
     val readOnly: Boolean = false,
     val exportFile: CsvExport? = null,
     val monthFilter: String = YearMonth.now().toString(),
@@ -187,8 +195,19 @@ class LedgerViewModel(
 
     private fun loadMonths() {
         viewModelScope.launch {
+            _uiState.update { it.copy(monthsLoadState = LedgerMonthsLoadState.Loading) }
             repository.months()
-                .onSuccess { months -> _uiState.update { it.copy(months = months) } }
+                .onSuccess { months ->
+                    _uiState.update {
+                        it.copy(
+                            months = months,
+                            monthsLoadState = LedgerMonthsLoadState.Loaded,
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update { it.copy(monthsLoadState = LedgerMonthsLoadState.Failed) }
+                }
         }
     }
 

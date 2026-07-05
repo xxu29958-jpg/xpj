@@ -54,7 +54,7 @@ class MonthPickerTest {
             monthPickerStatusRowKind(emptyList(), MonthPickerListState.Loaded),
         )
         assertEquals(
-            null,
+            MonthPickerStatusRowKind.Stale,
             monthPickerStatusRowKind(listOf("2026-07"), MonthPickerListState.Failed),
         )
     }

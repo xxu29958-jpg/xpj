@@ -68,6 +68,7 @@ private fun MonthPickerOptions(
                         MonthPickerStatusRowKind.Loading -> stringResource(R.string.components_month_picker_loading)
                         MonthPickerStatusRowKind.Failed -> stringResource(R.string.components_month_picker_failed)
                         MonthPickerStatusRowKind.Empty -> stringResource(R.string.components_month_picker_empty)
+                        MonthPickerStatusRowKind.Stale -> stringResource(R.string.components_month_picker_stale)
                     },
                 )
             }
@@ -138,13 +139,15 @@ internal sealed interface MonthPickerEntry {
 
 enum class MonthPickerListState { Unknown, Loading, Loaded, Failed }
 
-internal enum class MonthPickerStatusRowKind { Loading, Failed, Empty }
+internal enum class MonthPickerStatusRowKind { Loading, Failed, Empty, Stale }
 
 internal fun monthPickerStatusRowKind(
     months: List<String>,
     listState: MonthPickerListState,
 ): MonthPickerStatusRowKind? {
-    if (months.isNotEmpty()) return null
+    if (months.isNotEmpty()) {
+        return if (listState == MonthPickerListState.Failed) MonthPickerStatusRowKind.Stale else null
+    }
     return when (listState) {
         MonthPickerListState.Unknown,
         MonthPickerListState.Loading -> MonthPickerStatusRowKind.Loading

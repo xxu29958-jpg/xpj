@@ -560,6 +560,59 @@ class LedgerViewModelTest {
         advanceUntilIdle()
         assertEquals(2, fake.syncCallCount)
     }
+
+    @Test
+    fun monthsLoadStateSeparatesLoadingAndLoaded() = ledgerTest {
+        val monthGate = CompletableDeferred<Unit>()
+        val fake = FakeLedgerActions(expenses = emptyList()).apply {
+            this.monthGate = monthGate
+            monthResult = Result.success(listOf("2026-07", "2026-06"))
+        }
+
+        val vm = LedgerViewModel(fake)
+        runCurrent()
+
+        assertEquals(LedgerMonthsLoadState.Loading, vm.uiState.value.monthsLoadState)
+        assertEquals(emptyList(), vm.uiState.value.months)
+
+        monthGate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(LedgerMonthsLoadState.Loaded, vm.uiState.value.monthsLoadState)
+        assertEquals(listOf("2026-07", "2026-06"), vm.uiState.value.months)
+    }
+
+    @Test
+    fun monthsInitialFailureDoesNotLookLoadedEmpty() = ledgerTest {
+        val fake = FakeLedgerActions(expenses = emptyList()).apply {
+            monthResult = Result.failure(RuntimeException("months offline"))
+        }
+
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        assertEquals(LedgerMonthsLoadState.Failed, vm.uiState.value.monthsLoadState)
+        assertEquals(emptyList(), vm.uiState.value.months)
+    }
+
+    @Test
+    fun monthsRefreshFailureKeepsReadableMonths() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+        ).apply {
+            monthResult = Result.success(listOf("2026-05"))
+        }
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+        assertEquals(LedgerMonthsLoadState.Loaded, vm.uiState.value.monthsLoadState)
+
+        fake.monthResult = Result.failure(RuntimeException("months offline"))
+        vm.createManualExpense(manualDraft())
+        advanceUntilIdle()
+
+        assertEquals(LedgerMonthsLoadState.Failed, vm.uiState.value.monthsLoadState)
+        assertEquals(listOf("2026-05"), vm.uiState.value.months)
+    }
 }
 
 // Fixture expenses sit in 2026-05; tests pin monthFilter here so they stay
@@ -588,6 +641,8 @@ private class FakeLedgerActions(
     var syncCallCount = 0
         private set
     var syncGate: CompletableDeferred<Unit>? = null
+    var monthResult: Result<List<String>> = Result.success(listOf("2026-05"))
+    var monthGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
@@ -600,7 +655,10 @@ private class FakeLedgerActions(
 
     override suspend fun tags(): Result<List<String>> = Result.success(emptyList())
 
-    override suspend fun months(): Result<List<String>> = Result.success(listOf("2026-05"))
+    override suspend fun months(): Result<List<String>> {
+        monthGate?.await()
+        return monthResult
+    }
 
     override suspend fun syncConfirmed(
         month: String?,
