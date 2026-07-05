@@ -35,6 +35,16 @@ class AmountTextStylesTest {
     }
 
     @Test
+    fun compactRoleAppliesTabularFiguresAndBodyDimensions() {
+        val style = TextStyle().asAmount(AppAmountRole.Compact)
+        assertEquals("tnum", style.fontFeatureSettings)
+        assertEquals(15.sp, style.fontSize)
+        assertEquals(20.sp, style.lineHeight)
+        assertEquals(0.sp, style.letterSpacing)
+        assertEquals(FontWeight.Medium, style.fontWeight)
+    }
+
+    @Test
     fun asAmountPreservesUnrelatedBaseStyleProperties() {
         // copy 语义：只覆盖金额要锁的几项，基准 style 的色等其它属性保留，这样
         // call site 写 MaterialTheme.typography.titleLarge.asAmount(...) 仍带主题字色 / 字族。
@@ -48,5 +58,6 @@ class AmountTextStylesTest {
         // 第二份字面量——钉住"同源"，防两处字号各自漂移。
         assertSame(AppTypography.amountLarge, AppAmountRole.Hero.role)
         assertSame(AppTypography.amountMedium, AppAmountRole.Medium.role)
+        assertSame(AppTextHierarchy.body, AppAmountRole.Compact.role)
     }
 }

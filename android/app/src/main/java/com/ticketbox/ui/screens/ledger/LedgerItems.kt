@@ -32,9 +32,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -42,7 +44,6 @@ import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
 import java.time.Instant
@@ -57,15 +58,7 @@ private object LedgerItemLayout {
     const val TableMerchantWeight = 1.35f
     const val TableCategoryWeight = 0.72f
     const val TableAmountWeight = 0.88f
-    const val ListAmountInlineWeight = 0.68f
-    const val DayHeaderAmountInlineWeight = 0.42f
     val RowTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-}
-
-private enum class LedgerAmountPresentation {
-    Card,
-    ListRow,
-    Table,
 }
 
 internal data class LedgerDayHeaderUi(
@@ -101,7 +94,7 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
                     horizontal = AppSpacing.smallGap,
                     vertical = AppSpacing.tinyGap + AppSpacing.tinyGap,
                 ),
-            wideActionWeight = LedgerItemLayout.DayHeaderAmountInlineWeight,
+            wideActionWeight = AppAdaptiveAmountRowDefaults.groupHeaderTrailingWeight,
             verticalAlignment = Alignment.CenterVertically,
             content = {
                 LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.fillMaxWidth())
@@ -248,7 +241,6 @@ internal fun LedgerExpenseCard(
             ) {
                 LedgerAmountOrPending(
                     amountCents = expense.amountCents,
-                    presentation = LedgerAmountPresentation.Card,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
@@ -290,7 +282,7 @@ internal fun LedgerExpenseListRow(
     ) {
         AppAdaptiveContentActionRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = rowMetrics.rowPadding),
-            wideActionWeight = LedgerItemLayout.ListAmountInlineWeight,
+            wideActionWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,
             verticalAlignment = Alignment.CenterVertically,
             content = {
                 Row(
@@ -312,7 +304,6 @@ internal fun LedgerExpenseListRow(
             action = { amountModifier ->
                 LedgerAmountOrPending(
                     amountCents = expense.amountCents,
-                    presentation = LedgerAmountPresentation.ListRow,
                     modifier = amountModifier,
                 )
             },
@@ -382,7 +373,6 @@ internal fun LedgerExpenseTableRow(
             )
             LedgerAmountOrPending(
                 amountCents = expense.amountCents,
-                presentation = LedgerAmountPresentation.Table,
                 modifier = Modifier.weight(LedgerItemLayout.TableAmountWeight),
             )
         }
@@ -393,7 +383,6 @@ internal fun LedgerExpenseTableRow(
 @Composable
 private fun LedgerAmountOrPending(
     amountCents: Long?,
-    presentation: LedgerAmountPresentation,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.CenterEnd) {
@@ -404,22 +393,10 @@ private fun LedgerAmountOrPending(
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-        } ?: Text(
+        } ?: AppEndAlignedAmountStatusText(
+            modifier = Modifier.fillMaxWidth(),
             text = stringResource(R.string.ledger_item_amount_pending),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = when (presentation) {
-                LedgerAmountPresentation.Card -> MaterialTheme.typography.titleMedium
-                LedgerAmountPresentation.ListRow -> MaterialTheme.typography.bodyLarge
-                LedgerAmountPresentation.Table -> MaterialTheme.typography.labelLarge
-            },
-            fontWeight = when (presentation) {
-                LedgerAmountPresentation.Card,
-                LedgerAmountPresentation.Table -> AppTypography.amountMedium.weight
-                LedgerAmountPresentation.ListRow -> AppTextHierarchy.heading.weight
-            },
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
+            role = AppAmountRole.Compact,
         )
     }
 }

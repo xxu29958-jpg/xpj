@@ -37,9 +37,11 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.displayCompactTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
@@ -53,10 +55,6 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
-
-private object PendingExpenseReviewLayout {
-    const val InlineAmountWeight = 0.62f
-}
 
 @Immutable
 internal data class PendingExpenseReviewItem(
@@ -94,7 +92,7 @@ internal fun PendingExpenseReviewRow(
             verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
         ) {
             AppAdaptiveContentActionStateRow(
-                wideActionWeight = PendingExpenseReviewLayout.InlineAmountWeight,
+                wideActionWeight = AppAdaptiveAmountRowDefaults.reviewTrailingWeight,
                 verticalAlignment = Alignment.CenterVertically,
                 content = {
                     Row(
@@ -223,18 +221,14 @@ private fun PendingAmountValue(expense: Expense, currencyDisplay: CurrencyDispla
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(min = 118.dp),
+            .widthIn(min = AppAdaptiveAmountRowDefaults.statusMinWidth),
         contentAlignment = Alignment.CenterEnd,
     ) {
         if (amount == null) {
-            Text(
+            AppEndAlignedAmountStatusText(
+                modifier = Modifier.fillMaxWidth(),
                 text = stringResource(R.string.pending_row_amount_missing),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
+                role = AppAmountRole.Compact,
             )
         } else {
             AppEndAlignedAmountText(
@@ -252,7 +246,11 @@ private fun PendingExpenseExchangeMetaText(expense: Expense, stacked: Boolean) {
     formatExpenseExchangeMeta(expense)?.let {
         Text(
             text = it,
-            modifier = if (stacked) Modifier.fillMaxWidth() else Modifier.widthIn(max = 132.dp),
+            modifier = if (stacked) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier.widthIn(max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth)
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
             maxLines = if (stacked) 2 else 1,

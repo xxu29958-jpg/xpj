@@ -80,7 +80,7 @@ class AppAdaptiveRowsTest {
         assertEquals(
             AppAdaptiveAmountRowMode.Stacked,
             resolveAppAdaptiveAmountRowMode(
-                maxWidth = AppAdaptiveBreakpoints.editActionInlineMinWidth - 1.dp,
+                maxWidth = AppAdaptiveBreakpoints.amountRowInlineMinWidth - 1.dp,
             ),
         )
     }
@@ -90,8 +90,19 @@ class AppAdaptiveRowsTest {
         assertEquals(
             AppAdaptiveAmountRowMode.Inline,
             resolveAppAdaptiveAmountRowMode(
-                maxWidth = AppAdaptiveBreakpoints.editActionInlineMinWidth,
+                maxWidth = AppAdaptiveBreakpoints.amountRowInlineMinWidth,
             ),
         )
+    }
+
+    @Test
+    fun amountRowsExposeSharedDefaultsWithoutChangingCurrentValues() {
+        assertEquals(AppAdaptiveBreakpoints.editActionInlineMinWidth, AppAdaptiveBreakpoints.amountRowInlineMinWidth)
+        assertEquals(0.44f, AppAdaptiveAmountRowDefaults.trailingWeight)
+        assertEquals(0.62f, AppAdaptiveAmountRowDefaults.reviewTrailingWeight)
+        assertEquals(0.68f, AppAdaptiveAmountRowDefaults.listTrailingWeight)
+        assertEquals(0.42f, AppAdaptiveAmountRowDefaults.groupHeaderTrailingWeight)
+        assertEquals(118.dp, AppAdaptiveAmountRowDefaults.statusMinWidth)
+        assertEquals(132.dp, AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth)
     }
 }

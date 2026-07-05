@@ -12,17 +12,25 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
-
-private const val ADAPTIVE_AMOUNT_ROW_TRAILING_WEIGHT = 0.44f
 
 @Immutable
 data class AppAdaptiveFieldPairWeights(
     val leading: Float = 1f,
     val trailing: Float = 1f,
 )
+
+object AppAdaptiveAmountRowDefaults {
+    val trailingWeight: Float = 0.44f
+    val reviewTrailingWeight: Float = 0.62f
+    val listTrailingWeight: Float = 0.68f
+    val groupHeaderTrailingWeight: Float = 0.42f
+    val statusMinWidth: Dp = 118.dp
+    val secondaryMetaInlineMaxWidth: Dp = 132.dp
+}
 
 enum class AppAdaptiveEditActionMode {
     Stacked,
@@ -162,7 +170,7 @@ fun AppAdaptiveEditAmountRow(
                     content()
                 }
                 AppEndAlignedAmountText(
-                    modifier = Modifier.weight(ADAPTIVE_AMOUNT_ROW_TRAILING_WEIGHT),
+                    modifier = Modifier.weight(AppAdaptiveAmountRowDefaults.trailingWeight),
                     text = amount,
                     role = role,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -173,7 +181,7 @@ fun AppAdaptiveEditAmountRow(
 }
 
 internal fun resolveAppAdaptiveAmountRowMode(maxWidth: Dp): AppAdaptiveAmountRowMode =
-    if (maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth) {
+    if (maxWidth < AppAdaptiveBreakpoints.amountRowInlineMinWidth) {
         AppAdaptiveAmountRowMode.Stacked
     } else {
         AppAdaptiveAmountRowMode.Inline
