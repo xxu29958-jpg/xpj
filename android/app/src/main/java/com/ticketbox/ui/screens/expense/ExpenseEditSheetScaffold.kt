@@ -3,7 +3,6 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -12,12 +11,13 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 
 @Immutable
@@ -90,19 +90,27 @@ internal fun ExpenseEditReconciliationRows(rows: List<ExpenseEditReconciliationL
 
 @Composable
 private fun ExpenseEditReconciliationRow(row: ExpenseEditReconciliationLine) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    val contentColor = if (row.emphasis) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    AppAdaptiveEditAmountRow(
+        amount = row.value,
+        style = AppAdaptiveAmountRowStyle(
+            amountColor = if (row.emphasis) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            trailingWeight = AppAdaptiveAmountRowDefaults.reconciliationTrailingWeight,
+        ),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = row.label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (row.emphasis) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                color = contentColor,
             )
             row.hint?.let {
                 Text(
@@ -112,15 +120,5 @@ private fun ExpenseEditReconciliationRow(row: ExpenseEditReconciliationLine) {
                 )
             }
         }
-        AppEndAlignedAmountText(
-            text = row.value,
-            modifier = Modifier.weight(0.72f),
-            role = AppAmountRole.Compact,
-            color = if (row.emphasis) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-        )
     }
 }

@@ -36,6 +36,7 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
@@ -200,7 +201,7 @@ private fun RepaymentDraftCard(
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
             AppAdaptiveEditAmountRow(
                 amount = formatDisplayAmount(draft.amountCents, currency),
-                role = AppAmountRole.Medium,
+                style = AppAdaptiveAmountRowStyle(role = AppAmountRole.Medium),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(

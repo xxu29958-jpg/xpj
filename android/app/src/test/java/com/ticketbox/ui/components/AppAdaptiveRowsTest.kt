@@ -102,6 +102,7 @@ class AppAdaptiveRowsTest {
         assertEquals(0.62f, AppAdaptiveAmountRowDefaults.reviewTrailingWeight)
         assertEquals(0.68f, AppAdaptiveAmountRowDefaults.listTrailingWeight)
         assertEquals(0.42f, AppAdaptiveAmountRowDefaults.groupHeaderTrailingWeight)
+        assertEquals(0.72f, AppAdaptiveAmountRowDefaults.reconciliationTrailingWeight)
         assertEquals(118.dp, AppAdaptiveAmountRowDefaults.statusMinWidth)
         assertEquals(132.dp, AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth)
     }

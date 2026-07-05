@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAmountRole
@@ -23,11 +24,19 @@ data class AppAdaptiveFieldPairWeights(
     val trailing: Float = 1f,
 )
 
+@Immutable
+data class AppAdaptiveAmountRowStyle(
+    val role: AppAmountRole = AppAmountRole.Compact,
+    val amountColor: Color? = null,
+    val trailingWeight: Float = AppAdaptiveAmountRowDefaults.trailingWeight,
+)
+
 object AppAdaptiveAmountRowDefaults {
     val trailingWeight: Float = 0.44f
     val reviewTrailingWeight: Float = 0.62f
     val listTrailingWeight: Float = 0.68f
     val groupHeaderTrailingWeight: Float = 0.42f
+    val reconciliationTrailingWeight: Float = 0.72f
     val statusMinWidth: Dp = 118.dp
     val secondaryMetaInlineMaxWidth: Dp = 132.dp
 }
@@ -144,9 +153,10 @@ internal fun resolveAppAdaptiveEditActionMode(
 fun AppAdaptiveEditAmountRow(
     amount: String,
     modifier: Modifier = Modifier,
-    role: AppAmountRole = AppAmountRole.Compact,
+    style: AppAdaptiveAmountRowStyle = AppAdaptiveAmountRowStyle(),
     content: @Composable () -> Unit,
 ) {
+    val amountColor = style.amountColor ?: MaterialTheme.colorScheme.onSurface
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         when (resolveAppAdaptiveAmountRowMode(maxWidth)) {
             AppAdaptiveAmountRowMode.Stacked -> Column(
@@ -157,8 +167,8 @@ fun AppAdaptiveEditAmountRow(
                 AppEndAlignedAmountText(
                     modifier = Modifier.fillMaxWidth(),
                     text = amount,
-                    role = role,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    role = style.role,
+                    color = amountColor,
                 )
             }
             AppAdaptiveAmountRowMode.Inline -> Row(
@@ -170,10 +180,10 @@ fun AppAdaptiveEditAmountRow(
                     content()
                 }
                 AppEndAlignedAmountText(
-                    modifier = Modifier.weight(AppAdaptiveAmountRowDefaults.trailingWeight),
+                    modifier = Modifier.weight(style.trailingWeight),
                     text = amount,
-                    role = role,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    role = style.role,
+                    color = amountColor,
                 )
             }
         }
