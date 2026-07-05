@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
@@ -41,6 +42,7 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.buildAppTagFilterChoices
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -197,11 +199,10 @@ private fun LedgerFilterTools(
             onValueChange = onCategoryChange,
         )
         if (state.tags.isNotEmpty() || state.tagFilter.isNotBlank()) {
-            val tagOptions = if (state.tagFilter.isNotBlank() && state.tagFilter !in state.tags) {
-                listOf(state.tagFilter) + state.tags
-            } else {
-                state.tags
-            }
+            val tagOptions = buildAppTagFilterChoices(
+                availableTags = state.tags,
+                selectedTag = state.tagFilter,
+            )
             LedgerOptionList(
                 state = LedgerOptionListState(
                     title = stringResource(R.string.ledger_tools_tag_label),
@@ -224,33 +225,34 @@ private fun LedgerDataTools(
     onExportCsv: () -> Unit,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_actions_title)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            LedgerInlineButton(
-                text = if (state.exporting) {
-                    stringResource(R.string.ledger_tools_exporting)
-                } else {
-                    stringResource(R.string.ledger_tools_export)
-                },
-                modifier = Modifier.weight(1f),
-                enabled = canExport,
-                onClick = onExportCsv,
-                icon = Icons.Default.FileDownload,
-            )
-            LedgerInlineButton(
-                text = if (state.syncing) {
-                    stringResource(R.string.ledger_tools_syncing)
-                } else {
-                    stringResource(R.string.ledger_tools_update_ledger)
-                },
-                modifier = Modifier.weight(1f),
-                enabled = !state.syncing,
-                onClick = onSync,
-                icon = Icons.Default.Sync,
-            )
-        }
+        AppAdaptiveEqualControlRow(
+            leading = { actionModifier ->
+                LedgerInlineButton(
+                    text = if (state.exporting) {
+                        stringResource(R.string.ledger_tools_exporting)
+                    } else {
+                        stringResource(R.string.ledger_tools_export)
+                    },
+                    modifier = actionModifier,
+                    enabled = canExport,
+                    onClick = onExportCsv,
+                    icon = Icons.Default.FileDownload,
+                )
+            },
+            trailing = { actionModifier ->
+                LedgerInlineButton(
+                    text = if (state.syncing) {
+                        stringResource(R.string.ledger_tools_syncing)
+                    } else {
+                        stringResource(R.string.ledger_tools_update_ledger)
+                    },
+                    modifier = actionModifier,
+                    enabled = !state.syncing,
+                    onClick = onSync,
+                    icon = Icons.Default.Sync,
+                )
+            },
+        )
     }
 }
 
@@ -262,19 +264,27 @@ private fun LedgerToolsFooter(
     onDismiss: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            if (hasUserFilters) {
-                QuietOutlinedButton(
-                    text = stringResource(R.string.ledger_tools_clear_filters),
-                    modifier = Modifier.weight(1f),
-                    onClick = onClearFilters,
-                )
-            }
+        if (hasUserFilters) {
+            AppAdaptiveEqualControlRow(
+                leading = { actionModifier ->
+                    QuietOutlinedButton(
+                        text = stringResource(R.string.ledger_tools_clear_filters),
+                        modifier = actionModifier,
+                        onClick = onClearFilters,
+                    )
+                },
+                trailing = { actionModifier ->
+                    Button(
+                        modifier = actionModifier,
+                        onClick = onDismiss,
+                    ) {
+                        Text(stringResource(R.string.ledger_tools_done))
+                    }
+                },
+            )
+        } else {
             Button(
-                modifier = if (hasUserFilters) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 onClick = onDismiss,
             ) {
                 Text(stringResource(R.string.ledger_tools_done))
@@ -305,25 +315,26 @@ private fun LedgerRelationshipTools(
             onClick = onOpenBillSplit,
             icon = Icons.AutoMirrored.Filled.CallSplit,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            LedgerInlineButton(
-                text = stringResource(R.string.ledger_tools_debts),
-                modifier = Modifier.weight(1f),
-                enabled = true,
-                onClick = onOpenDebts,
-                icon = Icons.Default.AccountBalanceWallet,
-            )
-            LedgerInlineButton(
-                text = stringResource(R.string.ledger_tools_receivables),
-                modifier = Modifier.weight(1f),
-                enabled = true,
-                onClick = onOpenReceivables,
-                icon = Icons.Default.Payments,
-            )
-        }
+        AppAdaptiveEqualControlRow(
+            leading = { actionModifier ->
+                LedgerInlineButton(
+                    text = stringResource(R.string.ledger_tools_debts),
+                    modifier = actionModifier,
+                    enabled = true,
+                    onClick = onOpenDebts,
+                    icon = Icons.Default.AccountBalanceWallet,
+                )
+            },
+            trailing = { actionModifier ->
+                LedgerInlineButton(
+                    text = stringResource(R.string.ledger_tools_receivables),
+                    modifier = actionModifier,
+                    enabled = true,
+                    onClick = onOpenReceivables,
+                    icon = Icons.Default.Payments,
+                )
+            },
+        )
         LedgerInlineButton(
             text = stringResource(R.string.ledger_tools_repayment_drafts),
             modifier = Modifier.fillMaxWidth(),

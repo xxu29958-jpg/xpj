@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
 import com.ticketbox.domain.model.shiftLedgerMonth
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppAlpha
@@ -78,30 +79,31 @@ private fun LedgerInlineFilters(
     // Prev/next only when a concrete month is selected; "全部月份" has no neighbor.
     val previousMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, -1L) }
     val nextMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, 1L) }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LedgerMonthStepper(
-            state = LedgerMonthStepperState(
-                label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
-                    ?: stringResource(R.string.ledger_inline_month_all),
-                previousMonth = previousMonth,
-                nextMonth = nextMonth,
-            ),
-            actions = LedgerMonthStepperActions(
-                onOpenMonthPicker = onOpenMonthPicker,
-                onMonthChange = onMonthChange,
-            ),
-            modifier = Modifier.weight(1f),
-        )
-        LedgerFilterToolButton(
-            onClick = onOpenTools,
-            label = ledgerInlineFilterLabel(state, activeFilterCount),
-            selected = activeFilterCount > 0,
-        )
-    }
+    AppAdaptiveEqualControlRow(
+        leading = { controlModifier ->
+            LedgerMonthStepper(
+                state = LedgerMonthStepperState(
+                    label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                        ?: stringResource(R.string.ledger_inline_month_all),
+                    previousMonth = previousMonth,
+                    nextMonth = nextMonth,
+                ),
+                actions = LedgerMonthStepperActions(
+                    onOpenMonthPicker = onOpenMonthPicker,
+                    onMonthChange = onMonthChange,
+                ),
+                modifier = controlModifier,
+            )
+        },
+        trailing = { controlModifier ->
+            LedgerFilterToolButton(
+                onClick = onOpenTools,
+                label = ledgerInlineFilterLabel(state, activeFilterCount),
+                selected = activeFilterCount > 0,
+                modifier = controlModifier,
+            )
+        },
+    )
 }
 
 @Composable
@@ -218,12 +220,13 @@ private fun LedgerFilterToolButton(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val visuals = LocalThemeVisuals.current
     val shape = RoundedCornerShape(AppRadius.extraSmall)
     val labelColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        modifier = Modifier
+        modifier = modifier
             .heightIn(min = 40.dp)
             .widthIn(min = 84.dp)
             .clip(shape)

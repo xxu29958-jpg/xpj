@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.domain.model.DASHBOARD_CARD_GOALS
@@ -51,12 +52,15 @@ import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
 import com.ticketbox.ui.components.AppPageHeader
+import com.ticketbox.ui.components.buildAppTagFilterChoices
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStatsTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.StatsUiState
+
+private const val StatsTagFilterOptionLimit = 12
 
 internal data class StatsTopPanelActions(
     val onOpenMonthPicker: () -> Unit,
@@ -227,19 +231,12 @@ private fun StatsFilterRow(
     onOpenMonthPicker: () -> Unit,
     onTagChange: (String) -> Unit,
 ) {
-    val tags = (state.tags + state.stats?.byTag.orEmpty().map { it.tag })
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .distinctBy { it.lowercase() }
-        .let { items ->
-            if (state.selectedTag.isBlank() || items.any { it.equals(state.selectedTag, ignoreCase = true) }) {
-                items
-            } else {
-                listOf(state.selectedTag) + items
-            }
-        }
-        .take(12)
-    val showTagFilter = tags.isNotEmpty() || state.selectedTag.isNotBlank()
+    val tags = buildAppTagFilterChoices(
+        availableTags = state.tags + state.stats?.byTag.orEmpty().map { it.tag },
+        selectedTag = state.selectedTag,
+        limit = StatsTagFilterOptionLimit,
+    )
+    val showTagFilter = tags.isNotEmpty()
     if (showTagFilter) {
         AppAdaptiveEqualControlRow(
             leading = { pillModifier ->
@@ -409,10 +406,12 @@ private fun StatsSelectablePill(
     ) {
         Text(
             text = label,
+            modifier = Modifier.weight(1f, fill = false),
             color = labelColor,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         trailingIcon?.invoke()
     }
