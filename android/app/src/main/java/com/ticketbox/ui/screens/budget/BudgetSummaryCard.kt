@@ -15,6 +15,7 @@ import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -93,9 +94,10 @@ private fun BudgetSummaryPlaceholder(loading: Boolean) {
         ) {
             SkeletonBlock(modifier = Modifier.fillMaxWidth(0.8f).height(AppSpacing.cardPadding + AppSpacing.tinyGap))
             SkeletonBlock(modifier = Modifier.fillMaxWidth().height(AppSpacing.compactGap))
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                SkeletonBlock(modifier = Modifier.weight(1f).height(AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall))
-                SkeletonBlock(modifier = Modifier.weight(1f).height(AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall))
+            AppAdaptiveMetricGrid(itemCount = BUDGET_SUMMARY_PLACEHOLDER_METRICS) { _, metricModifier ->
+                SkeletonBlock(
+                    modifier = metricModifier.height(AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall),
+                )
             }
         }
         return
@@ -112,47 +114,36 @@ private fun BudgetMetricRows(
     budget: BudgetMonthly,
     currencyDisplay: CurrencyDisplay,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        MetricPill(
-            label = stringResource(R.string.budget_summary_metric_total),
-            value = formatDisplayAmount(budget.availableAmountCents, currencyDisplay),
-            modifier = Modifier.weight(1f),
-        )
-        MetricPill(
-            label = if (budget.isOverBudget) {
-                stringResource(R.string.budget_summary_metric_overspent)
-            } else {
-                stringResource(R.string.budget_summary_metric_remaining)
-            },
-            value = formatDisplayAmount(
-                if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents,
-                currencyDisplay,
-            ),
-            modifier = Modifier.weight(1f),
-        )
+    val remainingLabel = if (budget.isOverBudget) {
+        stringResource(R.string.budget_summary_metric_overspent)
+    } else {
+        stringResource(R.string.budget_summary_metric_remaining)
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+    val remainingValue = formatDisplayAmount(
+        if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents,
+        currencyDisplay,
+    )
+    val metrics = listOf(
+        stringResource(R.string.budget_summary_metric_total) to
+            formatDisplayAmount(budget.availableAmountCents, currencyDisplay),
+        remainingLabel to remainingValue,
+        stringResource(R.string.budget_summary_metric_spent) to
+            formatDisplayAmount(budget.spentAmountCents, currencyDisplay),
+        stringResource(R.string.budget_summary_metric_flex) to
+            formatDisplayAmount(budget.flexBudgetCents, currencyDisplay),
+        stringResource(R.string.budget_summary_metric_fixed) to
+            formatDisplayAmount(budget.fixedAmountCents, currencyDisplay),
+        stringResource(R.string.budget_summary_metric_excluded) to
+            formatDisplayAmount(budget.excludedAmountCents, currencyDisplay),
+    )
+    AppAdaptiveMetricGrid(itemCount = metrics.size) { index, metricModifier ->
+        val (label, value) = metrics[index]
         MetricPill(
-            label = stringResource(R.string.budget_summary_metric_spent),
-            value = formatDisplayAmount(budget.spentAmountCents, currencyDisplay),
-            modifier = Modifier.weight(1f),
-        )
-        MetricPill(
-            label = stringResource(R.string.budget_summary_metric_flex),
-            value = formatDisplayAmount(budget.flexBudgetCents, currencyDisplay),
-            modifier = Modifier.weight(1f),
-        )
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        MetricPill(
-            label = stringResource(R.string.budget_summary_metric_fixed),
-            value = formatDisplayAmount(budget.fixedAmountCents, currencyDisplay),
-            modifier = Modifier.weight(1f),
-        )
-        MetricPill(
-            label = stringResource(R.string.budget_summary_metric_excluded),
-            value = formatDisplayAmount(budget.excludedAmountCents, currencyDisplay),
-            modifier = Modifier.weight(1f),
+            label = label,
+            value = value,
+            modifier = metricModifier,
         )
     }
 }
+
+private const val BUDGET_SUMMARY_PLACEHOLDER_METRICS = 2
