@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
@@ -87,14 +88,24 @@ fun AppAdaptiveEditActionLayout(
     content: @Composable (AppAdaptiveEditActionMode) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val mode = when {
-            maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth && actionCount >= 3 ->
-                AppAdaptiveEditActionMode.Stacked
-            compact -> AppAdaptiveEditActionMode.Compact
-            else -> AppAdaptiveEditActionMode.Inline
-        }
+        val mode = resolveAppAdaptiveEditActionMode(
+            maxWidth = maxWidth,
+            actionCount = actionCount,
+            compact = compact,
+        )
         content(mode)
     }
+}
+
+internal fun resolveAppAdaptiveEditActionMode(
+    maxWidth: Dp,
+    actionCount: Int,
+    compact: Boolean,
+): AppAdaptiveEditActionMode = when {
+    maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth && actionCount >= 3 ->
+        AppAdaptiveEditActionMode.Stacked
+    compact -> AppAdaptiveEditActionMode.Compact
+    else -> AppAdaptiveEditActionMode.Inline
 }
 
 @Composable

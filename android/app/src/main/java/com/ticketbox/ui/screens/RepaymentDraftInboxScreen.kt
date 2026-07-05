@@ -36,6 +36,8 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateMessage
@@ -250,28 +252,65 @@ private fun RepaymentDraftCardActions(
     callbacks: RepaymentDraftCardCallbacks,
 ) {
     val enabled = action == DraftRowAction.Idle
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        TextButton(onClick = callbacks.onDismiss, enabled = enabled) {
-            Text(stringResource(R.string.repayment_draft_dismiss))
-        }
-        Spacer(Modifier.width(AppSpacing.smallGap))
-        if (hasSuggestion) {
-            // The server pre-selected a Debt: confirm it directly, or "选其他欠款" to override.
-            TextButton(onClick = callbacks.onOpenPicker, enabled = enabled) {
-                Text(stringResource(R.string.repayment_draft_choose_other))
+    val primaryIdleLabel = repaymentDraftPrimaryIdleLabelRes(hasSuggestion)
+    val primaryAction = if (hasSuggestion) callbacks.onConfirmSuggested else callbacks.onOpenPicker
+    AppAdaptiveEditActionLayout(actionCount = if (hasSuggestion) 3 else 2, compact = false) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                ) {
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = callbacks.onDismiss,
+                        enabled = enabled,
+                    ) {
+                        Text(stringResource(R.string.repayment_draft_dismiss))
+                    }
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = callbacks.onOpenPicker,
+                        enabled = enabled,
+                    ) {
+                        Text(stringResource(R.string.repayment_draft_choose_other))
+                    }
+                }
+                Button(modifier = Modifier.fillMaxWidth(), onClick = primaryAction, enabled = enabled) {
+                    Text(repaymentDraftPrimaryLabel(action, primaryIdleLabel))
+                }
             }
-            Spacer(Modifier.width(AppSpacing.smallGap))
-            Button(onClick = callbacks.onConfirmSuggested, enabled = enabled) {
-                Text(repaymentDraftPrimaryLabel(action, R.string.repayment_draft_confirm_suggested))
-            }
-        } else {
-            // No suggestion (slice-3a): the primary action opens the picker to choose a Debt.
-            Button(onClick = callbacks.onOpenPicker, enabled = enabled) {
-                Text(repaymentDraftPrimaryLabel(action, R.string.repayment_draft_confirm))
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+            ) {
+                TextButton(onClick = callbacks.onDismiss, enabled = enabled) {
+                    Text(stringResource(R.string.repayment_draft_dismiss))
+                }
+                if (hasSuggestion) {
+                    // Server suggestion confirms directly; the secondary override opens the picker.
+                    TextButton(onClick = callbacks.onOpenPicker, enabled = enabled) {
+                        Text(stringResource(R.string.repayment_draft_choose_other))
+                    }
+                }
+                Button(onClick = primaryAction, enabled = enabled) {
+                    Text(repaymentDraftPrimaryLabel(action, primaryIdleLabel))
+                }
             }
         }
     }
 }
+
+private fun repaymentDraftPrimaryIdleLabelRes(hasSuggestion: Boolean): Int =
+    if (hasSuggestion) {
+        R.string.repayment_draft_confirm_suggested
+    } else {
+        R.string.repayment_draft_confirm
+    }
 
 /** Primary-button label: the busy spinner copy while this draft is processing, else [idleRes]. */
 @Composable
