@@ -37,6 +37,12 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
@@ -49,6 +55,7 @@ import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -261,15 +268,14 @@ private fun RecurringItemRow(
 ) {
     val merchantFallback = stringResource(R.string.recurring_item_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        AppAdaptiveEditAmountRow(
+            amount = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
+            style = AppAdaptiveAmountRowStyle(
+                role = AppAmountRole.Compact,
+                trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,
+            ),
         ) {
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = AppSpacing.contentGap),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
@@ -287,52 +293,85 @@ private fun RecurringItemRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
-                style = MaterialTheme.typography.titleSmall.tabularNum(),
-                fontWeight = AppTextHierarchy.body.weight,
-            )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                StatusChip(item.status)
-                if (item.anomalyStatus == "higher_than_average") {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.recurring_item_anomaly_higher, item.amountDeltaPercent ?: 0)) },
+        if (canModify) {
+            AppAdaptiveContentActionRow(
+                wideActionWeight = 0.92f,
+                content = { RecurringStatusChips(item) },
+                action = { actionModifier ->
+                    RecurringActions(
+                        modifier = actionModifier,
+                        item = item,
+                        onPause = onPause,
+                        onResume = onResume,
+                        onArchive = onArchive,
                     )
-                }
-            }
-            if (canModify) {
-                RecurringActions(item, onPause, onResume, onArchive)
-            }
+                },
+            )
+        } else {
+            RecurringStatusChips(item)
         }
     }
 }
 
 @Composable
 private fun RecurringActions(
+    modifier: Modifier = Modifier,
     item: RecurringItem,
     onPause: (String, Long) -> Unit,
     onResume: (String, Long) -> Unit,
     onArchive: (String) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        when (item.status) {
-            "active" -> TextButton(onClick = { onPause(item.publicId, item.rowVersion) }) {
-                Text(stringResource(R.string.recurring_action_pause))
+    val hasStateAction = item.status == "active" || item.status == "paused"
+    AppAdaptiveEditActionLayout(
+        actionCount = if (hasStateAction) 2 else 1,
+        compact = false,
+        modifier = modifier,
+        stackTwoActionsOnNarrow = true,
+    ) { mode ->
+        if (mode == AppAdaptiveEditActionMode.Stacked) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                when (item.status) {
+                    "active" -> TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onPause(item.publicId, item.rowVersion) },
+                    ) {
+                        Text(stringResource(R.string.recurring_action_pause))
+                    }
+                    "paused" -> TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onResume(item.publicId, item.rowVersion) },
+                    ) {
+                        Text(stringResource(R.string.recurring_action_resume))
+                    }
+                }
+                TextButton(modifier = Modifier.fillMaxWidth(), onClick = { onArchive(item.publicId) }) {
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.recurring_action_archive_description))
+                    Text(stringResource(R.string.recurring_action_archive))
+                }
             }
-            "paused" -> TextButton(onClick = { onResume(item.publicId, item.rowVersion) }) {
-                Text(stringResource(R.string.recurring_action_resume))
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                when (item.status) {
+                    "active" -> TextButton(onClick = { onPause(item.publicId, item.rowVersion) }) {
+                        Text(stringResource(R.string.recurring_action_pause))
+                    }
+                    "paused" -> TextButton(onClick = { onResume(item.publicId, item.rowVersion) }) {
+                        Text(stringResource(R.string.recurring_action_resume))
+                    }
+                }
+                TextButton(onClick = { onArchive(item.publicId) }) {
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.recurring_action_archive_description))
+                    Text(stringResource(R.string.recurring_action_archive))
+                }
             }
-        }
-        TextButton(onClick = { onArchive(item.publicId) }) {
-            Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.recurring_action_archive_description))
-            Text(stringResource(R.string.recurring_action_archive))
         }
     }
 }
@@ -386,42 +425,65 @@ private fun CandidateRow(
     onConfirmCandidate: (RecurringCandidate) -> Unit,
 ) {
     val merchantFallback = stringResource(R.string.recurring_candidate_merchant_fallback)
+    val content = @Composable {
+        AppAdaptiveEditAmountRow(
+            amount = formatDisplayAmount(candidate.amountCents, currencyDisplay),
+            style = AppAdaptiveAmountRowStyle(
+                role = AppAmountRole.Compact,
+                trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,
+            ),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(
+                    text = candidate.merchant.ifBlank { merchantFallback },
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.recurring_candidate_meta_summary,
+                        candidate.occurrenceCount,
+                        candidate.confidence,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall.tabularNum(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+    if (canModify) {
+        AppAdaptiveContentActionRow(
+            wideActionWeight = 0.46f,
+            verticalAlignment = Alignment.Top,
+            content = content,
+            action = { actionModifier ->
+                Button(modifier = actionModifier, onClick = { onConfirmCandidate(candidate) }) {
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.recurring_candidate_confirm_description))
+                    Text(stringResource(R.string.recurring_candidate_confirm))
+                }
+            },
+        )
+    } else {
+        content()
+    }
+}
+
+@Composable
+private fun RecurringStatusChips(item: RecurringItem) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(end = AppSpacing.contentGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(
-                text = candidate.merchant.ifBlank { merchantFallback },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        StatusChip(item.status)
+        if (item.anomalyStatus == "higher_than_average") {
+            AssistChip(
+                onClick = {},
+                label = { Text(stringResource(R.string.recurring_item_anomaly_higher, item.amountDeltaPercent ?: 0)) },
             )
-            Text(
-                text = stringResource(
-                    R.string.recurring_candidate_meta,
-                    formatDisplayAmount(candidate.amountCents, currencyDisplay),
-                    candidate.occurrenceCount,
-                    candidate.confidence,
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall.tabularNum(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (canModify) {
-            Button(onClick = { onConfirmCandidate(candidate) }) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.recurring_candidate_confirm_description))
-                Text(stringResource(R.string.recurring_candidate_confirm))
-            }
         }
     }
 }
