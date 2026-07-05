@@ -1,7 +1,9 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +24,8 @@ internal fun boundSettingsStore(): FakeTicketboxSettingsStore =
 internal class FakeTicketboxSettingsStore(
     private val events: MutableList<String> = mutableListOf(),
 ) : TicketboxSettingsStore {
-    override val backgroundSettingsFlow: Flow<BackgroundSettings> = MutableStateFlow(BackgroundSettings())
+    private val backgroundSettings = MutableStateFlow(BackgroundSettings())
+    override val backgroundSettingsFlow: Flow<BackgroundSettings> = backgroundSettings
     private var serverUrl: String? = null
     private var accountName: String? = null
     private val ledgerIdFlow = MutableStateFlow<String?>(null)
@@ -36,6 +39,7 @@ internal class FakeTicketboxSettingsStore(
     private var monthlyBudgetCents: Long? = null
     private var appSkinKey: String? = null
     var onSaveIdentity: (() -> Unit)? = null
+    var backgroundWriteFailure: Throwable? = null
 
     override fun serverUrl(): String? = serverUrl
 
@@ -45,6 +49,40 @@ internal class FakeTicketboxSettingsStore(
 
     override fun saveMonthlyBudgetCents(amountCents: Long?) {
         monthlyBudgetCents = amountCents
+    }
+
+    override suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
+        backgroundWriteFailure?.let { throw it }
+        backgroundSettings.value = settings
+    }
+
+    override suspend fun saveBackgroundImagePath(path: String) {
+        saveBackgroundSettings(BackgroundSettings().withCustomImage(path.trim()))
+    }
+
+    override suspend fun clearBackgroundImage() {
+        saveBackgroundSettings(backgroundSettings.value.withoutBackground())
+    }
+
+    override suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
+        saveBackgroundSettings(backgroundSettings.value.copy(cropMode = mode))
+    }
+
+    override suspend fun setImmersionMode(mode: ImmersionMode) {
+        saveBackgroundSettings(backgroundSettings.value.copy(immersionMode = mode))
+    }
+
+    override suspend fun setParallaxEnabled(enabled: Boolean) {
+        saveBackgroundSettings(backgroundSettings.value.copy(enableParallax = enabled))
+    }
+
+    override suspend fun setReduceMotion(enabled: Boolean) {
+        saveBackgroundSettings(
+            backgroundSettings.value.copy(
+                reduceMotion = enabled,
+                enableParallax = backgroundSettings.value.enableParallax && !enabled,
+            ),
+        )
     }
 
     override fun lastConfirmedSyncAt(): String? =

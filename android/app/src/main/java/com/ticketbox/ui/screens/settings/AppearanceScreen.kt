@@ -78,7 +78,6 @@ import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
@@ -119,7 +118,7 @@ fun AppearanceScreen(
         title = stringResource(R.string.appearance_page_title),
         subtitle = stringResource(R.string.appearance_page_subtitle),
         onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         AppearanceOverviewSection(
             currentSkin = currentSkin,
