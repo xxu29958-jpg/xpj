@@ -9,6 +9,10 @@ import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.ui.components.formatDisplayAmount
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.DateTimeException
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.ZoneId
 import kotlin.math.abs
 
 internal data class ReportTrendChartPoint(
@@ -28,15 +32,33 @@ internal fun reportTrendChartPoints(trend: List<ReportTrendPoint>): List<ReportT
         )
     }
 
-internal fun reportsRecentWindowTrend(overview: ReportsOverview): List<DailySpend> {
+internal fun reportsRecentWindowTrend(
+    overview: ReportsOverview,
+    today: LocalDate = currentLocalDate(overview.timezone),
+): List<DailySpend> {
     if (overview.granularity != ReportGranularity.Day) return emptyList()
-    return overview.trend.map { point ->
-        DailySpend(
-            date = point.bucket,
-            label = point.label.ifBlank { point.bucket.takeLast(5) },
-            amountCents = point.amountCents.coerceAtLeast(0L),
-        )
-    }
+    val currentMonth = YearMonth.from(today)
+    val shouldDropFutureBuckets = runCatching { YearMonth.parse(overview.month) }.getOrNull() == currentMonth
+    return overview.trend
+        .asSequence()
+        .filter { point ->
+            !shouldDropFutureBuckets ||
+                runCatching { LocalDate.parse(point.bucket) }.getOrNull()?.isAfter(today) != true
+        }
+        .map { point ->
+            DailySpend(
+                date = point.bucket,
+                label = point.label.ifBlank { point.bucket.takeLast(5) },
+                amountCents = point.amountCents.coerceAtLeast(0L),
+            )
+        }
+        .toList()
+}
+
+private fun currentLocalDate(timezone: String): LocalDate = try {
+    LocalDate.now(ZoneId.of(timezone))
+} catch (_: DateTimeException) {
+    LocalDate.now()
 }
 
 internal data class CategoryComparisonChartRow(

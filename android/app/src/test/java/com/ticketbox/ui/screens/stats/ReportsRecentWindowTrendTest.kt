@@ -5,6 +5,7 @@ import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -44,11 +45,55 @@ class ReportsRecentWindowTrendTest {
         assertEquals(emptyList(), trend)
     }
 
+    @Test
+    fun recentWindowTrendDropsFutureBucketsForCurrentMonthOnly() {
+        val currentMonthTrend = reportsRecentWindowTrend(
+            overview(
+                month = "2026-07",
+                granularity = ReportGranularity.Day,
+                trend = listOf(
+                    ReportTrendPoint(bucket = "2026-07-03", label = "07-03", amountCents = 580L, count = 1),
+                    ReportTrendPoint(bucket = "2026-07-05", label = "07-05", amountCents = 1_690L, count = 1),
+                    ReportTrendPoint(bucket = "2026-07-06", label = "07-06", amountCents = 0L, count = 0),
+                    ReportTrendPoint(bucket = "2026-07-31", label = "07-31", amountCents = 0L, count = 0),
+                ),
+            ),
+            today = LocalDate.parse("2026-07-05"),
+        )
+        val historicalMonthTrend = reportsRecentWindowTrend(
+            overview(
+                month = "2026-06",
+                granularity = ReportGranularity.Day,
+                trend = listOf(
+                    ReportTrendPoint(bucket = "2026-06-29", label = "06-29", amountCents = 580L, count = 1),
+                    ReportTrendPoint(bucket = "2026-06-30", label = "06-30", amountCents = 0L, count = 0),
+                ),
+            ),
+            today = LocalDate.parse("2026-07-05"),
+        )
+
+        assertEquals(
+            listOf(
+                DailySpend(date = "2026-07-03", label = "07-03", amountCents = 580L),
+                DailySpend(date = "2026-07-05", label = "07-05", amountCents = 1_690L),
+            ),
+            currentMonthTrend,
+        )
+        assertEquals(
+            listOf(
+                DailySpend(date = "2026-06-29", label = "06-29", amountCents = 580L),
+                DailySpend(date = "2026-06-30", label = "06-30", amountCents = 0L),
+            ),
+            historicalMonthTrend,
+        )
+    }
+
     private fun overview(
+        month: String = "2026-05",
         granularity: ReportGranularity,
         trend: List<ReportTrendPoint>,
     ) = ReportsOverview(
-        month = "2026-05",
+        month = month,
         timezone = "Asia/Shanghai",
         granularity = granularity,
         totalAmountCents = trend.sumOf { it.amountCents.coerceAtLeast(0L) },
