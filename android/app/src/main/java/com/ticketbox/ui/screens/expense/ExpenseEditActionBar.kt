@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFloatingActionBar
@@ -27,6 +28,7 @@ import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.forTone
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 
@@ -34,8 +36,8 @@ import com.ticketbox.ui.design.LocalStateTokens
  * 编辑页操作栏的可见状态（哪些动作可用 + 是否保存中 + 两类提示）。
  *
  * [validationMessage] 是本地表单校验（如"请先填写金额"），永远是错误，用
- * danger 色。[statusMessage] 是异步结果反馈（已保存 / 没有保存成功…），成功
- * 失败混用，保持中性 secondary 色，不染红。
+ * danger 色。[statusMessage] 是异步结果反馈（已保存 / 没有保存成功…），颜色由
+ * ViewModel 提供的 [statusTone] 决定。
  */
 @Immutable
 internal data class ExpenseEditActionBarState(
@@ -45,6 +47,7 @@ internal data class ExpenseEditActionBarState(
     val allowReject: Boolean,
     val validationMessage: String?,
     val statusMessage: String?,
+    val statusTone: MessageTone,
     val forceCompact: Boolean = false,
 )
 
@@ -84,7 +87,7 @@ internal fun ExpenseEditActionBar(
             ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
         }
         state.statusMessage?.let {
-            ExpenseEditActionMessage(it, MaterialTheme.colorScheme.secondary)
+            ExpenseEditActionMessage(it, LocalStateTokens.current.forTone(state.statusTone).fg)
         }
         ExpenseEditResponsiveActionRows(state = state, actions = actions, compactMode = compactMode)
     }

@@ -14,6 +14,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
@@ -116,6 +117,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(saved, state.expense)
         assertFalse(state.saving)
         assertNotNull(state.message)
+        assertEquals(MessageTone.Success, state.messageTone)
         assertTrue(vm.consumeDone())
     }
 
@@ -131,6 +133,7 @@ internal class ExpenseEditViewModelTest {
         val state = vm.uiState.value
         assertEquals(queued, state.expense)
         assertNotNull(state.message)
+        assertEquals(MessageTone.Info, state.messageTone)
         assertTrue(vm.consumeDone())
     }
 
@@ -145,6 +148,7 @@ internal class ExpenseEditViewModelTest {
         val state = vm.uiState.value
         assertFalse(state.saving)
         assertNotNull(state.message)
+        assertEquals(MessageTone.Danger, state.messageTone)
         assertFalse(vm.consumeDone())
     }
 
@@ -156,6 +160,7 @@ internal class ExpenseEditViewModelTest {
         advanceUntilIdle()
 
         assertNotNull(vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertEquals(0, fake.saveCalls)
         assertEquals(0, fake.confirmCalls)
         assertFalse(vm.consumeDone())
@@ -194,6 +199,7 @@ internal class ExpenseEditViewModelTest {
         advanceUntilIdle()
 
         assertNotNull(vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.saving)
         assertFalse(vm.consumeDone())
         // The save step COMMITTED (server bumped the OCC token). The failed
@@ -222,6 +228,7 @@ internal class ExpenseEditViewModelTest {
             UiText.res(R.string.expense_edit_confirm_offline_queued),
             vm.uiState.value.message,
         )
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
         assertEquals("confirmed", vm.uiState.value.expense?.status)
         assertTrue(vm.consumeDone())
     }
@@ -239,6 +246,7 @@ internal class ExpenseEditViewModelTest {
 
         assertEquals(0, fake.replaceSplitsCalls)
         assertNotNull(vm.uiState.value.splitsMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.splitsMessageTone)
         assertTrue(vm.uiState.value.splitEditorOpen)
     }
 
@@ -253,6 +261,7 @@ internal class ExpenseEditViewModelTest {
         val state = vm.uiState.value
         assertTrue(state.readOnly)
         assertNotNull(state.message)
+        assertEquals(MessageTone.Danger, state.messageTone)
         assertEquals(0, fake.saveCalls)
     }
 
@@ -296,6 +305,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(9L, vm.uiState.value.expense?.rowVersion)
         assertFalse(vm.uiState.value.itemEditorOpen)
         assertNotNull(vm.uiState.value.message)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -317,6 +327,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(10L, vm.uiState.value.expense?.rowVersion)
         assertFalse(vm.uiState.value.splitEditorOpen)
         assertNotNull(vm.uiState.value.message)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -339,6 +350,7 @@ internal class ExpenseEditViewModelTest {
 
         assertEquals(0, fake.replaceItemsCalls)
         assertNotNull(vm.uiState.value.itemsMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.itemsMessageTone)
         assertTrue(vm.uiState.value.itemEditorOpen)
     }
 
@@ -360,6 +372,7 @@ internal class ExpenseEditViewModelTest {
 
         assertEquals(0, fake.replaceSplitsCalls)
         assertNotNull(vm.uiState.value.splitsMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.splitsMessageTone)
         assertTrue(vm.uiState.value.splitEditorOpen)
     }
 
@@ -378,6 +391,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(optimistic, vm.uiState.value.expenseItems)
         assertNull(vm.uiState.value.itemsMessage)
         assertNotNull(vm.uiState.value.message)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
     }
 
     // ── 已入账流水转入还款复核 ──
@@ -396,6 +410,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(confirmed, fake.repaymentDraftExpense)
         assertFalse(state.repaymentDraftCreating)
         assertNotNull(state.message)
+        assertEquals(MessageTone.Success, state.messageTone)
         assertEquals("rd-1", state.openRepaymentDraftPublicId)
         assertEquals("rd-1", vm.consumeOpenRepaymentDraftPublicId())
         assertNull(vm.consumeOpenRepaymentDraftPublicId())
@@ -411,6 +426,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(0, fake.repaymentDraftCalls)
         assertNull(vm.uiState.value.openRepaymentDraftPublicId)
         assertNotNull(vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 
     // ── 批 13 拆账发起 ──
@@ -458,6 +474,7 @@ internal class ExpenseEditViewModelTest {
 
         assertEquals(listOf("mine"), vm.uiState.value.billSplitSent.map { it.publicId })
         assertNotNull(vm.uiState.value.billSplitMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.billSplitMessageTone)
         assertFalse(vm.uiState.value.billSplitLoading)
     }
 
@@ -482,6 +499,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(Triple(7L, 333L, 400L), fake.lastCreateBillSplitArgs)
         assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
         assertEquals(UiText.res(R.string.expense_edit_bill_split_sent), vm.uiState.value.message)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
         // 测试名里的 Refreshes 必须真断到：发起成功后已发列表重新拉取(对抗审 P3)。
         assertEquals(sentListFetchesBeforeSend + 1, fake.fetchBillSplitSentCalls)
     }
@@ -512,6 +530,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(listOf("new"), vm.uiState.value.billSplitSent.map { it.publicId })
         assertEquals(BillSplitStatusValues.INVITED, vm.uiState.value.billSplitSent.single().status)
         assertNotNull(vm.uiState.value.billSplitMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.billSplitMessageTone)
         assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
     }
 
@@ -535,6 +554,7 @@ internal class ExpenseEditViewModelTest {
 
         assertEquals(0, fake.createBillSplitCalls)
         assertNotNull(vm.uiState.value.billSplitInviteMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.billSplitInviteMessageTone)
         assertTrue(vm.uiState.value.billSplitInviteSheetOpen)
     }
 
@@ -556,6 +576,7 @@ internal class ExpenseEditViewModelTest {
         // 在线-only：失败留在 sheet 内，sheet 不关、不报「已发起」、不入队。
         assertEquals(1, fake.createBillSplitCalls)
         assertNotNull(vm.uiState.value.billSplitInviteMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.billSplitInviteMessageTone)
         assertTrue(vm.uiState.value.billSplitInviteSheetOpen)
         assertNull(vm.uiState.value.message)
     }
@@ -604,6 +625,7 @@ internal class ExpenseEditViewModelTest {
         assertEquals(listOf("mine"), vm.uiState.value.billSplitSent.map { it.publicId })
         assertEquals(BillSplitStatusValues.CANCELLED, vm.uiState.value.billSplitSent.single().status)
         assertNotNull(vm.uiState.value.billSplitMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.billSplitMessageTone)
         assertFalse(vm.uiState.value.billSplitLoading)
     }
 }

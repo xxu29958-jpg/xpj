@@ -4,8 +4,9 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
-import com.ticketbox.domain.model.canInitiateBillSplit
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -29,6 +30,12 @@ internal fun List<BillSplitSent>.activeSplitCentsFor(expenseId: Long): Long =
 private val BillSplitSent.isActiveSplit: Boolean
     get() = status == BillSplitStatusValues.INVITED || status == BillSplitStatusValues.ACCEPTED
 
+private data class BillSplitInviteRequest(
+    val expenseId: Long,
+    val receiverAccountId: Long,
+    val amountCents: Long,
+)
+
 /**
  * 拉取本票已发出的拆账邀请。fetchBillSplitSent 返回**账号维度**的全部已发邀请，这里按
  * senderExpenseId 客户端过滤出本票的（隐私上 sent 视图本就只含发起方自己的邀请）。
@@ -37,13 +44,20 @@ private val BillSplitSent.isActiveSplit: Boolean
 fun ExpenseEditViewModel.loadBillSplitSent() {
     val expense = _uiState.value.expense ?: return
     viewModelScope.launch {
-        _uiState.update { it.copy(billSplitLoading = true, billSplitMessage = null) }
+        _uiState.update {
+            it.copy(
+                billSplitLoading = true,
+                billSplitMessage = null,
+                billSplitMessageTone = MessageTone.Neutral,
+            )
+        }
         repository.fetchBillSplitSent()
             .onSuccess { sent ->
                 _uiState.update {
                     it.copy(
                         billSplitSent = sent.filter { row -> row.senderExpenseId == expense.id },
                         billSplitLoading = false,
+                        billSplitMessageTone = MessageTone.Neutral,
                     )
                 }
             }
@@ -52,6 +66,7 @@ fun ExpenseEditViewModel.loadBillSplitSent() {
                     it.copy(
                         billSplitLoading = false,
                         billSplitMessage = error.toUiText(R.string.expense_edit_bill_split_load_failed),
+                        billSplitMessageTone = MessageTone.Danger,
                     )
                 }
             }
@@ -68,6 +83,7 @@ fun ExpenseEditViewModel.openBillSplitInviteSheet() {
             billSplitInviteSelectedMemberId = null,
             billSplitInviteAmountText = "",
             billSplitInviteMessage = null,
+            billSplitInviteMessageTone = MessageTone.Neutral,
         )
     }
     loadBillSplitInviteMembers()
@@ -76,13 +92,20 @@ fun ExpenseEditViewModel.openBillSplitInviteSheet() {
 /** 加载本账本成员作为收件人候选：剔除自己（不能拆给自己）和已停用成员，只留可选的。 */
 fun ExpenseEditViewModel.loadBillSplitInviteMembers() {
     viewModelScope.launch {
-        _uiState.update { it.copy(billSplitInviteMembersLoading = true, billSplitInviteMessage = null) }
+        _uiState.update {
+            it.copy(
+                billSplitInviteMembersLoading = true,
+                billSplitInviteMessage = null,
+                billSplitInviteMessageTone = MessageTone.Neutral,
+            )
+        }
         repository.fetchSplitMembers()
             .onSuccess { members ->
                 _uiState.update {
                     it.copy(
                         billSplitInviteMembers = members.filter { m -> !m.isSelf && !m.isDisabled },
                         billSplitInviteMembersLoading = false,
+                        billSplitInviteMessageTone = MessageTone.Neutral,
                     )
                 }
             }
@@ -91,6 +114,7 @@ fun ExpenseEditViewModel.loadBillSplitInviteMembers() {
                     it.copy(
                         billSplitInviteMembersLoading = false,
                         billSplitInviteMessage = error.toUiText(R.string.expense_edit_bill_split_members_load_failed),
+                        billSplitInviteMessageTone = MessageTone.Danger,
                     )
                 }
             }
@@ -98,11 +122,23 @@ fun ExpenseEditViewModel.loadBillSplitInviteMembers() {
 }
 
 fun ExpenseEditViewModel.selectBillSplitInviteMember(memberId: Long) {
-    _uiState.update { it.copy(billSplitInviteSelectedMemberId = memberId, billSplitInviteMessage = null) }
+    _uiState.update {
+        it.copy(
+            billSplitInviteSelectedMemberId = memberId,
+            billSplitInviteMessage = null,
+            billSplitInviteMessageTone = MessageTone.Neutral,
+        )
+    }
 }
 
 fun ExpenseEditViewModel.updateBillSplitInviteAmount(amountText: String) {
-    _uiState.update { it.copy(billSplitInviteAmountText = amountText, billSplitInviteMessage = null) }
+    _uiState.update {
+        it.copy(
+            billSplitInviteAmountText = amountText,
+            billSplitInviteMessage = null,
+            billSplitInviteMessageTone = MessageTone.Neutral,
+        )
+    }
 }
 
 fun ExpenseEditViewModel.closeBillSplitInviteSheet() {
@@ -113,6 +149,7 @@ fun ExpenseEditViewModel.closeBillSplitInviteSheet() {
             billSplitInviteAmountText = "",
             billSplitInviteMembers = emptyList(),
             billSplitInviteMessage = null,
+            billSplitInviteMessageTone = MessageTone.Neutral,
         )
     }
 }
@@ -123,41 +160,28 @@ fun ExpenseEditViewModel.closeBillSplitInviteSheet() {
  * **在线-only**：直连失败的 [Result.failure] 直接展示在 sheet 内，不入离线队列。
  */
 fun ExpenseEditViewModel.sendBillSplitInvite() {
-    val expense = _uiState.value.expense
-    if (expense == null || expense.amountCents == null) {
-        _uiState.update { it.copy(billSplitInviteMessage = UiText.res(R.string.expense_edit_page_not_loaded)) }
-        return
-    }
-    val memberId = _uiState.value.billSplitInviteSelectedMemberId
-    val member = _uiState.value.billSplitInviteMembers.firstOrNull { it.memberId == memberId }
-    if (member == null) {
-        _uiState.update { it.copy(billSplitInviteMessage = UiText.res(R.string.expense_edit_bill_split_pick_member)) }
-        return
-    }
-    val amountCents = parseAmountCents(_uiState.value.billSplitInviteAmountText)
-    if (amountCents == null || amountCents <= 0L) {
-        _uiState.update { it.copy(billSplitInviteMessage = UiText.res(R.string.expense_edit_bill_split_amount_invalid)) }
-        return
-    }
-    val remaining = expense.amountCents - _uiState.value.billSplitSent.activeSplitCentsFor(expense.id)
-    if (amountCents > remaining) {
-        _uiState.update { it.copy(billSplitInviteMessage = UiText.res(R.string.expense_edit_bill_split_amount_exceeds)) }
-        return
-    }
+    val request = currentBillSplitInviteRequest() ?: return
     viewModelScope.launch {
-        _uiState.update { it.copy(billSplitInviteSending = true, billSplitInviteMessage = null) }
-        repository.createBillSplitInvitation(expense.id, member.accountId, amountCents)
+        _uiState.update {
+            it.copy(
+                billSplitInviteSending = true,
+                billSplitInviteMessage = null,
+                billSplitInviteMessageTone = MessageTone.Neutral,
+            )
+        }
+        repository.createBillSplitInvitation(request.expenseId, request.receiverAccountId, request.amountCents)
             .onSuccess { sent ->
                 // 关闭 sheet、刷新本票已发列表（让新邀请立刻出现在卡里）、顶部成功提示。
                 _uiState.update {
                     it.copy(
-                        billSplitSent = it.billSplitSent.upsertBillSplitSent(sent, expense.id),
+                        billSplitSent = it.billSplitSent.upsertBillSplitSent(sent, request.expenseId),
                         billSplitInviteSheetOpen = false,
                         billSplitInviteSelectedMemberId = null,
                         billSplitInviteAmountText = "",
                         billSplitInviteMembers = emptyList(),
                         billSplitInviteSending = false,
                         message = UiText.res(R.string.expense_edit_bill_split_sent),
+                        messageTone = MessageTone.Success,
                     )
                 }
                 loadBillSplitSent()
@@ -168,16 +192,54 @@ fun ExpenseEditViewModel.sendBillSplitInvite() {
                     it.copy(
                         billSplitInviteSending = false,
                         billSplitInviteMessage = error.toUiText(R.string.expense_edit_bill_split_send_failed),
+                        billSplitInviteMessageTone = MessageTone.Danger,
                     )
                 }
             }
     }
 }
 
+private fun ExpenseEditViewModel.currentBillSplitInviteRequest(): BillSplitInviteRequest? {
+    fun reject(message: UiText): BillSplitInviteRequest? {
+        _uiState.update {
+            it.copy(
+                billSplitInviteMessage = message,
+                billSplitInviteMessageTone = MessageTone.Danger,
+            )
+        }
+        return null
+    }
+
+    val expense = _uiState.value.expense
+    if (expense == null || expense.amountCents == null) {
+        return reject(UiText.res(R.string.expense_edit_page_not_loaded))
+    }
+    val memberId = _uiState.value.billSplitInviteSelectedMemberId
+    val member = _uiState.value.billSplitInviteMembers.firstOrNull { it.memberId == memberId }
+    if (member == null) {
+        return reject(UiText.res(R.string.expense_edit_bill_split_pick_member))
+    }
+    val amountCents = parseAmountCents(_uiState.value.billSplitInviteAmountText)
+    if (amountCents == null || amountCents <= 0L) {
+        return reject(UiText.res(R.string.expense_edit_bill_split_amount_invalid))
+    }
+    val remaining = expense.amountCents - _uiState.value.billSplitSent.activeSplitCentsFor(expense.id)
+    if (amountCents > remaining) {
+        return reject(UiText.res(R.string.expense_edit_bill_split_amount_exceeds))
+    }
+    return BillSplitInviteRequest(expenseId = expense.id, receiverAccountId = member.accountId, amountCents = amountCents)
+}
+
 /** 撤回一条 invited 状态的拆账邀请（复用 cancel 动作）。成功后刷新本票已发列表。 */
 fun ExpenseEditViewModel.cancelBillSplitInvitation(publicId: String) {
     viewModelScope.launch {
-        _uiState.update { it.copy(billSplitLoading = true, billSplitMessage = null) }
+        _uiState.update {
+            it.copy(
+                billSplitLoading = true,
+                billSplitMessage = null,
+                billSplitMessageTone = MessageTone.Neutral,
+            )
+        }
         repository.cancelBillSplitInvitation(publicId)
             .onSuccess { cancelled ->
                 _uiState.update { state ->
@@ -186,6 +248,7 @@ fun ExpenseEditViewModel.cancelBillSplitInvitation(publicId: String) {
                         billSplitSent = state.billSplitSent.upsertBillSplitSent(cancelled, expenseId),
                         billSplitLoading = false,
                         billSplitMessage = null,
+                        billSplitMessageTone = MessageTone.Neutral,
                     )
                 }
                 loadBillSplitSent()
@@ -195,6 +258,7 @@ fun ExpenseEditViewModel.cancelBillSplitInvitation(publicId: String) {
                     it.copy(
                         billSplitLoading = false,
                         billSplitMessage = error.toUiText(R.string.expense_edit_bill_split_cancel_failed),
+                        billSplitMessageTone = MessageTone.Danger,
                     )
                 }
             }

@@ -23,8 +23,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -43,6 +44,7 @@ internal data class BillSplitInviteSheetState(
     val amountText: String,
     val sending: Boolean,
     val message: UiText?,
+    val messageTone: MessageTone,
 )
 
 internal data class BillSplitInviteSheetActions(
@@ -78,13 +80,7 @@ internal fun BillSplitInviteSheet(
                 sending = state.sending,
                 onUpdateAmount = actions.onUpdateAmount,
             )
-            state.message?.let {
-                Text(
-                    it.asString(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+            AppStatusBanner(message = state.message, tone = state.messageTone)
             ExpenseEditSheetActions(
                 state = ExpenseEditSheetActionState(
                     saving = state.sending,

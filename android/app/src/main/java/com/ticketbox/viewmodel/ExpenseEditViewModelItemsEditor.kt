@@ -6,6 +6,7 @@ import com.ticketbox.data.repository.ItemsAckOutcome
 import com.ticketbox.data.repository.ReplaceItemsOutcome
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItemKind
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import kotlin.math.abs
@@ -29,12 +30,17 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
     val currentItems = _uiState.value.expenseItems
     if (expense == null || currentItems == null) {
         _uiState.update {
-            it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_tap))
+            it.copy(
+                itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_tap),
+                itemsMessageTone = MessageTone.Danger,
+            )
         }
         return
     }
     viewModelScope.launch {
-        _uiState.update { it.copy(itemsLoading = true, itemsMessage = null) }
+        _uiState.update {
+            it.copy(itemsLoading = true, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
+        }
         repository.acknowledgeItemsMismatchAllowingOffline(expense, currentItems)
             .onSuccess { outcome ->
                 when (outcome) {
@@ -45,6 +51,7 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
                                 expenseItems = outcome.items,
                                 itemsLoading = false,
                                 message = UiText.res(R.string.expense_edit_items_ack_synced),
+                                messageTone = MessageTone.Success,
                             )
                         }
                     }
@@ -57,6 +64,7 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
                                 expenseItems = outcome.items,
                                 itemsLoading = false,
                                 message = UiText.res(R.string.expense_edit_items_ack_offline_queued),
+                                messageTone = MessageTone.Info,
                             )
                         }
                     }
@@ -67,6 +75,7 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
                     it.copy(
                         itemsLoading = false,
                         itemsMessage = error.toUiText(R.string.expense_edit_items_ack_failed),
+                        itemsMessageTone = MessageTone.Danger,
                     )
                 }
             }
@@ -84,7 +93,9 @@ fun ExpenseEditViewModel.openItemsEditor() {
             kind = item.kind,
         )
     }
-    _uiState.update { it.copy(itemEditorOpen = true, itemDrafts = drafts, itemsMessage = null) }
+    _uiState.update {
+        it.copy(itemEditorOpen = true, itemDrafts = drafts, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
+    }
 }
 
 fun ExpenseEditViewModel.updateItemDraft(index: Int, name: String? = null, amountText: String? = null, kind: String? = null) {
@@ -123,7 +134,7 @@ fun ExpenseEditViewModel.saveItems() {
     val expense = _uiState.value.expense
     val currentItems = _uiState.value.expenseItems
     if (expense == null || currentItems == null) {
-        _uiState.update { it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_not_loaded_retry)) }
+        showItemsDanger(UiText.res(R.string.expense_edit_items_not_loaded_retry))
         return
     }
     val draftRows = _uiState.value.itemDrafts
@@ -133,48 +144,50 @@ fun ExpenseEditViewModel.saveItems() {
     // every other amount input in the app rejects loudly instead. Refuse to
     // save and keep the editor open.
     if (draftRows.any { it.amountText.isNotBlank() && parseAmountCents(it.amountText) == null }) {
-        _uiState.update { it.copy(itemsMessage = UiText.res(R.string.expense_edit_items_amount_unparsable)) }
+        showItemsDanger(UiText.res(R.string.expense_edit_items_amount_unparsable))
         return
     }
     val drafts = draftRows.map { it.toDomainDraft() }
     viewModelScope.launch {
-        _uiState.update { it.copy(itemsSaving = true, itemsMessage = null) }
+        _uiState.update {
+            it.copy(itemsSaving = true, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
+        }
         repository.replaceExpenseItemsAllowingOffline(expense, drafts, currentItems)
             .onSuccess { outcome ->
-                when (outcome) {
-                    is ReplaceItemsOutcome.Synced -> {
-                        _uiState.update {
-                            it.copy(
-                                expense = it.expense?.withParentRowVersion(outcome.items.parentRowVersion),
-                                expenseItems = outcome.items,
-                                itemEditorOpen = false,
-                                itemDrafts = emptyList(),
-                                itemsSaving = false,
-                                message = UiText.res(R.string.expense_edit_items_saved),
-                            )
-                        }
-                    }
-                    is ReplaceItemsOutcome.Queued -> {
-                        _uiState.update {
-                            it.copy(
-                                expenseItems = outcome.items,
-                                itemEditorOpen = false,
-                                itemDrafts = emptyList(),
-                                itemsSaving = false,
-                                message = UiText.res(R.string.expense_edit_items_saved_offline_queued),
-                            )
-                        }
-                    }
-                }
+                applyItemsSaveOutcome(outcome)
             }
             .onFailure { error ->
                 _uiState.update {
                     it.copy(
                         itemsSaving = false,
                         itemsMessage = error.toUiText(R.string.expense_edit_items_save_failed),
+                        itemsMessageTone = MessageTone.Danger,
                     )
                 }
             }
+    }
+}
+
+private fun ExpenseEditViewModel.showItemsDanger(message: UiText) {
+    _uiState.update { it.copy(itemsMessage = message, itemsMessageTone = MessageTone.Danger) }
+}
+
+private fun ExpenseEditViewModel.applyItemsSaveOutcome(outcome: ReplaceItemsOutcome) {
+    val synced = outcome as? ReplaceItemsOutcome.Synced
+    _uiState.update {
+        it.copy(
+            expense = synced?.let { sync -> it.expense?.withParentRowVersion(sync.items.parentRowVersion) } ?: it.expense,
+            expenseItems = outcome.items,
+            itemEditorOpen = false,
+            itemDrafts = emptyList(),
+            itemsSaving = false,
+            message = if (synced != null) {
+                UiText.res(R.string.expense_edit_items_saved)
+            } else {
+                UiText.res(R.string.expense_edit_items_saved_offline_queued)
+            },
+            messageTone = if (synced != null) MessageTone.Success else MessageTone.Info,
+        )
     }
 }
 

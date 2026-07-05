@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ReplaceSplitsOutcome
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
@@ -26,10 +27,17 @@ import kotlinx.coroutines.launch
  *  splits — see [loadSplitMembers]). No-op until splits have loaded. */
 fun ExpenseEditViewModel.openSplitsEditor() {
     if (_uiState.value.expenseSplits == null) {
-        _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_tap)) }
+        _uiState.update {
+            it.copy(
+                splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_tap),
+                splitsMessageTone = MessageTone.Danger,
+            )
+        }
         return
     }
-    _uiState.update { it.copy(splitEditorOpen = true, splitsMessage = null) }
+    _uiState.update {
+        it.copy(splitEditorOpen = true, splitsMessage = null, splitsMessageTone = MessageTone.Neutral)
+    }
     loadSplitMembers()
 }
 
@@ -40,13 +48,16 @@ fun ExpenseEditViewModel.openSplitsEditor() {
 fun ExpenseEditViewModel.loadSplitMembers() {
     val currentSplits = _uiState.value.expenseSplits ?: return
     viewModelScope.launch {
-        _uiState.update { it.copy(splitMembersLoading = true, splitsMessage = null) }
+        _uiState.update {
+            it.copy(splitMembersLoading = true, splitsMessage = null, splitsMessageTone = MessageTone.Neutral)
+        }
         repository.fetchSplitMembers()
             .onSuccess { members ->
                 _uiState.update {
                     it.copy(
                         splitDrafts = buildSplitDrafts(members, currentSplits),
                         splitMembersLoading = false,
+                        splitsMessageTone = MessageTone.Neutral,
                     )
                 }
             }
@@ -55,6 +66,7 @@ fun ExpenseEditViewModel.loadSplitMembers() {
                     it.copy(
                         splitMembersLoading = false,
                         splitsMessage = error.toUiText(R.string.expense_edit_splits_members_load_failed),
+                        splitsMessageTone = MessageTone.Danger,
                     )
                 }
             }
@@ -124,7 +136,7 @@ fun ExpenseEditViewModel.saveSplits() {
     val expense = _uiState.value.expense
     val currentSplits = _uiState.value.expenseSplits
     if (expense == null || currentSplits == null) {
-        _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_items_not_loaded_retry)) }
+        showSplitsDanger(UiText.res(R.string.expense_edit_items_not_loaded_retry))
         return
     }
     // ADR-0042 P1 data-loss guard: the sheet opens BEFORE the member roster
@@ -135,7 +147,7 @@ fun ExpenseEditViewModel.saveSplits() {
     // not-loaded; an intentional "remove everyone" still has the unchecked
     // rows in splitDrafts, so this only blocks the never-loaded case).
     if (_uiState.value.splitMembersLoading || _uiState.value.splitDrafts.isEmpty()) {
-        _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_not_loaded_save)) }
+        showSplitsDanger(UiText.res(R.string.expense_edit_splits_not_loaded_save))
         return
     }
     val draftRows = _uiState.value.splitDrafts
@@ -143,48 +155,50 @@ fun ExpenseEditViewModel.saveSplits() {
     // Audit P3 #11: same unparsable-amount guard as saveItems — "1.2.3" must
     // not silently land as a ¥0 split share.
     if (draftRows.any { parseAmountCents(it.amountText) == null }) {
-        _uiState.update { it.copy(splitsMessage = UiText.res(R.string.expense_edit_splits_amount_unparsable)) }
+        showSplitsDanger(UiText.res(R.string.expense_edit_splits_amount_unparsable))
         return
     }
     val drafts = draftRows.map { it.toDomainDraft() }
     viewModelScope.launch {
-        _uiState.update { it.copy(splitsSaving = true, splitsMessage = null) }
+        _uiState.update {
+            it.copy(splitsSaving = true, splitsMessage = null, splitsMessageTone = MessageTone.Neutral)
+        }
         repository.replaceExpenseSplitsAllowingOffline(expense, drafts, currentSplits)
             .onSuccess { outcome ->
-                when (outcome) {
-                    is ReplaceSplitsOutcome.Synced -> {
-                        _uiState.update {
-                            it.copy(
-                                expense = it.expense?.withParentRowVersion(outcome.splits.parentRowVersion),
-                                expenseSplits = outcome.splits,
-                                splitEditorOpen = false,
-                                splitDrafts = emptyList(),
-                                splitsSaving = false,
-                                message = UiText.res(R.string.expense_edit_splits_saved),
-                            )
-                        }
-                    }
-                    is ReplaceSplitsOutcome.Queued -> {
-                        _uiState.update {
-                            it.copy(
-                                expenseSplits = outcome.splits,
-                                splitEditorOpen = false,
-                                splitDrafts = emptyList(),
-                                splitsSaving = false,
-                                message = UiText.res(R.string.expense_edit_splits_saved_offline_queued),
-                            )
-                        }
-                    }
-                }
+                applySplitsSaveOutcome(outcome)
             }
             .onFailure { error ->
                 _uiState.update {
                     it.copy(
                         splitsSaving = false,
                         splitsMessage = error.toUiText(R.string.expense_edit_splits_save_failed),
+                        splitsMessageTone = MessageTone.Danger,
                     )
                 }
             }
+    }
+}
+
+private fun ExpenseEditViewModel.showSplitsDanger(message: UiText) {
+    _uiState.update { it.copy(splitsMessage = message, splitsMessageTone = MessageTone.Danger) }
+}
+
+private fun ExpenseEditViewModel.applySplitsSaveOutcome(outcome: ReplaceSplitsOutcome) {
+    val synced = outcome as? ReplaceSplitsOutcome.Synced
+    _uiState.update {
+        it.copy(
+            expense = synced?.let { sync -> it.expense?.withParentRowVersion(sync.splits.parentRowVersion) } ?: it.expense,
+            expenseSplits = outcome.splits,
+            splitEditorOpen = false,
+            splitDrafts = emptyList(),
+            splitsSaving = false,
+            message = if (synced != null) {
+                UiText.res(R.string.expense_edit_splits_saved)
+            } else {
+                UiText.res(R.string.expense_edit_splits_saved_offline_queued)
+            },
+            messageTone = if (synced != null) MessageTone.Success else MessageTone.Info,
+        )
     }
 }
 

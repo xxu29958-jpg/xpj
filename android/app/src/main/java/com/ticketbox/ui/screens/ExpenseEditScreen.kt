@@ -63,6 +63,8 @@ import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
+import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelActions
+import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelState
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
 import com.ticketbox.ui.screens.expense.ExpenseRepaymentDraftPanel
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
@@ -152,6 +154,7 @@ fun ExpenseEditScreen(
                 amountText = state.billSplitInviteAmountText,
                 sending = state.billSplitInviteSending,
                 message = state.billSplitInviteMessage,
+                messageTone = state.billSplitInviteMessageTone,
             ),
             remainingCents = billSplitRemainingCents(state),
             actions = BillSplitInviteSheetActions(
@@ -351,6 +354,7 @@ fun ExpenseEditScreen(
                     allowReject = allowReject && !readOnly,
                     validationMessage = message,
                     statusMessage = state.message?.asString(),
+                    statusTone = state.messageTone,
                     forceCompact = amountFocused,
                 ),
                 actions = ExpenseEditActionBarActions(
@@ -464,6 +468,8 @@ fun ExpenseEditScreen(
             splitsLoading = state.splitsLoading,
             itemsMessage = state.itemsMessage,
             splitsMessage = state.splitsMessage,
+            itemsMessageTone = state.itemsMessageTone,
+            splitsMessageTone = state.splitsMessageTone,
             onAcknowledgeItemsMismatch = onAcknowledgeItemsMismatch,
             onEditItems = if (state.readOnly) null else onEditItems,
             onEditSplits = if (state.readOnly) null else onEditSplits,
@@ -480,11 +486,16 @@ fun ExpenseEditScreen(
         // 批 13：跨账本「找家人分摊」卡——仅已确认 + 有金额 + 非收到拆账 + 可写时出现。
         if (currentExpense.canInitiateBillSplit(state.readOnly)) {
             ExpenseBillSplitInvitePanel(
-                sent = state.billSplitSent,
-                loading = state.billSplitLoading,
-                message = state.billSplitMessage,
-                onStartInvite = onStartBillSplit,
-                onCancelInvite = onCancelBillSplit,
+                state = ExpenseBillSplitInvitePanelState(
+                    sent = state.billSplitSent,
+                    loading = state.billSplitLoading,
+                    message = state.billSplitMessage,
+                    messageTone = state.billSplitMessageTone,
+                ),
+                actions = ExpenseBillSplitInvitePanelActions(
+                    onStartInvite = onStartBillSplit,
+                    onCancelInvite = onCancelBillSplit,
+                ),
             )
         }
 

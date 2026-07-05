@@ -49,6 +49,18 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 
+internal data class ExpenseBillSplitInvitePanelState(
+    val sent: List<BillSplitSent>,
+    val loading: Boolean,
+    val message: UiText?,
+    val messageTone: MessageTone,
+)
+
+internal data class ExpenseBillSplitInvitePanelActions(
+    val onStartInvite: () -> Unit,
+    val onCancelInvite: (publicId: String) -> Unit,
+)
+
 @Composable
 internal fun ExpenseEditV1DetailsSection(
     expenseItems: ExpenseItems?,
@@ -57,11 +69,15 @@ internal fun ExpenseEditV1DetailsSection(
     splitsLoading: Boolean,
     itemsMessage: UiText?,
     splitsMessage: UiText?,
+    itemsMessageTone: MessageTone,
+    splitsMessageTone: MessageTone,
     onAcknowledgeItemsMismatch: () -> Unit = {},
     onEditItems: (() -> Unit)? = null,
     onEditSplits: (() -> Unit)? = null,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
+    val itemsState = DetailLoadState(itemsLoading, itemsMessage, itemsMessageTone)
+    val splitsState = DetailLoadState(splitsLoading, splitsMessage, splitsMessageTone)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -69,8 +85,7 @@ internal fun ExpenseEditV1DetailsSection(
     ) {
         ExpenseItemsPanel(
             expenseItems = expenseItems,
-            loading = itemsLoading,
-            message = itemsMessage,
+            state = itemsState,
             currencyDisplay = currencyDisplay,
             onAcknowledgeMismatch = onAcknowledgeItemsMismatch,
             onEditItems = onEditItems,
@@ -78,8 +93,7 @@ internal fun ExpenseEditV1DetailsSection(
         ExpenseDetailDivider()
         ExpenseSplitsPanel(
             expenseSplits = expenseSplits,
-            loading = splitsLoading,
-            message = splitsMessage,
+            state = splitsState,
             currencyDisplay = currencyDisplay,
             onEditSplits = onEditSplits,
         )
@@ -90,8 +104,7 @@ internal fun ExpenseEditV1DetailsSection(
 @Composable
 private fun ExpenseItemsPanel(
     expenseItems: ExpenseItems?,
-    loading: Boolean,
-    message: UiText?,
+    state: DetailLoadState,
     currencyDisplay: CurrencyDisplay,
     onAcknowledgeMismatch: () -> Unit,
     onEditItems: (() -> Unit)? = null,
@@ -106,7 +119,7 @@ private fun ExpenseItemsPanel(
             subtitle = stringResource(R.string.expense_edit_v1_items_subtitle),
             trailing = expenseItems?.itemsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
         )
-        if (onEditItems != null && !loading) {
+        if (onEditItems != null && !state.loading) {
             ExpenseDetailActionButtonRow(
                 text = if (expenseItems?.items.isNullOrEmpty()) {
                     stringResource(R.string.expense_edit_v1_items_add_button)
@@ -126,8 +139,7 @@ private fun ExpenseItemsPanel(
         }
         val loadedItems = expenseItems?.takeIf { it.items.isNotEmpty() }
         DetailStateSlot(
-            loading = loading,
-            message = message,
+            state = state,
             hasData = loadedItems != null,
             copy = DetailStateCopy(
                 loadingTitle = stringResource(R.string.expense_edit_v1_items_loading_title),
@@ -281,12 +293,11 @@ private fun ItemsSumAcknowledgedBanner(
 @Composable
 private fun ExpenseSplitsPanel(
     expenseSplits: ExpenseSplits?,
-    loading: Boolean,
-    message: UiText?,
+    state: DetailLoadState,
     currencyDisplay: CurrencyDisplay,
     onEditSplits: (() -> Unit)? = null,
 ) {
-    val editSplitsAction = onEditSplits?.takeUnless { loading }
+    val editSplitsAction = onEditSplits?.takeUnless { state.loading }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -316,8 +327,7 @@ private fun ExpenseSplitsPanel(
         }
         val loadedSplits = expenseSplits?.takeIf { it.splits.isNotEmpty() }
         DetailStateSlot(
-            loading = loading,
-            message = message,
+            state = state,
             hasData = loadedSplits != null,
             copy = DetailStateCopy(
                 loadingTitle = stringResource(R.string.expense_edit_v1_splits_loading_title),
@@ -349,11 +359,8 @@ private fun ExpenseSplitsPanel(
  */
 @Composable
 internal fun ExpenseBillSplitInvitePanel(
-    sent: List<BillSplitSent>,
-    loading: Boolean,
-    message: UiText?,
-    onStartInvite: () -> Unit,
-    onCancelInvite: (publicId: String) -> Unit,
+    state: ExpenseBillSplitInvitePanelState,
+    actions: ExpenseBillSplitInvitePanelActions,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     Column(
@@ -366,28 +373,27 @@ internal fun ExpenseBillSplitInvitePanel(
             trailing = null,
         )
         DetailStateSlot(
-            loading = loading,
-            message = message,
-            hasData = sent.isNotEmpty(),
+            state = DetailLoadState(state.loading, state.message, state.messageTone),
+            hasData = state.sent.isNotEmpty(),
             copy = DetailStateCopy(
                 loadingTitle = stringResource(R.string.expense_edit_bill_split_loading),
                 loadingBody = stringResource(R.string.expense_edit_bill_split_card_subtitle),
                 emptyText = stringResource(R.string.expense_edit_bill_split_empty),
             ),
         )
-        if (sent.isNotEmpty()) {
+        if (state.sent.isNotEmpty()) {
             BillSplitSentList(
-                sent = sent,
+                sent = state.sent,
                 currencyDisplay = currencyDisplay,
-                actionsEnabled = !loading,
-                onCancelInvite = onCancelInvite,
+                actionsEnabled = !state.loading,
+                onCancelInvite = actions.onCancelInvite,
             )
         }
         ExpenseDetailActionButtonRow(
             text = stringResource(R.string.expense_edit_bill_split_start_button),
             icon = Icons.Filled.GroupAdd,
-            enabled = !loading,
-            onClick = onStartInvite,
+            enabled = !state.loading,
+            onClick = actions.onStartInvite,
         )
         ExpenseDetailDivider()
     }
@@ -646,15 +652,20 @@ private data class DetailStateCopy(
     val emptyText: String,
 )
 
+private data class DetailLoadState(
+    val loading: Boolean,
+    val message: UiText?,
+    val messageTone: MessageTone,
+)
+
 @Composable
 private fun DetailStateSlot(
-    loading: Boolean,
-    message: UiText?,
+    state: DetailLoadState,
     hasData: Boolean,
     copy: DetailStateCopy,
 ) {
-    val visibleMessage = message?.takeIf { it.asString().isNotBlank() }
-    if (loading) {
+    val visibleMessage = state.message?.takeIf { it.asString().isNotBlank() }
+    if (state.loading) {
         DetailLoadingState(
             title = copy.loadingTitle,
             body = copy.loadingBody,
@@ -662,10 +673,10 @@ private fun DetailStateSlot(
     } else if (visibleMessage != null) {
         AppStatusBanner(
             message = visibleMessage,
-            tone = MessageTone.Neutral,
+            tone = state.messageTone,
         )
     }
-    if (!loading && visibleMessage == null && !hasData) {
+    if (!state.loading && visibleMessage == null && !hasData) {
         DetailEmptyState(copy.emptyText)
     }
 }
