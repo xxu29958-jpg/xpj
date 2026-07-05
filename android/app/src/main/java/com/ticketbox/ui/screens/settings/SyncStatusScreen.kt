@@ -27,7 +27,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
@@ -109,6 +108,7 @@ internal fun SyncStatusScreenContent(
         title = stringResource(R.string.sync_status_page_title),
         subtitle = stringResource(R.string.sync_status_page_subtitle),
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         SyncStatusPageBody(
             state = state,
@@ -130,8 +130,6 @@ private fun SyncStatusPageBody(
 ) {
     val status = state.status
     SyncStatusOverviewSection(status)
-
-    AppStatusBanner(message = state.message, tone = MessageTone.Info)
 
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {

@@ -10,6 +10,7 @@ import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.parseExpenseTargetRef
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,13 +54,14 @@ class OutboxStatusViewModel(
     fun keepMine(row: OutboxRow) {
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
-            _uiState.update { it.copy(busyRowId = row.id, message = null) }
+            _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
             val token = freshExpenseToken(row)
             if (token == null) {
                 _uiState.update {
                     it.copy(
                         busyRowId = null,
                         message = UiText.res(R.string.sync_status_vm_keep_mine_unavailable),
+                        messageTone = MessageTone.Danger,
                     )
                 }
                 return@launch
@@ -84,12 +86,12 @@ class OutboxStatusViewModel(
         outbox.resolveFailed(row.id, FailedResolution.Drop)
     }
 
-    fun consumeMessage() = _uiState.update { it.copy(message = null) }
+    fun consumeMessage() = _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
 
     private fun resolve(row: OutboxRow, block: suspend () -> Unit) {
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
-            _uiState.update { it.copy(busyRowId = row.id, message = null) }
+            _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
             block()
             _uiState.update { it.copy(busyRowId = null) }
         }
@@ -108,4 +110,5 @@ data class OutboxStatusUiState(
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val busyRowId: Long? = null,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
 )
