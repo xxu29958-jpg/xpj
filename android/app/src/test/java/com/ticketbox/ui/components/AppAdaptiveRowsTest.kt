@@ -31,6 +31,19 @@ class AppAdaptiveRowsTest {
     }
 
     @Test
+    fun editActionsCanStackTwoLongActionsBelowInlineBreakpoint() {
+        assertEquals(
+            AppAdaptiveEditActionMode.Stacked,
+            resolveAppAdaptiveEditActionMode(
+                maxWidth = AppAdaptiveBreakpoints.editActionInlineMinWidth - 1.dp,
+                actionCount = 2,
+                compact = false,
+                stackTwoActionsOnNarrow = true,
+            ),
+        )
+    }
+
+    @Test
     fun compactModeWinsWhenActionsDoNotNeedStacking() {
         assertEquals(
             AppAdaptiveEditActionMode.Compact,

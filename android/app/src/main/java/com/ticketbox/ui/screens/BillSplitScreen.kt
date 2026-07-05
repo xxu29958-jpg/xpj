@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -26,7 +27,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitInbox
@@ -34,6 +34,8 @@ import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
@@ -44,6 +46,7 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
@@ -215,27 +218,70 @@ private fun InboxRow(
     // derive 已过期 locally (like /web's inbox is_expired) so the buttons hide
     // instead of inviting a tap that can only 410.
     val locallyExpired = row.isInviteLocallyExpired()
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         BillSplitPartyAmountRow(name = row.senderDisplayName, amountCents = row.amountCents)
         InboxMetaLine(row = row, locallyExpired = locallyExpired)
         if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Audit P3 #3: show the ledger NAME (the button used to print
-                // the internal ledger_id), and let a multi-ledger member PICK
-                // the target instead of hard-wiring the first writable one.
-                when {
-                    candidates.isEmpty() -> Unit
-                    candidates.size == 1 -> OutlinedButton(
-                        onClick = { onAccept(row.publicId, candidates.single().ledgerId) },
-                    ) {
-                        Text(stringResource(R.string.bill_split_inbox_accept, candidates.single().name))
-                    }
-                    else -> AcceptTargetPicker(
-                        publicId = row.publicId,
-                        candidates = candidates,
-                        onAccept = onAccept,
-                    )
+            BillSplitInboxActions(
+                row = row,
+                candidates = candidates,
+                onAccept = onAccept,
+                onReject = onReject,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BillSplitInboxActions(
+    row: BillSplitInbox,
+    candidates: List<BillSplitTargetLedger>,
+    onAccept: (String, String) -> Unit,
+    onReject: (String) -> Unit,
+) {
+    val hasAcceptAction = candidates.isNotEmpty()
+    val actionCount = if (hasAcceptAction) 2 else 1
+    val acceptAction: @Composable (Modifier) -> Unit = { actionModifier ->
+        // Audit P3 #3: show the ledger NAME (the button used to print the internal ledger_id),
+        // and let a multi-ledger member PICK the target instead of hard-wiring the first writable one.
+        when {
+            candidates.isEmpty() -> Unit
+            candidates.size == 1 -> OutlinedButton(
+                modifier = actionModifier,
+                onClick = { onAccept(row.publicId, candidates.single().ledgerId) },
+            ) {
+                Text(stringResource(R.string.bill_split_inbox_accept, candidates.single().name))
+            }
+            else -> AcceptTargetPicker(
+                modifier = actionModifier,
+                buttonModifier = actionModifier,
+                publicId = row.publicId,
+                candidates = candidates,
+                onAccept = onAccept,
+            )
+        }
+    }
+    AppAdaptiveEditActionLayout(
+        actionCount = actionCount,
+        compact = false,
+        stackTwoActionsOnNarrow = hasAcceptAction,
+    ) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                acceptAction(Modifier.fillMaxWidth())
+                OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { onReject(row.publicId) }) {
+                    Text(stringResource(R.string.bill_split_inbox_reject))
                 }
+            }
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+            ) {
+                acceptAction(Modifier)
                 OutlinedButton(onClick = { onReject(row.publicId) }) {
                     Text(stringResource(R.string.bill_split_inbox_reject))
                 }
@@ -272,7 +318,7 @@ private fun SentRow(
     row: BillSplitSent,
     onCancel: (String) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         BillSplitPartyAmountRow(name = row.receiverDisplayNameSnapshot ?: "—", amountCents = row.amountCents)
         Text(
             text = "${row.merchantSnapshot ?: "—"} · ${billSplitStatusLabel(row.status)}",
@@ -280,8 +326,10 @@ private fun SentRow(
             style = MaterialTheme.typography.bodySmall,
         )
         if (row.status == BillSplitStatusValues.INVITED) {
-            OutlinedButton(onClick = { onCancel(row.publicId) }) {
-                Text(stringResource(R.string.bill_split_sent_cancel))
+            AppAdaptiveTrailingActionRow {
+                OutlinedButton(modifier = it, onClick = { onCancel(row.publicId) }) {
+                    Text(stringResource(R.string.bill_split_sent_cancel))
+                }
             }
         }
     }
@@ -315,13 +363,15 @@ private fun BillSplitPartyAmountRow(
 
 @Composable
 private fun AcceptTargetPicker(
+    modifier: Modifier = Modifier,
+    buttonModifier: Modifier = Modifier,
     publicId: String,
     candidates: List<BillSplitTargetLedger>,
     onAccept: (String, String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton(onClick = { expanded = true }) {
+    Box(modifier = modifier) {
+        OutlinedButton(modifier = buttonModifier, onClick = { expanded = true }) {
             Text(stringResource(R.string.bill_split_accept_picker_title))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {

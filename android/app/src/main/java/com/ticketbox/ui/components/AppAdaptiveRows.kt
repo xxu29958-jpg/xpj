@@ -90,6 +90,7 @@ fun AppAdaptiveEditActionLayout(
     actionCount: Int,
     compact: Boolean,
     modifier: Modifier = Modifier,
+    stackTwoActionsOnNarrow: Boolean = false,
     content: @Composable (AppAdaptiveEditActionMode) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -97,6 +98,7 @@ fun AppAdaptiveEditActionLayout(
             maxWidth = maxWidth,
             actionCount = actionCount,
             compact = compact,
+            stackTwoActionsOnNarrow = stackTwoActionsOnNarrow,
         )
         content(mode)
     }
@@ -106,8 +108,10 @@ internal fun resolveAppAdaptiveEditActionMode(
     maxWidth: Dp,
     actionCount: Int,
     compact: Boolean,
+    stackTwoActionsOnNarrow: Boolean = false,
 ): AppAdaptiveEditActionMode = when {
-    maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth && actionCount >= 3 ->
+    maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth &&
+        (actionCount >= 3 || stackTwoActionsOnNarrow && actionCount >= 2) ->
         AppAdaptiveEditActionMode.Stacked
     compact -> AppAdaptiveEditActionMode.Compact
     else -> AppAdaptiveEditActionMode.Inline
