@@ -44,6 +44,7 @@ import com.ticketbox.ui.screens.pending.PendingExpenseReviewActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
+import com.ticketbox.ui.screens.pending.PendingQueueEvidence
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueOverview
 import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
@@ -212,6 +213,11 @@ fun PendingScreen(
             item {
                 PendingQueueOverview(
                     counts = queueCounts,
+                    evidence = if (state.showingCachedSnapshot) {
+                        PendingQueueEvidence.LocalCache
+                    } else {
+                        PendingQueueEvidence.Backend
+                    },
                     readOnly = readOnly,
                     bulkRunning = state.bulkConfirm.running,
                     onOpenBulkConfirm = onOpenBulkConfirm,

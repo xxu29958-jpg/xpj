@@ -152,6 +152,26 @@ class PendingQueueOverviewTest {
 
         assertEquals(PendingQueuePriority.Ready, model.priority)
         assertEquals(0, model.reviewCount)
+        assertEquals(true, model.canBulkConfirm)
+    }
+
+    @Test
+    fun localCacheEvidenceSuppressesBulkConfirmButKeepsCounts() {
+        val model = pendingQueueOverviewModel(
+            counts = PendingQueueCounts(
+                all = 4,
+                needsAmount = 1,
+                needsMerchant = 0,
+                duplicate = 0,
+                readyToConfirm = 3,
+            ),
+            evidence = PendingQueueEvidence.LocalCache,
+        )
+
+        assertEquals(PendingQueueEvidence.LocalCache, model.evidence)
+        assertEquals(3, model.readyCount)
+        assertEquals(1, model.reviewCount)
+        assertEquals(false, model.canBulkConfirm)
     }
 
     @Test

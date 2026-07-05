@@ -30,6 +30,11 @@ internal enum class PendingQueuePriority {
     Empty,
 }
 
+internal enum class PendingQueueEvidence {
+    Backend,
+    LocalCache,
+}
+
 internal data class PendingQueueOverviewModel(
     val reviewCount: Int,
     val readyCount: Int,
@@ -37,9 +42,14 @@ internal data class PendingQueueOverviewModel(
     val needsMerchant: Int,
     val duplicate: Int,
     val priority: PendingQueuePriority,
+    val evidence: PendingQueueEvidence,
+    val canBulkConfirm: Boolean,
 )
 
-internal fun pendingQueueOverviewModel(counts: PendingQueueCounts): PendingQueueOverviewModel {
+internal fun pendingQueueOverviewModel(
+    counts: PendingQueueCounts,
+    evidence: PendingQueueEvidence = PendingQueueEvidence.Backend,
+): PendingQueueOverviewModel {
     val all = counts.all.coerceAtLeast(0)
     val ready = counts.readyToConfirm.coerceIn(0, all)
     val needsAmount = counts.needsAmount.coerceAtLeast(0)
@@ -52,6 +62,8 @@ internal fun pendingQueueOverviewModel(counts: PendingQueueCounts): PendingQueue
         needsMerchant = needsMerchant,
         duplicate = duplicate,
         priority = pendingQueuePriority(all, ready, needsAmount, needsMerchant, duplicate),
+        evidence = evidence,
+        canBulkConfirm = evidence == PendingQueueEvidence.Backend && ready > 1,
     )
 }
 
@@ -74,11 +86,12 @@ private fun pendingQueuePriority(
 @Composable
 internal fun PendingQueueOverview(
     counts: PendingQueueCounts,
+    evidence: PendingQueueEvidence,
     readOnly: Boolean,
     bulkRunning: Boolean,
     onOpenBulkConfirm: () -> Unit,
 ) {
-    val model = pendingQueueOverviewModel(counts)
+    val model = pendingQueueOverviewModel(counts, evidence)
     if (model.priority == PendingQueuePriority.Empty) return
     Column(
         modifier = Modifier
@@ -103,11 +116,23 @@ internal fun PendingQueueOverview(
         ) {
             if (model.shouldShowMetrics) {
                 PendingQueueMetric(
-                    label = stringResource(R.string.pending_queue_overview_ready_label),
+                    label = stringResource(
+                        if (model.evidence == PendingQueueEvidence.LocalCache) {
+                            R.string.pending_queue_overview_ready_cache_label
+                        } else {
+                            R.string.pending_queue_overview_ready_label
+                        },
+                    ),
                     value = model.readyCount,
                 )
                 PendingQueueMetric(
-                    label = stringResource(R.string.pending_queue_overview_review_label),
+                    label = stringResource(
+                        if (model.evidence == PendingQueueEvidence.LocalCache) {
+                            R.string.pending_queue_overview_review_cache_label
+                        } else {
+                            R.string.pending_queue_overview_review_label
+                        },
+                    ),
                     value = model.reviewCount,
                 )
             }
@@ -138,7 +163,7 @@ private fun PendingQueueOverviewHeader(
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Spacer(modifier = Modifier.weight(1f))
-        if (!readOnly && model.hasBatchConfirmAction) {
+        if (!readOnly && model.canBulkConfirm) {
             TextButton(
                 enabled = !bulkRunning,
                 onClick = onOpenBulkConfirm,
@@ -161,20 +186,23 @@ private fun PendingQueueOverviewHeader(
 private val PendingQueueOverviewModel.hasReviewSignals: Boolean
     get() = needsAmount > 0 || needsMerchant > 0 || duplicate > 0
 
-private val PendingQueueOverviewModel.hasBatchConfirmAction: Boolean
-    get() = readyCount > 1
-
 private val PendingQueueOverviewModel.shouldShowMetrics: Boolean
     get() = readyCount > 0 && reviewCount > 0
 
 @Composable
-private fun pendingQueuePriorityText(model: PendingQueueOverviewModel): String = when (model.priority) {
-    PendingQueuePriority.Duplicate -> stringResource(R.string.pending_queue_overview_priority_duplicate)
-    PendingQueuePriority.Amount -> stringResource(R.string.pending_queue_overview_priority_amount)
-    PendingQueuePriority.Merchant -> stringResource(R.string.pending_queue_overview_priority_merchant)
-    PendingQueuePriority.Ready -> stringResource(R.string.pending_queue_overview_priority_ready, model.readyCount)
-    PendingQueuePriority.Review -> stringResource(R.string.pending_queue_overview_priority_review)
-    PendingQueuePriority.Empty -> stringResource(R.string.pending_queue_overview_priority_empty)
+private fun pendingQueuePriorityText(model: PendingQueueOverviewModel): String = when {
+    model.evidence == PendingQueueEvidence.LocalCache -> {
+        stringResource(R.string.pending_queue_overview_priority_cache)
+    }
+
+    else -> when (model.priority) {
+        PendingQueuePriority.Duplicate -> stringResource(R.string.pending_queue_overview_priority_duplicate)
+        PendingQueuePriority.Amount -> stringResource(R.string.pending_queue_overview_priority_amount)
+        PendingQueuePriority.Merchant -> stringResource(R.string.pending_queue_overview_priority_merchant)
+        PendingQueuePriority.Ready -> stringResource(R.string.pending_queue_overview_priority_ready, model.readyCount)
+        PendingQueuePriority.Review -> stringResource(R.string.pending_queue_overview_priority_review)
+        PendingQueuePriority.Empty -> stringResource(R.string.pending_queue_overview_priority_empty)
+    }
 }
 
 @Composable
