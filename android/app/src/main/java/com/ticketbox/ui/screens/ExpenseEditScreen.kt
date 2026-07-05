@@ -344,27 +344,27 @@ fun ExpenseEditScreen(
                     }
                 )
             },
+            bottomBar = {
+                ExpenseEditActionBar(
+                    state = ExpenseEditActionBarState(
+                        saving = state.saving,
+                        allowSave = !readOnly,
+                        allowConfirm = allowConfirm && !readOnly,
+                        allowReject = allowReject && !readOnly,
+                        validationMessage = message,
+                        statusMessage = state.message?.asString(),
+                        statusTone = state.messageTone,
+                        forceCompact = amountFocused,
+                    ),
+                    actions = ExpenseEditActionBarActions(
+                        onBack = handleBack,
+                        onSave = ::submitSave,
+                        onConfirm = ::submitConfirm,
+                        onRequestReject = { showRejectDialog = true },
+                    ),
+                )
+            },
         ),
-        bottomBar = {
-            ExpenseEditActionBar(
-                state = ExpenseEditActionBarState(
-                    saving = state.saving,
-                    allowSave = !readOnly,
-                    allowConfirm = allowConfirm && !readOnly,
-                    allowReject = allowReject && !readOnly,
-                    validationMessage = message,
-                    statusMessage = state.message?.asString(),
-                    statusTone = state.messageTone,
-                    forceCompact = amountFocused,
-                ),
-                actions = ExpenseEditActionBarActions(
-                    onBack = handleBack,
-                    onSave = ::submitSave,
-                    onConfirm = ::submitConfirm,
-                    onRequestReject = { showRejectDialog = true },
-                ),
-            )
-        },
     ) {
         if (currentExpense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             DuplicateNotice(reason = currentExpense.duplicateReason)

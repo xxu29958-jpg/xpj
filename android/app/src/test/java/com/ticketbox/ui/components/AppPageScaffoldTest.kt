@@ -1,5 +1,6 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
@@ -7,6 +8,8 @@ import com.ticketbox.ui.design.AppAdaptivePageMode
 import com.ticketbox.ui.design.AppSpacing
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class AppPageScaffoldTest {
@@ -108,5 +111,21 @@ class AppPageScaffoldTest {
         )
 
         assertEquals(AppAdaptiveContentWidth.Secondary, chrome.contentWidth)
+    }
+
+    @Test
+    fun secondaryBottomBarSlotUsesSharedResolutionRule() {
+        val slotBottomBar: @Composable () -> Unit = {}
+        val explicitBottomBar: @Composable () -> Unit = {}
+
+        assertNull(AppSecondaryPageSlots().resolveBottomBar())
+        assertSame(
+            slotBottomBar,
+            AppSecondaryPageSlots(bottomBar = slotBottomBar).resolveBottomBar(),
+        )
+        assertSame(
+            explicitBottomBar,
+            AppSecondaryPageSlots(bottomBar = slotBottomBar).resolveBottomBar(explicitBottomBar),
+        )
     }
 }

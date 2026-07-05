@@ -89,6 +89,8 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
@@ -227,24 +229,61 @@ private fun CategoryRuleActions(
     onEditRule: () -> Unit,
     onDeleteRule: () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        TextButton(onClick = { onToggleRule(rule) }) {
-            Text(
-                if (rule.enabled) {
-                    stringResource(R.string.category_rule_card_action_disable)
-                } else {
-                    stringResource(R.string.category_rule_card_action_enable)
-                },
-            )
-        }
-        TextButton(onClick = onEditRule) {
-            Text(stringResource(R.string.category_rule_card_action_edit))
-        }
-        TextButton(
-            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            onClick = onDeleteRule,
-        ) {
-            Text(stringResource(R.string.category_rule_card_action_delete))
+    AppAdaptiveEditActionLayout(actionCount = 3, compact = false) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+                ) {
+                    TextButton(modifier = Modifier.weight(1f), onClick = { onToggleRule(rule) }) {
+                        Text(
+                            if (rule.enabled) {
+                                stringResource(R.string.category_rule_card_action_disable)
+                            } else {
+                                stringResource(R.string.category_rule_card_action_enable)
+                            },
+                        )
+                    }
+                    TextButton(modifier = Modifier.weight(1f), onClick = onEditRule) {
+                        Text(stringResource(R.string.category_rule_card_action_edit))
+                    }
+                }
+                TextButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    onClick = onDeleteRule,
+                ) {
+                    Text(stringResource(R.string.category_rule_card_action_delete))
+                }
+            }
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap, Alignment.End),
+            ) {
+                TextButton(onClick = { onToggleRule(rule) }) {
+                    Text(
+                        if (rule.enabled) {
+                            stringResource(R.string.category_rule_card_action_disable)
+                        } else {
+                            stringResource(R.string.category_rule_card_action_enable)
+                        },
+                    )
+                }
+                TextButton(onClick = onEditRule) {
+                    Text(stringResource(R.string.category_rule_card_action_edit))
+                }
+                TextButton(
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    onClick = onDeleteRule,
+                ) {
+                    Text(stringResource(R.string.category_rule_card_action_delete))
+                }
+            }
         }
     }
 }

@@ -41,6 +41,10 @@ class AppSecondaryPageSlots(
     val bottomBar: (@Composable () -> Unit)? = null,
 )
 
+internal fun AppSecondaryPageSlots.resolveBottomBar(
+    explicitBottomBar: (@Composable () -> Unit)? = null,
+): (@Composable () -> Unit)? = explicitBottomBar ?: bottomBar
+
 @Composable
 fun AppSecondaryPageHeader(
     title: String,
@@ -140,7 +144,7 @@ fun AppSecondaryScrollableContent(
         hasBottomBar = chrome.hasBottomBar,
         contentWidth = chrome.contentWidth,
         verticalArrangement = chrome.verticalArrangement,
-        bottomBar = slots.bottomBar,
+        bottomBar = slots.resolveBottomBar(),
     ) {
         item { SecondaryHeader(chrome = chrome, slots = slots) }
         slots.status?.let { status -> item { status() } }
@@ -164,7 +168,7 @@ fun AppSecondaryScrollableColumn(
         hasBottomBar = chrome.hasBottomBar,
         contentWidth = chrome.contentWidth,
         verticalArrangement = chrome.verticalArrangement,
-        bottomBar = bottomBar,
+        bottomBar = slots.resolveBottomBar(bottomBar),
     ) { layout ->
         SecondaryHeader(chrome = chrome, slots = slots)
         slots.status?.invoke()
