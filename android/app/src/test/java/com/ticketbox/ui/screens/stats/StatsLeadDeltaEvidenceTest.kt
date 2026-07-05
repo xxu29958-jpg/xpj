@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.stats
 
-import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
@@ -12,41 +11,41 @@ class StatsLeadDeltaEvidenceTest {
     @Test
     fun serverReportRequiresPositivePreviousAmountBeforeShowingMonthDelta() {
         val evidence = monthDeltaEvidence(
-            overview = overview(previousTotalAmountCents = 0L, previousCount = 2),
-            comparison = null,
+            overview = overview(totalAmountCents = 12_000L, previousTotalAmountCents = 0L, previousCount = 2),
         )
 
         assertNull(evidence)
     }
 
     @Test
-    fun localFallbackComparisonUsesPositivePreviousAmountAsBaseline() {
+    fun missingServerReportDoesNotPromoteLocalComparisonToLeadConclusion() {
         val evidence = monthDeltaEvidence(
             overview = null,
-            comparison = MonthComparison(
-                currentMonth = "2026-06",
-                previousMonth = "2026-05",
-                currentAmountCents = 12_000L,
-                previousAmountCents = 8_000L,
-                deltaAmountCents = 4_000L,
-                percentChange = 50,
-            ),
+        )
+
+        assertNull(evidence)
+    }
+
+    @Test
+    fun serverReportUsesItsOwnPreviousAmountAsBaseline() {
+        val evidence = monthDeltaEvidence(
+            overview = overview(totalAmountCents = 12_000L, previousTotalAmountCents = 8_000L, previousCount = 2),
         )
 
         requireNotNull(evidence)
         assertEquals(8_000L, evidence.previousAmountCents)
         assertEquals(4_000L, evidence.deltaAmountCents)
-        assertEquals(50, evidence.percentChange)
     }
 
     private fun overview(
+        totalAmountCents: Long,
         previousTotalAmountCents: Long,
         previousCount: Int,
     ) = ReportsOverview(
         month = "2026-06",
         timezone = "Asia/Shanghai",
         granularity = ReportGranularity.Day,
-        totalAmountCents = 12_000L,
+        totalAmountCents = totalAmountCents,
         count = 3,
         previousMonth = "2026-05",
         previousTotalAmountCents = previousTotalAmountCents,

@@ -14,7 +14,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
-import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportRankingMetric
@@ -42,7 +41,7 @@ internal fun StatsLeadInsight(state: StatsUiState) {
     val stats = state.stats ?: return
     val overview = state.reportsOverview
     val totalLine = totalLeadLine(overview = overview, stats = stats)
-    val deltaLine = monthDeltaLeadLine(overview = overview, comparison = state.monthComparison)
+    val deltaLine = monthDeltaLeadLine(overview = overview)
     val variableLine = variableLeadLine(overview = overview)
 
     Column(
@@ -126,13 +125,11 @@ private fun totalLeadLine(
 @Composable
 private fun monthDeltaLeadLine(
     overview: ReportsOverview?,
-    comparison: MonthComparison?,
 ): StatsLeadLine? {
-    val evidence = monthDeltaEvidence(overview, comparison) ?: return null
+    val evidence = monthDeltaEvidence(overview) ?: return null
     val currencyDisplay = LocalCurrencyDisplay.current
     val delta = evidence.deltaAmountCents
-    val percent = evidence.percentChange?.let(::abs)
-        ?: monthDeltaPercent(delta, evidence.previousAmountCents)
+    val percent = monthDeltaPercent(delta, evidence.previousAmountCents)
     return StatsLeadLine(
         label = monthDeltaLabel(delta),
         value = if (delta == 0L) {
