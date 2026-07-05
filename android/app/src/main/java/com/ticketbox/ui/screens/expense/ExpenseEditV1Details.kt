@@ -33,14 +33,15 @@ import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
+import com.ticketbox.ui.components.AppContentStateCopy
+import com.ticketbox.ui.components.AppContentStatePresentation
+import com.ticketbox.ui.components.AppContentStateSpec
+import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEmptyStateCard
-import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSectionHeader
-import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -635,17 +636,6 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
     }
 }
 
-@Composable
-private fun DetailLoadingState(
-    title: String,
-    body: String,
-) {
-    AppLoadingState(
-        title = title,
-        body = body,
-    )
-}
-
 private data class DetailStateCopy(
     val loadingTitle: String,
     val loadingBody: String,
@@ -664,35 +654,21 @@ private fun DetailStateSlot(
     hasData: Boolean,
     copy: DetailStateCopy,
 ) {
-    val visibleMessage = state.message?.takeIf { it.asString().isNotBlank() }
-    if (state.loading) {
-        DetailLoadingState(
-            title = copy.loadingTitle,
-            body = copy.loadingBody,
-        )
-    } else if (visibleMessage != null) {
-        AppStatusBanner(
-            message = visibleMessage,
-            tone = state.messageTone,
-        )
-    }
-    if (!state.loading && visibleMessage == null && !hasData) {
-        DetailEmptyState(copy.emptyText)
-    }
-}
-
-@Composable
-private fun DetailEmptyState(text: String) {
-    AppEmptyStateCard {
-        Text(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AppSpacing.cardPaddingTight),
-            text = text,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
+    AppContentStateSlot(
+        state = AppContentStateSpec(
+            loading = state.loading,
+            hasData = hasData,
+            copy = AppContentStateCopy(
+                loadingTitle = copy.loadingTitle,
+                loadingBody = copy.loadingBody,
+                emptyText = copy.emptyText,
+            ),
+            message = state.message,
+            messageTone = state.messageTone,
+            presentation = AppContentStatePresentation.Card,
+            showLoadingWithData = true,
+        ),
+    )
 }
 
 @Composable

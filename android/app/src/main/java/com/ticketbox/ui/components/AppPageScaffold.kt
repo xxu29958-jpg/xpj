@@ -2,17 +2,21 @@ package com.ticketbox.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -39,6 +43,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 
 enum class PageDensity {
@@ -226,6 +232,7 @@ fun AppPageScrollableColumn(
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = true,
+    contentWidth: AppAdaptiveContentWidth = AppAdaptiveContentWidth.FullWidth,
     verticalArrangement: Arrangement.Vertical? = null,
     bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.(AppPageLayoutValues) -> Unit,
@@ -244,10 +251,13 @@ fun AppPageScrollableColumn(
         // align(BottomCenter) needs a BoxScope — the scaffold's content lambda has
         // no receiver, so the column + floating bar pair gets its own Box root.
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val resolvedContentMaxWidth = resolvedContentMaxWidth(contentWidth)
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .align(Alignment.TopCenter)
+                        .fillMaxHeight()
+                        .appPageContentWidth(resolvedContentMaxWidth)
                         .padding(
                             top = layout.statusPadding,
                             // 栏自带导航栏 inset，实测高度已覆盖 bottomViewportPadding
@@ -306,6 +316,7 @@ fun AppScrollableContent(
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = true,
+    contentWidth: AppAdaptiveContentWidth = AppAdaptiveContentWidth.FullWidth,
     verticalArrangement: Arrangement.Vertical? = null,
     bottomBar: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
@@ -323,7 +334,8 @@ fun AppScrollableContent(
     ) { layout ->
         val refreshState = rememberPullToRefreshState()
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val resolvedContentMaxWidth = resolvedContentMaxWidth(contentWidth)
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     onRefresh = onRefresh,
@@ -343,7 +355,9 @@ fun AppScrollableContent(
                 ) {
                     LazyColumn(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .align(Alignment.TopCenter)
+                            .fillMaxHeight()
+                            .appPageContentWidth(resolvedContentMaxWidth)
                             .padding(
                                 top = layout.statusPadding,
                                 bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
@@ -367,3 +381,17 @@ fun AppScrollableContent(
         }
     }
 }
+
+private fun Modifier.appPageContentWidth(maxWidth: Dp?): Modifier =
+    if (maxWidth == null) {
+        fillMaxSize()
+    } else {
+        widthIn(max = maxWidth).fillMaxSize()
+    }
+
+private fun BoxWithConstraintsScope.resolvedContentMaxWidth(
+    contentWidth: AppAdaptiveContentWidth,
+): Dp? = AppAdaptiveBreakpoints.contentMaxWidthFor(
+    policy = contentWidth,
+    maxWidth = maxWidth,
+)

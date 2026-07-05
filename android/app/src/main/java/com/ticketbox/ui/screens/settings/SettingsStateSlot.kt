@@ -1,9 +1,11 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.ticketbox.ui.components.AppContentStateCopy
+import com.ticketbox.ui.components.AppContentStatePresentation
+import com.ticketbox.ui.components.AppContentStateSpec
+import com.ticketbox.ui.components.AppContentStateSlot
 
 internal data class SettingsStateSlotCopy(
     val loadingTitle: String,
@@ -20,28 +22,19 @@ internal fun SettingsListStateSlot(
     copy: SettingsStateSlotCopy,
     modifier: Modifier = Modifier,
 ) {
-    if (hasData) return
-    if (loading) {
-        SettingsInlineEmpty(
-            title = copy.loadingTitle,
-            body = copy.loadingBody,
-            modifier = modifier,
-        )
-    } else {
-        val emptyTitle = copy.emptyTitle
-        val emptyBody = copy.emptyBody
-        if (emptyTitle != null && emptyBody != null) {
-            SettingsInlineEmpty(
-                title = emptyTitle,
-                body = emptyBody,
-                modifier = modifier,
-            )
-        } else {
-            Text(
-                modifier = modifier,
-                text = copy.emptyText,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    AppContentStateSlot(
+        state = AppContentStateSpec(
+            loading = loading,
+            hasData = hasData,
+            copy = AppContentStateCopy(
+                loadingTitle = copy.loadingTitle,
+                loadingBody = copy.loadingBody,
+                emptyText = copy.emptyText,
+                emptyTitle = copy.emptyTitle,
+                emptyBody = copy.emptyBody,
+            ),
+            presentation = AppContentStatePresentation.Inline,
+        ),
+        modifier = modifier,
+    )
 }

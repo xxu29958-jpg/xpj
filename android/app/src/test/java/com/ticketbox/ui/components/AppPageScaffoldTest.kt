@@ -1,5 +1,9 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
+import com.ticketbox.ui.design.AppAdaptivePageMode
 import com.ticketbox.ui.design.AppSpacing
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -50,5 +54,59 @@ class AppPageScaffoldTest {
         assertEquals(12f, AppPageDefaults.sectionGap(PageDensity.Compact).value)
         assertEquals(16f, AppPageDefaults.sectionGap(PageDensity.Comfortable).value)
         assertEquals(16f, AppPageDefaults.CardGap.value)
+    }
+
+    @Test
+    fun adaptivePageModesUseSharedBreakpoints() {
+        assertEquals(
+            AppAdaptivePageMode.SingleColumn,
+            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.singleColumnMaxWidth),
+        )
+        assertEquals(
+            AppAdaptivePageMode.WideContent,
+            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.singleColumnMaxWidth + 1.dp),
+        )
+        assertEquals(
+            AppAdaptivePageMode.TwoPane,
+            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.twoPaneMinWidth),
+        )
+    }
+
+    @Test
+    fun adaptiveContentWidthPoliciesResolveFromPageMode() {
+        assertEquals(
+            null,
+            AppAdaptiveBreakpoints.contentMaxWidthFor(
+                policy = AppAdaptiveContentWidth.Secondary,
+                maxWidth = AppAdaptiveBreakpoints.singleColumnMaxWidth,
+            ),
+        )
+        assertEquals(
+            AppAdaptiveBreakpoints.secondaryContentMaxWidth,
+            AppAdaptiveBreakpoints.contentMaxWidthFor(
+                policy = AppAdaptiveContentWidth.Secondary,
+                maxWidth = AppAdaptiveBreakpoints.singleColumnMaxWidth + 1.dp,
+            ),
+        )
+        assertEquals(
+            AppAdaptiveBreakpoints.twoPaneContentMaxWidth,
+            AppAdaptiveBreakpoints.contentMaxWidthFor(
+                policy = AppAdaptiveContentWidth.TwoPane,
+                maxWidth = AppAdaptiveBreakpoints.twoPaneMinWidth,
+            ),
+        )
+    }
+
+    @Test
+    fun secondaryPagesDefaultToSharedAdaptiveContentPolicy() {
+        val chrome = AppSecondaryPageChrome(
+            role = AppPageRole.Settings,
+            title = "Tags",
+            subtitle = null,
+            backText = "Back",
+            onBack = {},
+        )
+
+        assertEquals(AppAdaptiveContentWidth.Secondary, chrome.contentWidth)
     }
 }

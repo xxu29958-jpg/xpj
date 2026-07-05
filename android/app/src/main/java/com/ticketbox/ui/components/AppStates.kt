@@ -16,8 +16,12 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -32,6 +36,31 @@ data class AppListStateSpec(
     val skeletonRows: Int = 3,
     val emptyTitle: String? = null,
     val emptyBody: String? = null,
+)
+
+@Immutable
+data class AppContentStateCopy(
+    val loadingTitle: String,
+    val loadingBody: String? = null,
+    val emptyText: String,
+    val emptyTitle: String? = null,
+    val emptyBody: String? = null,
+)
+
+enum class AppContentStatePresentation {
+    Card,
+    Inline,
+}
+
+@Immutable
+data class AppContentStateSpec(
+    val loading: Boolean,
+    val hasData: Boolean,
+    val copy: AppContentStateCopy,
+    val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
+    val presentation: AppContentStatePresentation = AppContentStatePresentation.Card,
+    val showLoadingWithData: Boolean = false,
 )
 
 /**
@@ -99,27 +128,146 @@ fun AppListStateContent(
                     ListItemSkeleton(horizontalPadding = AppSpacing.none)
                 }
             }
-            state.isEmpty && state.emptyTitle != null -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            ) {
-                Text(
-                    text = state.emptyTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-                Text(
-                    text = state.emptyBody ?: state.emptyText,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            state.isEmpty -> Text(
-                text = state.emptyText,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
+            state.isEmpty -> AppContentStateSlot(
+                state = AppContentStateSpec(
+                    loading = false,
+                    hasData = false,
+                    copy = AppContentStateCopy(
+                        loadingTitle = "",
+                        emptyText = state.emptyText,
+                        emptyTitle = state.emptyTitle,
+                        emptyBody = state.emptyBody,
+                    ),
+                    presentation = AppContentStatePresentation.Inline,
+                ),
             )
             else -> rows()
+        }
+    }
+}
+
+@Composable
+fun AppContentStateSlot(
+    state: AppContentStateSpec,
+    modifier: Modifier = Modifier,
+) {
+    val visibleMessage = state.message?.takeIf { it.asString().isNotBlank() }
+    when {
+        state.loading && (!state.hasData || state.showLoadingWithData) -> AppContentLoadingState(
+            copy = state.copy,
+            modifier = modifier,
+            presentation = state.presentation,
+        )
+        visibleMessage != null -> AppStatusBanner(
+            message = visibleMessage,
+            tone = state.messageTone,
+            modifier = modifier,
+        )
+        !state.hasData -> AppContentEmptyState(
+            copy = state.copy,
+            modifier = modifier,
+            presentation = state.presentation,
+        )
+    }
+}
+
+@Composable
+private fun AppContentLoadingState(
+    copy: AppContentStateCopy,
+    modifier: Modifier,
+    presentation: AppContentStatePresentation,
+) {
+    when (presentation) {
+        AppContentStatePresentation.Card -> AppLoadingState(
+            title = copy.loadingTitle,
+            body = copy.loadingBody,
+            modifier = modifier,
+        )
+        AppContentStatePresentation.Inline -> AppInlineStateBlock(
+            title = copy.loadingTitle,
+            body = copy.loadingBody,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun AppContentEmptyState(
+    copy: AppContentStateCopy,
+    modifier: Modifier,
+    presentation: AppContentStatePresentation,
+) {
+    val title = copy.emptyTitle
+    val body = copy.emptyBody ?: copy.emptyText
+    when (presentation) {
+        AppContentStatePresentation.Card -> AppEmptyStateCard(modifier = modifier) {
+            AppStateTextBlock(
+                title = title,
+                body = body,
+                titleStyle = MaterialTheme.typography.titleSmall,
+                bodyStyle = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+            )
+        }
+        AppContentStatePresentation.Inline -> {
+            if (title != null) {
+                AppInlineStateBlock(
+                    title = title,
+                    body = body,
+                    modifier = modifier,
+                )
+            } else {
+                Text(
+                    modifier = modifier,
+                    text = copy.emptyText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppInlineStateBlock(
+    title: String,
+    body: String?,
+    modifier: Modifier,
+) {
+    AppStateTextBlock(
+        title = title,
+        body = body,
+        titleStyle = MaterialTheme.typography.titleSmall,
+        bodyStyle = MaterialTheme.typography.bodySmall,
+        modifier = modifier.padding(vertical = AppSpacing.miniGap),
+    )
+}
+
+@Composable
+private fun AppStateTextBlock(
+    title: String?,
+    body: String?,
+    titleStyle: TextStyle,
+    bodyStyle: TextStyle,
+    modifier: Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        title?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                style = titleStyle,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+        }
+        body?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = bodyStyle,
+            )
         }
     }
 }

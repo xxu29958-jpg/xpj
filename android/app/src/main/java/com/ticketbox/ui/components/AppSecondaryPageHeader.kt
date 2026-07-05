@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -24,6 +25,7 @@ data class AppSecondaryPageChrome(
     val backText: String,
     val onBack: (() -> Unit)?,
     val hasBottomBar: Boolean = false,
+    val contentWidth: AppAdaptiveContentWidth = AppAdaptiveContentWidth.Secondary,
     val verticalArrangement: Arrangement.Vertical? = null,
 )
 
@@ -114,6 +116,7 @@ fun AppSecondaryScrollableContent(
         onRefresh = refresh.onRefresh,
         modifier = modifier,
         hasBottomBar = chrome.hasBottomBar,
+        contentWidth = chrome.contentWidth,
         verticalArrangement = chrome.verticalArrangement,
         bottomBar = slots.bottomBar,
     ) {
@@ -137,6 +140,7 @@ fun AppSecondaryScrollableColumn(
         role = chrome.role,
         modifier = modifier,
         hasBottomBar = chrome.hasBottomBar,
+        contentWidth = chrome.contentWidth,
         verticalArrangement = chrome.verticalArrangement,
         bottomBar = bottomBar,
     ) { layout ->
