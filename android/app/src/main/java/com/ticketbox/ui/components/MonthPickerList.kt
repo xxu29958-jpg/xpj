@@ -12,7 +12,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +53,7 @@ internal fun MonthPickerOptionRow(
 }
 
 @Composable
-internal fun MonthPickerEmptyRow() {
+internal fun MonthPickerStatusRow(text: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -62,7 +61,7 @@ internal fun MonthPickerEmptyRow() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.components_month_picker_empty),
+            text = text,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )

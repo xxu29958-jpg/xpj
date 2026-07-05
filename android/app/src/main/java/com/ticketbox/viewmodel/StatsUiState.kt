@@ -26,6 +26,8 @@ enum class StatsSource { None, Backend, LocalFallback }
 
 enum class ReportGoalsLoadState { Unknown, Loading, Loaded, Failed }
 
+enum class StatsFilterOptionsLoadState { Unknown, Loading, Loaded, Failed }
+
 data class StatsUiState(
     val stats: MonthlyStats? = null,
     val statsSource: StatsSource = StatsSource.None,
@@ -48,7 +50,9 @@ data class StatsUiState(
     val reportsMessage: UiText? = null,
     val dataQuality: DataQualitySummary? = null,
     val months: List<String> = emptyList(),
+    val monthsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val tags: List<String> = emptyList(),
+    val tagsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val month: String = YearMonth.now().toString(),
     val selectedTag: String = "",
     val loading: Boolean = false,
@@ -80,7 +84,9 @@ data class MonthlyStatsUiState(
     val lastUploadAt: String? = null,
     val dataQuality: DataQualitySummary? = null,
     val months: List<String> = emptyList(),
+    val monthsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val tags: List<String> = emptyList(),
+    val tagsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val month: String = YearMonth.now().toString(),
     val selectedTag: String = "",
     val loading: Boolean = false,
@@ -152,7 +158,9 @@ internal fun mergeStatsUiState(
         reportsMessage = if (reportsMatch) reports.reportsMessage else null,
         dataQuality = monthly.dataQuality,
         months = monthly.months,
+        monthsLoadState = monthly.monthsLoadState,
         tags = monthly.tags,
+        tagsLoadState = monthly.tagsLoadState,
         month = monthly.month,
         selectedTag = monthly.selectedTag,
         loading = monthly.loading,

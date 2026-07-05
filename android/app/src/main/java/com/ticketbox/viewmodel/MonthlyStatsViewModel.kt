@@ -74,6 +74,10 @@ class MonthlyStatsViewModel(
                             recurringItems = emptyList(),
                             recurringCandidates = emptyList(),
                             dataQuality = null,
+                            months = emptyList(),
+                            monthsLoadState = StatsFilterOptionsLoadState.Unknown,
+                            tags = emptyList(),
+                            tagsLoadState = StatsFilterOptionsLoadState.Unknown,
                             loading = false,
                             message = null,
                             statsLoadError = null,
@@ -90,10 +94,19 @@ class MonthlyStatsViewModel(
 
     private fun loadMonths() {
         viewModelScope.launch {
+            _uiState.update { it.copy(monthsLoadState = StatsFilterOptionsLoadState.Loading) }
             repository.months()
                 .onSuccess { months ->
                     _uiState.update { state ->
-                        state.copy(months = statsMonthOptions(months, state.month))
+                        state.copy(
+                            months = statsMonthOptions(months, state.month),
+                            monthsLoadState = StatsFilterOptionsLoadState.Loaded,
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update { state ->
+                        state.copy(monthsLoadState = StatsFilterOptionsLoadState.Failed)
                     }
                 }
         }
@@ -101,8 +114,21 @@ class MonthlyStatsViewModel(
 
     private fun loadTags() {
         viewModelScope.launch {
+            _uiState.update { it.copy(tagsLoadState = StatsFilterOptionsLoadState.Loading) }
             repository.tags()
-                .onSuccess { tags -> _uiState.update { it.copy(tags = tags) } }
+                .onSuccess { tags ->
+                    _uiState.update {
+                        it.copy(
+                            tags = tags,
+                            tagsLoadState = StatsFilterOptionsLoadState.Loaded,
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update { state ->
+                        state.copy(tagsLoadState = StatsFilterOptionsLoadState.Failed)
+                    }
+                }
         }
     }
 

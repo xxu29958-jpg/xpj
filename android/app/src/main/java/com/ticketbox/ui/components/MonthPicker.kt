@@ -20,6 +20,7 @@ fun MonthPickerSheet(
     months: List<String>,
     selectedMonth: String,
     description: String,
+    listState: MonthPickerListState = MonthPickerListState.Loaded,
     onSelectMonth: (String) -> Unit,
 ) {
     Column(
@@ -32,6 +33,7 @@ fun MonthPickerSheet(
             MonthPickerOptions(
                 months = months,
                 selectedMonth = selectedMonth,
+                listState = listState,
                 onSelectMonth = onSelectMonth,
             )
         }
@@ -42,9 +44,11 @@ fun MonthPickerSheet(
 private fun MonthPickerOptions(
     months: List<String>,
     selectedMonth: String,
+    listState: MonthPickerListState,
     onSelectMonth: (String) -> Unit,
 ) {
     val entries = monthPickerEntries(months)
+    val statusRowKind = monthPickerStatusRowKind(months, listState)
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
@@ -57,9 +61,15 @@ private fun MonthPickerOptions(
                 onClick = { onSelectMonth("") },
             )
         }
-        if (months.isEmpty()) {
-            item(key = "empty-months") {
-                MonthPickerEmptyRow()
+        statusRowKind?.let { kind ->
+            item(key = "month-picker-status-${kind.name}") {
+                MonthPickerStatusRow(
+                    text = when (kind) {
+                        MonthPickerStatusRowKind.Loading -> stringResource(R.string.components_month_picker_loading)
+                        MonthPickerStatusRowKind.Failed -> stringResource(R.string.components_month_picker_failed)
+                        MonthPickerStatusRowKind.Empty -> stringResource(R.string.components_month_picker_empty)
+                    },
+                )
             }
         }
         items(
@@ -123,6 +133,23 @@ internal sealed interface MonthPickerEntry {
 
     data class Month(val month: String) : MonthPickerEntry {
         override val key: String = "month-$month"
+    }
+}
+
+enum class MonthPickerListState { Unknown, Loading, Loaded, Failed }
+
+internal enum class MonthPickerStatusRowKind { Loading, Failed, Empty }
+
+internal fun monthPickerStatusRowKind(
+    months: List<String>,
+    listState: MonthPickerListState,
+): MonthPickerStatusRowKind? {
+    if (months.isNotEmpty()) return null
+    return when (listState) {
+        MonthPickerListState.Unknown,
+        MonthPickerListState.Loading -> MonthPickerStatusRowKind.Loading
+        MonthPickerListState.Failed -> MonthPickerStatusRowKind.Failed
+        MonthPickerListState.Loaded -> MonthPickerStatusRowKind.Empty
     }
 }
 

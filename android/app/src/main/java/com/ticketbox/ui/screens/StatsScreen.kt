@@ -35,6 +35,7 @@ import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.screens.stats.CategoryStructureCard
 import com.ticketbox.ui.screens.stats.EmptyStatsCard
@@ -56,6 +57,7 @@ import com.ticketbox.ui.screens.stats.TagScopeInsight
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.StatsSource
+import com.ticketbox.viewmodel.StatsFilterOptionsLoadState
 import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
 
@@ -86,6 +88,12 @@ fun StatsScreen(
                 months = state.months,
                 selectedMonth = state.month,
                 description = stringResource(R.string.stats_month_picker_description),
+                listState = when (state.monthsLoadState) {
+                    StatsFilterOptionsLoadState.Unknown -> MonthPickerListState.Unknown
+                    StatsFilterOptionsLoadState.Loading -> MonthPickerListState.Loading
+                    StatsFilterOptionsLoadState.Loaded -> MonthPickerListState.Loaded
+                    StatsFilterOptionsLoadState.Failed -> MonthPickerListState.Failed
+                },
                 onSelectMonth = { month ->
                     onMonthChange(month)
                     showMonthPicker = false

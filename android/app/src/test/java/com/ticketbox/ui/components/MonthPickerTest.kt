@@ -42,4 +42,20 @@ class MonthPickerTest {
             monthPickerEntries(listOf("2026-07", "2026-07", "bad", "2026-06")),
         )
     }
+
+    @Test
+    fun monthPickerStatusDistinguishesFailureFromLoadedEmpty() {
+        assertEquals(
+            MonthPickerStatusRowKind.Failed,
+            monthPickerStatusRowKind(emptyList(), MonthPickerListState.Failed),
+        )
+        assertEquals(
+            MonthPickerStatusRowKind.Empty,
+            monthPickerStatusRowKind(emptyList(), MonthPickerListState.Loaded),
+        )
+        assertEquals(
+            null,
+            monthPickerStatusRowKind(listOf("2026-07"), MonthPickerListState.Failed),
+        )
+    }
 }

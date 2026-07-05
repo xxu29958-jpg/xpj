@@ -287,6 +287,7 @@ class MonthlyStatsViewModelTest {
         viewModel.reloadTags()
         advanceUntilIdle()
         assertEquals(listOf("餐饮"), viewModel.uiState.value.tags)
+        assertEquals(StatsFilterOptionsLoadState.Loaded, viewModel.uiState.value.tagsLoadState)
     }
 
     @Test
@@ -329,13 +330,55 @@ class MonthlyStatsViewModelTest {
     }
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class MonthlyStatsFilterOptionsViewModelTest {
+    @Test
+    fun filterOptionFailuresAreExplicitStatesNotLoadedEmptyFacts() = statsTest {
+        val stats = FakeStatsActions()
+        stats.monthListResult = Result.failure(RuntimeException("months offline"))
+        stats.tagListResult = Result.failure(RuntimeException("tags offline"))
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+
+        assertEquals(StatsFilterOptionsLoadState.Failed, viewModel.uiState.value.monthsLoadState)
+        assertEquals(StatsFilterOptionsLoadState.Failed, viewModel.uiState.value.tagsLoadState)
+        assertEquals(emptyList(), viewModel.uiState.value.months)
+        assertEquals(emptyList(), viewModel.uiState.value.tags)
+    }
+
+    @Test
+    fun tagRefreshFailurePreservesExistingReadableChoices() = statsTest {
+        val stats = FakeStatsActions()
+        stats.tagList = listOf("餐饮", "通勤")
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("餐饮", "通勤"), viewModel.uiState.value.tags)
+        assertEquals(StatsFilterOptionsLoadState.Loaded, viewModel.uiState.value.tagsLoadState)
+
+        stats.tagListResult = Result.failure(RuntimeException("offline"))
+        viewModel.reloadTags()
+        advanceUntilIdle()
+
+        assertEquals(StatsFilterOptionsLoadState.Failed, viewModel.uiState.value.tagsLoadState)
+        assertEquals(listOf("餐饮", "通勤"), viewModel.uiState.value.tags)
+    }
+}
+
 private class FakeStatsActions : StatsActions {
     val ledgerFlow = MutableStateFlow<String?>("owner")
     val confirmedFlow = MutableStateFlow<List<Expense>>(emptyList())
     var monthlyStatsResponder: (suspend (String?, String?) -> Result<MonthlyStats>)? = null
     var lifestyleStatsResponder: (suspend (String?) -> Result<LifestyleStats>)? = null
     var monthList: List<String> = listOf("2026-05", "2026-04")
+    var monthListResult: Result<List<String>>? = null
     var tagList: List<String> = emptyList()
+    var tagListResult: Result<List<String>>? = null
     var monthlyStatsCalls = 0
 
     override fun observeActiveLedgerId(): Flow<String?> = ledgerFlow
@@ -346,9 +389,9 @@ private class FakeStatsActions : StatsActions {
 
     override fun lastUploadAt(): String? = null
 
-    override suspend fun months(): Result<List<String>> = Result.success(monthList)
+    override suspend fun months(): Result<List<String>> = monthListResult ?: Result.success(monthList)
 
-    override suspend fun tags(): Result<List<String>> = Result.success(tagList)
+    override suspend fun tags(): Result<List<String>> = tagListResult ?: Result.success(tagList)
 
     override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> {
         monthlyStatsCalls++

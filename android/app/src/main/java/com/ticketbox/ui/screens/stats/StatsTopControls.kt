@@ -52,7 +52,6 @@ import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
 import com.ticketbox.ui.components.AppPageHeader
-import com.ticketbox.ui.components.buildAppTagFilterChoices
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -231,13 +230,11 @@ private fun StatsFilterRow(
     onOpenMonthPicker: () -> Unit,
     onTagChange: (String) -> Unit,
 ) {
-    val tags = buildAppTagFilterChoices(
-        availableTags = state.tags + state.stats?.byTag.orEmpty().map { it.tag },
-        selectedTag = state.selectedTag,
-        limit = StatsTagFilterOptionLimit,
+    val tagControl = statsTagFilterControlModel(
+        state = state,
+        optionLimit = StatsTagFilterOptionLimit,
     )
-    val showTagFilter = tags.isNotEmpty()
-    if (showTagFilter) {
+    if (tagControl.kind != StatsTagFilterControlKind.Hidden) {
         AppAdaptiveEqualControlRow(
             leading = { pillModifier ->
                 StatsSelectablePill(
@@ -255,12 +252,23 @@ private fun StatsFilterRow(
                 )
             },
             trailing = { pillModifier ->
-                StatsTagFilterMenu(
-                    tags = tags,
-                    selectedTag = state.selectedTag,
-                    onTagChange = onTagChange,
-                    modifier = pillModifier,
-                )
+                when (tagControl.kind) {
+                    StatsTagFilterControlKind.Menu -> StatsTagFilterMenu(
+                        tags = tagControl.choices,
+                        selectedTag = state.selectedTag,
+                        onTagChange = onTagChange,
+                        modifier = pillModifier,
+                    )
+                    StatsTagFilterControlKind.Loading -> StatsTagStatusPill(
+                        label = stringResource(R.string.stats_filter_tags_loading),
+                        modifier = pillModifier,
+                    )
+                    StatsTagFilterControlKind.Failed -> StatsTagStatusPill(
+                        label = stringResource(R.string.stats_filter_tags_load_failed),
+                        modifier = pillModifier,
+                    )
+                    StatsTagFilterControlKind.Hidden -> Unit
+                }
             },
         )
     } else {
@@ -278,6 +286,19 @@ private fun StatsFilterRow(
             },
         )
     }
+}
+
+@Composable
+private fun StatsTagStatusPill(
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    StatsSelectablePill(
+        selected = false,
+        onClick = null,
+        label = label,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -367,7 +388,7 @@ private fun StatsTextTab(
 private fun StatsSelectablePill(
     label: String,
     selected: Boolean,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     trailingIcon: (@Composable () -> Unit)? = null,
 ) {
@@ -376,6 +397,8 @@ private fun StatsSelectablePill(
     val shape = RoundedCornerShape(AppRadius.pill)
     val labelColor = if (selected) {
         MaterialTheme.colorScheme.primary
+    } else if (onClick == null) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -399,7 +422,7 @@ private fun StatsSelectablePill(
                 },
                 shape = shape,
             )
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = onClick != null, role = Role.Button, onClick = { onClick?.invoke() })
             .padding(horizontal = controlTokens.horizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,

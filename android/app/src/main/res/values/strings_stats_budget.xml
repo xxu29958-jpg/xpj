@@ -24,6 +24,8 @@
     <string name="stats_filter_all_tags">全部标签</string>
     <string name="stats_filter_tag_menu_description">选择标签</string>
     <string name="stats_filter_clear_tag_description">清除标签筛选</string>
+    <string name="stats_filter_tags_loading">正在读取标签</string>
+    <string name="stats_filter_tags_load_failed">标签暂时打不开</string>
 
     <!-- StatsOverviewCard：本月支出 hero 卡 -->
     <string name="stats_overview_month_spend_label">本月支出</string>
