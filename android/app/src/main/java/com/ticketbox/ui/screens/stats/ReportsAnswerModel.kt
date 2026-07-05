@@ -1,7 +1,8 @@
 package com.ticketbox.ui.screens.stats
 
-import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportGranularity
+import com.ticketbox.domain.model.ReportsOverview
+import java.time.LocalDate
 import kotlin.math.abs
 
 private const val DominantPeakPercent = 75
@@ -50,8 +51,21 @@ internal data class ReportsAnswerModel(
     val trendEvidence: ReportsTrendEvidence,
 )
 
-internal fun reportsAnswerModel(overview: ReportsOverview): ReportsAnswerModel {
-    val trendPoints = reportTrendChartPoints(overview.trend)
+internal fun reportsAnswerModel(overview: ReportsOverview): ReportsAnswerModel =
+    reportsAnswerModel(overview, reportTrendChartPoints(elapsedReportTrend(overview)))
+
+internal fun reportsAnswerModel(
+    overview: ReportsOverview,
+    today: LocalDate,
+): ReportsAnswerModel = reportsAnswerModel(
+    overview = overview,
+    trendPoints = reportTrendChartPoints(elapsedReportTrend(overview, today)),
+)
+
+private fun reportsAnswerModel(
+    overview: ReportsOverview,
+    trendPoints: List<ReportTrendChartPoint>,
+): ReportsAnswerModel {
     val monthDelta = overview.totalAmountCents - overview.previousTotalAmountCents
     val hasPreviousMonthComparison = overview.previousCount > 0 && overview.previousTotalAmountCents > 0L
     val hasYearOverYearComparison = overview.yearOverYearCount > 0 && overview.yearOverYearTotalAmountCents > 0L

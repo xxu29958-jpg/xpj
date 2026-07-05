@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.stats
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -44,8 +45,7 @@ class ReportsAnswerModelTest {
             overview(
                 totalAmountCents = 12_000L,
                 previousTotalAmountCents = 8_000L,
-                previousCount = 0,
-            ),
+            ).copy(previousCount = 0),
         )
 
         assertEquals(false, model.hasPreviousMonthComparison)
@@ -77,6 +77,39 @@ class ReportsAnswerModelTest {
 
         assertEquals(true, model.hasYearOverYearComparison)
         assertEquals(4_000L, model.yearOverYearDeltaAmountCents)
+    }
+
+    @Test
+    fun answerModelDropsFutureDayBucketsOnlyForCurrentMonthTrend() {
+        val today = LocalDate.parse("2026-07-05")
+        val currentMonthModel = reportsAnswerModel(
+            overview(
+                month = "2026-07",
+                totalAmountCents = 2_270L,
+                trend = listOf(
+                    ReportTrendPoint(bucket = "2026-07-03", label = "07-03", amountCents = 580L, count = 1),
+                    ReportTrendPoint(bucket = "2026-07-05", label = "07-05", amountCents = 1_690L, count = 1),
+                    ReportTrendPoint(bucket = "2026-07-06", label = "07-06", amountCents = 0L, count = 0),
+                    ReportTrendPoint(bucket = "2026-07-31", label = "07-31", amountCents = 0L, count = 0),
+                ),
+            ),
+            today = today,
+        )
+        val historicalMonthModel = reportsAnswerModel(
+            overview(
+                month = "2026-06",
+                totalAmountCents = 580L,
+                trend = listOf(
+                    ReportTrendPoint(bucket = "2026-06-29", label = "06-29", amountCents = 580L, count = 1),
+                    ReportTrendPoint(bucket = "2026-06-30", label = "06-30", amountCents = 0L, count = 0),
+                ),
+            ),
+            today = today,
+        )
+
+        assertEquals(listOf("07-03", "07-05"), currentMonthModel.trendPoints.map { it.label })
+        assertEquals(listOf(0, 1), currentMonthModel.trendPoints.map { it.x })
+        assertEquals(listOf("06-29", "06-30"), historicalMonthModel.trendPoints.map { it.label })
     }
 
     @Test
@@ -119,19 +152,22 @@ class ReportsAnswerModelTest {
     }
 
     private fun overview(
+        month: String = "2026-06",
         granularity: ReportGranularity = ReportGranularity.Day,
         totalAmountCents: Long = 0L,
         previousTotalAmountCents: Long = 0L,
-        previousCount: Int? = null,
+        trend: List<ReportTrendPoint> = listOf(
+            ReportTrendPoint(bucket = "$month-01", label = "6/1", amountCents = totalAmountCents, count = 1),
+        ),
     ) = ReportsOverview(
-        month = "2026-06",
+        month = month,
         timezone = "Asia/Shanghai",
         granularity = granularity,
         totalAmountCents = totalAmountCents,
         count = if (totalAmountCents > 0L) 3 else 0,
         previousMonth = "2026-05",
         previousTotalAmountCents = previousTotalAmountCents,
-        previousCount = previousCount ?: if (previousTotalAmountCents > 0L) 2 else 0,
+        previousCount = if (previousTotalAmountCents > 0L) 2 else 0,
         yearOverYearMonth = "2025-06",
         yearOverYearTotalAmountCents = 0L,
         yearOverYearCount = 0,
@@ -139,9 +175,7 @@ class ReportsAnswerModelTest {
         yearOverYearDeltaCount = 0,
         merchantCategory = null,
         rankingMetric = com.ticketbox.domain.model.ReportRankingMetric.Count,
-        trend = listOf(
-            ReportTrendPoint(bucket = "2026-06-01", label = "6/1", amountCents = totalAmountCents, count = 1),
-        ),
+        trend = trend,
         merchantRanking = emptyList(),
         categoryComparison = emptyList(),
     )

@@ -32,19 +32,25 @@ internal fun reportTrendChartPoints(trend: List<ReportTrendPoint>): List<ReportT
         )
     }
 
+internal fun elapsedReportTrend(
+    overview: ReportsOverview,
+    today: LocalDate = currentLocalDate(overview.timezone),
+): List<ReportTrendPoint> {
+    val shouldDropFutureBuckets = overview.granularity == ReportGranularity.Day &&
+        runCatching { YearMonth.parse(overview.month) }.getOrNull() == YearMonth.from(today)
+    if (!shouldDropFutureBuckets) return overview.trend
+    return overview.trend.filter { point ->
+        runCatching { LocalDate.parse(point.bucket) }.getOrNull()?.isAfter(today) != true
+    }
+}
+
 internal fun reportsRecentWindowTrend(
     overview: ReportsOverview,
     today: LocalDate = currentLocalDate(overview.timezone),
 ): List<DailySpend> {
     if (overview.granularity != ReportGranularity.Day) return emptyList()
-    val currentMonth = YearMonth.from(today)
-    val shouldDropFutureBuckets = runCatching { YearMonth.parse(overview.month) }.getOrNull() == currentMonth
-    return overview.trend
+    return elapsedReportTrend(overview, today)
         .asSequence()
-        .filter { point ->
-            !shouldDropFutureBuckets ||
-                runCatching { LocalDate.parse(point.bucket) }.getOrNull()?.isAfter(today) != true
-        }
         .map { point ->
             DailySpend(
                 date = point.bucket,
