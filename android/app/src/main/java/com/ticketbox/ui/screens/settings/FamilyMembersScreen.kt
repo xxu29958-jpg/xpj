@@ -50,7 +50,6 @@ import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerAuditEntry
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.ui.components.AppStatusBanner
@@ -120,7 +119,7 @@ fun FamilyMembersScreen(
             stringResource(R.string.family_members_page_subtitle_view)
         },
         onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         SettingsSection(
             title = stringResource(R.string.family_members_section_members),

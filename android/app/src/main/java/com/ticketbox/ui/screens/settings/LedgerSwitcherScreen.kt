@@ -25,7 +25,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.LedgerSummary
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -69,7 +68,7 @@ fun LedgerSwitcherScreen(
         title = stringResource(R.string.ledger_switcher_page_title),
         subtitle = stringResource(R.string.ledger_switcher_page_subtitle),
         onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         LedgerSwitcherOverviewSection(summary)
         LedgerListSection(

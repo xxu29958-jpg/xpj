@@ -10,6 +10,7 @@ import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerAuditEntry
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,7 @@ data class FamilyMembersUiState(
     val auditLoading: Boolean = false,
     val busyMemberId: Long? = null,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
     /** 轴7 发邀请:生成请求在途(禁双击)。 */
     val inviteCreating: Boolean = false,
     /**
@@ -67,44 +69,15 @@ class FamilyMembersViewModel(
 
     fun refresh(activeLedgerId: String?, currentRole: String?, includeAudit: Boolean = true) {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null) }
-            val memberResult = repository.refreshFamilyMembers(activeLedgerId)
-            memberResult
-                .onSuccess { fetched ->
-                    _uiState.update { it.copy(members = fetched) }
-                }
-                .onFailure { err ->
-                    _uiState.update {
-                        it.copy(message = err.toUiText(R.string.family_members_message_members_load_failed))
-                    }
-                }
-            val shouldLoadAudit = includeAudit &&
-                currentRole == LEDGER_ROLE_OWNER &&
-                deviceIsOwner()
-            if (shouldLoadAudit) {
-                _uiState.update { it.copy(auditLoading = true) }
-                repository.refreshFamilyAudit(activeLedgerId, limit = 20)
-                    .onSuccess { audit ->
-                        _uiState.update { it.copy(auditItems = audit) }
-                    }
-                    .onFailure { err ->
-                        _uiState.update {
-                            it.copy(
-                                // Keep already-rendered audit rows visible during a refresh failure.
-                                // Only surface the audit error if the members fetch was OK.
-                                message = if (memberResult.isSuccess) {
-                                    err.toUiText(R.string.family_members_message_audit_load_failed)
-                                } else {
-                                    it.message
-                                },
-                            )
-                        }
-                    }
-                _uiState.update { it.copy(auditLoading = false) }
-            } else {
-                _uiState.update { it.copy(auditItems = emptyList()) }
+            _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
+            val error = loadFamilyPage(activeLedgerId, currentRole, includeAudit)
+            _uiState.update {
+                it.copy(
+                    loading = false,
+                    message = error,
+                    messageTone = if (error == null) MessageTone.Neutral else MessageTone.Danger,
+                )
             }
-            _uiState.update { it.copy(loading = false) }
         }
     }
 
@@ -115,11 +88,17 @@ class FamilyMembersViewModel(
     fun createInvitation(role: String, activeLedgerId: String?) {
         if (!deviceIsOwner()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(inviteCreating = true, message = null) }
+            _uiState.update {
+                it.copy(inviteCreating = true, message = null, messageTone = MessageTone.Neutral)
+            }
             repository.createFamilyInvitation(role = role, ledgerId = activeLedgerId)
                 .onSuccess { created ->
                     _uiState.update {
-                        it.copy(inviteCreating = false, createdInvite = created)
+                        it.copy(
+                            inviteCreating = false,
+                            createdInvite = created,
+                            messageTone = MessageTone.Neutral,
+                        )
                     }
                 }
                 .onFailure { err ->
@@ -127,6 +106,7 @@ class FamilyMembersViewModel(
                         it.copy(
                             inviteCreating = false,
                             message = err.toUiText(R.string.family_members_message_invite_failed),
+                            messageTone = MessageTone.Danger,
                         )
                     }
                 }
@@ -145,7 +125,13 @@ class FamilyMembersViewModel(
         onMembershipChanged: () -> Unit,
     ) {
         viewModelScope.launch {
-            _uiState.update { it.copy(busyMemberId = action.member.memberId, message = null) }
+            _uiState.update {
+                it.copy(
+                    busyMemberId = action.member.memberId,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                )
+            }
             val result: Result<UiText> = when (action) {
                 is FamilyMemberAction.ChangeRole -> repository.updateFamilyMemberRole(
                     memberId = action.member.memberId,
@@ -167,13 +153,17 @@ class FamilyMembersViewModel(
             }
             result
                 .onSuccess { success ->
-                    refresh(
+                    val error = loadFamilyPage(
                         activeLedgerId = activeLedgerId,
                         currentRole = currentRole,
                         includeAudit = action !is FamilyMemberAction.TransferOwner,
                     )
                     _uiState.update {
-                        it.copy(busyMemberId = null, message = success)
+                        it.copy(
+                            busyMemberId = null,
+                            message = error ?: success,
+                            messageTone = if (error == null) MessageTone.Success else MessageTone.Danger,
+                        )
                     }
                     onMembershipChanged()
                 }
@@ -182,10 +172,41 @@ class FamilyMembersViewModel(
                         it.copy(
                             busyMemberId = null,
                             message = err.toUiText(R.string.family_members_message_action_failed),
+                            messageTone = MessageTone.Danger,
                         )
                     }
                 }
         }
+    }
+
+    private suspend fun loadFamilyPage(
+        activeLedgerId: String?,
+        currentRole: String?,
+        includeAudit: Boolean,
+    ): UiText? {
+        var error: UiText? = null
+        val memberResult = repository.refreshFamilyMembers(activeLedgerId)
+        memberResult
+            .onSuccess { fetched -> _uiState.update { it.copy(members = fetched) } }
+            .onFailure { err ->
+                error = err.toUiText(R.string.family_members_message_members_load_failed)
+            }
+        if (includeAudit && currentRole == LEDGER_ROLE_OWNER && deviceIsOwner()) {
+            _uiState.update { it.copy(auditLoading = true) }
+            repository.refreshFamilyAudit(activeLedgerId, limit = 20)
+                .onSuccess { audit -> _uiState.update { it.copy(auditItems = audit) } }
+                .onFailure { err ->
+                    // Keep already-rendered audit rows visible during a refresh failure.
+                    // Only surface the audit error if the members fetch was OK.
+                    if (memberResult.isSuccess) {
+                        error = err.toUiText(R.string.family_members_message_audit_load_failed)
+                    }
+                }
+            _uiState.update { it.copy(auditLoading = false) }
+        } else {
+            _uiState.update { it.copy(auditItems = emptyList()) }
+        }
+        return error
     }
 }
 
