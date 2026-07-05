@@ -25,7 +25,8 @@ import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -278,32 +279,35 @@ private fun AmountBarHeader(
     amountText: String,
     trailingText: String?,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        AppEndAlignedAmountText(
-            text = amountText,
-            modifier = Modifier.weight(ReportsCategoryAmountWeight),
+    AppAdaptiveEditAmountRow(
+        amount = amountText,
+        style = AppAdaptiveAmountRowStyle(
             role = AppAmountRole.Compact,
-        )
-        trailingText?.let {
+            trailingWeight = ReportsCategoryAmountWeight,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = it,
-                modifier = Modifier.weight(ReportsCategoryTrailingWeight, fill = false),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall.tabularNum(),
+                text = label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            trailingText?.let {
+                Text(
+                    text = it,
+                    modifier = Modifier.weight(ReportsCategoryTrailingWeight, fill = false),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall.tabularNum(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

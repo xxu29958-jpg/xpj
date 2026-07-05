@@ -49,6 +49,7 @@ import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
+import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
@@ -239,21 +240,39 @@ private fun StatsFilterRow(
         }
         .take(12)
     val showTagFilter = tags.isNotEmpty() || state.selectedTag.isNotBlank()
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    if (showTagFilter) {
+        AppAdaptiveEqualControlRow(
+            leading = { pillModifier ->
+                StatsSelectablePill(
+                    selected = true,
+                    onClick = onOpenMonthPicker,
+                    label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
+                        ?: stringResource(R.string.stats_filter_all_months),
+                    modifier = pillModifier,
+                    trailingIcon = {
+                        FilterTrailingIcon(
+                            Icons.Filled.ExpandMore,
+                            stringResource(R.string.stats_filter_pick_month_description),
+                        )
+                    },
+                )
+            },
+            trailing = { pillModifier ->
+                StatsTagFilterMenu(
+                    tags = tags,
+                    selectedTag = state.selectedTag,
+                    onTagChange = onTagChange,
+                    modifier = pillModifier,
+                )
+            },
+        )
+    } else {
         StatsSelectablePill(
             selected = true,
             onClick = onOpenMonthPicker,
             label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
                 ?: stringResource(R.string.stats_filter_all_months),
-            modifier = if (showTagFilter) {
-                Modifier.weight(1f)
-            } else {
-                Modifier.fillMaxWidth()
-            },
+            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 FilterTrailingIcon(
                     Icons.Filled.ExpandMore,
@@ -261,14 +280,6 @@ private fun StatsFilterRow(
                 )
             },
         )
-        if (showTagFilter) {
-            StatsTagFilterMenu(
-                tags = tags,
-                selectedTag = state.selectedTag,
-                onTagChange = onTagChange,
-                modifier = Modifier.weight(1f),
-            )
-        }
     }
 }
 

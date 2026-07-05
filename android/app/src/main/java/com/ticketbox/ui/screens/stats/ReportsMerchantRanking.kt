@@ -19,7 +19,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportRankingMetric
-import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -137,25 +138,35 @@ private fun MerchantRankingTopLine(
     primaryText: String,
     primaryIsAmount: Boolean,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (primaryIsAmount) {
-            AppEndAlignedAmountText(
-                text = primaryText,
-                modifier = Modifier.weight(MerchantRankingAmountWeight),
+    if (primaryIsAmount) {
+        AppAdaptiveEditAmountRow(
+            amount = primaryText,
+            style = AppAdaptiveAmountRowStyle(
                 role = AppAmountRole.Compact,
+                trailingWeight = MerchantRankingAmountWeight,
+            ),
+        ) {
+            Text(
+                text = label,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-        } else {
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text = primaryText,
                 style = MaterialTheme.typography.labelLarge.tabularNum(),
