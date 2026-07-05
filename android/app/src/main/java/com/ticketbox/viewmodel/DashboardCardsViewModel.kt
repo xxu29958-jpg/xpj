@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.DashboardCardsActions
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardSurface
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,7 @@ data class DashboardCardsUiState(
     val dirty: Boolean = false,
     val savedRevision: Int = 0,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
 )
 
 class DashboardCardsViewModel(
@@ -37,7 +39,14 @@ class DashboardCardsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, canModify = repository.canModifyLedger(), message = null) }
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    canModify = repository.canModifyLedger(),
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                )
+            }
             repository.dashboardCards(DashboardSurface.Android)
                 .onSuccess { loaded ->
                     lastSavedCards = loaded.items.sortedDashboardCards().withSequentialPositions()
@@ -47,6 +56,7 @@ class DashboardCardsViewModel(
                             loading = false,
                             canModify = repository.canModifyLedger(),
                             dirty = false,
+                            messageTone = MessageTone.Neutral,
                         )
                     }
                 }
@@ -56,6 +66,7 @@ class DashboardCardsViewModel(
                             loading = false,
                             canModify = repository.canModifyLedger(),
                             message = err.toUiText(R.string.dashboard_cards_load_failed),
+                            messageTone = MessageTone.Danger,
                         )
                     }
                 }
@@ -93,11 +104,17 @@ class DashboardCardsViewModel(
         val state = _uiState.value
         if (state.saving || state.cards.isEmpty()) return
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(canModify = false, message = UiText.res(R.string.common_readonly_ledger)) }
+            _uiState.update {
+                it.copy(
+                    canModify = false,
+                    message = UiText.res(R.string.common_readonly_ledger),
+                    messageTone = MessageTone.Danger,
+                )
+            }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(saving = true, message = null) }
+            _uiState.update { it.copy(saving = true, message = null, messageTone = MessageTone.Neutral) }
             repository.updateDashboardCards(
                 updates = state.cards.toUpdates(),
                 surface = DashboardSurface.Android,
@@ -111,11 +128,17 @@ class DashboardCardsViewModel(
         val state = _uiState.value
         if (state.saving) return
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(canModify = false, message = UiText.res(R.string.common_readonly_ledger)) }
+            _uiState.update {
+                it.copy(
+                    canModify = false,
+                    message = UiText.res(R.string.common_readonly_ledger),
+                    messageTone = MessageTone.Danger,
+                )
+            }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(saving = true, message = null) }
+            _uiState.update { it.copy(saving = true, message = null, messageTone = MessageTone.Neutral) }
             repository.updateDashboardCards(emptyList(), DashboardSurface.Android)
                 .onSuccess { finishSaved(it.items, UiText.res(R.string.dashboard_cards_reset_done)) }
                 .onFailure { err -> failSave(err, R.string.dashboard_cards_reset_failed) }
@@ -125,7 +148,12 @@ class DashboardCardsViewModel(
     private fun applyDraft(updated: List<DashboardCard>) {
         val normalized = updated.withSequentialPositions()
         _uiState.update {
-            it.copy(cards = normalized, dirty = normalized != lastSavedCards, message = null)
+            it.copy(
+                cards = normalized,
+                dirty = normalized != lastSavedCards,
+                message = null,
+                messageTone = MessageTone.Neutral,
+            )
         }
     }
 
@@ -139,6 +167,7 @@ class DashboardCardsViewModel(
                 dirty = false,
                 savedRevision = it.savedRevision + 1,
                 message = message,
+                messageTone = MessageTone.Success,
             )
         }
     }
@@ -149,6 +178,7 @@ class DashboardCardsViewModel(
                 saving = false,
                 canModify = repository.canModifyLedger(),
                 message = err.toUiText(fallback),
+                messageTone = MessageTone.Danger,
             )
         }
     }

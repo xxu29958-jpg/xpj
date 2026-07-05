@@ -29,8 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.DashboardCard
-import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.DraggableReorderColumn
@@ -60,7 +58,7 @@ fun DashboardCardsScreen(
             stringResource(R.string.dashboard_cards_page_subtitle_readonly)
         },
         onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = MessageTone.Neutral) },
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         DashboardCardsOverviewSection(cards = state.cards)
         DashboardCardsOrderSection(state = state, actions = actions)

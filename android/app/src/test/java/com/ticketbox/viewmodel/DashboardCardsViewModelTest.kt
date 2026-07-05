@@ -6,6 +6,7 @@ import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -67,6 +68,47 @@ class DashboardCardsViewModelTest {
         assertEquals(1, vm.uiState.value.savedRevision)
         assertFalse(vm.uiState.value.dirty)
         assertEquals(UiText.res(R.string.dashboard_cards_saved), vm.uiState.value.message)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun refreshFailureShowsDangerTone() = dashboardCardsTest {
+        val actions = FakeDashboardCardsActions(
+            cards = emptyList(),
+            loadFailure = RuntimeException(),
+        )
+
+        val vm = DashboardCardsViewModel(actions)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertFalse(state.loading)
+        assertEquals(UiText.res(R.string.dashboard_cards_load_failed), state.message)
+        assertEquals(MessageTone.Danger, state.messageTone)
+    }
+
+    @Test
+    fun saveFailureShowsDangerToneAndKeepsDraftDirty() = dashboardCardsTest {
+        val actions = FakeDashboardCardsActions(
+            cards = listOf(
+                dashboardCard("pending", position = 0),
+                dashboardCard("reports", position = 1),
+            ),
+            updateFailure = RuntimeException(),
+        )
+        val vm = DashboardCardsViewModel(actions)
+        advanceUntilIdle()
+
+        vm.moveCard(index = 0, delta = 1)
+        vm.saveCards()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertFalse(state.saving)
+        assertTrue(state.dirty)
+        assertEquals(0, state.savedRevision)
+        assertEquals(UiText.res(R.string.dashboard_cards_save_failed), state.message)
+        assertEquals(MessageTone.Danger, state.messageTone)
     }
 
     @Test
@@ -85,6 +127,7 @@ class DashboardCardsViewModelTest {
 
         assertTrue(actions.updateCalls.isEmpty())
         assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.canModify)
     }
 
@@ -114,6 +157,8 @@ class DashboardCardsViewModelTest {
 private class FakeDashboardCardsActions(
     private val canModify: Boolean = true,
     cards: List<DashboardCard>,
+    private val loadFailure: Throwable? = null,
+    private val updateFailure: Throwable? = null,
 ) : DashboardCardsActions {
     private var cardsResult = DashboardCards(DashboardSurface.Android, cards)
     val updateCalls = mutableListOf<List<DashboardCardUpdate>>()
@@ -121,13 +166,14 @@ private class FakeDashboardCardsActions(
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
-        Result.success(cardsResult.copy(surface = surface))
+        loadFailure?.let { Result.failure(it) } ?: Result.success(cardsResult.copy(surface = surface))
 
     override suspend fun updateDashboardCards(
         updates: List<DashboardCardUpdate>,
         surface: DashboardSurface,
     ): Result<DashboardCards> {
         updateCalls += updates
+        updateFailure?.let { return Result.failure(it) }
         cardsResult = DashboardCards(
             surface = surface,
             items = updates.map { update ->
