@@ -18,7 +18,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -26,6 +28,9 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
@@ -56,6 +61,13 @@ internal data class SyncStatusActions(
     val onDropMine: (OutboxRow) -> Unit,
     val onRetry: (OutboxRow) -> Unit,
     val onDropFailed: (OutboxRow) -> Unit,
+)
+
+private data class SyncStatusActionButton(
+    val text: String,
+    val icon: ImageVector? = null,
+    val enabled: Boolean,
+    val onClick: () -> Unit,
 )
 
 @Composable
@@ -220,28 +232,23 @@ private fun ConflictCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            ) {
-                if (canKeep) {
-                    AppPrimaryButton(
+            SyncStatusRecoveryActions(
+                primary = if (canKeep) {
+                    SyncStatusActionButton(
                         text = stringResource(R.string.sync_status_conflict_button_keep_mine),
                         icon = Icons.Filled.CloudUpload,
-                        modifier = Modifier.weight(1f),
                         enabled = !busy,
                         onClick = onKeepMine,
                     )
-                }
-                AppOutlinedButton(
-                    onClick = onDropMine,
-                    modifier = Modifier.weight(1f),
+                } else {
+                    null
+                },
+                danger = SyncStatusActionButton(
+                    text = stringResource(R.string.sync_status_conflict_button_drop_mine),
                     enabled = !busy,
-                    danger = true,
-                ) {
-                    Text(stringResource(R.string.sync_status_conflict_button_drop_mine))
-                }
-            }
+                    onClick = onDropMine,
+                ),
+            )
         }
     }
 }
@@ -272,32 +279,79 @@ private fun FailedCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            ) {
-                if (!expired) {
-                    AppPrimaryButton(
+            SyncStatusRecoveryActions(
+                primary = if (expired) {
+                    null
+                } else {
+                    SyncStatusActionButton(
                         text = stringResource(R.string.sync_status_failed_button_retry),
                         icon = Icons.Filled.RestartAlt,
-                        modifier = Modifier.weight(1f),
                         enabled = !busy,
                         onClick = onRetry,
                     )
-                }
-                AppOutlinedButton(
-                    onClick = onDrop,
-                    modifier = Modifier.weight(1f),
+                },
+                danger = SyncStatusActionButton(
+                    text = if (expired) {
+                        stringResource(R.string.sync_status_failed_button_remove)
+                    } else {
+                        stringResource(R.string.sync_status_failed_button_drop)
+                    },
                     enabled = !busy,
+                    onClick = onDrop,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusRecoveryActions(
+    primary: SyncStatusActionButton?,
+    danger: SyncStatusActionButton,
+) {
+    if (primary == null) {
+        AppAdaptiveTrailingActionRow {
+            AppOutlinedButton(modifier = it, onClick = danger.onClick, enabled = danger.enabled, danger = true) {
+                Text(danger.text)
+            }
+        }
+        return
+    }
+    AppAdaptiveEditActionLayout(actionCount = 2, compact = false, stackTwoActionsOnNarrow = true) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                AppPrimaryButton(
+                    text = primary.text,
+                    icon = primary.icon ?: Icons.Filled.CloudUpload,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = primary.enabled,
+                    onClick = primary.onClick,
+                )
+                AppOutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = danger.onClick,
+                    enabled = danger.enabled,
                     danger = true,
                 ) {
-                    Text(
-                        if (expired) {
-                            stringResource(R.string.sync_status_failed_button_remove)
-                        } else {
-                            stringResource(R.string.sync_status_failed_button_drop)
-                        },
-                    )
+                    Text(danger.text)
+                }
+            }
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+            ) {
+                AppPrimaryButton(
+                    text = primary.text,
+                    icon = primary.icon ?: Icons.Filled.CloudUpload,
+                    enabled = primary.enabled,
+                    onClick = primary.onClick,
+                )
+                AppOutlinedButton(onClick = danger.onClick, enabled = danger.enabled, danger = true) {
+                    Text(danger.text)
                 }
             }
         }
