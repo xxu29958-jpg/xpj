@@ -30,6 +30,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -41,6 +43,14 @@ internal data class TagRowActions(
     val onRename: (ManagedTag) -> Unit,
     val onMerge: (ManagedTag) -> Unit,
     val onDelete: (ManagedTag) -> Unit,
+)
+
+@Immutable
+internal data class TagListState(
+    val tags: List<ManagedTag>,
+    val bodyState: TagManagementBodyState,
+    val readOnly: Boolean,
+    val busy: Boolean,
 )
 
 @Composable
@@ -120,16 +130,13 @@ internal fun TagOverviewSection(tags: List<ManagedTag>) {
 
 @Composable
 internal fun TagListSection(
-    tags: List<ManagedTag>,
-    loading: Boolean,
-    readOnly: Boolean,
-    busy: Boolean,
+    state: TagListState,
     actions: TagRowActions,
 ) {
     SettingsSection(title = stringResource(R.string.tag_management_section_all), icon = Icons.Filled.Tune) {
-        if (tags.isEmpty()) {
+        if (state.bodyState != TagManagementBodyState.Content) {
             SettingsListStateSlot(
-                loading = loading,
+                loading = state.bodyState == TagManagementBodyState.Loading,
                 hasData = false,
                 copy = SettingsStateSlotCopy(
                     loadingTitle = stringResource(R.string.tag_management_loading_title),
@@ -138,19 +145,27 @@ internal fun TagListSection(
                     emptyTitle = stringResource(R.string.tag_management_summary_empty),
                     emptyBody = stringResource(R.string.tag_management_list_empty),
                 ),
+                message = if (state.bodyState == TagManagementBodyState.LoadFailed) {
+                    SettingsStateSlotMessage(
+                        text = UiText.res(R.string.tag_management_load_failed),
+                        tone = MessageTone.Danger,
+                    )
+                } else {
+                    null
+                },
             )
             return@SettingsSection
         }
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            tags.forEachIndexed { index, tag ->
+            state.tags.forEachIndexed { index, tag ->
                 if (index > 0) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
                 }
                 TagRow(
                     tag = tag,
-                    readOnly = readOnly,
-                    busy = busy,
-                    canMerge = tags.size > 1,
+                    readOnly = state.readOnly,
+                    busy = state.busy,
+                    canMerge = state.tags.size > 1,
                     actions = actions,
                 )
             }

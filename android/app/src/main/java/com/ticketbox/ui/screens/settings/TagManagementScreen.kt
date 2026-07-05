@@ -107,11 +107,22 @@ private fun TagManagementPageContent(
     readOnly: Boolean,
     actions: TagManagementPageActions,
 ) {
+    val bodyState = remember(state.tags, state.loading, state.loadFailed) {
+        tagManagementBodyState(
+            hasTags = state.tags.isNotEmpty(),
+            loading = state.loading,
+            loadFailed = state.loadFailed,
+        )
+    }
     SettingsPageFrame(
         title = stringResource(R.string.tag_management_page_title),
-        subtitle = tagSummary(state.tags),
+        subtitle = tagSummary(state.tags, bodyState),
         onBack = actions.onBack,
-        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
+        status = {
+            if (bodyState != TagManagementBodyState.LoadFailed) {
+                AppStatusBanner(message = state.message, tone = state.messageTone)
+            }
+        },
     ) {
         state.undoable?.let { handle ->
             TagUndoPanel(handle = handle, busy = state.busy, onUndo = actions.onUndo)
@@ -126,21 +137,30 @@ private fun TagManagementPageContent(
                 body = stringResource(R.string.tag_management_readonly_hint),
             )
         }
-        TagOverviewSection(tags = state.tags)
+        if (bodyState == TagManagementBodyState.Content || bodyState == TagManagementBodyState.Empty) {
+            TagOverviewSection(tags = state.tags)
+        }
         TagListSection(
-            tags = state.tags,
-            loading = state.loading,
-            readOnly = readOnly,
-            busy = state.busy,
+            state = TagListState(
+                tags = state.tags,
+                bodyState = bodyState,
+                readOnly = readOnly,
+                busy = state.busy,
+            ),
             actions = actions.rowActions,
         )
     }
 }
 
 @Composable
-private fun tagSummary(tags: List<ManagedTag>): String {
+private fun tagSummary(tags: List<ManagedTag>, bodyState: TagManagementBodyState): String {
+    when (bodyState) {
+        TagManagementBodyState.Loading -> return stringResource(R.string.tag_management_loading_title)
+        TagManagementBodyState.LoadFailed -> return stringResource(R.string.tag_management_load_failed)
+        TagManagementBodyState.Empty -> return stringResource(R.string.tag_management_summary_empty)
+        TagManagementBodyState.Content -> Unit
+    }
     val summary = tagManagementSummaryModel(tags)
-    if (summary.totalCount == 0) return stringResource(R.string.tag_management_summary_empty)
     return if (summary.unusedCount > 0) {
         stringResource(R.string.tag_management_summary_with_unused, summary.totalCount, summary.unusedCount)
     } else {

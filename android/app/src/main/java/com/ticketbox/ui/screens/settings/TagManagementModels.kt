@@ -9,6 +9,24 @@ internal data class TagManagementSummaryModel(
     val usageCount: Int,
 )
 
+internal enum class TagManagementBodyState {
+    Loading,
+    LoadFailed,
+    Empty,
+    Content,
+}
+
+internal fun tagManagementBodyState(
+    hasTags: Boolean,
+    loading: Boolean,
+    loadFailed: Boolean,
+): TagManagementBodyState = when {
+    hasTags -> TagManagementBodyState.Content
+    loading -> TagManagementBodyState.Loading
+    loadFailed -> TagManagementBodyState.LoadFailed
+    else -> TagManagementBodyState.Empty
+}
+
 internal fun tagManagementSummaryModel(tags: List<ManagedTag>): TagManagementSummaryModel {
     val total = tags.size.coerceAtLeast(0)
     val unused = tags.count { it.usageCount <= 0 }

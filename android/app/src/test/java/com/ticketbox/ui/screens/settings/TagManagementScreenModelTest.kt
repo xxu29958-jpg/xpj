@@ -37,6 +37,26 @@ class TagManagementScreenModelTest {
     }
 
     @Test
+    fun bodyStateSeparatesLoadTruthFromEmptyAndKeepsVisibleRows() {
+        assertEquals(
+            TagManagementBodyState.Loading,
+            tagManagementBodyState(hasTags = false, loading = true, loadFailed = false),
+        )
+        assertEquals(
+            TagManagementBodyState.LoadFailed,
+            tagManagementBodyState(hasTags = false, loading = false, loadFailed = true),
+        )
+        assertEquals(
+            TagManagementBodyState.Empty,
+            tagManagementBodyState(hasTags = false, loading = false, loadFailed = false),
+        )
+        assertEquals(
+            TagManagementBodyState.Content,
+            tagManagementBodyState(hasTags = true, loading = true, loadFailed = true),
+        )
+    }
+
+    @Test
     fun mergeTargetsUseFreshConflictTokenForSuggestedTarget() {
         val source = tag("source", usage = 1)
         val staleTarget = tag("target", usage = 2, rowVersion = 1L)

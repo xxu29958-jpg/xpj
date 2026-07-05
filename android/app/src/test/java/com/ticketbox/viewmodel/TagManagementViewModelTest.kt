@@ -56,6 +56,7 @@ class TagManagementViewModelTest {
         val vm = TagManagementViewModel(repo)
         advanceUntilIdle()
         assertEquals(false, vm.uiState.value.loading)
+        assertEquals(true, vm.uiState.value.loadFailed)
         assertEquals(UiText.res(R.string.tag_management_load_failed), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
