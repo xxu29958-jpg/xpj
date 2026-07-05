@@ -41,4 +41,24 @@ class AppAdaptiveRowsTest {
             ),
         )
     }
+
+    @Test
+    fun amountRowsStackBelowInlineBreakpoint() {
+        assertEquals(
+            AppAdaptiveAmountRowMode.Stacked,
+            resolveAppAdaptiveAmountRowMode(
+                maxWidth = AppAdaptiveBreakpoints.editActionInlineMinWidth - 1.dp,
+            ),
+        )
+    }
+
+    @Test
+    fun amountRowsStayInlineAtInlineBreakpoint() {
+        assertEquals(
+            AppAdaptiveAmountRowMode.Inline,
+            resolveAppAdaptiveAmountRowMode(
+                maxWidth = AppAdaptiveBreakpoints.editActionInlineMinWidth,
+            ),
+        )
+    }
 }

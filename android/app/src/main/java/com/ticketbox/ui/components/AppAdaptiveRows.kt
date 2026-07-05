@@ -30,6 +30,11 @@ enum class AppAdaptiveEditActionMode {
     Inline,
 }
 
+internal enum class AppAdaptiveAmountRowMode {
+    Stacked,
+    Inline,
+}
+
 @Composable
 fun AppAdaptiveContentActionRow(
     modifier: Modifier = Modifier,
@@ -112,11 +117,12 @@ internal fun resolveAppAdaptiveEditActionMode(
 fun AppAdaptiveEditAmountRow(
     amount: String,
     modifier: Modifier = Modifier,
+    role: AppAmountRole = AppAmountRole.Compact,
     content: @Composable () -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        if (maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth) {
-            Column(
+        when (resolveAppAdaptiveAmountRowMode(maxWidth)) {
+            AppAdaptiveAmountRowMode.Stacked -> Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
@@ -124,12 +130,11 @@ fun AppAdaptiveEditAmountRow(
                 AppEndAlignedAmountText(
                     modifier = Modifier.fillMaxWidth(),
                     text = amount,
-                    role = AppAmountRole.Compact,
+                    role = role,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
-        } else {
-            Row(
+            AppAdaptiveAmountRowMode.Inline -> Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 verticalAlignment = Alignment.Top,
@@ -140,13 +145,20 @@ fun AppAdaptiveEditAmountRow(
                 AppEndAlignedAmountText(
                     modifier = Modifier.weight(ADAPTIVE_AMOUNT_ROW_TRAILING_WEIGHT),
                     text = amount,
-                    role = AppAmountRole.Compact,
+                    role = role,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
     }
 }
+
+internal fun resolveAppAdaptiveAmountRowMode(maxWidth: Dp): AppAdaptiveAmountRowMode =
+    if (maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth) {
+        AppAdaptiveAmountRowMode.Stacked
+    } else {
+        AppAdaptiveAmountRowMode.Inline
+    }
 
 @Composable
 fun AppAdaptiveFieldPairRow(

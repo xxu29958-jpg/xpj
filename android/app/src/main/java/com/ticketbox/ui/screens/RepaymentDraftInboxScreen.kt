@@ -38,6 +38,8 @@ import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateMessage
@@ -50,8 +52,8 @@ import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.RepaymentDraftInboxUiState
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import kotlinx.coroutines.delay
@@ -196,8 +198,11 @@ private fun RepaymentDraftCard(
 ) {
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
+            AppAdaptiveEditAmountRow(
+                amount = formatDisplayAmount(draft.amountCents, currency),
+                role = AppAmountRole.Medium,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         stringResource(repaymentDraftSourceLabelRes(draft.source)),
                         style = MaterialTheme.typography.titleMedium,
@@ -218,12 +223,6 @@ private fun RepaymentDraftCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.width(AppSpacing.smallGap))
-                Text(
-                    formatDisplayAmount(draft.amountCents, currency),
-                    style = MaterialTheme.typography.titleLarge.tabularNum(),
-                    fontWeight = FontWeight.SemiBold,
-                )
             }
             if (suggestedDebt != null) {
                 Spacer(Modifier.size(AppSpacing.compactGap))
@@ -411,12 +410,13 @@ private fun DebtPickerRow(
             }
         }
         Spacer(Modifier.width(AppSpacing.smallGap))
-        Text(
+        AppEndAlignedAmountText(
             stringResource(
                 R.string.repayment_draft_picker_remaining,
                 formatDisplayAmount(debt.remainingAmountCents, currency),
             ),
-            style = MaterialTheme.typography.bodyMedium.tabularNum(),
+            modifier = Modifier.weight(0.42f),
+            role = AppAmountRole.Compact,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
