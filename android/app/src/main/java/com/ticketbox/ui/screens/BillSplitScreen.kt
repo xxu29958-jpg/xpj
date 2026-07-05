@@ -36,17 +36,18 @@ import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
-import com.ticketbox.ui.components.AppListStateContent
-import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
+import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
-import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -74,6 +75,7 @@ fun BillSplitScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val hasReadableData = state.inbox.isNotEmpty() || state.sent.isNotEmpty()
+    val bodyStates = billSplitScreenBodyStates(state = state, selectedTab = selectedTab)
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
@@ -105,7 +107,7 @@ fun BillSplitScreen(
                 sentCount = state.sent.size,
             )
         }
-        state.message?.let {
+        state.message?.takeIf { bodyStates.selected != ReadableListBodyState.LoadFailed }?.let {
             item {
                 AppStatusBanner(message = it, tone = MessageTone.Danger)
             }
@@ -114,7 +116,7 @@ fun BillSplitScreen(
             if (selectedTab == 0) {
                 InboxCard(
                     inbox = state.inbox,
-                    loading = state.loading && !hasReadableData,
+                    chrome = BillSplitListChrome(bodyState = bodyStates.inbox, onRetry = viewModel::refresh),
                     onAccept = viewModel::accept,
                     onReject = viewModel::reject,
                     candidates = state.candidateTargetLedgers,
@@ -122,7 +124,7 @@ fun BillSplitScreen(
             } else {
                 SentCard(
                     sent = state.sent,
-                    loading = state.loading && !hasReadableData,
+                    chrome = BillSplitListChrome(bodyState = bodyStates.sent, onRetry = viewModel::refresh),
                     onCancel = viewModel::cancel,
                 )
             }
@@ -151,33 +153,51 @@ private fun BillSplitTabRow(
     }
 }
 
+private data class BillSplitListChrome(
+    val bodyState: ReadableListBodyState,
+    val onRetry: () -> Unit,
+)
+
 @Composable
 private fun InboxCard(
     inbox: List<BillSplitInbox>,
-    loading: Boolean,
+    chrome: BillSplitListChrome,
     onAccept: (String, String) -> Unit,
     onReject: (String) -> Unit,
     candidates: List<BillSplitTargetLedger>,
 ) {
-    AppGlassCard(containerAlpha = 0.94f) {
-        AppListStateContent(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-            state = AppListStateSpec(
-                isEmpty = inbox.isEmpty(),
-                loading = loading,
-                emptyText = stringResource(R.string.bill_split_inbox_empty),
-            ),
-        ) {
-            inbox.forEachIndexed { index, row ->
-                if (index > 0) {
-                    HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+    when (chrome.bodyState) {
+        ReadableListBodyState.Loading -> BillSplitLoadingState(
+            title = stringResource(R.string.bill_split_inbox_loading_title),
+            body = stringResource(R.string.bill_split_inbox_loading_body),
+            emptyText = stringResource(R.string.bill_split_inbox_empty),
+        )
+        ReadableListBodyState.LoadFailed -> AppErrorState(
+            title = stringResource(R.string.bill_split_inbox_load_failed_title),
+            body = stringResource(R.string.bill_split_inbox_load_failed_body),
+            onRetry = chrome.onRetry,
+        )
+        ReadableListBodyState.Empty,
+        ReadableListBodyState.Content -> AppGlassCard(containerAlpha = 0.94f) {
+            AppListStateContent(
+                modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+                state = AppListStateSpec(
+                    isEmpty = inbox.isEmpty(),
+                    loading = false,
+                    emptyText = stringResource(R.string.bill_split_inbox_empty),
+                ),
+            ) {
+                inbox.forEachIndexed { index, row ->
+                    if (index > 0) {
+                        HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+                    }
+                    InboxRow(
+                        row = row,
+                        onAccept = onAccept,
+                        onReject = onReject,
+                        candidates = candidates,
+                    )
                 }
-                InboxRow(
-                    row = row,
-                    onAccept = onAccept,
-                    onReject = onReject,
-                    candidates = candidates,
-                )
             }
         }
     }
@@ -186,23 +206,36 @@ private fun InboxCard(
 @Composable
 private fun SentCard(
     sent: List<BillSplitSent>,
-    loading: Boolean,
+    chrome: BillSplitListChrome,
     onCancel: (String) -> Unit,
 ) {
-    AppGlassCard(containerAlpha = 0.94f) {
-        AppListStateContent(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-            state = AppListStateSpec(
-                isEmpty = sent.isEmpty(),
-                loading = loading,
-                emptyText = stringResource(R.string.bill_split_sent_empty),
-            ),
-        ) {
-            sent.forEachIndexed { index, row ->
-                if (index > 0) {
-                    HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+    when (chrome.bodyState) {
+        ReadableListBodyState.Loading -> BillSplitLoadingState(
+            title = stringResource(R.string.bill_split_sent_loading_title),
+            body = stringResource(R.string.bill_split_sent_loading_body),
+            emptyText = stringResource(R.string.bill_split_sent_empty),
+        )
+        ReadableListBodyState.LoadFailed -> AppErrorState(
+            title = stringResource(R.string.bill_split_sent_load_failed_title),
+            body = stringResource(R.string.bill_split_sent_load_failed_body),
+            onRetry = chrome.onRetry,
+        )
+        ReadableListBodyState.Empty,
+        ReadableListBodyState.Content -> AppGlassCard(containerAlpha = 0.94f) {
+            AppListStateContent(
+                modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+                state = AppListStateSpec(
+                    isEmpty = sent.isEmpty(),
+                    loading = false,
+                    emptyText = stringResource(R.string.bill_split_sent_empty),
+                ),
+            ) {
+                sent.forEachIndexed { index, row ->
+                    if (index > 0) {
+                        HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
+                    }
+                    SentRow(row = row, onCancel = onCancel)
                 }
-                SentRow(row = row, onCancel = onCancel)
             }
         }
     }

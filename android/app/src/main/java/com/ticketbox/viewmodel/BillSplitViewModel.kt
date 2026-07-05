@@ -3,6 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.BillSplitActions
+import com.ticketbox.data.repository.BillSplitLedgerActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.BillSplitInbox
@@ -36,22 +38,39 @@ data class BillSplitTargetLedger(
     val name: String,
 )
 
+enum class BillSplitListLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
+
 data class BillSplitUiState(
     val inbox: List<BillSplitInbox> = emptyList(),
     val sent: List<BillSplitSent> = emptyList(),
     val candidateTargetLedgers: List<BillSplitTargetLedger> = emptyList(),
+    val inboxLoadState: BillSplitListLoadState = BillSplitListLoadState.Unknown,
+    val sentLoadState: BillSplitListLoadState = BillSplitListLoadState.Unknown,
     val loading: Boolean = false,
     val message: UiText? = null,
 )
 
 class BillSplitViewModel(
-    private val expenseRepository: ExpenseRepository,
-    private val ledgerRepository: LedgerRepository,
+    private val billSplitActions: BillSplitActions,
+    private val ledgerActions: BillSplitLedgerActions,
 ) : ViewModel() {
+
+    constructor(
+        expenseRepository: ExpenseRepository,
+        ledgerRepository: LedgerRepository,
+    ) : this(
+        expenseBillSplitActions(expenseRepository),
+        ledgerBillSplitActions(ledgerRepository),
+    )
 
     private val _uiState = MutableStateFlow(
         BillSplitUiState(
-            candidateTargetLedgers = ledgerRepository.cachedLedgers()
+            candidateTargetLedgers = ledgerActions.cachedLedgers()
                 .filter { ledgerRoleCanModify(it.role) }
                 .map { BillSplitTargetLedger(ledgerId = it.ledgerId, name = it.name) },
         ),
@@ -60,11 +79,18 @@ class BillSplitViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    inboxLoadState = BillSplitListLoadState.Loading,
+                    sentLoadState = BillSplitListLoadState.Loading,
+                    message = null,
+                )
+            }
             // Refresh ledger membership in parallel so the accept-target
             // dropdown is never empty just because cache was cold. Failure
             // is non-fatal — we fall back to whatever cache held.
-            ledgerRepository.refreshLedgers()
+            ledgerActions.refreshLedgers()
                 .onSuccess { ledgers ->
                     _uiState.update {
                         it.copy(
@@ -74,13 +100,15 @@ class BillSplitViewModel(
                         )
                     }
                 }
-            val inboxResult = expenseRepository.fetchBillSplitInbox()
-            val sentResult = expenseRepository.fetchBillSplitSent()
+            val inboxResult = billSplitActions.fetchBillSplitInbox()
+            val sentResult = billSplitActions.fetchBillSplitSent()
             _uiState.update {
                 it.copy(
                     loading = false,
                     inbox = inboxResult.getOrNull() ?: it.inbox,
                     sent = sentResult.getOrNull() ?: it.sent,
+                    inboxLoadState = inboxResult.toListLoadState(),
+                    sentLoadState = sentResult.toListLoadState(),
                     message = (inboxResult.exceptionOrNull() ?: sentResult.exceptionOrNull())
                         ?.toUiText(R.string.error_generic),
                 )
@@ -91,7 +119,7 @@ class BillSplitViewModel(
     fun accept(publicId: String, targetLedgerId: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, message = null) }
-            expenseRepository.acceptBillSplitInvitation(publicId, targetLedgerId)
+            billSplitActions.acceptBillSplitInvitation(publicId, targetLedgerId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
                     _uiState.update { it.copy(loading = false, message = err.toUiText(R.string.error_generic)) }
@@ -102,7 +130,7 @@ class BillSplitViewModel(
     fun reject(publicId: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, message = null) }
-            expenseRepository.rejectBillSplitInvitation(publicId)
+            billSplitActions.rejectBillSplitInvitation(publicId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
                     _uiState.update { it.copy(loading = false, message = err.toUiText(R.string.error_generic)) }
@@ -113,7 +141,7 @@ class BillSplitViewModel(
     fun cancel(publicId: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, message = null) }
-            expenseRepository.cancelBillSplitInvitation(publicId)
+            billSplitActions.cancelBillSplitInvitation(publicId)
                 .onSuccess { refresh() }
                 .onFailure { err ->
                     _uiState.update { it.copy(loading = false, message = err.toUiText(R.string.error_generic)) }
@@ -121,3 +149,6 @@ class BillSplitViewModel(
         }
     }
 }
+
+private fun <T> Result<T>.toListLoadState(): BillSplitListLoadState =
+    if (isSuccess) BillSplitListLoadState.Loaded else BillSplitListLoadState.Failed

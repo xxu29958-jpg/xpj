@@ -69,9 +69,17 @@
     <string name="bill_split_topbar_back">返回</string>
     <string name="bill_split_tab_inbox">收件箱 (%1$d)</string>
     <string name="bill_split_tab_sent">已发出 (%1$d)</string>
+    <string name="bill_split_inbox_loading_title">正在读取拆账收件箱</string>
+    <string name="bill_split_inbox_loading_body">会显示别人发来的拆账邀请。</string>
+    <string name="bill_split_inbox_load_failed_title">拆账收件箱暂时打不开</string>
+    <string name="bill_split_inbox_load_failed_body">刷新后再显示收到的邀请；这里不会把失败误当成没有邀请。</string>
     <string name="bill_split_inbox_empty">还没有拆账邀请。家人或其他账号给你发起拆账后，会出现在这里。</string>
     <string name="bill_split_inbox_accept">接受到 %1$s</string>
     <string name="bill_split_inbox_reject">拒绝</string>
+    <string name="bill_split_sent_loading_title">正在读取已发出邀请</string>
+    <string name="bill_split_sent_loading_body">会显示你发出的拆账邀请和处理状态。</string>
+    <string name="bill_split_sent_load_failed_title">已发出的拆账邀请暂时打不开</string>
+    <string name="bill_split_sent_load_failed_body">刷新后再显示发出的邀请；这里不会把失败误当成没有发出过。</string>
     <string name="bill_split_sent_empty">还没有发出的拆账邀请，在已确认账单详情里可以发起。</string>
     <string name="bill_split_sent_cancel">撤回</string>
     <string name="bill_split_accept_picker_title">接受到哪个账本？</string>
