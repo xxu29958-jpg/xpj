@@ -215,7 +215,7 @@ class ExpenseRepositoryAuthCheckTest {
                     @Suppress("UNCHECKED_CAST")
                     override fun <T : ViewModel> create(modelClass: Class<T>): T {
                         return SettingsViewModel(
-                            repository,
+                            ExpenseRepositorySettingsActions(repository),
                             settingsStore,
                         ) as T
                     }

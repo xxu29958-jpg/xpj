@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -73,6 +75,8 @@ internal fun dataExportScopeRows(): List<DataExportScopeRowModel> = listOf(
         bodyRes = R.string.settings_data_export_export_body,
     ),
 )
+
+internal fun dataExportCanClearCache(busy: Boolean): Boolean = !busy
 
 @Composable
 fun DataExportScreen(
@@ -210,6 +214,7 @@ private fun DataExportActions(
             onClick = onSync,
         )
         DataExportClearCacheRow(
+            enabled = dataExportCanClearCache(busy),
             onClick = onClearCacheClick,
         )
     }
@@ -217,13 +222,17 @@ private fun DataExportActions(
 
 @Composable
 private fun DataExportClearCacheRow(
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.small))
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics {
+                if (!enabled) disabled()
+            }
             .padding(vertical = AppSpacing.smallGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.Top,

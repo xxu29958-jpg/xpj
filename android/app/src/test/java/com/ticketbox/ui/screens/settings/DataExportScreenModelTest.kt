@@ -26,4 +26,10 @@ class DataExportScreenModelTest {
             rows.map { it.titleRes },
         )
     }
+
+    @Test
+    fun clearCacheRowIsAvailableOnlyWhenPageIsIdle() {
+        assertEquals(true, dataExportCanClearCache(busy = false))
+        assertEquals(false, dataExportCanClearCache(busy = true))
+    }
 }

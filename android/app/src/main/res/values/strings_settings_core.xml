@@ -247,6 +247,7 @@
     <string name="settings_vm_diagnostics_incomplete">没有完成检测，请稍后再试。</string>
     <string name="settings_vm_server_settings_failed">账本状态暂时没有更新，稍后再试。</string>
     <string name="settings_vm_cache_cleared">离线副本已清除</string>
+    <string name="settings_vm_cache_clear_failed">离线副本暂时没有清除，请稍后再试。</string>
     <string name="settings_vm_monthly_budget_off">月预算已关闭</string>
     <string name="settings_vm_monthly_budget_saved">月预算已保存</string>
     <string name="settings_vm_notifications_saved">通知偏好已保存</string>

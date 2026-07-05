@@ -76,7 +76,12 @@ class ExpenseRepository(
     recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
     // issue #65 slice 4: body adapter for the offline-aware manual create.
     manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>? = null,
-) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions, ExpenseEditActions {
+) : ServerBindingRepository,
+    PendingReviewActions,
+    LedgerActions,
+    GlobalSearchActions,
+    StatsActions,
+    ExpenseEditActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
         settingsStore = settingsStore,

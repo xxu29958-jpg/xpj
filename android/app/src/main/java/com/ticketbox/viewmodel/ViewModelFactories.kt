@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.DashboardCardsActions
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.ExpenseRepositorySettingsActions
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.MerchantRepository
@@ -153,7 +154,7 @@ fun settingsViewModelFactory(
     settingsStore: LocalSettingsStore,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return SettingsViewModel(repository, settingsStore) as T
+        return SettingsViewModel(ExpenseRepositorySettingsActions(repository), settingsStore) as T
     }
 }
 

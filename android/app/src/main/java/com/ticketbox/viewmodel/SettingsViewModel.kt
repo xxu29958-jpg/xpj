@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.SettingsActions
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
@@ -51,7 +51,7 @@ data class SettingsUiState(
 )
 
 class SettingsViewModel(
-    private val repository: ExpenseRepository,
+    private val repository: SettingsActions,
     private val settingsStore: TicketboxSettingsStore,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState().withLocalBindingFields())
@@ -123,7 +123,7 @@ class SettingsViewModel(
     fun sync() {
         viewModelScope.launch {
             _uiState.update { it.withLocalBindingFields(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            repository.syncConfirmed()
+            repository.syncConfirmed(month = null, category = null, tag = null)
                 .onSuccess {
                     _uiState.update {
                         it.withLocalBindingFields(
@@ -224,15 +224,29 @@ class SettingsViewModel(
     }
 
     fun clearLocalCache() {
+        if (_uiState.value.busy) return
         viewModelScope.launch {
-            repository.clearLocalCache()
-            _uiState.update {
-                it.copy(
-                    lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
-                    message = UiText.res(R.string.settings_vm_cache_cleared),
-                    messageTone = MessageTone.Success,
-                )
-            }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
+            runCatching { repository.clearLocalCache() }
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
+                            message = UiText.res(R.string.settings_vm_cache_cleared),
+                            messageTone = MessageTone.Success,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            message = error.toUiText(R.string.settings_vm_cache_clear_failed),
+                            messageTone = MessageTone.Danger,
+                        )
+                    }
+                }
         }
     }
 
