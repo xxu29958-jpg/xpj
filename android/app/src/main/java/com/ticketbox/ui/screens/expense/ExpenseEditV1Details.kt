@@ -153,6 +153,7 @@ private fun ExpenseItemsPanel(
                 parentAmountCents = items.parentAmountCents,
                 detailTotalAmountCents = items.itemsTotalAmountCents,
                 mismatchCents = items.mismatchCents,
+                itemsSumStatus = items.itemsSumStatus,
                 currencyDisplay = currencyDisplay,
             )
             // ADR-0035 mismatch banner
@@ -501,9 +502,13 @@ private fun TotalReconcileLine(
     parentAmountCents: Long?,
     detailTotalAmountCents: Long?,
     mismatchCents: Long?,
+    itemsSumStatus: String? = null,
     currencyDisplay: CurrencyDisplay,
 ) {
-    val mismatch = mismatchCents ?: 0L
+    val reconcileStatus = resolveExpenseDetailReconcileStatus(
+        mismatchCents = mismatchCents,
+        itemsSumStatus = itemsSumStatus,
+    )
     val parentLabel = stringResource(R.string.expense_edit_v1_reconcile_parent_label)
     val detailLabel = stringResource(R.string.expense_edit_v1_reconcile_detail_label)
     val diffLabel = stringResource(R.string.expense_edit_v1_reconcile_diff_label)
@@ -516,10 +521,10 @@ private fun TotalReconcileLine(
             detailLabel to
                 formatDisplayAmount(detailTotalAmountCents, currencyDisplay),
         )
-        if (mismatch != 0L) {
+        if (reconcileStatus == ExpenseDetailReconcileStatus.Diff && mismatchCents != null) {
             add(
                 diffLabel to
-                    formatDisplayAmount(mismatch, currencyDisplay),
+                    formatDisplayAmount(mismatchCents, currencyDisplay),
             )
         }
     }
@@ -529,12 +534,8 @@ private fun TotalReconcileLine(
         verticalAlignment = Alignment.Top,
     ) {
         StatusPill(
-            if (mismatch == 0L) {
-                stringResource(R.string.expense_edit_v1_reconcile_match_pill)
-            } else {
-                stringResource(R.string.expense_edit_v1_reconcile_diff_pill)
-            },
-            active = mismatch == 0L,
+            text = reconcileStatus.label(),
+            active = reconcileStatus == ExpenseDetailReconcileStatus.Matched,
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -546,6 +547,15 @@ private fun TotalReconcileLine(
         }
     }
 }
+
+@Composable
+private fun ExpenseDetailReconcileStatus.label(): String = stringResource(
+    when (this) {
+        ExpenseDetailReconcileStatus.Matched -> R.string.expense_edit_v1_reconcile_match_pill
+        ExpenseDetailReconcileStatus.Diff -> R.string.expense_edit_v1_reconcile_diff_pill
+        ExpenseDetailReconcileStatus.Unknown -> R.string.expense_edit_v1_reconcile_unknown_pill
+    },
+)
 
 @Composable
 private fun ReconcileAmountLine(label: String, amount: String) {
