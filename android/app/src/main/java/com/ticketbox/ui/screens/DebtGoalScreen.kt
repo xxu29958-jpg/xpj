@@ -3,9 +3,7 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -30,6 +28,9 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppListStateContent
@@ -430,30 +431,64 @@ private fun DebtGoalIntegrityActions(
     isSubmitting: Boolean,
     onAction: (DebtIntegrityAction) -> Unit,
 ) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        when {
-            // §6/F13: "keep for audit" (acknowledge) only applies to an ALREADY achieved
-            // version (the backend 422s it otherwise) — pair it with link-replace.
-            achieved -> {
-                OutlinedButton(onClick = { onAction(DebtIntegrityAction.Acknowledge) }, enabled = !isSubmitting) {
-                    Text(stringResource(R.string.debt_goal_review_action_keep))
+    val keepAction: @Composable (Modifier) -> Unit = { actionModifier ->
+        OutlinedButton(
+            modifier = actionModifier,
+            onClick = { onAction(DebtIntegrityAction.Acknowledge) },
+            enabled = !isSubmitting,
+        ) {
+            Text(stringResource(R.string.debt_goal_review_action_keep))
+        }
+    }
+    val removeAction: @Composable (Modifier) -> Unit = { actionModifier ->
+        Button(
+            modifier = actionModifier,
+            onClick = { onAction(DebtIntegrityAction.RemoveVoided) },
+            enabled = !isSubmitting,
+        ) {
+            Text(stringResource(R.string.debt_goal_review_action_remove))
+        }
+    }
+    val archiveAction: @Composable (Modifier) -> Unit = { actionModifier ->
+        Button(
+            modifier = actionModifier,
+            onClick = { onAction(DebtIntegrityAction.Archive) },
+            enabled = !isSubmitting,
+        ) {
+            Text(stringResource(R.string.debt_goal_review_action_archive))
+        }
+    }
+    when {
+        // §6/F13: "keep for audit" (acknowledge) only applies to an ALREADY achieved
+        // version (the backend 422s it otherwise) — pair it with link-replace.
+        achieved -> AppAdaptiveEditActionLayout(
+            actionCount = 2,
+            compact = false,
+            stackTwoActionsOnNarrow = true,
+        ) { mode ->
+            when (mode) {
+                AppAdaptiveEditActionMode.Stacked -> Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                ) {
+                    keepAction(Modifier.fillMaxWidth())
+                    removeAction(Modifier.fillMaxWidth())
                 }
-                Spacer(Modifier.width(AppSpacing.smallGap))
-                Button(onClick = { onAction(DebtIntegrityAction.RemoveVoided) }, enabled = !isSubmitting) {
-                    Text(stringResource(R.string.debt_goal_review_action_remove))
+
+                AppAdaptiveEditActionMode.Compact,
+                AppAdaptiveEditActionMode.Inline -> Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+                ) {
+                    keepAction(Modifier)
+                    removeAction(Modifier)
                 }
             }
-            // not_evaluable with a non-voided link to keep: link-replace removes the voided one.
-            canRemoveVoided ->
-                Button(onClick = { onAction(DebtIntegrityAction.RemoveVoided) }, enabled = !isSubmitting) {
-                    Text(stringResource(R.string.debt_goal_review_action_remove))
-                }
-            // every link voided: no valid replacement set + no Debt picker this slice → archive.
-            else ->
-                Button(onClick = { onAction(DebtIntegrityAction.Archive) }, enabled = !isSubmitting) {
-                    Text(stringResource(R.string.debt_goal_review_action_archive))
-                }
         }
+        // not_evaluable with a non-voided link to keep: link-replace removes the voided one.
+        canRemoveVoided -> AppAdaptiveTrailingActionRow { actionModifier -> removeAction(actionModifier) }
+        // every link voided: no valid replacement set + no Debt picker this slice → archive.
+        else -> AppAdaptiveTrailingActionRow { actionModifier -> archiveAction(actionModifier) }
     }
 }
 
