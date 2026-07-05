@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.pending
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +38,8 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
@@ -278,24 +279,69 @@ private fun PendingExpenseInlineActions(
     expense: Expense,
     actions: PendingExpenseReviewActions,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(onClick = actions.onEdit) {
-            Text(stringResource(R.string.pending_row_action_edit))
-        }
-        TextButton(onClick = actions.onPrimaryAction, enabled = actions.canMutate) {
-            Text(stringResource(pendingPrimaryActionLabelRes(expense)))
-        }
-        TextButton(onClick = actions.onReject, enabled = actions.canMutate) {
-            Text(stringResource(R.string.pending_row_action_ignore))
-        }
-        if (expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
-            TextButton(onClick = actions.onKeepDuplicate, enabled = actions.canMutate) {
-                Text(stringResource(R.string.pending_row_action_keep_duplicate))
+    val hasDuplicateAction = expense.duplicateStatus == DuplicateStatusValues.SUSPECTED
+    val actionCount = if (hasDuplicateAction) 4 else 3
+    AppAdaptiveEditActionLayout(actionCount = actionCount, compact = false) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                PendingExpenseInlineActionButtons(
+                    expense = expense,
+                    actions = actions,
+                    hasDuplicateAction = hasDuplicateAction,
+                    buttonModifier = Modifier.fillMaxWidth(),
+                )
             }
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PendingExpenseInlineActionButtons(
+                    expense = expense,
+                    actions = actions,
+                    hasDuplicateAction = hasDuplicateAction,
+                    buttonModifier = Modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingExpenseInlineActionButtons(
+    expense: Expense,
+    actions: PendingExpenseReviewActions,
+    hasDuplicateAction: Boolean,
+    buttonModifier: Modifier,
+) {
+    TextButton(modifier = buttonModifier, onClick = actions.onEdit) {
+        Text(stringResource(R.string.pending_row_action_edit))
+    }
+    TextButton(
+        modifier = buttonModifier,
+        onClick = actions.onPrimaryAction,
+        enabled = actions.canMutate,
+    ) {
+        Text(stringResource(pendingPrimaryActionLabelRes(expense)))
+    }
+    TextButton(
+        modifier = buttonModifier,
+        onClick = actions.onReject,
+        enabled = actions.canMutate,
+    ) {
+        Text(stringResource(R.string.pending_row_action_ignore))
+    }
+    if (hasDuplicateAction) {
+        TextButton(
+            modifier = buttonModifier,
+            onClick = actions.onKeepDuplicate,
+            enabled = actions.canMutate,
+        ) {
+            Text(stringResource(R.string.pending_row_action_keep_duplicate))
         }
     }
 }
@@ -327,13 +373,4 @@ private fun PendingSignalText(text: String, tone: StateTone) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
-}
-
-@StringRes
-private fun pendingPrimaryActionLabelRes(expense: Expense): Int = when {
-    expense.amountCents == null -> R.string.pending_row_action_amount
-    expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> R.string.pending_row_action_duplicate
-    expense.category.isBlank() -> R.string.pending_row_action_category
-    expense.merchant.isNullOrBlank() -> R.string.pending_row_action_merchant
-    else -> R.string.pending_row_action_confirm
 }

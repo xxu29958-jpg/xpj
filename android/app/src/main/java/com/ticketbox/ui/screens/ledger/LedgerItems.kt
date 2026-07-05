@@ -57,7 +57,6 @@ private object LedgerItemLayout {
     const val CategoryMarkAlpha = 0.78f
     const val TableMerchantWeight = 1.35f
     const val TableCategoryWeight = 0.72f
-    const val TableAmountWeight = 0.88f
     val RowTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 }
 
@@ -197,65 +196,79 @@ internal fun LedgerExpenseCard(
                 onLongClick = onLongPress,
             ),
     ) {
-        Row(
+        AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight,
             verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (selectionMode) {
-                Checkbox(checked = selected, onCheckedChange = null)
-            }
-            LedgerCategoryMark(category = expense.category, density = AppListDensity.Standard)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ledger_item_merchant_empty),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = AppTypography.cardTitle.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                )
-                expense.note?.takeIf { it.isNotBlank() }?.let {
+            content = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (selectionMode) {
+                        Checkbox(checked = selected, onCheckedChange = null)
+                    }
+                    LedgerCategoryMark(category = expense.category, density = AppListDensity.Standard)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                    ) {
+                        Text(
+                            text = expense.merchant?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.ledger_item_merchant_empty),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = AppTypography.cardTitle.weight,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                        )
+                        expense.note?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            },
+            action = { amountModifier, _ ->
+                Column(
+                    modifier = amountModifier,
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                ) {
+                    LedgerAmountOrPending(
+                        amountCents = expense.amountCents,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = expense.category,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CardCategoryAlpha))
+                            .padding(
+                                horizontal = AppSpacing.contentGap,
+                                vertical = AppSpacing.miniGap + AppSpacing.tinyGap,
+                            ),
+                        color = visuals.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = AppTypography.chip.weight,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-            Column(
-                modifier = Modifier.weight(0.45f),
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                LedgerAmountOrPending(
-                    amountCents = expense.amountCents,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = expense.category,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CardCategoryAlpha))
-                        .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
-                    color = visuals.primary,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = AppTypography.chip.weight,
-                    maxLines = 1,
-                )
-            }
-        }
+            },
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
     }
 }
@@ -330,52 +343,62 @@ internal fun LedgerExpenseTableRow(
                 onLongClick = onLongPress,
             ),
     ) {
-        Row(
+        AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight,
             verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (selectionMode) {
-                Checkbox(checked = selected, onCheckedChange = null)
-            }
-            Column(
-                modifier = Modifier.weight(LedgerItemLayout.TableMerchantWeight),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ledger_item_merchant_empty),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = AppTypography.chip.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            content = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (selectionMode) {
+                        Checkbox(checked = selected, onCheckedChange = null)
+                    }
+                    Column(
+                        modifier = Modifier.weight(LedgerItemLayout.TableMerchantWeight),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                    ) {
+                        Text(
+                            text = expense.merchant?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.ledger_item_merchant_empty),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = AppTypography.chip.weight,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                    }
+                    Text(
+                        text = expense.category,
+                        modifier = Modifier
+                            .weight(LedgerItemLayout.TableCategoryWeight)
+                            .clip(CircleShape)
+                            .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.TableCategoryAlpha))
+                            .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
+                        color = visuals.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = AppTypography.chip.weight,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            },
+            action = { amountModifier, _ ->
+                LedgerAmountOrPending(
+                    amountCents = expense.amountCents,
+                    modifier = amountModifier,
                 )
-                Text(
-                    text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                )
-            }
-            Text(
-                text = expense.category,
-                modifier = Modifier
-                    .weight(LedgerItemLayout.TableCategoryWeight)
-                    .clip(CircleShape)
-                    .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.TableCategoryAlpha))
-                    .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
-                color = visuals.primary,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = AppTypography.chip.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
-            LedgerAmountOrPending(
-                amountCents = expense.amountCents,
-                modifier = Modifier.weight(LedgerItemLayout.TableAmountWeight),
-            )
-        }
+            },
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
     }
 }
