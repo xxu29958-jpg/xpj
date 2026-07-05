@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +81,7 @@ class BudgetViewModelTest {
         assertEquals("吃饭", request.categoryBudgets.single().category)
         assertEquals(120000L, request.categoryBudgets.single().amountCents)
         assertEquals(UiText.res(R.string.budget_message_saved), vm.uiState.value.message)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -95,6 +97,7 @@ class BudgetViewModelTest {
 
         assertEquals(0, fake.savedRequests.size)
         assertEquals(UiText.res(R.string.budget_validation_nonmonthly_negative), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -112,6 +115,7 @@ class BudgetViewModelTest {
 
         assertEquals(0, fake.savedRequests.size)
         assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.canModify)
     }
 
@@ -187,6 +191,7 @@ class BudgetViewModelTest {
         assertEquals(listOf("2026-05", "2026-04"), fake.loadedMonths)
         assertEquals("2026-04", vm.uiState.value.month)
         assertNull(vm.uiState.value.message)
+        assertEquals(MessageTone.Neutral, vm.uiState.value.messageTone)
     }
 
     @Test

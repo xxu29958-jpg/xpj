@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +38,7 @@ data class BudgetUiState(
     val loading: Boolean = false,
     val saving: Boolean = false,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
     /**
      * 本月预算读取 / 刷新失败说明（区别于 [message]：后者还承载保存成功 /
      * 校验提示等）。无 [budget] 时由概况卡渲染为可重试错误态；已有 [budget] 时保留旧数据并以内联
@@ -80,6 +82,7 @@ class BudgetViewModel(
                             budget = null,
                             form = BudgetFormState(),
                             message = null,
+                            messageTone = MessageTone.Neutral,
                             loadError = null,
                             canModify = repository.canModifyLedger(),
                         )
@@ -94,7 +97,13 @@ class BudgetViewModel(
             val month = _uiState.value.month
             val generation = requestGeneration
             _uiState.update {
-                it.copy(loading = true, message = null, loadError = null, canModify = repository.canModifyLedger())
+                it.copy(
+                    loading = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    loadError = null,
+                    canModify = repository.canModifyLedger(),
+                )
             }
             repository.monthlyBudget(month)
                 .onSuccess { budget ->
@@ -177,7 +186,13 @@ class BudgetViewModel(
 
     fun save() {
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(canModify = false, message = UiText.res(R.string.common_readonly_ledger)) }
+            _uiState.update {
+                it.copy(
+                    canModify = false,
+                    message = UiText.res(R.string.common_readonly_ledger),
+                    messageTone = MessageTone.Danger,
+                )
+            }
             return
         }
         val month = _uiState.value.month
@@ -186,11 +201,18 @@ class BudgetViewModel(
             .getOrElse { error ->
                 val message = (error as? BudgetInputError)?.uiText
                     ?: error.toUiText(R.string.budget_message_content_invalid)
-                _uiState.update { it.copy(message = message) }
+                _uiState.update { it.copy(message = message, messageTone = MessageTone.Danger) }
                 return
             }
         viewModelScope.launch {
-            _uiState.update { it.copy(saving = true, message = null, canModify = repository.canModifyLedger()) }
+            _uiState.update {
+                it.copy(
+                    saving = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    canModify = repository.canModifyLedger(),
+                )
+            }
             repository.saveMonthlyBudget(month, update)
                 .onSuccess { budget ->
                     _uiState.update {
@@ -200,6 +222,7 @@ class BudgetViewModel(
                             budget = budget,
                             form = budget.toFormState(),
                             message = UiText.res(R.string.budget_message_saved),
+                            messageTone = MessageTone.Success,
                             loadError = null,
                             canModify = repository.canModifyLedger(),
                         )
@@ -211,6 +234,7 @@ class BudgetViewModel(
                         it.copy(
                             saving = false,
                             message = error.toUiText(R.string.budget_message_save_failed),
+                            messageTone = MessageTone.Danger,
                             canModify = repository.canModifyLedger(),
                         )
                     }
@@ -228,6 +252,7 @@ class BudgetViewModel(
                 budget = null,
                 form = BudgetFormState(),
                 message = null,
+                messageTone = MessageTone.Neutral,
                 loadError = null,
             )
         }
@@ -235,7 +260,7 @@ class BudgetViewModel(
     }
 
     private fun updateForm(transform: (BudgetFormState) -> BudgetFormState) {
-        _uiState.update { it.copy(form = transform(it.form), message = null) }
+        _uiState.update { it.copy(form = transform(it.form), message = null, messageTone = MessageTone.Neutral) }
     }
 }
 

@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringActions
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
@@ -55,6 +56,7 @@ class RecurringViewModelTest {
 
         assertEquals(0, fake.confirmCalls)
         assertEquals(UiText.res(R.string.recurring_message_candidate_expired), vm.uiState.value.message)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
     }
 }
 

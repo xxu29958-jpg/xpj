@@ -37,7 +37,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
@@ -47,6 +46,7 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppSectionGroup
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -122,7 +122,7 @@ fun RecurringScreen(
             )
         }
         state.message?.let {
-            item { Text(it.asString(), color = MaterialTheme.colorScheme.secondary) }
+            item { AppStatusBanner(message = it, tone = state.messageTone) }
         }
         item {
             RecurringItemsCard(

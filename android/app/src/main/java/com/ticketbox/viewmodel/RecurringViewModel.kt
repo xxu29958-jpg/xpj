@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringActions
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
@@ -18,6 +19,7 @@ import kotlinx.coroutines.launch
 data class RecurringUiState(
     val loading: Boolean = false,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
     val items: List<RecurringItem> = emptyList(),
     val candidates: List<RecurringCandidate> = emptyList(),
     val canModify: Boolean = true,
@@ -54,7 +56,14 @@ class RecurringViewModel(
     fun refresh() {
         viewModelScope.launch {
             val generation = requestGeneration
-            _uiState.update { it.copy(loading = true, message = null, canModify = repository.canModifyLedger()) }
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    canModify = repository.canModifyLedger(),
+                )
+            }
             val itemsResult = repository.items(includeArchived = true)
             val candidatesResult = repository.candidates()
             if (requestGeneration != generation) return@launch
@@ -66,6 +75,7 @@ class RecurringViewModel(
                 state.copy(
                     loading = false,
                     message = message,
+                    messageTone = if (message == null) MessageTone.Neutral else MessageTone.Danger,
                     items = itemsResult.getOrElse { state.items },
                     candidates = candidatesResult.getOrElse { state.candidates },
                     canModify = repository.canModifyLedger(),
@@ -76,7 +86,12 @@ class RecurringViewModel(
 
     fun confirmCandidate(candidate: RecurringCandidate) {
         if (candidate !in _uiState.value.candidates) {
-            _uiState.update { it.copy(message = UiText.res(R.string.recurring_message_candidate_expired)) }
+            _uiState.update {
+                it.copy(
+                    message = UiText.res(R.string.recurring_message_candidate_expired),
+                    messageTone = MessageTone.Info,
+                )
+            }
             return
         }
         mutate {
@@ -104,17 +119,28 @@ class RecurringViewModel(
 
     private fun mutate(action: suspend () -> Result<RecurringItem>) {
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger), canModify = false) }
+            _uiState.update {
+                it.copy(
+                    message = UiText.res(R.string.common_readonly_ledger),
+                    messageTone = MessageTone.Danger,
+                    canModify = false,
+                )
+            }
             return
         }
         viewModelScope.launch {
             val generation = requestGeneration
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
             val result = action()
             if (requestGeneration != generation) return@launch
             result.fold(
                 onSuccess = {
-                    _uiState.update { state -> state.copy(message = UiText.res(R.string.recurring_message_updated)) }
+                    _uiState.update { state ->
+                        state.copy(
+                            message = UiText.res(R.string.recurring_message_updated),
+                            messageTone = MessageTone.Success,
+                        )
+                    }
                     refresh()
                 },
                 onFailure = { error ->
@@ -122,6 +148,7 @@ class RecurringViewModel(
                         it.copy(
                             loading = false,
                             message = error.toUiText(R.string.recurring_message_action_failed),
+                            messageTone = MessageTone.Danger,
                             canModify = repository.canModifyLedger(),
                         )
                     }

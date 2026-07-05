@@ -2,14 +2,11 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -93,7 +90,7 @@ private fun BudgetScreenContent(
             )
         }
         state.message?.let { message ->
-            item { Text(message.asString(), color = MaterialTheme.colorScheme.secondary) }
+            item { AppStatusBanner(message = message, tone = state.messageTone) }
         }
         budgetInlineLoadError(state)?.let { error ->
             item { AppStatusBanner(message = error, tone = MessageTone.Info) }
