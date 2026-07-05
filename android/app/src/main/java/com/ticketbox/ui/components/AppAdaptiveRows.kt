@@ -30,6 +30,11 @@ enum class AppAdaptiveEditActionMode {
     Inline,
 }
 
+internal enum class AppAdaptiveContentActionMode {
+    Stacked,
+    Inline,
+}
+
 internal enum class AppAdaptiveAmountRowMode {
     Stacked,
     Inline,
@@ -62,28 +67,38 @@ fun AppAdaptiveContentActionStateRow(
     action: @Composable (Modifier, Boolean) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            ) {
-                content()
-                action(Modifier.fillMaxWidth(), true)
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                verticalAlignment = verticalAlignment,
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
+        when (resolveAppAdaptiveContentActionMode(maxWidth)) {
+            AppAdaptiveContentActionMode.Stacked -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+                ) {
                     content()
+                    action(Modifier.fillMaxWidth(), true)
                 }
-                action(wideActionWeight?.let { Modifier.weight(it) } ?: Modifier, false)
+            }
+            AppAdaptiveContentActionMode.Inline -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                    verticalAlignment = verticalAlignment,
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        content()
+                    }
+                    action(wideActionWeight?.let { Modifier.weight(it) } ?: Modifier, false)
+                }
             }
         }
     }
 }
+
+internal fun resolveAppAdaptiveContentActionMode(maxWidth: Dp): AppAdaptiveContentActionMode =
+    if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
+        AppAdaptiveContentActionMode.Stacked
+    } else {
+        AppAdaptiveContentActionMode.Inline
+    }
 
 @Composable
 fun AppAdaptiveEditActionLayout(

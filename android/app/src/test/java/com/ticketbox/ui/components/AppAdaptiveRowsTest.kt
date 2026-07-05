@@ -7,6 +7,26 @@ import kotlin.test.assertEquals
 
 class AppAdaptiveRowsTest {
     @Test
+    fun contentActionRowsStackBelowInlineBreakpoint() {
+        assertEquals(
+            AppAdaptiveContentActionMode.Stacked,
+            resolveAppAdaptiveContentActionMode(
+                maxWidth = AppAdaptiveBreakpoints.contentActionInlineMinWidth - 1.dp,
+            ),
+        )
+    }
+
+    @Test
+    fun contentActionRowsStayInlineAtInlineBreakpoint() {
+        assertEquals(
+            AppAdaptiveContentActionMode.Inline,
+            resolveAppAdaptiveContentActionMode(
+                maxWidth = AppAdaptiveBreakpoints.contentActionInlineMinWidth,
+            ),
+        )
+    }
+
+    @Test
     fun editActionsStackThreeActionsBelowInlineBreakpoint() {
         assertEquals(
             AppAdaptiveEditActionMode.Stacked,

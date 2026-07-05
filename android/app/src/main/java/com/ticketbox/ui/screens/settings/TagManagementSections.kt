@@ -3,10 +3,8 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
@@ -32,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -64,21 +63,19 @@ internal fun TagUndoPanel(
     onUndo: () -> Unit,
 ) {
     SettingsOpenPanel {
-        Row(
+        AppAdaptiveContentActionRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = AppSpacing.miniGap),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.tag_management_undo_processed, handle.label),
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.width(AppSpacing.compactGap))
-            TextButton(enabled = !busy, onClick = onUndo) {
+            content = {
+                Text(
+                    text = stringResource(R.string.tag_management_undo_processed, handle.label),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        ) { actionModifier ->
+            TextButton(modifier = actionModifier, enabled = !busy, onClick = onUndo) {
                 Text(stringResource(R.string.tag_management_undo_button))
             }
         }
