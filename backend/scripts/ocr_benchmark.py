@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import sys
 import time
 from dataclasses import dataclass, field
@@ -54,7 +55,10 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
+from app.services.local_llm_vision import call_local_llm_vision  # noqa: E402
 from app.services.ocr_service import OcrResult  # noqa: E402
+from app.services.ocr_service._llm_parsing import _result_from_llm_json  # noqa: E402
+from app.services.ocr_service._providers import _local_llm_prompt_text  # noqa: E402
 from app.services.receipt_parse_service import parse_receipt_text  # noqa: E402
 
 DEFAULT_FIXTURE_DIR = _BACKEND_ROOT / "tests" / "_infra" / "ocr_fixtures"
@@ -69,7 +73,7 @@ def _configure_output_encoding() -> None:
             continue
         try:
             reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
+        except (OSError, ValueError):
             # Output encoding is best-effort; benchmark data should still run.
             continue
 
@@ -276,10 +280,10 @@ def _run_local_llm(image: Path | None, gt: GroundTruth, timezone_name: str) -> O
     # Expense ORM row); harness invokes the underlying HTTP call directly.
     if image is None:
         raise RuntimeError("local_llm requires an image; fixture has none")
-    raise RuntimeError(
-        "local_llm benchmark needs a fakeable LLM endpoint — see TODO in this script. "
-        "Wire it once a real LLM is configured."
-    )
+    image_bytes = image.read_bytes()
+    media_type = mimetypes.guess_type(image.name)[0] or "image/jpeg"
+    parsed_json = call_local_llm_vision(image_bytes, media_type, _local_llm_prompt_text())
+    return _result_from_llm_json(parsed_json, timezone_name=timezone_name)
 
 
 _PROVIDER_RUNNERS = {

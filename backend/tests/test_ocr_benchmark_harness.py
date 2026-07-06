@@ -16,6 +16,7 @@ screenshots.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -84,6 +85,52 @@ def test_unavailable_providers_are_skipped_not_crashed() -> None:
         assert row.merchant_match is None
         assert row.time_match is None
         assert row.category_match is None
+
+
+def test_local_llm_provider_uses_shared_vision_engine(tmp_path, monkeypatch) -> None:
+    fixture = tmp_path / "receipt_with_image"
+    fixture.mkdir()
+    image = fixture / "image.png"
+    image.write_bytes(b"\x89PNG fake receipt bytes")
+    (fixture / "ground_truth.json").write_text(
+        json.dumps(
+            {
+                "amount_cents": 1234,
+                "merchant": "Local Cafe",
+                "expense_time": "2026-05-03T04:20:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls: list[tuple[bytes, str | None, str]] = []
+
+    def fake_call_local_llm_vision(image_bytes, media_type, prompt_text):
+        calls.append((image_bytes, media_type, prompt_text))
+        return {
+            "amount_cents": 1234,
+            "merchant": "Local Cafe",
+            "expense_time": "2026-05-03T12:20:00+08:00",
+            "raw_text": "Local Cafe receipt",
+            "confidence": 0.91,
+        }
+
+    monkeypatch.setattr(ocr_benchmark, "call_local_llm_vision", fake_call_local_llm_vision)
+
+    report = ocr_benchmark.benchmark(tmp_path, ["local_llm"], timezone_name="Asia/Shanghai")
+
+    assert len(report.rows) == 1
+    row = report.rows[0]
+    assert row.attempted is True
+    assert row.note == ""
+    assert row.amount_match is True
+    assert row.merchant_match is True
+    assert row.time_match is True
+    assert row.category_match is None
+    assert calls
+    image_bytes, media_type, prompt_text = calls[0]
+    assert image_bytes == b"\x89PNG fake receipt bytes"
+    assert media_type == "image/png"
+    assert "receipt OCR parser" in prompt_text
 
 
 def test_aggregate_table_renders() -> None:
