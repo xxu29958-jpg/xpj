@@ -49,6 +49,24 @@ _REPO_KT = (
     "}\n"
 )
 
+_UITEXT_TABLE_KT = (
+    "private fun errorCodeStringRes(code: String?): Int? = code?.let(errorCodeStringResByCode::get)\n\n"
+    "private val errorCodeStringResByCode = mapOf(\n"
+    '    "alpha" to R.string.error_alpha,\n'
+    '    "beta" to R.string.error_beta,\n'
+    ")\n"
+)
+
+_REPO_TABLE_KT = (
+    "internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): String {\n"
+    "    return backendErrorUserMessages[errorCode.trim()]\n"
+    "        ?: serverMessage\n"
+    "}\n\n"
+    "private val backendErrorUserMessages = mapOf(\n"
+    '    "alpha" to "甲安卓文案。",\n'
+    ")\n"
+)
+
 _MAPPING_MD = (
     "### alpha\n\n"
     "| 字段 | 内容 |\n"
@@ -136,4 +154,20 @@ def test_error_copy_lane_ignores_commented_arms(tmp_path: Path, monkeypatch) -> 
         '        /* "phantom" -> "幽灵文案。" */\n        else -> serverMessage\n',
     )
     _install_fixture(mod, tmp_path, monkeypatch, uitext_kt=commented_uitext, repo_kt=commented_repo)
+    assert mod.main() == 0
+
+
+def test_error_copy_lane_accepts_kotlin_map_tables(tmp_path: Path, monkeypatch) -> None:
+    """The Android mappings may be table-driven instead of explicit when-arms;
+    the audit still reads the same code/copy pairs."""
+    mod = _load()
+    _install_fixture(
+        mod,
+        tmp_path,
+        monkeypatch,
+        uitext_kt=_UITEXT_TABLE_KT,
+        repo_kt=_REPO_TABLE_KT,
+    )
+    assert mod._uitext_arms() == {"alpha": "error_alpha", "beta": "error_beta"}
+    assert mod._repo_arms() == {"alpha": "甲安卓文案。"}
     assert mod.main() == 0

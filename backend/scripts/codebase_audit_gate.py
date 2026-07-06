@@ -185,7 +185,7 @@ STRICT_EQUALITY_BASELINE.update({
     "mutate_token_reason_create_row": 32,
 })
 CODEBASE_DEBT_LIMITS.update({"todo_markers": 8})
-STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2355})  # +1 OCR benchmark local_llm harness test.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2356})  # +1 OCR benchmark local_llm harness test; +1 error-copy map parser fixture.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
