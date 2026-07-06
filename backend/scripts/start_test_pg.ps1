@@ -65,14 +65,17 @@ if ($listening) {
 }
 
 if (-not $alreadyUp) {
-    if (-not (Test-Path $DataDir)) {
+    if (-not (Test-Path -LiteralPath $DataDir)) {
         & "$pgbin\initdb.exe" -D $DataDir -U postgres --auth=trust -E UTF8 --locale=C | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "initdb failed" }
     }
     $opts = "-p $Port -c listen_addresses=localhost -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
     & "$pgbin\pg_ctl.exe" -D $DataDir -o $opts -l "$DataDir\server.log" -w start
     if ($LASTEXITCODE -ne 0) {
-        if (Test-Path "$DataDir\server.log") { Get-Content "$DataDir\server.log" }
+        $serverLog = Join-Path $DataDir "server.log"
+        if (Test-Path -LiteralPath $serverLog) {
+            Get-Content -Encoding UTF8 -LiteralPath $serverLog
+        }
         throw "pg_ctl start failed"
     }
     Write-Host "Started PostgreSQL on 127.0.0.1:$Port (datadir=$DataDir)"

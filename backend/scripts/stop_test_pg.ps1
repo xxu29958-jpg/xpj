@@ -29,8 +29,8 @@ if ($Port -eq 5432 -or $Port -eq 5433) {
 }
 
 $pidfile = Join-Path $DataDir "postmaster.pid"
-if (Test-Path $pidfile) {
-    $pmpid = (Get-Content $pidfile -TotalCount 1 -ErrorAction SilentlyContinue)
+if (Test-Path -LiteralPath $pidfile) {
+    $pmpid = (Get-Content -Encoding UTF8 -LiteralPath $pidfile -TotalCount 1 -ErrorAction SilentlyContinue)
     if ($pmpid) {
         & taskkill /F /T /PID $pmpid | Out-Null
         Write-Host "Stopped ephemeral PostgreSQL (postmaster PID $pmpid)"

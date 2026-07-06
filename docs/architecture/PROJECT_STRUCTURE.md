@@ -16,8 +16,9 @@ E:\projects\xiaopiaojia\
     verify_project.ps1           # 本地全套验证入口
   .github\
     workflows\
-      cloud-ci.yml               # GitHub 云端主 CI
-      android-connected-cloud.yml # GitHub 云端模拟器 lane
+      ci.yml                     # GitHub 云端主 CI
+      android-connected-test.yml  # GitHub 云端模拟器 lane
+      codeql.yml                 # GitHub CodeQL 安全扫描
   .gitea\
     workflows\
       windows-ci.yml             # 本地降级四 job CI
