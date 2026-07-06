@@ -80,11 +80,13 @@ class FormattersTest {
     @Test
     fun formatsForeignExpenseWithOriginalPrimaryAndCnyMeta() {
         val expense = formatterExpense(
-            amountCents = 87938,
-            originalCurrencyCode = CurrencyCode.USD,
-            originalAmountMinor = 12345,
-            exchangeRateToCny = "7.12340000",
-            exchangeRateDate = "2026-05-04",
+            FormatterExpenseFixture(
+                amountCents = 87938,
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 12345,
+                exchangeRateToCny = "7.12340000",
+                exchangeRateDate = "2026-05-04",
+            ),
         )
 
         assertEquals("$123.45", formatExpensePrimaryAmount(expense))
@@ -96,7 +98,7 @@ class FormattersTest {
 
     @Test
     fun formatsCnyExpenseWithSelectedDisplayCurrency() {
-        val expense = formatterExpense(amountCents = 3680)
+        val expense = formatterExpense(FormatterExpenseFixture(amountCents = 3680))
 
         assertEquals(
             "¥36.80",
@@ -110,11 +112,13 @@ class FormattersTest {
     @Test
     fun hidesExchangeMetaForExpenseAlreadyInBackendHomeCurrency() {
         val expense = formatterExpense(
-            amountCents = 12345,
-            homeCurrency = CurrencyCode.JPY,
-            originalCurrencyCode = CurrencyCode.JPY,
-            originalAmountMinor = 12345,
-            exchangeRateToCny = "1.00000000",
+            FormatterExpenseFixture(
+                amountCents = 12345,
+                homeCurrency = CurrencyCode.JPY,
+                originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 12345,
+                exchangeRateToCny = "1.00000000",
+            ),
         )
 
         assertEquals(
@@ -130,12 +134,14 @@ class FormattersTest {
     @Test
     fun formatsForeignExpenseWithNoFractionHomeCurrencyMeta() {
         val expense = formatterExpense(
-            amountCents = 18518,
-            homeCurrency = CurrencyCode.JPY,
-            originalCurrencyCode = CurrencyCode.USD,
-            originalAmountMinor = 12345,
-            exchangeRateToCny = "150.00000000",
-            exchangeRateDate = "2026-05-04",
+            FormatterExpenseFixture(
+                amountCents = 18518,
+                homeCurrency = CurrencyCode.JPY,
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 12345,
+                exchangeRateToCny = "150.00000000",
+                exchangeRateDate = "2026-05-04",
+            ),
         )
 
         assertEquals("$123.45", formatExpensePrimaryAmount(expense))
@@ -148,12 +154,14 @@ class FormattersTest {
     @Test
     fun formatsForeignExpenseWithPendingFxStatus() {
         val expense = formatterExpense(
-            amountCents = null,
-            originalCurrencyCode = CurrencyCode.USD,
-            originalAmountMinor = 12345,
-            exchangeRateToCny = null,
-            exchangeRateDate = "2026-05-04",
-            fxStatus = "pending",
+            FormatterExpenseFixture(
+                amountCents = null,
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 12345,
+                exchangeRateToCny = null,
+                exchangeRateDate = "2026-05-04",
+                fxStatus = "pending",
+            ),
         )
 
         assertEquals("$123.45", formatExpensePrimaryAmount(expense))
@@ -234,30 +242,32 @@ class FormattersTest {
     }
 }
 
-private fun formatterExpense(
-    amountCents: Long?,
-    homeCurrency: CurrencyCode = CurrencyCode.CNY,
-    originalCurrencyCode: CurrencyCode = CurrencyCode.CNY,
-    originalAmountMinor: Long? = amountCents,
-    exchangeRateToCny: String? = "1",
-    exchangeRateDate: String? = "2026-05-04",
-    fxStatus: String = "ready",
-): Expense = Expense(
+private data class FormatterExpenseFixture(
+    val amountCents: Long?,
+    val homeCurrency: CurrencyCode = CurrencyCode.CNY,
+    val originalCurrencyCode: CurrencyCode = CurrencyCode.CNY,
+    val originalAmountMinor: Long? = amountCents,
+    val exchangeRateToCny: String? = "1",
+    val exchangeRateDate: String? = "2026-05-04",
+    val fxStatus: String = "ready",
+)
+
+private fun formatterExpense(fixture: FormatterExpenseFixture): Expense = Expense(
     id = 1,
     publicId = "formatter-expense",
-    amountCents = amountCents,
-    homeAmountCents = amountCents,
-    homeCurrency = homeCurrency,
-    originalCurrency = originalCurrencyCode,
+    amountCents = fixture.amountCents,
+    homeAmountCents = fixture.amountCents,
+    homeCurrency = fixture.homeCurrency,
+    originalCurrency = fixture.originalCurrencyCode,
     originalAmount = null,
-    fxRate = exchangeRateToCny,
-    fxRateDate = exchangeRateDate,
+    fxRate = fixture.exchangeRateToCny,
+    fxRateDate = fixture.exchangeRateDate,
     fxSource = "manual",
-    fxStatus = fxStatus,
-    originalCurrencyCode = originalCurrencyCode,
-    originalAmountMinor = originalAmountMinor,
-    exchangeRateToCny = exchangeRateToCny,
-    exchangeRateDate = exchangeRateDate,
+    fxStatus = fixture.fxStatus,
+    originalCurrencyCode = fixture.originalCurrencyCode,
+    originalAmountMinor = fixture.originalAmountMinor,
+    exchangeRateToCny = fixture.exchangeRateToCny,
+    exchangeRateDate = fixture.exchangeRateDate,
     exchangeRateSource = "manual",
     merchant = "merchant",
     category = "餐饮",
