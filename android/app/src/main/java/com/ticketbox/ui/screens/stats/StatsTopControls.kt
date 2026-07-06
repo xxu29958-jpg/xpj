@@ -157,7 +157,7 @@ private fun StatsPlanningMenuTrigger(
                     true
                 })
             }
-            .size(AppSpacing.controlMinHeight)
+            .size(48.dp)
             .clip(RoundedCornerShape(AppRadius.pill))
             .background(visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha))
             .border(

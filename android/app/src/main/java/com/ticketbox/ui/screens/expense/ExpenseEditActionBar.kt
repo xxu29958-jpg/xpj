@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
@@ -49,7 +51,10 @@ internal data class ExpenseEditActionBarState(
     val statusMessage: String?,
     val statusTone: MessageTone,
     val forceCompact: Boolean = false,
-)
+) {
+    val showBackAction: Boolean
+        get() = !allowConfirm || (!allowSave && !allowReject)
+}
 
 /** 编辑页操作栏的四个动作回调（沿 BudgetEditorActions 先例分组，避免长参数表）。 */
 internal data class ExpenseEditActionBarActions(
@@ -60,12 +65,12 @@ internal data class ExpenseEditActionBarActions(
 )
 
 /**
- * 编辑页底部浮动操作栏。把原先散落在长表单尾部的「保存 / 确认入账 / 删除」
+ * 编辑页底部浮动操作栏。把原先散落在长表单尾部的「保存 / 确认入账 / 忽略或删除」
  * 合并成永远一拇指可达的单条——最高频的「确认一张票」不再需要滚到底。
- * resource key 沿用既有 `expense_edit_reject_button`，文案统一到待确认草稿删除语义。
+ * 待确认草稿保留「忽略」语义；已入账记录走「删除」语义。
  *
  * 层级：
- *  - 动作行：删除（低强调 danger outlined，仅 allowReject）+ 保存（tonal outlined）
+ *  - 动作行：忽略/删除（低强调 danger outlined，仅 allowReject）+ 保存（tonal outlined）
  *    + 确认入账（filled primary，主操作，仅 allowConfirm）。返回放在页头，
  *    避免底部重复一个大按钮把二级页压得太重。
  *  - message 校验/状态提示锚在按钮上沿，"点确认→缺金额"永远在视野内。
@@ -107,7 +112,7 @@ private fun ExpenseEditResponsiveActionRows(
     actions: ExpenseEditActionBarActions,
     compactMode: Boolean,
 ) {
-    val actionCount = listOf(state.allowReject, state.allowSave, state.allowConfirm).count { it }
+    val actionCount = listOf(state.showBackAction, state.allowReject, state.allowSave, state.allowConfirm).count { it }
     AppAdaptiveEditActionLayout(actionCount = actionCount, compact = compactMode) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> ExpenseEditStackedActionRows(state = state, actions = actions)
@@ -144,13 +149,24 @@ private fun ExpenseEditSecondaryActionRow(
     state: ExpenseEditActionBarState,
     actions: ExpenseEditActionBarActions,
 ) {
+    val rejectText = stringResource(
+        if (state.allowConfirm) R.string.expense_edit_ignore_button else R.string.expense_edit_reject_button,
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
+        if (state.showBackAction) {
+            CompactTextAction(
+                text = stringResource(R.string.expense_edit_primary_back_button),
+                weight = 0.72f,
+                enabled = !state.saving,
+                onClick = actions.onBack,
+            )
+        }
         if (state.allowReject) {
             CompactTextAction(
-                text = stringResource(R.string.expense_edit_reject_button),
+                text = rejectText,
                 weight = 0.82f,
                 enabled = !state.saving,
                 danger = true,
@@ -177,14 +193,25 @@ private fun ExpenseEditActionForwardRow(
     state: ExpenseEditActionBarState,
     actions: ExpenseEditActionBarActions,
 ) {
+    val rejectText = stringResource(
+        if (state.allowConfirm) R.string.expense_edit_ignore_button else R.string.expense_edit_reject_button,
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (state.showBackAction) {
+            CompactTextAction(
+                text = stringResource(R.string.expense_edit_primary_back_button),
+                weight = 0.72f,
+                enabled = !state.saving,
+                onClick = actions.onBack,
+            )
+        }
         if (state.allowReject) {
             CompactTextAction(
-                text = stringResource(R.string.expense_edit_reject_button),
+                text = rejectText,
                 weight = 0.64f,
                 enabled = !state.saving,
                 danger = true,
@@ -221,12 +248,14 @@ private fun ExpenseEditKeyboardActionRow(
     state: ExpenseEditActionBarState,
     actions: ExpenseEditActionBarActions,
 ) {
+    val rejectText = stringResource(
+        if (state.allowConfirm) R.string.expense_edit_ignore_button else R.string.expense_edit_reject_button,
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        val showBack = !state.allowConfirm || (!state.allowSave && !state.allowReject)
-        if (showBack) {
+        if (state.showBackAction) {
             CompactTextAction(
                 text = stringResource(R.string.expense_edit_primary_back_button),
                 weight = 0.72f,
@@ -256,7 +285,7 @@ private fun ExpenseEditKeyboardActionRow(
         }
         if (state.allowReject) {
             CompactTextAction(
-                text = stringResource(R.string.expense_edit_reject_button),
+                text = rejectText,
                 weight = 0.72f,
                 enabled = !state.saving,
                 danger = true,
@@ -274,7 +303,7 @@ private fun RowScope.CompactOutlinedAction(
     onClick: () -> Unit,
 ) {
     QuietOutlinedButton(
-        modifier = Modifier.weight(weight),
+        modifier = Modifier.weight(weight).defaultMinSize(minHeight = 48.dp),
         text = text,
         enabled = enabled,
         onClick = onClick,
@@ -306,7 +335,7 @@ private fun RowScope.CompactTextAction(
     onClick: () -> Unit,
 ) {
     AppOutlinedButton(
-        modifier = Modifier.weight(weight),
+        modifier = Modifier.weight(weight).defaultMinSize(minHeight = 48.dp),
         enabled = enabled,
         danger = danger,
         onClick = onClick,
@@ -322,6 +351,6 @@ private fun ExpenseEditActionLabel(text: String) {
         maxLines = 1,
         softWrap = false,
         autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 1.sp),
-        overflow = TextOverflow.Clip,
+        overflow = TextOverflow.Ellipsis,
     )
 }

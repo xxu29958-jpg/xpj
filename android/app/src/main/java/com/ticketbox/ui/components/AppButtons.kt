@@ -136,8 +136,7 @@ fun AppBackButton(
                     true
                 })
             }
-            .height(44.dp)
-            .widthIn(min = 48.dp)
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .clip(shape)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(end = AppSpacing.compactGap),

@@ -69,6 +69,7 @@ data class AppTextInputActions(
 )
 
 data class AppTextInputDecorations(
+    val fieldModifier: Modifier = Modifier,
     val leadingContent: (@Composable () -> Unit)? = null,
     val trailingContent: (@Composable () -> Unit)? = null,
     val supportingText: (@Composable () -> Unit)? = null,
@@ -147,7 +148,7 @@ private fun AppTextInputField(
     BasicTextField(
         value = state.value,
         onValueChange = actions.onValueChange,
-        modifier = Modifier
+        modifier = decorations.fieldModifier
             .fillMaxWidth()
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged(focusState.onFocusChanged),

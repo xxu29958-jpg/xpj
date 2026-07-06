@@ -34,6 +34,7 @@
     <string name="expense_edit_primary_saving_button">保存中</string>
     <string name="expense_edit_primary_save_button">保存</string>
     <string name="expense_edit_confirm_button">确认入账</string>
+    <string name="expense_edit_ignore_button">忽略</string>
     <string name="expense_edit_reject_button">删除</string>
 
     <!-- ExpenseEditCoreFields：金额/币种/商家/分类/备注/来源 -->

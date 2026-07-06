@@ -143,7 +143,8 @@ private fun ExpenseEditMoreExpandedFields(
                 enabled = !state.readOnly,
             ),
             onValueChange = actions.onTagsChange,
-            modifier = Modifier.fillMaxWidth().testTag(TAG_TAGS_FIELD),
+            modifier = Modifier.fillMaxWidth(),
+            fieldModifier = Modifier.testTag(TAG_TAGS_FIELD),
         )
         ExpenseEditScoreFields(
             state = state,
@@ -180,7 +181,8 @@ private fun ExpenseEditScoreFields(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             ),
             onValueChange = actions.onValueScoreChange,
-            modifier = Modifier.weight(1f).testTag(TAG_VALUE_SCORE_FIELD),
+            modifier = Modifier.weight(1f),
+            fieldModifier = Modifier.testTag(TAG_VALUE_SCORE_FIELD),
         )
         ExpenseEditTextField(
             state = ExpenseEditTextFieldState(
@@ -191,7 +193,8 @@ private fun ExpenseEditScoreFields(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             ),
             onValueChange = actions.onRegretScoreChange,
-            modifier = Modifier.weight(1f).testTag(TAG_REGRET_SCORE_FIELD),
+            modifier = Modifier.weight(1f),
+            fieldModifier = Modifier.testTag(TAG_REGRET_SCORE_FIELD),
         )
     }
 }
