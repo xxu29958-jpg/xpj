@@ -75,6 +75,8 @@ MAPPING_MD = REPO_ROOT / "docs" / "rules" / "ERROR_MESSAGE_MAPPING.md"
 
 UITEXT_FUNCTION = "fun errorCodeStringRes"
 REPO_FUNCTION = "fun backendErrorUserMessage"
+UITEXT_TABLE = "val errorCodeStringResByCode"
+REPO_TABLE = "val backendErrorUserMessages"
 
 # Parser floors (anti-vacuity). Actuals at authoring time: 81 backend codes /
 # 44 error_* resources / 43 ErrorUiText arms / 35 repository arms / 29 doc
@@ -90,6 +92,8 @@ FLOORS: dict[str, int] = {
 
 UITEXT_ARM_RX = re.compile(r'"([a-z0-9_]+)"\s*->\s*R\.string\.([A-Za-z0-9_]+)')
 REPO_ARM_RX = re.compile(r'"([a-z0-9_]+)"\s*->\s*"([^"\n]*)"')
+UITEXT_TABLE_RX = re.compile(r'"([a-z0-9_]+)"\s+to\s+R\.string\.([A-Za-z0-9_]+)')
+REPO_TABLE_RX = re.compile(r'"([a-z0-9_]+)"\s+to\s+"([^"\n]*)"')
 DOC_SECTION_RX = re.compile(r"^### ([a-z_]+)\s*$", re.MULTILINE)
 DOC_COPY_RX = re.compile(r"^\| 用户文案 \| (.+?) \|\s*$", re.MULTILINE)
 
@@ -231,14 +235,53 @@ def _function_slice(path: Path, header: str) -> str:
     return src[start:end] if end != -1 else src[start:]
 
 
+def _mapof_slice(path: Path, marker: str) -> str:
+    """Comment-stripped text of a top-level ``mapOf(...)`` declaration.
+    Missing marker yields an empty slice so the matching floor still catches a
+    parser that drifted off both the old when-arms and the new table."""
+    src = strip_kotlin_comments(path.read_text(encoding="utf-8"))
+    start = src.find(marker)
+    if start == -1:
+        return ""
+    end = src.find("\n)", start)
+    return src[start : end + 2] if end != -1 else src[start:]
+
+
+def _kotlin_entries(
+    *,
+    path: Path,
+    function_header: str,
+    table_marker: str,
+    arm_rx: re.Pattern[str],
+    table_rx: re.Pattern[str],
+) -> dict[str, str]:
+    """Parse Android error mappings from either a legacy ``when`` function or
+    the current ``mapOf`` table shape."""
+    arms = arm_rx.findall(_function_slice(path, function_header))
+    table_entries = table_rx.findall(_mapof_slice(path, table_marker))
+    return dict(arms + table_entries)
+
+
 def _uitext_arms() -> dict[str, str]:
-    """{code: resource name} from the ``errorCodeStringRes`` when-arms."""
-    return dict(UITEXT_ARM_RX.findall(_function_slice(ERROR_UITEXT_KT, UITEXT_FUNCTION)))
+    """{code: resource name} from ``errorCodeStringRes`` mappings."""
+    return _kotlin_entries(
+        path=ERROR_UITEXT_KT,
+        function_header=UITEXT_FUNCTION,
+        table_marker=UITEXT_TABLE,
+        arm_rx=UITEXT_ARM_RX,
+        table_rx=UITEXT_TABLE_RX,
+    )
 
 
 def _repo_arms() -> dict[str, str]:
-    """{code: copy} from the ``backendErrorUserMessage`` when-arms."""
-    return dict(REPO_ARM_RX.findall(_function_slice(REPO_SUPPORT_KT, REPO_FUNCTION)))
+    """{code: copy} from ``backendErrorUserMessage`` mappings."""
+    return _kotlin_entries(
+        path=REPO_SUPPORT_KT,
+        function_header=REPO_FUNCTION,
+        table_marker=REPO_TABLE,
+        arm_rx=REPO_ARM_RX,
+        table_rx=REPO_TABLE_RX,
+    )
 
 
 def _doc_sections() -> dict[str, str | None]:
