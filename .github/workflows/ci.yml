@@ -300,7 +300,7 @@ jobs:
             echo ""
             echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
             echo "org.gradle.workers.max=2"
-            echo "kotlin.daemon.jvmargs=-Xmx1536m"
+            echo "kotlin.daemon.jvmargs=-Xmx2560m"
           } >> gradle.properties
 
       - name: Gradle / JVM versions
@@ -361,7 +361,11 @@ jobs:
         # Release builds run R8 minify + shrinkResources, keeping keep-rules warm
         # in CI instead of discovering Retrofit/Moshi issues only on a manual
         # release assemble.
-        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
+        run: |
+          ./gradlew --stop || true
+          ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease
+          ./gradlew --stop || true
+          ./gradlew --no-daemon --max-workers=1 :app:assembleInternalRelease
 
       - name: Verify debug APK signing certificate
         # Compute the expected fingerprint from the committed debug keystore
