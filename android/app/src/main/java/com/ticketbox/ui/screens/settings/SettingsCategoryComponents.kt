@@ -39,17 +39,13 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,6 +88,7 @@ import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
@@ -229,6 +226,14 @@ private fun CategoryRuleActions(
     onEditRule: () -> Unit,
     onDeleteRule: () -> Unit,
 ) {
+    val toggleLabel = if (rule.enabled) {
+        stringResource(R.string.category_rule_card_action_disable)
+    } else {
+        stringResource(R.string.category_rule_card_action_enable)
+    }
+    val editLabel = stringResource(R.string.category_rule_card_action_edit)
+    val deleteLabel = stringResource(R.string.category_rule_card_action_delete)
+
     AppAdaptiveEditActionLayout(actionCount = 3, compact = false) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> Column(
@@ -239,52 +244,57 @@ private fun CategoryRuleActions(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
                 ) {
-                    TextButton(modifier = Modifier.weight(1f), onClick = { onToggleRule(rule) }) {
-                        Text(
-                            if (rule.enabled) {
-                                stringResource(R.string.category_rule_card_action_disable)
-                            } else {
-                                stringResource(R.string.category_rule_card_action_enable)
-                            },
-                        )
-                    }
-                    TextButton(modifier = Modifier.weight(1f), onClick = onEditRule) {
-                        Text(stringResource(R.string.category_rule_card_action_edit))
-                    }
+                    QuietOutlinedButton(
+                        text = toggleLabel,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onToggleRule(rule) },
+                    )
+                    QuietOutlinedButton(
+                        text = editLabel,
+                        modifier = Modifier.weight(1f),
+                        onClick = onEditRule,
+                    )
                 }
-                TextButton(
+                CategoryRuleDeleteButton(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    text = deleteLabel,
                     onClick = onDeleteRule,
-                ) {
-                    Text(stringResource(R.string.category_rule_card_action_delete))
-                }
+                )
             }
             AppAdaptiveEditActionMode.Compact,
             AppAdaptiveEditActionMode.Inline -> Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap, Alignment.End),
             ) {
-                TextButton(onClick = { onToggleRule(rule) }) {
-                    Text(
-                        if (rule.enabled) {
-                            stringResource(R.string.category_rule_card_action_disable)
-                        } else {
-                            stringResource(R.string.category_rule_card_action_enable)
-                        },
-                    )
-                }
-                TextButton(onClick = onEditRule) {
-                    Text(stringResource(R.string.category_rule_card_action_edit))
-                }
-                TextButton(
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                QuietOutlinedButton(
+                    text = toggleLabel,
+                    onClick = { onToggleRule(rule) },
+                )
+                QuietOutlinedButton(
+                    text = editLabel,
+                    onClick = onEditRule,
+                )
+                CategoryRuleDeleteButton(
+                    text = deleteLabel,
                     onClick = onDeleteRule,
-                ) {
-                    Text(stringResource(R.string.category_rule_card_action_delete))
-                }
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun CategoryRuleDeleteButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    AppOutlinedButton(
+        modifier = modifier,
+        danger = true,
+        onClick = onClick,
+    ) {
+        Text(text = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
