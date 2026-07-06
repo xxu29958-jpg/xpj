@@ -3,22 +3,18 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,9 +25,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.DashboardCard
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.DraggableReorderColumn
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.DashboardCardsUiState
@@ -171,33 +171,56 @@ private fun DashboardCardsFooter(
             style = MaterialTheme.typography.bodySmall,
         )
     }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        OutlinedButton(
+    DashboardCardsFooterActions(state = state, actions = actions)
+}
+
+@Composable
+private fun DashboardCardsFooterActions(
+    state: DashboardCardsUiState,
+    actions: DashboardCardsScreenActions,
+) {
+    val resetEnabled = state.canModify && !state.saving
+    val saveEnabled = state.canModify && !state.saving && state.cards.isNotEmpty() && state.dirty
+    val saveText = if (state.saving) {
+        stringResource(R.string.dashboard_cards_save_busy)
+    } else {
+        stringResource(R.string.dashboard_cards_save_button)
+    }
+    val resetAction: @Composable (Modifier) -> Unit = { actionModifier ->
+        QuietOutlinedButton(
+            text = stringResource(R.string.dashboard_cards_reset_button),
+            modifier = actionModifier,
+            enabled = resetEnabled,
+            leadingIcon = Icons.Filled.RestartAlt,
             onClick = actions.onReset,
-            enabled = state.canModify && !state.saving,
-            modifier = Modifier.weight(1f),
-        ) {
-            Icon(Icons.Filled.RestartAlt, contentDescription = stringResource(R.string.dashboard_cards_reset_content_description))
-            Spacer(Modifier.width(AppSpacing.smallGap))
-            Text(stringResource(R.string.dashboard_cards_reset_button))
-        }
-        Button(
+        )
+    }
+    val saveAction: @Composable (Modifier) -> Unit = { actionModifier ->
+        AppPrimaryButton(
+            text = saveText,
+            icon = Icons.Filled.Save,
+            modifier = actionModifier,
+            enabled = saveEnabled,
             onClick = actions.onSave,
-            enabled = state.canModify && !state.saving && state.cards.isNotEmpty() && state.dirty,
-            modifier = Modifier.weight(1f),
-        ) {
-            Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.dashboard_cards_save_content_description))
-            Spacer(Modifier.width(AppSpacing.smallGap))
-            Text(
-                if (state.saving) {
-                    stringResource(R.string.dashboard_cards_save_busy)
-                } else {
-                    stringResource(R.string.dashboard_cards_save_button)
-                },
-            )
+        )
+    }
+    AppAdaptiveEditActionLayout(actionCount = 2, compact = false, stackTwoActionsOnNarrow = true) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                resetAction(Modifier.fillMaxWidth())
+                saveAction(Modifier.fillMaxWidth())
+            }
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+            ) {
+                resetAction(Modifier)
+                saveAction(Modifier)
+            }
         }
     }
 }
