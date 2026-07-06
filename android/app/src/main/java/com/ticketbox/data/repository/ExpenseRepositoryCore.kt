@@ -34,6 +34,15 @@ import java.util.TimeZone
 
 private const val CONFIRMED_SYNC_PAGE_SIZE = 200
 
+internal data class ConfirmedSyncRequest(
+    val ledgerIdAtRequest: String,
+    val month: String? = null,
+    val category: String? = null,
+    val tag: String? = null,
+    val replaceCache: Boolean = false,
+    val recordSyncTimestamp: Boolean = true,
+)
+
 internal class ExpenseRepositoryCore(
     val expenseDao: ExpenseDao,
     val settingsStore: TicketboxSettingsStore,
@@ -219,20 +228,16 @@ internal class ExpenseRepositoryCore(
 
     suspend fun syncConfirmedFromService(
         service: ApiService,
-        ledgerIdAtRequest: String = activeLedgerIdOrLegacy(),
-        month: String? = null,
-        category: String? = null,
-        tag: String? = null,
-        replaceCache: Boolean = false,
-        recordSyncTimestamp: Boolean = true,
+        request: ConfirmedSyncRequest = ConfirmedSyncRequest(ledgerIdAtRequest = activeLedgerIdOrLegacy()),
     ): List<Expense> {
-        val isFullLedgerSync = month == null && category == null && tag == null
+        val ledgerIdAtRequest = request.ledgerIdAtRequest
+        val isFullLedgerSync = request.month == null && request.category == null && request.tag == null
         // Prune-eligibility snapshot BEFORE the first page request: a row
         // confirmed (and cached via cacheIfConfirmed) while the paginated
         // fetch is in flight is missing from the response by timing alone —
         // it must not be pruned as "server-deleted". See
         // ExpenseDao.applyConfirmedSyncForLedger's pruneScope contract.
-        val preSyncConfirmedServerIds: Set<Long> = if (!replaceCache && isFullLedgerSync) {
+        val preSyncConfirmedServerIds: Set<Long> = if (!request.replaceCache && isFullLedgerSync) {
             expenseDao.confirmedServerIdsForLedger(ledgerIdAtRequest).toSet()
         } else {
             emptySet()
@@ -248,9 +253,9 @@ internal class ExpenseRepositoryCore(
             val response = service.confirmedExpenses(
                 page = page,
                 pageSize = pageSize,
-                month = month,
-                category = category,
-                tag = tag,
+                month = request.month,
+                category = request.category,
+                tag = request.tag,
                 timezone = currentTimezoneId(),
             )
             total = response.total
@@ -270,10 +275,10 @@ internal class ExpenseRepositoryCore(
         expenseDao.applyConfirmedSyncForLedger(
             ledgerId = ledgerIdAtRequest,
             expenses = entities,
-            replaceCache = replaceCache,
-            pruneScope = if (!replaceCache && isFullLedgerSync) preSyncConfirmedServerIds else null,
+            replaceCache = request.replaceCache,
+            pruneScope = if (!request.replaceCache && isFullLedgerSync) preSyncConfirmedServerIds else null,
         )
-        if (recordSyncTimestamp && isFullLedgerSync) {
+        if (request.recordSyncTimestamp && isFullLedgerSync) {
             settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
         }
         return collected

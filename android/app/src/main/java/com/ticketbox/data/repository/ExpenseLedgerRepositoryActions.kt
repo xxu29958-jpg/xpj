@@ -39,10 +39,12 @@ internal class ExpenseLedgerRepositoryActions(
         val bound = core.ledgerRequestGuard.bind()
         core.syncConfirmedFromService(
             service = bound.service,
-            ledgerIdAtRequest = bound.ledgerId,
-            month = month,
-            category = category,
-            tag = tag,
+            request = ConfirmedSyncRequest(
+                ledgerIdAtRequest = bound.ledgerId,
+                month = month,
+                category = category,
+                tag = tag,
+            ),
         )
     }
 
