@@ -83,10 +83,10 @@ CODEBASE_DEBT_LIMITS.update(
         "files_over_500": 16,
         "long_functions": 38,
         "deep_nesting_functions": 4,
-        "broad_exception": 15,
+        "broad_exception": 13,
         "unreferenced_modules": 223,
     }
-)  # ADR-0052 recycle-bin follow-up; 2026-07-06 cleanup retired the one-shot migrator, compressed gate prose, split smoke_test orchestration, and narrowed audit scanner fallbacks.
+)  # ADR-0052 recycle-bin follow-up; 2026-07-06 cleanup retired the one-shot migrator, compressed gate prose, split smoke_test orchestration, narrowed audit scanner fallbacks, and ratcheted post-batch broad exceptions.
 
 
 def evaluate_debt(counts: DebtCounts) -> int:
