@@ -41,18 +41,26 @@ class CategoryRulesViewModel(
     val uiState: StateFlow<CategoryRulesUiState> = _uiState.asStateFlow()
 
     init {
-        loadCategoryRules()
-        loadRuleApplications()
+        loadCategoryRules(clearMessage = false)
+        loadRuleApplications(clearMessage = false)
     }
 
     private fun canModifyCurrentLedger(): Boolean {
         return ledgerRoleCanModify(repository.currentLedgerRole())
     }
 
-    fun loadCategoryRules() {
+    fun loadCategoryRules(clearMessage: Boolean = true) {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(categoryRulesLoading = true, message = null, messageTone = MessageTone.Neutral)
+                if (clearMessage) {
+                    it.copy(
+                        categoryRulesLoading = true,
+                        message = null,
+                        messageTone = MessageTone.Neutral,
+                    )
+                } else {
+                    it.copy(categoryRulesLoading = true)
+                }
             }
             ruleRepository.categoryRules()
                 .onSuccess { rules -> _uiState.update { it.copy(categoryRulesLoading = false, categoryRules = rules) } }
@@ -68,10 +76,18 @@ class CategoryRulesViewModel(
         }
     }
 
-    fun loadRuleApplications() {
+    fun loadRuleApplications(clearMessage: Boolean = true) {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(ruleApplicationsLoading = true, message = null, messageTone = MessageTone.Neutral)
+                if (clearMessage) {
+                    it.copy(
+                        ruleApplicationsLoading = true,
+                        message = null,
+                        messageTone = MessageTone.Neutral,
+                    )
+                } else {
+                    it.copy(ruleApplicationsLoading = true)
+                }
             }
             ruleRepository.ruleApplications()
                 .onSuccess { applications ->
