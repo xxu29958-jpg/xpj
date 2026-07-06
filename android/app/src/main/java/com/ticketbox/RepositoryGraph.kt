@@ -1,0 +1,166 @@
+package com.ticketbox
+
+import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.local.LocalSettingsStore
+import com.ticketbox.data.remote.ApiClient
+import com.ticketbox.data.repository.ApiServiceProvider
+import com.ticketbox.data.repository.BudgetRepository
+import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.IncomePlanRepository
+import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.LocalLedgerSessionCoordinator
+import com.ticketbox.data.repository.MerchantRepository
+import com.ticketbox.data.repository.OutboxRepository
+import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.RepaymentDraftRepository
+import com.ticketbox.data.repository.ReportsRepository
+import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.data.repository.TagRepository
+import com.ticketbox.security.SecureTokenStore
+
+internal data class RepositoryGraphDependencies(
+    val database: AppDatabase,
+    val apiClient: ApiClient,
+    val settingsStore: LocalSettingsStore,
+    val tokenStore: SecureTokenStore,
+    val apiServiceProvider: ApiServiceProvider,
+    val outbox: RepositoryGraphOutbox,
+)
+
+internal data class RepositoryGraphOutbox(
+    val repository: OutboxRepository,
+    val adapters: OutboxAdapterGraph,
+)
+
+internal class RepositoryGraph(
+    private val dependencies: RepositoryGraphDependencies,
+) {
+    private val database = dependencies.database
+    private val apiClient = dependencies.apiClient
+    private val settingsStore = dependencies.settingsStore
+    private val tokenStore = dependencies.tokenStore
+    private val apiServiceProvider = dependencies.apiServiceProvider
+    private val outbox = dependencies.outbox.repository
+    private val outboxAdapters = dependencies.outbox.adapters
+
+    private val ledgerSessionCoordinator = LocalLedgerSessionCoordinator(
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        expenseDao = database.expenseDao(),
+        outbox = outbox,
+    )
+
+    val expenseRepository = ExpenseRepository(
+        expenseDao = database.expenseDao(),
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+        sessionCoordinator = ledgerSessionCoordinator,
+        // PR-2g.3: pass the outbox + adapter so the PATCH expense
+        // call site can fall back to enqueue on IOException.
+        // PR-2g.7: + token adapter for confirm/reject offline routing.
+        outbox = outbox,
+        patchExpenseAdapter = outboxAdapters.patchExpenseAdapter,
+        expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
+        replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
+        replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,
+        recognizeTextAdapter = outboxAdapters.recognizeTextAdapter,
+        // issue #65 slice 4: offline-aware manual create.
+        manualCreateAdapter = outboxAdapters.manualCreateAdapter,
+    )
+
+    val ledgerRepository = LedgerRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        expenseDao = database.expenseDao(),
+        apiProvider = apiServiceProvider,
+        sessionCoordinator = ledgerSessionCoordinator,
+    )
+
+    val recurringRepository = RecurringRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+
+    val budgetRepository = BudgetRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+
+    val incomePlanRepository = IncomePlanRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+        // ADR-0042 Slice F: outbox + adapter for updateAllowingOffline.
+        outbox = outbox,
+        incomePlanUpdateAdapter = outboxAdapters.incomePlanUpdateAdapter,
+    )
+
+    // ADR-0049 §2 (slice 8): Debt entity repository. Direct-only online (no outbox surface).
+    val debtRepository = DebtRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+
+    // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库。direct-only online；NLS service 路由还款草稿到它。
+    val repaymentDraftRepository = RepaymentDraftRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+
+    val reportsRepository = ReportsRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+        // ADR-0042 Slice F: outbox + adapter for updateGoalAllowingOffline.
+        outbox = outbox,
+        goalUpdateAdapter = outboxAdapters.goalUpdateAdapter,
+    )
+
+    val ruleRepository = RuleRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+        onConfirmedChanged = { expenseRepository.syncConfirmed() },
+        // PR-2g.4: outbox + adapter for updateCategoryRuleAllowingOffline.
+        // PR-2g.5: + deleteAdapter for deleteCategoryRuleAllowingOffline.
+        outbox = outbox,
+        categoryRuleUpdateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
+        categoryRuleDeleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
+    )
+
+    val merchantRepository = MerchantRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+        // PR-2g.5: outbox + delete adapter.
+        // PR-2g.6: + update adapter for updateMerchantAliasAllowingOffline.
+        outbox = outbox,
+        merchantAliasDeleteAdapter = outboxAdapters.merchantAliasDeleteAdapter,
+        merchantAliasUpdateAdapter = outboxAdapters.merchantAliasUpdateAdapter,
+    )
+
+    // ADR-0043 slice C — tag management. Online-only (契约 7): no outbox / no
+    // idempotency adapters, unlike MerchantRepository.
+    val tagRepository = TagRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+}
