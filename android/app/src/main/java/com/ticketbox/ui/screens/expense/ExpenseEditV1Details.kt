@@ -30,7 +30,6 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppAdaptiveStatusContentRow
 import com.ticketbox.ui.components.AppContentStateCopy
@@ -43,6 +42,7 @@ import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -753,7 +753,7 @@ private fun itemSubtitle(item: ExpenseItem): String? {
 
 @Composable
 private fun splitSubtitle(split: ExpenseSplit): String {
-    val parts = mutableListOf(ledgerRoleLabel(split.role))
+    val parts = mutableListOf(ledgerRoleLabelText(split.role))
     split.note?.takeIf { it.isNotBlank() }?.let { parts += it }
     if (split.isDisabledMember) parts += stringResource(R.string.expense_edit_split_subtitle_member_disabled)
     return parts.joinToString(" · ")

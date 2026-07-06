@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.GroupAdd
@@ -22,14 +21,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.InvitationPreview
-import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
-import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
-import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ServerUrlEntryConfig
@@ -77,7 +74,7 @@ fun JoinFamilyLedgerScreen(
 
     val currentAccountName = viewModel.currentAccountName.asString()
     val currentLedgerName = viewModel.currentLedgerName.asString()
-    val currentRole = stringResource(ledgerRoleLabelRes(viewModel.currentLedgerRole))
+    val currentRole = ledgerRoleLabelText(viewModel.currentLedgerRole)
     val statusMessage = state.error ?: state.success
     val statusTone = if (state.error != null) MessageTone.Danger else MessageTone.Success
 
@@ -314,7 +311,7 @@ private fun InvitationPreviewPanel(preview: InvitationPreview) {
         Text(
             text = stringResource(
                 R.string.join_family_ledger_preview_role,
-                stringResource(ledgerRoleLabelRes(preview.role)),
+                ledgerRoleLabelText(preview.role),
             ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -350,15 +347,6 @@ private fun JoinFamilyInfoRow(label: String, value: String) {
             modifier = Modifier.weight(1f),
         )
     }
-}
-
-@StringRes
-private fun ledgerRoleLabelRes(role: String?): Int = when (role?.trim()) {
-    LEDGER_ROLE_OWNER -> R.string.join_family_ledger_role_owner
-    LEDGER_ROLE_MEMBER -> R.string.join_family_ledger_role_member
-    LEDGER_ROLE_VIEWER -> R.string.join_family_ledger_role_viewer
-    null, "" -> R.string.join_family_ledger_role_unknown
-    else -> R.string.join_family_ledger_role_unknown
 }
 
 private fun String?.displayOr(fallback: String): String =

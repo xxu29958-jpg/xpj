@@ -9,12 +9,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.ticketbox.R
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
+import com.ticketbox.ui.components.ledgerRoleLabelText
+import com.ticketbox.ui.components.ledgerScopeLabelText
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
@@ -37,7 +37,7 @@ internal fun SettingsRoleChip(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     SettingsInlineChip(
-        text = settingsLedgerRoleLabel(role),
+        text = ledgerRoleLabelText(role),
         container = container,
         content = content,
         modifier = modifier,
@@ -51,7 +51,7 @@ internal fun SettingsLedgerScopeChip(
 ) {
     val visuals = LocalThemeVisuals.current
     SettingsInlineChip(
-        text = settingsLedgerScopeLabel(isDefault),
+        text = ledgerScopeLabelText(isDefault),
         container = if (isDefault) visuals.chipSelected else visuals.chipUnselected,
         content = if (isDefault) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
@@ -71,25 +71,6 @@ internal fun SettingsCurrentChip(
         modifier = modifier,
     )
 }
-
-@Composable
-internal fun settingsLedgerRoleLabel(role: String?): String = when (role?.trim()) {
-    LEDGER_ROLE_OWNER -> stringResource(R.string.settings_account_role_owner)
-    LEDGER_ROLE_MEMBER -> stringResource(R.string.settings_account_role_member)
-    LEDGER_ROLE_VIEWER -> stringResource(R.string.settings_account_role_viewer)
-    null, "" -> stringResource(R.string.settings_account_role_unknown)
-    else -> role.trim()
-}
-
-@Composable
-private fun settingsLedgerScopeLabel(isDefault: Boolean): String =
-    stringResource(
-        if (isDefault) {
-            R.string.settings_account_scope_personal
-        } else {
-            R.string.settings_account_scope_shared
-        },
-    )
 
 @Composable
 private fun SettingsInlineChip(

@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SettingsUiState
 
@@ -40,7 +41,7 @@ private fun settingsRootAccountSummaryData(state: SettingsUiState): SettingsRoot
     val displayDevice = firstNotBlank(serverSettings?.deviceName, state.deviceName)
         ?: stringResource(R.string.settings_account_default_device)
     val roleCode = firstNotBlank(serverSettings?.role, state.role)
-    val displayRole = roleCode?.let { settingsLedgerRoleLabel(it) }
+    val displayRole = roleCode?.let { ledgerRoleLabelText(it) }
         ?: stringResource(R.string.settings_account_role_unknown)
     return SettingsRootAccountSummaryData(
         header = SettingsRootAccountHeaderData(
