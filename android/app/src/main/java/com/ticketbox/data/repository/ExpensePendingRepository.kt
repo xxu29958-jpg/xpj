@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import android.util.Log
+import com.squareup.moshi.JsonAdapter
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -208,14 +209,21 @@ internal class ExpensePendingRepository(
             )
             return SaveOutcome.Synced(updated.toDomain())
         }
-        if (core.hasUnresolvedQueuedMutationsFor(targetId)) {
+        val enqueueContext = PatchExpenseOutboxContext(
+            bound = bound,
+            outbox = outbox,
+            targetId = targetId,
+            token = token,
+            idempotencyKey = idempotencyKey,
+        )
+        if (core.hasUnresolvedQueuedMutationsFor(enqueueContext.targetId)) {
             // Per-target FIFO guard: an unresolved queued mutation for this
             // row exists, so a direct PATCH now would land out of intent
             // order (e.g. ahead of a queued confirm whose token cascade
             // expects to run first, or a queued CreateExpense that must land
             // before this edit). Queue behind it; the dispatcher's fresh-token
             // cascade corrects this row's token on replay.
-            enqueuePatchExpense(bound, outbox, adapter, targetId, request, token, idempotencyKey)
+            enqueuePatchExpense(enqueueContext, adapter, request)
             return SaveOutcome.Queued(optimistic)
         }
         return try {
@@ -233,7 +241,7 @@ internal class ExpensePendingRepository(
             // IOException is the offline-fallback trigger —
             // HttpException (409 / 4xx / 5xx) propagates out to
             // safeCall and surfaces as Result.failure.
-            enqueuePatchExpense(bound, outbox, adapter, targetId, request, token, idempotencyKey)
+            enqueuePatchExpense(enqueueContext, adapter, request)
             SaveOutcome.Queued(optimistic)
         }
     }
@@ -259,26 +267,22 @@ internal class ExpensePendingRepository(
      * the serialised payload.
      */
     private suspend fun enqueuePatchExpense(
-        bound: BoundLedgerRequest,
-        outbox: OutboxRepository,
-        adapter: com.squareup.moshi.JsonAdapter<ExpenseUpdateRequest>,
-        targetId: String,
+        context: PatchExpenseOutboxContext,
+        adapter: JsonAdapter<ExpenseUpdateRequest>,
         request: ExpenseUpdateRequest,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outbox.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             // issue #65 slice 4: caller resolves the server-id vs local-ref
             // target (expenseOutboxTargetId) so a pending-create edit replays
             // against ``expense:local:{clientRef}``.
-            targetId = targetId,
+            targetId = context.targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
-            expectedRowVersion = token,
+            expectedRowVersion = context.token,
             // Same key as the direct attempt would have used — see the rationale
             // where it's minted. The dispatcher replays it from row.idempotencyKey.
-            idempotencyKey = idempotencyKey,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -508,3 +512,11 @@ internal class ExpensePendingRepository(
         }
     }
 }
+
+private data class PatchExpenseOutboxContext(
+    val bound: BoundLedgerRequest,
+    val outbox: OutboxRepository,
+    val targetId: String,
+    val token: Long,
+    val idempotencyKey: String,
+)
