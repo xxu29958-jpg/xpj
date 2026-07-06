@@ -21,7 +21,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -90,7 +89,7 @@ class MerchantAliasViewModelToneTest {
 
         vm.createMerchantAlias("Starbucks", "Starbucks Local")
         val state = vm.uiState.first { it.message == UiText.res(R.string.merchant_alias_added) }
-        runCurrent()
+        advanceUntilIdle()
 
         assertEquals(MessageTone.Success, state.messageTone)
     }
@@ -103,7 +102,7 @@ class MerchantAliasViewModelToneTest {
 
         vm.toggleMerchantAlias(alias)
         val state = vm.uiState.first { it.message == UiText.res(R.string.merchant_alias_disabled) }
-        runCurrent()
+        advanceUntilIdle()
 
         assertEquals(MessageTone.Success, state.messageTone)
     }
@@ -116,7 +115,7 @@ class MerchantAliasViewModelToneTest {
 
         vm.deleteMerchantAlias(alias)
         val state = vm.uiState.first { it.message == UiText.res(R.string.merchant_alias_deleted) }
-        runCurrent()
+        advanceUntilIdle()
 
         assertEquals(MessageTone.Success, state.messageTone)
         assertEquals(alias, state.undoableAlias)
@@ -130,10 +129,10 @@ class MerchantAliasViewModelToneTest {
 
         vm.deleteMerchantAlias(alias)
         vm.uiState.first { it.undoableAlias != null }
-        runCurrent()
+        advanceUntilIdle()
         vm.undoDelete()
         val state = vm.uiState.first { it.message == UiText.res(R.string.merchant_alias_restored) }
-        runCurrent()
+        advanceUntilIdle()
 
         assertEquals(MessageTone.Success, state.messageTone)
         assertNull(state.undoableAlias)
@@ -183,7 +182,7 @@ class MerchantAliasViewModelToneTest {
         },
     ): MerchantAliasUiState {
         val state = vm.uiState.first(condition)
-        runCurrent()
+        advanceUntilIdle()
         return state
     }
 
