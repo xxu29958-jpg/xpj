@@ -177,12 +177,19 @@ class RuleRepository(
             }
             return@safeCall CategoryRuleSaveOutcome.Synced(updated)
         }
+        val enqueueContext = CategoryRuleOutboxContext(
+            bound = bound,
+            outbox = outboxRef,
+            ruleId = baseline.id,
+            token = baseline.rowVersion,
+            idempotencyKey = idempotencyKey,
+        )
         if (outboxRef.activeForTarget("category_rule:${baseline.id}").isNotEmpty()) {
             // Per-target FIFO guard (codex follow-up review): an unresolved
             // queued mutation for this rule must replay BEFORE any later
             // mutation — a direct PATCH now would jump the queue. Same
             // mechanism as ExpensePendingRepository's expense:{id} guards.
-            enqueueUpdateCategoryRule(bound, outboxRef, adapter, baseline, request, idempotencyKey)
+            enqueueUpdateCategoryRule(enqueueContext, adapter, request)
             return@safeCall CategoryRuleSaveOutcome.Queued(
                 projectOptimisticRule(baseline, keyword, category, enabled, priority),
             )
@@ -193,7 +200,7 @@ class RuleRepository(
             }
             CategoryRuleSaveOutcome.Synced(updated) as CategoryRuleSaveOutcome
         } catch (networkError: IOException) {
-            enqueueUpdateCategoryRule(bound, outboxRef, adapter, baseline, request, idempotencyKey)
+            enqueueUpdateCategoryRule(enqueueContext, adapter, request)
             CategoryRuleSaveOutcome.Queued(
                 projectOptimisticRule(baseline, keyword, category, enabled, priority),
             ) as CategoryRuleSaveOutcome
@@ -213,20 +220,17 @@ class RuleRepository(
      * overwrites the request token on replay (UpdateCategoryRuleDispatcher).
      */
     private suspend fun enqueueUpdateCategoryRule(
-        bound: BoundLedgerRequest,
-        outboxRef: OutboxRepository,
+        context: CategoryRuleOutboxContext,
         adapter: com.squareup.moshi.JsonAdapter<CategoryRuleUpdateRequest>,
-        baseline: CategoryRule,
         request: CategoryRuleUpdateRequest,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outboxRef.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.UpdateCategoryRule,
-            targetId = "category_rule:${baseline.id}",
+            targetId = context.targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = baseline.rowVersion,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -299,11 +303,18 @@ class RuleRepository(
             }
             return@safeCall DeleteOutcome.Synced
         }
+        val enqueueContext = CategoryRuleOutboxContext(
+            bound = bound,
+            outbox = outboxRef,
+            ruleId = rule.id,
+            token = rule.rowVersion,
+            idempotencyKey = idempotencyKey,
+        )
         if (outboxRef.activeForTarget("category_rule:${rule.id}").isNotEmpty()) {
             // Per-target FIFO guard — see updateCategoryRuleAllowingOffline:
             // a direct DELETE must not jump an unresolved queued mutation
             // (e.g. a queued toggle) for the same rule.
-            enqueueDeleteCategoryRule(bound, outboxRef, adapter, rule, request, idempotencyKey)
+            enqueueDeleteCategoryRule(enqueueContext, adapter, request)
             return@safeCall DeleteOutcome.Queued
         }
         try {
@@ -312,7 +323,7 @@ class RuleRepository(
             }
             DeleteOutcome.Synced as DeleteOutcome
         } catch (networkError: IOException) {
-            enqueueDeleteCategoryRule(bound, outboxRef, adapter, rule, request, idempotencyKey)
+            enqueueDeleteCategoryRule(enqueueContext, adapter, request)
             DeleteOutcome.Queued as DeleteOutcome
         }
     }
@@ -325,20 +336,17 @@ class RuleRepository(
      * overwrites from row.expectedRowVersion on replay).
      */
     private suspend fun enqueueDeleteCategoryRule(
-        bound: BoundLedgerRequest,
-        outboxRef: OutboxRepository,
+        context: CategoryRuleOutboxContext,
         adapter: com.squareup.moshi.JsonAdapter<CategoryRuleDeleteRequest>,
-        rule: CategoryRule,
         request: CategoryRuleDeleteRequest,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outboxRef.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.DeleteCategoryRule,
-            targetId = "category_rule:${rule.id}",
+            targetId = context.targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = rule.rowVersion,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -400,6 +408,16 @@ class RuleRepository(
                 result
             }
         }
+}
+
+private data class CategoryRuleOutboxContext(
+    val bound: BoundLedgerRequest,
+    val outbox: OutboxRepository,
+    val ruleId: Long,
+    val token: Long,
+    val idempotencyKey: String,
+) {
+    val targetId: String = "category_rule:$ruleId"
 }
 
 /**
