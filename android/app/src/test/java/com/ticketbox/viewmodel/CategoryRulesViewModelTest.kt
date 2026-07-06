@@ -94,7 +94,7 @@ class CategoryRulesViewModelTest {
             },
         )
 
-        val state = vm.uiState.first { !it.categoryRulesLoading && it.message != null }
+        val state = vm.awaitInitialLoads()
 
         assertFalse(state.categoryRulesLoading)
         assertEquals(UiText.res(R.string.category_rules_load_failed), state.message)
@@ -113,7 +113,7 @@ class CategoryRulesViewModelTest {
                     )
             },
         )
-        runCurrent()
+        vm.awaitInitialLoads()
 
         vm.createCategoryRule(keyword = "高德", category = "交通", priority = 8)
         val state = vm.uiState.first { it.message == UiText.res(R.string.category_rules_added) }
@@ -136,7 +136,7 @@ class CategoryRulesViewModelTest {
                 }
             },
         )
-        runCurrent()
+        vm.awaitInitialLoads()
 
         vm.previewApplyConfirmedRules()
         val state = vm.uiState.first { !it.busy && it.message != null }
@@ -154,7 +154,7 @@ class CategoryRulesViewModelTest {
                 }
             },
         )
-        val application = vm.uiState.first { it.ruleApplications.isNotEmpty() }.ruleApplications.single()
+        val application = vm.awaitInitialLoads().ruleApplications.single()
 
         vm.rollbackRuleApplication(application)
         val state = vm.uiState.first { !it.busy && it.message != null }
@@ -193,6 +193,13 @@ class CategoryRulesViewModelTest {
             repository = expenseRepository,
         )
     }
+
+    private suspend fun CategoryRulesViewModel.awaitInitialLoads(): CategoryRulesUiState =
+        uiState.first { state ->
+            !state.categoryRulesLoading &&
+                !state.ruleApplicationsLoading &&
+                (state.ruleApplications.isNotEmpty() || state.message != null)
+        }
 
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
