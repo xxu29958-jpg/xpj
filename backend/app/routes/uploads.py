@@ -17,7 +17,7 @@ from app.errors import AppError
 from app.network_boundary import is_loopback_request, upload_link_remote_key
 from app.schemas import UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
-from app.services.file_service import SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
+from app.services.file_service import SavedUpload, save_upload, save_upload_bytes
 from app.services.identity_service import (
     UPLOAD_LINK_INVALID_MESSAGE,
     authenticate_upload_link,
@@ -162,14 +162,6 @@ def _upload_response(
     )
 
 
-def _create_pending_or_cleanup(db: Session, saved_file: SavedUpload, tenant_id: str, *, source: str) -> Expense:
-    try:
-        return create_pending_expense(db, saved_file, tenant_id, source=source, run_enrichment=False)
-    except Exception:
-        delete_saved_upload(saved_file)
-        raise
-
-
 async def _handle_upload(
     *,
     request: Request,
@@ -188,7 +180,13 @@ async def _handle_upload(
         max_size_bytes=max_size_bytes,
     )
     db_started_at = perf_counter()
-    expense = _create_pending_or_cleanup(db, saved_file, auth.ledger_id, source=source)
+    expense = create_pending_expense(
+        db,
+        saved_file,
+        auth.ledger_id,
+        source=source,
+        run_enrichment=False,
+    )
     timing_ms["db_create_ms"] = _elapsed_ms(db_started_at)
     duration_ms = _elapsed_ms(started_at)
     timing_ms["total_ms"] = duration_ms

@@ -421,14 +421,14 @@ def test_upload_randomizes_path_traversal_filename(client: TestClient, *, identi
 
 
 def test_upload_cleans_saved_file_when_pending_creation_fails(
-    client: TestClient, monkeypatch
-, *, identity) -> None:
-    from app.routes import uploads as upload_routes
+    client: TestClient, monkeypatch, *, identity
+) -> None:
+    from app.services.expense_service import _create as create_service
 
-    def fail_create_pending(*args, **kwargs):
+    def fail_duplicate_mark(*args, **kwargs):
         raise RuntimeError("simulated db failure")
 
-    monkeypatch.setattr(upload_routes, "create_pending_expense", fail_create_pending)
+    monkeypatch.setattr(create_service, "mark_duplicate_status", fail_duplicate_mark)
 
     with TestClient(app, raise_server_exceptions=False) as no_raise_client:
         response = no_raise_client.post(
@@ -442,8 +442,8 @@ def test_upload_cleans_saved_file_when_pending_creation_fails(
 
 
 def test_upload_thumbnail_failure_does_not_block_pending(
-    client: TestClient, monkeypatch
-, *, identity) -> None:
+    client: TestClient, monkeypatch, *, identity
+) -> None:
     def fail_thumbnail(_: str | None) -> str | None:
         raise RuntimeError("thumbnail backend unavailable")
 
