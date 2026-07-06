@@ -37,8 +37,10 @@ internal class ExpenseBindingRepository(
             val restoreFailed = try {
                 core.syncConfirmedFromService(
                     service = core.api(normalized, pairResponse.sessionToken),
-                    ledgerIdAtRequest = pairResponse.ledgerId,
-                    replaceCache = true,
+                    request = ConfirmedSyncRequest(
+                        ledgerIdAtRequest = pairResponse.ledgerId,
+                        replaceCache = true,
+                    ),
                 )
                 false
             } catch (error: Exception) {
