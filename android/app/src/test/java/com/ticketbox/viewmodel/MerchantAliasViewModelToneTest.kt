@@ -11,9 +11,9 @@ import com.ticketbox.data.repository.FakeExpenseDao
 import com.ticketbox.data.repository.FakeSessionTokenStore
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.MerchantRepository
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -51,7 +51,7 @@ class MerchantAliasViewModelToneTest {
         val base = fakeApi()
         val service = object : ApiService by base {
             override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto {
-                throw IOException("catalog unavailable")
+                throw RepositoryException("catalog unavailable")
             }
         }
 
@@ -69,7 +69,7 @@ class MerchantAliasViewModelToneTest {
         val base = fakeApi()
         val service = object : ApiService by base {
             override suspend fun merchantAliases(): MerchantAliasListDto {
-                throw IOException("aliases unavailable")
+                throw RepositoryException("aliases unavailable")
             }
         }
 
