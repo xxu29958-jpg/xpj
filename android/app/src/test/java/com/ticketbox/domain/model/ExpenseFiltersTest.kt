@@ -19,7 +19,10 @@ class ExpenseFiltersTest {
             expense(id = 3, category = "餐饮", expenseTime = "2026-06-03T04:20:00Z"),
         )
 
-        val filtered = filterConfirmedExpenses(items, month = "2026-05", category = "餐饮")
+        val filtered = filterConfirmedExpenses(
+            items,
+            ExpenseFilterCriteria(month = "2026-05", category = "餐饮"),
+        )
 
         assertEquals(listOf(1L), filtered.map { it.id })
     }
@@ -31,7 +34,10 @@ class ExpenseFiltersTest {
             expense(id = 2, category = "购物", expenseTime = null, confirmedAt = "2026-04-03T04:20:00Z"),
         )
 
-        val filtered = filterConfirmedExpenses(items, month = "2026-05", category = "")
+        val filtered = filterConfirmedExpenses(
+            items,
+            ExpenseFilterCriteria(month = "2026-05"),
+        )
 
         assertEquals(listOf(1L), filtered.map { it.id })
     }
@@ -45,9 +51,10 @@ class ExpenseFiltersTest {
 
         val filtered = filterConfirmedExpenses(
             expenses = items,
-            month = "2026-05",
-            category = "",
-            zoneId = ZoneId.of("Asia/Shanghai"),
+            criteria = ExpenseFilterCriteria(
+                month = "2026-05",
+                zoneId = ZoneId.of("Asia/Shanghai"),
+            ),
         )
 
         assertEquals(listOf(1L), filtered.map { it.id })
@@ -63,7 +70,10 @@ class ExpenseFiltersTest {
                 expense(id = 2, category = "餐饮", expenseTime = "2026-04-30T15:30:00Z"),
             )
 
-            val filtered = filterConfirmedExpenses(items, month = "2026-05", category = "")
+            val filtered = filterConfirmedExpenses(
+                items,
+                ExpenseFilterCriteria(month = "2026-05"),
+            )
 
             assertEquals(listOf(1L), filtered.map { it.id })
             assertEquals("2026-05", expenseLedgerMonth(items.first()))
@@ -83,15 +93,19 @@ class ExpenseFiltersTest {
 
         val januaryFood = filterConfirmedExpenses(
             expenses = items,
-            month = "2027-01",
-            category = "餐饮",
-            zoneId = zone,
+            criteria = ExpenseFilterCriteria(
+                month = "2027-01",
+                category = "餐饮",
+                zoneId = zone,
+            ),
         )
         val decemberFood = filterConfirmedExpenses(
             expenses = items,
-            month = "2026-12",
-            category = "餐饮",
-            zoneId = zone,
+            criteria = ExpenseFilterCriteria(
+                month = "2026-12",
+                category = "餐饮",
+                zoneId = zone,
+            ),
         )
         val januaryStats = monthlyStatsFromConfirmedExpenses(
             expenses = items,
@@ -117,9 +131,11 @@ class ExpenseFiltersTest {
 
         val mayFood = filterConfirmedExpenses(
             expenses = items,
-            month = "2026-05",
-            category = "餐饮",
-            zoneId = zone,
+            criteria = ExpenseFilterCriteria(
+                month = "2026-05",
+                category = "餐饮",
+                zoneId = zone,
+            ),
         )
         val mayStats = monthlyStatsFromConfirmedExpenses(
             expenses = items,
@@ -166,7 +182,10 @@ class ExpenseFiltersTest {
             expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z"),
         )
 
-        val filtered = filterConfirmedExpenses(items, month = "2026-13", category = "")
+        val filtered = filterConfirmedExpenses(
+            items,
+            ExpenseFilterCriteria(month = "2026-13"),
+        )
 
         assertEquals(emptyList(), filtered.map { it.id })
     }
@@ -180,10 +199,34 @@ class ExpenseFiltersTest {
             expense(id = 4, category = "其他", expenseTime = "2026-05-03T04:20:00Z", source = "手动记账"),
         )
 
-        assertEquals(listOf(1L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "美团").map { it.id })
-        assertEquals(listOf(2L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "通勤").map { it.id })
-        assertEquals(listOf(3L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "真香").map { it.id })
-        assertEquals(listOf(4L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "手动").map { it.id })
+        assertEquals(
+            listOf(1L),
+            filterConfirmedExpenses(
+                items,
+                ExpenseFilterCriteria(month = "2026-05", query = "美团"),
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf(2L),
+            filterConfirmedExpenses(
+                items,
+                ExpenseFilterCriteria(month = "2026-05", query = "通勤"),
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf(3L),
+            filterConfirmedExpenses(
+                items,
+                ExpenseFilterCriteria(month = "2026-05", query = "真香"),
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf(4L),
+            filterConfirmedExpenses(
+                items,
+                ExpenseFilterCriteria(month = "2026-05", query = "手动"),
+            ).map { it.id },
+        )
     }
 
     @Test
@@ -196,11 +239,17 @@ class ExpenseFiltersTest {
 
         assertEquals(
             listOf(1L),
-            filterConfirmedExpenses(items, month = "2026-05", category = "", tag = "周末").map { it.id },
+            filterConfirmedExpenses(
+                items,
+                ExpenseFilterCriteria(month = "2026-05", tag = "周末"),
+            ).map { it.id },
         )
         assertEquals(
             listOf(1L, 3L),
-            filterConfirmedExpenses(items, month = "2026-05", category = "", tag = "AI").map { it.id },
+            filterConfirmedExpenses(
+                items,
+                ExpenseFilterCriteria(month = "2026-05", tag = "AI"),
+            ).map { it.id },
         )
     }
 
