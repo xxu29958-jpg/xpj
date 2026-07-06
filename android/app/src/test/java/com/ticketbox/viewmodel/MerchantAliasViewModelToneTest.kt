@@ -53,7 +53,9 @@ class MerchantAliasViewModelToneTest {
         }
 
         val vm = harness(service).vm
-        val state = vm.uiState.first { it.messageTone == MessageTone.Danger }
+        val state = vm.uiState.first {
+            it.messageTone == MessageTone.Danger && it.merchantAliases.isNotEmpty()
+        }
 
         assertEquals(MessageTone.Danger, state.messageTone)
         assertNotNull(state.message)
@@ -69,7 +71,9 @@ class MerchantAliasViewModelToneTest {
         }
 
         val vm = harness(service).vm
-        val state = vm.uiState.first { it.messageTone == MessageTone.Danger }
+        val state = vm.uiState.first {
+            it.messageTone == MessageTone.Danger && it.merchantCatalog.isNotEmpty()
+        }
 
         assertEquals(MessageTone.Danger, state.messageTone)
         assertNotNull(state.message)
@@ -78,7 +82,7 @@ class MerchantAliasViewModelToneTest {
     @Test
     fun createMerchantAliasSuccessShowsSuccessTone() = runTest(dispatcher) {
         val vm = harness(fakeApi()).vm
-        vm.uiState.first { it.merchantAliases.isNotEmpty() }
+        vm.awaitLoaded()
 
         vm.createMerchantAlias("Starbucks", "Starbucks Local")
         val state = vm.uiState.first { it.message == UiText.res(R.string.merchant_alias_added) }
@@ -89,7 +93,7 @@ class MerchantAliasViewModelToneTest {
     @Test
     fun toggleMerchantAliasSyncedShowsSuccessTone() = runTest(dispatcher) {
         val vm = harness(fakeApi()).vm
-        val initial = vm.uiState.first { it.merchantAliases.isNotEmpty() }
+        val initial = vm.awaitLoaded()
         val alias = initial.merchantAliases.single()
 
         vm.toggleMerchantAlias(alias)
@@ -101,7 +105,7 @@ class MerchantAliasViewModelToneTest {
     @Test
     fun deleteMerchantAliasSyncedShowsSuccessToneAndUndoHandle() = runTest(dispatcher) {
         val vm = harness(fakeApi()).vm
-        val initial = vm.uiState.first { it.merchantAliases.isNotEmpty() }
+        val initial = vm.awaitLoaded()
         val alias = initial.merchantAliases.single()
 
         vm.deleteMerchantAlias(alias)
@@ -114,7 +118,7 @@ class MerchantAliasViewModelToneTest {
     @Test
     fun undoDeleteSuccessShowsSuccessToneAndClearsUndo() = runTest(dispatcher) {
         val vm = harness(fakeApi()).vm
-        val initial = vm.uiState.first { it.merchantAliases.isNotEmpty() }
+        val initial = vm.awaitLoaded()
         val alias = initial.merchantAliases.single()
 
         vm.deleteMerchantAlias(alias)
@@ -162,6 +166,11 @@ class MerchantAliasViewModelToneTest {
     private data class Harness(
         val vm: MerchantAliasViewModel,
     )
+
+    private suspend fun MerchantAliasViewModel.awaitLoaded(): MerchantAliasUiState =
+        uiState.first { state ->
+            state.merchantCatalog.isNotEmpty() && state.merchantAliases.isNotEmpty()
+        }
 
     private class FixedApiServiceFactory(
         private val service: ApiService,
