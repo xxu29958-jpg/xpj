@@ -27,16 +27,26 @@ def walk(*roots: pathlib.Path):
 
 
 def line_count(p: pathlib.Path) -> int:
-    try:
-        return sum(1 for _ in p.open(encoding="utf-8"))
-    except Exception:
+    text = _read_text_or_none(p)
+    if text is None:
         return 0
+    return len(text.splitlines())
+
+
+def _read_text_or_none(p: pathlib.Path) -> str | None:
+    try:
+        return p.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
 
 
 def parse(p: pathlib.Path) -> ast.Module | None:
+    text = _read_text_or_none(p)
+    if text is None:
+        return None
     try:
-        return ast.parse(p.read_text(encoding="utf-8"))
-    except Exception:
+        return ast.parse(text)
+    except (SyntaxError, ValueError):
         return None
 
 
@@ -312,9 +322,8 @@ def audit_sql_in_routes_or_services() -> DebtCounts:
     for p in walk(APP):
         if p.parts[:2] == ("app", "database"):
             continue  # SQL is expected here
-        try:
-            text = p.read_text(encoding="utf-8")
-        except Exception:
+        text = _read_text_or_none(p)
+        if text is None:
             continue
         for i, line in enumerate(text.splitlines(), 1):
             if "text(" in line and rx_sql.search(line):
@@ -334,9 +343,8 @@ def audit_sql_in_routes_or_services() -> DebtCounts:
 def audit_import_star() -> DebtCounts:
     items = []
     for p in walk(APP, SCRIPTS, TESTS):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except Exception:
+        text = _read_text_or_none(p)
+        if text is None:
             continue
         for i, line in enumerate(text.splitlines(), 1):
             s = line.strip()
@@ -402,6 +410,46 @@ def audit_no_underscore_split() -> DebtCounts:
 # D. DATA FLOW & STATE
 # -----------------------------------------------------------------------------
 
+_MUTABLE_FACTORY_NAMES = {"list", "dict", "set", "defaultdict"}
+
+
+def _module_mutable_kind(value: ast.expr) -> str | None:
+    if isinstance(value, (ast.List, ast.Dict, ast.Set)):
+        return type(value).__name__
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in _MUTABLE_FACTORY_NAMES
+    ):
+        return value.func.id + "()"
+    return None
+
+
+def _module_mutable_assignments(
+    p: pathlib.Path,
+    tree: ast.Module,
+) -> list[tuple[pathlib.Path, int, str, str]]:
+    items: list[tuple[pathlib.Path, int, str, str]] = []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        kind = _module_mutable_kind(node.value)
+        if kind is None:
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                items.append((p, node.lineno, target.id, kind))
+    return items
+
+
+def _global_writes(p: pathlib.Path, tree: ast.Module) -> list[tuple[pathlib.Path, int, str]]:
+    items: list[tuple[pathlib.Path, int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Global):
+            items.extend((p, node.lineno, name) for name in node.names)
+    return items
+
+
 def audit_globals_and_module_state() -> DebtCounts:
     g_writes = []
     mod_mutable = []
@@ -409,21 +457,8 @@ def audit_globals_and_module_state() -> DebtCounts:
         tree = parse(p)
         if not tree:
             continue
-        # module-level mutable: list/dict/set literal, defaultdict(), {}, []
-        for n in tree.body:
-            if isinstance(n, ast.Assign):
-                for t in n.targets:
-                    if isinstance(t, ast.Name):
-                        val = n.value
-                        if isinstance(val, (ast.List, ast.Dict, ast.Set)):
-                            mod_mutable.append((p, n.lineno, t.id, type(val).__name__))
-                        elif isinstance(val, ast.Call) and isinstance(val.func, ast.Name) and val.func.id in {"list", "dict", "set", "defaultdict"}:
-                            mod_mutable.append((p, n.lineno, t.id, val.func.id + "()"))
-        # global writes
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Global):
-                for name in node.names:
-                    g_writes.append((p, node.lineno, name))
+        mod_mutable.extend(_module_mutable_assignments(p, tree))
+        g_writes.extend(_global_writes(p, tree))
     print(f"== D1. `global` keyword usage ({len(g_writes)}) ==")
     for p, ln, n in g_writes:
         print(f"  {p}:{ln}  global {n}")
@@ -437,18 +472,28 @@ def audit_globals_and_module_state() -> DebtCounts:
     return {"global_usage": len(g_writes)}
 
 
+def _cached_decorators(
+    p: pathlib.Path,
+    tree: ast.Module,
+) -> list[tuple[pathlib.Path, int, str, str]]:
+    items: list[tuple[pathlib.Path, int, str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            src = ast.unparse(decorator)
+            if "cache" in src.lower():
+                items.append((p, node.lineno, node.name, src))
+    return items
+
+
 def audit_lru_cache_singletons() -> DebtCounts:
     items = []
     for p in walk(APP):
         tree = parse(p)
         if not tree:
             continue
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                for dec in node.decorator_list:
-                    src = ast.unparse(dec)
-                    if "cache" in src.lower():
-                        items.append((p, node.lineno, node.name, src))
+        items.extend(_cached_decorators(p, tree))
     print(f"== D3. Cached singletons (@cache/@lru_cache) ({len(items)}) ==")
     for p, ln, name, dec in items:
         print(f"  {p}:{ln}  @{dec}  {name}")
@@ -505,9 +550,8 @@ def audit_deep_arg_dicts() -> DebtCounts:
     rx = re.compile(r"(dict|Dict|Mapping)\s*\[\s*(?:str|Any)\s*,\s*(?:dict|Dict|Mapping|Any)")
     items = []
     for p in walk(APP):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except Exception:
+        text = _read_text_or_none(p)
+        if text is None:
             continue
         for i, line in enumerate(text.splitlines(), 1):
             if "def " in line and rx.search(line):
@@ -687,9 +731,8 @@ def audit_todos() -> DebtCounts:
     rx = re.compile(r"\b(TODO|FIXME|XXX|HACK|TEMP)\b", re.IGNORECASE)
     items = []
     for p in walk(APP, SCRIPTS, TESTS):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except Exception:
+        text = _read_text_or_none(p)
+        if text is None:
             continue
         for i, line in enumerate(text.splitlines(), 1):
             if rx.search(line):
@@ -715,9 +758,8 @@ def audit_hardcoded_paths_urls() -> DebtCounts:
     rx_magic = re.compile(r"(?:timeout|TIMEOUT|sleep|retry|MAX_|SIZE)=?\s*\(?\s*([0-9]{3,})")
     urls, paths, magic = [], [], []
     for p in walk(APP):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except Exception:
+        text = _read_text_or_none(p)
+        if text is None:
             continue
         for i, line in enumerate(text.splitlines(), 1):
             if rx_url.search(line):
@@ -750,9 +792,8 @@ def audit_credentials_risk() -> DebtCounts:
     rx_secret = re.compile(r"(?i)(?:api[_-]?key|password|secret|token)\s*=\s*[\"']([^\"']{6,})[\"']")
     items = []
     for p in walk(APP, SCRIPTS):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except Exception:
+        text = _read_text_or_none(p)
+        if text is None:
             continue
         for i, line in enumerate(text.splitlines(), 1):
             m = rx_secret.search(line)
