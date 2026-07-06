@@ -10,19 +10,23 @@ import kotlin.math.roundToInt
 
 private val TAG_SPLIT_REGEX = Regex("[,，;；\\n]+")
 
+data class ExpenseFilterCriteria(
+    val month: String = "",
+    val category: String = "",
+    val tag: String = "",
+    val query: String = "",
+    val zoneId: ZoneId = ZoneId.systemDefault(),
+)
+
 fun filterConfirmedExpenses(
     expenses: List<Expense>,
-    month: String,
-    category: String,
-    tag: String = "",
-    query: String = "",
-    zoneId: ZoneId = ZoneId.systemDefault(),
+    criteria: ExpenseFilterCriteria = ExpenseFilterCriteria(),
 ): List<Expense> {
-    val cleanMonth = month.trim()
-    val cleanCategory = category.trim()
-    val cleanTag = tag.trim()
+    val cleanMonth = criteria.month.trim()
+    val cleanCategory = criteria.category.trim()
+    val cleanTag = criteria.tag.trim()
     val cleanTagKey = cleanTag.lowercase()
-    val cleanQuery = query.trim().lowercase()
+    val cleanQuery = criteria.query.trim().lowercase()
     val targetMonth = cleanMonth
         .takeIf { it.isNotBlank() }
         ?.let { value -> runCatching { YearMonth.parse(value) }.getOrNull() }
@@ -30,7 +34,7 @@ fun filterConfirmedExpenses(
         return emptyList()
     }
     return expenses.filter { expense ->
-        val expenseMonth = expense.ledgerLocalDate(zoneId)?.let { YearMonth.from(it) }
+        val expenseMonth = expense.ledgerLocalDate(criteria.zoneId)?.let { YearMonth.from(it) }
         val monthMatched = targetMonth == null || expenseMonth == targetMonth
         val categoryMatched = cleanCategory.isBlank() || expense.category == cleanCategory
         val tagMatched = cleanTag.isBlank() || expense.normalizedTagNames().any { it.lowercase() == cleanTagKey }
@@ -167,10 +171,11 @@ fun monthlyStatsFromConfirmedExpenses(
     val targetMonth = runCatching { YearMonth.parse(month.trim()) }.getOrNull() ?: return null
     val matched = filterConfirmedExpenses(
         expenses = expenses,
-        month = targetMonth.toString(),
-        category = "",
-        tag = tag,
-        zoneId = zoneId,
+        criteria = ExpenseFilterCriteria(
+            month = targetMonth.toString(),
+            tag = tag,
+            zoneId = zoneId,
+        ),
     ).filter { it.amountCents != null }
 
     if (matched.isEmpty()) {

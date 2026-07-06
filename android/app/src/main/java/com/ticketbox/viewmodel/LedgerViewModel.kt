@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseFilterCriteria
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
@@ -223,10 +224,12 @@ class LedgerViewModel(
     private fun filterItems(expenses: List<Expense>, state: LedgerUiState): List<Expense> {
         return filterConfirmedExpenses(
             expenses = expenses,
-            month = state.monthFilter,
-            category = state.categoryFilter,
-            tag = state.tagFilter,
-            query = state.query,
+            criteria = ExpenseFilterCriteria(
+                month = state.monthFilter,
+                category = state.categoryFilter,
+                tag = state.tagFilter,
+                query = state.query,
+            ),
         )
     }
 

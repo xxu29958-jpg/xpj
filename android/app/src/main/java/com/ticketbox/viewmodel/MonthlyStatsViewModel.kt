@@ -6,6 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseFilterCriteria
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.filterConfirmedExpenses
@@ -150,9 +151,7 @@ class MonthlyStatsViewModel(
                 _uiState.update {
                     val tagFilteredExpenses = filterConfirmedExpenses(
                         expenses = expenses,
-                        month = "",
-                        category = "",
-                        tag = it.selectedTag,
+                        criteria = ExpenseFilterCriteria(tag = it.selectedTag),
                     )
                     val localStats = monthlyStatsFromConfirmedExpenses(expenses, it.month, it.selectedTag)
                     val visibleStats = it.stats ?: localStats
@@ -177,9 +176,7 @@ class MonthlyStatsViewModel(
         _uiState.update {
             val tagFilteredExpenses = filterConfirmedExpenses(
                 expenses = confirmedCache,
-                month = "",
-                category = "",
-                tag = it.selectedTag,
+                criteria = ExpenseFilterCriteria(tag = it.selectedTag),
             )
             val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, value, it.selectedTag)
             it.copy(
@@ -200,9 +197,7 @@ class MonthlyStatsViewModel(
         _uiState.update {
             val tagFilteredExpenses = filterConfirmedExpenses(
                 expenses = confirmedCache,
-                month = "",
-                category = "",
-                tag = cleanTag,
+                criteria = ExpenseFilterCriteria(tag = cleanTag),
             )
             val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, it.month, cleanTag)
             it.copy(
@@ -418,9 +413,10 @@ class MonthlyStatsViewModel(
     ) = recentDailySpending(
         expenses = filterConfirmedExpenses(
             expenses = expenses,
-            month = month,
-            category = "",
-            tag = selectedTag,
+            criteria = ExpenseFilterCriteria(
+                month = month,
+                tag = selectedTag,
+            ),
         ),
         referenceDate = localTrendReferenceDate(month),
     )
