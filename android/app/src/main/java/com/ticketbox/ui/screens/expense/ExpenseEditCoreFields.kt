@@ -27,6 +27,7 @@ import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
@@ -121,6 +122,7 @@ internal fun ExpenseEditTextField(
     state: ExpenseEditTextFieldState,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    fieldModifier: Modifier = Modifier,
 ) {
     AppTextInput(
         state = AppTextInputState(
@@ -135,6 +137,7 @@ internal fun ExpenseEditTextField(
         ),
         actions = AppTextInputActions(onValueChange = onValueChange),
         modifier = modifier,
+        decorations = AppTextInputDecorations(fieldModifier = fieldModifier),
     )
 }
 
