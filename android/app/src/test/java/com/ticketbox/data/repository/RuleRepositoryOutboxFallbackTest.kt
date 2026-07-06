@@ -36,8 +36,8 @@ import kotlin.test.assertTrue
  *    - IOException → CategoryRuleSaveOutcome.Queued(optimistic rule). Row enqueued.
  *    - HttpException (409 / 422 / 500) → Result.failure. No row enqueued.
  *
- * 2. Direct ``updateCategoryRule`` is unchanged from PR-1 and not
- *    re-tested here (its contract isn't affected by this PR).
+ * 2. Direct ``updateCategoryRule`` keeps the PR-1 server semantics and is not
+ *    re-tested here (its behavior isn't affected by this PR).
  */
 class RuleRepositoryOutboxFallbackTest {
 

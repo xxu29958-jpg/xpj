@@ -92,23 +92,13 @@ class RuleRepository(
     // NetworkErrorHandler surfaces it through the standard mapping.
     suspend fun updateCategoryRule(
         id: Long,
-        expectedRowVersion: Long,
-        keyword: String? = null,
-        category: String? = null,
-        enabled: Boolean? = null,
-        priority: Int? = null,
+        request: CategoryRuleUpdateRequest,
     ): Result<CategoryRule> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
                 api.updateCategoryRule(
                     id,
-                    CategoryRuleUpdateRequest(
-                        expectedRowVersion = expectedRowVersion,
-                        keyword = keyword,
-                        category = category,
-                        enabled = enabled,
-                        priority = priority,
-                    ),
+                    request,
                     // ADR-0042: single-use key — direct-only path, no replay.
                     UUID.randomUUID().toString(),
                 ).toDomain()

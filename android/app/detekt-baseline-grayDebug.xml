@@ -159,7 +159,6 @@
     <ID>LongParameterList:RecurringScreen.kt:@Composable private fun RecurringItemRow</ID>
     <ID>LongParameterList:RecurringScreen.kt:@Composable private fun RecurringItemsCard</ID>
     <ID>LongParameterList:RuleRepository.kt:RuleRepository</ID>
-    <ID>LongParameterList:RuleRepository.kt:RuleRepository$suspend fun updateCategoryRule: Result&lt;CategoryRule&gt;</ID>
     <ID>LongParameterList:ServerSettingsScreen.kt:@Composable fun ServerSettingsScreen</ID>
     <ID>LongParameterList:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
     <ID>LongParameterList:SettingsRootScreen.kt:@Composable fun SettingsRootScreen</ID>
