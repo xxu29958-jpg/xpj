@@ -122,7 +122,6 @@
     <ID>LongParameterList:ExpenseEditV1Details.kt:@Composable internal fun ExpenseEditV1DetailsSection</ID>
     <ID>LongParameterList:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
     <ID>LongParameterList:ExpenseFilters.kt:fun filterConfirmedExpenses: List&lt;Expense&gt;</ID>
-    <ID>LongParameterList:ExpensePendingRepository.kt:ExpensePendingRepository$private suspend fun enqueuePatchExpense</ID>
     <ID>LongParameterList:ExpenseRepository.kt:ExpenseRepository</ID>
     <ID>LongParameterList:ExpenseRepositoryCore.kt:ExpenseRepositoryCore</ID>
     <ID>LongParameterList:ExpenseRepositoryCore.kt:ExpenseRepositoryCore$suspend fun syncConfirmedFromService: List&lt;Expense&gt;</ID>
