@@ -94,10 +94,6 @@
     <string name="join_family_ledger_preview_ledger_unnamed">未命名账本</string>
     <string name="join_family_ledger_preview_role">邀请角色：%1$s</string>
     <string name="join_family_ledger_preview_expires_at">有效期至：%1$s</string>
-    <string name="join_family_ledger_role_owner">拥有者</string>
-    <string name="join_family_ledger_role_member">成员</string>
-    <string name="join_family_ledger_role_viewer">只读</string>
-    <string name="join_family_ledger_role_unknown">未知</string>
     <!-- JoinFamilyLedgerViewModel：当前绑定回退名与反馈消息（ADR-0044 wave 2） -->
     <string name="join_family_ledger_binding_unbound">未绑定</string>
     <string name="join_family_ledger_message_preview_failed">预览邀请失败。</string>

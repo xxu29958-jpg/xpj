@@ -33,7 +33,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
-import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppPageHeader
@@ -44,6 +43,7 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
@@ -193,7 +193,7 @@ private fun TodayLedgerHeader(
             style = MaterialTheme.typography.labelLarge,
         )
         Text(
-            text = ledgerRoleLabel(ledgerRole),
+            text = ledgerRoleLabelText(ledgerRole),
             modifier = Modifier
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
