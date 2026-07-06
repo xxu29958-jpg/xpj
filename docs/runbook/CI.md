@@ -5,8 +5,9 @@
 云端 workflow 文件：
 
 ```text
-.github/workflows/cloud-ci.yml                 # 四个主 job：backend/static、PostgreSQL、desktop、Android unit/build
-.github/workflows/android-connected-cloud.yml  # path-filtered 云端模拟器 lane
+.github/workflows/ci.yml                       # 主 CI：backend/static、PostgreSQL、desktop、Android unit/build、release APK
+.github/workflows/android-connected-test.yml   # path-filtered 云端模拟器 lane
+.github/workflows/codeql.yml                   # GitHub CodeQL 安全扫描
 ```
 
 本地降级 workflow 文件：
@@ -24,9 +25,9 @@
 
 GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队；只作为云端不可用、发布候选本机验收、或宿主特有 emulator/打包问题的降级确认。Gitea 与 runner 在 home-server 上人工启动；如果本地 push 后 run 一直排队不动，先确认它们活着。
 
-历史：GitHub 时代旧 `.github/workflows/`（`ci.yml`、`android-connected-test.yml`、`codeql.yml`）曾随 GitHub→Gitea 迁移删除。2026-06-13 起恢复 GitHub 云端 workflow；本地 `.gitea/workflows/` 保留为降级备用。pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）仍未恢复。
+历史：GitHub workflow 曾随 GitHub→Gitea 迁移删除。2026-06-13 起恢复 GitHub 云端 workflow，当前主路径为 `ci.yml`、`android-connected-test.yml` 和 `codeql.yml`；本地 `.gitea/workflows/` 保留为降级备用。pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）仍未恢复。
 
-## Job 清单（windows-ci 四个 + android-connected 一个）
+## Job 清单（GitHub 主路径 + local-Gitea 降级）
 
 ### backend-full（静态检查）
 
@@ -70,7 +71,7 @@ GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装
 
 ### android-connected（模拟器，path-filtered）
 
-云端 connected workflow `.github/workflows/android-connected-cloud.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。
+云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。
 
 `release_audit.py` 的 ci-gap lane 静态扫 `.github/workflows/*.yml` 和 `.gitea/workflows/*.yml`，钉住 11 个 gradle task（上述清单 + ksp regen + detekt 两变体 + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），防止 lane 静默丢失。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单**，否则该 lane 立刻红。
 
