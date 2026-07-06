@@ -210,16 +210,23 @@ internal class ExpenseDetailRepository(
             val saved = bound.call { it.replaceExpenseItems(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ReplaceItemsOutcome.Synced(saved)
         }
+        val enqueueContext = DetailOutboxContext(
+            bound = bound,
+            outbox = outbox,
+            expenseId = expense.id,
+            token = token,
+            idempotencyKey = idempotencyKey,
+        )
         if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
-            enqueueReplaceItems(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            enqueueReplaceItems(enqueueContext, adapter, request)
             return@safeCall ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items))
         }
         try {
             val saved = bound.call { it.replaceExpenseItems(expense.id.toString(), request, idempotencyKey) }.toDomain()
             ReplaceItemsOutcome.Synced(saved) as ReplaceItemsOutcome
         } catch (networkError: IOException) {
-            enqueueReplaceItems(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            enqueueReplaceItems(enqueueContext, adapter, request)
             ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items)) as ReplaceItemsOutcome
         }
     }
@@ -231,21 +238,17 @@ internal class ExpenseDetailRepository(
      * rationale (this mirrors it for the items PUT).
      */
     private suspend fun enqueueReplaceItems(
-        bound: BoundLedgerRequest,
-        outbox: OutboxRepository,
+        context: DetailOutboxContext,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseItemReplaceRequestDto>,
-        expenseId: Long,
         request: ExpenseItemReplaceRequestDto,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outbox.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.ReplaceItems,
-            targetId = expenseTargetId(expenseId),
+            targetId = expenseTargetId(context.expenseId),
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = token,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -373,16 +376,23 @@ internal class ExpenseDetailRepository(
             val saved = bound.call { it.replaceExpenseSplits(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ReplaceSplitsOutcome.Synced(saved)
         }
+        val enqueueContext = DetailOutboxContext(
+            bound = bound,
+            outbox = outbox,
+            expenseId = expense.id,
+            token = token,
+            idempotencyKey = idempotencyKey,
+        )
         if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
-            enqueueReplaceSplits(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            enqueueReplaceSplits(enqueueContext, adapter, request)
             return@safeCall ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits))
         }
         try {
             val saved = bound.call { it.replaceExpenseSplits(expense.id.toString(), request, idempotencyKey) }.toDomain()
             ReplaceSplitsOutcome.Synced(saved) as ReplaceSplitsOutcome
         } catch (networkError: IOException) {
-            enqueueReplaceSplits(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            enqueueReplaceSplits(enqueueContext, adapter, request)
             ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits)) as ReplaceSplitsOutcome
         }
     }
@@ -394,21 +404,17 @@ internal class ExpenseDetailRepository(
      * rationale (this mirrors it for the splits PUT).
      */
     private suspend fun enqueueReplaceSplits(
-        bound: BoundLedgerRequest,
-        outbox: OutboxRepository,
+        context: DetailOutboxContext,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseSplitReplaceRequestDto>,
-        expenseId: Long,
         request: ExpenseSplitReplaceRequestDto,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outbox.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.ReplaceSplits,
-            targetId = expenseTargetId(expenseId),
+            targetId = expenseTargetId(context.expenseId),
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = token,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -575,9 +581,16 @@ internal class ExpenseDetailRepository(
             val recognized = bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }.toDomain()
             return@safeCall ExpenseStateOutcome.Synced(recognized)
         }
+        val enqueueContext = DetailOutboxContext(
+            bound = bound,
+            outbox = outbox,
+            expenseId = expense.id,
+            token = token,
+            idempotencyKey = idempotencyKey,
+        )
         if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
-            enqueueRecognizeText(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            enqueueRecognizeText(enqueueContext, adapter, request)
             return@safeCall ExpenseStateOutcome.Queued(expense)
         }
         try {
@@ -585,7 +598,7 @@ internal class ExpenseDetailRepository(
             ExpenseStateOutcome.Synced(recognized) as ExpenseStateOutcome
         } catch (networkError: IOException) {
             // Queued is the expense UNCHANGED — the server does the parsing.
-            enqueueRecognizeText(bound, outbox, adapter, expense.id, request, token, idempotencyKey)
+            enqueueRecognizeText(enqueueContext, adapter, request)
             ExpenseStateOutcome.Queued(expense) as ExpenseStateOutcome
         }
     }
@@ -598,21 +611,17 @@ internal class ExpenseDetailRepository(
      * replays the user's pasted text.
      */
     private suspend fun enqueueRecognizeText(
-        bound: BoundLedgerRequest,
-        outbox: OutboxRepository,
+        context: DetailOutboxContext,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseRecognizeTextRequestDto>,
-        expenseId: Long,
         request: ExpenseRecognizeTextRequestDto,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outbox.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.RecognizeText,
-            targetId = expenseTargetId(expenseId),
+            targetId = expenseTargetId(context.expenseId),
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = token,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -633,6 +642,14 @@ internal class ExpenseDetailRepository(
         }
     }
 }
+
+private data class DetailOutboxContext(
+    val bound: BoundLedgerRequest,
+    val outbox: OutboxRepository,
+    val expenseId: Long,
+    val token: Long,
+    val idempotencyKey: String,
+)
 
 /**
  * ADR-0038 PR-2g.9 sealed result for

@@ -117,9 +117,6 @@
     <ID>LongParameterList:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>
     <ID>LongParameterList:DraggableReorderColumn.kt:@Composable fun &lt;T : Any&gt; DraggableReorderColumn</ID>
     <ID>LongParameterList:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
-    <ID>LongParameterList:ExpenseDetailRepository.kt:ExpenseDetailRepository$private suspend fun enqueueRecognizeText</ID>
-    <ID>LongParameterList:ExpenseDetailRepository.kt:ExpenseDetailRepository$private suspend fun enqueueReplaceItems</ID>
-    <ID>LongParameterList:ExpenseDetailRepository.kt:ExpenseDetailRepository$private suspend fun enqueueReplaceSplits</ID>
     <ID>LongParameterList:ExpenseEditMoreSection.kt:@Composable internal fun ExpenseEditMoreSection</ID>
     <ID>LongParameterList:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>LongParameterList:ExpenseEditV1Details.kt:@Composable internal fun ExpenseEditV1DetailsSection</ID>
