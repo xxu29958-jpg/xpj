@@ -181,11 +181,18 @@ class IncomePlanRepository(
                 }
                 return@safeCall IncomePlanSaveOutcome.Synced(updated)
             }
-            if (outboxRef.activeForTarget("income_plan:$cleanPublicId").isNotEmpty()) {
+            val enqueueContext = IncomePlanOutboxContext(
+                bound = bound,
+                outbox = outboxRef,
+                cleanPublicId = cleanPublicId,
+                token = baseline.rowVersion,
+                idempotencyKey = idempotencyKey,
+            )
+            if (outboxRef.activeForTarget(enqueueContext.targetId).isNotEmpty()) {
                 // Per-target FIFO guard (codex follow-up review) — a direct
                 // PATCH must not jump an unresolved queued mutation for the
                 // same plan. Same mechanism as the expense:{id} guards.
-                enqueueUpdateIncomePlan(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+                enqueueUpdateIncomePlan(enqueueContext, adapter, request)
                 return@safeCall IncomePlanSaveOutcome.Queued(projectOptimisticPlan(baseline, patch))
             }
             try {
@@ -194,7 +201,7 @@ class IncomePlanRepository(
                 }
                 IncomePlanSaveOutcome.Synced(updated) as IncomePlanSaveOutcome
             } catch (networkError: IOException) {
-                enqueueUpdateIncomePlan(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+                enqueueUpdateIncomePlan(enqueueContext, adapter, request)
                 IncomePlanSaveOutcome.Queued(
                     projectOptimisticPlan(baseline, patch),
                 ) as IncomePlanSaveOutcome
@@ -209,21 +216,17 @@ class IncomePlanRepository(
      * is the single source of truth; dispatcher overwrites on replay).
      */
     private suspend fun enqueueUpdateIncomePlan(
-        bound: BoundLedgerRequest,
-        outboxRef: OutboxRepository,
+        context: IncomePlanOutboxContext,
         adapter: JsonAdapter<IncomePlanUpdateRequestDto>,
-        cleanPublicId: String,
         request: IncomePlanUpdateRequestDto,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outboxRef.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.UpdateIncomePlan,
-            targetId = "income_plan:$cleanPublicId",
+            targetId = context.targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = token,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -298,4 +301,14 @@ sealed interface IncomePlanSaveOutcome {
      * not consume it.
      */
     data class Queued(override val plan: IncomePlan) : IncomePlanSaveOutcome
+}
+
+private data class IncomePlanOutboxContext(
+    val bound: BoundLedgerRequest,
+    val outbox: OutboxRepository,
+    val cleanPublicId: String,
+    val token: Long,
+    val idempotencyKey: String,
+) {
+    val targetId: String = "income_plan:$cleanPublicId"
 }

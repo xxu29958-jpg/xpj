@@ -298,11 +298,18 @@ class ReportsRepository(
                 }
                 return@safeCall GoalSaveOutcome.Synced(updated)
             }
-            if (outboxRef.activeForTarget("goal:$cleanPublicId").isNotEmpty()) {
+            val enqueueContext = GoalOutboxContext(
+                bound = bound,
+                outbox = outboxRef,
+                cleanPublicId = cleanPublicId,
+                token = baseline.rowVersion,
+                idempotencyKey = idempotencyKey,
+            )
+            if (outboxRef.activeForTarget(enqueueContext.targetId).isNotEmpty()) {
                 // Per-target FIFO guard (codex follow-up review) — a direct
                 // PATCH must not jump an unresolved queued mutation for the
                 // same goal. Same mechanism as the expense:{id} guards.
-                enqueueUpdateGoal(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+                enqueueUpdateGoal(enqueueContext, adapter, request)
                 return@safeCall GoalSaveOutcome.Queued(projectOptimisticGoal(baseline, cleanUpdate))
             }
             try {
@@ -316,7 +323,7 @@ class ReportsRepository(
                 }
                 GoalSaveOutcome.Synced(updated) as GoalSaveOutcome
             } catch (networkError: IOException) {
-                enqueueUpdateGoal(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+                enqueueUpdateGoal(enqueueContext, adapter, request)
                 GoalSaveOutcome.Queued(
                     projectOptimisticGoal(baseline, cleanUpdate),
                 ) as GoalSaveOutcome
@@ -331,21 +338,17 @@ class ReportsRepository(
      * single source of truth; dispatcher overwrites on replay).
      */
     private suspend fun enqueueUpdateGoal(
-        bound: BoundLedgerRequest,
-        outboxRef: OutboxRepository,
-        adapter: com.squareup.moshi.JsonAdapter<GoalUpdateRequestDto>,
-        cleanPublicId: String,
+        context: GoalOutboxContext,
+        adapter: JsonAdapter<GoalUpdateRequestDto>,
         request: GoalUpdateRequestDto,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outboxRef.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.UpdateGoal,
-            targetId = "goal:$cleanPublicId",
+            targetId = context.targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = token,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -526,6 +529,16 @@ sealed interface GoalSaveOutcome {
      * not consume it.
      */
     data class Queued(override val goal: Goal) : GoalSaveOutcome
+}
+
+private data class GoalOutboxContext(
+    val bound: BoundLedgerRequest,
+    val outbox: OutboxRepository,
+    val cleanPublicId: String,
+    val token: Long,
+    val idempotencyKey: String,
+) {
+    val targetId: String = "goal:$cleanPublicId"
 }
 
 private val REPORTS_MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
