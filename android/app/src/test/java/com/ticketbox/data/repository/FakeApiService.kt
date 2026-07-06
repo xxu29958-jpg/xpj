@@ -75,6 +75,7 @@ internal class FakeApiService(
     private var confirmedFailuresRemaining: Int,
     private val checkAuthResult: AuthCheckDto? = null,
     private val serverSettingsResult: ServerSettingsDto? = null,
+    private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
     var lastNotificationDraftRequest: NotificationDraftRequestDto? = null
     var lastConfirmedMonth: String? = null
@@ -84,28 +85,29 @@ internal class FakeApiService(
     val confirmedResponses = mutableMapOf<Int, PaginatedExpensesDto>()
     val applyConfirmedRequests = mutableListOf<RuleApplyConfirmedRequestDto>()
     val rollbackPublicIds = mutableListOf<String>()
-    val merchantAliasRequests = mutableListOf<MerchantAliasRequest>()
-    val merchantAliasUpdateRequests =
-        mutableListOf<com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest>()
-    val merchantAliasDeleteRequests =
-        mutableListOf<com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest>()
-    val merchantAliasPatchTargets = mutableListOf<String>()
-    val merchantAliasDeleteTargets = mutableListOf<String>()
-    val merchantCatalogCreateRequests = mutableListOf<MerchantCatalogCreateRequest>()
-    val merchantCatalogUpdateRequests = mutableListOf<MerchantCatalogUpdateRequest>()
-    val merchantCatalogDeleteRequests = mutableListOf<MerchantCatalogDeleteRequest>()
-    val merchantCatalogMergeRequests = mutableListOf<MerchantCatalogMergeRequest>()
-    val merchantCatalogPatchTargets = mutableListOf<String>()
-    val merchantCatalogDeleteTargets = mutableListOf<String>()
-    val merchantCatalogMergeTargets = mutableListOf<String>()
-    var merchantCatalogItems: List<MerchantCatalogDto> = listOf(
-        merchantCatalogDto(
-            publicId = "catalog-1",
-            displayName = "星巴克",
-            status = "active",
-        ),
-    )
-    var merchantCatalogUpdateFailure: Throwable? = null
+    val merchantAliasRequests get() = merchantApi.merchantAliasRequests
+    val merchantAliasUpdateRequests get() = merchantApi.merchantAliasUpdateRequests
+    val merchantAliasDeleteRequests get() = merchantApi.merchantAliasDeleteRequests
+    val merchantAliasPatchTargets get() = merchantApi.merchantAliasPatchTargets
+    val merchantAliasDeleteTargets get() = merchantApi.merchantAliasDeleteTargets
+    val merchantAliasUndoTargets get() = merchantApi.merchantAliasUndoTargets
+    val merchantCatalogCreateRequests get() = merchantApi.merchantCatalogCreateRequests
+    val merchantCatalogUpdateRequests get() = merchantApi.merchantCatalogUpdateRequests
+    val merchantCatalogDeleteRequests get() = merchantApi.merchantCatalogDeleteRequests
+    val merchantCatalogMergeRequests get() = merchantApi.merchantCatalogMergeRequests
+    val merchantCatalogPatchTargets get() = merchantApi.merchantCatalogPatchTargets
+    val merchantCatalogDeleteTargets get() = merchantApi.merchantCatalogDeleteTargets
+    val merchantCatalogMergeTargets get() = merchantApi.merchantCatalogMergeTargets
+    var merchantCatalogItems
+        get() = merchantApi.merchantCatalogItems
+        set(value) {
+            merchantApi.merchantCatalogItems = value
+        }
+    var merchantCatalogUpdateFailure
+        get() = merchantApi.merchantCatalogUpdateFailure
+        set(value) {
+            merchantApi.merchantCatalogUpdateFailure = value
+        }
     val itemFetchIds = mutableListOf<Long>()
     val itemReplaceIds = mutableListOf<String>()
     val itemReplaceRequests = mutableListOf<ExpenseItemReplaceRequestDto>()
@@ -412,135 +414,48 @@ internal class FakeApiService(
     override suspend fun undoCategoryRule(id: Long): CategoryRuleDto = unsupported()
 
     override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto =
-        MerchantCatalogListDto(items = merchantCatalogItems)
+        merchantApi.merchantCatalog(includeHidden)
 
-    override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
-        merchantCatalogCreateRequests += request
-        return merchantCatalogDto(
-            publicId = "catalog-created",
-            displayName = request.displayName,
-            status = request.status,
-        )
-    }
+    override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto =
+        merchantApi.createMerchantCatalog(request)
 
     override suspend fun updateMerchantCatalog(
         publicId: String,
         request: MerchantCatalogUpdateRequest,
         idempotencyKey: String?,
-    ): MerchantCatalogDto {
-        merchantCatalogPatchTargets += publicId
-        merchantCatalogUpdateRequests += request
-        merchantCatalogUpdateFailure?.let { throw it }
-        return merchantCatalogDto(
-            publicId = publicId,
-            displayName = request.displayName ?: "星巴克",
-            status = request.status ?: "active",
-        )
-    }
+    ): MerchantCatalogDto = merchantApi.updateMerchantCatalog(publicId, request, idempotencyKey)
 
     override suspend fun deleteMerchantCatalog(
         publicId: String,
         request: MerchantCatalogDeleteRequest,
         idempotencyKey: String?,
-    ): MerchantCatalogDto {
-        merchantCatalogDeleteTargets += publicId
-        merchantCatalogDeleteRequests += request
-        return merchantCatalogDto(
-            publicId = publicId,
-            displayName = "星巴克",
-            status = "active",
-        ).copy(deletedAt = "2026-05-13T00:10:00Z")
-    }
+    ): MerchantCatalogDto = merchantApi.deleteMerchantCatalog(publicId, request, idempotencyKey)
 
     override suspend fun mergeMerchantCatalog(
         sourcePublicId: String,
         request: MerchantCatalogMergeRequest,
-    ): MerchantCatalogMergeDto {
-        merchantCatalogMergeTargets += sourcePublicId
-        merchantCatalogMergeRequests += request
-        return MerchantCatalogMergeDto(
-            source = merchantCatalogDto(
-                publicId = sourcePublicId,
-                displayName = "星巴克",
-                status = "merged",
-            ).copy(
-                mergedIntoPublicId = request.targetPublicId,
-                rowVersion = request.expectedRowVersion + 1,
-            ),
-            target = merchantCatalogDto(
-                publicId = request.targetPublicId,
-                displayName = "蓝瓶咖啡",
-                status = "active",
-            ).copy(rowVersion = request.targetRowVersion + 1),
-            createdAliasPublicId = if (request.aliasPolicy == "create_source_alias") "alias-created-by-merge" else null,
-        )
-    }
+    ): MerchantCatalogMergeDto = merchantApi.mergeMerchantCatalog(sourcePublicId, request)
 
-    override suspend fun merchantAliases(): MerchantAliasListDto = MerchantAliasListDto(
-        items = listOf(
-            merchantAliasDto(
-                publicId = "alias-1",
-                canonicalMerchant = "星巴克",
-                canonicalKey = "星巴克",
-                alias = "Starbucks",
-                aliasKey = "starbucks",
-                enabled = true,
-            ),
-        ),
-    )
+    override suspend fun merchantAliases(): MerchantAliasListDto =
+        merchantApi.merchantAliases()
 
-    override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto {
-        merchantAliasRequests += request
-        return merchantAliasDto(
-            publicId = "alias-created",
-            canonicalMerchant = requireNotNull(request.canonicalMerchant),
-            canonicalKey = requireNotNull(request.canonicalMerchant),
-            alias = requireNotNull(request.alias),
-            aliasKey = requireNotNull(request.alias).lowercase(),
-            enabled = request.enabled ?: true,
-        )
-    }
+    override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto =
+        merchantApi.createMerchantAlias(request)
 
     override suspend fun updateMerchantAlias(
         publicId: String,
         request: com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest,
         idempotencyKey: String?,
-    ): MerchantAliasDto {
-        merchantAliasPatchTargets += publicId
-        merchantAliasUpdateRequests += request
-        return merchantAliasDto(
-            publicId = publicId,
-            canonicalMerchant = request.canonicalMerchant ?: "星巴克",
-            canonicalKey = request.canonicalMerchant ?: "星巴克",
-            alias = request.alias ?: "Starbucks",
-            aliasKey = request.alias?.lowercase() ?: "starbucks",
-            enabled = request.enabled ?: true,
-        )
-    }
+    ): MerchantAliasDto = merchantApi.updateMerchantAlias(publicId, request, idempotencyKey)
 
     override suspend fun deleteMerchantAlias(
         publicId: String,
         request: com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest,
         idempotencyKey: String?,
-    ): StatusDto {
-        merchantAliasDeleteTargets += publicId
-        merchantAliasDeleteRequests += request
-        return StatusDto("ok")
-    }
+    ): StatusDto = merchantApi.deleteMerchantAlias(publicId, request, idempotencyKey)
 
-    val merchantAliasUndoTargets = mutableListOf<String>()
-
-    override suspend fun undoMerchantAlias(publicId: String): MerchantAliasDto {
-        merchantAliasUndoTargets += publicId
-        return merchantAliasDto(
-            publicId = publicId,
-            canonicalMerchant = "星巴克",
-            canonicalKey = "星巴克",
-            alias = "Starbucks",
-            aliasKey = "starbucks",
-            enabled = true,
-        )
-    }
+    override suspend fun undoMerchantAlias(publicId: String): MerchantAliasDto =
+        merchantApi.undoMerchantAlias(publicId)
 
     override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = RuleApplicationListDto(
         items = listOf(
@@ -853,42 +768,6 @@ internal class FakeApiService(
     override suspend fun acceptInvitation(
         request: com.ticketbox.data.remote.dto.InvitationAcceptRequestDto,
     ): com.ticketbox.data.remote.dto.InvitationAcceptResponseDto = unsupported()
-
-    private fun merchantAliasDto(
-        publicId: String,
-        canonicalMerchant: String,
-        canonicalKey: String,
-        alias: String,
-        aliasKey: String,
-        enabled: Boolean,
-    ): MerchantAliasDto = MerchantAliasDto(
-        publicId = publicId,
-        canonicalMerchant = canonicalMerchant,
-        canonicalKey = canonicalKey,
-        alias = alias,
-        aliasKey = aliasKey,
-        enabled = enabled,
-        createdAt = "2026-05-13T00:00:00Z",
-        updatedAt = "2026-05-13T00:05:00Z",
-        rowVersion = 1L,
-    )
-
-    private fun merchantCatalogDto(
-        publicId: String,
-        displayName: String,
-        status: String,
-    ): MerchantCatalogDto = MerchantCatalogDto(
-        publicId = publicId,
-        displayName = displayName,
-        merchantKey = displayName,
-        status = status,
-        mergedIntoPublicId = null,
-        usageCount = 0,
-        createdAt = "2026-05-13T00:00:00Z",
-        updatedAt = "2026-05-13T00:05:00Z",
-        rowVersion = 1L,
-        deletedAt = null,
-    )
 
     private fun expenseItemsResponse(): ExpenseItemsResponseDto = ExpenseItemsResponseDto(
         expenseId = 9,
