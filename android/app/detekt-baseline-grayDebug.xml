@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:ErrorUiText.kt:@StringRes private fun errorCodeStringRes: Int?</ID>
     <ID>CyclomaticComplexMethod:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
@@ -24,7 +23,6 @@
     <ID>CyclomaticComplexMethod:SettingsServerComponents.kt:@Composable internal fun AccountStatusCard</ID>
     <ID>CyclomaticComplexMethod:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
     <ID>CyclomaticComplexMethod:SyncStatusScreen.kt:@Composable private fun mutationLabel: String</ID>
-    <ID>CyclomaticComplexMethod:_RepositorySupport.kt:internal fun backendErrorUserMessage: String</ID>
     <ID>LargeClass:ExpenseDao_Impl.kt:ExpenseDao_Impl : ExpenseDao</ID>
     <ID>LargeClass:PendingMutationDao_Impl.kt:PendingMutationDao_Impl : PendingMutationDao</ID>
     <ID>LongMethod:AppDatabase.kt:AppDatabase.Companion.&lt;no name provided&gt;$override fun migrate</ID>

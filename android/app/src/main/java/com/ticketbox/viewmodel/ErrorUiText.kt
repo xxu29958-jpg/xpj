@@ -30,60 +30,61 @@ fun Throwable.toUiText(@StringRes fallback: Int): UiText {
 }
 
 @StringRes
-private fun errorCodeStringRes(code: String?): Int? = when (code) {
-    "invalid_token" -> R.string.error_invalid_token
-    "legacy_auth_removed" -> R.string.error_legacy_auth_removed
-    "invalid_pairing_code" -> R.string.error_invalid_pairing_code
-    "rate_limited" -> R.string.error_rate_limited
-    "file_too_large" -> R.string.error_file_too_large
-    "unsupported_file_type" -> R.string.error_unsupported_file_type
-    "expense_not_found" -> R.string.error_expense_not_found
-    "amount_required" -> R.string.error_amount_required
-    "amount_invalid" -> R.string.error_amount_invalid
-    "currency_not_supported" -> R.string.error_currency_not_supported
-    "exchange_rate_required" -> R.string.error_exchange_rate_required
-    "exchange_rate_pending" -> R.string.error_exchange_rate_pending
-    "exchange_rate_invalid" -> R.string.error_exchange_rate_invalid
-    "exchange_rate_base_currency" -> R.string.error_exchange_rate_base_currency
-    "image_not_found" -> R.string.error_image_not_found
-    "rule_not_found" -> R.string.error_rule_not_found
-    "rule_in_use" -> R.string.error_rule_in_use
-    "permission_denied" -> R.string.error_permission_denied
-    "merchant_alias_not_found" -> R.string.error_merchant_alias_not_found
-    "merchant_alias_conflict" -> R.string.error_merchant_alias_conflict
-    "merchant_catalog_not_found" -> R.string.error_merchant_catalog_not_found
-    "tag_not_found" -> R.string.error_tag_not_found
-    "tag_conflict" -> R.string.error_tag_conflict
-    "tag_undo_not_found" -> R.string.error_tag_undo_not_found
-    "recurring_candidate_not_found" -> R.string.error_recurring_candidate_not_found
-    "recurring_item_not_found" -> R.string.error_recurring_item_not_found
-    "recurring_frequency_invalid" -> R.string.error_recurring_frequency_invalid
-    "recurring_status_invalid" -> R.string.error_recurring_status_invalid
-    "recurring_item_archived" -> R.string.error_recurring_item_archived
-    "notification_source_invalid" -> R.string.error_notification_source_invalid
-    "server_error" -> R.string.error_server_error
-    "invalid_request" -> R.string.error_invalid_request
-    "idempotency_key_required" -> R.string.error_idempotency_key_required
-    "idempotency_key_in_progress" -> R.string.error_idempotency_key_in_progress
-    "idempotency_key_reused" -> R.string.error_idempotency_key_reused
-    "route_not_found" -> R.string.error_route_not_found
-    "method_not_allowed" -> R.string.error_method_not_allowed
+private fun errorCodeStringRes(code: String?): Int? = code?.let(errorCodeStringResByCode::get)
+
+private val errorCodeStringResByCode = mapOf(
+    "invalid_token" to R.string.error_invalid_token,
+    "legacy_auth_removed" to R.string.error_legacy_auth_removed,
+    "invalid_pairing_code" to R.string.error_invalid_pairing_code,
+    "rate_limited" to R.string.error_rate_limited,
+    "file_too_large" to R.string.error_file_too_large,
+    "unsupported_file_type" to R.string.error_unsupported_file_type,
+    "expense_not_found" to R.string.error_expense_not_found,
+    "amount_required" to R.string.error_amount_required,
+    "amount_invalid" to R.string.error_amount_invalid,
+    "currency_not_supported" to R.string.error_currency_not_supported,
+    "exchange_rate_required" to R.string.error_exchange_rate_required,
+    "exchange_rate_pending" to R.string.error_exchange_rate_pending,
+    "exchange_rate_invalid" to R.string.error_exchange_rate_invalid,
+    "exchange_rate_base_currency" to R.string.error_exchange_rate_base_currency,
+    "image_not_found" to R.string.error_image_not_found,
+    "rule_not_found" to R.string.error_rule_not_found,
+    "rule_in_use" to R.string.error_rule_in_use,
+    "permission_denied" to R.string.error_permission_denied,
+    "merchant_alias_not_found" to R.string.error_merchant_alias_not_found,
+    "merchant_alias_conflict" to R.string.error_merchant_alias_conflict,
+    "merchant_catalog_not_found" to R.string.error_merchant_catalog_not_found,
+    "tag_not_found" to R.string.error_tag_not_found,
+    "tag_conflict" to R.string.error_tag_conflict,
+    "tag_undo_not_found" to R.string.error_tag_undo_not_found,
+    "recurring_candidate_not_found" to R.string.error_recurring_candidate_not_found,
+    "recurring_item_not_found" to R.string.error_recurring_item_not_found,
+    "recurring_frequency_invalid" to R.string.error_recurring_frequency_invalid,
+    "recurring_status_invalid" to R.string.error_recurring_status_invalid,
+    "recurring_item_archived" to R.string.error_recurring_item_archived,
+    "notification_source_invalid" to R.string.error_notification_source_invalid,
+    "server_error" to R.string.error_server_error,
+    "invalid_request" to R.string.error_invalid_request,
+    "idempotency_key_required" to R.string.error_idempotency_key_required,
+    "idempotency_key_in_progress" to R.string.error_idempotency_key_in_progress,
+    "idempotency_key_reused" to R.string.error_idempotency_key_reused,
+    "route_not_found" to R.string.error_route_not_found,
+    "method_not_allowed" to R.string.error_method_not_allowed,
     // Audit #17: bill-split invitation flow + task codes were unmapped, so a
     // routine TOCTOU 409 fell through to each screen's generic fallback copy.
-    "invitation_not_found" -> R.string.error_invitation_not_found
-    "invitation_not_yours" -> R.string.error_invitation_not_yours
-    "invitation_not_acceptable" -> R.string.error_invitation_not_acceptable
-    "invitation_not_cancellable" -> R.string.error_invitation_not_cancellable
-    "invitation_expired" -> R.string.error_invitation_expired
-    "split_invitation_already_pending" -> R.string.error_split_invitation_already_pending
+    "invitation_not_found" to R.string.error_invitation_not_found,
+    "invitation_not_yours" to R.string.error_invitation_not_yours,
+    "invitation_not_acceptable" to R.string.error_invitation_not_acceptable,
+    "invitation_not_cancellable" to R.string.error_invitation_not_cancellable,
+    "invitation_expired" to R.string.error_invitation_expired,
+    "split_invitation_already_pending" to R.string.error_split_invitation_already_pending,
     // ADR-0029 拆账发起（批 13）：发起 sheet 可能命中的 split_* 码。后端虽都带 message，
     // 但用户面文案改走 App 资源以便端内可控（split_receiver_invalid 尤其需要更人话）。
-    "split_receiver_invalid" -> R.string.error_split_receiver_invalid
-    "split_amount_invalid" -> R.string.error_split_amount_invalid
-    "split_amount_exceeds_parent" -> R.string.error_split_amount_exceeds_parent
-    "split_total_exceeds_parent" -> R.string.error_split_total_exceeds_parent
-    "split_parent_amount_missing" -> R.string.error_split_parent_amount_missing
-    "not_found" -> R.string.error_not_found
-    "task_not_found" -> R.string.error_task_not_found
-    else -> null
-}
+    "split_receiver_invalid" to R.string.error_split_receiver_invalid,
+    "split_amount_invalid" to R.string.error_split_amount_invalid,
+    "split_amount_exceeds_parent" to R.string.error_split_amount_exceeds_parent,
+    "split_total_exceeds_parent" to R.string.error_split_total_exceeds_parent,
+    "split_parent_amount_missing" to R.string.error_split_parent_amount_missing,
+    "not_found" to R.string.error_not_found,
+    "task_not_found" to R.string.error_task_not_found,
+)
