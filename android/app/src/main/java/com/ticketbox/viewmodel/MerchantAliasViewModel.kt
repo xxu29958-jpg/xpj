@@ -49,17 +49,19 @@ class MerchantAliasViewModel(
     val uiState: StateFlow<MerchantAliasUiState> = _uiState.asStateFlow()
 
     init {
-        loadMerchantCatalog()
-        loadMerchantAliases()
+        loadMerchantCatalog(clearMessage = false)
+        loadMerchantAliases(clearMessage = false)
     }
 
     private fun canModifyCurrentLedger(): Boolean {
         return ledgerRoleCanModify(repository.currentLedgerRole())
     }
 
-    private fun loadMerchantCatalog() {
+    private fun loadMerchantCatalog(clearMessage: Boolean = true) {
         viewModelScope.launch {
-            _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            if (clearMessage) {
+                _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            }
             merchantRepository.merchantCatalog(includeHidden = true)
                 .onSuccess { catalog -> _uiState.update { it.copy(merchantCatalog = catalog.sortedMerchantCatalog()) } }
                 .onFailure { error ->
@@ -73,9 +75,11 @@ class MerchantAliasViewModel(
         }
     }
 
-    fun loadMerchantAliases() {
+    fun loadMerchantAliases(clearMessage: Boolean = true) {
         viewModelScope.launch {
-            _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            if (clearMessage) {
+                _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            }
             merchantRepository.merchantAliases()
                 .onSuccess { aliases -> _uiState.update { it.copy(merchantAliases = aliases.sortedMerchantAliases()) } }
                 .onFailure { error ->
