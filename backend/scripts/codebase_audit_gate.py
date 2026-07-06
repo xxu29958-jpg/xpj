@@ -1,84 +1,23 @@
-"""Known-debt gate for ``_audit_codebase.py`` + PR-Δ verification gate
-for ``_audit_pr_delta_metrics.py``.
+"""Known-debt and PR-Δ gates for backend audit lanes.
 
-Two semantics, two baselines, two evaluators:
+``CODEBASE_DEBT_LIMITS`` is a one-way debt ceiling for
+``_audit_codebase.py``: regressions fail, improvements print INFO so the
+baseline can be lowered in the same cleanup slice.
 
-- :data:`CODEBASE_DEBT_LIMITS` + :func:`evaluate_debt` — debt counters
-  (one-direction drift; improvement OK with INFO, regression FAIL).
-- :data:`STRICT_EQUALITY_BASELINE` + :data:`BASELINE_RATCHET_UP` +
-  :data:`BASELINE_RATCHET_DOWN` + :func:`evaluate_pr_delta_metrics` —
-  ADR-0038 PR-Δ counters. Three layers stacked:
+``STRICT_EQUALITY_BASELINE`` protects PR-Δ counters from
+``_audit_pr_delta_metrics.py``. It composes three checks: exact current
+actuals, directional movement vs the base branch for ratcheted keys, and
+removed-key detection so managed counters cannot be renamed away.
 
-    1. **Strict equality** (all PR-Δ keys): current actual == current
-       baseline. Both directions FAIL.
+Bootstrap is purely data-shaped: a new key absent from the base baseline
+skips only the directional ratchet for that PR, while strict equality
+still applies. PR CI must be able to read the base file via git; local
+dev without PR context may skip that comparison with an INFO line.
 
-    2. **Baseline movement ratchet** (subset of keys): current baseline
-       vs base baseline. UP-keys (tests, carriers) baseline can only
-       grow; DOWN-keys (exempted) baseline can only shrink. Catches
-       "baseline silently dropped to match silently-removed actual"
-       collusion — strict equality alone doesn't.
-
-    3. **Removed-key防绕** (all PR-Δ keys): keys present in base
-       baseline must remain present in current baseline. Prevents
-       "rename ``backend_pytest_count`` to ``backend_pytest_count_v2``
-       and claim bootstrap" loophole. Key migration requires a
-       dedicated migration PR, not a smuggle inside a cut-over PR.
-
-  **Bootstrap exception** is the ONLY way a key skips ratchet: ``key
-  not in base_baseline``. No flags, no env vars, no PR labels — purely
-  data-shape-driven, self-extinguishing the moment the key lands in
-  main's baseline.
-
-  Base baseline source priority:
-  - ``GITHUB_BASE_REF`` env var (set by the CI runner on PR events)
-    via ``git show <base_ref>:<path>`` — the immutable PR base SHA,
-    not a moving target.
-  - ``origin/main`` fallback for local dev / non-PR runs.
-
-  In PR CI (``GITHUB_BASE_REF`` set) failing to read base FAILs the
-  audit. Local dev (no PR context) skips ratchet with INFO. This
-  asymmetry is intentional: CI must never silently downgrade to
-  "strict equality only".
-
-Scope boundaries (don't let this mechanism bloat into a怪物)
------------------------------------------------------------
-
-This gate is targeted defense for high-risk surfaces. It is NOT a
-universal quality gate. Three hard boundaries:
-
-**1. Engagement is data-driven, not policy-imposed.**
-   The gate only "engages" when the audit's counter actuals drift from
-   baseline. README / UI text / color-only / non-routing bugfix PRs
-   don't touch the receiving code → actuals don't move → no baseline
-   bump required → audit passes silently. No path filter is configured
-   in CI; the strict-equality semantics自然只在受管 surface 改动时才
-   产生声明义务。
-
-**2. Adding a new counter requires answering five questions in the PR
-   that introduces it; failing any question = don't add the counter:**
-
-   - Is it stable (won't drift with environment / time)?
-   - Is it machine-verifiable (grep / collect-only / AST exact count)?
-   - Does it defend against a real risk (not "seems useful")?
-   - Can it be easily gamed (and if so, what守护 makes it un-gameable)?
-   - Does it have a clear owner?
-
-   Reviewer rejects a counter-addition PR if these aren't answered.
-   This is the dam against "audit-creep" — every "let's also count X"
-   gets the questions, most don't survive them.
-
-**3. Numeric counters defend against silent regression, NOT prove
-   quality.**
-
-   ``backend_pytest_count`` / ``android_junit_test_method_count`` exist
-   to catch "tests silently deleted in a refactor PR". They are NOT
-   measures of test quality — count rising doesn't mean coverage rose.
-   Quality measures are a different axis (critical-path tests, mutation
-   tests, contract tests, route security matrix, tenant isolation
-   cases, migration rollback, real E2E), and would be enforced by
-   different mechanisms if/when added. Confusing the two leads to
-   people writing trivial tests to make a number go up — defeats both
-   purposes. The PR-Δ gate stays in its lane.
+Scope: these numeric gates defend high-risk surfaces against silent drift.
+They are not universal quality scores; adding a counter still requires a
+stable, machine-verifiable risk and a clear owner. See ADR-0038 for the
+full policy history and CODE-2026-07-01 for provenance-comment cleanup.
 """
 
 from __future__ import annotations
@@ -118,7 +57,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "cached_singletons": 3,
     "nested_dict_args": 16,  # −1 PG-only slice 5 (retired cut-over machinery)
     "mixed_return_functions": 0,
-    "broad_exception": 23,  # −1 PG-only slice 2 (retired SQLite migrator/validator). +1 P1 启动迁移前备份 gate(_backup_before_upgrade 对任何备份失败 fail-CLOSED——必须 catch-any 才能在 pg_dump/磁盘/校验等任意失败时中止迁移,窄 catch 会漏失败放过迁移=破坏安全目的)
+    "broad_exception": 22,  # −1 PG-only slice 2 (retired SQLite migrator/validator). +1 P1 启动迁移前备份 gate(_backup_before_upgrade 对任何备份失败 fail-CLOSED——必须 catch-any 才能在 pg_dump/磁盘/校验等任意失败时中止迁移,窄 catch 会漏失败放过迁移=破坏安全目的). −1 2026-07-06 retired one-shot identity fixture migrator.
     "generic_raises": 7,  # +1 ⑥ P3#3 scheduler_lease.try_claim_scheduler_lease 在途事务守卫 RuntimeError (检测到 db.in_transaction() 即 raise, 防偷提交调用方未提交事务; API 误用前置条件非用户面 AppError, 镜像 main.py 启动守卫 RuntimeError 先例). −3 PG-only slice 5 (retired v1_migration handler RuntimeError raises + mark_v1_cut_over). +1 P1 启动迁移属主预检 RuntimeError(_assert_role_can_alter_existing_schema 致命启动条件,无 HTTP AppError 适配,镜像 main.py 既有启动 RuntimeError 守卫). +1 P1 启动迁移前备份 fail-closed RuntimeError(_backup_before_upgrade 备份失败即致命中止,镜像同款启动 RuntimeError)
     "todo_markers": 9,
     "hardcoded_urls": 12,  # +2 ADR-0027 Frankfurter default URL (config default, mirrors ECB inline pattern)
@@ -141,11 +80,13 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
 
 CODEBASE_DEBT_LIMITS.update(
     {
-        "files_over_500": 18,
-        "long_functions": 40,
-        "unreferenced_modules": 224,
+        "files_over_500": 16,
+        "long_functions": 38,
+        "deep_nesting_functions": 4,
+        "broad_exception": 14,
+        "unreferenced_modules": 223,
     }
-)  # ADR-0052 recycle-bin follow-up: bank audited growth from archive/restore slice.
+)  # ADR-0052 recycle-bin follow-up; 2026-07-06 cleanup retired the one-shot migrator, compressed gate prose, split smoke_test orchestration, and narrowed audit scanner fallbacks.
 
 
 def evaluate_debt(counts: DebtCounts) -> int:

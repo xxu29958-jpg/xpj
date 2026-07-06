@@ -242,15 +242,16 @@ def wait_for_expense_thumbnail(base_url: str, expense_id: int, label: str) -> di
     raise AssertionError(f"{label}: thumbnail enrichment did not finish")
 
 
-def run_smoke(base_url: str) -> None:
-    global BOOTSTRAP_ADMIN_TOKEN
-    global SESSION_TOKEN
-    global UPLOAD_PATH
-
+def _check_health(base_url: str) -> None:
     result = request("GET", f"{base_url}/api/health")
     assert_equal(result.status, 200, "health status")
     assert_equal(result.json()["status"], "ok", "health body")
     print("OK health")
+
+
+def _bootstrap_owner(base_url: str) -> dict:
+    global BOOTSTRAP_ADMIN_TOKEN
+    global UPLOAD_PATH
 
     bootstrap_body = json.dumps(
         {
@@ -276,6 +277,11 @@ def run_smoke(base_url: str) -> None:
     UPLOAD_PATH = bootstrap["upload_url_path"]
     assert_true(UPLOAD_PATH.startswith("/u/"), "bootstrap upload path")
     print("OK bootstrap owner")
+    return bootstrap
+
+
+def _pair_android(base_url: str, bootstrap: dict) -> None:
+    global SESSION_TOKEN
 
     pair_body = json.dumps(
         {
@@ -297,6 +303,8 @@ def run_smoke(base_url: str) -> None:
     assert_equal(paired["ledger_name"], "我的小票夹", "pairing ledger")
     print("OK android pairing")
 
+
+def _check_auth_and_legacy_tokens(base_url: str) -> None:
     result = request("GET", f"{base_url}/api/auth/check", headers=app_headers())
     assert_equal(result.status, 200, "auth check status")
     assert_equal(result.json()["status"], "ok", "auth check body")
@@ -313,6 +321,8 @@ def run_smoke(base_url: str) -> None:
     assert_error(result, 401, "invalid_token")
     print("OK legacy upload token removed")
 
+
+def _check_maintenance_and_upload_guards(base_url: str) -> None:
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=app_headers())
     assert_error(result, 403, "permission_denied")
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=admin_headers())
@@ -349,6 +359,8 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["status"], "pending", "raw upload status body")
     print("OK raw image upload")
 
+
+def _upload_ticket_and_assert_pending(base_url: str) -> int:
     result = upload(base_url, "ticket.png", "image/png", PNG_BYTES)
     assert_equal(result.status, 200, "upload status")
     upload_payload = result.json()
@@ -369,7 +381,10 @@ def run_smoke(base_url: str) -> None:
     )
     assert_true(uploaded["image_hash"], "image hash should be saved")
     print("OK pending query")
+    return expense_id
 
+
+def _create_manual_expense_and_check_settings(base_url: str) -> None:
     manual_body = json.dumps(
         {
             "amount_cents": 1280,
@@ -434,6 +449,8 @@ def run_smoke(base_url: str) -> None:
     assert_true("token" not in json.dumps(server_settings).lower(), "server settings must not expose token")
     print("OK server settings")
 
+
+def _check_protected_media(base_url: str, expense_id: int) -> None:
     result = request("GET", f"{base_url}/api/expenses/{expense_id}/image")
     assert_error(result, 401, "invalid_token")
     print("OK protected image requires token")
@@ -448,6 +465,8 @@ def run_smoke(base_url: str) -> None:
     assert_true(result.body.startswith(b"\xff\xd8"), "thumbnail should be jpeg")
     print("OK protected thumbnail")
 
+
+def _patch_expense_and_check_ocr_retry(base_url: str, expense_id: int) -> None:
     pre_confirm_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{expense_id}",
@@ -526,6 +545,8 @@ def run_smoke(base_url: str) -> None:
     assert_error(result, 503, "ocr_not_configured")
     print("OK ocr retry refuses empty provider")
 
+
+def _recognize_text_from_upload(base_url: str) -> None:
     recognize_upload = upload(base_url, "recognize.png", "image/png", PNG_BYTES)
     assert_equal(recognize_upload.status, 200, "recognize upload status")
     recognize_id = int(recognize_upload.json()["id"])
@@ -567,6 +588,8 @@ def run_smoke(base_url: str) -> None:
     assert_equal(recognized["expense_time"], "2026-05-04T08:23:25Z", "recognized time")
     print("OK recognize text")
 
+
+def _confirm_expense(base_url: str, expense_id: int) -> None:
     confirm_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{expense_id}",
@@ -593,6 +616,8 @@ def run_smoke(base_url: str) -> None:
     assert_true(confirmed["confirmed_at"].endswith("Z"), "confirmed_at should be ISO UTC")
     print("OK confirm expense")
 
+
+def _check_confirmed_exports_and_stats(base_url: str, expense_id: int) -> None:
     result = request(
         "GET",
         f"{base_url}/api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=%E5%90%83%E9%A5%AD",
@@ -635,6 +660,8 @@ def run_smoke(base_url: str) -> None:
     assert_equal(stats["by_category"][0]["category"], "餐饮", "stats category")
     print("OK monthly stats")
 
+
+def _check_category_rules(base_url: str) -> None:
     result = request("GET", f"{base_url}/api/rules/categories", headers=app_headers())
     assert_equal(result.status, 200, "rules list status")
     assert_true(any(rule["keyword"] == "OpenAI" for rule in result.json()), "default rules seeded")
@@ -692,6 +719,8 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["status"], "ok", "rule delete response")
     print("OK category rule create patch delete")
 
+
+def _upload_second_duplicate_candidate(base_url: str) -> int:
     second_upload = upload(base_url, "ticket2.png", "image/png", PNG_BYTES)
     assert_equal(second_upload.status, 200, "second upload status")
     second_id = int(second_upload.json()["id"])
@@ -700,7 +729,10 @@ def run_smoke(base_url: str) -> None:
     duplicates = result.json()
     assert_true(any(item["id"] == second_id for item in duplicates), "duplicate should be suspected")
     print("OK duplicate detection")
+    return second_id
 
+
+def _patch_second_duplicate_for_auto_classification(base_url: str, second_id: int) -> None:
     second_snapshot = wait_for_expense_thumbnail(
         base_url,
         second_id,
@@ -730,30 +762,50 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["category"], "AI订阅", "auto classified category")
     print("OK auto classification")
 
+
+def _mark_expense_not_duplicate(
+    base_url: str,
+    expense_id: int,
+    row_version: str,
+    status_label: str,
+) -> dict:
+    body = json.dumps(
+        {"expected_row_version": row_version},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{expense_id}/mark-not-duplicate",
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
+        body=body,
+    )
+    assert_equal(result.status, 200, status_label)
+    payload = result.json()
+    assert_equal(payload["duplicate_status"], "none", "duplicate cleared")
+    return payload
+
+
+def _mark_second_not_duplicate(base_url: str, second_id: int) -> None:
     second_mnd_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{second_id}",
         headers=app_headers(),
     )
     assert_equal(second_mnd_snapshot.status, 200, "mark-not-duplicate snapshot status")
-    second_mnd_body = json.dumps(
-        {"expected_row_version": second_mnd_snapshot.json()["row_version"]},
-        ensure_ascii=False,
-    ).encode("utf-8")
-    result = request(
-        "POST",
-        f"{base_url}/api/expenses/{second_id}/mark-not-duplicate",
-        headers={
-            **app_headers(),
-            "Content-Type": "application/json",
-            "Idempotency-Key": str(uuid.uuid4()),
-        },
-        body=second_mnd_body,
+    _mark_expense_not_duplicate(
+        base_url,
+        second_id,
+        second_mnd_snapshot.json()["row_version"],
+        "mark not duplicate status",
     )
-    assert_equal(result.status, 200, "mark not duplicate status")
-    assert_equal(result.json()["duplicate_status"], "none", "duplicate cleared")
     print("OK mark not duplicate")
 
+
+def _upload_similar_candidate(base_url: str) -> int:
     similar_upload = upload(base_url, "ticket4.png", "image/png", PNG_BYTES)
     assert_equal(similar_upload.status, 200, "similar upload status")
     similar_id = int(similar_upload.json()["id"])
@@ -762,21 +814,16 @@ def run_smoke(base_url: str) -> None:
         similar_id,
         "similar mark-not-duplicate",
     )
-    similar_mnd_body = json.dumps(
-        {"expected_row_version": similar_mnd_snapshot["row_version"]},
-        ensure_ascii=False,
-    ).encode("utf-8")
-    result = request(
-        "POST",
-        f"{base_url}/api/expenses/{similar_id}/mark-not-duplicate",
-        headers={
-            **app_headers(),
-            "Content-Type": "application/json",
-            "Idempotency-Key": str(uuid.uuid4()),
-        },
-        body=similar_mnd_body,
+    _mark_expense_not_duplicate(
+        base_url,
+        similar_id,
+        similar_mnd_snapshot["row_version"],
+        "similar clear hash duplicate",
     )
-    assert_equal(result.status, 200, "similar clear hash duplicate")
+    return similar_id
+
+
+def _patch_similar_duplicate(base_url: str, similar_id: int) -> None:
     similar_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{similar_id}",
@@ -806,6 +853,8 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["duplicate_status"], "suspected", "similar duplicate suspected")
     print("OK similar duplicate detection")
 
+
+def _reject_similar_duplicate(base_url: str, similar_id: int) -> None:
     reject_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{similar_id}",
@@ -830,6 +879,8 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["status"], "rejected", "rejected status")
     print("OK reject expense")
 
+
+def _confirm_second_expense(base_url: str, second_id: int) -> None:
     second_confirm_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{second_id}",
@@ -853,6 +904,32 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.status, 200, "second confirm status")
     print("OK second confirm")
 
+
+def _check_duplicate_and_state_transitions(base_url: str) -> None:
+    second_id = _upload_second_duplicate_candidate(base_url)
+    _patch_second_duplicate_for_auto_classification(base_url, second_id)
+    _mark_second_not_duplicate(base_url, second_id)
+    similar_id = _upload_similar_candidate(base_url)
+    _patch_similar_duplicate(base_url, similar_id)
+    _reject_similar_duplicate(base_url, similar_id)
+    _confirm_second_expense(base_url, second_id)
+
+
+def run_smoke(base_url: str) -> None:
+    _check_health(base_url)
+    bootstrap = _bootstrap_owner(base_url)
+    _pair_android(base_url, bootstrap)
+    _check_auth_and_legacy_tokens(base_url)
+    _check_maintenance_and_upload_guards(base_url)
+    expense_id = _upload_ticket_and_assert_pending(base_url)
+    _create_manual_expense_and_check_settings(base_url)
+    _check_protected_media(base_url, expense_id)
+    _patch_expense_and_check_ocr_retry(base_url, expense_id)
+    _recognize_text_from_upload(base_url)
+    _confirm_expense(base_url, expense_id)
+    _check_confirmed_exports_and_stats(base_url, expense_id)
+    _check_category_rules(base_url)
+    _check_duplicate_and_state_transitions(base_url)
 
 
 def main() -> int:

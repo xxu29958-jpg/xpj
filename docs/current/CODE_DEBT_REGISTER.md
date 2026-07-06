@@ -7,14 +7,37 @@ feature slice without raising risk.
 ## CODE-2026-07-01
 
 - Surface: `backend/scripts/codebase_audit_gate.py` baseline provenance comments.
-- Status: registered follow-up; the current tail baseline comment has been kept
-  short so the file does not accrue more of the same debt.
+- Status: partially retired on 2026-07-06; module/policy prose was compressed
+  and the file dropped below the 500-line audit threshold. Historical baseline
+  provenance comments remain tracked for a future deeper cleanup.
 - Debt: older baseline comments are extremely long and include mojibake in parts,
   making review, patch anchoring, and audit maintenance harder than necessary.
-- Desired cleanup: move historical provenance into a compact changelog table or
-  ADR-backed notes, keep the executable gate file focused on active baselines and
-  short current deltas, and preserve the strict counter values without changing
-  audit semantics.
+- Desired cleanup: move the remaining historical provenance into a compact
+  changelog table or ADR-backed notes, keep the executable gate file focused on
+  active baselines and short current deltas, and preserve strict counter values
+  without changing audit semantics.
+
+- Surface: `backend/scripts/smoke_test.py` smoke orchestration.
+- Status: partially retired on 2026-07-06; `run_smoke()` was reduced from a
+  609-line scenario body to a short ordered orchestrator, and the resulting
+  `long_functions` audit reduction was banked.
+- Debt: the smoke script still has a large file footprint because it carries the
+  full end-to-end receipt lifecycle in one executable.
+- Desired cleanup: keep future smoke scenarios in focused phase helpers or
+  dedicated smoke modules while preserving the existing script path and
+  human-readable `OK ...` diagnostics used by CI/runbooks.
+
+- Surface: `backend/scripts/_audit_codebase.py` audit scanner internals.
+- Status: partially retired on 2026-07-06; file-read/parse fallbacks now catch
+  narrow filesystem/encoding/syntax failures instead of `Exception`, and the
+  module-state plus cached-singleton scanners were split into focused AST
+  helpers. The gate banked the resulting `broad_exception` and
+  `deep_nesting_functions` reductions.
+- Debt: the scanner is still a large single script, and several remaining audit
+  functions are nested enough to stay on the depth watchlist.
+- Desired cleanup: continue moving repeated AST/text scan mechanics into small
+  helpers while keeping `scripts/_audit_codebase.py` as the release-audit lane
+  entrypoint and preserving its report headings.
 
 - Surface: Android Compose root screens, especially `StatsScreen`.
 - Status: active cleanup in the Android IA/UIUX slice.
