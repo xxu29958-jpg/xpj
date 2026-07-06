@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from app.version import BACKEND_VERSION
-from app.version import _resolve_static_asset_version
+from app.version import BACKEND_VERSION, _resolve_static_asset_version
 
 
 def test_static_asset_version_is_derived_from_asset_content(tmp_path, monkeypatch) -> None:
