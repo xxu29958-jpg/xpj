@@ -57,7 +57,7 @@ internal fun LedgerContent(
             }
         }
         state.message?.let { message ->
-            item { LedgerInlineStatusMessage(message = message) }
+            item { LedgerInlineStatusMessage(message = message, tone = state.messageTone) }
         }
         if (state.items.isEmpty()) {
             item {

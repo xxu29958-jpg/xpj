@@ -26,7 +26,6 @@ import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppSheetAction
-import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatMinorAmount
 import com.ticketbox.ui.components.formatMinorAmountInput
@@ -94,9 +93,8 @@ internal fun MissingAmountSheetContent(
             },
         )
 
-        ReviewSheetStatusMessage(chrome = chrome)
-
-        AppSheetActionRow(
+        ReviewSheetActionFeedback(
+            chrome = chrome,
             primary = AppSheetAction(
                 text = if (saving) {
                     stringResource(R.string.pending_missing_amount_processing)

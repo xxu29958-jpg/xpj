@@ -17,7 +17,6 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSheetAction
-import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -56,9 +55,8 @@ internal fun QuickCategorySheetContent(
             onCustomChange = { custom = it.take(20) },
         )
 
-        ReviewSheetStatusMessage(chrome = chrome)
-
-        AppSheetActionRow(
+        ReviewSheetActionFeedback(
+            chrome = chrome,
             primary = AppSheetAction(
                 text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.quick_category_save_button),
                 enabled = !saving && (custom.trim().isNotEmpty() || selected.isNotBlank()),

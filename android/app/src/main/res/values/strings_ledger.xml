@@ -103,6 +103,7 @@
     <string name="ledger_msg_export_cancelled">已取消导出</string>
     <string name="ledger_msg_export_succeeded">账本已导出</string>
     <string name="ledger_msg_manual_saved">已记入账本</string>
+    <string name="ledger_msg_manual_saved_offline">已离线记入，联网后同步</string>
     <string name="ledger_msg_manual_save_failed">没有保存成功，请稍后再试。</string>
     <string name="ledger_msg_batch_no_selection">请先选择要修改的账单。</string>
     <string name="ledger_msg_batch_failed">批量修改没有成功，请稍后再试。</string>

@@ -15,7 +15,7 @@ import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppSheetAction
-import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetActionFeedback
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -62,7 +62,7 @@ internal fun ExpenseEditSheetActions(
     state: ExpenseEditSheetActionState,
     handlers: ExpenseEditSheetActionHandlers,
 ) {
-    AppSheetActionRow(
+    AppSheetActionFeedback(
         primary = AppSheetAction(
             text = if (state.saving) state.savingText else state.primaryText,
             enabled = state.primaryEnabled && !state.saving,

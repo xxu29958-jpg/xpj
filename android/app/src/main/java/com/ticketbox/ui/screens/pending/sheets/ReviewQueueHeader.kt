@@ -8,7 +8,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionFeedback
+import com.ticketbox.ui.components.AppSheetActionFeedbackState
 
 /**
  * 连续审阅快补 sheet 的共享「外壳」：保存中标记 + 「还剩 N 条」计数 + 状态文案 +
@@ -24,6 +28,7 @@ internal data class ReviewSheetChrome(
     val saving: Boolean,
     val remaining: Int,
     val statusMessage: String?,
+    val statusTone: MessageTone = MessageTone.Danger,
     val onSkip: () -> Unit,
 )
 
@@ -59,24 +64,20 @@ internal fun ReviewQueueHeader(
     )
 }
 
-/**
- * 快补 sheet 内的异步状态行（镜像批 9 编辑动作栏的消息锚定）：保存失败时把反馈钉在
- * sheet 内、按钮上沿，用户不离开当前票就能看到「为什么没存上」。
- *
- * 走中性 secondary 色（不染红）：与编辑动作栏的 statusMessage 同色规约。成功保存会
- * 推进 / 关闭并清掉文案，所以这里实际只在失败留守时出现。
- */
 @Composable
-internal fun ReviewSheetStatusMessage(
+internal fun ReviewSheetActionFeedback(
     chrome: ReviewSheetChrome,
+    primary: AppSheetAction,
+    secondary: AppSheetAction? = null,
     modifier: Modifier = Modifier,
 ) {
-    val message = chrome.statusMessage
-    if (message.isNullOrBlank()) return
-    Text(
-        text = message,
-        color = MaterialTheme.colorScheme.secondary,
-        style = MaterialTheme.typography.bodySmall,
+    AppSheetActionFeedback(
         modifier = modifier,
+        primary = primary,
+        secondary = secondary,
+        state = AppSheetActionFeedbackState(
+            statusMessage = chrome.statusMessage,
+            statusTone = chrome.statusTone,
+        ),
     )
 }

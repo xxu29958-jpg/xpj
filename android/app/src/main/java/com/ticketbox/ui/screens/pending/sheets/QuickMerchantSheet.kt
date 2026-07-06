@@ -18,7 +18,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppSheetAction
-import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -68,9 +67,8 @@ internal fun QuickMerchantSheetContent(
             ),
         )
 
-        ReviewSheetStatusMessage(chrome = chrome)
-
-        AppSheetActionRow(
+        ReviewSheetActionFeedback(
+            chrome = chrome,
             primary = AppSheetAction(
                 text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_quick_merchant_save_button),
                 enabled = !saving && cleaned.isNotEmpty(),

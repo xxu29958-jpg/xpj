@@ -31,12 +31,14 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSheetAction
-import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetActionFeedback
+import com.ticketbox.ui.components.AppSheetActionFeedbackState
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
@@ -288,12 +290,17 @@ private fun ManualExpenseTimeSection(
 }
 
 @Composable
-private fun ManualExpenseActionRow(
+private fun ManualExpenseActionSlot(
+    feedbackMessage: String?,
     saving: Boolean,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
 ) {
-    AppSheetActionRow(
+    AppSheetActionFeedback(
+        state = AppSheetActionFeedbackState(
+            statusMessage = feedbackMessage,
+            statusTone = MessageTone.Danger,
+        ),
         primary = AppSheetAction(
             text = if (saving) {
                 stringResource(R.string.ledger_manual_saving_button)
@@ -309,23 +316,6 @@ private fun ManualExpenseActionRow(
             enabled = !saving,
             onClick = onDismiss,
         ),
-    )
-}
-
-@Composable
-private fun ManualExpenseActionSlot(
-    feedbackMessage: String?,
-    saving: Boolean,
-    onDismiss: () -> Unit,
-    onSubmit: () -> Unit,
-) {
-    feedbackMessage?.let {
-        Text(it, color = MaterialTheme.colorScheme.secondary)
-    }
-    ManualExpenseActionRow(
-        saving = saving,
-        onDismiss = onDismiss,
-        onSubmit = onSubmit,
     )
 }
 

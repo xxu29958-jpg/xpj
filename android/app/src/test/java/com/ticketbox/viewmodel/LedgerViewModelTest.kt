@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
@@ -280,9 +281,28 @@ class LedgerViewModelTest {
         assertTrue(state.manualCreateDone)
         assertEquals(null, state.manualCreateError)
         assertEquals(UiText.res(R.string.ledger_msg_manual_saved), state.message)
+        assertEquals(MessageTone.Success, state.messageTone)
 
         vm.manualCreateSettled()
         assertTrue(!vm.uiState.value.manualCreateDone)
+    }
+
+    @Test
+    fun manualCreateOfflineSuccessShowsQueuedTruth() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            manualCreate = ManualCreateBehavior(pendingSync = true),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        vm.createManualExpense(manualDraft())
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.manualCreateDone)
+        assertEquals(UiText.res(R.string.ledger_msg_manual_saved_offline), state.message)
+        assertEquals(MessageTone.Info, state.messageTone)
     }
 
     @Test
@@ -291,7 +311,7 @@ class LedgerViewModelTest {
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
             // No exception message → toUiText falls through to the
             // screen-specific fallback resource asserted below.
-            manualCreateFailure = RuntimeException(),
+            manualCreate = ManualCreateBehavior(failure = RuntimeException()),
         )
         val vm = LedgerViewModel(fake)
         advanceUntilIdle()
@@ -619,6 +639,11 @@ class LedgerViewModelTest {
 // passing as the wall-clock moves past that month.
 private const val FIXTURE_MONTH = "2026-05"
 
+private data class ManualCreateBehavior(
+    val failure: Throwable? = null,
+    val pendingSync: Boolean = false,
+)
+
 private class FakeLedgerActions(
     expenses: List<Expense>,
     private val canModify: Boolean = true,
@@ -626,7 +651,7 @@ private class FakeLedgerActions(
     private val batchFailure: Throwable? = null,
     /** When set, applyConfirmedBatch stalls until completed — used to interleave a re-tap. */
     private val batchGate: CompletableDeferred<Unit>? = null,
-    private val manualCreateFailure: Throwable? = null,
+    private val manualCreate: ManualCreateBehavior = ManualCreateBehavior(),
 ) : LedgerActions {
     private var confirmed = expenses
 
@@ -677,13 +702,17 @@ private class FakeLedgerActions(
     ): Result<CsvExport> = Result.success(CsvExport("ledger.csv", ByteArray(0)))
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> {
-        manualCreateFailure?.let { return Result.failure(it) }
+        manualCreate.failure?.let { return Result.failure(it) }
         val created = expense(
-            id = (confirmed.maxOfOrNull { it.id } ?: 0L) + 1L,
+            id = if (manualCreate.pendingSync) {
+                -((confirmed.maxOfOrNull { it.id } ?: 0L) + 1L)
+            } else {
+                (confirmed.maxOfOrNull { it.id } ?: 0L) + 1L
+            },
             amountCents = draft.amountCents ?: 0L,
             category = draft.category ?: "其他",
             merchant = draft.merchant ?: "手动",
-        )
+        ).copy(pendingSync = manualCreate.pendingSync)
         confirmed = confirmed + created
         return Result.success(created)
     }

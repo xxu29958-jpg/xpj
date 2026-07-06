@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.expenseLedgerMonth
@@ -97,6 +98,7 @@ data class LedgerUiState(
     // `applyingBatch` disable flag was dead and a typed tag string was lost on close.
     val batchDone: Boolean = false,
     val message: UiText? = null,
+    val messageTone: MessageTone = MessageTone.Neutral,
     // Manual-create sheet outcome channel: the sheet stays open on failure
     // (so the typed form survives), shows [manualCreateError] inline, and only
     // closes once [manualCreateDone] flips — the screen acks both via
@@ -293,6 +295,7 @@ class LedgerViewModel(
                         syncing = true,
                         syncedInCurrentSession = false,
                         message = null,
+                        messageTone = MessageTone.Neutral,
                     )
                 }
                 repository.syncConfirmed(
@@ -307,6 +310,7 @@ class LedgerViewModel(
                                 syncedInCurrentSession = true,
                                 lastSyncAt = repository.lastConfirmedSyncAt(),
                                 message = UiText.res(R.string.ledger_msg_sync_done),
+                                messageTone = MessageTone.Success,
                             )
                         }
                     }
@@ -316,6 +320,7 @@ class LedgerViewModel(
                                 syncing = false,
                                 syncedInCurrentSession = false,
                                 message = error.toUiText(R.string.ledger_msg_sync_failed),
+                                messageTone = MessageTone.Danger,
                             )
                         }
                     }
@@ -343,11 +348,14 @@ class LedgerViewModel(
             val filters = _uiState.value
             if (filters.items.isEmpty()) {
                 _uiState.update {
-                    it.copy(message = UiText.res(R.string.ledger_msg_export_empty))
+                    it.copy(
+                        message = UiText.res(R.string.ledger_msg_export_empty),
+                        messageTone = MessageTone.Info,
+                    )
                 }
                 return@launch
             }
-            _uiState.update { it.copy(exporting = true, message = null) }
+            _uiState.update { it.copy(exporting = true, message = null, messageTone = MessageTone.Neutral) }
             repository.exportConfirmedCsv(
                 month = filters.monthFilter,
                 category = filters.categoryFilter,
@@ -358,27 +366,53 @@ class LedgerViewModel(
                         it.copy(
                             exportFile = exportFile,
                             exporting = false,
-                            message = UiText.res(R.string.ledger_msg_export_pick_location)
+                            message = UiText.res(R.string.ledger_msg_export_pick_location),
+                            messageTone = MessageTone.Info,
                         )
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(exporting = false, message = error.toUiText(R.string.ledger_msg_export_failed)) }
+                    _uiState.update {
+                        it.copy(
+                            exporting = false,
+                            message = error.toUiText(R.string.ledger_msg_export_failed),
+                            messageTone = MessageTone.Danger,
+                        )
+                    }
                 }
         }
     }
 
     fun createManualExpense(draft: ExpenseDraft) {
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(readOnly = true, creatingManual = false, message = readOnlyMessage()) }
+            _uiState.update {
+                it.copy(
+                    readOnly = true,
+                    creatingManual = false,
+                    message = readOnlyMessage(),
+                    messageTone = MessageTone.Danger,
+                )
+            }
             return
         }
         viewModelScope.launch {
             if (draft.amountCents == null && draft.originalAmountMinor == null) {
-                _uiState.update { it.copy(message = UiText.res(R.string.error_amount_required)) }
+                _uiState.update {
+                    it.copy(
+                        message = UiText.res(R.string.error_amount_required),
+                        messageTone = MessageTone.Danger,
+                    )
+                }
                 return@launch
             }
-            _uiState.update { it.copy(creatingManual = true, message = null, manualCreateError = null) }
+            _uiState.update {
+                it.copy(
+                    creatingManual = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    manualCreateError = null,
+                )
+            }
             repository.createManualExpense(draft)
                 .onSuccess { expense ->
                     loadCategories()
@@ -391,7 +425,12 @@ class LedgerViewModel(
                             monthFilter = expenseLedgerMonth(expense) ?: state.monthFilter,
                             categoryFilter = "",
                             tagFilter = "",
-                            message = UiText.res(R.string.ledger_msg_manual_saved),
+                            message = if (expense.pendingSync) {
+                                UiText.res(R.string.ledger_msg_manual_saved_offline)
+                            } else {
+                                UiText.res(R.string.ledger_msg_manual_saved)
+                            },
+                            messageTone = if (expense.pendingSync) MessageTone.Info else MessageTone.Success,
                         )
                         next.copy(items = filterItems(allConfirmed, next))
                     }
@@ -459,7 +498,14 @@ class LedgerViewModel(
         // a frame; this guard closes the window deterministically.
         if (_uiState.value.applyingBatch) return
         if (!repository.canModifyLedger()) {
-            _uiState.update { it.copy(readOnly = true, applyingBatch = false, message = readOnlyMessage()) }
+            _uiState.update {
+                it.copy(
+                    readOnly = true,
+                    applyingBatch = false,
+                    message = readOnlyMessage(),
+                    messageTone = MessageTone.Danger,
+                )
+            }
             return
         }
         val selected = _uiState.value.selectedIds
@@ -471,10 +517,16 @@ class LedgerViewModel(
             // message becomes visible (the still-open sheet would otherwise cover it). Mirrors
             // the resolve arms — without this the close-on-batchDone migration would strand the
             // sheet here (regression vs the old eager close, which dismissed before applyBatch).
-            _uiState.update { it.copy(batchDone = true, message = UiText.res(R.string.ledger_msg_batch_no_selection)) }
+            _uiState.update {
+                it.copy(
+                    batchDone = true,
+                    message = UiText.res(R.string.ledger_msg_batch_no_selection),
+                    messageTone = MessageTone.Info,
+                )
+            }
             return
         }
-        _uiState.update { it.copy(applyingBatch = true, message = null) }
+        _uiState.update { it.copy(applyingBatch = true, message = null, messageTone = MessageTone.Neutral) }
         viewModelScope.launch {
             repository.applyConfirmedBatch(targets, category = category, tags = tags)
                 .onSuccess { result ->
@@ -490,6 +542,7 @@ class LedgerViewModel(
                             selectedIds = emptySet(),
                             selectedHaveTags = false,
                             message = batchResultMessage(result),
+                            messageTone = batchResultTone(result),
                         )
                     }
                 }
@@ -497,7 +550,12 @@ class LedgerViewModel(
                     // Close the sheet too (batchDone) so the page-level error is
                     // visible; selection is kept (not cleared) so the user can retry.
                     _uiState.update {
-                        it.copy(applyingBatch = false, batchDone = true, message = error.toUiText(R.string.ledger_msg_batch_failed))
+                        it.copy(
+                            applyingBatch = false,
+                            batchDone = true,
+                            message = error.toUiText(R.string.ledger_msg_batch_failed),
+                            messageTone = MessageTone.Danger,
+                        )
                     }
                 }
         }
@@ -537,6 +595,13 @@ class LedgerViewModel(
         // The caller (LedgerRoute) resolves the post-save copy and passes the
         // already-resolved text here, so carry it through as a UiText.Raw
         // (byte-identical output). ADR-0044 wave 2.
-        _uiState.update { it.copy(message = UiText.raw(message)) }
+        _uiState.update { it.copy(message = UiText.raw(message), messageTone = MessageTone.Success) }
     }
+}
+
+private fun batchResultTone(result: BatchApplyResult): MessageTone = when {
+    result.failed > 0 -> MessageTone.Danger
+    result.queued > 0 -> MessageTone.Info
+    result.synced > 0 -> MessageTone.Success
+    else -> MessageTone.Info
 }
