@@ -191,7 +191,6 @@
     <ID>LongParameterList:TicketboxApp.kt:@Composable private fun MainShell</ID>
     <ID>LongParameterList:TicketboxApp.kt:@Composable private fun TicketboxContent</ID>
     <ID>LongParameterList:TicketboxSettingsStore.kt:TicketboxSettingsStore$fun saveIdentity</ID>
-    <ID>TooManyFunctions:ApiService.kt:ApiService</ID>
     <ID>TooManyFunctions:BudgetViewModel.kt:BudgetViewModel : ViewModel</ID>
     <ID>TooManyFunctions:CategoryRulesViewModel.kt:CategoryRulesViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao</ID>
