@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -361,25 +362,31 @@ internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
 @Composable
-private fun mutationLabel(type: PendingMutationType): String = when (type) {
-    PendingMutationType.PatchExpense -> stringResource(R.string.sync_status_mutation_patch_expense)
-    PendingMutationType.CreateExpense -> stringResource(R.string.sync_status_mutation_create_expense)
-    PendingMutationType.ConfirmExpense -> stringResource(R.string.sync_status_mutation_confirm_expense)
-    PendingMutationType.RejectExpense -> stringResource(R.string.sync_status_mutation_reject_expense)
-    PendingMutationType.MarkNotDuplicate -> stringResource(R.string.sync_status_mutation_mark_not_duplicate)
-    PendingMutationType.RetryOcr -> stringResource(R.string.sync_status_mutation_retry_ocr)
-    PendingMutationType.RecognizeText -> stringResource(R.string.sync_status_mutation_recognize_text)
-    PendingMutationType.ReplaceItems -> stringResource(R.string.sync_status_mutation_replace_items)
-    PendingMutationType.ReplaceSplits -> stringResource(R.string.sync_status_mutation_replace_splits)
-    PendingMutationType.AcknowledgeItemsMismatch -> stringResource(R.string.sync_status_mutation_acknowledge_items_mismatch)
-    PendingMutationType.UpdateCategoryRule -> stringResource(R.string.sync_status_mutation_update_category_rule)
-    PendingMutationType.DeleteCategoryRule -> stringResource(R.string.sync_status_mutation_delete_category_rule)
-    PendingMutationType.UpdateMerchantAlias -> stringResource(R.string.sync_status_mutation_update_merchant_alias)
-    PendingMutationType.DeleteMerchantAlias -> stringResource(R.string.sync_status_mutation_delete_merchant_alias)
-    PendingMutationType.UpdateGoal -> stringResource(R.string.sync_status_mutation_update_goal)
-    PendingMutationType.UpdateIncomePlan -> stringResource(R.string.sync_status_mutation_update_income_plan)
-    PendingMutationType.Unknown -> stringResource(R.string.sync_status_mutation_unknown)
-}
+private fun mutationLabel(type: PendingMutationType): String = stringResource(syncStatusMutationLabelRes(type))
+
+@StringRes
+internal fun syncStatusMutationLabelRes(type: PendingMutationType): Int =
+    syncStatusMutationLabelResources.getValue(type)
+
+internal val syncStatusMutationLabelResources = mapOf(
+    PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
+    PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
+    PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
+    PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,
+    PendingMutationType.MarkNotDuplicate to R.string.sync_status_mutation_mark_not_duplicate,
+    PendingMutationType.RetryOcr to R.string.sync_status_mutation_retry_ocr,
+    PendingMutationType.RecognizeText to R.string.sync_status_mutation_recognize_text,
+    PendingMutationType.ReplaceItems to R.string.sync_status_mutation_replace_items,
+    PendingMutationType.ReplaceSplits to R.string.sync_status_mutation_replace_splits,
+    PendingMutationType.AcknowledgeItemsMismatch to R.string.sync_status_mutation_acknowledge_items_mismatch,
+    PendingMutationType.UpdateCategoryRule to R.string.sync_status_mutation_update_category_rule,
+    PendingMutationType.DeleteCategoryRule to R.string.sync_status_mutation_delete_category_rule,
+    PendingMutationType.UpdateMerchantAlias to R.string.sync_status_mutation_update_merchant_alias,
+    PendingMutationType.DeleteMerchantAlias to R.string.sync_status_mutation_delete_merchant_alias,
+    PendingMutationType.UpdateGoal to R.string.sync_status_mutation_update_goal,
+    PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,
+    PendingMutationType.Unknown to R.string.sync_status_mutation_unknown,
+)
 
 /** Translate known outbox error markers; never expose raw transport or engine errors to users. */
 @Composable

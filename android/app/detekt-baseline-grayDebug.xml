@@ -22,7 +22,6 @@
     <ID>CyclomaticComplexMethod:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
     <ID>CyclomaticComplexMethod:SettingsServerComponents.kt:@Composable internal fun AccountStatusCard</ID>
     <ID>CyclomaticComplexMethod:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
-    <ID>CyclomaticComplexMethod:SyncStatusScreen.kt:@Composable private fun mutationLabel: String</ID>
     <ID>LargeClass:ExpenseDao_Impl.kt:ExpenseDao_Impl : ExpenseDao</ID>
     <ID>LargeClass:PendingMutationDao_Impl.kt:PendingMutationDao_Impl : PendingMutationDao</ID>
     <ID>LongMethod:AppDatabase.kt:AppDatabase.Companion.&lt;no name provided&gt;$override fun migrate</ID>

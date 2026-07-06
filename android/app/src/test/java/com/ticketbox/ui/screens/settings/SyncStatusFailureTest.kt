@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
@@ -58,6 +59,18 @@ class SyncStatusFailureTest {
 
         assertEquals(0, overview.queuedCount)
         assertTrue(overview.isSettled)
+    }
+
+    @Test
+    fun `every pending mutation type has an explicit sync label`() {
+        assertEquals(
+            PendingMutationType.entries.toSet(),
+            syncStatusMutationLabelResources.keys,
+        )
+        assertEquals(
+            R.string.sync_status_mutation_unknown,
+            syncStatusMutationLabelRes(PendingMutationType.Unknown),
+        )
     }
 
     private fun row(id: Long) = OutboxRow(
