@@ -24,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -47,6 +49,7 @@ class CategoryRulesViewModelTest {
 
     @AfterTest
     fun tearDown() {
+        dispatcher.scheduler.advanceUntilIdle()
         Dispatchers.resetMain()
     }
 
@@ -80,6 +83,7 @@ class CategoryRulesViewModelTest {
 
         historyGate.complete(Unit)
         val state = vm.uiState.first { !it.ruleApplicationsLoading }
+        runCurrent()
         assertFalse(state.ruleApplicationsLoading)
         assertEquals(listOf("batch-1"), state.ruleApplications.map { it.publicId })
     }
@@ -94,7 +98,7 @@ class CategoryRulesViewModelTest {
             },
         )
 
-        val state = vm.awaitInitialLoads()
+        val state = awaitInitialLoads(vm)
 
         assertFalse(state.categoryRulesLoading)
         assertEquals(UiText.res(R.string.category_rules_load_failed), state.message)
@@ -113,10 +117,11 @@ class CategoryRulesViewModelTest {
                     )
             },
         )
-        vm.awaitInitialLoads()
+        awaitInitialLoads(vm)
 
         vm.createCategoryRule(keyword = "高德", category = "交通", priority = 8)
         val state = vm.uiState.first { it.message == UiText.res(R.string.category_rules_added) }
+        runCurrent()
 
         assertFalse(state.busy)
         assertEquals(MessageTone.Success, state.messageTone)
@@ -136,10 +141,11 @@ class CategoryRulesViewModelTest {
                 }
             },
         )
-        vm.awaitInitialLoads()
+        awaitInitialLoads(vm)
 
         vm.previewApplyConfirmedRules()
         val state = vm.uiState.first { !it.busy && it.message != null }
+        runCurrent()
 
         assertEquals(UiText.res(R.string.category_rules_apply_preview_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
@@ -154,10 +160,11 @@ class CategoryRulesViewModelTest {
                 }
             },
         )
-        val application = vm.awaitInitialLoads().ruleApplications.single()
+        val application = awaitInitialLoads(vm).ruleApplications.single()
 
         vm.rollbackRuleApplication(application)
         val state = vm.uiState.first { !it.busy && it.message != null }
+        runCurrent()
 
         assertEquals(UiText.res(R.string.category_rules_rollback_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
@@ -194,12 +201,15 @@ class CategoryRulesViewModelTest {
         )
     }
 
-    private suspend fun CategoryRulesViewModel.awaitInitialLoads(): CategoryRulesUiState =
-        uiState.first { state ->
+    private suspend fun TestScope.awaitInitialLoads(vm: CategoryRulesViewModel): CategoryRulesUiState {
+        val state = vm.uiState.first { state ->
             !state.categoryRulesLoading &&
                 !state.ruleApplicationsLoading &&
                 (state.ruleApplications.isNotEmpty() || state.message != null)
         }
+        runCurrent()
+        return state
+    }
 
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
