@@ -37,6 +37,7 @@ pending -> rejected
 pending -> suspected_duplicate -> kept_not_duplicate
 pending -> ocr_retry -> draft_updated
 confirmed -> edited_confirmed
+confirmed -> rejected
 manual -> confirmed
 ```
 
@@ -52,6 +53,9 @@ pending
   ├─ 标记仍然保留 -> 清除当前重复检测类型
   ├─ 确认入账 -> confirmed
   └─ 删除 / 忽略 -> rejected
+confirmed
+  ├─ 编辑保存 -> confirmed 修正
+  └─ 删除 -> rejected（从账本 / 统计 / 预算进度移除）
 ```
 
 边界：
@@ -59,7 +63,7 @@ pending
 - `pending` 是截图上传后产生的待确认账单。
 - `editing` 只是用户编辑草稿，不是新状态。
 - `confirmed` 代表用户手动确认后的正式入账。
-- `rejected` 代表用户明确忽略待确认账单。
+- `rejected` 代表用户明确忽略待确认账单，或删除已入账账单；Undo 根据 `confirmed_at` 恢复为 `confirmed`，否则回到 `pending`。
 - `manual` 记一笔必须远端创建成功后才写 Room，并直接进入 `confirmed`。
 
 ## 3. 时间口径
@@ -192,7 +196,7 @@ Pairing Code 绑定是一次性动作。`POST /api/auth/pair` 成功后，Androi
 - 自动拒绝。
 - 自动入账。
 - 跨账本检测。
-- rejected 参与重复提醒。
+- 将 rejected 纳入重复提醒或作为相似参照。
 
 `mark-not-duplicate` 只清除当前检测类型，不影响其他检测类型。例如用户忽略了同图 hash 重复后，后续仍可根据金额、商家、时间触发相似重复提醒。
 

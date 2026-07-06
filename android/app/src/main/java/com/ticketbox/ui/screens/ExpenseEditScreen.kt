@@ -260,6 +260,7 @@ fun ExpenseEditScreen(
     }
     if (showRejectDialog) {
         ExpenseEditRejectDialog(
+            isConfirmedExpense = currentExpense.status == "confirmed",
             onConfirm = onReject,
             onDismiss = { showRejectDialog = false },
         )

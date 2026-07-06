@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.RestartAlt
@@ -40,8 +41,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -85,14 +88,10 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
-import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
-import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -162,7 +161,13 @@ internal fun CategoryRuleCard(
             .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        CategoryRuleHeader(rule = rule)
+        CategoryRuleHeader(
+            rule = rule,
+            readOnly = readOnly,
+            onToggleRule = onToggleRule,
+            onEditRule = onEditRule,
+            onDeleteRule = onDeleteRule,
+        )
         Text(
             text = stringResource(
                 R.string.category_rule_card_priority_status,
@@ -183,9 +188,42 @@ internal fun CategoryRuleCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun CategoryRuleHeader(
+    rule: CategoryRule,
+    readOnly: Boolean,
+    onToggleRule: (CategoryRule) -> Unit,
+    onEditRule: () -> Unit,
+    onDeleteRule: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            Text(
+                text = rule.keyword,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.category_rule_card_mapping, rule.category),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (!readOnly) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
-            CategoryRuleActions(
+            CategoryRuleActionMenu(
                 rule = rule,
                 onToggleRule = onToggleRule,
                 onEditRule = onEditRule,
@@ -196,31 +234,7 @@ internal fun CategoryRuleCard(
 }
 
 @Composable
-private fun CategoryRuleHeader(rule: CategoryRule) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = rule.keyword,
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = rule.category,
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun CategoryRuleActions(
+private fun CategoryRuleActionMenu(
     rule: CategoryRule,
     onToggleRule: (CategoryRule) -> Unit,
     onEditRule: () -> Unit,
@@ -233,68 +247,40 @@ private fun CategoryRuleActions(
     }
     val editLabel = stringResource(R.string.category_rule_card_action_edit)
     val deleteLabel = stringResource(R.string.category_rule_card_action_delete)
-
-    AppAdaptiveEditActionLayout(actionCount = 3, compact = false) { mode ->
-        when (mode) {
-            AppAdaptiveEditActionMode.Stacked -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-                ) {
-                    QuietOutlinedButton(
-                        text = toggleLabel,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onToggleRule(rule) },
-                    )
-                    QuietOutlinedButton(
-                        text = editLabel,
-                        modifier = Modifier.weight(1f),
-                        onClick = onEditRule,
-                    )
-                }
-                CategoryRuleDeleteButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    text = deleteLabel,
-                    onClick = onDeleteRule,
-                )
-            }
-            AppAdaptiveEditActionMode.Compact,
-            AppAdaptiveEditActionMode.Inline -> Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap, Alignment.End),
-            ) {
-                QuietOutlinedButton(
-                    text = toggleLabel,
-                    onClick = { onToggleRule(rule) },
-                )
-                QuietOutlinedButton(
-                    text = editLabel,
-                    onClick = onEditRule,
-                )
-                CategoryRuleDeleteButton(
-                    text = deleteLabel,
-                    onClick = onDeleteRule,
-                )
-            }
-        }
+    var expanded by remember(rule.id) { mutableStateOf(false) }
+    IconButton(onClick = { expanded = true }) {
+        Icon(
+            imageVector = Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.category_rule_card_actions_content_description),
+        )
     }
-}
-
-@Composable
-private fun CategoryRuleDeleteButton(
-    text: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    AppOutlinedButton(
-        modifier = modifier,
-        danger = true,
-        onClick = onClick,
-    ) {
-        Text(text = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(
+            text = { Text(toggleLabel) },
+            onClick = {
+                expanded = false
+                onToggleRule(rule)
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(editLabel) },
+            onClick = {
+                expanded = false
+                onEditRule()
+            },
+        )
+        DropdownMenuItem(
+            text = {
+                Text(
+                    text = deleteLabel,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            },
+            onClick = {
+                expanded = false
+                onDeleteRule()
+            },
+        )
     }
 }
 

@@ -60,13 +60,12 @@ internal data class ExpenseEditActionBarActions(
 )
 
 /**
- * 编辑页底部浮动操作栏。把原先散落在长表单尾部的「保存 / 确认入账 / 忽略」
+ * 编辑页底部浮动操作栏。把原先散落在长表单尾部的「保存 / 确认入账 / 删除」
  * 合并成永远一拇指可达的单条——最高频的「确认一张票」不再需要滚到底。
- * （动作动词批 15 拍板②统一为「忽略」：草稿不入账、可撤销，区别于真销毁的「删除」；
- *   resource key 沿用既有 `expense_edit_reject_button`，只改文案值。）
+ * resource key 沿用既有 `expense_edit_reject_button`，文案统一到待确认草稿删除语义。
  *
  * 层级：
- *  - 动作行：忽略（低强调 danger outlined，仅 allowReject）+ 保存（tonal outlined）
+ *  - 动作行：删除（低强调 danger outlined，仅 allowReject）+ 保存（tonal outlined）
  *    + 确认入账（filled primary，主操作，仅 allowConfirm）。返回放在页头，
  *    避免底部重复一个大按钮把二级页压得太重。
  *  - message 校验/状态提示锚在按钮上沿，"点确认→缺金额"永远在视野内。

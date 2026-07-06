@@ -145,6 +145,12 @@ private fun MainRouteContent(
     // Reports → 二级页（预算 / 周期）钻取：进出有方向感，返回时反向收起。
     DrillTransition(targetState = shellState.statsSecondaryPage, label = "stats-secondary") { page ->
         when (page) {
+            StatsSecondaryPage.SpendingGoal -> CreateSpendingGoalRoute(
+                screenFactory = screenFactory,
+                onBack = shellState::closeStatsSecondaryPage,
+                onCreated = { shellState.markDashboardCardsChanged(); shellState.closeStatsSecondaryPage() },
+            )
+
             StatsSecondaryPage.Budget -> BudgetRoute(
                 screenFactory = screenFactory,
                 onBack = shellState::closeStatsSecondaryPage,

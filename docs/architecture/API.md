@@ -1331,7 +1331,7 @@ Idempotency-Key: <uuid-v4>
 }
 ```
 
-只能拒绝 `pending`。`expected_row_version` 与 `Idempotency-Key` 规则同 `confirm`（`rejected` 也是终态，幂等返回 200）。
+可拒绝 `pending` 或 `confirmed`。已入账账单被拒绝后从账本、统计和预算进度读取口径中移除，但保留 `confirmed_at` 供审计和短窗撤销恢复；`expected_row_version` 与 `Idempotency-Key` 规则同 `confirm`（`rejected` 幂等返回 200，stale token 返回 `409 state_conflict`）。
 
 ### GET /api/expenses/{id}/image
 
@@ -1630,7 +1630,7 @@ ADR-0051 当前账本回收站。普通 API 只看当前 session token 对应的
 
 - 长期归档：月度预算配置、收入记录、固定支出、目标。
 - 限期恢复：自定义分类偏好、分类规则、商家别名、商家目录、标签 delete/merge undo group；普通撤销条仍是 5 分钟，显式回收站默认保留 30 天（`RECYCLE_BIN_RETENTION_DAYS`）。
-- 明确不纳入：已确认账单、债务还款事实、历史 `Expense.category` / `Expense.merchant` 字符串；商家目录只恢复 / 隐藏真实 `merchant_catalog` 行，不把历史商家字符串伪装成回收站 item。
+- 明确不纳入：已确认账单、债务还款事实、历史 `Expense.category` / `Expense.merchant` 字符串；商家目录只恢复 / 隐藏真实 `merchant_catalog` 行，不把历史商家字符串伪装成回收站 item。已入账账单删除走 `POST /api/expenses/{id}/reject` 与 5 分钟 `/undo` 短窗，不进入显式回收站列表。
 
 ### GET /api/recycle-bin
 

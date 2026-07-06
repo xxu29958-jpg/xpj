@@ -185,7 +185,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         // Pre-fork, `onIgnoreDuplicate` was routed through `reject()` —
         // not an intentional design, just a PendingRoute shortcut that
         // reused the same VM method. That shortcut was nevertheless
-        // user-visible: 忽略重复 inherited reject()'s row removal +
+        // user-visible: duplicate handling inherited reject()'s row removal +
         // sheet close + 撤销 banner + "已删除" message.
         //
         // Post-fork, `ignoreDuplicate()` splits off as its own VM
@@ -197,7 +197,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         //       * same backend call (rejectExpenseAllowingOffline)
         //   - INTENTIONALLY CHANGED (UX wording / affordance):
         //       * NO 撤销 banner (user wasn't trying to delete)
-        //       * message "已忽略重复" (not "已删除")
+        //       * message identifies the current duplicate-review draft
         val target = expense(id = 600L, duplicateStatus = "suspected")
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
@@ -215,8 +215,8 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         assertEquals(1, fake.rejectCalls, "PRESERVED: same backend call (rejectExpenseAllowingOffline)")
         assertFalse(state.actionInProgressIds.contains(600L), "PRESERVED: in-progress cleared")
         // — intentionally changed —
-        assertNull(state.undoableExpense, "CHANGED: no 撤销 banner (wasn't a delete from user intent)")
-        assertEquals(UiText.res(R.string.pending_msg_ignored_duplicate), state.message, "CHANGED: wording matches 忽略 intent, not 删除")
+        assertNull(state.undoableExpense, "CHANGED: no 撤销 banner for the duplicate-review shortcut")
+        assertEquals(UiText.res(R.string.pending_msg_ignored_duplicate), state.message, "CHANGED: wording identifies current draft deletion")
     }
 
     @Test

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -366,8 +366,8 @@ def reject_expense(
     """ADR-0038 PR-2b: reject with optimistic concurrency.
 
     Like ``confirm_expense``, idempotent on ``rejected`` (terminal) and
-    409 on stale ``pending`` rows. ADR-0042 ``commit=False``: the idempotent
-    route owns the single commit (folds in the key record).
+    409 on stale ``pending`` / ``confirmed`` rows. ADR-0042 ``commit=False``:
+    the idempotent route owns the single commit (folds in the key record).
     """
     now = now_utc()
     rowcount = claim_row_with_token(
@@ -377,7 +377,7 @@ def reject_expense(
         tenant_id=tenant_id,
         expected_row_version=expected_row_version,
         set_values={"status": "rejected", "rejected_at": now, "updated_at": now},
-        extra_where=(Expense.status == "pending",),
+        extra_where=(Expense.status.in_(("pending", "confirmed")),),
         synchronize_session=False,
     )
     if rowcount != 1:
@@ -385,7 +385,7 @@ def reject_expense(
         existing = get_expense(db, expense_id, tenant_id)
         if existing.status == "rejected":
             return existing
-        if existing.status == "pending":
+        if existing.status in {"pending", "confirmed"}:
             raise AppError("state_conflict", status_code=409)
         raise AppError("expense_not_found", status_code=404)
 
@@ -435,23 +435,14 @@ def undo_reject_expense(
     reject (the intentional one). The token-check rejects this because A's
     updated_at was bumped by the second reject.
 
-    Restore values: ``status='pending'`` (回到 reject 前最普通的可编辑状态)
-    + ``rejected_at = NULL`` (复用 reject lifecycle 的 nullable 语义) +
-    ``updated_at = now`` (让任何持有 pre-undo token 的 mutate 撞 409
-    state_conflict, 防 stale write)。
+    Restore values: confirmed rows return to ``confirmed``; all others return
+    to ``pending``. ``rejected_at`` is cleared, ``updated_at`` moves forward,
+    and audit action ``undo`` is appended.
 
-    Appends ``ledger_audit_logs action='undo'``, resource_type='expense',
-    resource_public_id = expense.public_id。和 merchant_alias undo /
-    category_rule undo 同 pattern。
-
-    **Child-resource /undo contract (ADR-0040)**: undo ONLY flips the
-    parent Expense row's status / rejected_at / updated_at / row_version. Splits,
-    items, suggestion decisions, bill_split invitations and item-level
-    acknowledge-mismatch (items_sum_status) are NOT touched/rolled back;
-    child resources keep whatever state they had during reject. This is
-    explicit deterministic behavior — restoring the child subtree is NEW
-    behavior needing its own ADR. ADR-0040 formalizes the invariant
-    (children anchor OCC / idempotency on the parent row_version).
+    **Child-resource /undo contract (ADR-0040)**: undo ONLY flips the parent
+    Expense row. Splits, items, suggestion decisions, bill_split invitations
+    and item-level acknowledge-mismatch are not rolled back; restoring the
+    child subtree would be new ADR-covered behavior.
 
     **ABA (resolved, ADR-0041)**: the CAS token here is the monotonic
     ``row_version`` int (``WHERE row_version = expected``), which strictly
@@ -470,7 +461,10 @@ def undo_reject_expense(
         .where(Expense.rejected_at >= cutoff)
         .where(Expense.row_version == expected_row_version)
         .values(
-            status="pending",
+            status=case(
+                (Expense.confirmed_at.is_not(None), "confirmed"),
+                else_="pending",
+            ),
             rejected_at=None,
             updated_at=now,
             row_version=Expense.row_version + 1,

@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens.pending
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +42,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
+import com.ticketbox.ui.components.appTapWithoutDrag
 import com.ticketbox.ui.components.displayCompactTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
@@ -79,14 +79,14 @@ internal data class PendingExpenseReviewActions(
 internal fun PendingExpenseReviewRow(
     item: PendingExpenseReviewItem,
     actions: PendingExpenseReviewActions,
+    modifier: Modifier = Modifier,
 ) {
     val metrics = AppDensity.rowMetrics(
         if (item.compact) AppListDensity.Compact else AppListDensity.Standard,
     )
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !item.busy, onClick = actions.onEdit),
+        modifier = modifier
+            .fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(metrics.rowPadding),
@@ -97,7 +97,9 @@ internal fun PendingExpenseReviewRow(
                 verticalAlignment = Alignment.CenterVertically,
                 content = {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .appTapWithoutDrag(enabled = !item.busy, onTap = actions.onEdit),
                         horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

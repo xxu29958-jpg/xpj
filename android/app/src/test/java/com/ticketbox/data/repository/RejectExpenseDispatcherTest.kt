@@ -35,19 +35,27 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
         idempotencyKey = idempotencyKey,
     )
 
-    private fun dispatcherFor(stub: ApiServiceStub) = RejectExpenseDispatcher(
+    private fun dispatcherFor(
+        stub: ApiServiceStub,
+        deleteConfirmedCache: suspend (String, List<Long>) -> Unit = { _, _ -> },
+    ) = RejectExpenseDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
+        deleteConfirmedCache = deleteConfirmedCache,
     )
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
-        val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
+        val deleted = mutableListOf<Pair<String, List<Long>>>()
+        val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto().copy(status = "rejected")))
 
-        val result = dispatcherFor(stub).dispatch(rejectRow(idempotencyKey = "key-abc"))
+        val result = dispatcherFor(stub) { ledgerId, serverIds ->
+            deleted += ledgerId to serverIds
+        }.dispatch(rejectRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastRejectIdempotencyKey, "dispatcher must send the row's key")
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(listOf("owner" to listOf(42L)), deleted)
     }
 
     @Test

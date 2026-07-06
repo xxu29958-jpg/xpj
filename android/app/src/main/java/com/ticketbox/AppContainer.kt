@@ -323,6 +323,7 @@ class AppContainer(context: Context) {
             RejectExpenseDispatcher(
                 apiProvider = { apiServiceProvider.current() },
                 payloadAdapter = expenseStateTokenAdapter,
+                deleteConfirmedCache = database.expenseDao()::deleteConfirmedByServerIds,
             ),
             // PR-2g.8: POST /api/expenses/{id}/mark-not-duplicate via outbox.
             MarkNotDuplicateDispatcher(

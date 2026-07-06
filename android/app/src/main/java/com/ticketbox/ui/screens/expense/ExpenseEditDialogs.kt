@@ -115,13 +115,24 @@ internal fun ExpenseEditTimePicker(
 
 @Composable
 internal fun ExpenseEditRejectDialog(
+    isConfirmedExpense: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val titleRes = if (isConfirmedExpense) {
+        R.string.expense_edit_reject_dialog_title_confirmed
+    } else {
+        R.string.expense_edit_reject_dialog_title
+    }
+    val bodyRes = if (isConfirmedExpense) {
+        R.string.expense_edit_reject_dialog_body_confirmed
+    } else {
+        R.string.expense_edit_reject_dialog_body
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.expense_edit_reject_dialog_title)) },
-        text = { Text(stringResource(R.string.expense_edit_reject_dialog_body)) },
+        title = { Text(stringResource(titleRes)) },
+        text = { Text(stringResource(bodyRes)) },
         confirmButton = {
             TextButton(
                 onClick = {

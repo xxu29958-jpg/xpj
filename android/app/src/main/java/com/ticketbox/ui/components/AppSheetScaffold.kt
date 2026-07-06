@@ -25,11 +25,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+
+private const val LongPairedActionLabelLength = 8
+private const val LongPairedActionTotalLength = 13
 
 data class AppAction(
     val text: String,
@@ -92,7 +96,7 @@ fun AppActionRow(
             SheetPrimaryAction(action = primary, modifier = Modifier.fillMaxWidth())
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                if (maxWidth < AppAdaptiveBreakpoints.pairedActionInlineMinWidth) {
+                if (shouldStackSheetActions(maxWidth = maxWidth, primary = primary, secondary = secondary)) {
                     StackedSheetActions(primary = primary, secondary = secondary)
                 } else {
                     InlineSheetActions(primary = primary, secondary = secondary)
@@ -109,6 +113,18 @@ fun AppSheetActionRow(
     secondary: AppSheetAction? = null,
 ) {
     AppActionRow(primary = primary, modifier = modifier, secondary = secondary)
+}
+
+private fun shouldStackSheetActions(
+    maxWidth: Dp,
+    primary: AppAction,
+    secondary: AppAction,
+): Boolean {
+    val hasLongCopy = primary.text.length >= LongPairedActionLabelLength ||
+        secondary.text.length >= LongPairedActionLabelLength ||
+        primary.text.length + secondary.text.length >= LongPairedActionTotalLength
+    return maxWidth < AppAdaptiveBreakpoints.pairedActionInlineMinWidth ||
+        hasLongCopy && maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth
 }
 
 @Composable

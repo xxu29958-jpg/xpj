@@ -2,8 +2,8 @@
 <!-- 待确认页用户可见中文。 -->
 <resources>
     <!-- PendingScreen：列表行左右滑动动作标签 -->
-    <string name="pending_swipe_confirm_label">确认</string>
-    <string name="pending_swipe_ignore_label">忽略</string>
+    <string name="pending_swipe_confirm_label">确认入账</string>
+    <string name="pending_swipe_ignore_label">删除</string>
 
     <!-- 待确认清零庆祝 -->
     <string name="pending_celebration_title">全部处理完了</string>
@@ -90,16 +90,16 @@
     <string name="pending_row_signal_review">需核对</string>
     <string name="pending_row_action_edit">编辑</string>
     <string name="pending_row_action_amount">补金额</string>
-    <string name="pending_row_action_duplicate">处理重复</string>
+    <string name="pending_row_action_duplicate">核对重复</string>
     <string name="pending_row_action_category">补分类</string>
     <string name="pending_row_action_merchant">补商家</string>
-    <string name="pending_row_action_confirm">确认</string>
-    <string name="pending_row_action_ignore">忽略</string>
-    <string name="pending_row_action_keep_duplicate">保留</string>
+    <string name="pending_row_action_confirm">确认入账</string>
+    <string name="pending_row_action_ignore">删除</string>
+    <string name="pending_row_action_keep_duplicate">保留两笔</string>
 
     <!-- 撤销 banner -->
-    <string name="pending_undo_banner_label_with_descriptor">已忽略 · %1$s</string>
-    <string name="pending_undo_banner_label">已忽略</string>
+    <string name="pending_undo_banner_label_with_descriptor">已删除 · %1$s</string>
+    <string name="pending_undo_banner_label">已删除</string>
     <string name="pending_undo_banner_action">撤销</string>
 
     <!-- 工具 sheet PendingToolsSheet -->
@@ -120,12 +120,12 @@
     <string name="pending_msg_confirmed">已确认入账</string>
     <string name="pending_msg_confirmed_offline">已离线确认，联网后同步</string>
     <string name="pending_msg_confirm_failed">没有确认成功，请稍后再试。</string>
-    <string name="pending_msg_rejected">已忽略</string>
-    <string name="pending_msg_rejected_offline">已离线忽略，联网后同步</string>
-    <string name="pending_msg_reject_failed">没有忽略成功，请稍后再试。</string>
-    <string name="pending_msg_ignored_duplicate">已忽略重复</string>
-    <string name="pending_msg_ignored_duplicate_offline">已离线忽略，联网后同步</string>
-    <string name="pending_msg_ignore_duplicate_failed">没有处理成功，请稍后再试。</string>
+    <string name="pending_msg_rejected">已删除待确认账单</string>
+    <string name="pending_msg_rejected_offline">已离线删除，联网后同步</string>
+    <string name="pending_msg_reject_failed">没有删除成功，请稍后再试。</string>
+    <string name="pending_msg_ignored_duplicate">已删除当前草稿</string>
+    <string name="pending_msg_ignored_duplicate_offline">已离线删除，联网后同步</string>
+    <string name="pending_msg_ignore_duplicate_failed">没有删除成功，请稍后再试。</string>
     <string name="pending_msg_kept">已保留这条账单</string>
     <string name="pending_msg_kept_offline">已离线保留，联网后同步</string>
     <string name="pending_msg_keep_failed">暂时没处理成功，请稍后再试。</string>
@@ -187,11 +187,11 @@
     <string name="pending_bulk_sheet_confirm_button">确认 %1$d 条</string>
 
     <!-- DuplicateConfirmSheet -->
-    <string name="pending_duplicate_sheet_title">处理疑似重复</string>
-    <string name="pending_duplicate_sheet_hint">确认是否保留当前账单。系统不会自动忽略或自动入账。</string>
+    <string name="pending_duplicate_sheet_title">核对疑似重复</string>
+    <string name="pending_duplicate_sheet_hint">先确认当前草稿是否还需要保留。系统不会自动删除或自动入账。</string>
     <string name="pending_duplicate_sheet_merchant_missing">未填写商家</string>
     <string name="pending_duplicate_sheet_reason">可能原因：%1$s</string>
     <string name="pending_duplicate_sheet_processing">处理中…</string>
     <string name="pending_duplicate_sheet_keep_both">保留两笔（不是重复）</string>
-    <string name="pending_duplicate_sheet_ignore_current">忽略当前这条</string>
+    <string name="pending_duplicate_sheet_ignore_current">删除当前草稿</string>
 </resources>

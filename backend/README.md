@@ -490,9 +490,9 @@ Invoke-RestMethod `
   -Headers $adminHeaders
 ```
 
-### 拒绝待确认账单
+### 删除待确认 / 已入账账单
 
-只能拒绝 `pending` 账单。
+可拒绝 `pending` 或 `confirmed` 账单；已入账账单删除后会从账本、统计和预算进度中移除，5 分钟内仍可撤销。
 
 ```powershell
 Invoke-RestMethod `

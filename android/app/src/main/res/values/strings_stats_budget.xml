@@ -16,6 +16,7 @@
     <string name="stats_header_menu_planning_collapsed">已折叠</string>
     <string name="stats_header_menu_planning_expanded">已展开</string>
     <string name="stats_header_open_budget">预算</string>
+    <string name="stats_header_open_spending_goal">添加开销目标</string>
     <string name="stats_header_open_recurring">固定支出</string>
     <string name="stats_header_open_income_plans">收入记录</string>
     <string name="stats_header_open_debt_goals">还债目标</string>
@@ -257,6 +258,7 @@
     <string name="stats_reports_goals_title">开销目标</string>
     <string name="stats_reports_goals_empty">本月还没有开销目标。</string>
     <string name="stats_reports_goals_empty_hint">设置后会显示支出上限、进度和风险。还债目标在规划菜单单独管理。</string>
+    <string name="stats_reports_goals_create_action">设置本月开销目标</string>
     <string name="stats_reports_goals_loading">正在读取本月目标。</string>
     <string name="stats_reports_goals_loading_hint">目标读取完成后再显示进度和风险。</string>
     <string name="stats_reports_goals_unavailable">目标暂时打不开。</string>
@@ -747,6 +749,25 @@
     <string name="stats_tab_category">分类</string>
     <string name="stats_tab_budget">预算</string>
     <string name="stats_tab_goals">目标</string>
+
+    <!-- CreateSpendingGoalScreen：洞察→规划→添加开销目标 -->
+    <string name="spending_goal_create_title">添加开销目标</string>
+    <string name="spending_goal_create_intro">设置某个月的支出上限，保存后会在开销目标卡片里跟踪进度。</string>
+    <string name="spending_goal_create_back">返回洞察</string>
+    <string name="spending_goal_create_month_section">目标月份</string>
+    <string name="spending_goal_create_month_hint">按月跟踪，之后可在目标卡片查看进度。</string>
+    <string name="spending_goal_create_form_section">目标内容</string>
+    <string name="spending_goal_create_form_hint">分类不填时，会按整月总支出跟踪。</string>
+    <string name="spending_goal_create_name_label">目标名称</string>
+    <string name="spending_goal_create_name_placeholder">例如：本月外卖控制</string>
+    <string name="spending_goal_create_amount_label">支出上限</string>
+    <string name="spending_goal_create_category_label">限定分类（可选）</string>
+    <string name="spending_goal_create_category_placeholder">例如：餐饮</string>
+    <string name="spending_goal_create_category_hint">分类名需要和账单分类一致；留空表示跟踪整月支出。</string>
+    <string name="spending_goal_create_save">保存目标</string>
+    <string name="spending_goal_create_submitting">保存中</string>
+    <string name="spending_goal_create_validation">请填写目标名称和大于 0 的支出上限。</string>
+    <string name="spending_goal_create_failed">目标没有保存成功，请稍后再试。</string>
 
     <!-- PendingOverviewCard：待确认指标格标签 -->
     <string name="stats_pending_metric_pending_total">待确认</string>

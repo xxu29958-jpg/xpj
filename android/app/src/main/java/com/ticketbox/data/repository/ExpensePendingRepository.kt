@@ -334,6 +334,9 @@ internal class ExpensePendingRepository(
             // ADR-0042: single-use key — direct-only path, no replay.
             it.rejectExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
         }
+        if (rejected.status == "rejected") {
+            core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
+        }
         rejected.toDomain()
     }
 
@@ -424,11 +427,17 @@ internal class ExpensePendingRepository(
                 networkError = null,
                 idempotencyKey = idempotencyKey,
             )
+            if (expense.status == "confirmed") {
+                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(expense.id))
+            }
             return@safeCall ExpenseStateOutcome.Queued(expense.copy(status = "rejected"))
         }
         try {
             val rejected = bound.call {
                 it.rejectExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
+            }
+            if (rejected.status == "rejected") {
+                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
             }
             ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
@@ -439,6 +448,9 @@ internal class ExpensePendingRepository(
                 networkError = networkError,
                 idempotencyKey = idempotencyKey,
             )
+            if (expense.status == "confirmed") {
+                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(expense.id))
+            }
             ExpenseStateOutcome.Queued(expense.copy(status = "rejected")) as ExpenseStateOutcome
         }
     }

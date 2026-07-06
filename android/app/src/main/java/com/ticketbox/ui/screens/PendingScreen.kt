@@ -3,9 +3,6 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
@@ -30,10 +27,7 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.rememberAppHaptics
-import com.ticketbox.ui.components.SwipeActionConfig
-import com.ticketbox.ui.components.SwipeableActionRow
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalSwipeActionTokens
 import com.ticketbox.ui.screens.pending.EmptyPendingState
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
@@ -306,49 +300,28 @@ fun PendingScreen(
             } else {
                 items(filteredItems, key = { it.id }) { expense ->
                     val actionBusy = expense.id in state.actionInProgressIds
-                    val canSwipe = !readOnly && !actionBusy
+                    val canMutate = !readOnly && !actionBusy
                     val showInlineActions = !readOnly && displayMode == PendingDisplayMode.Comfortable
-                    val swipeTokens = LocalSwipeActionTokens.current
-                    val leftAction = if (canSwipe) SwipeActionConfig(
-                        icon = Icons.Filled.CheckCircle,
-                        label = stringResource(R.string.pending_swipe_confirm_label),
-                        bg = swipeTokens.confirm.bg,
-                        fg = swipeTokens.confirm.fg,
-                        onTriggered = { resolvePrimaryAction(expense) },
-                    ) else null
-                    val rightAction = if (canSwipe) SwipeActionConfig(
-                        icon = Icons.Filled.DeleteOutline,
-                        label = stringResource(R.string.pending_swipe_ignore_label),
-                        bg = swipeTokens.ignore.bg,
-                        fg = swipeTokens.ignore.fg,
-                        onTriggered = { onReject(expense) },
-                    ) else null
-                    SwipeableActionRow(
+                    PendingExpenseReviewRow(
+                        item = PendingExpenseReviewItem(
+                            expense = expense,
+                            thumbnail = state.thumbnails[expense.id],
+                            compact = displayMode == PendingDisplayMode.Compact,
+                            showInlineActions = showInlineActions,
+                            busy = actionBusy,
+                        ),
+                        actions = PendingExpenseReviewActions(
+                            canMutate = canMutate,
+                            onEdit = { onEdit(expense) },
+                            onPrimaryAction = { resolvePrimaryAction(expense) },
+                            onReject = {
+                                haptics.reject()
+                                onReject(expense)
+                            },
+                            onKeepDuplicate = { onKeepDuplicate(expense) },
+                        ),
                         modifier = Modifier.animateItem(),
-                        leftAction = leftAction,
-                        rightAction = rightAction,
-                        enabled = canSwipe,
-                    ) {
-                        PendingExpenseReviewRow(
-                            item = PendingExpenseReviewItem(
-                                expense = expense,
-                                thumbnail = state.thumbnails[expense.id],
-                                compact = displayMode == PendingDisplayMode.Compact,
-                                showInlineActions = showInlineActions,
-                                busy = actionBusy,
-                            ),
-                            actions = PendingExpenseReviewActions(
-                                canMutate = canSwipe,
-                                onEdit = { onEdit(expense) },
-                                onPrimaryAction = { resolvePrimaryAction(expense) },
-                                onReject = {
-                                    haptics.reject()
-                                    onReject(expense)
-                                },
-                                onKeepDuplicate = { onKeepDuplicate(expense) },
-                            ),
-                        )
-                    }
+                    )
                 }
             }
         }

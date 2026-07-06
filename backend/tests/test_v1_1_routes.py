@@ -36,14 +36,14 @@ def test_create_income_plan_round_trip(client: TestClient, *, identity) -> None:
             "label": "我的工资",
             "source_type": "salary",
             "amount_cents": 1_000_000,
-            "pay_day": 10,
+            "pay_day": 1,
         },
     )
     assert create_resp.status_code == 201, create_resp.text
     created = create_resp.json()
     assert created["label"] == "我的工资"
     assert created["amount_cents"] == 1_000_000
-    assert created["pay_day"] == 10
+    assert created["pay_day"] == 1
     assert created["frequency"] == "monthly"
     assert created["income_month"] is None
     assert created["status"] == "active"
@@ -249,7 +249,7 @@ def test_discretionary_subtracts_income_minus_fixed_minus_user_params(
     client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={"label": "salary", "source_type": "salary", "amount_cents": 1_000_000, "pay_day": 10},
+        json={"label": "salary", "source_type": "salary", "amount_cents": 1_000_000, "pay_day": 1},
     )
     resp = client.get(
         "/api/budget/discretionary"
