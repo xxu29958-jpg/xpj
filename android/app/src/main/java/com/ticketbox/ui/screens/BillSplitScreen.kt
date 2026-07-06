@@ -10,7 +10,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +48,7 @@ import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
@@ -280,12 +280,11 @@ private fun BillSplitInboxActions(
         // and let a multi-ledger member PICK the target instead of hard-wiring the first writable one.
         when {
             candidates.isEmpty() -> Unit
-            candidates.size == 1 -> OutlinedButton(
+            candidates.size == 1 -> QuietOutlinedButton(
+                text = stringResource(R.string.bill_split_inbox_accept, candidates.single().name),
                 modifier = actionModifier,
                 onClick = { onAccept(row.publicId, candidates.single().ledgerId) },
-            ) {
-                Text(stringResource(R.string.bill_split_inbox_accept, candidates.single().name))
-            }
+            )
             else -> AcceptTargetPicker(
                 modifier = actionModifier,
                 buttonModifier = actionModifier,
@@ -306,9 +305,11 @@ private fun BillSplitInboxActions(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 acceptAction(Modifier.fillMaxWidth())
-                OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { onReject(row.publicId) }) {
-                    Text(stringResource(R.string.bill_split_inbox_reject))
-                }
+                QuietOutlinedButton(
+                    text = stringResource(R.string.bill_split_inbox_reject),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onReject(row.publicId) },
+                )
             }
             AppAdaptiveEditActionMode.Compact,
             AppAdaptiveEditActionMode.Inline -> Row(
@@ -316,9 +317,10 @@ private fun BillSplitInboxActions(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
             ) {
                 acceptAction(Modifier)
-                OutlinedButton(onClick = { onReject(row.publicId) }) {
-                    Text(stringResource(R.string.bill_split_inbox_reject))
-                }
+                QuietOutlinedButton(
+                    text = stringResource(R.string.bill_split_inbox_reject),
+                    onClick = { onReject(row.publicId) },
+                )
             }
         }
     }
@@ -361,9 +363,11 @@ private fun SentRow(
         )
         if (row.status == BillSplitStatusValues.INVITED) {
             AppAdaptiveTrailingActionRow {
-                OutlinedButton(modifier = it, onClick = { onCancel(row.publicId) }) {
-                    Text(stringResource(R.string.bill_split_sent_cancel))
-                }
+                QuietOutlinedButton(
+                    text = stringResource(R.string.bill_split_sent_cancel),
+                    modifier = it,
+                    onClick = { onCancel(row.publicId) },
+                )
             }
         }
     }
@@ -405,9 +409,11 @@ private fun AcceptTargetPicker(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
-        OutlinedButton(modifier = buttonModifier, onClick = { expanded = true }) {
-            Text(stringResource(R.string.bill_split_accept_picker_title))
-        }
+        QuietOutlinedButton(
+            text = stringResource(R.string.bill_split_accept_picker_title),
+            modifier = buttonModifier,
+            onClick = { expanded = true },
+        )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             candidates.forEach { candidate ->
                 DropdownMenuItem(
