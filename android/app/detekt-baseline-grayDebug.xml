@@ -147,8 +147,6 @@
     <ID>LongParameterList:MainScreenFactory.kt:MainScreenFactory</ID>
     <ID>LongParameterList:MerchantAliasesScreen.kt:@Composable fun MerchantAliasesScreen</ID>
     <ID>LongParameterList:MerchantRepository.kt:MerchantRepository</ID>
-    <ID>LongParameterList:MerchantRepository.kt:MerchantRepository$private suspend fun enqueueDeleteMerchantAlias</ID>
-    <ID>LongParameterList:MerchantRepository.kt:MerchantRepository$private suspend fun enqueueUpdateMerchantAlias</ID>
     <ID>LongParameterList:PendingComponents.kt:@Composable internal fun PendingTop</ID>
     <ID>LongParameterList:PendingEmptyStates.kt:@Composable internal fun EmptyPendingState</ID>
     <ID>LongParameterList:PendingFilters.kt:@Composable internal fun NeedsReviewFilterBar</ID>
