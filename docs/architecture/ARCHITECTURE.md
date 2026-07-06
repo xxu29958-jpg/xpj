@@ -356,7 +356,9 @@ AI订阅
 pending -> confirmed
 pending -> rejected
 confirmed -> confirmed，允许继续 PATCH 修正
-rejected 当前不恢复，普通列表默认不展示
+confirmed -> rejected，删除已入账事实，账本 / 统计 / 预算不再计入
+rejected -> pending / confirmed，5 分钟内按 confirmed_at 恢复原入账状态
+rejected 普通列表默认不展示
 ```
 
 ## 10. 图片保存规则

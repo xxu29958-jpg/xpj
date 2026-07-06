@@ -39,6 +39,7 @@ internal enum class BottomTab(
 }
 
 internal enum class StatsSecondaryPage {
+    SpendingGoal,
     Budget,
     Recurring,
     IncomePlans,

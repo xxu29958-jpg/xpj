@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,6 +32,7 @@ import com.ticketbox.ui.components.AppContentStatePresentation
 import com.ticketbox.ui.components.AppContentStateSpec
 import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -62,6 +65,7 @@ internal fun GoalsSummaryCard(
     goals: List<Goal>,
     loadState: ReportGoalsLoadState,
     modifier: Modifier = Modifier,
+    onAddGoal: (() -> Unit)? = null,
 ) {
     val visibleGoals = remember(goals) { goalDisplayModels(goals) }
     val attentionCount = visibleGoals.count { it.priority <= 1 }
@@ -82,6 +86,14 @@ internal fun GoalsSummaryCard(
                 loadState = loadState,
             )
             GoalsSummaryStateSlot(kind = bodyKind)
+            if (bodyKind == GoalsSummaryBodyKind.Empty && onAddGoal != null) {
+                AppPrimaryButton(
+                    text = stringResource(R.string.stats_reports_goals_create_action),
+                    icon = Icons.Filled.Add,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onAddGoal,
+                )
+            }
             if (bodyKind == GoalsSummaryBodyKind.Data) {
                 GoalPortfolioRail(
                     goalCount = visibleGoals.size,

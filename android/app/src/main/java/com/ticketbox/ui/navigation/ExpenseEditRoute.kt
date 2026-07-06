@@ -118,7 +118,7 @@ internal fun ExpenseEditRoute(
             }
         },
         allowConfirm = expense.status == "pending",
-        allowReject = expense.status == "pending",
+        allowReject = expense.status == "pending" || expense.status == "confirmed",
     )
 }
 

@@ -21,6 +21,8 @@
     <string name="category_rule_card_priority_status">优先级 %1$d · %2$s</string>
     <string name="category_rule_card_status_enabled">已启用</string>
     <string name="category_rule_card_status_disabled">已停用</string>
+    <string name="category_rule_card_mapping">自动归类到 %1$s</string>
+    <string name="category_rule_card_actions_content_description">分类规则操作</string>
     <string name="category_rule_card_action_disable">停用</string>
     <string name="category_rule_card_action_enable">启用</string>
     <string name="category_rule_card_action_edit">编辑</string>

@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -21,6 +22,7 @@ import retrofit2.HttpException
 class RejectExpenseDispatcher(
     private val apiProvider: () -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
+    private val deleteConfirmedCache: suspend (ledgerId: String, serverIds: List<Long>) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.RejectExpense
 
@@ -54,6 +56,7 @@ class RejectExpenseDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val rejected = apiProvider().rejectExpense(expenseRef, request, idempotencyKey)
+            deleteConfirmedCacheIfRejected(row, rejected)
             DispatchResult.Success(newRowVersion = rejected.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
@@ -106,5 +109,11 @@ class RejectExpenseDispatcher(
         val end = body.indexOf('"', begin)
         if (end < 0) return null
         return body.substring(begin, end)
+    }
+
+    private suspend fun deleteConfirmedCacheIfRejected(row: OutboxRow, rejected: ExpenseDto) {
+        if (rejected.status == "rejected") {
+            deleteConfirmedCache(row.ledgerId, listOf(rejected.id))
+        }
     }
 }

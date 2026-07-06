@@ -74,6 +74,7 @@ fun StatsScreen(
     onOpenBudget: () -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenIncomePlans: () -> Unit = {},
+    onOpenSpendingGoal: () -> Unit = {},
     // ADR-0049 §6 (slice 7): 还债目标二级页。默认 no-op 保旧调用方/预览。
     onOpenDebtGoals: () -> Unit = {},
     // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
@@ -145,6 +146,7 @@ fun StatsScreen(
                     },
                     onTabChange = { selectedStatsTab = it },
                     planning = StatsPlanningActions(
+                        onOpenSpendingGoal = onOpenSpendingGoal,
                         onOpenBudget = onOpenBudget,
                         onOpenRecurring = onOpenRecurring,
                         onOpenIncomePlans = onOpenIncomePlans,
@@ -297,6 +299,7 @@ fun StatsScreen(
                             GoalsSummaryCard(
                                 goals = state.reportGoals,
                                 loadState = state.reportGoalsLoadState,
+                                onAddGoal = onOpenSpendingGoal,
                             )
                         }
                     }

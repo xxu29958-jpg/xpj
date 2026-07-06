@@ -2,10 +2,12 @@ package com.ticketbox.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -26,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -37,11 +41,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.ticketbox.R
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
@@ -78,6 +87,7 @@ val PageRole.density: PageDensity
 
 object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
+    val ImeStatusBarFallback: Dp = 44.dp
 
     // 浮动底栏（含上下外边距）的估算高度。后续若改为实测高度，
     // 仅需在这里替换。
@@ -153,14 +163,35 @@ object BottomBarAwarePadding {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun rememberAppPageLayout(
     role: PageRole,
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = true,
 ): AppPageLayoutValues {
+    val context = LocalContext.current
     val density = LocalDensity.current
-    val statusTop = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val view = LocalView.current
+    val statusTop = with(density) {
+        val resourceStatusTop = context.resources
+            .getIdentifier("status_bar_height", "dimen", "android")
+            .takeIf { it > 0 }
+            ?.let { context.resources.getDimensionPixelSize(it).toDp() }
+            ?: 0.dp
+        val viewStatusTop = ViewCompat.getRootWindowInsets(view)
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())
+            ?.top
+            ?.toDp()
+            ?: 0.dp
+        val measuredStatusTop = maxOf(
+            WindowInsets.statusBars.getTop(this).toDp(),
+            WindowInsets.statusBarsIgnoringVisibility.getTop(this).toDp(),
+            viewStatusTop,
+            resourceStatusTop,
+        )
+        measuredStatusTop
+    }
     val safeTop = if (includeStatusBarPadding) statusTop else 0.dp
     val bottomViewportPadding = BottomBarAwarePadding.viewport(hasBottomBar = hasBottomBar)
     val bottomPadding = bottomViewportPadding + AppPageDefaults.BottomContentExtraPadding
@@ -253,26 +284,33 @@ fun AppPageScrollableColumn(
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val resolvedContentMaxWidth = resolvedContentMaxWidth(contentWidth)
-                Column(
+                val visibleStatusPadding = layout.visibleStatusPadding()
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxHeight()
                         .appPageContentWidth(resolvedContentMaxWidth)
                         .padding(
-                            top = layout.statusPadding,
+                            top = visibleStatusPadding,
                             // 栏自带导航栏 inset，实测高度已覆盖 bottomViewportPadding
                             // 的导航栏份额，二者取一不叠加。
                             bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
                         )
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = layout.horizontalPadding)
-                        .padding(
-                            top = layout.contentTopPadding,
-                            bottom = layout.bottomContentExtraPadding,
-                        ),
-                    verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+                        .clipToBounds(),
                 ) {
-                    content(layout)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = layout.horizontalPadding)
+                            .padding(
+                                top = layout.contentTopPadding,
+                                bottom = layout.bottomContentExtraPadding,
+                            ),
+                        verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+                    ) {
+                        content(layout)
+                    }
                 }
                 if (bottomBar != null) {
                     Box(
@@ -336,6 +374,7 @@ fun AppScrollableContent(
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val resolvedContentMaxWidth = resolvedContentMaxWidth(contentWidth)
+                val visibleStatusPadding = layout.visibleStatusPadding()
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     onRefresh = onRefresh,
@@ -344,29 +383,28 @@ fun AppScrollableContent(
                     indicator = {
                         // Material3 默认 indicator，避免下拉时只见手指不见反馈。
                         // 位置在 status bar 下方一格，与列表 contentPadding 一致。
-                        PullToRefreshDefaults.Indicator(
-                            state = refreshState,
-                            isRefreshing = isRefreshing,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = layout.statusPadding + 4.dp),
-                        )
+                        AppPullToRefreshIndicator(refreshState, isRefreshing, visibleStatusPadding)
                     },
                 ) {
-                    LazyColumn(
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .fillMaxHeight()
                             .appPageContentWidth(resolvedContentMaxWidth)
                             .padding(
-                                top = layout.statusPadding,
+                                top = visibleStatusPadding,
                                 bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
-                            ),
-                        state = listState,
-                        contentPadding = layout.scrollContentPadding(),
-                        verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
-                        content = content,
-                    )
+                            )
+                            .clipToBounds(),
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            state = listState,
+                            contentPadding = layout.scrollContentPadding(),
+                            verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+                            content = content,
+                        )
+                    }
                 }
                 if (bottomBar != null) {
                     Box(
@@ -387,6 +425,29 @@ private fun Modifier.appPageContentWidth(maxWidth: Dp?): Modifier =
         fillMaxSize()
     } else {
         widthIn(max = maxWidth).fillMaxSize()
+    }
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun BoxScope.AppPullToRefreshIndicator(
+    state: PullToRefreshState,
+    isRefreshing: Boolean,
+    topPadding: Dp,
+) {
+    PullToRefreshDefaults.Indicator(
+        state = state,
+        isRefreshing = isRefreshing,
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(top = topPadding + 4.dp),
+    )
+}
+
+private fun AppPageLayoutValues.visibleStatusPadding(): Dp =
+    if (statusPadding == 0.dp) {
+        AppPageDefaults.ImeStatusBarFallback
+    } else {
+        statusPadding
     }
 
 private fun BoxWithConstraintsScope.resolvedContentMaxWidth(

@@ -6,8 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,12 +40,8 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
-import com.ticketbox.domain.model.DASHBOARD_CARD_GOALS
-import com.ticketbox.domain.model.DASHBOARD_CARD_MONTHLY_SPEND
-import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
-import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
@@ -69,6 +63,7 @@ internal data class StatsTopPanelActions(
 )
 
 internal data class StatsPlanningActions(
+    val onOpenSpendingGoal: () -> Unit,
     val onOpenBudget: () -> Unit,
     val onOpenRecurring: () -> Unit,
     val onOpenIncomePlans: () -> Unit,
@@ -96,7 +91,6 @@ internal fun StatsTopPanel(
         )
         StatsTabRow(
             selectedTab = selectedTab,
-            dashboardCards = state.dashboardCards,
             visibleDashboardKeys = visibleDashboardKeys,
             tagFilterActive = state.selectedTag.isNotBlank(),
             onTabChange = actions.onTabChange,
@@ -113,6 +107,10 @@ private fun StatsPlanningMenu(actions: StatsPlanningActions) {
             onOpen = { menuOpen = true },
         )
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.stats_header_open_spending_goal)) },
+                onClick = { menuOpen = false; actions.onOpenSpendingGoal() },
+            )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_budget)) },
                 onClick = { menuOpen = false; actions.onOpenBudget() },
@@ -182,25 +180,24 @@ private fun StatsPlanningMenuTrigger(
 @Composable
 private fun StatsTabRow(
     selectedTab: StatsTab,
-    dashboardCards: List<DashboardCard>,
     visibleDashboardKeys: List<String>,
     tagFilterActive: Boolean,
     onTabChange: (StatsTab) -> Unit,
 ) {
-    FlowRow(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         StatsTab.entries.forEach { tab ->
             StatsTextTab(
-                label = statsTabLabel(tab, dashboardCards),
+                label = statsTabLabel(tab),
                 selected = selectedTab == tab,
                 enabled = statsDashboardKeysForTab(
                     tab,
                     visibleDashboardKeys,
                     tagFilterActive = tagFilterActive,
                 ).isNotEmpty(),
+                modifier = Modifier.weight(1f),
                 onClick = { onTabChange(tab) },
             )
         }
@@ -208,20 +205,12 @@ private fun StatsTabRow(
 }
 
 @Composable
-private fun statsTabLabel(
-    tab: StatsTab,
-    dashboardCards: List<DashboardCard>,
-): String {
-    val titleByKey = dashboardCards
-        .filter { it.title.isNotBlank() }
-        .associate { it.key to it.title }
-    return when (tab) {
-        StatsTab.Overview -> titleByKey[DASHBOARD_CARD_MONTHLY_SPEND] ?: stringResource(R.string.stats_tab_overview)
-        StatsTab.Trend -> titleByKey[DASHBOARD_CARD_REPORTS] ?: stringResource(R.string.stats_tab_trend)
-        StatsTab.Category -> stringResource(R.string.stats_tab_category)
-        StatsTab.Budget -> titleByKey[DASHBOARD_CARD_BUDGET] ?: stringResource(R.string.stats_tab_budget)
-        StatsTab.Goals -> titleByKey[DASHBOARD_CARD_GOALS] ?: stringResource(R.string.stats_tab_goals)
-    }
+private fun statsTabLabel(tab: StatsTab): String = when (tab) {
+    StatsTab.Overview -> stringResource(R.string.stats_tab_overview)
+    StatsTab.Trend -> stringResource(R.string.stats_tab_trend)
+    StatsTab.Category -> stringResource(R.string.stats_tab_category)
+    StatsTab.Budget -> stringResource(R.string.stats_tab_budget)
+    StatsTab.Goals -> stringResource(R.string.stats_tab_goals)
 }
 
 @Composable
@@ -349,6 +338,7 @@ private fun StatsTextTab(
     label: String,
     selected: Boolean,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val controlTokens = LocalStatsTokens.current.control
@@ -358,8 +348,7 @@ private fun StatsTextTab(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Column(
-        modifier = Modifier
-            .width(IntrinsicSize.Min)
+        modifier = modifier
             .height(controlTokens.height + AppSpacing.tinyGap)
             .clip(RoundedCornerShape(AppRadius.extraSmall))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
@@ -377,7 +366,7 @@ private fun StatsTextTab(
         Box(
             modifier = Modifier
                 .height(AppSpacing.tinyGap)
-                .fillMaxWidth()
+                .width(42.dp)
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
         )

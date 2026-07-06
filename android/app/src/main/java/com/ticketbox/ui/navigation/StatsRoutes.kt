@@ -465,6 +465,7 @@ internal fun StatsRoute(
         onMonthChange = monthlyStatsViewModel::setMonth,
         onTagChange = monthlyStatsViewModel::setTag,
         onRefresh = { reloadAllStats(monthlyStatsViewModel, reportsViewModel) },
+        onOpenSpendingGoal = { shellState.openStatsSecondary(StatsSecondaryPage.SpendingGoal) },
         onOpenBudget = { shellState.openStatsSecondary(StatsSecondaryPage.Budget) },
         onOpenRecurring = { shellState.openStatsSecondary(StatsSecondaryPage.Recurring) },
         onOpenIncomePlans = { shellState.openStatsSecondary(StatsSecondaryPage.IncomePlans) },

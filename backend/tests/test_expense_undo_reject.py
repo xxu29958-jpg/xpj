@@ -1,8 +1,9 @@
 """ADR-0038 undo contract tests: expense reject + restore within 5-min window.
 
 Covers the Undo invariants:
-- ``POST /api/expenses/{id}/undo`` after reject restores ``status='pending'`` and
-  clears ``rejected_at``; writes a ``ledger_audit_logs action='undo'`` row.
+- ``POST /api/expenses/{id}/undo`` after reject restores ``status='pending'`` or
+  ``status='confirmed'`` from the row's pre-delete state, clears ``rejected_at``,
+  and writes a ``ledger_audit_logs action='undo'`` row.
 - Undo on a never-rejected (pending / confirmed) expense → 404 (semantic match
   with merchant_alias / category_rule undo: not_found / past_window / wrong_status
   all collapse to 404 so client just re-fetches).
@@ -24,7 +25,12 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from api_contract_helpers import reject_expense_api, undo_expense_api
+from api_contract_helpers import (
+    confirm_expense_api,
+    patch_expense,
+    reject_expense_api,
+    undo_expense_api,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -43,6 +49,23 @@ def _create_pending(client: TestClient, *, identity) -> int:
     )
     assert resp.status_code == 200, resp.text
     return int(resp.json()["id"])
+
+
+def _create_confirmed(client: TestClient, *, identity) -> tuple[int, str]:
+    expense_id = _create_pending(client, identity=identity)
+    patch = patch_expense(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+        fields={"amount_cents": 3500, "merchant": "Jack", "category": "其他"},
+    )
+    assert patch.status_code == 200, patch.text
+    confirmed = confirm_expense_api(client, expense_id, headers=identity.app_headers)
+    assert confirmed.status_code == 200, confirmed.text
+    body = confirmed.json()
+    assert body["status"] == "confirmed"
+    assert body["confirmed_at"] is not None
+    return expense_id, body["confirmed_at"]
 
 
 def _reject(client: TestClient, expense_id: int, *, identity) -> None:
@@ -76,6 +99,28 @@ def test_undo_after_reject_restores_pending_and_writes_audit(
             .where(LedgerAuditLog.resource_public_id == row.public_id)
         )
         assert audit is not None, "undo must append a ledger_audit_logs row"
+
+
+def test_undo_after_confirmed_reject_restores_confirmed(
+    client: TestClient, *, identity
+) -> None:
+    expense_id, confirmed_at = _create_confirmed(client, identity=identity)
+    _reject(client, expense_id, identity=identity)
+
+    response = undo_expense_api(client, expense_id, headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == expense_id
+    assert body["status"] == "confirmed"
+    assert body["confirmed_at"] == confirmed_at
+    assert body.get("rejected_at") is None
+
+    with SessionLocal() as db:
+        row = db.scalar(select(Expense).where(Expense.id == expense_id))
+        assert row is not None
+        assert row.status == "confirmed"
+        assert row.confirmed_at is not None
+        assert row.rejected_at is None
 
 
 def test_undo_on_pending_expense_returns_404(client: TestClient, *, identity) -> None:
