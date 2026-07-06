@@ -263,10 +263,17 @@ class MerchantRepository(
             }
             return@safeCall DeleteOutcome.Synced
         }
+        val enqueueContext = MerchantAliasOutboxContext(
+            bound = bound,
+            outbox = outboxRef,
+            cleanPublicId = cleanPublicId,
+            token = alias.rowVersion,
+            idempotencyKey = idempotencyKey,
+        )
         if (outboxRef.activeForTarget("merchant_alias:$cleanPublicId").isNotEmpty()) {
             // Per-target FIFO guard (codex follow-up review) — a direct DELETE
             // must not jump an unresolved queued mutation for the same alias.
-            enqueueDeleteMerchantAlias(bound, outboxRef, adapter, cleanPublicId, request, alias.rowVersion, idempotencyKey)
+            enqueueDeleteMerchantAlias(enqueueContext, adapter, request)
             return@safeCall DeleteOutcome.Queued
         }
         try {
@@ -275,7 +282,7 @@ class MerchantRepository(
             }
             DeleteOutcome.Synced as DeleteOutcome
         } catch (networkError: IOException) {
-            enqueueDeleteMerchantAlias(bound, outboxRef, adapter, cleanPublicId, request, alias.rowVersion, idempotencyKey)
+            enqueueDeleteMerchantAlias(enqueueContext, adapter, request)
             DeleteOutcome.Queued as DeleteOutcome
         }
     }
@@ -287,21 +294,17 @@ class MerchantRepository(
      * the single source of truth; dispatcher overwrites on replay).
      */
     private suspend fun enqueueDeleteMerchantAlias(
-        bound: BoundLedgerRequest,
-        outboxRef: OutboxRepository,
+        context: MerchantAliasOutboxContext,
         adapter: com.squareup.moshi.JsonAdapter<MerchantAliasDeleteRequest>,
-        cleanPublicId: String,
         request: MerchantAliasDeleteRequest,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outboxRef.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.DeleteMerchantAlias,
-            targetId = "merchant_alias:$cleanPublicId",
+            targetId = context.targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = token,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -346,9 +349,16 @@ class MerchantRepository(
             }
             return@safeCall MerchantAliasSaveOutcome.Synced(updated)
         }
+        val enqueueContext = MerchantAliasOutboxContext(
+            bound = bound,
+            outbox = outboxRef,
+            cleanPublicId = cleanPublicId,
+            token = baseline.rowVersion,
+            idempotencyKey = idempotencyKey,
+        )
         if (outboxRef.activeForTarget("merchant_alias:$cleanPublicId").isNotEmpty()) {
             // Per-target FIFO guard — see deleteMerchantAliasAllowingOffline.
-            enqueueUpdateMerchantAlias(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+            enqueueUpdateMerchantAlias(enqueueContext, adapter, request)
             return@safeCall MerchantAliasSaveOutcome.Queued(
                 projectOptimisticAlias(baseline, canonicalMerchant, alias, enabled),
             )
@@ -359,7 +369,7 @@ class MerchantRepository(
             }
             MerchantAliasSaveOutcome.Synced(updated) as MerchantAliasSaveOutcome
         } catch (networkError: IOException) {
-            enqueueUpdateMerchantAlias(bound, outboxRef, adapter, cleanPublicId, request, baseline.rowVersion, idempotencyKey)
+            enqueueUpdateMerchantAlias(enqueueContext, adapter, request)
             MerchantAliasSaveOutcome.Queued(
                 projectOptimisticAlias(baseline, canonicalMerchant, alias, enabled),
             ) as MerchantAliasSaveOutcome
@@ -372,21 +382,17 @@ class MerchantRepository(
      * [enqueueDeleteMerchantAlias].
      */
     private suspend fun enqueueUpdateMerchantAlias(
-        bound: BoundLedgerRequest,
-        outboxRef: OutboxRepository,
+        context: MerchantAliasOutboxContext,
         adapter: com.squareup.moshi.JsonAdapter<MerchantAliasUpdateRequest>,
-        cleanPublicId: String,
         request: MerchantAliasUpdateRequest,
-        token: Long,
-        idempotencyKey: String,
     ) {
-        bound.requireStillActive()
-        outboxRef.enqueue(
+        context.bound.requireStillActive()
+        context.outbox.enqueue(
             type = PendingMutationType.UpdateMerchantAlias,
-            targetId = "merchant_alias:$cleanPublicId",
+            targetId = context.targetId,
             payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = token,
-            idempotencyKey = idempotencyKey,
+            expectedRowVersion = context.token,
+            idempotencyKey = context.idempotencyKey,
         )
     }
 
@@ -407,6 +413,16 @@ class MerchantRepository(
         alias = alias?.trim()?.takeIf { it.isNotBlank() } ?: baseline.alias,
         enabled = enabled ?: baseline.enabled,
     )
+}
+
+private data class MerchantAliasOutboxContext(
+    val bound: BoundLedgerRequest,
+    val outbox: OutboxRepository,
+    val cleanPublicId: String,
+    val token: Long,
+    val idempotencyKey: String,
+) {
+    val targetId: String = "merchant_alias:$cleanPublicId"
 }
 
 /**
