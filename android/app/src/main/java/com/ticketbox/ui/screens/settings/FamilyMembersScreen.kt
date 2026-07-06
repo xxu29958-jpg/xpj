@@ -52,7 +52,11 @@ import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
+import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
+import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -148,30 +152,20 @@ fun FamilyMembersScreen(
                         )
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(
+                AppAdaptiveTrailingActionRow {
+                    QuietOutlinedButton(
+                        text = if (state.loading) {
+                            stringResource(R.string.family_members_refresh_loading)
+                        } else if (canManageMembers) {
+                            stringResource(R.string.family_members_refresh_members_and_audit)
+                        } else {
+                            stringResource(R.string.family_members_refresh_members)
+                        },
+                        modifier = it,
                         onClick = { viewModel.refresh(activeLedgerId, currentRole) },
                         enabled = !state.loading && state.busyMemberId == null,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(AppSpacing.tinyGap))
-                        Text(
-                            if (state.loading) {
-                                stringResource(R.string.family_members_refresh_loading)
-                            } else if (canManageMembers) {
-                                stringResource(R.string.family_members_refresh_members_and_audit)
-                            } else {
-                                stringResource(R.string.family_members_refresh_members)
-                            },
-                        )
-                    }
+                        leadingIcon = Icons.Filled.Refresh,
+                    )
                 }
             }
         }
@@ -357,16 +351,35 @@ private fun CreatedInviteResult(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(onClick = onCopy) {
-            Text(stringResource(R.string.family_members_invite_copy))
-        }
-        TextButton(onClick = onDismissResult) {
-            Text(stringResource(R.string.family_members_invite_dismiss))
+    AppAdaptiveEditActionLayout(actionCount = 2, compact = false, stackTwoActionsOnNarrow = true) { mode ->
+        when (mode) {
+            AppAdaptiveEditActionMode.Stacked -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                QuietOutlinedButton(
+                    text = stringResource(R.string.family_members_invite_copy),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onCopy,
+                )
+                QuietOutlinedButton(
+                    text = stringResource(R.string.family_members_invite_dismiss),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onDismissResult,
+                )
+            }
+            AppAdaptiveEditActionMode.Compact,
+            AppAdaptiveEditActionMode.Inline -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                QuietOutlinedButton(text = stringResource(R.string.family_members_invite_copy), onClick = onCopy)
+                QuietOutlinedButton(
+                    text = stringResource(R.string.family_members_invite_dismiss),
+                    onClick = onDismissResult,
+                )
+            }
         }
     }
 }
