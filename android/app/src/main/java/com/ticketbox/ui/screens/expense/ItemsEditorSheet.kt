@@ -34,6 +34,20 @@ import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.EditableItem
 import kotlin.math.abs
 
+data class ItemsEditorSheetState(
+    val drafts: List<EditableItem>,
+    val parentAmountCents: Long?,
+    val saving: Boolean,
+)
+
+data class ItemsEditorSheetActions(
+    val onUpdate: (index: Int, name: String?, amountText: String?, kind: String?) -> Unit,
+    val onAddRow: () -> Unit,
+    val onRemoveRow: (index: Int) -> Unit,
+    val onSave: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 // ADR-0044 wave 2: the label is held as a @StringRes id (resolved in the composable
 // via stringResource) so this top-level table stays string-resource-backed without a
 // Context here. The kind key (.first) is the ADR-0035 enum value, not user-visible.
@@ -61,17 +75,11 @@ private fun draftSignedCents(draft: EditableItem): Long {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ItemsEditorSheet(
-    drafts: List<EditableItem>,
-    parentAmountCents: Long?,
-    saving: Boolean,
-    onUpdate: (index: Int, name: String?, amountText: String?, kind: String?) -> Unit,
-    onAddRow: () -> Unit,
-    onRemoveRow: (index: Int) -> Unit,
-    onSave: () -> Unit,
-    onDismiss: () -> Unit,
+    state: ItemsEditorSheetState,
+    actions: ItemsEditorSheetActions,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = sheetState) {
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_edit_items_sheet_title),
             subtitle = stringResource(R.string.expense_edit_items_sheet_subtitle),
@@ -82,34 +90,34 @@ fun ItemsEditorSheet(
                     .heightIn(max = AppSpacing.controlMinHeight * 7),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
-                itemsIndexed(drafts) { index, draft ->
+                itemsIndexed(state.drafts) { index, draft ->
                     ItemEditorRow(
                         index = index,
                         draft = draft,
-                        onUpdate = onUpdate,
-                        onRemove = { onRemoveRow(index) },
+                        onUpdate = actions.onUpdate,
+                        onRemove = { actions.onRemoveRow(index) },
                     )
                 }
                 item {
                     ExpenseDetailActionButtonRow(
                         text = stringResource(R.string.expense_edit_items_add_row_button),
                         icon = Icons.Filled.Add,
-                        onClick = onAddRow,
+                        onClick = actions.onAddRow,
                     )
                 }
             }
 
-            ReconciliationFooter(drafts = drafts, parentAmountCents = parentAmountCents)
+            ReconciliationFooter(drafts = state.drafts, parentAmountCents = state.parentAmountCents)
             ExpenseEditSheetActions(
                 state = ExpenseEditSheetActionState(
-                    saving = saving,
+                    saving = state.saving,
                     primaryEnabled = true,
                     savingText = stringResource(R.string.expense_edit_items_saving_button),
                     primaryText = stringResource(R.string.expense_edit_items_save_button),
                 ),
                 handlers = ExpenseEditSheetActionHandlers(
-                    onDismiss = onDismiss,
-                    onSubmit = onSave,
+                    onDismiss = actions.onDismiss,
+                    onSubmit = actions.onSave,
                 ),
             )
         }

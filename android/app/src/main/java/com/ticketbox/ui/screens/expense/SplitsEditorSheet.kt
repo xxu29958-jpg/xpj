@@ -29,6 +29,21 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.EditableSplit
 
+data class SplitsEditorSheetState(
+    val drafts: List<EditableSplit>,
+    val parentAmountCents: Long?,
+    val saving: Boolean,
+    val loading: Boolean,
+)
+
+data class SplitsEditorSheetActions(
+    val onToggleMember: (memberId: Long, included: Boolean) -> Unit,
+    val onUpdateAmount: (memberId: Long, amountText: String) -> Unit,
+    val onEvenSplit: () -> Unit,
+    val onSave: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 /**
  * ADR-0042 Slice E-1 splits editor. A full-height [ModalBottomSheet] mirroring
  * [ItemsEditorSheet]: each ledger member is a checklist row (included? + name +
@@ -42,28 +57,21 @@ import com.ticketbox.viewmodel.EditableSplit
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SplitsEditorSheet(
-    drafts: List<EditableSplit>,
-    parentAmountCents: Long?,
-    saving: Boolean,
-    loading: Boolean,
-    onToggleMember: (memberId: Long, included: Boolean) -> Unit,
-    onUpdateAmount: (memberId: Long, amountText: String) -> Unit,
-    onEvenSplit: () -> Unit,
-    onSave: () -> Unit,
-    onDismiss: () -> Unit,
+    state: SplitsEditorSheetState,
+    actions: SplitsEditorSheetActions,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = sheetState) {
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_edit_splits_sheet_title),
             subtitle = stringResource(R.string.expense_edit_splits_sheet_subtitle),
         ) {
-            if (drafts.isEmpty()) {
+            if (state.drafts.isEmpty()) {
                 // ADR-0042 P1: the roster loads async after the sheet opens. Until
                 // drafts is built, Save is disabled (below) so an empty splits=[]
                 // can't wipe the existing splits; show why the editor is inert.
                 Text(
-                    text = if (loading) {
+                    text = if (state.loading) {
                         stringResource(R.string.expense_edit_splits_members_loading)
                     } else {
                         stringResource(R.string.expense_edit_splits_members_failed)
@@ -80,11 +88,11 @@ fun SplitsEditorSheet(
                     .heightIn(max = AppSpacing.controlMinHeight * 7),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
-                items(drafts, key = { it.memberId }) { draft ->
+                items(state.drafts, key = { it.memberId }) { draft ->
                     SplitEditorRow(
                         draft = draft,
-                        onToggle = { included -> onToggleMember(draft.memberId, included) },
-                        onUpdateAmount = { text -> onUpdateAmount(draft.memberId, text) },
+                        onToggle = { included -> actions.onToggleMember(draft.memberId, included) },
+                        onUpdateAmount = { text -> actions.onUpdateAmount(draft.memberId, text) },
                     )
                 }
             }
@@ -92,23 +100,23 @@ fun SplitsEditorSheet(
             ExpenseDetailActionButtonRow(
                 text = stringResource(R.string.expense_edit_splits_even_button),
                 icon = Icons.AutoMirrored.Filled.CallSplit,
-                enabled = !saving && drafts.isNotEmpty(),
-                onClick = onEvenSplit,
+                enabled = !state.saving && state.drafts.isNotEmpty(),
+                onClick = actions.onEvenSplit,
             )
-            SplitsReconciliationFooter(drafts = drafts, parentAmountCents = parentAmountCents)
+            SplitsReconciliationFooter(drafts = state.drafts, parentAmountCents = state.parentAmountCents)
             // ADR-0042 P1: never enable Save with an empty draft list — the roster
             // hasn't loaded, and saving would send splits=[] which the backend
             // replace turns into "delete all existing splits".
             ExpenseEditSheetActions(
                 state = ExpenseEditSheetActionState(
-                    saving = saving,
-                    primaryEnabled = drafts.isNotEmpty(),
+                    saving = state.saving,
+                    primaryEnabled = state.drafts.isNotEmpty(),
                     savingText = stringResource(R.string.expense_edit_splits_saving_button),
                     primaryText = stringResource(R.string.expense_edit_splits_save_button),
                 ),
                 handlers = ExpenseEditSheetActionHandlers(
-                    onDismiss = onDismiss,
-                    onSubmit = onSave,
+                    onDismiss = actions.onDismiss,
+                    onSubmit = actions.onSave,
                 ),
             )
         }

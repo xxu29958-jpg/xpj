@@ -62,43 +62,61 @@ internal data class ExpenseBillSplitInvitePanelActions(
     val onCancelInvite: (publicId: String) -> Unit,
 )
 
+internal data class ExpenseEditV1DetailsState(
+    val expenseItems: ExpenseItems?,
+    val expenseSplits: ExpenseSplits?,
+    val itemsLoading: Boolean,
+    val splitsLoading: Boolean,
+    val itemsLoadState: ExpenseDetailDataLoadState,
+    val splitsLoadState: ExpenseDetailDataLoadState,
+    val itemsMessage: UiText?,
+    val splitsMessage: UiText?,
+    val itemsMessageTone: MessageTone,
+    val splitsMessageTone: MessageTone,
+)
+
+internal data class ExpenseEditV1DetailsActions(
+    val onAcknowledgeItemsMismatch: () -> Unit = {},
+    val onEditItems: (() -> Unit)? = null,
+    val onEditSplits: (() -> Unit)? = null,
+)
+
 @Composable
 internal fun ExpenseEditV1DetailsSection(
-    expenseItems: ExpenseItems?,
-    expenseSplits: ExpenseSplits?,
-    itemsLoading: Boolean,
-    splitsLoading: Boolean,
-    itemsLoadState: ExpenseDetailDataLoadState,
-    splitsLoadState: ExpenseDetailDataLoadState,
-    itemsMessage: UiText?,
-    splitsMessage: UiText?,
-    itemsMessageTone: MessageTone,
-    splitsMessageTone: MessageTone,
-    onAcknowledgeItemsMismatch: () -> Unit = {},
-    onEditItems: (() -> Unit)? = null,
-    onEditSplits: (() -> Unit)? = null,
+    state: ExpenseEditV1DetailsState,
+    actions: ExpenseEditV1DetailsActions = ExpenseEditV1DetailsActions(),
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val itemsState = DetailLoadState(itemsLoading, itemsLoadState, itemsMessage, itemsMessageTone)
-    val splitsState = DetailLoadState(splitsLoading, splitsLoadState, splitsMessage, splitsMessageTone)
+    val itemsState = DetailLoadState(
+        loading = state.itemsLoading,
+        loadState = state.itemsLoadState,
+        message = state.itemsMessage,
+        messageTone = state.itemsMessageTone,
+    )
+    val splitsState = DetailLoadState(
+        loading = state.splitsLoading,
+        loadState = state.splitsLoadState,
+        message = state.splitsMessage,
+        messageTone = state.splitsMessageTone,
+    )
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         ExpenseItemsPanel(
-            expenseItems = expenseItems,
+            expenseItems = state.expenseItems,
             state = itemsState,
             currencyDisplay = currencyDisplay,
-            onAcknowledgeMismatch = onAcknowledgeItemsMismatch,
-            onEditItems = onEditItems,
+            onAcknowledgeMismatch = actions.onAcknowledgeItemsMismatch,
+            onEditItems = actions.onEditItems,
         )
         ExpenseDetailDivider()
         ExpenseSplitsPanel(
-            expenseSplits = expenseSplits,
+            expenseSplits = state.expenseSplits,
             state = splitsState,
             currencyDisplay = currencyDisplay,
-            onEditSplits = onEditSplits,
+            onEditSplits = actions.onEditSplits,
         )
         ExpenseDetailDivider()
     }
