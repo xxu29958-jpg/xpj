@@ -18,21 +18,23 @@ internal class ExpenseBindingRepository(
                 ),
             )
             core.sessionCoordinator.applyTransition(
-                serverUrl = normalized,
-                sessionToken = pairResponse.sessionToken,
-                tokenExpiresAt = pairResponse.expiresAt,
-                tokenSoftRefreshAfter = pairResponse.softRefreshAfter,
-                identity = LedgerSessionIdentity(
-                    accountName = pairResponse.accountName,
-                    ledgerId = pairResponse.ledgerId,
-                    ledgerName = pairResponse.ledgerName,
-                    deviceName = pairResponse.deviceName,
-                    role = pairResponse.role,
-                    boundAt = Instant.now().toString(),
+                LedgerSessionTransition(
+                    serverUrl = normalized,
+                    sessionToken = pairResponse.sessionToken,
+                    tokenExpiresAt = pairResponse.expiresAt,
+                    tokenSoftRefreshAfter = pairResponse.softRefreshAfter,
+                    identity = LedgerSessionIdentity(
+                        accountName = pairResponse.accountName,
+                        ledgerId = pairResponse.ledgerId,
+                        ledgerName = pairResponse.ledgerName,
+                        deviceName = pairResponse.deviceName,
+                        role = pairResponse.role,
+                        boundAt = Instant.now().toString(),
+                    ),
+                    cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
+                    clearAvailableLedgers = true,
+                    markUnlocked = true,
                 ),
-                cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
-                clearAvailableLedgers = true,
-                markUnlocked = true,
             )
             val restoreFailed = try {
                 core.syncConfirmedFromService(

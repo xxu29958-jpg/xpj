@@ -21,6 +21,17 @@ data class LedgerSessionSnapshot(
     val activeLedgerId: String?,
 )
 
+data class LedgerSessionTransition(
+    val identity: LedgerSessionIdentity,
+    val serverUrl: String? = null,
+    val sessionToken: String? = null,
+    val tokenExpiresAt: String? = null,
+    val tokenSoftRefreshAfter: String? = null,
+    val cacheInvalidation: LedgerCacheInvalidation = LedgerCacheInvalidation.None,
+    val clearAvailableLedgers: Boolean = false,
+    val markUnlocked: Boolean = false,
+)
+
 enum class LedgerCacheInvalidation {
     None,
     TargetLedger,
@@ -60,83 +71,41 @@ class LocalLedgerSessionCoordinator(
             currentToken() == snapshot.sessionToken &&
             settingsStore.activeLedgerId() == snapshot.activeLedgerId
 
-    suspend fun applyTransition(
-        identity: LedgerSessionIdentity,
-        serverUrl: String? = null,
-        sessionToken: String? = null,
-        tokenExpiresAt: String? = null,
-        tokenSoftRefreshAfter: String? = null,
-        cacheInvalidation: LedgerCacheInvalidation = LedgerCacheInvalidation.None,
-        clearAvailableLedgers: Boolean = false,
-        markUnlocked: Boolean = false,
-    ) {
+    suspend fun applyTransition(transition: LedgerSessionTransition) {
         mutex.withLock {
-            applyTransitionLocked(
-                identity = identity,
-                serverUrl = serverUrl,
-                sessionToken = sessionToken,
-                tokenExpiresAt = tokenExpiresAt,
-                tokenSoftRefreshAfter = tokenSoftRefreshAfter,
-                cacheInvalidation = cacheInvalidation,
-                clearAvailableLedgers = clearAvailableLedgers,
-                markUnlocked = markUnlocked,
-            )
+            applyTransitionLocked(transition)
         }
     }
 
     suspend fun applyTransitionIfCurrent(
         expectedSnapshot: LedgerSessionSnapshot,
-        identity: LedgerSessionIdentity,
-        serverUrl: String? = null,
-        sessionToken: String? = null,
-        tokenExpiresAt: String? = null,
-        tokenSoftRefreshAfter: String? = null,
-        cacheInvalidation: LedgerCacheInvalidation = LedgerCacheInvalidation.None,
-        clearAvailableLedgers: Boolean = false,
-        markUnlocked: Boolean = false,
+        transition: LedgerSessionTransition,
     ): Boolean {
         return mutex.withLock {
             if (!isCurrent(expectedSnapshot)) return@withLock false
-            applyTransitionLocked(
-                identity = identity,
-                serverUrl = serverUrl,
-                sessionToken = sessionToken,
-                tokenExpiresAt = tokenExpiresAt,
-                tokenSoftRefreshAfter = tokenSoftRefreshAfter,
-                cacheInvalidation = cacheInvalidation,
-                clearAvailableLedgers = clearAvailableLedgers,
-                markUnlocked = markUnlocked,
-            )
+            applyTransitionLocked(transition)
             true
         }
     }
 
-    private suspend fun applyTransitionLocked(
-        identity: LedgerSessionIdentity,
-        serverUrl: String?,
-        sessionToken: String?,
-        tokenExpiresAt: String?,
-        tokenSoftRefreshAfter: String?,
-        cacheInvalidation: LedgerCacheInvalidation,
-        clearAvailableLedgers: Boolean,
-        markUnlocked: Boolean,
-    ) {
-        if (cacheInvalidation != LedgerCacheInvalidation.None && outbox != null) {
+    private suspend fun applyTransitionLocked(transition: LedgerSessionTransition) {
+        val identity = transition.identity
+        if (transition.cacheInvalidation != LedgerCacheInvalidation.None && outbox != null) {
             outbox.withBindingTransition {
-                serverUrl?.let(settingsStore::saveServerUrl)
-                sessionToken?.let { token ->
+                transition.serverUrl?.let(settingsStore::saveServerUrl)
+                transition.sessionToken?.let { token ->
                     tokenStore.saveToken(
                         token = token,
-                        expiresAt = tokenExpiresAt,
-                        softRefreshAfter = tokenSoftRefreshAfter,
+                        expiresAt = transition.tokenExpiresAt,
+                        softRefreshAfter = transition.tokenSoftRefreshAfter,
                     )
                 }
 
-                if (clearAvailableLedgers) {
+                if (transition.clearAvailableLedgers) {
                     settingsStore.saveAvailableLedgersJson(null)
                 }
 
-                when (cacheInvalidation) {
+                when (transition.cacheInvalidation) {
                     LedgerCacheInvalidation.None -> Unit
                     LedgerCacheInvalidation.TargetLedger -> {
                         expenseDao.clearForLedger(identity.ledgerId)
@@ -156,7 +125,7 @@ class LocalLedgerSessionCoordinator(
                     role = identity.role,
                     boundAt = identity.boundAt,
                 )
-                if (markUnlocked) {
+                if (transition.markUnlocked) {
                     settingsStore.markUnlocked()
                 }
             }
@@ -193,24 +162,24 @@ class LocalLedgerSessionCoordinator(
         // Old-session in-flight at the boundary moment is a real
         // residual, but binding-scoped drain reads prevent queued
         // old rows from replaying after the switch.
-        if (cacheInvalidation != LedgerCacheInvalidation.None) {
+        if (transition.cacheInvalidation != LedgerCacheInvalidation.None) {
             outbox?.pauseForBindingTransition()
         }
 
-        serverUrl?.let(settingsStore::saveServerUrl)
-        sessionToken?.let { token ->
+        transition.serverUrl?.let(settingsStore::saveServerUrl)
+        transition.sessionToken?.let { token ->
             tokenStore.saveToken(
                 token = token,
-                expiresAt = tokenExpiresAt,
-                softRefreshAfter = tokenSoftRefreshAfter,
+                expiresAt = transition.tokenExpiresAt,
+                softRefreshAfter = transition.tokenSoftRefreshAfter,
             )
         }
 
-        if (clearAvailableLedgers) {
+        if (transition.clearAvailableLedgers) {
             settingsStore.saveAvailableLedgersJson(null)
         }
 
-        when (cacheInvalidation) {
+        when (transition.cacheInvalidation) {
             LedgerCacheInvalidation.None -> Unit
             LedgerCacheInvalidation.TargetLedger -> {
                 expenseDao.clearForLedger(identity.ledgerId)
@@ -233,7 +202,7 @@ class LocalLedgerSessionCoordinator(
             role = identity.role,
             boundAt = identity.boundAt,
         )
-        if (markUnlocked) {
+        if (transition.markUnlocked) {
             settingsStore.markUnlocked()
         }
     }

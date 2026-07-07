@@ -133,9 +133,6 @@
     <ID>LongParameterList:LedgerManualExpenseSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ManualExpenseSheet</ID>
     <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>
     <ID>LongParameterList:LedgerToolsSheet.kt:@Composable internal fun LedgerToolsSheet</ID>
-    <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
-    <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$suspend fun applyTransition</ID>
-    <ID>LongParameterList:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$suspend fun applyTransitionIfCurrent: Boolean</ID>
     <ID>LongParameterList:MainNavGraph.kt:@Composable @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter") private fun MainRoute</ID>
     <ID>LongParameterList:MainNavGraph.kt:@Composable internal fun MainNavGraph</ID>
     <ID>LongParameterList:MainNavGraph.kt:@Composable private fun MainRouteContent</ID>

@@ -164,18 +164,20 @@ class LedgerRepository(
             val response = apiProvider.temporary(serverUrl, token).switchLedger(ledgerId)
             val applied = sessionCoordinator.applyTransitionIfCurrent(
                 expectedSnapshot = session,
-                sessionToken = response.sessionToken,
-                tokenExpiresAt = response.expiresAt,
-                tokenSoftRefreshAfter = response.softRefreshAfter,
-                identity = LedgerSessionIdentity(
-                    accountName = response.accountName,
-                    ledgerId = response.ledger.ledgerId,
-                    ledgerName = response.ledger.name,
-                    deviceName = response.deviceName,
-                    role = response.ledger.role,
-                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                transition = LedgerSessionTransition(
+                    sessionToken = response.sessionToken,
+                    tokenExpiresAt = response.expiresAt,
+                    tokenSoftRefreshAfter = response.softRefreshAfter,
+                    identity = LedgerSessionIdentity(
+                        accountName = response.accountName,
+                        ledgerId = response.ledger.ledgerId,
+                        ledgerName = response.ledger.name,
+                        deviceName = response.deviceName,
+                        role = response.ledger.role,
+                        boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                    ),
+                    cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
                 ),
-                cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
             )
             if (!applied) {
                 throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
@@ -417,21 +419,23 @@ class LedgerRepository(
         )
         val applied = sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = session,
-            serverUrl = serverUrl.takeIf { joiningUnbound },
-            sessionToken = response.sessionToken,
-            tokenExpiresAt = response.expiresAt,
-            tokenSoftRefreshAfter = response.softRefreshAfter,
-            identity = LedgerSessionIdentity(
-                accountName = response.accountName,
-                ledgerId = response.ledgerId,
-                ledgerName = response.ledgerName,
-                deviceName = response.deviceName,
-                role = response.role,
-                boundAt = java.time.Instant.now().toString(),
+            transition = LedgerSessionTransition(
+                serverUrl = serverUrl.takeIf { joiningUnbound },
+                sessionToken = response.sessionToken,
+                tokenExpiresAt = response.expiresAt,
+                tokenSoftRefreshAfter = response.softRefreshAfter,
+                identity = LedgerSessionIdentity(
+                    accountName = response.accountName,
+                    ledgerId = response.ledgerId,
+                    ledgerName = response.ledgerName,
+                    deviceName = response.deviceName,
+                    role = response.role,
+                    boundAt = java.time.Instant.now().toString(),
+                ),
+                cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
+                clearAvailableLedgers = true,
+                markUnlocked = joiningUnbound,
             ),
-            cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
-            clearAvailableLedgers = true,
-            markUnlocked = joiningUnbound,
         )
         if (!applied) {
             throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
@@ -508,13 +512,15 @@ class LedgerRepository(
         val ledgerName = settingsStore.activeLedgerName() ?: settingsStore.ledgerName() ?: return
         val deviceName = settingsStore.deviceName() ?: return
         sessionCoordinator.applyTransition(
-            identity = LedgerSessionIdentity(
-                accountName = accountName,
-                ledgerId = ledgerId,
-                ledgerName = ledgerName,
-                deviceName = deviceName,
-                role = role,
-                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            LedgerSessionTransition(
+                identity = LedgerSessionIdentity(
+                    accountName = accountName,
+                    ledgerId = ledgerId,
+                    ledgerName = ledgerName,
+                    deviceName = deviceName,
+                    role = role,
+                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                ),
             ),
         )
     }
