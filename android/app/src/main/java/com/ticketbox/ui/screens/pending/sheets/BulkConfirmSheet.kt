@@ -19,14 +19,8 @@ import com.ticketbox.ui.design.AppTextHierarchy
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BulkConfirmSheetContent(
-    readyCount: Int,
-    missingAmountSkipCount: Int,
-    duplicateSkipCount: Int,
-    inProgress: Boolean,
-    confirmedCount: Int,
-    totalCount: Int,
-    onConfirmReady: () -> Unit,
-    onDismiss: () -> Unit,
+    state: BulkConfirmSheetState,
+    actions: BulkConfirmSheetActions,
 ) {
     ReviewSheetScaffold(
         title = stringResource(R.string.pending_bulk_sheet_title),
@@ -38,48 +32,60 @@ internal fun BulkConfirmSheetContent(
         ) {
             StatLine(
                 label = stringResource(R.string.pending_bulk_sheet_stat_will_confirm),
-                value = stringResource(R.string.pending_bulk_sheet_stat_count, readyCount),
+                value = stringResource(R.string.pending_bulk_sheet_stat_count, state.readyCount),
             )
-            if (missingAmountSkipCount > 0) {
+            if (state.missingAmountSkipCount > 0) {
                 StatLine(
                     label = stringResource(R.string.pending_bulk_sheet_stat_skip_missing_amount),
-                    value = stringResource(R.string.pending_bulk_sheet_stat_count, missingAmountSkipCount),
+                    value = stringResource(R.string.pending_bulk_sheet_stat_count, state.missingAmountSkipCount),
                 )
             }
-            if (duplicateSkipCount > 0) {
+            if (state.duplicateSkipCount > 0) {
                 StatLine(
                     label = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate),
-                    value = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate_count, duplicateSkipCount),
+                    value = stringResource(R.string.pending_bulk_sheet_stat_skip_duplicate_count, state.duplicateSkipCount),
                 )
             }
         }
 
         AppSheetActionRow(
             primary = AppSheetAction(
-                text = confirmButtonLabel(inProgress, confirmedCount, totalCount, readyCount),
-                enabled = !inProgress && readyCount > 0,
-                onClick = onConfirmReady,
+                text = confirmButtonLabel(state),
+                enabled = !state.inProgress && state.readyCount > 0,
+                onClick = actions.onConfirmReady,
             ),
             secondary = AppSheetAction(
                 text = stringResource(R.string.common_cancel),
-                enabled = !inProgress,
-                onClick = onDismiss,
+                enabled = !state.inProgress,
+                onClick = actions.onDismiss,
             ),
         )
     }
 }
 
+internal data class BulkConfirmSheetState(
+    val readyCount: Int,
+    val missingAmountSkipCount: Int,
+    val duplicateSkipCount: Int,
+    val inProgress: Boolean,
+    val confirmedCount: Int,
+    val totalCount: Int,
+)
+
+internal data class BulkConfirmSheetActions(
+    val onConfirmReady: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 /** Confirm-button label: live "已确认 N/M" progress over the run total, else the count CTA. */
 @Composable
 private fun confirmButtonLabel(
-    inProgress: Boolean,
-    confirmedCount: Int,
-    totalCount: Int,
-    readyCount: Int,
+    state: BulkConfirmSheetState,
 ): String = when {
-    inProgress && totalCount > 0 -> stringResource(R.string.pending_bulk_sheet_progress, confirmedCount, totalCount)
-    inProgress -> stringResource(R.string.pending_bulk_sheet_in_progress)
-    else -> stringResource(R.string.pending_bulk_sheet_confirm_button, readyCount)
+    state.inProgress && state.totalCount > 0 ->
+        stringResource(R.string.pending_bulk_sheet_progress, state.confirmedCount, state.totalCount)
+    state.inProgress -> stringResource(R.string.pending_bulk_sheet_in_progress)
+    else -> stringResource(R.string.pending_bulk_sheet_confirm_button, state.readyCount)
 }
 
 @Composable

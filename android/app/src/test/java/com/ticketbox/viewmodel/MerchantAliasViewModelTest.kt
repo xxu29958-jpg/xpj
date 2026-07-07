@@ -19,11 +19,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,20 +31,19 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class MerchantAliasViewModelTest {
 
-    private val dispatcher = StandardTestDispatcher()
-
-    @BeforeTest
-    fun setup() {
+    private fun merchantAlias(block: suspend TestScope.() -> Unit) = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
-    }
-
-    @AfterTest
-    fun tearDown() {
-        Dispatchers.resetMain()
+        try {
+            block()
+        } finally {
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
-    fun createMerchantCatalogAddsCreatedItemAndShowsSuccess() = runTest(dispatcher) {
+    fun createMerchantCatalogAddsCreatedItemAndShowsSuccess() = merchantAlias {
         val harness = harness()
         harness.vm.uiState.first { it.merchantCatalog.any { catalog -> catalog.publicId == "catalog-1" } }
 
@@ -60,7 +59,7 @@ class MerchantAliasViewModelTest {
     }
 
     @Test
-    fun toggleMerchantCatalogUsesRowVersionAndReplacesState() = runTest(dispatcher) {
+    fun toggleMerchantCatalogUsesRowVersionAndReplacesState() = merchantAlias {
         val harness = harness()
         val initial = harness.vm.uiState.first {
             it.merchantCatalog.any { catalog -> catalog.publicId == "catalog-1" }
@@ -81,7 +80,7 @@ class MerchantAliasViewModelTest {
     }
 
     @Test
-    fun deleteMerchantCatalogUsesRowVersionAndDropsItem() = runTest(dispatcher) {
+    fun deleteMerchantCatalogUsesRowVersionAndDropsItem() = merchantAlias {
         val harness = harness()
         val initial = harness.vm.uiState.first {
             it.merchantCatalog.any { catalog -> catalog.publicId == "catalog-1" }
@@ -101,7 +100,7 @@ class MerchantAliasViewModelTest {
     }
 
     @Test
-    fun renameMerchantCatalogConflictSuggestsMergeWithFreshTargetToken() = runTest(dispatcher) {
+    fun renameMerchantCatalogConflictSuggestsMergeWithFreshTargetToken() = merchantAlias {
         val harness = harness {
             merchantCatalogItems = listOf(
                 merchantCatalogDto(publicId = "source", displayName = "星巴克", rowVersion = 2L),
@@ -136,7 +135,7 @@ class MerchantAliasViewModelTest {
     }
 
     @Test
-    fun mergeMerchantCatalogSendsAliasPolicyAndMarksSourceMerged() = runTest(dispatcher) {
+    fun mergeMerchantCatalogSendsAliasPolicyAndMarksSourceMerged() = merchantAlias {
         val harness = harness {
             merchantCatalogItems = listOf(
                 merchantCatalogDto(publicId = "catalog-1", displayName = "星巴克", rowVersion = 1L),
@@ -166,7 +165,7 @@ class MerchantAliasViewModelTest {
     }
 
     @Test
-    fun viewerCannotMutateMerchantCatalog() = runTest(dispatcher) {
+    fun viewerCannotMutateMerchantCatalog() = merchantAlias {
         val harness = harness(role = "viewer")
         val initial = harness.vm.uiState.first {
             it.merchantCatalog.any { catalog -> catalog.publicId == "catalog-1" }
