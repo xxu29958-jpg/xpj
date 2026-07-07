@@ -71,17 +71,19 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         )
 
         coordinator.applyTransition(
-            identity = LedgerSessionIdentity(
-                accountName = "我",
-                ledgerId = "new-ledger",
-                ledgerName = "新账本",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-04T12:00:00Z",
+            LedgerSessionTransition(
+                identity = LedgerSessionIdentity(
+                    accountName = "我",
+                    ledgerId = "new-ledger",
+                    ledgerName = "新账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-04T12:00:00Z",
+                ),
+                serverUrl = "https://new.example.com",
+                sessionToken = "new-token",
+                cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
             ),
-            serverUrl = "https://new.example.com",
-            sessionToken = "new-token",
-            cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
         )
 
         assertNotNull(serverUrlAtBoundary, "onClearAll must have fired")
@@ -123,17 +125,19 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         )
 
         coordinator.applyTransition(
-            identity = LedgerSessionIdentity(
-                accountName = "我",
-                ledgerId = "new",
-                ledgerName = "new",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-04T12:00:00Z",
+            LedgerSessionTransition(
+                identity = LedgerSessionIdentity(
+                    accountName = "我",
+                    ledgerId = "new",
+                    ledgerName = "new",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-04T12:00:00Z",
+                ),
+                serverUrl = "https://new.example.com",
+                sessionToken = "new-token",
+                cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
             ),
-            serverUrl = "https://new.example.com",
-            sessionToken = "new-token",
-            cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
         )
 
         assertEquals("https://new.example.com", serverUrlAtBoundary)
@@ -204,17 +208,19 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         // won't run until the lease releases.
         val transitionJob = launch {
             coordinator.applyTransition(
-                identity = LedgerSessionIdentity(
-                    accountName = "我",
-                    ledgerId = "new",
-                    ledgerName = "new",
-                    deviceName = "Pixel",
-                    role = "owner",
-                    boundAt = "2026-05-04T12:00:00Z",
+                LedgerSessionTransition(
+                    identity = LedgerSessionIdentity(
+                        accountName = "我",
+                        ledgerId = "new",
+                        ledgerName = "new",
+                        deviceName = "Pixel",
+                        role = "owner",
+                        boundAt = "2026-05-04T12:00:00Z",
+                    ),
+                    serverUrl = "https://new.example.com",
+                    sessionToken = "new-token",
+                    cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
                 ),
-                serverUrl = "https://new.example.com",
-                sessionToken = "new-token",
-                cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
             )
         }
         // Give the transition coroutine a chance to attempt the
@@ -283,16 +289,18 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         )
 
         coordinator.applyTransition(
-            identity = LedgerSessionIdentity(
-                accountName = "我",
-                ledgerId = "same-ledger",
-                ledgerName = "same",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-04T12:00:00Z",
+            LedgerSessionTransition(
+                identity = LedgerSessionIdentity(
+                    accountName = "我",
+                    ledgerId = "same-ledger",
+                    ledgerName = "same",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-04T12:00:00Z",
+                ),
+                sessionToken = "refreshed-token",
+                cacheInvalidation = LedgerCacheInvalidation.None,
             ),
-            sessionToken = "refreshed-token",
-            cacheInvalidation = LedgerCacheInvalidation.None,
         )
 
         assertTrue(!clearAllFired, "None cacheInvalidation must not wipe the outbox")

@@ -180,19 +180,21 @@ internal class ExpenseRepositoryCore(
         val expectedLedgerId = expectedSnapshot.activeLedgerId?.takeIf { it.isNotBlank() }
         sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = expectedSnapshot,
-            identity = LedgerSessionIdentity(
-                accountName = check.accountName,
-                ledgerId = check.ledgerId,
-                ledgerName = check.ledgerName,
-                deviceName = check.deviceName,
-                role = check.role,
-                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            transition = LedgerSessionTransition(
+                identity = LedgerSessionIdentity(
+                    accountName = check.accountName,
+                    ledgerId = check.ledgerId,
+                    ledgerName = check.ledgerName,
+                    deviceName = check.deviceName,
+                    role = check.role,
+                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                ),
+                cacheInvalidation = if (check.ledgerId != expectedLedgerId) {
+                    LedgerCacheInvalidation.TargetLedger
+                } else {
+                    LedgerCacheInvalidation.None
+                },
             ),
-            cacheInvalidation = if (check.ledgerId != expectedLedgerId) {
-                LedgerCacheInvalidation.TargetLedger
-            } else {
-                LedgerCacheInvalidation.None
-            },
         )
     }
 
@@ -207,13 +209,15 @@ internal class ExpenseRepositoryCore(
         if (settings.ledgerId != null && settings.ledgerId != expected) return
         sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = expectedSnapshot,
-            identity = LedgerSessionIdentity(
-                accountName = settings.accountName,
-                ledgerId = ledgerId,
-                ledgerName = settings.ledgerName,
-                deviceName = settings.deviceName,
-                role = settings.role,
-                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            transition = LedgerSessionTransition(
+                identity = LedgerSessionIdentity(
+                    accountName = settings.accountName,
+                    ledgerId = ledgerId,
+                    ledgerName = settings.ledgerName,
+                    deviceName = settings.deviceName,
+                    role = settings.role,
+                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                ),
             ),
         )
     }
