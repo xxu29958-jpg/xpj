@@ -25,6 +25,9 @@ import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableContentLayout
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.design.AppSpacing
@@ -178,11 +181,17 @@ fun PendingScreen(
     )
 
     AppScrollableContent(
-        role = AppPageRole.Pending,
-        isRefreshing = state.showPageRefresh,
-        onRefresh = onRefresh,
+        chrome = AppScrollableContentChrome(
+            role = AppPageRole.Pending,
+            layout = AppScrollableContentLayout(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ),
+        ),
+        refresh = AppScrollableRefreshState(
+            isRefreshing = state.showPageRefresh,
+            onRefresh = onRefresh,
+        ),
         listState = listState,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         item {
             PendingTop(

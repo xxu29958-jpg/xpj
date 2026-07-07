@@ -147,14 +147,20 @@ fun AppSecondaryScrollableContent(
     SecondaryBackHandler(chrome.onBack)
 
     AppScrollableContent(
-        role = chrome.role,
-        isRefreshing = refresh.isRefreshing,
-        onRefresh = refresh.onRefresh,
+        chrome = AppScrollableContentChrome(
+            role = chrome.role,
+            layout = AppScrollableContentLayout(
+                hasBottomBar = chrome.hasBottomBar,
+                contentWidth = chrome.contentWidth,
+                verticalArrangement = chrome.verticalArrangement,
+            ),
+            bottomBar = slots.resolveBottomBar(),
+        ),
+        refresh = AppScrollableRefreshState(
+            isRefreshing = refresh.isRefreshing,
+            onRefresh = refresh.onRefresh,
+        ),
         modifier = modifier,
-        hasBottomBar = chrome.hasBottomBar,
-        contentWidth = chrome.contentWidth,
-        verticalArrangement = chrome.verticalArrangement,
-        bottomBar = slots.resolveBottomBar(),
     ) {
         item { SecondaryHeader(chrome = chrome, slots = slots) }
         slots.status?.let { status -> item { status() } }

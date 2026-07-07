@@ -39,6 +39,9 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableContentLayout
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayTime
@@ -126,15 +129,21 @@ fun TodayScreen(
     actions: TodayActions,
 ) {
     AppScrollableContent(
-        role = AppPageRole.Today,
-        isRefreshing = TodayRefreshIndicator.isActive(
-            pendingLoading = state.pending.loading,
-            pendingLoadedOnce = state.pending.hasLoadedOnce,
-            monthlyLoading = state.monthly.loading,
-            monthlyHasReadableData = state.monthly.stats != null,
+        chrome = AppScrollableContentChrome(
+            role = AppPageRole.Today,
+            layout = AppScrollableContentLayout(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            ),
         ),
-        onRefresh = actions.onRefresh,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        refresh = AppScrollableRefreshState(
+            isRefreshing = TodayRefreshIndicator.isActive(
+                pendingLoading = state.pending.loading,
+                pendingLoadedOnce = state.pending.hasLoadedOnce,
+                monthlyLoading = state.monthly.loading,
+                monthlyHasReadableData = state.monthly.stats != null,
+            ),
+            onRefresh = actions.onRefresh,
+        ),
     ) {
         item {
             AppPageHeader(

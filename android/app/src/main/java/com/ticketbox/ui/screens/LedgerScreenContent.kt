@@ -14,6 +14,9 @@ import com.ticketbox.R
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableContentLayout
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ledger.LedgerDaySectionActions
@@ -41,10 +44,16 @@ internal fun LedgerContent(
         shouldCompactLedgerDayGroups(groupedItems.size, state.items.size)
 
     AppScrollableContent(
-        role = AppPageRole.Ledger,
-        isRefreshing = state.showPageRefresh,
-        onRefresh = actions.onSync,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        chrome = AppScrollableContentChrome(
+            role = AppPageRole.Ledger,
+            layout = AppScrollableContentLayout(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ),
+        ),
+        refresh = AppScrollableRefreshState(
+            isRefreshing = state.showPageRefresh,
+            onRefresh = actions.onSync,
+        ),
     ) {
         item { LedgerTopChrome(state = state, actions = actions, chromeState = chromeState) }
         val authorityTone = ledgerAuthorityTone(state)

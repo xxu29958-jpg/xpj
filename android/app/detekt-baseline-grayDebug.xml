@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
     <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
@@ -38,7 +37,6 @@
     <ID>LongMethod:ComponentPreviewSamples.kt:@Preview(showBackground = true) @Composable private fun AppVisualComponentsPreview</ID>
     <ID>LongMethod:CurrencySection.kt:@Composable private fun CurrencyOptionCard</ID>
     <ID>LongMethod:DuplicateConfirmSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun DuplicateConfirmSheetContent</ID>
-    <ID>LongMethod:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
     <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
     <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
     <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
@@ -103,10 +101,8 @@
     <ID>LongMethod:TagStatsCard.kt:@Composable private fun TagStatsRow</ID>
     <ID>LongMethod:Theme.kt:@Composable fun TicketboxAtmosphereBackground</ID>
     <ID>LongMethod:ThemeVisuals.kt:fun themeVisualsForSkin: ThemeVisuals</ID>
-    <ID>LongParameterList:AppPageScaffold.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun AppScrollableContent</ID>
     <ID>LongParameterList:AppearanceScreen.kt:@Composable fun AppearanceScreen</ID>
     <ID>LongParameterList:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>
-    <ID>LongParameterList:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
     <ID>LongParameterList:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>
     <ID>LongParameterList:MerchantAliasesScreen.kt:@Composable fun MerchantAliasesScreen</ID>

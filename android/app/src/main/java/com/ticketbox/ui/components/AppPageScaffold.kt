@@ -341,17 +341,10 @@ fun AppPageHeader(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppScrollableContent(
-    role: PageRole,
-    isRefreshing: Boolean,
-    onRefresh: () -> Unit,
+    chrome: AppScrollableContentChrome,
+    refresh: AppScrollableRefreshState,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
-    hasBottomBar: Boolean = true,
-    horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = true,
-    contentWidth: AppAdaptiveContentWidth = AppAdaptiveContentWidth.FullWidth,
-    verticalArrangement: Arrangement.Vertical? = null,
-    bottomBar: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val density = LocalDensity.current
@@ -360,27 +353,27 @@ fun AppScrollableContent(
 
     AppPageScaffold(
         chrome = AppPageChrome(
-            role = role,
-            hasBottomBar = hasBottomBar,
-            horizontalPadding = horizontalPadding,
-            includeStatusBarPadding = includeStatusBarPadding,
+            role = chrome.role,
+            hasBottomBar = chrome.layout.hasBottomBar,
+            horizontalPadding = chrome.layout.horizontalPadding,
+            includeStatusBarPadding = chrome.layout.includeStatusBarPadding,
         ),
         modifier = modifier,
     ) { layout ->
         val refreshState = rememberPullToRefreshState()
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val resolvedContentMaxWidth = resolvedContentMaxWidth(contentWidth)
+                val resolvedContentMaxWidth = resolvedContentMaxWidth(chrome.layout.contentWidth)
                 val visibleStatusPadding = layout.visibleStatusPadding()
                 PullToRefreshBox(
-                    isRefreshing = isRefreshing,
-                    onRefresh = onRefresh,
+                    isRefreshing = refresh.isRefreshing,
+                    onRefresh = refresh.onRefresh,
                     modifier = Modifier.fillMaxSize(),
                     state = refreshState,
                     indicator = {
                         // Material3 默认 indicator，避免下拉时只见手指不见反馈。
                         // 位置在 status bar 下方一格，与列表 contentPadding 一致。
-                        AppPullToRefreshIndicator(refreshState, isRefreshing, visibleStatusPadding)
+                        AppPullToRefreshIndicator(refreshState, refresh.isRefreshing, visibleStatusPadding)
                     },
                 ) {
                     Box(
@@ -390,7 +383,7 @@ fun AppScrollableContent(
                             .appPageContentWidth(resolvedContentMaxWidth)
                             .padding(
                                 top = visibleStatusPadding,
-                                bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
+                                bottom = if (chrome.bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
                             )
                             .clipToBounds(),
                     ) {
@@ -398,12 +391,12 @@ fun AppScrollableContent(
                             modifier = Modifier.fillMaxSize(),
                             state = listState,
                             contentPadding = layout.scrollContentPadding(),
-                            verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+                            verticalArrangement = chrome.layout.verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
                             content = content,
                         )
                     }
                 }
-                if (bottomBar != null) {
+                chrome.bottomBar?.let { bottomBar ->
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -416,6 +409,25 @@ fun AppScrollableContent(
         }
     }
 }
+
+class AppScrollableContentChrome(
+    val role: PageRole,
+    val layout: AppScrollableContentLayout = AppScrollableContentLayout(),
+    val bottomBar: (@Composable () -> Unit)? = null,
+)
+
+data class AppScrollableContentLayout(
+    val hasBottomBar: Boolean = true,
+    val horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
+    val includeStatusBarPadding: Boolean = true,
+    val contentWidth: AppAdaptiveContentWidth = AppAdaptiveContentWidth.FullWidth,
+    val verticalArrangement: Arrangement.Vertical? = null,
+)
+
+data class AppScrollableRefreshState(
+    val isRefreshing: Boolean,
+    val onRefresh: () -> Unit,
+)
 
 private fun Modifier.appPageContentWidth(maxWidth: Dp?): Modifier =
     if (maxWidth == null) {
