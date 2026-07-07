@@ -40,23 +40,28 @@ import com.ticketbox.ui.screens.pending.NeedsReviewFilterBarState
 import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
 import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
+import com.ticketbox.ui.screens.pending.PendingExpenseQueueActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.ui.screens.pending.PendingListBodyState
+import com.ticketbox.ui.screens.pending.PendingPrimaryReviewAction
 import com.ticketbox.ui.screens.pending.PendingQueueEvidence
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueOverview
+import com.ticketbox.ui.screens.pending.PendingReviewFlowActions
 import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostState
+import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
 import com.ticketbox.ui.screens.pending.PendingTopState
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
+import com.ticketbox.ui.screens.pending.pendingPrimaryReviewAction
 import com.ticketbox.ui.screens.pending.pendingListBodyState
 import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
@@ -65,26 +70,10 @@ import com.ticketbox.viewmodel.PendingUiState
 @OptIn(ExperimentalMaterial3Api::class)
 fun PendingScreen(
     state: PendingUiState,
-    onRefresh: () -> Unit,
-    onEdit: (Expense) -> Unit,
-    onConfirm: (Expense) -> Unit,
-    onReject: (Expense) -> Unit,
-    onKeepDuplicate: (Expense) -> Unit,
-    onUploadScreenshot: () -> Unit,
-    onQuickCategory: (Expense) -> Unit = {},
-    onSaveQuickCategory: (Long, String) -> Unit = { _, _ -> },
-    onQuickMerchant: (Expense) -> Unit = {},
-    onSaveQuickMerchant: (Long, String) -> Unit = { _, _ -> },
-    onMissingAmount: (Expense) -> Unit = {},
-    onSaveAmountDraft: (Long, Long) -> Unit = { _, _ -> },
-    onSaveAmountAndConfirm: (Long, Long) -> Unit = { _, _ -> },
-    onOpenBulkConfirm: () -> Unit = {},
-    onConfirmReady: () -> Unit = {},
-    onOpenDuplicate: (Expense) -> Unit = {},
-    onIgnoreDuplicate: (Expense) -> Unit = {},
-    onSkipReviewField: () -> Unit = {},
-    onCloseSheet: () -> Unit = {},
-    onUndoReject: () -> Unit = {},
+    chromeActions: PendingScreenChromeActions,
+    itemActions: PendingExpenseQueueActions,
+    reviewActions: PendingReviewFlowActions,
+    sheetActions: PendingReviewSheetHostActions,
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
     var showPendingTools by rememberSaveable { mutableStateOf(false) }
@@ -109,14 +98,14 @@ fun PendingScreen(
     val haptics = rememberAppHaptics()
 
     fun resolvePrimaryAction(expense: Expense) {
-        when {
-            expense.amountCents == null -> onMissingAmount(expense)
-            expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> onOpenDuplicate(expense)
-            expense.category.isBlank() -> onQuickCategory(expense)
-            expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
-            else -> {
+        when (pendingPrimaryReviewAction(expense)) {
+            PendingPrimaryReviewAction.MissingAmount -> reviewActions.quickFix.onMissingAmount(expense)
+            PendingPrimaryReviewAction.DuplicateReview -> reviewActions.duplicate.onOpenDuplicate(expense)
+            PendingPrimaryReviewAction.QuickCategory -> reviewActions.quickFix.onQuickCategory(expense)
+            PendingPrimaryReviewAction.QuickMerchant -> reviewActions.quickFix.onQuickMerchant(expense)
+            PendingPrimaryReviewAction.Confirm -> {
                 haptics.confirm()
-                onConfirm(expense)
+                itemActions.onConfirm(expense)
             }
         }
     }
@@ -147,7 +136,7 @@ fun PendingScreen(
                 loading = blockingRefresh,
                 displayMode = displayMode,
                 onDisplayModeChange = { displayMode = it },
-                onRefresh = onRefresh,
+                onRefresh = chromeActions.onRefresh,
                 onDismiss = { showPendingTools = false },
             )
         }
@@ -167,17 +156,7 @@ fun PendingScreen(
             reviewRemaining = state.reviewRemaining,
             statusMessage = state.message?.asString(),
         ),
-        actions = PendingReviewSheetHostActions(
-            onSaveQuickCategory = onSaveQuickCategory,
-            onSaveQuickMerchant = onSaveQuickMerchant,
-            onSaveAmountDraft = onSaveAmountDraft,
-            onSaveAmountAndConfirm = onSaveAmountAndConfirm,
-            onSkipReviewField = onSkipReviewField,
-            onKeepBoth = onKeepDuplicate,
-            onIgnoreCurrent = onIgnoreDuplicate,
-            onConfirmReady = onConfirmReady,
-            onDismiss = onCloseSheet,
-        ),
+        actions = sheetActions,
     )
 
     AppScrollableContent(
@@ -189,7 +168,7 @@ fun PendingScreen(
         ),
         refresh = AppScrollableRefreshState(
             isRefreshing = state.showPageRefresh,
-            onRefresh = onRefresh,
+            onRefresh = chromeActions.onRefresh,
         ),
         listState = listState,
     ) {
@@ -200,7 +179,7 @@ fun PendingScreen(
                     uploading = state.uploading,
                     readOnly = readOnly,
                 ),
-                onUploadScreenshot = onUploadScreenshot,
+                onUploadScreenshot = chromeActions.onUploadScreenshot,
                 trailingAction = if (state.items.isNotEmpty()) {
                     {
                         PendingDisplayModeButton(
@@ -241,7 +220,7 @@ fun PendingScreen(
                     },
                     readOnly = readOnly,
                     bulkRunning = state.bulkConfirm.running,
-                    onOpenBulkConfirm = onOpenBulkConfirm,
+                    onOpenBulkConfirm = reviewActions.queue.onOpenBulkConfirm,
                 )
             }
         }
@@ -252,7 +231,7 @@ fun PendingScreen(
 
         state.undoableExpense?.let { undoable ->
             item(key = "undo-${undoable.id}") {
-                PendingUndoRejectBanner(expense = undoable, onUndo = onUndoReject)
+                PendingUndoRejectBanner(expense = undoable, onUndo = reviewActions.queue.onUndoReject)
             }
         }
 
@@ -283,7 +262,7 @@ fun PendingScreen(
                     AppErrorState(
                         title = stringResource(R.string.pending_load_failed_title),
                         body = stringResource(R.string.pending_load_failed_body),
-                        onRetry = onRefresh,
+                        onRetry = chromeActions.onRefresh,
                     )
                 }
             }
@@ -298,7 +277,7 @@ fun PendingScreen(
                             showUploadGuide = showUploadGuide,
                         ),
                         onToggleGuide = { showUploadGuide = !showUploadGuide },
-                        onRefresh = onRefresh,
+                        onRefresh = chromeActions.onRefresh,
                     )
                 }
             }
@@ -336,13 +315,13 @@ fun PendingScreen(
                         ),
                         actions = PendingExpenseReviewActions(
                             canMutate = canMutate,
-                            onEdit = { onEdit(expense) },
+                            onEdit = { itemActions.onEdit(expense) },
                             onPrimaryAction = { resolvePrimaryAction(expense) },
                             onReject = {
                                 haptics.reject()
-                                onReject(expense)
+                                itemActions.onReject(expense)
                             },
-                            onKeepDuplicate = { onKeepDuplicate(expense) },
+                            onKeepDuplicate = { itemActions.onKeepDuplicate(expense) },
                         ),
                         modifier = Modifier.animateItem(),
                     )
