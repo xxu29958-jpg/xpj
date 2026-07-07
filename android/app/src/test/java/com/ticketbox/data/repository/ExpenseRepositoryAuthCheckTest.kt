@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
@@ -24,12 +26,14 @@ class ExpenseRepositoryAuthCheckTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
@@ -69,12 +73,14 @@ class ExpenseRepositoryAuthCheckTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-a") }
@@ -94,12 +100,14 @@ class ExpenseRepositoryAuthCheckTest {
         apiService.onCheckAuth = {
             tokenStore.saveToken("session-b")
             settingsStore.saveIdentity(
-                accountName = "我",
-                ledgerId = "family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:05:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:05:00Z",
+                )
             )
         }
         val repository = ExpenseRepository(
@@ -144,12 +152,14 @@ class ExpenseRepositoryAuthCheckTest {
         val settingsStore = FakeTicketboxSettingsStore(events).apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
@@ -196,12 +206,14 @@ class ExpenseRepositoryAuthCheckTest {
             val settingsStore = FakeTicketboxSettingsStore().apply {
                 saveServerUrl("https://api.example.com")
                 saveIdentity(
-                    accountName = "我",
-                    ledgerId = "old",
-                    ledgerName = "旧账本",
-                    deviceName = "旧设备",
-                    role = "owner",
-                    boundAt = "2026-05-01T00:00:00Z",
+                    PersistedLedgerIdentity(
+                        accountName = "我",
+                        ledgerId = "old",
+                        ledgerName = "旧账本",
+                        deviceName = "旧设备",
+                        role = "owner",
+                        boundAt = "2026-05-01T00:00:00Z",
+                    )
                 )
             }
             val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
@@ -231,12 +243,14 @@ class ExpenseRepositoryAuthCheckTest {
             )[SettingsViewModel::class.java]
 
             settingsStore.saveIdentity(
-                accountName = "2468",
-                ledgerId = "family",
-                ledgerName = "家庭账本",
-                deviceName = "9753",
-                role = "viewer",
-                boundAt = "2026-05-13T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "2468",
+                    ledgerId = "family",
+                    ledgerName = "家庭账本",
+                    deviceName = "9753",
+                    role = "viewer",
+                    boundAt = "2026-05-13T00:00:00Z",
+                )
             )
 
             viewModel.refreshLocalBindingState()
@@ -258,12 +272,14 @@ class ExpenseRepositoryAuthCheckTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel",
-                role = "viewer",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel",
+                    role = "viewer",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }

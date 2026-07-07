@@ -113,7 +113,6 @@
     <ID>LongParameterList:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
     <ID>LongParameterList:RecurringScreen.kt:@Composable fun RecurringScreen</ID>
     <ID>LongParameterList:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
-    <ID>LongParameterList:TicketboxSettingsStore.kt:TicketboxSettingsStore$fun saveIdentity</ID>
     <ID>TooManyFunctions:BudgetViewModel.kt:BudgetViewModel : ViewModel</ID>
     <ID>TooManyFunctions:CategoryRulesViewModel.kt:CategoryRulesViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao</ID>

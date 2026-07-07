@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.data.local.ExpenseEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
@@ -117,12 +119,14 @@ class ExpenseRepositoryBindServerTest {
                 redirected = true
                 tokenStore.saveToken("session-family")
                 settingsStore.saveIdentity(
-                    accountName = "家人",
-                    ledgerId = "family",
-                    ledgerName = "家庭账本",
-                    deviceName = "Pixel",
-                    role = "member",
-                    boundAt = "2026-05-01T00:05:00Z",
+                    PersistedLedgerIdentity(
+                        accountName = "家人",
+                        ledgerId = "family",
+                        ledgerName = "家庭账本",
+                        deviceName = "Pixel",
+                        role = "member",
+                        boundAt = "2026-05-01T00:05:00Z",
+                    )
                 )
             }
         }

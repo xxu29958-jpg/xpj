@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import kotlinx.coroutines.CompletableDeferred
@@ -148,12 +150,14 @@ class LedgerRepositoryMutationTest {
         val store = LedgerFakeSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "旧账号",
-                ledgerId = "L_old",
-                ledgerName = "旧账本",
-                deviceName = "Old Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "旧账号",
+                    ledgerId = "L_old",
+                    ledgerName = "旧账本",
+                    deviceName = "Old Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
@@ -162,12 +166,14 @@ class LedgerRepositoryMutationTest {
                 switchHandler = { ledgerId ->
                     tokenStore.saveToken("new-token")
                     store.saveIdentity(
-                        accountName = "新账号",
-                        ledgerId = "L_new",
-                        ledgerName = "新账本",
-                        deviceName = "New Pixel",
-                        role = "owner",
-                        boundAt = "2026-05-01T00:05:00Z",
+                        PersistedLedgerIdentity(
+                            accountName = "新账号",
+                            ledgerId = "L_new",
+                            ledgerName = "新账本",
+                            deviceName = "New Pixel",
+                            role = "owner",
+                            boundAt = "2026-05-01T00:05:00Z",
+                        )
                     )
                     LedgerSwitchResponseDto(
                         sessionToken = "switched-token",

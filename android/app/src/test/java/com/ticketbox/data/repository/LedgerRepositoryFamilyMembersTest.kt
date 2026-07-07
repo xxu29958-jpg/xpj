@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.data.remote.dto.LedgerAuditDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
@@ -89,12 +91,14 @@ class LedgerRepositoryFamilyMembersTest {
         val store = LedgerFakeSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "L_family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "L_family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val repo = LedgerRepository(
@@ -134,22 +138,26 @@ class LedgerRepositoryFamilyMembersTest {
         val store = LedgerFakeSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "L_family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "L_family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         api.onLedgerMembers = {
             store.saveIdentity(
-                accountName = "我",
-                ledgerId = "L_other",
-                ledgerName = "另一个账本",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:05:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "L_other",
+                    ledgerName = "另一个账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:05:00Z",
+                )
             )
         }
         val repo = LedgerRepository(

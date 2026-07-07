@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.ApiService
@@ -175,12 +177,14 @@ class CategoryRulesViewModelTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }

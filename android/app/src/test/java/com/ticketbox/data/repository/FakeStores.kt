@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -9,16 +10,18 @@ import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
-internal fun boundSettingsStore(): FakeTicketboxSettingsStore =
+internal fun boundSettingsStore(role: String = "owner"): FakeTicketboxSettingsStore =
     FakeTicketboxSettingsStore().apply {
         saveServerUrl("https://api.example.com")
         saveIdentity(
-            accountName = "我",
-            ledgerId = "owner",
-            ledgerName = "我的小票夹",
-            deviceName = "Pixel",
-            role = "owner",
-            boundAt = "2026-05-01T00:00:00Z",
+            PersistedLedgerIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = role,
+                boundAt = "2026-05-01T00:00:00Z",
+            )
         )
     }
 
@@ -124,21 +127,14 @@ internal class FakeTicketboxSettingsStore(
 
     override fun boundAt(): String? = boundAt
 
-    override fun saveIdentity(
-        accountName: String,
-        ledgerId: String,
-        ledgerName: String,
-        deviceName: String,
-        role: String,
-        boundAt: String,
-    ) {
+    override fun saveIdentity(identity: PersistedLedgerIdentity) {
         events += "saveIdentity"
-        this.accountName = accountName
-        ledgerIdFlow.value = ledgerId
-        this.ledgerName = ledgerName
-        this.deviceName = deviceName
-        this.role = role
-        this.boundAt = boundAt
+        accountName = identity.accountName
+        ledgerIdFlow.value = identity.ledgerId
+        ledgerName = identity.ledgerName
+        deviceName = identity.deviceName
+        role = identity.role
+        boundAt = identity.boundAt
         onSaveIdentity?.invoke()
     }
 

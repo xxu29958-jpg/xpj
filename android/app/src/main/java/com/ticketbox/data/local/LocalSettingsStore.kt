@@ -125,24 +125,17 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun boundAt(): String? = prefs.getString(KEY_BOUND_AT, null)
 
-    override fun saveIdentity(
-        accountName: String,
-        ledgerId: String,
-        ledgerName: String,
-        deviceName: String,
-        role: String,
-        boundAt: String,
-    ) {
+    override fun saveIdentity(identity: PersistedLedgerIdentity) {
         prefs.edit {
-            putString(KEY_ACCOUNT_NAME, accountName)
-            putString(KEY_ACTIVE_LEDGER_ID, ledgerId)
-            putString(KEY_ACTIVE_LEDGER_NAME, ledgerName)
-            putString(KEY_LEDGER_NAME, ledgerName)
-            putString(KEY_DEVICE_NAME, deviceName)
-            putString(KEY_ROLE, role)
-            putString(KEY_BOUND_AT, boundAt)
+            putString(KEY_ACCOUNT_NAME, identity.accountName)
+            putString(KEY_ACTIVE_LEDGER_ID, identity.ledgerId)
+            putString(KEY_ACTIVE_LEDGER_NAME, identity.ledgerName)
+            putString(KEY_LEDGER_NAME, identity.ledgerName)
+            putString(KEY_DEVICE_NAME, identity.deviceName)
+            putString(KEY_ROLE, identity.role)
+            putString(KEY_BOUND_AT, identity.boundAt)
         }
-        activeLedgerIdFlow.value = ledgerId
+        activeLedgerIdFlow.value = identity.ledgerId
     }
 
     override fun saveLastConfirmedSyncAt(value: String) {

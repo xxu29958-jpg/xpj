@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -14,12 +16,14 @@ class ExpenseRepositoryRuleGovernanceTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
@@ -59,12 +63,14 @@ class ExpenseRepositoryRuleGovernanceTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
@@ -89,12 +95,14 @@ class ExpenseRepositoryRuleGovernanceTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)

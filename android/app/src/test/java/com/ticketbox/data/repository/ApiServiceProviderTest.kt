@@ -1,6 +1,7 @@
 ﻿package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.domain.model.BackgroundSettings
@@ -167,16 +168,9 @@ private class ProviderSettingsStore : TicketboxSettingsStore {
 
     override fun boundAt(): String? = null
 
-    override fun saveIdentity(
-        accountName: String,
-        ledgerId: String,
-        ledgerName: String,
-        deviceName: String,
-        role: String,
-        boundAt: String,
-    ) {
-        this.role = role
-        ledgerIdFlow.value = ledgerId
+    override fun saveIdentity(identity: PersistedLedgerIdentity) {
+        role = identity.role
+        ledgerIdFlow.value = identity.ledgerId
     }
 
     override fun saveLastConfirmedSyncAt(value: String) = Unit

@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -12,17 +14,7 @@ import kotlin.test.assertTrue
 class ExpenseRepositoryExpenseDetailTest {
     @Test
     fun expenseItemsAndSplitsUseV1DetailEndpoints() = runTest {
-        val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.example.com")
-            saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:00:00Z",
-            )
-        }
+        val settingsStore = boundSettingsStore(role = "member")
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
@@ -80,12 +72,14 @@ class ExpenseRepositoryExpenseDetailTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
             saveIdentity(
-                accountName = "Account",
-                ledgerId = "owner",
-                ledgerName = "Family Ledger",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "Account",
+                    ledgerId = "owner",
+                    ledgerName = "Family Ledger",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
@@ -113,23 +107,27 @@ class ExpenseRepositoryExpenseDetailTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
             saveIdentity(
-                accountName = "Account",
-                ledgerId = "owner",
-                ledgerName = "Owner Ledger",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "Account",
+                    ledgerId = "owner",
+                    ledgerName = "Owner Ledger",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply {
             onExpenseFetch = {
                 settingsStore.saveIdentity(
-                    accountName = "Account",
-                    ledgerId = "family",
-                    ledgerName = "Family Ledger",
-                    deviceName = "Pixel",
-                    role = "member",
-                    boundAt = "2026-05-01T00:00:00Z",
+                    PersistedLedgerIdentity(
+                        accountName = "Account",
+                        ledgerId = "family",
+                        ledgerName = "Family Ledger",
+                        deviceName = "Pixel",
+                        role = "member",
+                        boundAt = "2026-05-01T00:00:00Z",
+                    )
                 )
             }
         }
@@ -157,12 +155,14 @@ class ExpenseRepositoryExpenseDetailTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
             saveIdentity(
-                accountName = "Account",
-                ledgerId = "owner",
-                ledgerName = "Owner Ledger",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "Account",
+                    ledgerId = "owner",
+                    ledgerName = "Owner Ledger",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-owner") }
@@ -170,12 +170,14 @@ class ExpenseRepositoryExpenseDetailTest {
             onConfirmExpense = {
                 tokenStore.saveToken("session-family")
                 settingsStore.saveIdentity(
-                    accountName = "Account",
-                    ledgerId = "family",
-                    ledgerName = "Family Ledger",
-                    deviceName = "Pixel",
-                    role = "member",
-                    boundAt = "2026-05-01T00:00:00Z",
+                    PersistedLedgerIdentity(
+                        accountName = "Account",
+                        ledgerId = "family",
+                        ledgerName = "Family Ledger",
+                        deviceName = "Pixel",
+                        role = "member",
+                        boundAt = "2026-05-01T00:00:00Z",
+                    )
                 )
             }
         }
@@ -224,12 +226,14 @@ class ExpenseRepositoryExpenseDetailTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "只读",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "viewer",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "只读",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "viewer",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)

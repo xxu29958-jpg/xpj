@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
@@ -139,12 +141,14 @@ class MerchantAliasViewModelToneTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "me",
-                ledgerId = "owner",
-                ledgerName = "My ledger",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "me",
+                    ledgerId = "owner",
+                    ledgerName = "My ledger",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }

@@ -1,6 +1,7 @@
 ﻿package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DashboardCardDto
@@ -815,15 +816,8 @@ private class ReportsFakeSettingsStore(
     override fun deviceName(): String? = "Pixel"
     override fun role(): String? = role
     override fun boundAt(): String? = "2026-05-13T00:00:00Z"
-    override fun saveIdentity(
-        accountName: String,
-        ledgerId: String,
-        ledgerName: String,
-        deviceName: String,
-        role: String,
-        boundAt: String,
-    ) {
-        this.role = role
+    override fun saveIdentity(identity: PersistedLedgerIdentity) {
+        role = identity.role
     }
     override fun saveLastConfirmedSyncAt(value: String) = Unit
     override fun clearLastConfirmedSyncAt() = Unit

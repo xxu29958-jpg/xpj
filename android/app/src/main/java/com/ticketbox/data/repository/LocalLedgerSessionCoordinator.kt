@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.ExpenseDao
+import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.sync.Mutex
@@ -117,14 +118,7 @@ class LocalLedgerSessionCoordinator(
                     }
                 }
 
-                settingsStore.saveIdentity(
-                    accountName = identity.accountName,
-                    ledgerId = identity.ledgerId,
-                    ledgerName = identity.ledgerName,
-                    deviceName = identity.deviceName,
-                    role = identity.role,
-                    boundAt = identity.boundAt,
-                )
+                settingsStore.saveIdentity(identity.toPersistedIdentity())
                 if (transition.markUnlocked) {
                     settingsStore.markUnlocked()
                 }
@@ -194,14 +188,7 @@ class LocalLedgerSessionCoordinator(
             }
         }
 
-        settingsStore.saveIdentity(
-            accountName = identity.accountName,
-            ledgerId = identity.ledgerId,
-            ledgerName = identity.ledgerName,
-            deviceName = identity.deviceName,
-            role = identity.role,
-            boundAt = identity.boundAt,
-        )
+        settingsStore.saveIdentity(identity.toPersistedIdentity())
         if (transition.markUnlocked) {
             settingsStore.markUnlocked()
         }
@@ -213,3 +200,13 @@ class LocalLedgerSessionCoordinator(
     private fun currentToken(): String? =
         tokenStore.getToken()?.takeIf { it.isNotBlank() }
 }
+
+private fun LedgerSessionIdentity.toPersistedIdentity(): PersistedLedgerIdentity =
+    PersistedLedgerIdentity(
+        accountName = accountName,
+        ledgerId = ledgerId,
+        ledgerName = ledgerName,
+        deviceName = deviceName,
+        role = role,
+        boundAt = boundAt,
+    )
