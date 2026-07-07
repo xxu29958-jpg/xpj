@@ -106,6 +106,27 @@ data class PendingUiState(
         get() = loading && items.isEmpty() && !showingCachedSnapshot
 }
 
+private data class PendingStateTransitionOperation(
+    val repoCall: suspend (Expense) -> Result<ExpenseStateOutcome>,
+    val dismissBanner: Boolean = true,
+    val preCheck: () -> UiText? = { null },
+)
+
+private data class PendingStateTransitionMessages(
+    val synced: UiText,
+    val queued: UiText,
+    @param:StringRes val failureFallback: Int,
+)
+
+private data class PendingStateTransitionResultHandler(
+    val reduceOutcome: (
+        state: PendingUiState,
+        outcome: ExpenseStateOutcome,
+        message: UiText,
+    ) -> PendingUiState,
+    val afterSyncedSuccess: ((Expense) -> Unit)? = null,
+)
+
 class PendingViewModel(
     internal val repository: PendingReviewActions,
     private val thumbnailLoader: PendingThumbnailLoader = PendingThumbnailLoader(repository),
@@ -369,8 +390,9 @@ class PendingViewModel(
      * pattern that every variant ran open-coded:
      *
      *  1. (optional) dismiss the prior 撤销 banner — user moved on to
-     *     another action. [dismissBanner] = false for [reject], which
-     *     re-seeds the banner itself on Synced.
+     *     another action.
+     *     [PendingStateTransitionOperation.dismissBanner] = false for
+     *     [reject], which re-seeds the banner itself on Synced.
      *  2. read-only gate. [blockReadOnlyWrite] tears down the banner +
      *     toast as a side effect (V11 fix).
      *  3. optional per-call precondition (e.g. confirm needs an amount);
@@ -379,8 +401,11 @@ class PendingViewModel(
      *  5. mark in-progress.
      *  6. launch + generation snapshot for ledger-switch cancellation.
      *  7. call repo; on success let the caller compose the new
-     *     [PendingUiState] via [onOutcome] (typically a reducer call);
-     *     on Synced run [afterSyncedSuccess] for side effects like
+     *     [PendingUiState] via
+     *     [PendingStateTransitionResultHandler.reduceOutcome]
+     *     (typically a reducer call); on Synced run
+     *     [PendingStateTransitionResultHandler.afterSyncedSuccess]
+     *     for side effects like
      *     seeding [undoableExpense] + [startUndoTimer].
      *  8. on failure clear in-progress + show fallback message.
      *
@@ -389,18 +414,13 @@ class PendingViewModel(
      */
     private fun launchStateTransition(
         expense: Expense,
-        dismissBanner: Boolean = true,
-        preCheck: () -> UiText? = { null },
-        repoCall: suspend (Expense) -> Result<ExpenseStateOutcome>,
-        syncedMessage: UiText,
-        queuedMessage: UiText,
-        @StringRes failureFallback: Int,
-        onOutcome: (state: PendingUiState, outcome: ExpenseStateOutcome, message: UiText) -> PendingUiState,
-        afterSyncedSuccess: ((Expense) -> Unit)? = null,
+        operation: PendingStateTransitionOperation,
+        messages: PendingStateTransitionMessages,
+        resultHandler: PendingStateTransitionResultHandler,
     ) {
-        if (dismissBanner) dismissUndoable()
+        if (operation.dismissBanner) dismissUndoable()
         if (blockReadOnlyWrite()) return
-        preCheck()?.let { msg ->
+        operation.preCheck()?.let { msg ->
             _uiState.update { it.copy(message = msg) }
             return
         }
@@ -408,16 +428,16 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            repoCall(expense)
+            operation.repoCall(expense)
                 .onSuccess { outcome ->
                     if (requestGeneration != generation) return@onSuccess
                     val message = when (outcome) {
-                        is ExpenseStateOutcome.Synced -> syncedMessage
-                        is ExpenseStateOutcome.Queued -> queuedMessage
+                        is ExpenseStateOutcome.Synced -> messages.synced
+                        is ExpenseStateOutcome.Queued -> messages.queued
                     }
-                    _uiState.update { state -> onOutcome(state, outcome, message) }
+                    _uiState.update { state -> resultHandler.reduceOutcome(state, outcome, message) }
                     if (outcome is ExpenseStateOutcome.Synced) {
-                        afterSyncedSuccess?.invoke(outcome.expense)
+                        resultHandler.afterSyncedSuccess?.invoke(outcome.expense)
                     }
                 }
                 .onFailure { error ->
@@ -425,7 +445,7 @@ class PendingViewModel(
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,
-                            message = error.toUiText(failureFallback),
+                            message = error.toUiText(messages.failureFallback),
                         )
                     }
                 }
@@ -434,35 +454,46 @@ class PendingViewModel(
 
     fun confirm(expense: Expense) = launchStateTransition(
         expense = expense,
-        preCheck = { if (expense.amountCents == null) UiText.res(R.string.error_amount_required) else null },
-        repoCall = { repository.confirmExpenseAllowingOffline(it) },
-        syncedMessage = UiText.res(R.string.pending_msg_confirmed),
-        queuedMessage = UiText.res(R.string.pending_msg_confirmed_offline),
-        failureFallback = R.string.pending_msg_confirm_failed,
-        onOutcome = { state, outcome, message ->
-            PendingUiStateReducer.afterConfirmed(state, outcome.expense, message = message)
-        },
+        operation = PendingStateTransitionOperation(
+            repoCall = { repository.confirmExpenseAllowingOffline(it) },
+            preCheck = { if (expense.amountCents == null) UiText.res(R.string.error_amount_required) else null },
+        ),
+        messages = PendingStateTransitionMessages(
+            synced = UiText.res(R.string.pending_msg_confirmed),
+            queued = UiText.res(R.string.pending_msg_confirmed_offline),
+            failureFallback = R.string.pending_msg_confirm_failed,
+        ),
+        resultHandler = PendingStateTransitionResultHandler(
+            reduceOutcome = { state, outcome, message ->
+                PendingUiStateReducer.afterConfirmed(state, outcome.expense, message = message)
+            },
+        ),
     )
 
     fun reject(expense: Expense) = launchStateTransition(
         expense = expense,
-        // Reject doesn't pre-dismiss — Synced reject re-seeds the banner
-        // with the new row inside onOutcome; Queued reject preserves any
-        // prior Synced banner (V1 fix — the earlier Synced row is still
-        // server-side undoable within its 5-min retention).
-        dismissBanner = false,
-        repoCall = { repository.rejectExpenseAllowingOffline(it) },
-        syncedMessage = UiText.res(R.string.pending_msg_rejected),
-        queuedMessage = UiText.res(R.string.pending_msg_rejected_offline),
-        failureFallback = R.string.pending_msg_reject_failed,
-        onOutcome = { state, outcome, message ->
-            val updated = PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
-            when (outcome) {
-                is ExpenseStateOutcome.Synced -> updated.copy(undoableExpense = outcome.expense)
-                is ExpenseStateOutcome.Queued -> updated
-            }
-        },
-        afterSyncedSuccess = { synced -> startUndoTimer(synced.id) },
+        operation = PendingStateTransitionOperation(
+            // Reject does not pre-dismiss: Synced reject re-seeds the banner
+            // with the new row inside reduceOutcome; Queued reject preserves any
+            // prior Synced banner because it may still be server-side undoable.
+            dismissBanner = false,
+            repoCall = { repository.rejectExpenseAllowingOffline(it) },
+        ),
+        messages = PendingStateTransitionMessages(
+            synced = UiText.res(R.string.pending_msg_rejected),
+            queued = UiText.res(R.string.pending_msg_rejected_offline),
+            failureFallback = R.string.pending_msg_reject_failed,
+        ),
+        resultHandler = PendingStateTransitionResultHandler(
+            reduceOutcome = { state, outcome, message ->
+                val updated = PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
+                when (outcome) {
+                    is ExpenseStateOutcome.Synced -> updated.copy(undoableExpense = outcome.expense)
+                    is ExpenseStateOutcome.Queued -> updated
+                }
+            },
+            afterSyncedSuccess = { synced -> startUndoTimer(synced.id) },
+        ),
     )
 
     /**
@@ -634,29 +665,41 @@ class PendingViewModel(
      */
     fun ignoreDuplicate(expense: Expense) = launchStateTransition(
         expense = expense,
-        repoCall = { repository.rejectExpenseAllowingOffline(it) },
-        syncedMessage = UiText.res(R.string.pending_msg_ignored_duplicate),
-        queuedMessage = UiText.res(R.string.pending_msg_ignored_duplicate_offline),
-        failureFallback = R.string.pending_msg_ignore_duplicate_failed,
-        onOutcome = { state, outcome, message ->
-            PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
-        },
+        operation = PendingStateTransitionOperation(
+            repoCall = { repository.rejectExpenseAllowingOffline(it) },
+        ),
+        messages = PendingStateTransitionMessages(
+            synced = UiText.res(R.string.pending_msg_ignored_duplicate),
+            queued = UiText.res(R.string.pending_msg_ignored_duplicate_offline),
+            failureFallback = R.string.pending_msg_ignore_duplicate_failed,
+        ),
+        resultHandler = PendingStateTransitionResultHandler(
+            reduceOutcome = { state, outcome, message ->
+                PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
+            },
+        ),
     )
 
     fun markNotDuplicate(expense: Expense) = launchStateTransition(
         expense = expense,
-        repoCall = { repository.markNotDuplicateAllowingOffline(it) },
-        syncedMessage = UiText.res(R.string.pending_msg_kept),
-        queuedMessage = UiText.res(R.string.pending_msg_kept_offline),
-        failureFallback = R.string.pending_msg_keep_failed,
-        onOutcome = { state, outcome, message ->
-            PendingUiStateReducer.afterUpdated(
-                current = state,
-                updated = outcome.expense,
-                closeSheet = true,
-                message = message,
-            )
-        },
+        operation = PendingStateTransitionOperation(
+            repoCall = { repository.markNotDuplicateAllowingOffline(it) },
+        ),
+        messages = PendingStateTransitionMessages(
+            synced = UiText.res(R.string.pending_msg_kept),
+            queued = UiText.res(R.string.pending_msg_kept_offline),
+            failureFallback = R.string.pending_msg_keep_failed,
+        ),
+        resultHandler = PendingStateTransitionResultHandler(
+            reduceOutcome = { state, outcome, message ->
+                PendingUiStateReducer.afterUpdated(
+                    current = state,
+                    updated = outcome.expense,
+                    closeSheet = true,
+                    message = message,
+                )
+            },
+        ),
     )
 }
 
