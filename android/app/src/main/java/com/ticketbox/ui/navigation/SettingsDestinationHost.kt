@@ -51,7 +51,13 @@ import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
+import com.ticketbox.ui.screens.settings.MerchantAliasesAliasActions
+import com.ticketbox.ui.screens.settings.MerchantAliasesCatalogActions
+import com.ticketbox.ui.screens.settings.MerchantAliasesMergeSuggestionActions
 import com.ticketbox.ui.screens.settings.MerchantAliasesScreen
+import com.ticketbox.ui.screens.settings.MerchantAliasesScreenActions
+import com.ticketbox.ui.screens.settings.MerchantAliasesScreenState
+import com.ticketbox.ui.screens.settings.MerchantAliasesUndoActions
 import com.ticketbox.ui.screens.settings.MyDevicesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
 import com.ticketbox.ui.screens.settings.RecycleBinScreen
@@ -378,26 +384,38 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.MerchantAliases -> MerchantAliasesScreen(
-            catalog = states.merchant.merchantCatalog,
-            aliases = states.merchant.merchantAliases,
-            busy = states.merchant.busy,
-            readOnly = !ledgerRoleCanModify(states.settings.role),
-            message = states.merchant.message,
-            messageTone = states.merchant.messageTone,
-            onBack = { route = SettingsDestination.Root },
-            onCreateCatalog = actions.onCreateMerchantCatalog,
-            onRenameCatalog = actions.onRenameMerchantCatalog,
-            onToggleCatalog = actions.onToggleMerchantCatalog,
-            onMergeCatalog = actions.onMergeMerchantCatalog,
-            onDeleteCatalog = actions.onDeleteMerchantCatalog,
-            onCreateAlias = actions.onCreateMerchantAlias,
-            onToggleAlias = actions.onToggleMerchantAlias,
-            onDeleteAlias = actions.onDeleteMerchantAlias,
-            undoableAlias = states.merchant.undoableAlias,
-            mergeSuggestion = states.merchant.mergeSuggestion,
-            onDismissMergeSuggestion = actions.onDismissMerchantCatalogMergeSuggestion,
-            onUndoDelete = actions.onUndoMerchantAlias,
-            onDismissUndo = actions.onDismissMerchantAliasUndo,
+            state = MerchantAliasesScreenState(
+                catalog = states.merchant.merchantCatalog,
+                aliases = states.merchant.merchantAliases,
+                busy = states.merchant.busy,
+                readOnly = !ledgerRoleCanModify(states.settings.role),
+                message = states.merchant.message,
+                messageTone = states.merchant.messageTone,
+                undoableAlias = states.merchant.undoableAlias,
+                mergeSuggestion = states.merchant.mergeSuggestion,
+            ),
+            actions = MerchantAliasesScreenActions(
+                onBack = { route = SettingsDestination.Root },
+                catalog = MerchantAliasesCatalogActions(
+                    onCreate = actions.onCreateMerchantCatalog,
+                    onRename = actions.onRenameMerchantCatalog,
+                    onToggle = actions.onToggleMerchantCatalog,
+                    onMerge = actions.onMergeMerchantCatalog,
+                    onDelete = actions.onDeleteMerchantCatalog,
+                ),
+                alias = MerchantAliasesAliasActions(
+                    onCreate = actions.onCreateMerchantAlias,
+                    onToggle = actions.onToggleMerchantAlias,
+                    onDelete = actions.onDeleteMerchantAlias,
+                ),
+                mergeSuggestion = MerchantAliasesMergeSuggestionActions(
+                    onDismiss = actions.onDismissMerchantCatalogMergeSuggestion,
+                ),
+                undo = MerchantAliasesUndoActions(
+                    onUndoDelete = actions.onUndoMerchantAlias,
+                    onDismiss = actions.onDismissMerchantAliasUndo,
+                ),
+            ),
         )
 
         SettingsDestination.TagManagement -> {

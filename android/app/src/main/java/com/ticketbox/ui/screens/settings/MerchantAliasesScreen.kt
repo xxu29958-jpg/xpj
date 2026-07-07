@@ -48,26 +48,8 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun MerchantAliasesScreen(
-    catalog: List<MerchantCatalog>,
-    aliases: List<MerchantAlias>,
-    busy: Boolean,
-    readOnly: Boolean,
-    message: UiText?,
-    messageTone: MessageTone = MessageTone.Neutral,
-    onBack: () -> Unit,
-    onCreateCatalog: (String) -> Unit,
-    onRenameCatalog: (MerchantCatalog, String) -> Unit,
-    onToggleCatalog: (MerchantCatalog) -> Unit,
-    onMergeCatalog: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
-    onDeleteCatalog: (MerchantCatalog) -> Unit,
-    onCreateAlias: (String, String) -> Unit,
-    onToggleAlias: (MerchantAlias) -> Unit,
-    onDeleteAlias: (MerchantAlias) -> Unit,
-    undoableAlias: MerchantAlias? = null,
-    mergeSuggestion: MerchantCatalogMergeSuggestion? = null,
-    onDismissMergeSuggestion: () -> Unit = {},
-    onUndoDelete: () -> Unit = {},
-    onDismissUndo: () -> Unit = {},
+    state: MerchantAliasesScreenState,
+    actions: MerchantAliasesScreenActions,
 ) {
     var catalogName by remember { mutableStateOf("") }
     var canonicalMerchant by remember { mutableStateOf("") }
@@ -84,13 +66,13 @@ fun MerchantAliasesScreen(
 
     MerchantCatalogDialogHost(
         controller = catalogDialogController,
-        catalog = catalog,
-        busy = busy,
-        mergeSuggestion = mergeSuggestion,
+        catalog = state.catalog,
+        busy = state.busy,
+        mergeSuggestion = state.mergeSuggestion,
         actions = MerchantCatalogDialogHostActions(
-            onRename = onRenameCatalog,
-            onMerge = onMergeCatalog,
-            onDismissSuggestion = onDismissMergeSuggestion,
+            onRename = actions.catalog.onRename,
+            onMerge = actions.catalog.onMerge,
+            onDismissSuggestion = actions.mergeSuggestion.onDismiss,
         ),
     )
 
@@ -110,7 +92,7 @@ fun MerchantAliasesScreen(
                 TextButton(
                     onClick = {
                         deletingCatalog = null
-                        onDeleteCatalog(item)
+                        actions.catalog.onDelete(item)
                     },
                 ) {
                     Text(stringResource(R.string.merchant_catalog_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
@@ -141,7 +123,7 @@ fun MerchantAliasesScreen(
                 TextButton(
                     onClick = {
                         deletingAlias = null
-                        onDeleteAlias(item)
+                        actions.alias.onDelete(item)
                     },
                 ) {
                     Text(stringResource(R.string.merchant_aliases_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
@@ -157,15 +139,15 @@ fun MerchantAliasesScreen(
 
     SettingsPageFrame(
         title = stringResource(R.string.merchant_aliases_page_title),
-        subtitle = merchantAliasSummary(catalog, aliases),
-        onBack = onBack,
-        status = { AppStatusBanner(message = message, tone = messageTone) },
+        subtitle = merchantAliasSummary(state.catalog, state.aliases),
+        onBack = actions.onBack,
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         // Online deletes expose a short undo window.
-        undoableAlias?.let { undoable ->
+        state.undoableAlias?.let { undoable ->
             LaunchedEffect(undoable.publicId) {
                 delay(5000)
-                onDismissUndo()
+                actions.undo.onDismiss()
             }
             SettingsOpenPanel {
                 Row(
@@ -182,40 +164,40 @@ fun MerchantAliasesScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(AppSpacing.compactGap))
-                    TextButton(onClick = onUndoDelete) { Text(stringResource(R.string.merchant_aliases_undo_button)) }
+                    TextButton(onClick = actions.undo.onUndoDelete) { Text(stringResource(R.string.merchant_aliases_undo_button)) }
                 }
             }
         }
 
-        if (readOnly) {
+        if (state.readOnly) {
             SettingsInlineEmpty(
                 title = stringResource(R.string.merchant_management_readonly_title),
                 body = stringResource(R.string.merchant_management_readonly_hint),
             )
         }
-        MerchantManagementOverviewSection(catalog = catalog, aliases = aliases)
+        MerchantManagementOverviewSection(catalog = state.catalog, aliases = state.aliases)
 
         MerchantCatalogListSection(
-            catalog = catalog,
-            readOnly = readOnly,
-            busy = busy,
+            catalog = state.catalog,
+            readOnly = state.readOnly,
+            busy = state.busy,
             actions = MerchantCatalogListActions(
                 onRename = catalogDialogController::openRename,
-                onToggle = onToggleCatalog,
+                onToggle = actions.catalog.onToggle,
                 onMerge = catalogDialogController::openMerge,
                 onDelete = { deletingCatalog = it },
             ),
         )
 
         MerchantAliasListSection(
-            aliases = aliases,
-            readOnly = readOnly,
-            busy = busy,
-            onToggleAlias = onToggleAlias,
+            aliases = state.aliases,
+            readOnly = state.readOnly,
+            busy = state.busy,
+            onToggleAlias = actions.alias.onToggle,
             onDeleteAlias = { deletingAlias = it },
         )
 
-        if (!readOnly) {
+        if (!state.readOnly) {
             MerchantManagementToolsSection(
                 state = MerchantManagementToolState(
                     activeTool = activeCreateTool,
@@ -224,7 +206,7 @@ fun MerchantAliasesScreen(
                         canonicalMerchant = canonicalMerchant,
                         aliasText = aliasText,
                     ),
-                    busy = busy,
+                    busy = state.busy,
                     catalogMessage = catalogMessage,
                     aliasMessage = aliasMessage,
                 ),
@@ -249,7 +231,7 @@ fun MerchantAliasesScreen(
                             catalogMessage = catalogValidationMessage
                         } else {
                             catalogMessage = null
-                            onCreateCatalog(catalogName)
+                            actions.catalog.onCreate(catalogName)
                             catalogName = ""
                             activeCreateTool = null
                         }
@@ -259,7 +241,7 @@ fun MerchantAliasesScreen(
                             aliasMessage = createValidationMessage
                         } else {
                             aliasMessage = null
-                            onCreateAlias(canonicalMerchant, aliasText)
+                            actions.alias.onCreate(canonicalMerchant, aliasText)
                             canonicalMerchant = ""
                             aliasText = ""
                             activeCreateTool = null
@@ -275,6 +257,48 @@ fun MerchantAliasesScreen(
         }
     }
 }
+
+data class MerchantAliasesScreenState(
+    val catalog: List<MerchantCatalog>,
+    val aliases: List<MerchantAlias>,
+    val busy: Boolean,
+    val readOnly: Boolean,
+    val message: UiText?,
+    val messageTone: MessageTone = MessageTone.Neutral,
+    val undoableAlias: MerchantAlias?,
+    val mergeSuggestion: MerchantCatalogMergeSuggestion?,
+)
+
+data class MerchantAliasesScreenActions(
+    val onBack: () -> Unit,
+    val catalog: MerchantAliasesCatalogActions,
+    val alias: MerchantAliasesAliasActions,
+    val mergeSuggestion: MerchantAliasesMergeSuggestionActions,
+    val undo: MerchantAliasesUndoActions,
+)
+
+data class MerchantAliasesCatalogActions(
+    val onCreate: (String) -> Unit,
+    val onRename: (MerchantCatalog, String) -> Unit,
+    val onToggle: (MerchantCatalog) -> Unit,
+    val onMerge: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
+    val onDelete: (MerchantCatalog) -> Unit,
+)
+
+data class MerchantAliasesAliasActions(
+    val onCreate: (String, String) -> Unit,
+    val onToggle: (MerchantAlias) -> Unit,
+    val onDelete: (MerchantAlias) -> Unit,
+)
+
+data class MerchantAliasesMergeSuggestionActions(
+    val onDismiss: () -> Unit,
+)
+
+data class MerchantAliasesUndoActions(
+    val onUndoDelete: () -> Unit,
+    val onDismiss: () -> Unit,
+)
 
 private enum class MerchantCreateTool {
     Catalog,
