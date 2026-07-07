@@ -7,6 +7,9 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.ConfirmedExpensesApiQuery
+import com.ticketbox.data.remote.ExpenseListFilterQuery
+import com.ticketbox.data.remote.PageQuery
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
@@ -220,12 +223,15 @@ internal class ExpenseRepositoryCore(
                 return emptyList()
             }
             val response = service.confirmedExpenses(
-                page = page,
-                pageSize = pageSize,
-                month = request.month,
-                category = request.category,
-                tag = request.tag,
-                timezone = currentTimezoneId(),
+                query = ConfirmedExpensesApiQuery(
+                    page = PageQuery(page = page, pageSize = pageSize),
+                    filters = ExpenseListFilterQuery(
+                        month = request.month,
+                        category = request.category,
+                        tag = request.tag,
+                    ),
+                    timezone = currentTimezoneId(),
+                ).toQueryMap(),
             )
             total = response.total
             collectedDtos += response.items

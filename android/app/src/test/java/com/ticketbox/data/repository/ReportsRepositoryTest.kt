@@ -72,6 +72,34 @@ class ReportsRepositoryTest {
     }
 
     @Test
+    fun exportReportsOverviewCsvForwardsNormalizedQuery() = withReportsTimezone("Asia/Tokyo") {
+        runTest {
+            val api = ReportsApiHandler()
+            val repository = repository(api)
+
+            val result = repository.exportReportsOverviewCsv(
+                ReportsOverviewQuery(
+                    month = " 2026-05 ",
+                    granularity = ReportGranularity.Month,
+                    topN = 0,
+                    merchantCategory = "吃饭",
+                    rankingMetric = ReportRankingMetric.Count,
+                ),
+            ).getOrThrow()
+
+            val call = api.csvReportCalls.single()
+            assertEquals("2026-05", call.month)
+            assertEquals("month", call.granularity)
+            assertEquals(1, call.topN)
+            assertEquals("餐饮", call.merchantCategory)
+            assertEquals("count", call.rankingMetric)
+            assertEquals("Asia/Tokyo", call.timezone)
+            assertEquals("ticketbox-reports-overview-2026-05-month.csv", result.fileName)
+            assertEquals("csv", result.bytes.decodeToString())
+        }
+    }
+
+    @Test
     fun goalsAndDashboardCardsUseTimezoneAndDomainTypes() = withReportsTimezone("UTC") {
         runTest {
             val api = ReportsApiHandler()
@@ -487,6 +515,7 @@ private class ReportsApiHandler : InvocationHandler {
     val baseUrls = mutableListOf<String>()
     val tokens = mutableListOf<String?>()
     val reportCalls = mutableListOf<ReportsOverviewCall>()
+    val csvReportCalls = mutableListOf<ReportsOverviewCall>()
     val goalsCalls = mutableListOf<GoalsCall>()
     val createGoalCalls = mutableListOf<CreateGoalCall>()
     val updateGoalCalls = mutableListOf<UpdateGoalCall>()
@@ -521,17 +550,34 @@ private class ReportsApiHandler : InvocationHandler {
         val values = args.orEmpty()
         return when (method.name) {
             "reportsOverview" -> {
+                @Suppress("UNCHECKED_CAST")
+                val query = values[0] as Map<String, String>
                 reportCalls += ReportsOverviewCall(
-                    month = values[0] as String?,
-                    granularity = values[1] as String,
-                    topN = values[2] as Int,
-                    merchantCategory = values[3] as String?,
-                    rankingMetric = values[4] as String,
-                    timezone = values[5] as String?,
+                    month = query["month"],
+                    granularity = query.getValue("granularity"),
+                    topN = query.getValue("top_n").toInt(),
+                    merchantCategory = query["merchant_category"],
+                    rankingMetric = query.getValue("ranking_metric"),
+                    timezone = query["timezone"],
                 )
-                reportsDto(granularity = values[1] as String, rankingMetric = values[4] as String)
+                reportsDto(
+                    granularity = query.getValue("granularity"),
+                    rankingMetric = query.getValue("ranking_metric"),
+                )
             }
-            "reportsOverviewCsv" -> Response.success("csv".toResponseBody("text/csv".toMediaType()))
+            "reportsOverviewCsv" -> {
+                @Suppress("UNCHECKED_CAST")
+                val query = values[0] as Map<String, String>
+                csvReportCalls += ReportsOverviewCall(
+                    month = query["month"],
+                    granularity = query.getValue("granularity"),
+                    topN = query.getValue("top_n").toInt(),
+                    merchantCategory = query["merchant_category"],
+                    rankingMetric = query.getValue("ranking_metric"),
+                    timezone = query["timezone"],
+                )
+                Response.success("csv".toResponseBody("text/csv".toMediaType()))
+            }
             "goals" -> {
                 // ADR-0049 §6 (slice 7): arg order is now
                 // [month, includeArchived, goalType, timezone].

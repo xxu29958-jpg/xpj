@@ -237,12 +237,7 @@ internal class StubApi(
     override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = ledgerUnsupported()
     override suspend fun pendingExpenses(): List<ExpenseDto> = ledgerUnsupported()
     override suspend fun confirmedExpenses(
-        page: Int,
-        pageSize: Int,
-        month: String?,
-        category: String?,
-        tag: String?,
-        timezone: String?,
+        query: Map<String, String>,
     ): PaginatedExpensesDto = ledgerUnsupported()
     override suspend fun categories(): CategoriesDto = ledgerUnsupported()
     override suspend fun tags(): TagsDto = ledgerUnsupported()
@@ -394,20 +389,10 @@ internal class StubApi(
     override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = ledgerUnsupported()
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = ledgerUnsupported()
     override suspend fun reportsOverview(
-        month: String?,
-        granularity: String,
-        topN: Int,
-        merchantCategory: String?,
-        rankingMetric: String,
-        timezone: String?,
+        query: Map<String, String>,
     ): ReportsOverviewDto = ledgerUnsupported()
     override suspend fun reportsOverviewCsv(
-        month: String?,
-        granularity: String,
-        topN: Int,
-        merchantCategory: String?,
-        rankingMetric: String,
-        timezone: String?,
+        query: Map<String, String>,
     ): Response<ResponseBody> = ledgerUnsupported()
     override suspend fun goals(
         month: String?,

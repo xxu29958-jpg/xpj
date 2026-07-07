@@ -29,7 +29,7 @@ import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.GET
-import retrofit2.http.Query
+import retrofit2.http.QueryMap
 import retrofit2.http.Streaming
 
 interface ApiService :
@@ -59,32 +59,17 @@ interface ApiService :
     BackgroundTaskApi {
     @GET("api/expenses/confirmed")
     suspend fun confirmedExpenses(
-        @Query("page") page: Int = 1,
-        @Query("page_size") pageSize: Int = 50,
-        @Query("month") month: String? = null,
-        @Query("category") category: String? = null,
-        @Query("tag") tag: String? = null,
-        @Query("timezone") timezone: String? = null,
+        @QueryMap query: Map<String, String>,
     ): PaginatedExpensesDto
 
     @GET("api/reports/overview")
     suspend fun reportsOverview(
-        @Query("month") month: String? = null,
-        @Query("granularity") granularity: String = "day",
-        @Query("top_n") topN: Int = 8,
-        @Query("merchant_category") merchantCategory: String? = null,
-        @Query("ranking_metric") rankingMetric: String = "amount",
-        @Query("timezone") timezone: String? = null,
+        @QueryMap query: Map<String, String>,
     ): ReportsOverviewDto
 
     @GET("api/reports/overview.csv")
     @Streaming
     suspend fun reportsOverviewCsv(
-        @Query("month") month: String? = null,
-        @Query("granularity") granularity: String = "day",
-        @Query("top_n") topN: Int = 8,
-        @Query("merchant_category") merchantCategory: String? = null,
-        @Query("ranking_metric") rankingMetric: String = "amount",
-        @Query("timezone") timezone: String? = null,
+        @QueryMap query: Map<String, String>,
     ): Response<ResponseBody>
 }

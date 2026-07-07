@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.ConfirmedExpensesApiQuery
+import com.ticketbox.data.remote.PageQuery
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticCheck
 import com.ticketbox.domain.model.DiagnosticCheckKind
@@ -67,7 +69,12 @@ internal class ExpenseConnectionRepository(
             pending = service.pendingExpenses().map { it.toDomain() }
         }
         record(DiagnosticCheckKind.ConfirmedExpenses) {
-            service.confirmedExpenses(page = 1, pageSize = 1, timezone = core.currentTimezoneId())
+            service.confirmedExpenses(
+                query = ConfirmedExpensesApiQuery(
+                    page = PageQuery(page = 1, pageSize = 1),
+                    timezone = core.currentTimezoneId(),
+                ).toQueryMap(),
+            )
         }
         record(DiagnosticCheckKind.MonthlyStats) {
             service.monthlyStats(month = null, timezone = core.currentTimezoneId())
