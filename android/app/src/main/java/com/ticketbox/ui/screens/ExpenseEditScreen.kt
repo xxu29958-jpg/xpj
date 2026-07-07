@@ -84,48 +84,101 @@ import com.ticketbox.ui.screens.expense.SplitsEditorSheetState
 import com.ticketbox.viewmodel.BillSplitSentLoadState
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
+data class ExpenseEditScreenState(
+    val expense: Expense,
+    val editState: ExpenseEditUiState,
+    val actionAvailability: ExpenseEditActionAvailability = ExpenseEditActionAvailability(),
+)
+
+data class ExpenseEditActionAvailability(
+    val allowConfirm: Boolean = true,
+    val allowReject: Boolean = true,
+)
+
+data class ExpenseEditScreenActions(
+    val primary: ExpenseEditPrimaryActions = ExpenseEditPrimaryActions(),
+    val media: ExpenseEditMediaActions = ExpenseEditMediaActions(),
+    val related: ExpenseEditRelatedActions = ExpenseEditRelatedActions(),
+    val itemization: ExpenseEditItemizationActions = ExpenseEditItemizationActions(),
+    val splitEditing: ExpenseEditSplitEditingActions = ExpenseEditSplitEditingActions(),
+    val billSplit: ExpenseEditBillSplitActions = ExpenseEditBillSplitActions(),
+)
+
+data class ExpenseEditPrimaryActions(
+    val onSave: (ExpenseDraft) -> Unit = {},
+    val onConfirm: (ExpenseDraft) -> Unit = {},
+    val onReject: () -> Unit = {},
+    val onDone: () -> Unit = {},
+)
+
+data class ExpenseEditMediaActions(
+    val onRetryOcr: () -> Unit = {},
+    val onRecognizeText: (String) -> Unit = {},
+    val onOpenRecognizeText: () -> Unit = {},
+    val onDismissRecognizeText: () -> Unit = {},
+    val onLoadFullImage: () -> Unit = {},
+)
+
+data class ExpenseEditRelatedActions(
+    val onKeepDuplicate: () -> Unit = {},
+    val onCreateRepaymentDraft: () -> Unit = {},
+)
+
+data class ExpenseEditItemizationActions(
+    val onAcknowledgeItemsMismatch: () -> Unit = {},
+    val onEditItems: () -> Unit = {},
+    val editor: ItemsEditorSheetActions = noopItemsEditorSheetActions(),
+)
+
+data class ExpenseEditSplitEditingActions(
+    val onEditSplits: () -> Unit = {},
+    val editor: SplitsEditorSheetActions = noopSplitsEditorSheetActions(),
+)
+
+data class ExpenseEditBillSplitActions(
+    val onStartInvite: () -> Unit = {},
+    val onCancelInvite: (publicId: String) -> Unit = {},
+    val onSelectMember: (memberId: Long) -> Unit = {},
+    val onUpdateAmount: (amountText: String) -> Unit = {},
+    val onSend: () -> Unit = {},
+    val onDismissSheet: () -> Unit = {},
+)
+
+private fun noopItemsEditorSheetActions(): ItemsEditorSheetActions = ItemsEditorSheetActions(
+    onUpdate = { _, _, _, _ -> },
+    onAddRow = {},
+    onRemoveRow = {},
+    onSave = {},
+    onDismiss = {},
+)
+
+private fun noopSplitsEditorSheetActions(): SplitsEditorSheetActions = SplitsEditorSheetActions(
+    onToggleMember = { _, _ -> },
+    onUpdateAmount = { _, _ -> },
+    onEvenSplit = {},
+    onSave = {},
+    onDismiss = {},
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseEditScreen(
-    expense: Expense,
-    state: ExpenseEditUiState,
-    onSave: (ExpenseDraft) -> Unit,
-    onConfirm: (ExpenseDraft) -> Unit,
-    onReject: () -> Unit,
-    onRetryOcr: () -> Unit,
-    onRecognizeText: (String) -> Unit = {},
-    onCreateRepaymentDraft: () -> Unit = {},
-    onOpenRecognizeText: () -> Unit = {},
-    onDismissRecognizeText: () -> Unit = {},
-    onLoadFullImage: () -> Unit,
-    onKeepDuplicate: () -> Unit,
-    onDone: () -> Unit,
-    onAcknowledgeItemsMismatch: () -> Unit = {},
-    onEditItems: () -> Unit = {},
-    onUpdateItemDraft: (index: Int, name: String?, amountText: String?, kind: String?) -> Unit = { _, _, _, _ -> },
-    onAddItemRow: () -> Unit = {},
-    onRemoveItemRow: (index: Int) -> Unit = {},
-    onSaveItems: () -> Unit = {},
-    onDismissItemsEditor: () -> Unit = {},
-    onEditSplits: () -> Unit = {},
-    onToggleSplitMember: (memberId: Long, included: Boolean) -> Unit = { _, _ -> },
-    onUpdateSplitAmount: (memberId: Long, amountText: String) -> Unit = { _, _ -> },
-    onEvenSplit: () -> Unit = {},
-    onSaveSplits: () -> Unit = {},
-    onDismissSplitsEditor: () -> Unit = {},
-    // 批 13 拆账发起：卡片「发起拆账」/ 卡内撤回 + 发起 sheet 表单。
-    onStartBillSplit: () -> Unit = {},
-    onCancelBillSplit: (publicId: String) -> Unit = {},
-    onSelectBillSplitMember: (memberId: Long) -> Unit = {},
-    onUpdateBillSplitAmount: (amountText: String) -> Unit = {},
-    onSendBillSplit: () -> Unit = {},
-    onDismissBillSplitSheet: () -> Unit = {},
-    allowConfirm: Boolean = true,
-    allowReject: Boolean = true,
+    screenState: ExpenseEditScreenState,
+    actions: ExpenseEditScreenActions,
 ) {
+    val expense = screenState.expense
+    val state = screenState.editState
+    val actionAvailability = screenState.actionAvailability
+    val primaryActions = actions.primary
+    val mediaActions = actions.media
+    val relatedActions = actions.related
+    val itemizationActions = actions.itemization
+    val splitEditingActions = actions.splitEditing
+    val billSplitActions = actions.billSplit
+
     val handleBack = {
         if (!state.saving && !state.repaymentDraftCreating) {
-            onDone()
+            primaryActions.onDone()
         }
     }
 
@@ -136,13 +189,7 @@ fun ExpenseEditScreen(
                 parentAmountCents = state.expenseItems?.parentAmountCents,
                 saving = state.itemsSaving,
             ),
-            actions = ItemsEditorSheetActions(
-                onUpdate = onUpdateItemDraft,
-                onAddRow = onAddItemRow,
-                onRemoveRow = onRemoveItemRow,
-                onSave = onSaveItems,
-                onDismiss = onDismissItemsEditor,
-            ),
+            actions = itemizationActions.editor,
         )
     }
 
@@ -154,13 +201,7 @@ fun ExpenseEditScreen(
                 saving = state.splitsSaving,
                 loading = state.splitMembersLoading,
             ),
-            actions = SplitsEditorSheetActions(
-                onToggleMember = onToggleSplitMember,
-                onUpdateAmount = onUpdateSplitAmount,
-                onEvenSplit = onEvenSplit,
-                onSave = onSaveSplits,
-                onDismiss = onDismissSplitsEditor,
-            ),
+            actions = splitEditingActions.editor,
         )
     }
 
@@ -178,18 +219,18 @@ fun ExpenseEditScreen(
             remainingCents = billSplitRemainingCents(state),
             remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
             actions = BillSplitInviteSheetActions(
-                onSelectMember = onSelectBillSplitMember,
-                onUpdateAmount = onUpdateBillSplitAmount,
-                onSend = onSendBillSplit,
-                onDismiss = onDismissBillSplitSheet,
+                onSelectMember = billSplitActions.onSelectMember,
+                onUpdateAmount = billSplitActions.onUpdateAmount,
+                onSend = billSplitActions.onSend,
+                onDismiss = billSplitActions.onDismissSheet,
             ),
         )
     }
 
     if (state.recognizeTextDialogOpen && !state.readOnly) {
         ExpenseEditRecognizeTextDialog(
-            onRecognize = onRecognizeText,
-            onDismiss = onDismissRecognizeText,
+            onRecognize = mediaActions.onRecognizeText,
+            onDismiss = mediaActions.onDismissRecognizeText,
         )
     }
 
@@ -279,13 +320,13 @@ fun ExpenseEditScreen(
     if (showRejectDialog) {
         ExpenseEditRejectDialog(
             isConfirmedExpense = currentExpense.status == "confirmed",
-            onConfirm = onReject,
+            onConfirm = primaryActions.onReject,
             onDismiss = { showRejectDialog = false },
         )
     }
 
     LaunchedEffect(state.done) {
-        if (state.done) onDone()
+        if (state.done) primaryActions.onDone()
     }
 
     fun parseScore(raw: String, label: String): Int? {
@@ -330,7 +371,7 @@ fun ExpenseEditScreen(
     fun submitSave() {
         val draft = draftOrMessage() ?: return
         haptics.tick()
-        onSave(draft)
+        primaryActions.onSave(draft)
     }
 
     fun submitConfirm() {
@@ -340,7 +381,7 @@ fun ExpenseEditScreen(
             return
         }
         haptics.confirm()
-        onConfirm(draft)
+        primaryActions.onConfirm(draft)
     }
 
     AppSecondaryScrollableColumn(
@@ -370,8 +411,8 @@ fun ExpenseEditScreen(
                     state = ExpenseEditActionBarState(
                         saving = state.saving,
                         allowSave = !readOnly,
-                        allowConfirm = allowConfirm && !readOnly,
-                        allowReject = allowReject && !readOnly,
+                        allowConfirm = actionAvailability.allowConfirm && !readOnly,
+                        allowReject = actionAvailability.allowReject && !readOnly,
                         validationMessage = message,
                         statusMessage = state.message?.asString(),
                         statusTone = state.messageTone,
@@ -393,7 +434,7 @@ fun ExpenseEditScreen(
                 ExpenseDetailActionButtonRow(
                     text = stringResource(R.string.expense_edit_keep_duplicate_button),
                     icon = Icons.Filled.Check,
-                    onClick = onKeepDuplicate,
+                    onClick = relatedActions.onKeepDuplicate,
                 )
             }
         }
@@ -461,11 +502,11 @@ fun ExpenseEditScreen(
             actions = EditDraftPreviewActions(
                 onToggleLargeImage = {
                     if (!showLargeImage && state.fullImage == null) {
-                        onLoadFullImage()
+                        mediaActions.onLoadFullImage()
                     }
                     showLargeImage = !showLargeImage
                 },
-                onRetryOcr = onRetryOcr,
+                onRetryOcr = mediaActions.onRetryOcr,
             ),
         )
 
@@ -499,9 +540,9 @@ fun ExpenseEditScreen(
                 splitsMessageTone = state.splitsMessageTone,
             ),
             actions = ExpenseEditV1DetailsActions(
-                onAcknowledgeItemsMismatch = onAcknowledgeItemsMismatch,
-                onEditItems = if (state.readOnly) null else onEditItems,
-                onEditSplits = if (state.readOnly) null else onEditSplits,
+                onAcknowledgeItemsMismatch = itemizationActions.onAcknowledgeItemsMismatch,
+                onEditItems = if (state.readOnly) null else itemizationActions.onEditItems,
+                onEditSplits = if (state.readOnly) null else splitEditingActions.onEditSplits,
             ),
         )
 
@@ -509,7 +550,7 @@ fun ExpenseEditScreen(
         if (currentExpense.canCreateRepaymentDraft(state.readOnly)) {
             ExpenseRepaymentDraftPanel(
                 creating = state.repaymentDraftCreating,
-                onCreate = onCreateRepaymentDraft,
+                onCreate = relatedActions.onCreateRepaymentDraft,
             )
         }
 
@@ -524,8 +565,8 @@ fun ExpenseEditScreen(
                     messageTone = state.billSplitMessageTone,
                 ),
                 actions = ExpenseBillSplitInvitePanelActions(
-                    onStartInvite = onStartBillSplit,
-                    onCancelInvite = onCancelBillSplit,
+                    onStartInvite = billSplitActions.onStartInvite,
+                    onCancelInvite = billSplitActions.onCancelInvite,
                 ),
             )
         }
@@ -549,8 +590,8 @@ fun ExpenseEditScreen(
                 onRegretScoreChange = { regretScoreText = it },
                 onToggleMore = { moreExpanded = !moreExpanded },
                 onToggleRawText = { rawTextExpanded = !rawTextExpanded },
-                onRetryOcr = onRetryOcr,
-                onRecognizeText = onOpenRecognizeText,
+                onRetryOcr = mediaActions.onRetryOcr,
+                onRecognizeText = mediaActions.onOpenRecognizeText,
             ),
         )
 

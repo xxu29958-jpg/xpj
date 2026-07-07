@@ -28,7 +28,18 @@ import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.SkeletonScaffold
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.ExpenseEditActionAvailability
+import com.ticketbox.ui.screens.ExpenseEditBillSplitActions
+import com.ticketbox.ui.screens.ExpenseEditItemizationActions
+import com.ticketbox.ui.screens.ExpenseEditMediaActions
+import com.ticketbox.ui.screens.ExpenseEditPrimaryActions
+import com.ticketbox.ui.screens.ExpenseEditRelatedActions
 import com.ticketbox.ui.screens.ExpenseEditScreen
+import com.ticketbox.ui.screens.ExpenseEditScreenActions
+import com.ticketbox.ui.screens.ExpenseEditScreenState
+import com.ticketbox.ui.screens.ExpenseEditSplitEditingActions
+import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
+import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.acknowledgeItemsMismatch
@@ -79,48 +90,90 @@ internal fun ExpenseEditRoute(
     }
 
     ExpenseEditScreen(
-        expense = expense,
-        state = editState,
-        onSave = editViewModel::save,
-        onConfirm = editViewModel::confirm,
-        onReject = editViewModel::reject,
-        onRetryOcr = editViewModel::retryOcr,
-        onRecognizeText = editViewModel::recognizeText,
-        onCreateRepaymentDraft = editViewModel::createRepaymentDraftFromExpense,
-        onOpenRecognizeText = editViewModel::openRecognizeTextDialog,
-        onDismissRecognizeText = editViewModel::closeRecognizeTextDialog,
-        onLoadFullImage = editViewModel::loadFullImage,
-        onKeepDuplicate = editViewModel::markNotDuplicate,
-        onAcknowledgeItemsMismatch = editViewModel::acknowledgeItemsMismatch,
-        onEditItems = editViewModel::openItemsEditor,
-        onUpdateItemDraft = editViewModel::updateItemDraft,
-        onAddItemRow = editViewModel::addItemRow,
-        onRemoveItemRow = editViewModel::removeItemRow,
-        onSaveItems = editViewModel::saveItems,
-        onDismissItemsEditor = editViewModel::closeItemsEditor,
-        onEditSplits = editViewModel::openSplitsEditor,
-        onToggleSplitMember = editViewModel::updateSplitIncluded,
-        onUpdateSplitAmount = editViewModel::updateSplitAmount,
-        onEvenSplit = editViewModel::evenSplitAmounts,
-        onSaveSplits = editViewModel::saveSplits,
-        onDismissSplitsEditor = editViewModel::closeSplitsEditor,
-        onStartBillSplit = editViewModel::openBillSplitInviteSheet,
-        onCancelBillSplit = editViewModel::cancelBillSplitInvitation,
-        onSelectBillSplitMember = editViewModel::selectBillSplitInviteMember,
-        onUpdateBillSplitAmount = editViewModel::updateBillSplitInviteAmount,
-        onSendBillSplit = editViewModel::sendBillSplitInvite,
-        onDismissBillSplitSheet = editViewModel::closeBillSplitInviteSheet,
-        onDone = {
-            if (editViewModel.consumeDone()) {
-                onCompleted()
-            } else {
-                onBack()
-            }
-        },
-        allowConfirm = expense.status == "pending",
-        allowReject = expense.status == "pending" || expense.status == "confirmed",
+        screenState = ExpenseEditScreenState(
+            expense = expense,
+            editState = editState,
+            actionAvailability = ExpenseEditActionAvailability(
+                allowConfirm = expense.status == "pending",
+                allowReject = expense.status == "pending" || expense.status == "confirmed",
+            ),
+        ),
+        actions = ExpenseEditScreenActions(
+            primary = expenseEditPrimaryActions(editViewModel, onBack, onCompleted),
+            media = expenseEditMediaActions(editViewModel),
+            related = expenseEditRelatedActions(editViewModel),
+            itemization = expenseEditItemizationActions(editViewModel),
+            splitEditing = expenseEditSplitEditingActions(editViewModel),
+            billSplit = expenseEditBillSplitActions(editViewModel),
+        ),
     )
 }
+
+private fun expenseEditPrimaryActions(
+    viewModel: ExpenseEditViewModel,
+    onBack: () -> Unit,
+    onCompleted: () -> Unit,
+): ExpenseEditPrimaryActions = ExpenseEditPrimaryActions(
+    onSave = viewModel::save,
+    onConfirm = viewModel::confirm,
+    onReject = viewModel::reject,
+    onDone = {
+        if (viewModel.consumeDone()) {
+            onCompleted()
+        } else {
+            onBack()
+        }
+    },
+)
+
+private fun expenseEditMediaActions(viewModel: ExpenseEditViewModel): ExpenseEditMediaActions = ExpenseEditMediaActions(
+    onRetryOcr = viewModel::retryOcr,
+    onRecognizeText = viewModel::recognizeText,
+    onOpenRecognizeText = viewModel::openRecognizeTextDialog,
+    onDismissRecognizeText = viewModel::closeRecognizeTextDialog,
+    onLoadFullImage = viewModel::loadFullImage,
+)
+
+private fun expenseEditRelatedActions(viewModel: ExpenseEditViewModel): ExpenseEditRelatedActions =
+    ExpenseEditRelatedActions(
+        onKeepDuplicate = viewModel::markNotDuplicate,
+        onCreateRepaymentDraft = viewModel::createRepaymentDraftFromExpense,
+    )
+
+private fun expenseEditItemizationActions(viewModel: ExpenseEditViewModel): ExpenseEditItemizationActions =
+    ExpenseEditItemizationActions(
+        onAcknowledgeItemsMismatch = viewModel::acknowledgeItemsMismatch,
+        onEditItems = viewModel::openItemsEditor,
+        editor = ItemsEditorSheetActions(
+            onUpdate = viewModel::updateItemDraft,
+            onAddRow = viewModel::addItemRow,
+            onRemoveRow = viewModel::removeItemRow,
+            onSave = viewModel::saveItems,
+            onDismiss = viewModel::closeItemsEditor,
+        ),
+    )
+
+private fun expenseEditSplitEditingActions(viewModel: ExpenseEditViewModel): ExpenseEditSplitEditingActions =
+    ExpenseEditSplitEditingActions(
+        onEditSplits = viewModel::openSplitsEditor,
+        editor = SplitsEditorSheetActions(
+            onToggleMember = viewModel::updateSplitIncluded,
+            onUpdateAmount = viewModel::updateSplitAmount,
+            onEvenSplit = viewModel::evenSplitAmounts,
+            onSave = viewModel::saveSplits,
+            onDismiss = viewModel::closeSplitsEditor,
+        ),
+    )
+
+private fun expenseEditBillSplitActions(viewModel: ExpenseEditViewModel): ExpenseEditBillSplitActions =
+    ExpenseEditBillSplitActions(
+        onStartInvite = viewModel::openBillSplitInviteSheet,
+        onCancelInvite = viewModel::cancelBillSplitInvitation,
+        onSelectMember = viewModel::selectBillSplitInviteMember,
+        onUpdateAmount = viewModel::updateBillSplitInviteAmount,
+        onSend = viewModel::sendBillSplitInvite,
+        onDismissSheet = viewModel::closeBillSplitInviteSheet,
+    )
 
 @Composable
 private fun RepaymentDraftOpenEffect(
