@@ -153,14 +153,18 @@ fun RecurringScreen(
         }
         item {
             RecurringItemsCard(
-                title = stringResource(selectedTab.labelRes),
-                section = itemSection,
-                currencyDisplay = currencyDisplay,
-                canModify = state.canModify,
-                onRetry = onRefresh,
-                onPause = onPause,
-                onResume = onResume,
-                onArchive = onArchive,
+                state = RecurringItemsCardState(
+                    title = stringResource(selectedTab.labelRes),
+                    section = itemSection,
+                    currencyDisplay = currencyDisplay,
+                    canModify = state.canModify,
+                ),
+                actions = RecurringItemActions(
+                    onRetry = onRefresh,
+                    onPause = onPause,
+                    onResume = onResume,
+                    onArchive = onArchive,
+                ),
             )
         }
         item {
@@ -225,17 +229,11 @@ private fun RecurringTabRow(
 
 @Composable
 private fun RecurringItemsCard(
-    title: String,
-    section: RecurringListSectionModel<RecurringItem>,
-    currencyDisplay: CurrencyDisplay,
-    canModify: Boolean,
-    onRetry: () -> Unit,
-    onPause: (String, Long) -> Unit,
-    onResume: (String, Long) -> Unit,
-    onArchive: (String) -> Unit,
+    state: RecurringItemsCardState,
+    actions: RecurringItemActions,
 ) {
     val visuals = LocalThemeVisuals.current
-    val items = section.rows
+    val items = state.section.rows
     AppSectionGroup(
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
@@ -243,12 +241,12 @@ private fun RecurringItemsCard(
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = stringResource(R.string.recurring_items_card_title, title),
+                    text = stringResource(R.string.recurring_items_card_title, state.title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
-                    text = when (section.bodyState) {
+                    text = when (state.section.bodyState) {
                         ReadableListBodyState.Loading -> stringResource(R.string.recurring_items_card_count_loading)
                         ReadableListBodyState.LoadFailed -> stringResource(R.string.recurring_items_card_count_unavailable)
                         ReadableListBodyState.Empty,
@@ -258,18 +256,18 @@ private fun RecurringItemsCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            when (section.bodyState) {
+            when (state.section.bodyState) {
                 ReadableListBodyState.LoadFailed -> AppErrorState(
                     title = stringResource(R.string.recurring_items_load_failed_title),
                     body = stringResource(R.string.recurring_items_load_failed_body),
-                    onRetry = onRetry,
+                    onRetry = actions.onRetry,
                 )
                 ReadableListBodyState.Loading,
                 ReadableListBodyState.Empty,
                 ReadableListBodyState.Content -> AppListStateContent(
                     state = AppListStateSpec(
-                        isEmpty = section.bodyState != ReadableListBodyState.Content,
-                        loading = section.bodyState == ReadableListBodyState.Loading,
+                        isEmpty = state.section.bodyState != ReadableListBodyState.Content,
+                        loading = state.section.bodyState == ReadableListBodyState.Loading,
                         emptyText = stringResource(R.string.recurring_items_empty),
                         skeletonRows = 4,
                     ),
@@ -277,12 +275,12 @@ private fun RecurringItemsCard(
                     items.forEachIndexed { index, item ->
                         if (index > 0) HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
                         RecurringItemRow(
-                            item = item,
-                            currencyDisplay = currencyDisplay,
-                            canModify = canModify,
-                            onPause = onPause,
-                            onResume = onResume,
-                            onArchive = onArchive,
+                            state = RecurringItemRowState(
+                                item = item,
+                                currencyDisplay = state.currencyDisplay,
+                                canModify = state.canModify,
+                            ),
+                            actions = actions,
                         )
                     }
                 }
@@ -291,19 +289,29 @@ private fun RecurringItemsCard(
     }
 }
 
+private data class RecurringItemsCardState(
+    val title: String,
+    val section: RecurringListSectionModel<RecurringItem>,
+    val currencyDisplay: CurrencyDisplay,
+    val canModify: Boolean,
+)
+
+private data class RecurringItemActions(
+    val onRetry: () -> Unit,
+    val onPause: (String, Long) -> Unit,
+    val onResume: (String, Long) -> Unit,
+    val onArchive: (String) -> Unit,
+)
+
 @Composable
 private fun RecurringItemRow(
-    item: RecurringItem,
-    currencyDisplay: CurrencyDisplay,
-    canModify: Boolean,
-    onPause: (String, Long) -> Unit,
-    onResume: (String, Long) -> Unit,
-    onArchive: (String) -> Unit,
+    state: RecurringItemRowState,
+    actions: RecurringItemActions,
 ) {
     val merchantFallback = stringResource(R.string.recurring_item_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         AppAdaptiveEditAmountRow(
-            amount = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
+            amount = formatDisplayAmount(state.item.lastAmountCents, state.currencyDisplay),
             style = AppAdaptiveAmountRowStyle(
                 role = AppAmountRole.Compact,
                 trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,
@@ -313,14 +321,14 @@ private fun RecurringItemRow(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
-                    text = item.merchant.ifBlank { merchantFallback },
+                    text = state.item.merchant.ifBlank { merchantFallback },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = recurringMeta(item, currencyDisplay),
+                    text = recurringMeta(state.item, state.currencyDisplay),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
@@ -328,33 +336,35 @@ private fun RecurringItemRow(
                 )
             }
         }
-        if (canModify) {
+        if (state.canModify) {
             AppAdaptiveContentActionRow(
                 wideActionWeight = 0.92f,
-                content = { RecurringStatusChips(item) },
+                content = { RecurringStatusChips(state.item) },
                 action = { actionModifier ->
                     RecurringActions(
                         modifier = actionModifier,
-                        item = item,
-                        onPause = onPause,
-                        onResume = onResume,
-                        onArchive = onArchive,
+                        item = state.item,
+                        actions = actions,
                     )
                 },
             )
         } else {
-            RecurringStatusChips(item)
+            RecurringStatusChips(state.item)
         }
     }
 }
+
+private data class RecurringItemRowState(
+    val item: RecurringItem,
+    val currencyDisplay: CurrencyDisplay,
+    val canModify: Boolean,
+)
 
 @Composable
 private fun RecurringActions(
     modifier: Modifier = Modifier,
     item: RecurringItem,
-    onPause: (String, Long) -> Unit,
-    onResume: (String, Long) -> Unit,
-    onArchive: (String) -> Unit,
+    actions: RecurringItemActions,
 ) {
     val hasStateAction = item.status == "active" || item.status == "paused"
     AppAdaptiveEditActionLayout(
@@ -371,18 +381,18 @@ private fun RecurringActions(
                 when (item.status) {
                     "active" -> TextButton(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = { onPause(item.publicId, item.rowVersion) },
+                        onClick = { actions.onPause(item.publicId, item.rowVersion) },
                     ) {
                         Text(stringResource(R.string.recurring_action_pause))
                     }
                     "paused" -> TextButton(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = { onResume(item.publicId, item.rowVersion) },
+                        onClick = { actions.onResume(item.publicId, item.rowVersion) },
                     ) {
                         Text(stringResource(R.string.recurring_action_resume))
                     }
                 }
-                TextButton(modifier = Modifier.fillMaxWidth(), onClick = { onArchive(item.publicId) }) {
+                TextButton(modifier = Modifier.fillMaxWidth(), onClick = { actions.onArchive(item.publicId) }) {
                     Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.recurring_action_archive_description))
                     Text(stringResource(R.string.recurring_action_archive))
                 }
@@ -394,14 +404,14 @@ private fun RecurringActions(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 when (item.status) {
-                    "active" -> TextButton(onClick = { onPause(item.publicId, item.rowVersion) }) {
+                    "active" -> TextButton(onClick = { actions.onPause(item.publicId, item.rowVersion) }) {
                         Text(stringResource(R.string.recurring_action_pause))
                     }
-                    "paused" -> TextButton(onClick = { onResume(item.publicId, item.rowVersion) }) {
+                    "paused" -> TextButton(onClick = { actions.onResume(item.publicId, item.rowVersion) }) {
                         Text(stringResource(R.string.recurring_action_resume))
                     }
                 }
-                TextButton(onClick = { onArchive(item.publicId) }) {
+                TextButton(onClick = { actions.onArchive(item.publicId) }) {
                     Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(R.string.recurring_action_archive_description))
                     Text(stringResource(R.string.recurring_action_archive))
                 }
