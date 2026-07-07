@@ -268,10 +268,12 @@ private fun MainTabRoute(
             BottomTab.Settings -> SettingsRoute(
                 shellState = shellState,
                 screenFactory = screenFactory,
-                currentSkin = currentSkin,
-                currentCurrency = currentCurrency,
-                onSkinChange = onSkinChange,
-                onCurrencyChange = onCurrencyChange,
+                preferenceControls = SettingsPreferenceControls(
+                    currentSkin = currentSkin,
+                    currentCurrency = currentCurrency,
+                    onSkinChange = onSkinChange,
+                    onCurrencyChange = onCurrencyChange,
+                ),
                 onBindingCleared = onBindingCleared,
             )
         }
