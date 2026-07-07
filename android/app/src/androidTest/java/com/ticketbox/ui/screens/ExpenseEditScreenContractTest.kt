@@ -31,17 +31,19 @@ class ExpenseEditScreenContractTest {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 ExpenseEditScreen(
-                    expense = expense(),
-                    state = ExpenseEditUiState(
-                        categories = listOf("餐饮", "交通", "其他"),
+                    screenState = expenseEditScreenState(
+                        editState = ExpenseEditUiState(
+                            categories = listOf("餐饮", "交通", "其他"),
+                        ),
                     ),
-                    onSave = { savedDraft = it },
-                    onConfirm = {},
-                    onReject = {},
-                    onRetryOcr = { retryCount += 1 },
-                    onLoadFullImage = {},
-                    onKeepDuplicate = {},
-                    onDone = {},
+                    actions = ExpenseEditScreenActions(
+                        primary = ExpenseEditPrimaryActions(
+                            onSave = { savedDraft = it },
+                        ),
+                        media = ExpenseEditMediaActions(
+                            onRetryOcr = { retryCount += 1 },
+                        ),
+                    ),
                 )
             }
         }
@@ -82,17 +84,13 @@ class ExpenseEditScreenContractTest {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 ExpenseEditScreen(
-                    expense = expense(),
-                    state = ExpenseEditUiState(),
-                    onSave = {},
-                    onConfirm = {},
-                    onReject = {},
-                    onRetryOcr = {},
-                    onLoadFullImage = {},
-                    onKeepDuplicate = {},
-                    onDone = {},
-                    allowConfirm = true,
-                    allowReject = true,
+                    screenState = expenseEditScreenState(
+                        actionAvailability = ExpenseEditActionAvailability(
+                            allowConfirm = true,
+                            allowReject = true,
+                        ),
+                    ),
+                    actions = ExpenseEditScreenActions(),
                 )
             }
         }
@@ -108,17 +106,14 @@ class ExpenseEditScreenContractTest {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 ExpenseEditScreen(
-                    expense = expense().copy(status = "confirmed"),
-                    state = ExpenseEditUiState(),
-                    onSave = {},
-                    onConfirm = {},
-                    onReject = {},
-                    onRetryOcr = {},
-                    onLoadFullImage = {},
-                    onKeepDuplicate = {},
-                    onDone = {},
-                    allowConfirm = false,
-                    allowReject = false,
+                    screenState = expenseEditScreenState(
+                        expense = expense().copy(status = "confirmed"),
+                        actionAvailability = ExpenseEditActionAvailability(
+                            allowConfirm = false,
+                            allowReject = false,
+                        ),
+                    ),
+                    actions = ExpenseEditScreenActions(),
                 )
             }
         }
@@ -135,15 +130,11 @@ class ExpenseEditScreenContractTest {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 ExpenseEditScreen(
-                    expense = expense().copy(source = "bill_split_received"),
-                    state = ExpenseEditUiState(readOnly = true),
-                    onSave = {},
-                    onConfirm = {},
-                    onReject = {},
-                    onRetryOcr = {},
-                    onLoadFullImage = {},
-                    onKeepDuplicate = {},
-                    onDone = {},
+                    screenState = expenseEditScreenState(
+                        expense = expense().copy(source = "bill_split_received"),
+                        editState = ExpenseEditUiState(readOnly = true),
+                    ),
+                    actions = ExpenseEditScreenActions(),
                 )
             }
         }
@@ -151,6 +142,16 @@ class ExpenseEditScreenContractTest {
         // 来源行不再漏裸 token：bill_split_received → 来源：拆账。
         composeRule.onNodeWithText("来源：拆账").performScrollTo().assertIsDisplayed()
     }
+
+    private fun expenseEditScreenState(
+        expense: Expense = expense(),
+        editState: ExpenseEditUiState = ExpenseEditUiState(),
+        actionAvailability: ExpenseEditActionAvailability = ExpenseEditActionAvailability(),
+    ): ExpenseEditScreenState = ExpenseEditScreenState(
+        expense = expense,
+        editState = editState,
+        actionAvailability = actionAvailability,
+    )
 
     private fun expense(): Expense = Expense(
         id = 1L,
