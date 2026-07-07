@@ -26,12 +26,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
-import com.ticketbox.data.repository.BudgetRepository
-import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
-import com.ticketbox.data.repository.OutboxRepository
-import com.ticketbox.data.repository.RecurringRepository
-import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.MessageTone
@@ -54,30 +49,15 @@ import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 
 @Composable
-fun TicketboxApp(
-    repository: ExpenseRepository,
-    ledgerRepository: LedgerRepository,
-    recurringRepository: RecurringRepository,
-    budgetRepository: BudgetRepository,
-    reportsRepository: ReportsActions,
-    incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
-    debtRepository: com.ticketbox.data.repository.DebtRepository,
-    repaymentDraftRepository: com.ticketbox.data.repository.RepaymentDraftRepository,
-    outboxRepository: OutboxRepository,
-    tagRepository: com.ticketbox.data.repository.TagRepository,
-    appViewModelFactory: ViewModelProvider.Factory,
-    settingsViewModelFactory: ViewModelProvider.Factory,
-    categoryRulesViewModelFactory: ViewModelProvider.Factory,
-    merchantAliasViewModelFactory: ViewModelProvider.Factory,
-    appearanceViewModelFactory: ViewModelProvider.Factory,
-    biometricAuthManager: BiometricAuthManager,
+internal fun TicketboxApp(
+    dependencies: TicketboxAppDependencies,
     // 系统分享 / 启动器 shortcut 带进来的待处理请求；仅在 MainShell（已绑定+已解锁）
     // 内被消费。未绑定/未解锁时挂起等待，待门通过后由对应 LaunchedEffect 处理。
     launchRequest: LaunchIntentRequest? = null,
     onLaunchRequestHandled: () -> Unit = {},
 ) {
     val appViewModel: AppViewModel = viewModel(
-        factory = appViewModelFactory,
+        factory = dependencies.viewModelFactories.appViewModelFactory,
     )
     val appState by appViewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -102,50 +82,34 @@ fun TicketboxApp(
         TicketboxContent(
             appState = appState,
             appViewModel = appViewModel,
-            repository = repository,
-            ledgerRepository = ledgerRepository,
-            recurringRepository = recurringRepository,
-            budgetRepository = budgetRepository,
-            reportsRepository = reportsRepository,
-            incomePlanRepository = incomePlanRepository,
-            debtRepository = debtRepository,
-            repaymentDraftRepository = repaymentDraftRepository,
-            outboxRepository = outboxRepository,
-            tagRepository = tagRepository,
-            settingsViewModelFactory = settingsViewModelFactory,
-            categoryRulesViewModelFactory = categoryRulesViewModelFactory,
-            merchantAliasViewModelFactory = merchantAliasViewModelFactory,
-            appearanceViewModelFactory = appearanceViewModelFactory,
-            biometricAuthManager = biometricAuthManager,
+            dependencies = dependencies,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
-            launchRequest = launchRequest,
-            onLaunchRequestHandled = onLaunchRequestHandled,
+            launchConsumer = LaunchRequestConsumer(
+                request = launchRequest,
+                onHandled = onLaunchRequestHandled,
+            ),
         )
     }
 }
+
+internal data class TicketboxAppDependencies(
+    val repositories: MainFeatureRepositories,
+    val viewModelFactories: TicketboxAppViewModelFactories,
+    val biometricAuthManager: BiometricAuthManager,
+)
+
+internal data class TicketboxAppViewModelFactories(
+    val appViewModelFactory: ViewModelProvider.Factory,
+    val mainScreenFactories: MainScreenViewModelFactories,
+)
 
 @Composable
 private fun TicketboxContent(
     appState: AppUiState,
     appViewModel: AppViewModel,
-    repository: ExpenseRepository,
-    ledgerRepository: LedgerRepository,
-    recurringRepository: RecurringRepository,
-    budgetRepository: BudgetRepository,
-    reportsRepository: ReportsActions,
-    incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
-    debtRepository: com.ticketbox.data.repository.DebtRepository,
-    repaymentDraftRepository: com.ticketbox.data.repository.RepaymentDraftRepository,
-    outboxRepository: OutboxRepository,
-    tagRepository: com.ticketbox.data.repository.TagRepository,
-    settingsViewModelFactory: ViewModelProvider.Factory,
-    categoryRulesViewModelFactory: ViewModelProvider.Factory,
-    merchantAliasViewModelFactory: ViewModelProvider.Factory,
-    appearanceViewModelFactory: ViewModelProvider.Factory,
-    biometricAuthManager: BiometricAuthManager,
+    dependencies: TicketboxAppDependencies,
     onAuthMessageShown: () -> Unit,
-    launchRequest: LaunchIntentRequest?,
-    onLaunchRequestHandled: () -> Unit,
+    launchConsumer: LaunchRequestConsumer,
 ) {
     if (!appState.isBound) {
         ImmersiveBackgroundScaffold(
@@ -156,7 +120,7 @@ private fun TicketboxContent(
             UnboundAuthFlow(
                 appState = appState,
                 appViewModel = appViewModel,
-                ledgerRepository = ledgerRepository,
+                ledgerRepository = dependencies.repositories.ledgerRepository,
             )
         }
         return
@@ -170,7 +134,7 @@ private fun TicketboxContent(
         ) {
             LocalUnlockGate(
                 authMessage = appState.authMessage,
-                biometricAuthManager = biometricAuthManager,
+                biometricAuthManager = dependencies.biometricAuthManager,
                 appViewModel = appViewModel,
             )
         }
@@ -178,33 +142,30 @@ private fun TicketboxContent(
     }
 
     MainShell(
-        repository = repository,
-        ledgerRepository = ledgerRepository,
-        recurringRepository = recurringRepository,
-        budgetRepository = budgetRepository,
-        reportsRepository = reportsRepository,
-        incomePlanRepository = incomePlanRepository,
-        debtRepository = debtRepository,
-        repaymentDraftRepository = repaymentDraftRepository,
-        outboxRepository = outboxRepository,
-        tagRepository = tagRepository,
-        settingsViewModelFactory = settingsViewModelFactory,
-        categoryRulesViewModelFactory = categoryRulesViewModelFactory,
-        merchantAliasViewModelFactory = merchantAliasViewModelFactory,
-        appearanceViewModelFactory = appearanceViewModelFactory,
-        currentSkin = appState.skin,
-        currentCurrency = appState.currency,
-        backgroundSettings = appState.backgroundSettings,
-        startupMessage = appState.authMessage,
-        localUnlockDisabled = appState.localUnlockDisabled,
-        onStartupMessageShown = onAuthMessageShown,
-        onSkinChange = appViewModel::selectSkin,
-        onCurrencyChange = appViewModel::selectCurrency,
-        onBindingCleared = appViewModel::clearBinding,
-        launchRequest = launchRequest,
-        onLaunchRequestHandled = onLaunchRequestHandled,
+        dependencies = dependencies,
+        chrome = MainShellChrome(
+            currentSkin = appState.skin,
+            currentCurrency = appState.currency,
+            backgroundSettings = appState.backgroundSettings,
+        ),
+        startup = MainShellStartup(
+            message = appState.authMessage,
+            localUnlockDisabled = appState.localUnlockDisabled,
+            onMessageShown = onAuthMessageShown,
+        ),
+        actions = MainShellActions(
+            onSkinChange = appViewModel::selectSkin,
+            onCurrencyChange = appViewModel::selectCurrency,
+            onBindingCleared = appViewModel::clearBinding,
+        ),
+        launchConsumer = launchConsumer,
     )
 }
+
+private data class LaunchRequestConsumer(
+    val request: LaunchIntentRequest?,
+    val onHandled: () -> Unit,
+)
 
 /**
  * The local-unlock gate (audit 8.1). Probes [BiometricAuthManager.unlockAvailability]
@@ -278,95 +239,74 @@ private fun UnboundAuthFlow(
 
 @Composable
 private fun MainShell(
-    repository: ExpenseRepository,
-    ledgerRepository: LedgerRepository,
-    recurringRepository: RecurringRepository,
-    budgetRepository: BudgetRepository,
-    reportsRepository: ReportsActions,
-    incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
-    debtRepository: com.ticketbox.data.repository.DebtRepository,
-    repaymentDraftRepository: com.ticketbox.data.repository.RepaymentDraftRepository,
-    outboxRepository: OutboxRepository,
-    tagRepository: com.ticketbox.data.repository.TagRepository,
-    settingsViewModelFactory: ViewModelProvider.Factory,
-    categoryRulesViewModelFactory: ViewModelProvider.Factory,
-    merchantAliasViewModelFactory: ViewModelProvider.Factory,
-    appearanceViewModelFactory: ViewModelProvider.Factory,
-    currentSkin: AppSkin,
-    currentCurrency: com.ticketbox.domain.model.CurrencyCode,
-    backgroundSettings: BackgroundSettings,
-    startupMessage: UiText?,
-    localUnlockDisabled: Boolean,
-    onStartupMessageShown: () -> Unit,
-    onSkinChange: (AppSkin) -> Unit,
-    onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
-    onBindingCleared: () -> Unit,
-    launchRequest: LaunchIntentRequest?,
-    onLaunchRequestHandled: () -> Unit,
+    dependencies: TicketboxAppDependencies,
+    chrome: MainShellChrome,
+    startup: MainShellStartup,
+    actions: MainShellActions,
+    launchConsumer: LaunchRequestConsumer,
 ) {
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
 
-    LaunchRequestEffect(launchRequest, shellState, onLaunchRequestHandled)
+    LaunchRequestEffect(launchConsumer.request, shellState, launchConsumer.onHandled)
 
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val screenFactory = remember(
-        repository,
-        ledgerRepository,
-        recurringRepository,
-        budgetRepository,
-        reportsRepository,
-        incomePlanRepository,
-        debtRepository,
-        repaymentDraftRepository,
-        outboxRepository,
-        tagRepository,
-        settingsViewModelFactory,
-        categoryRulesViewModelFactory,
-        merchantAliasViewModelFactory,
-        appearanceViewModelFactory,
+        dependencies.repositories,
+        dependencies.viewModelFactories.mainScreenFactories,
     ) {
         MainScreenFactory(
-            repository = repository,
-            ledgerRepository = ledgerRepository,
-            recurringRepository = recurringRepository,
-            budgetRepository = budgetRepository,
-            reportsRepository = reportsRepository,
-            incomePlanRepository = incomePlanRepository,
-            debtRepository = debtRepository,
-            repaymentDraftRepository = repaymentDraftRepository,
-            outboxRepository = outboxRepository,
-            tagRepository = tagRepository,
-            settingsViewModelFactory = settingsViewModelFactory,
-            categoryRulesViewModelFactory = categoryRulesViewModelFactory,
-            merchantAliasViewModelFactory = merchantAliasViewModelFactory,
-            appearanceViewModelFactory = appearanceViewModelFactory,
+            repositories = dependencies.repositories,
+            viewModelFactories = dependencies.viewModelFactories.mainScreenFactories,
         )
     }
+    val preferenceControls = SettingsPreferenceControls(
+        currentSkin = chrome.currentSkin,
+        currentCurrency = chrome.currentCurrency,
+        onSkinChange = actions.onSkinChange,
+        onCurrencyChange = actions.onCurrencyChange,
+    )
 
-    StartupMessageSnackbarEffect(startupMessage, snackbarHostState, onStartupMessageShown)
+    StartupMessageSnackbarEffect(startup.message, snackbarHostState, startup.onMessageShown)
 
     ImmersiveBackgroundScaffold(
-        backgroundSettings = backgroundSettings,
-        currentSkin = currentSkin,
+        backgroundSettings = chrome.backgroundSettings,
+        currentSkin = chrome.currentSkin,
         surfaceRole = shellState.surfaceRole(currentBackStackEntry?.destination?.route),
     ) {
-        ShellBodyWithBanner(localUnlockDisabled = localUnlockDisabled) {
+        ShellBodyWithBanner(localUnlockDisabled = startup.localUnlockDisabled) {
             MainNavGraph(
-                navController = navController,
-                shellState = shellState,
-                screenFactory = screenFactory,
-                currentSkin = currentSkin,
-                currentCurrency = currentCurrency,
+                runtime = MainNavigationRuntime(
+                    navController = navController,
+                    shellState = shellState,
+                    screenFactory = screenFactory,
+                ),
                 snackbarHostState = snackbarHostState,
-                onSkinChange = onSkinChange,
-                onCurrencyChange = onCurrencyChange,
-                onBindingCleared = onBindingCleared,
+                preferenceControls = preferenceControls,
+                onBindingCleared = actions.onBindingCleared,
             )
         }
     }
 }
+
+private data class MainShellChrome(
+    val currentSkin: AppSkin,
+    val currentCurrency: com.ticketbox.domain.model.CurrencyCode,
+    val backgroundSettings: BackgroundSettings,
+)
+
+private data class MainShellStartup(
+    val message: UiText?,
+    val localUnlockDisabled: Boolean,
+    val onMessageShown: () -> Unit,
+)
+
+private data class MainShellActions(
+    val onSkinChange: (AppSkin) -> Unit,
+    val onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
+    val onBindingCleared: () -> Unit,
+)
 
 @Composable
 private fun StartupMessageSnackbarEffect(

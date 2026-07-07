@@ -12,7 +12,11 @@ import androidx.fragment.app.FragmentActivity
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.navigation.EXTRA_SHORTCUT_TARGET
 import com.ticketbox.ui.navigation.LaunchIntentRequest
+import com.ticketbox.ui.navigation.MainFeatureRepositories
+import com.ticketbox.ui.navigation.MainScreenViewModelFactories
 import com.ticketbox.ui.navigation.TicketboxApp
+import com.ticketbox.ui.navigation.TicketboxAppDependencies
+import com.ticketbox.ui.navigation.TicketboxAppViewModelFactories
 import com.ticketbox.ui.navigation.resolveLaunchIntent
 import kotlinx.coroutines.runBlocking
 import com.ticketbox.viewmodel.appViewModelFactory
@@ -34,43 +38,14 @@ class MainActivity : FragmentActivity() {
         val container = (application as TicketboxApplication).container
         val biometricAuthManager = BiometricAuthManager(this)
         bindFromDebugIntentIfPresent(container)
+        val appDependencies = container.ticketboxAppDependencies(biometricAuthManager)
         launchRequest.value = parseLaunchIntent(intent)
 
         setContent {
             TicketboxApp(
+                dependencies = appDependencies,
                 launchRequest = launchRequest.value,
                 onLaunchRequestHandled = { launchRequest.value = null },
-                repository = container.expenseRepository,
-                ledgerRepository = container.ledgerRepository,
-                recurringRepository = container.recurringRepository,
-                budgetRepository = container.budgetRepository,
-                reportsRepository = container.reportsRepository,
-                incomePlanRepository = container.incomePlanRepository,
-                debtRepository = container.debtRepository,
-                repaymentDraftRepository = container.repaymentDraftRepository,
-                outboxRepository = container.outboxRepository,
-                tagRepository = container.tagRepository,
-                appViewModelFactory = appViewModelFactory(
-                    repository = container.expenseRepository,
-                    settingsStore = container.settingsStore,
-                    tokenStore = container.tokenStore,
-                ),
-                settingsViewModelFactory = settingsViewModelFactory(
-                    repository = container.expenseRepository,
-                    settingsStore = container.settingsStore,
-                ),
-                categoryRulesViewModelFactory = categoryRulesViewModelFactory(
-                    ruleRepository = container.ruleRepository,
-                    repository = container.expenseRepository,
-                ),
-                merchantAliasViewModelFactory = merchantAliasViewModelFactory(
-                    merchantRepository = container.merchantRepository,
-                    repository = container.expenseRepository,
-                ),
-                appearanceViewModelFactory = appearanceViewModelFactory(
-                    settingsStore = container.settingsStore,
-                ),
-                biometricAuthManager = biometricAuthManager,
             )
         }
         window.decorView.doOnPreDraw {
@@ -148,6 +123,53 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
+
+    private fun AppContainer.ticketboxAppDependencies(
+        biometricAuthManager: BiometricAuthManager,
+    ): TicketboxAppDependencies = TicketboxAppDependencies(
+        repositories = mainFeatureRepositories(),
+        viewModelFactories = ticketboxAppViewModelFactories(),
+        biometricAuthManager = biometricAuthManager,
+    )
+
+    private fun AppContainer.mainFeatureRepositories(): MainFeatureRepositories = MainFeatureRepositories(
+        repository = expenseRepository,
+        ledgerRepository = ledgerRepository,
+        recurringRepository = recurringRepository,
+        budgetRepository = budgetRepository,
+        reportsRepository = reportsRepository,
+        incomePlanRepository = incomePlanRepository,
+        debtRepository = debtRepository,
+        repaymentDraftRepository = repaymentDraftRepository,
+        outboxRepository = outboxRepository,
+        tagRepository = tagRepository,
+    )
+
+    private fun AppContainer.ticketboxAppViewModelFactories(): TicketboxAppViewModelFactories =
+        TicketboxAppViewModelFactories(
+            appViewModelFactory = appViewModelFactory(
+                repository = expenseRepository,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
+            mainScreenFactories = MainScreenViewModelFactories(
+                settingsViewModelFactory = settingsViewModelFactory(
+                    repository = expenseRepository,
+                    settingsStore = settingsStore,
+                ),
+                categoryRulesViewModelFactory = categoryRulesViewModelFactory(
+                    ruleRepository = ruleRepository,
+                    repository = expenseRepository,
+                ),
+                merchantAliasViewModelFactory = merchantAliasViewModelFactory(
+                    merchantRepository = merchantRepository,
+                    repository = expenseRepository,
+                ),
+                appearanceViewModelFactory = appearanceViewModelFactory(
+                    settingsStore = settingsStore,
+                ),
+            ),
+        )
 
     private companion object {
         const val DEBUG_SERVER_URL_EXTRA = "ticketbox.debug.server_url"

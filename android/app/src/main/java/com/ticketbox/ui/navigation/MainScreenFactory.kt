@@ -14,30 +14,51 @@ import com.ticketbox.data.repository.TagRepository
 import com.ticketbox.viewmodel.repositoryViewModelFactory as createRepositoryViewModelFactory
 
 internal class MainScreenFactory(
+    val repositories: MainFeatureRepositories,
+    val viewModelFactories: MainScreenViewModelFactories,
+) {
+    val repository: ExpenseRepository get() = repositories.repository
+    val ledgerRepository: LedgerRepository get() = repositories.ledgerRepository
+    val recurringRepository: RecurringRepository get() = repositories.recurringRepository
+    val budgetRepository: BudgetRepository get() = repositories.budgetRepository
+    val reportsRepository: ReportsActions get() = repositories.reportsRepository
+    val incomePlanRepository: IncomePlanActions get() = repositories.incomePlanRepository
+    val debtRepository: DebtRepository get() = repositories.debtRepository
+    val repaymentDraftRepository: RepaymentDraftRepository get() = repositories.repaymentDraftRepository
+    val outboxRepository: OutboxRepository get() = repositories.outboxRepository
+    val tagRepository: TagRepository get() = repositories.tagRepository
+    val settingsViewModelFactory: ViewModelProvider.Factory get() = viewModelFactories.settingsViewModelFactory
+    val categoryRulesViewModelFactory: ViewModelProvider.Factory get() =
+        viewModelFactories.categoryRulesViewModelFactory
+    val merchantAliasViewModelFactory: ViewModelProvider.Factory get() =
+        viewModelFactories.merchantAliasViewModelFactory
+    val appearanceViewModelFactory: ViewModelProvider.Factory get() = viewModelFactories.appearanceViewModelFactory
+
+    val repositoryViewModelFactory: ViewModelProvider.Factory = createRepositoryViewModelFactory(
+        repository = repositories.repository,
+        recurringRepository = repositories.recurringRepository,
+        budgetRepository = repositories.budgetRepository,
+        reportsRepository = repositories.reportsRepository,
+        repaymentDrafts = repositories.repaymentDraftRepository,
+    )
+}
+
+internal data class MainFeatureRepositories(
     val repository: ExpenseRepository,
     val ledgerRepository: LedgerRepository,
     val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetRepository,
     val reportsRepository: ReportsActions,
     val incomePlanRepository: IncomePlanActions,
-    // Concrete DebtRepository (not the DebtActions interface) so DebtRoute can hand it to both the
-    // DebtActions ViewModels and the slice-8d DebtProposalActions proposal ViewModel.
     val debtRepository: DebtRepository,
-    // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库（RepaymentDraftRoute 用它列/确认/忽略还款草稿）。
     val repaymentDraftRepository: RepaymentDraftRepository,
     val outboxRepository: OutboxRepository,
     val tagRepository: TagRepository,
+)
+
+internal data class MainScreenViewModelFactories(
     val settingsViewModelFactory: ViewModelProvider.Factory,
     val categoryRulesViewModelFactory: ViewModelProvider.Factory,
     val merchantAliasViewModelFactory: ViewModelProvider.Factory,
     val appearanceViewModelFactory: ViewModelProvider.Factory,
-) {
-    val repositoryViewModelFactory: ViewModelProvider.Factory = createRepositoryViewModelFactory(
-        repository = repository,
-        recurringRepository = recurringRepository,
-        budgetRepository = budgetRepository,
-        reportsRepository = reportsRepository,
-        // 轨道2 [P1]：StatsReportsViewModel 的还款待确认 badge 计数源。
-        repaymentDrafts = repaymentDraftRepository,
-    )
-}
+)
