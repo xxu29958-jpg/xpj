@@ -11,6 +11,8 @@ import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
+import com.ticketbox.ui.screens.ledger.LedgerToolsSheetActions
+import com.ticketbox.ui.screens.ledger.LedgerToolsSheetState
 import com.ticketbox.viewmodel.LedgerMonthsLoadState
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -103,21 +105,25 @@ private fun LedgerToolsSheetHost(
             open()
         }
         LedgerToolsSheet(
-            state = state,
-            canExport = canExport,
-            onCategoryChange = actions.onCategoryChange,
-            onTagChange = actions.onTagChange,
-            onQueryChange = actions.onQueryChange,
-            onClearFilters = actions.onClearFilters,
-            onViewModeChange = actions.onViewModeChange,
-            onSync = actions.onSync,
-            onExportCsv = actions.onExportCsv,
-            onOpenBillSplit = { openSecondaryPage(actions.onOpenBillSplit) },
-            onOpenDebts = { openSecondaryPage(actions.onOpenDebts) },
-            onOpenReceivables = { openSecondaryPage(actions.onOpenReceivables) },
-            onOpenRepaymentDrafts = { openSecondaryPage(actions.onOpenRepaymentDrafts) },
-            onOpenGlobalSearch = { openSecondaryPage(actions.onOpenGlobalSearch) },
-            onDismiss = { chromeState.showLedgerTools = false },
+            state = LedgerToolsSheetState(
+                ledger = state,
+                canExport = canExport,
+            ),
+            actions = LedgerToolsSheetActions(
+                onCategoryChange = actions.onCategoryChange,
+                onTagChange = actions.onTagChange,
+                onQueryChange = actions.onQueryChange,
+                onClearFilters = actions.onClearFilters,
+                onViewModeChange = actions.onViewModeChange,
+                onSync = actions.onSync,
+                onExportCsv = actions.onExportCsv,
+                onOpenBillSplit = { openSecondaryPage(actions.onOpenBillSplit) },
+                onOpenDebts = { openSecondaryPage(actions.onOpenDebts) },
+                onOpenReceivables = { openSecondaryPage(actions.onOpenReceivables) },
+                onOpenRepaymentDrafts = { openSecondaryPage(actions.onOpenRepaymentDrafts) },
+                onOpenGlobalSearch = { openSecondaryPage(actions.onOpenGlobalSearch) },
+                onDismiss = { chromeState.showLedgerTools = false },
+            ),
         )
     }
 }

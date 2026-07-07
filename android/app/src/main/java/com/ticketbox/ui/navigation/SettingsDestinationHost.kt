@@ -57,6 +57,8 @@ import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
 import com.ticketbox.ui.screens.settings.RecycleBinScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
+import com.ticketbox.ui.screens.settings.ServerSettingsScreenActions
+import com.ticketbox.ui.screens.settings.ServerSettingsScreenState
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute as SettingsDestination
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
@@ -230,13 +232,17 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.Server -> ServerSettingsScreen(
-            state = states.settings,
-            showAdvancedTools = showAdvancedTools,
-            onBack = { route = SettingsDestination.Root },
-            onTestConnection = actions.onTestConnection,
-            onRunDiagnostics = actions.onRunDiagnostics,
-            onRefreshServerSettings = actions.onRefreshServerSettings,
-            onSync = actions.onSync,
+            state = ServerSettingsScreenState(
+                settings = states.settings,
+                showAdvancedTools = showAdvancedTools,
+            ),
+            actions = ServerSettingsScreenActions(
+                onBack = { route = SettingsDestination.Root },
+                onTestConnection = actions.onTestConnection,
+                onRunDiagnostics = actions.onRunDiagnostics,
+                onRefreshServerSettings = actions.onRefreshServerSettings,
+                onSync = actions.onSync,
+            ),
         )
 
         SettingsDestination.Appearance -> AppearanceScreen(

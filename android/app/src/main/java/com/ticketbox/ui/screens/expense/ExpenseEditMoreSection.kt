@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -43,55 +44,65 @@ private data class MoreExpandedActions(
     val onRecognizeText: () -> Unit,
 )
 
+@Immutable
+internal data class ExpenseEditMoreSectionState(
+    val tags: String,
+    val valueScoreText: String,
+    val regretScoreText: String,
+    val rawTextDisplay: String,
+    val moreExpanded: Boolean,
+    val rawTextExpanded: Boolean,
+    val ocrRunning: Boolean,
+    val saving: Boolean,
+    val readOnly: Boolean = false,
+    val canRecognize: Boolean = false,
+)
+
+@Immutable
+internal data class ExpenseEditMoreSectionActions(
+    val onTagsChange: (String) -> Unit,
+    val onValueScoreChange: (String) -> Unit,
+    val onRegretScoreChange: (String) -> Unit,
+    val onToggleMore: () -> Unit,
+    val onToggleRawText: () -> Unit,
+    val onRetryOcr: () -> Unit,
+    val onRecognizeText: () -> Unit = {},
+)
+
 @Composable
 internal fun ExpenseEditMoreSection(
-    tags: String,
-    onTagsChange: (String) -> Unit,
-    valueScoreText: String,
-    onValueScoreChange: (String) -> Unit,
-    regretScoreText: String,
-    onRegretScoreChange: (String) -> Unit,
-    rawTextDisplay: String,
-    moreExpanded: Boolean,
-    onToggleMore: () -> Unit,
-    rawTextExpanded: Boolean,
-    onToggleRawText: () -> Unit,
-    ocrRunning: Boolean,
-    saving: Boolean,
-    readOnly: Boolean = false,
-    canRecognize: Boolean = false,
-    onRetryOcr: () -> Unit,
-    onRecognizeText: () -> Unit = {},
+    state: ExpenseEditMoreSectionState,
+    actions: ExpenseEditMoreSectionActions,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         ExpenseEditMoreHeader(
-            moreExpanded = moreExpanded,
-            onToggleMore = onToggleMore,
+            moreExpanded = state.moreExpanded,
+            onToggleMore = actions.onToggleMore,
         )
 
-        if (moreExpanded) {
+        if (state.moreExpanded) {
             ExpenseEditMoreExpandedFields(
                 state = MoreExpandedState(
-                    tags = tags,
-                    valueScoreText = valueScoreText,
-                    regretScoreText = regretScoreText,
-                    rawTextDisplay = rawTextDisplay,
-                    rawTextExpanded = rawTextExpanded,
-                    ocrRunning = ocrRunning,
-                    saving = saving,
-                    readOnly = readOnly,
-                    canRecognize = canRecognize,
+                    tags = state.tags,
+                    valueScoreText = state.valueScoreText,
+                    regretScoreText = state.regretScoreText,
+                    rawTextDisplay = state.rawTextDisplay,
+                    rawTextExpanded = state.rawTextExpanded,
+                    ocrRunning = state.ocrRunning,
+                    saving = state.saving,
+                    readOnly = state.readOnly,
+                    canRecognize = state.canRecognize,
                 ),
                 actions = MoreExpandedActions(
-                    onTagsChange = onTagsChange,
-                    onValueScoreChange = onValueScoreChange,
-                    onRegretScoreChange = onRegretScoreChange,
-                    onToggleRawText = onToggleRawText,
-                    onRetryOcr = onRetryOcr,
-                    onRecognizeText = onRecognizeText,
+                    onTagsChange = actions.onTagsChange,
+                    onValueScoreChange = actions.onValueScoreChange,
+                    onRegretScoreChange = actions.onRegretScoreChange,
+                    onToggleRawText = actions.onToggleRawText,
+                    onRetryOcr = actions.onRetryOcr,
+                    onRecognizeText = actions.onRecognizeText,
                 ),
             )
         }
