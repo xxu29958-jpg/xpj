@@ -23,8 +23,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -33,21 +31,19 @@ import kotlin.test.assertNull
 @OptIn(ExperimentalCoroutinesApi::class)
 class MerchantAliasViewModelToneTest {
 
-    private val dispatcher = StandardTestDispatcher()
-
-    @BeforeTest
-    fun setup() {
+    private fun merchantAlias(block: suspend TestScope.() -> Unit) = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
-    }
-
-    @AfterTest
-    fun tearDown() {
-        dispatcher.scheduler.advanceUntilIdle()
-        Dispatchers.resetMain()
+        try {
+            block()
+        } finally {
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
-    fun catalogLoadFailureShowsDangerTone() = runTest(dispatcher) {
+    fun catalogLoadFailureShowsDangerTone() = merchantAlias {
         val base = fakeApi()
         val service = object : ApiService by base {
             override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto {
@@ -65,7 +61,7 @@ class MerchantAliasViewModelToneTest {
     }
 
     @Test
-    fun aliasLoadFailureShowsDangerTone() = runTest(dispatcher) {
+    fun aliasLoadFailureShowsDangerTone() = merchantAlias {
         val base = fakeApi()
         val service = object : ApiService by base {
             override suspend fun merchantAliases(): MerchantAliasListDto {
@@ -83,7 +79,7 @@ class MerchantAliasViewModelToneTest {
     }
 
     @Test
-    fun createMerchantAliasSuccessShowsSuccessTone() = runTest(dispatcher) {
+    fun createMerchantAliasSuccessShowsSuccessTone() = merchantAlias {
         val vm = harness(fakeApi()).vm
         awaitSettledState(vm)
 
@@ -95,7 +91,7 @@ class MerchantAliasViewModelToneTest {
     }
 
     @Test
-    fun toggleMerchantAliasSyncedShowsSuccessTone() = runTest(dispatcher) {
+    fun toggleMerchantAliasSyncedShowsSuccessTone() = merchantAlias {
         val vm = harness(fakeApi()).vm
         val initial = awaitSettledState(vm)
         val alias = initial.merchantAliases.single()
@@ -108,7 +104,7 @@ class MerchantAliasViewModelToneTest {
     }
 
     @Test
-    fun deleteMerchantAliasSyncedShowsSuccessToneAndUndoHandle() = runTest(dispatcher) {
+    fun deleteMerchantAliasSyncedShowsSuccessToneAndUndoHandle() = merchantAlias {
         val vm = harness(fakeApi()).vm
         val initial = awaitSettledState(vm)
         val alias = initial.merchantAliases.single()
@@ -122,7 +118,7 @@ class MerchantAliasViewModelToneTest {
     }
 
     @Test
-    fun undoDeleteSuccessShowsSuccessToneAndClearsUndo() = runTest(dispatcher) {
+    fun undoDeleteSuccessShowsSuccessToneAndClearsUndo() = merchantAlias {
         val vm = harness(fakeApi()).vm
         val initial = awaitSettledState(vm)
         val alias = initial.merchantAliases.single()
