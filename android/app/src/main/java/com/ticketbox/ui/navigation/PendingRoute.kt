@@ -16,6 +16,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.ticketbox.ui.screens.PendingScreen
+import com.ticketbox.ui.screens.pending.PendingDuplicateReviewActions
+import com.ticketbox.ui.screens.pending.PendingExpenseQueueActions
+import com.ticketbox.ui.screens.pending.PendingQueueReviewActions
+import com.ticketbox.ui.screens.pending.PendingQuickFixEntryActions
+import com.ticketbox.ui.screens.pending.PendingReviewFlowActions
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
+import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
 import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.PendingViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -66,32 +73,65 @@ internal fun PendingRoute(
 
     PendingScreen(
         state = state,
-        onRefresh = pendingViewModel::refresh,
-        onEdit = { navController.openExpense(it.id) },
-        onConfirm = pendingViewModel::confirm,
-        onReject = pendingViewModel::reject,
-        onKeepDuplicate = pendingViewModel::markNotDuplicate,
-        onUploadScreenshot = launchImagePicker,
-        onQuickCategory = pendingViewModel::openQuickCategory,
-        onSaveQuickCategory = pendingViewModel::saveQuickCategory,
-        onQuickMerchant = pendingViewModel::openQuickMerchant,
-        onSaveQuickMerchant = pendingViewModel::saveQuickMerchant,
-        onMissingAmount = pendingViewModel::openMissingAmount,
-        onSaveAmountDraft = pendingViewModel::saveAmountDraft,
-        onSaveAmountAndConfirm = pendingViewModel::saveAmountAndConfirm,
-        onOpenBulkConfirm = pendingViewModel::openBulkConfirm,
-        onConfirmReady = pendingViewModel::confirmReadyExpenses,
-        onOpenDuplicate = pendingViewModel::openDuplicateAction,
+        chromeActions = pendingScreenChromeActions(
+            viewModel = pendingViewModel,
+            onUploadScreenshot = launchImagePicker,
+        ),
+        itemActions = pendingExpenseQueueActions(navController, pendingViewModel),
+        reviewActions = pendingReviewFlowActions(pendingViewModel),
+        sheetActions = pendingReviewSheetActions(pendingViewModel),
+    )
+}
+
+private fun pendingScreenChromeActions(
+    viewModel: PendingViewModel,
+    onUploadScreenshot: () -> Unit,
+): PendingScreenChromeActions = PendingScreenChromeActions(
+    onRefresh = viewModel::refresh,
+    onUploadScreenshot = onUploadScreenshot,
+)
+
+private fun pendingExpenseQueueActions(
+    navController: NavHostController,
+    viewModel: PendingViewModel,
+): PendingExpenseQueueActions = PendingExpenseQueueActions(
+    onEdit = { navController.openExpense(it.id) },
+    onConfirm = viewModel::confirm,
+    onReject = viewModel::reject,
+    onKeepDuplicate = viewModel::markNotDuplicate,
+)
+
+private fun pendingReviewFlowActions(viewModel: PendingViewModel): PendingReviewFlowActions =
+    PendingReviewFlowActions(
+        quickFix = PendingQuickFixEntryActions(
+            onQuickCategory = viewModel::openQuickCategory,
+            onQuickMerchant = viewModel::openQuickMerchant,
+            onMissingAmount = viewModel::openMissingAmount,
+        ),
+        duplicate = PendingDuplicateReviewActions(
+            onOpenDuplicate = viewModel::openDuplicateAction,
+        ),
+        queue = PendingQueueReviewActions(
+            onOpenBulkConfirm = viewModel::openBulkConfirm,
+            onUndoReject = viewModel::undoReject,
+        ),
+    )
+
+private fun pendingReviewSheetActions(viewModel: PendingViewModel): PendingReviewSheetHostActions =
+    PendingReviewSheetHostActions(
+        onSaveQuickCategory = viewModel::saveQuickCategory,
+        onSaveQuickMerchant = viewModel::saveQuickMerchant,
+        onSaveAmountDraft = viewModel::saveAmountDraft,
+        onSaveAmountAndConfirm = viewModel::saveAmountAndConfirm,
+        onSkipReviewField = viewModel::skipReviewField,
+        onKeepBoth = viewModel::markNotDuplicate,
         // ADR-0038 V14: distinct from reject() — same backend transition,
         // different UX. "忽略" on duplicate sheet must NOT seed the 撤销
         // banner or show "已删除".
-        onIgnoreDuplicate = pendingViewModel::ignoreDuplicate,
-        // 连续审阅：快补 sheet「跳过」当前票，载入下一条仍缺同字段的待确认票。
-        onSkipReviewField = pendingViewModel::skipReviewField,
-        onCloseSheet = pendingViewModel::closeSheet,
-        onUndoReject = pendingViewModel::undoReject,
+        onIgnoreCurrent = viewModel::ignoreDuplicate,
+        onConfirmReady = viewModel::confirmReadyExpenses,
+        onDismiss = viewModel::closeSheet,
     )
-}
 
 /**
  * 列表内「上传截图」按钮 + 「传小票」shortcut 共用的单图选择器：选一张图 → IO 预处理

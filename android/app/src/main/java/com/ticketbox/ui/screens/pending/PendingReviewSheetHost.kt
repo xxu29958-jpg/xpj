@@ -28,7 +28,7 @@ internal data class PendingReviewSheetHostState(
     val statusMessage: String?,
 )
 
-internal data class PendingReviewSheetHostActions(
+data class PendingReviewSheetHostActions(
     val onSaveQuickCategory: (Long, String) -> Unit,
     val onSaveQuickMerchant: (Long, String) -> Unit,
     val onSaveAmountDraft: (Long, Long) -> Unit,
