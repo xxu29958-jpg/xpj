@@ -46,7 +46,9 @@ import com.ticketbox.ui.screens.pending.PendingQueueEvidence
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueOverview
 import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostState
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
 import com.ticketbox.ui.screens.pending.PendingTopState
@@ -149,26 +151,30 @@ fun PendingScreen(
     }
 
     PendingReviewSheetHost(
-        sheet = state.activeSheet,
-        categoryOptions = state.categoryOptions,
-        actionInProgressIds = state.actionInProgressIds,
-        readyCount = queueCounts.readyToConfirm,
-        missingAmountSkip = queueCounts.needsAmount,
-        duplicateSkip = queueCounts.duplicate,
-        bulkRunning = state.bulkConfirm.running,
-        bulkConfirmed = state.bulkConfirm.succeeded,
-        bulkTotal = state.bulkConfirm.total,
-        reviewRemaining = state.reviewRemaining,
-        statusMessage = state.message?.asString(),
-        onSaveQuickCategory = onSaveQuickCategory,
-        onSaveQuickMerchant = onSaveQuickMerchant,
-        onSaveAmountDraft = onSaveAmountDraft,
-        onSaveAmountAndConfirm = onSaveAmountAndConfirm,
-        onSkipReviewField = onSkipReviewField,
-        onKeepBoth = onKeepDuplicate,
-        onIgnoreCurrent = onIgnoreDuplicate,
-        onConfirmReady = onConfirmReady,
-        onDismiss = onCloseSheet,
+        state = PendingReviewSheetHostState(
+            sheet = state.activeSheet,
+            categoryOptions = state.categoryOptions,
+            actionInProgressIds = state.actionInProgressIds,
+            readyCount = queueCounts.readyToConfirm,
+            missingAmountSkip = queueCounts.needsAmount,
+            duplicateSkip = queueCounts.duplicate,
+            bulkRunning = state.bulkConfirm.running,
+            bulkConfirmed = state.bulkConfirm.succeeded,
+            bulkTotal = state.bulkConfirm.total,
+            reviewRemaining = state.reviewRemaining,
+            statusMessage = state.message?.asString(),
+        ),
+        actions = PendingReviewSheetHostActions(
+            onSaveQuickCategory = onSaveQuickCategory,
+            onSaveQuickMerchant = onSaveQuickMerchant,
+            onSaveAmountDraft = onSaveAmountDraft,
+            onSaveAmountAndConfirm = onSaveAmountAndConfirm,
+            onSkipReviewField = onSkipReviewField,
+            onKeepBoth = onKeepDuplicate,
+            onIgnoreCurrent = onIgnoreDuplicate,
+            onConfirmReady = onConfirmReady,
+            onDismiss = onCloseSheet,
+        ),
     )
 
     AppScrollableContent(

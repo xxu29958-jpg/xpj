@@ -14,85 +14,93 @@ import com.ticketbox.ui.screens.pending.sheets.QuickMerchantSheetContent
 import com.ticketbox.ui.screens.pending.sheets.ReviewSheetChrome
 import com.ticketbox.viewmodel.PendingSheet
 
+internal data class PendingReviewSheetHostState(
+    val sheet: PendingSheet,
+    val categoryOptions: List<String>,
+    val actionInProgressIds: Set<Long>,
+    val readyCount: Int,
+    val missingAmountSkip: Int,
+    val duplicateSkip: Int,
+    val bulkRunning: Boolean,
+    val bulkConfirmed: Int,
+    val bulkTotal: Int,
+    val reviewRemaining: Int,
+    val statusMessage: String?,
+)
+
+internal data class PendingReviewSheetHostActions(
+    val onSaveQuickCategory: (Long, String) -> Unit,
+    val onSaveQuickMerchant: (Long, String) -> Unit,
+    val onSaveAmountDraft: (Long, Long) -> Unit,
+    val onSaveAmountAndConfirm: (Long, Long) -> Unit,
+    val onSkipReviewField: () -> Unit,
+    val onKeepBoth: (Expense) -> Unit,
+    val onIgnoreCurrent: (Expense) -> Unit,
+    val onConfirmReady: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun PendingReviewSheetHost(
-    sheet: PendingSheet,
-    categoryOptions: List<String>,
-    actionInProgressIds: Set<Long>,
-    readyCount: Int,
-    missingAmountSkip: Int,
-    duplicateSkip: Int,
-    bulkRunning: Boolean,
-    bulkConfirmed: Int,
-    bulkTotal: Int,
-    reviewRemaining: Int,
-    statusMessage: String?,
-    onSaveQuickCategory: (Long, String) -> Unit,
-    onSaveQuickMerchant: (Long, String) -> Unit,
-    onSaveAmountDraft: (Long, Long) -> Unit,
-    onSaveAmountAndConfirm: (Long, Long) -> Unit,
-    onSkipReviewField: () -> Unit,
-    onKeepBoth: (Expense) -> Unit,
-    onIgnoreCurrent: (Expense) -> Unit,
-    onConfirmReady: () -> Unit,
-    onDismiss: () -> Unit,
+    state: PendingReviewSheetHostState,
+    actions: PendingReviewSheetHostActions,
 ) {
     // Quick-fix sheets share the same review chrome and saving-state rule.
     fun chromeFor(expenseId: Long) = ReviewSheetChrome(
-        saving = expenseId in actionInProgressIds,
-        remaining = reviewRemaining,
-        statusMessage = statusMessage,
-        onSkip = onSkipReviewField,
+        saving = expenseId in state.actionInProgressIds,
+        remaining = state.reviewRemaining,
+        statusMessage = state.statusMessage,
+        onSkip = actions.onSkipReviewField,
     )
-    when (sheet) {
+    when (val sheet = state.sheet) {
         is PendingSheet.None -> Unit
-        is PendingSheet.QuickCategory -> ModalBottomSheet(onDismissRequest = onDismiss) {
+        is PendingSheet.QuickCategory -> ModalBottomSheet(onDismissRequest = actions.onDismiss) {
             QuickCategorySheetContent(
                 expense = sheet.expense,
-                options = categoryOptions,
+                options = state.categoryOptions,
                 chrome = chromeFor(sheet.expense.id),
-                onSave = { value -> onSaveQuickCategory(sheet.expense.id, value) },
-                onDismiss = onDismiss,
+                onSave = { value -> actions.onSaveQuickCategory(sheet.expense.id, value) },
+                onDismiss = actions.onDismiss,
             )
         }
-        is PendingSheet.QuickMerchant -> ModalBottomSheet(onDismissRequest = onDismiss) {
+        is PendingSheet.QuickMerchant -> ModalBottomSheet(onDismissRequest = actions.onDismiss) {
             QuickMerchantSheetContent(
                 expense = sheet.expense,
                 chrome = chromeFor(sheet.expense.id),
-                onSave = { value -> onSaveQuickMerchant(sheet.expense.id, value) },
-                onDismiss = onDismiss,
+                onSave = { value -> actions.onSaveQuickMerchant(sheet.expense.id, value) },
+                onDismiss = actions.onDismiss,
             )
         }
-        is PendingSheet.MissingAmount -> ModalBottomSheet(onDismissRequest = onDismiss) {
+        is PendingSheet.MissingAmount -> ModalBottomSheet(onDismissRequest = actions.onDismiss) {
             MissingAmountSheetContent(
                 expense = sheet.expense,
                 chrome = chromeFor(sheet.expense.id),
-                onSaveDraft = { cents -> onSaveAmountDraft(sheet.expense.id, cents) },
-                onSaveAndConfirm = { cents -> onSaveAmountAndConfirm(sheet.expense.id, cents) },
+                onSaveDraft = { cents -> actions.onSaveAmountDraft(sheet.expense.id, cents) },
+                onSaveAndConfirm = { cents -> actions.onSaveAmountAndConfirm(sheet.expense.id, cents) },
             )
         }
-        is PendingSheet.Duplicate -> ModalBottomSheet(onDismissRequest = onDismiss) {
+        is PendingSheet.Duplicate -> ModalBottomSheet(onDismissRequest = actions.onDismiss) {
             DuplicateConfirmSheetContent(
                 expense = sheet.expense,
-                inProgress = sheet.expense.id in actionInProgressIds,
-                onKeepBoth = { onKeepBoth(sheet.expense) },
-                onIgnoreCurrent = { onIgnoreCurrent(sheet.expense) },
+                inProgress = sheet.expense.id in state.actionInProgressIds,
+                onKeepBoth = { actions.onKeepBoth(sheet.expense) },
+                onIgnoreCurrent = { actions.onIgnoreCurrent(sheet.expense) },
             )
         }
-        is PendingSheet.BulkConfirm -> ModalBottomSheet(onDismissRequest = onDismiss) {
+        is PendingSheet.BulkConfirm -> ModalBottomSheet(onDismissRequest = actions.onDismiss) {
             BulkConfirmSheetContent(
                 state = BulkConfirmSheetState(
-                    readyCount = readyCount,
-                    missingAmountSkipCount = missingAmountSkip,
-                    duplicateSkipCount = duplicateSkip,
-                    inProgress = bulkRunning,
-                    confirmedCount = bulkConfirmed,
-                    totalCount = bulkTotal,
+                    readyCount = state.readyCount,
+                    missingAmountSkipCount = state.missingAmountSkip,
+                    duplicateSkipCount = state.duplicateSkip,
+                    inProgress = state.bulkRunning,
+                    confirmedCount = state.bulkConfirmed,
+                    totalCount = state.bulkTotal,
                 ),
                 actions = BulkConfirmSheetActions(
-                    onConfirmReady = onConfirmReady,
-                    onDismiss = onDismiss,
+                    onConfirmReady = actions.onConfirmReady,
+                    onDismiss = actions.onDismiss,
                 ),
             )
         }
