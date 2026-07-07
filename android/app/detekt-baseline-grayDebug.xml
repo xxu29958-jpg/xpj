@@ -108,8 +108,6 @@
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT COUNT(*) &gt; 0 FROM pending_mutations WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND targetId = :targetId AND status IN (:inFlightStatus, :conflictStatus, :failedStatus) """, ) suspend fun hasUnresolvedRowForTarget: Boolean</ID>
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ UPDATE pending_mutations SET status = :pendingStatus, lastError = :recoveryMessage WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND status = :inFlightStatus AND (attemptedAt IS NULL OR attemptedAt &lt; :staleCutoffIso) """, ) suspend fun recoverStaleInFlight: Int</ID>
     <ID>LongParameterList:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
-    <ID>LongParameterList:RecurringScreen.kt:@Composable fun RecurringScreen</ID>
-    <ID>LongParameterList:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
     <ID>TooManyFunctions:BudgetViewModel.kt:BudgetViewModel : ViewModel</ID>
     <ID>TooManyFunctions:CategoryRulesViewModel.kt:CategoryRulesViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao</ID>

@@ -11,9 +11,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.screens.stats.StatsPlanningActions
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.StatsUiState
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -23,35 +27,74 @@ class StatsPlanningMenuTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun planningMenuAnnouncesExpandedStateAndKeepsTouchTarget() {
+    fun planningMenuAnnouncesStateKeepsTouchTargetAndDispatchesActions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val menuDescription = context.getString(R.string.stats_header_menu_planning_description)
+        val expanded = context.getString(R.string.stats_header_menu_planning_expanded)
+        val collapsed = context.getString(R.string.stats_header_menu_planning_collapsed)
+        val hits = PlanningActionHits()
+
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 StatsScreen(
                     state = StatsUiState(),
-                    onMonthChange = {},
-                    onTagChange = {},
-                    onRefresh = {},
-                    onOpenBudget = {},
-                    onOpenRecurring = {},
-                    onOpenIncomePlans = {},
-                    onOpenDebtGoals = {},
+                    actions = statsPlanningMenuActions(hits),
                 )
             }
         }
 
-        val menu = composeRule.onNodeWithContentDescription(PLANNING_MENU_DESCRIPTION)
-        menu.assert(hasStateDescription("已折叠"))
+        val menu = composeRule.onNodeWithContentDescription(menuDescription)
+        menu.assert(hasStateDescription(collapsed))
         val bounds = menu.getUnclippedBoundsInRoot()
         assertDpAtLeast(expected = 48.dp, actual = bounds.bottom - bounds.top)
 
         menu.performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithContentDescription(PLANNING_MENU_DESCRIPTION)
-            .assert(hasStateDescription("已展开"))
-        composeRule.onNodeWithText("固定支出").assertIsDisplayed()
-        composeRule.onNodeWithText("收入记录").assertIsDisplayed()
-        composeRule.onNodeWithText("还债目标").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(menuDescription)
+            .assert(hasStateDescription(expanded))
+        composeRule.onNodeWithText(context.getString(R.string.stats_header_open_budget)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.stats_header_open_income_plans)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.stats_header_open_debt_goals)).assertIsDisplayed()
+
+        clickPlanningMenuItem(
+            label = context.getString(R.string.stats_header_open_spending_goal),
+            assertHit = { assertEquals(1, hits.spendingGoal) },
+        )
+        openPlanningMenu(menuDescription)
+        clickPlanningMenuItem(
+            label = context.getString(R.string.stats_header_open_budget),
+            assertHit = { assertEquals(1, hits.budget) },
+        )
+        openPlanningMenu(menuDescription)
+        clickPlanningMenuItem(
+            label = context.getString(R.string.stats_header_open_recurring),
+            assertHit = { assertEquals(1, hits.recurring) },
+        )
+        openPlanningMenu(menuDescription)
+        clickPlanningMenuItem(
+            label = context.getString(R.string.stats_header_open_income_plans),
+            assertHit = { assertEquals(1, hits.incomePlans) },
+        )
+        openPlanningMenu(menuDescription)
+        clickPlanningMenuItem(
+            label = context.getString(R.string.stats_header_open_debt_goals),
+            assertHit = { assertEquals(1, hits.debtGoals) },
+        )
+    }
+
+    private fun openPlanningMenu(menuDescription: String) {
+        composeRule.onNodeWithContentDescription(menuDescription).performClick()
+        composeRule.waitForIdle()
+    }
+
+    private fun clickPlanningMenuItem(
+        label: String,
+        assertHit: () -> Unit,
+    ) {
+        composeRule.onNodeWithText(label).performClick()
+        composeRule.waitForIdle()
+        assertHit()
     }
 
     private fun hasStateDescription(value: String): SemanticsMatcher {
@@ -65,8 +108,35 @@ class StatsPlanningMenuTest {
         )
     }
 
+    private fun statsPlanningMenuActions(hits: PlanningActionHits) = StatsScreenActions(
+        filters = StatsFilterActions(
+            onMonthChange = {},
+            onTagChange = {},
+        ),
+        onRefresh = {},
+        planning = StatsPlanningActions(
+            onOpenSpendingGoal = { hits.spendingGoal++ },
+            onOpenBudget = { hits.budget++ },
+            onOpenRecurring = { hits.recurring++ },
+            onOpenIncomePlans = { hits.incomePlans++ },
+            onOpenDebtGoals = { hits.debtGoals++ },
+        ),
+        reports = StatsReportActions(
+            onDrillToLedger = {},
+            onGranularityChange = {},
+            onRankingMetricChange = {},
+        ),
+    )
+
+    private data class PlanningActionHits(
+        var spendingGoal: Int = 0,
+        var budget: Int = 0,
+        var recurring: Int = 0,
+        var incomePlans: Int = 0,
+        var debtGoals: Int = 0,
+    )
+
     private companion object {
         const val DP_EPSILON = 0.01f
-        const val PLANNING_MENU_DESCRIPTION = "规划菜单"
     }
 }

@@ -67,24 +67,29 @@ import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
 import kotlin.math.roundToInt
 
+data class StatsScreenActions(
+    val filters: StatsFilterActions,
+    val onRefresh: () -> Unit,
+    val planning: StatsPlanningActions,
+    val reports: StatsReportActions,
+)
+
+data class StatsFilterActions(
+    val onMonthChange: (String) -> Unit,
+    val onTagChange: (String) -> Unit,
+)
+
+data class StatsReportActions(
+    val onDrillToLedger: (String) -> Unit,
+    val onGranularityChange: (ReportGranularity) -> Unit,
+    val onRankingMetricChange: (ReportRankingMetric) -> Unit,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(
     state: StatsUiState,
-    onMonthChange: (String) -> Unit,
-    onTagChange: (String) -> Unit,
-    onRefresh: () -> Unit,
-    onOpenBudget: () -> Unit,
-    onOpenRecurring: () -> Unit,
-    onOpenIncomePlans: () -> Unit = {},
-    onOpenSpendingGoal: () -> Unit = {},
-    // ADR-0049 §6 (slice 7): 还债目标二级页。默认 no-op 保旧调用方/预览。
-    onOpenDebtGoals: () -> Unit = {},
-    // §三报表钻取:分类行点击 → 账本带(当前统计月, 分类)筛选打开。默认 no-op 保旧调用方。
-    onDrillToLedger: (String) -> Unit = {},
-    // 轴3 粒度切换:动态图表卡的日/周档切换,交给 StatsReportsViewModel 重拉。
-    onGranularityChange: (ReportGranularity) -> Unit = {},
-    onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
+    actions: StatsScreenActions,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var selectedStatsTab by rememberSaveable { mutableStateOf(StatsTab.Overview) }
@@ -102,7 +107,7 @@ fun StatsScreen(
                     StatsFilterOptionsLoadState.Failed -> MonthPickerListState.Failed
                 },
                 onSelectMonth = { month ->
-                    onMonthChange(month)
+                    actions.filters.onMonthChange(month)
                     showMonthPicker = false
                 },
             )
@@ -121,7 +126,7 @@ fun StatsScreen(
                 loading = state.loading,
                 hasReadableData = state.stats != null,
             ),
-            onRefresh = onRefresh,
+            onRefresh = actions.onRefresh,
         ),
     ) {
         val visibleDashboardKeys = orderedStatsDashboardKeys(visibleDashboardCardKeys(state.dashboardCards))
@@ -148,19 +153,13 @@ fun StatsScreen(
                 actions = StatsTopPanelActions(
                     onOpenMonthPicker = { showMonthPicker = true },
                     onTagChange = { tag ->
-                        onTagChange(tag)
+                        actions.filters.onTagChange(tag)
                         if (tag.isNotBlank() && selectedStatsTab in tagScopedHiddenTabs) {
                             selectedStatsTab = StatsTab.Trend
                         }
                     },
                     onTabChange = { selectedStatsTab = it },
-                    planning = StatsPlanningActions(
-                        onOpenSpendingGoal = onOpenSpendingGoal,
-                        onOpenBudget = onOpenBudget,
-                        onOpenRecurring = onOpenRecurring,
-                        onOpenIncomePlans = onOpenIncomePlans,
-                        onOpenDebtGoals = onOpenDebtGoals,
-                    ),
+                    planning = actions.planning,
                 ),
             )
         }
@@ -199,9 +198,9 @@ fun StatsScreen(
                         body = state.statsLoadError.asString().ifBlank {
                             stringResource(R.string.stats_error_card_body)
                         },
-                        onRetry = onRefresh,
+                        onRetry = actions.onRefresh,
                     )
-                    else -> EmptyStatsCard(onRefresh = onRefresh)
+                    else -> EmptyStatsCard(onRefresh = actions.onRefresh)
                 }
             }
             return@AppScrollableContent
@@ -248,7 +247,7 @@ fun StatsScreen(
                         StatsMetricGrid(
                             budget = state.budgetProgress,
                             budgetStatus = state.budgetProgressStatus,
-                            onOpenBudget = onOpenBudget,
+                            onOpenBudget = actions.planning.onOpenBudget,
                         )
                     }
                 }
@@ -269,7 +268,7 @@ fun StatsScreen(
                                     categories = visibleCategories,
                                     tags = visibleTags,
                                     totalAmountCents = stats.totalAmountCents,
-                                    onCategoryClick = onDrillToLedger,
+                                    onCategoryClick = actions.reports.onDrillToLedger,
                                 )
                             }
                         }
@@ -280,8 +279,8 @@ fun StatsScreen(
                             overview != null -> item {
                                 ReportsInsightCard(
                                     overview = overview,
-                                    onGranularityChange = onGranularityChange,
-                                    onRankingMetricChange = onRankingMetricChange,
+                                    onGranularityChange = actions.reports.onGranularityChange,
+                                    onRankingMetricChange = actions.reports.onRankingMetricChange,
                                 )
                             }
                             state.selectedTag.isNotBlank() -> item {
@@ -308,7 +307,7 @@ fun StatsScreen(
                             GoalsSummaryCard(
                                 goals = state.reportGoals,
                                 loadState = state.reportGoalsLoadState,
-                                onAddGoal = onOpenSpendingGoal,
+                                onAddGoal = actions.planning.onOpenSpendingGoal,
                             )
                         }
                     }

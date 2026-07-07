@@ -62,7 +62,7 @@ internal data class StatsTopPanelActions(
     val planning: StatsPlanningActions,
 )
 
-internal data class StatsPlanningActions(
+data class StatsPlanningActions(
     val onOpenSpendingGoal: () -> Unit,
     val onOpenBudget: () -> Unit,
     val onOpenRecurring: () -> Unit,
