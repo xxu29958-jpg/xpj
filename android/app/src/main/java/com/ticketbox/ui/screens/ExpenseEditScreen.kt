@@ -67,12 +67,18 @@ import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelActions
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelState
+import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsActions
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
+import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsState
 import com.ticketbox.ui.screens.expense.ExpenseRepaymentDraftPanel
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
+import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
+import com.ticketbox.ui.screens.expense.ItemsEditorSheetState
 import com.ticketbox.ui.screens.expense.OcrProgressCard
+import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
 import com.ticketbox.ui.screens.expense.SplitsEditorSheet
+import com.ticketbox.ui.screens.expense.SplitsEditorSheetState
 import com.ticketbox.viewmodel.BillSplitSentLoadState
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
@@ -123,28 +129,36 @@ fun ExpenseEditScreen(
 
     if (state.itemEditorOpen) {
         ItemsEditorSheet(
-            drafts = state.itemDrafts,
-            parentAmountCents = state.expenseItems?.parentAmountCents,
-            saving = state.itemsSaving,
-            onUpdate = onUpdateItemDraft,
-            onAddRow = onAddItemRow,
-            onRemoveRow = onRemoveItemRow,
-            onSave = onSaveItems,
-            onDismiss = onDismissItemsEditor,
+            state = ItemsEditorSheetState(
+                drafts = state.itemDrafts,
+                parentAmountCents = state.expenseItems?.parentAmountCents,
+                saving = state.itemsSaving,
+            ),
+            actions = ItemsEditorSheetActions(
+                onUpdate = onUpdateItemDraft,
+                onAddRow = onAddItemRow,
+                onRemoveRow = onRemoveItemRow,
+                onSave = onSaveItems,
+                onDismiss = onDismissItemsEditor,
+            ),
         )
     }
 
     if (state.splitEditorOpen) {
         SplitsEditorSheet(
-            drafts = state.splitDrafts,
-            parentAmountCents = state.expenseSplits?.parentAmountCents,
-            saving = state.splitsSaving,
-            loading = state.splitMembersLoading,
-            onToggleMember = onToggleSplitMember,
-            onUpdateAmount = onUpdateSplitAmount,
-            onEvenSplit = onEvenSplit,
-            onSave = onSaveSplits,
-            onDismiss = onDismissSplitsEditor,
+            state = SplitsEditorSheetState(
+                drafts = state.splitDrafts,
+                parentAmountCents = state.expenseSplits?.parentAmountCents,
+                saving = state.splitsSaving,
+                loading = state.splitMembersLoading,
+            ),
+            actions = SplitsEditorSheetActions(
+                onToggleMember = onToggleSplitMember,
+                onUpdateAmount = onUpdateSplitAmount,
+                onEvenSplit = onEvenSplit,
+                onSave = onSaveSplits,
+                onDismiss = onDismissSplitsEditor,
+            ),
         )
     }
 
@@ -467,19 +481,23 @@ fun ExpenseEditScreen(
         }
 
         ExpenseEditV1DetailsSection(
-            expenseItems = state.expenseItems,
-            expenseSplits = state.expenseSplits,
-            itemsLoading = state.itemsLoading,
-            splitsLoading = state.splitsLoading,
-            itemsLoadState = state.itemsLoadState,
-            splitsLoadState = state.splitsLoadState,
-            itemsMessage = state.itemsMessage,
-            splitsMessage = state.splitsMessage,
-            itemsMessageTone = state.itemsMessageTone,
-            splitsMessageTone = state.splitsMessageTone,
-            onAcknowledgeItemsMismatch = onAcknowledgeItemsMismatch,
-            onEditItems = if (state.readOnly) null else onEditItems,
-            onEditSplits = if (state.readOnly) null else onEditSplits,
+            state = ExpenseEditV1DetailsState(
+                expenseItems = state.expenseItems,
+                expenseSplits = state.expenseSplits,
+                itemsLoading = state.itemsLoading,
+                splitsLoading = state.splitsLoading,
+                itemsLoadState = state.itemsLoadState,
+                splitsLoadState = state.splitsLoadState,
+                itemsMessage = state.itemsMessage,
+                splitsMessage = state.splitsMessage,
+                itemsMessageTone = state.itemsMessageTone,
+                splitsMessageTone = state.splitsMessageTone,
+            ),
+            actions = ExpenseEditV1DetailsActions(
+                onAcknowledgeItemsMismatch = onAcknowledgeItemsMismatch,
+                onEditItems = if (state.readOnly) null else onEditItems,
+                onEditSplits = if (state.readOnly) null else onEditSplits,
+            ),
         )
 
         // 已入账流水进入还款复核箱；不在详情页直接抵扣欠款。
