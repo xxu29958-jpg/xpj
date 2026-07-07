@@ -39,7 +39,7 @@ class ExpenseMappersTest {
     fun normalizesLegacyCategoryFromServer() {
         val expense = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            category = "吃饭",
+            fixture = ExpenseDtoFixture(category = "吃饭"),
         ).toDomain()
 
         assertEquals("餐饮", expense.category)
@@ -49,11 +49,17 @@ class ExpenseMappersTest {
     fun mapsForeignCurrencyFieldsFromServerAndDraftRequests() {
         val expense = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            originalCurrencyCode = "USD",
-            originalAmountMinor = 12345,
-            fxRate = "7.12340000",
-            fxRateDate = "2026-05-04",
-            fxStatus = "ready",
+            fixture = ExpenseDtoFixture(
+                currency = ExpenseDtoCurrencyFixture(
+                    originalCurrencyCode = "USD",
+                    originalAmountMinor = 12345,
+                ),
+                fx = ExpenseDtoFxFixture(
+                    fxRate = "7.12340000",
+                    fxRateDate = "2026-05-04",
+                    fxStatus = "ready",
+                ),
+            ),
         ).toDomain()
 
         assertEquals(CurrencyCode.USD, expense.originalCurrencyCode)
@@ -87,12 +93,18 @@ class ExpenseMappersTest {
     fun mapsLegacyFxAliasesWhenCanonicalFieldsAreMissing() {
         val dto = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            originalCurrencyCode = "USD",
-            originalAmountMinor = 12345,
-            exchangeRateToCny = "7.12340000",
-            exchangeRateDate = "2026-05-04",
-            exchangeRateSource = "manual",
-            fxStatus = "ready",
+            fixture = ExpenseDtoFixture(
+                currency = ExpenseDtoCurrencyFixture(
+                    originalCurrencyCode = "USD",
+                    originalAmountMinor = 12345,
+                ),
+                legacyFx = ExpenseDtoLegacyFxFixture(
+                    exchangeRateToCny = "7.12340000",
+                    exchangeRateDate = "2026-05-04",
+                    exchangeRateSource = "manual",
+                ),
+                fx = ExpenseDtoFxFixture(fxStatus = "ready"),
+            ),
         )
 
         val expense = dto.toDomain()
@@ -109,11 +121,15 @@ class ExpenseMappersTest {
     fun mapsDeletedMediaFlagsAndConfidence() {
         val expense = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            imagePath = "/api/expenses/1/image",
-            thumbnailPath = "/api/expenses/1/thumbnail",
-            imageDeletedAt = "2026-05-04T05:00:00Z",
-            thumbnailDeletedAt = null,
-            confidence = 0.42,
+            fixture = ExpenseDtoFixture(
+                media = ExpenseDtoMediaFixture(
+                    imagePath = "/api/expenses/1/image",
+                    thumbnailPath = "/api/expenses/1/thumbnail",
+                    imageDeletedAt = "2026-05-04T05:00:00Z",
+                    thumbnailDeletedAt = null,
+                    confidence = 0.42,
+                ),
+            ),
         ).toDomain()
 
         assertEquals(null, expense.imagePath)
@@ -126,8 +142,12 @@ class ExpenseMappersTest {
     fun doesNotPersistDeletedThumbnailPathInRoomCache() {
         val entity = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            thumbnailPath = "/api/expenses/1/thumbnail",
-            thumbnailDeletedAt = "2026-05-04T05:00:00Z",
+            fixture = ExpenseDtoFixture(
+                media = ExpenseDtoMediaFixture(
+                    thumbnailPath = "/api/expenses/1/thumbnail",
+                    thumbnailDeletedAt = "2026-05-04T05:00:00Z",
+                ),
+            ),
         ).toEntity(ledgerId = "owner")
 
         assertEquals(null, entity.thumbnailPath)
@@ -138,11 +158,17 @@ class ExpenseMappersTest {
     fun baselineAwareToRequestOmitsFxFieldsWhenUnchanged() {
         val baseline = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            originalCurrencyCode = "USD",
-            originalAmountMinor = 12345,
-            fxRate = "7.12340000",
-            fxRateDate = "2026-05-04",
-            fxStatus = "ready",
+            fixture = ExpenseDtoFixture(
+                currency = ExpenseDtoCurrencyFixture(
+                    originalCurrencyCode = "USD",
+                    originalAmountMinor = 12345,
+                ),
+                fx = ExpenseDtoFxFixture(
+                    fxRate = "7.12340000",
+                    fxRateDate = "2026-05-04",
+                    fxStatus = "ready",
+                ),
+            ),
         ).toDomain()
 
         val request = ExpenseDraft(
@@ -170,11 +196,17 @@ class ExpenseMappersTest {
     fun baselineAwareToRequestSendsFxTimeFieldsWhenTimeChanged() {
         val baseline = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            originalCurrencyCode = "USD",
-            originalAmountMinor = 12345,
-            fxRate = "7.12340000",
-            fxRateDate = "2026-05-04",
-            fxStatus = "ready",
+            fixture = ExpenseDtoFixture(
+                currency = ExpenseDtoCurrencyFixture(
+                    originalCurrencyCode = "USD",
+                    originalAmountMinor = 12345,
+                ),
+                fx = ExpenseDtoFxFixture(
+                    fxRate = "7.12340000",
+                    fxRateDate = "2026-05-04",
+                    fxStatus = "ready",
+                ),
+            ),
         ).toDomain()
 
         val request = ExpenseDraft(
@@ -345,48 +377,68 @@ class ExpenseMappersTest {
         assertEquals("拆账金额不能为负数。", negativeAmount.message)
     }
 
+    private data class ExpenseDtoFixture(
+        val category: String = "其他",
+        val currency: ExpenseDtoCurrencyFixture = ExpenseDtoCurrencyFixture(),
+        val legacyFx: ExpenseDtoLegacyFxFixture = ExpenseDtoLegacyFxFixture(),
+        val fx: ExpenseDtoFxFixture = ExpenseDtoFxFixture(),
+        val media: ExpenseDtoMediaFixture = ExpenseDtoMediaFixture(),
+    )
+
+    private data class ExpenseDtoCurrencyFixture(
+        val originalCurrencyCode: String? = null,
+        val originalAmountMinor: Long? = null,
+    )
+
+    private data class ExpenseDtoLegacyFxFixture(
+        val exchangeRateToCny: String? = null,
+        val exchangeRateDate: String? = null,
+        val exchangeRateSource: String? = null,
+    )
+
+    private data class ExpenseDtoFxFixture(
+        val fxRate: String? = null,
+        val fxRateDate: String? = null,
+        val fxSource: String? = null,
+        val fxStatus: String? = null,
+    )
+
+    private data class ExpenseDtoMediaFixture(
+        val imagePath: String? = null,
+        val thumbnailPath: String? = null,
+        val imageDeletedAt: String? = null,
+        val thumbnailDeletedAt: String? = null,
+        val confidence: Double? = null,
+    )
+
     private fun expenseDto(
         publicId: String?,
-        category: String = "其他",
-        originalCurrencyCode: String? = null,
-        originalAmountMinor: Long? = null,
-        exchangeRateToCny: String? = null,
-        exchangeRateDate: String? = null,
-        exchangeRateSource: String? = null,
-        fxRate: String? = null,
-        fxRateDate: String? = null,
-        fxSource: String? = null,
-        fxStatus: String? = null,
-        imagePath: String? = null,
-        thumbnailPath: String? = null,
-        imageDeletedAt: String? = null,
-        thumbnailDeletedAt: String? = null,
-        confidence: Double? = null,
+        fixture: ExpenseDtoFixture = ExpenseDtoFixture(),
     ): ExpenseDto {
         return ExpenseDto(
             id = 1,
             publicId = publicId,
             amountCents = 3680,
-            originalCurrencyCode = originalCurrencyCode,
-            originalAmountMinor = originalAmountMinor,
-            exchangeRateToCny = exchangeRateToCny,
-            exchangeRateDate = exchangeRateDate,
-            exchangeRateSource = exchangeRateSource,
-            fxRate = fxRate,
-            fxRateDate = fxRateDate,
-            fxSource = fxSource,
-            fxStatus = fxStatus,
+            originalCurrencyCode = fixture.currency.originalCurrencyCode,
+            originalAmountMinor = fixture.currency.originalAmountMinor,
+            exchangeRateToCny = fixture.legacyFx.exchangeRateToCny,
+            exchangeRateDate = fixture.legacyFx.exchangeRateDate,
+            exchangeRateSource = fixture.legacyFx.exchangeRateSource,
+            fxRate = fixture.fx.fxRate,
+            fxRateDate = fixture.fx.fxRateDate,
+            fxSource = fixture.fx.fxSource,
+            fxStatus = fixture.fx.fxStatus,
             merchant = "测试商家",
-            category = category,
+            category = fixture.category,
             note = "",
             source = "iPhone截图",
-            imagePath = imagePath,
-            thumbnailPath = thumbnailPath,
-            imageDeletedAt = imageDeletedAt,
-            thumbnailDeletedAt = thumbnailDeletedAt,
+            imagePath = fixture.media.imagePath,
+            thumbnailPath = fixture.media.thumbnailPath,
+            imageDeletedAt = fixture.media.imageDeletedAt,
+            thumbnailDeletedAt = fixture.media.thumbnailDeletedAt,
             imageHash = null,
             rawText = "",
-            confidence = confidence,
+            confidence = fixture.media.confidence,
             duplicateStatus = "none",
             duplicateOfId = null,
             duplicateReason = null,
