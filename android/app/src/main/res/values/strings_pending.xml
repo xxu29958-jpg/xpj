@@ -80,6 +80,8 @@
 
     <!-- 待确认真实条目：紧凑复核行 -->
     <string name="pending_row_image_placeholder">截图</string>
+    <string name="pending_row_merchant_placeholder">待填写商家</string>
+    <string name="pending_row_category_fallback">账</string>
     <string name="pending_row_meta">%1$s · 待确认</string>
     <string name="pending_row_amount_missing">待补金额</string>
     <string name="pending_row_signal_pending_sync">待同步</string>

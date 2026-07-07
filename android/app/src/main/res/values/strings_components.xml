@@ -32,31 +32,6 @@
     <string name="components_duplicate_notice_field_match">这笔账单和已有记录很接近。请核对后再处理，避免重复入账。</string>
     <string name="components_duplicate_notice_generic">这笔账单可能已经上传过。请核对后再处理，避免重复入账。</string>
 
-    <!-- ExpenseCard：账单卡片 -->
-    <string name="components_expense_card_thumbnail_placeholder">截图缩略图加载中</string>
-    <string name="components_expense_card_merchant_placeholder">待填写商家</string>
-    <string name="components_expense_card_status_pending">截图待确认</string>
-    <string name="components_expense_card_status_recorded">已入账</string>
-    <string name="components_expense_card_amount_placeholder">等待你确认金额</string>
-    <string name="components_expense_card_pill_amount_missing">待补金额</string>
-    <string name="components_expense_card_pill_review">请核对</string>
-    <string name="components_expense_card_pill_duplicate">疑似重复</string>
-    <!-- issue #65 slice 5: 离线手动记账行尚未同步到服务器时的可见标记 -->
-    <string name="components_expense_card_pill_pending_sync">待同步</string>
-    <string name="components_expense_card_image_placeholder_saved">截图已保存，点开后可查看</string>
-    <string name="components_expense_card_tags">标签：%1$s</string>
-    <string name="components_expense_card_edit">编辑</string>
-    <string name="components_expense_card_confirm">入账</string>
-    <string name="components_expense_card_confirm_done">已入账</string>
-    <string name="components_expense_card_ignore">删除</string>
-    <string name="components_expense_card_keep_duplicate">不是重复，保留</string>
-    <string name="components_expense_card_category_fallback">账</string>
-
-    <!-- ExpenseCard 删除确认对话框 -->
-    <string name="components_expense_card_reject_dialog_title">删除这笔待确认账单？</string>
-    <string name="components_expense_card_reject_dialog_body">删除后这张截图不会进入账本。</string>
-    <string name="components_expense_card_reject_dialog_confirm">删除</string>
-
     <!-- MonthPickerSheet：月份选择 -->
     <string name="components_month_picker_title">选择月份</string>
     <string name="components_month_picker_all_months">全部月份</string>

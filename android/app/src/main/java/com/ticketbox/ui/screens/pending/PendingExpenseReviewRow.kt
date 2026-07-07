@@ -155,7 +155,7 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
     ) {
         Text(
             text = expense.merchant?.takeIf { it.isNotBlank() }
-                ?: stringResource(R.string.components_expense_card_merchant_placeholder),
+                ?: stringResource(R.string.pending_row_merchant_placeholder),
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.heading.weight,
@@ -354,7 +354,7 @@ private fun PendingExpenseInlineActionButtons(
 
 @Composable
 private fun PendingCategoryMark(category: String, size: DpSize) {
-    val text = category.take(1).ifBlank { stringResource(R.string.components_expense_card_category_fallback) }
+    val text = category.take(1).ifBlank { stringResource(R.string.pending_row_category_fallback) }
     Text(
         text = text,
         modifier = Modifier

@@ -34,6 +34,9 @@ import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableContentLayout
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.MonthPickerSheet
@@ -107,13 +110,19 @@ fun StatsScreen(
     }
 
     AppScrollableContent(
-        role = AppPageRole.Stats,
-        isRefreshing = StatsRefreshIndicator.isActive(
-            loading = state.loading,
-            hasReadableData = state.stats != null,
+        chrome = AppScrollableContentChrome(
+            role = AppPageRole.Stats,
+            layout = AppScrollableContentLayout(
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            ),
         ),
-        onRefresh = onRefresh,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        refresh = AppScrollableRefreshState(
+            isRefreshing = StatsRefreshIndicator.isActive(
+                loading = state.loading,
+                hasReadableData = state.stats != null,
+            ),
+            onRefresh = onRefresh,
+        ),
     ) {
         val visibleDashboardKeys = orderedStatsDashboardKeys(visibleDashboardCardKeys(state.dashboardCards))
         val tagFilterActive = state.selectedTag.isNotBlank()
