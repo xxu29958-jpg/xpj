@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import kotlinx.coroutines.test.runTest
@@ -47,12 +49,14 @@ class LedgerRepositoryRefreshTest {
         val store = LedgerFakeSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "L_family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "L_family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val repo = LedgerRepository(
@@ -76,12 +80,14 @@ class LedgerRepositoryRefreshTest {
         val store = LedgerFakeSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "旧账号",
-                ledgerId = "L_old",
-                ledgerName = "旧账本",
-                deviceName = "Old Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "旧账号",
+                    ledgerId = "L_old",
+                    ledgerName = "旧账本",
+                    deviceName = "Old Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
             saveAvailableLedgersJson(
                 """
@@ -102,12 +108,14 @@ class LedgerRepositoryRefreshTest {
         api.onListLedgers = {
             tokenStore.saveToken("new-token")
             store.saveIdentity(
-                accountName = "新账号",
-                ledgerId = "L_new",
-                ledgerName = "新账本",
-                deviceName = "New Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:05:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "新账号",
+                    ledgerId = "L_new",
+                    ledgerName = "新账本",
+                    deviceName = "New Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:05:00Z",
+                )
             )
         }
         val repo = LedgerRepository(

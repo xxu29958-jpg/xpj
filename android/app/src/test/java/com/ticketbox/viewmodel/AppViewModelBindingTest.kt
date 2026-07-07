@@ -1,6 +1,7 @@
 ﻿package com.ticketbox.viewmodel
 
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.repository.BindServerResult
 import com.ticketbox.data.repository.ServerBindingRepository
 import com.ticketbox.domain.model.BackgroundSettings
@@ -277,14 +278,7 @@ private class FakeAppSettingsStore(
 
     override fun boundAt(): String? = null
 
-    override fun saveIdentity(
-        accountName: String,
-        ledgerId: String,
-        ledgerName: String,
-        deviceName: String,
-        role: String,
-        boundAt: String,
-    ) = Unit
+    override fun saveIdentity(identity: PersistedLedgerIdentity) = Unit
 
     override fun saveLastConfirmedSyncAt(value: String) = Unit
 

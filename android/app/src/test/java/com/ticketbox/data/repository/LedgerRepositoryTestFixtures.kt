@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.ExpenseEntity
+import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
@@ -634,20 +635,13 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     override fun deviceName(): String? = capturedDeviceName
     override fun role(): String? = capturedRole
     override fun boundAt(): String? = capturedBoundAt
-    override fun saveIdentity(
-        accountName: String,
-        ledgerId: String,
-        ledgerName: String,
-        deviceName: String,
-        role: String,
-        boundAt: String,
-    ) {
-        ledgerIdFlow.value = ledgerId
-        this.ledgerName = ledgerName
-        capturedAccountName = accountName
-        capturedDeviceName = deviceName
-        capturedRole = role
-        capturedBoundAt = boundAt
+    override fun saveIdentity(identity: PersistedLedgerIdentity) {
+        ledgerIdFlow.value = identity.ledgerId
+        ledgerName = identity.ledgerName
+        capturedAccountName = identity.accountName
+        capturedDeviceName = identity.deviceName
+        capturedRole = identity.role
+        capturedBoundAt = identity.boundAt
     }
     override fun saveLastConfirmedSyncAt(value: String) = Unit
     override fun clearLastConfirmedSyncAt() = Unit

@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,12 +36,14 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         val settings = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://old.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "old-ledger",
-                ledgerName = "旧账本",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "old-ledger",
+                    ledgerName = "旧账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokens = FakeSessionTokenStore().apply { saveToken("old-token") }

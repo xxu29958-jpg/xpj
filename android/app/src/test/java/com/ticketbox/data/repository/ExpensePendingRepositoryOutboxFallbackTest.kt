@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
@@ -225,12 +227,14 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         val settings = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "ledger-a",
-                ledgerName = "账本 A",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "ledger-a",
+                    ledgerName = "账本 A",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokens = FakeSessionTokenStore().apply { saveToken("session-token") }
@@ -247,12 +251,14 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
                 idempotencyKey: String?,
             ): ExpenseDto {
                 settings.saveIdentity(
-                    accountName = "我",
-                    ledgerId = "ledger-b",
-                    ledgerName = "账本 B",
-                    deviceName = "Pixel",
-                    role = "owner",
-                    boundAt = "2026-05-04T12:00:00Z",
+                    PersistedLedgerIdentity(
+                        accountName = "我",
+                        ledgerId = "ledger-b",
+                        ledgerName = "账本 B",
+                        deviceName = "Pixel",
+                        role = "owner",
+                        boundAt = "2026-05-04T12:00:00Z",
+                    )
                 )
                 throw IOException("net out")
             }

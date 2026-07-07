@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.R
 import com.ticketbox.data.repository.SettingsActions
 import com.ticketbox.data.repository.boundSettingsStore
@@ -243,12 +245,14 @@ class SettingsViewModelTest {
     private companion object {
         fun settingsStore(role: String = "owner") = boundSettingsStore().apply {
             saveIdentity(
-                accountName = "Account",
-                ledgerId = "owner",
-                ledgerName = "Ledger",
-                deviceName = "Pixel",
-                role = role,
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "Account",
+                    ledgerId = "owner",
+                    ledgerName = "Ledger",
+                    deviceName = "Pixel",
+                    role = role,
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
 

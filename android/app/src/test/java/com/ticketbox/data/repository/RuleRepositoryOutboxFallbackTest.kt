@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.PendingMutationStatus
@@ -75,12 +77,14 @@ class RuleRepositoryOutboxFallbackTest {
         FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
 
@@ -437,12 +441,14 @@ class RuleRepositoryOutboxFallbackTest {
         val settings = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "ledger-a",
-                ledgerName = "账本 A",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "ledger-a",
+                    ledgerName = "账本 A",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val tokens = FakeSessionTokenStore().apply { saveToken("session-token") }
@@ -457,12 +463,14 @@ class RuleRepositoryOutboxFallbackTest {
                 idempotencyKey: String?,
             ): com.ticketbox.data.remote.dto.StatusDto {
                 settings.saveIdentity(
-                    accountName = "我",
-                    ledgerId = "ledger-b",
-                    ledgerName = "账本 B",
-                    deviceName = "Pixel",
-                    role = "owner",
-                    boundAt = "2026-05-04T12:00:00Z",
+                    PersistedLedgerIdentity(
+                        accountName = "我",
+                        ledgerId = "ledger-b",
+                        ledgerName = "账本 B",
+                        deviceName = "Pixel",
+                        role = "owner",
+                        boundAt = "2026-05-04T12:00:00Z",
+                    )
                 )
                 throw IOException("net out")
             }

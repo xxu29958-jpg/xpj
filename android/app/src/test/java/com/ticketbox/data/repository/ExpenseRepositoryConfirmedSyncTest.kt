@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PersistedLedgerIdentity
+
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
@@ -17,12 +19,14 @@ class ExpenseRepositoryConfirmedSyncTest {
         val settingsStore = FakeTicketboxSettingsStore(events).apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
-                accountName = "我",
-                ledgerId = "owner",
-                ledgerName = "我的小票夹",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 0)
@@ -146,12 +150,14 @@ class ExpenseRepositoryConfirmedSyncTest {
         val settingsStore = boundSettingsStore()
         dao.onAfterApplyConfirmedSync = {
             settingsStore.saveIdentity(
-                accountName = "Account",
-                ledgerId = "family",
-                ledgerName = "Family Ledger",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "Account",
+                    ledgerId = "family",
+                    ledgerName = "Family Ledger",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val repository = ExpenseRepository(
@@ -168,12 +174,14 @@ class ExpenseRepositoryConfirmedSyncTest {
 
         assertNull(settingsStore.lastConfirmedSyncAt())
         settingsStore.saveIdentity(
-            accountName = "Account",
-            ledgerId = "owner",
-            ledgerName = "Owner Ledger",
-            deviceName = "Pixel",
-            role = "owner",
-            boundAt = "2026-05-01T00:00:00Z",
+            PersistedLedgerIdentity(
+                accountName = "Account",
+                ledgerId = "owner",
+                ledgerName = "Owner Ledger",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
         )
         assertNotNull(settingsStore.lastConfirmedSyncAt())
     }
@@ -215,23 +223,27 @@ class ExpenseRepositoryConfirmedSyncTest {
         val settingsStore = FakeTicketboxSettingsStore(events).apply {
             saveServerUrl("https://api.zen70.cn")
             saveIdentity(
-                accountName = "Account",
-                ledgerId = "owner",
-                ledgerName = "Owner Ledger",
-                deviceName = "Pixel",
-                role = "owner",
-                boundAt = "2026-05-01T00:00:00Z",
+                PersistedLedgerIdentity(
+                    accountName = "Account",
+                    ledgerId = "owner",
+                    ledgerName = "Owner Ledger",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
             )
         }
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 0).apply {
             onConfirmedRequest = {
                 settingsStore.saveIdentity(
-                    accountName = "Account",
-                    ledgerId = "family",
-                    ledgerName = "Family Ledger",
-                    deviceName = "Pixel",
-                    role = "member",
-                    boundAt = "2026-05-01T00:00:00Z",
+                    PersistedLedgerIdentity(
+                        accountName = "Account",
+                        ledgerId = "family",
+                        ledgerName = "Family Ledger",
+                        deviceName = "Pixel",
+                        role = "member",
+                        boundAt = "2026-05-01T00:00:00Z",
+                    )
                 )
             }
         }

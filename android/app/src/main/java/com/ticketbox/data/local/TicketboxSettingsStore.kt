@@ -6,6 +6,15 @@ import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
 import kotlinx.coroutines.flow.Flow
 
+data class PersistedLedgerIdentity(
+    val accountName: String,
+    val ledgerId: String,
+    val ledgerName: String,
+    val deviceName: String,
+    val role: String,
+    val boundAt: String,
+)
+
 interface TicketboxSettingsStore {
     val backgroundSettingsFlow: Flow<BackgroundSettings>
 
@@ -79,14 +88,7 @@ interface TicketboxSettingsStore {
 
     fun boundAt(): String?
 
-    fun saveIdentity(
-        accountName: String,
-        ledgerId: String,
-        ledgerName: String,
-        deviceName: String,
-        role: String,
-        boundAt: String,
-    )
+    fun saveIdentity(identity: PersistedLedgerIdentity)
 
     fun saveLastConfirmedSyncAt(value: String)
 
