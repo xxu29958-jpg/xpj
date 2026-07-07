@@ -148,21 +148,8 @@ class ExpenseRepository(
     override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
         detailRepository.fetchExpenseFromLocalCache(id)
 
-    override suspend fun uploadScreenshot(
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-        preparationDurationMs: Long?,
-        sourceSizeBytes: Long?,
-        expectedLedgerId: String?,
-    ): Result<Long> = pendingRepository.uploadScreenshot(
-        fileName = fileName,
-        contentType = contentType,
-        bytes = bytes,
-        preparationDurationMs = preparationDurationMs,
-        sourceSizeBytes = sourceSizeBytes,
-        expectedLedgerId = expectedLedgerId,
-    )
+    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> =
+        pendingRepository.uploadScreenshot(request)
 
     override suspend fun updateExpense(
         id: Long,

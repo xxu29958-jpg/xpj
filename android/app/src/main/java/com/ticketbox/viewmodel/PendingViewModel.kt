@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.PendingThumbnailLoader
 import com.ticketbox.data.repository.PendingReviewActions
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.ScreenshotUploadRequest
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
@@ -285,23 +286,9 @@ class PendingViewModel(
         _uiState.update { it.copy(uploading = false, message = message) }
     }
 
-    fun uploadScreenshot(
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-        preparationDurationMs: Long? = null,
-        sourceSizeBytes: Long? = null,
-        uploadAlreadyStarted: Boolean = false,
-    ) {
+    fun uploadScreenshot(image: PreparedUploadImage, uploadAlreadyStarted: Boolean = false) {
         if (blockReadOnlyWrite()) return
         if (!uploadAlreadyStarted && _uiState.value.uploading) return
-        val image = PreparedUploadImage(
-            fileName = fileName,
-            contentType = contentType,
-            bytes = bytes,
-            sourceSizeBytes = sourceSizeBytes ?: -1L,
-            preparationDurationMs = preparationDurationMs ?: 0L,
-        )
         viewModelScope.launch {
             performUpload(image = image, uploadAlreadyStarted = uploadAlreadyStarted)
         }
@@ -337,12 +324,14 @@ class PendingViewModel(
         }
         var succeeded = false
         repository.uploadScreenshot(
-            fileName = image.fileName,
-            contentType = image.contentType,
-            bytes = image.bytes,
-            preparationDurationMs = image.preparationDurationMs,
-            sourceSizeBytes = image.sourceSizeBytes,
-            expectedLedgerId = expectedLedgerId,
+            ScreenshotUploadRequest(
+                fileName = image.fileName,
+                contentType = image.contentType,
+                bytes = image.bytes,
+                preparationDurationMs = image.preparationDurationMs,
+                sourceSizeBytes = image.sourceSizeBytes,
+                expectedLedgerId = expectedLedgerId,
+            ),
         )
             .onSuccess {
                 if (uploadGenerationAtStart != requestGeneration) return@onSuccess

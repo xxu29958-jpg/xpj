@@ -44,17 +44,15 @@ internal class ExpensePendingRepository(
         core.syncPendingFromService(service = bound.service, ledgerIdAtRequest = bound.ledgerId)
     }
 
-    override suspend fun uploadScreenshot(
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-        preparationDurationMs: Long?,
-        sourceSizeBytes: Long?,
-        expectedLedgerId: String?,
-    ): Result<Long> = core.errorHandler.safeCall {
+    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> = core.errorHandler.safeCall {
+        val fileName = request.fileName
+        val contentType = request.contentType
+        val bytes = request.bytes
+        val preparationDurationMs = request.preparationDurationMs
+        val sourceSizeBytes = request.sourceSizeBytes
         require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
         val bound = core.ledgerRequestGuard.bind(
-            expectedLedgerId = expectedLedgerId,
+            expectedLedgerId = request.expectedLedgerId,
             ledgerChangedMessage = LedgerRequestGuard.UPLOAD_LEDGER_CHANGED_MESSAGE,
         )
         val cleanName = fileName
