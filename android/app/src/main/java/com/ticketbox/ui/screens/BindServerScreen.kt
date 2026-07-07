@@ -21,8 +21,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppPageChrome
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
@@ -60,9 +62,13 @@ fun BindServerScreen(
     }
 
     AppPageScrollableColumn(
-        role = PageRole.Auth,
-        hasBottomBar = false,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+        chrome = AppScrollablePageChrome(
+            page = AppPageChrome(
+                role = PageRole.Auth,
+                hasBottomBar = false,
+            ),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+        ),
     ) {
         AppPageHeader(
             title = stringResource(R.string.bind_server_header_title),

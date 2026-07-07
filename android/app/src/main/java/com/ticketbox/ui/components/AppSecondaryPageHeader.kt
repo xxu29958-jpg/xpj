@@ -45,6 +45,16 @@ internal fun AppSecondaryPageSlots.resolveBottomBar(
     explicitBottomBar: (@Composable () -> Unit)? = null,
 ): (@Composable () -> Unit)? = explicitBottomBar ?: bottomBar
 
+private fun AppSecondaryPageChrome.toScrollablePageChrome(): AppScrollablePageChrome =
+    AppScrollablePageChrome(
+        page = AppPageChrome(
+            role = role,
+            hasBottomBar = hasBottomBar,
+        ),
+        contentWidth = contentWidth,
+        verticalArrangement = verticalArrangement,
+    )
+
 @Composable
 fun AppSecondaryPageHeader(
     title: String,
@@ -163,11 +173,8 @@ fun AppSecondaryScrollableColumn(
     SecondaryBackHandler(chrome.onBack)
 
     AppPageScrollableColumn(
-        role = chrome.role,
+        chrome = chrome.toScrollablePageChrome(),
         modifier = modifier,
-        hasBottomBar = chrome.hasBottomBar,
-        contentWidth = chrome.contentWidth,
-        verticalArrangement = chrome.verticalArrangement,
         bottomBar = slots.resolveBottomBar(bottomBar),
     ) { layout ->
         SecondaryHeader(chrome = chrome, slots = slots)
