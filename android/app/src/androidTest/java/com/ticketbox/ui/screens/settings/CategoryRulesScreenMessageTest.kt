@@ -44,25 +44,52 @@ class CategoryRulesScreenMessageTest {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 CategoryRulesScreen(
-                    rules = emptyList(),
-                    rulesLoading = false,
-                    busy = false,
-                    readOnly = false,
-                    message = message,
-                    messageTone = MessageTone.Danger,
-                    onBack = {},
-                    onCreateRule = { _, _, _ -> },
-                    onUpdateRule = { _, _, _, _ -> },
-                    onToggleRule = {},
-                    onDeleteRule = {},
-                    applications = emptyList(),
-                    applicationsLoading = false,
-                    confirmedPreview = null,
-                    onPreviewApplyConfirmedRules = {},
-                    onConfirmApplyConfirmedRules = {},
-                    onRollbackRuleApplication = {},
+                    state = categoryRulesScreenWithHeaderMessage(message),
+                    actions = categoryRulesActionsUnusedByMessageSlot(),
                 )
             }
         }
     }
+
+    private fun categoryRulesScreenWithHeaderMessage(message: UiText?): CategoryRulesScreenState =
+        CategoryRulesScreenState(
+            rules = CategoryRulesRuleListState(
+                rules = emptyList(),
+                loading = false,
+            ),
+            interaction = CategoryRulesInteractionState(
+                busy = false,
+                readOnly = false,
+            ),
+            status = CategoryRulesStatusState(
+                message = message,
+                messageTone = MessageTone.Danger,
+            ),
+            applications = CategoryRulesApplicationState(
+                history = emptyList(),
+                loading = false,
+                confirmedPreview = null,
+            ),
+            undoableRule = null,
+        )
+
+    private fun categoryRulesActionsUnusedByMessageSlot(): CategoryRulesScreenActions =
+        CategoryRulesScreenActions(
+            onBack = {},
+            rules = CategoryRulesRuleActions(
+                onCreate = { _, _, _ -> },
+                onUpdate = { _, _, _, _ -> },
+                onToggle = {},
+                onDelete = {},
+            ),
+            applications = CategoryRulesApplicationActions(
+                onPreviewApplyConfirmedRules = {},
+                onConfirmApplyConfirmedRules = {},
+                onRollbackRuleApplication = {},
+            ),
+            undo = CategoryRulesUndoActions(
+                onUndoDelete = {},
+                onDismiss = {},
+            ),
+        )
 }
