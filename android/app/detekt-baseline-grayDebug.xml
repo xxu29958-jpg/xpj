@@ -119,11 +119,9 @@
     <ID>LongParameterList:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>LongParameterList:ExpenseRepository.kt:ExpenseRepository</ID>
     <ID>LongParameterList:ExpenseRepositoryCore.kt:ExpenseRepositoryCore</ID>
-    <ID>LongParameterList:LedgerBulkEdit.kt:@Composable internal fun LedgerBulkEditSheet</ID>
     <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseCard</ID>
     <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseListRow</ID>
     <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseTableRow</ID>
-    <ID>LongParameterList:LedgerManualExpenseSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ManualExpenseSheet</ID>
     <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>
     <ID>LongParameterList:MainNavGraph.kt:@Composable @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter") private fun MainRoute</ID>
     <ID>LongParameterList:MainNavGraph.kt:@Composable internal fun MainNavGraph</ID>
@@ -136,7 +134,6 @@
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND targetId = :targetId AND status IN (:pendingStatus, :inFlightStatus, :conflictStatus, :failedStatus) ORDER BY createdAt ASC, id ASC """, ) suspend fun activeForTarget: List&lt;PendingMutationEntity&gt;</ID>
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT COUNT(*) &gt; 0 FROM pending_mutations WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND targetId = :targetId AND status IN (:inFlightStatus, :conflictStatus, :failedStatus) """, ) suspend fun hasUnresolvedRowForTarget: Boolean</ID>
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ UPDATE pending_mutations SET status = :pendingStatus, lastError = :recoveryMessage WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND status = :inFlightStatus AND (attemptedAt IS NULL OR attemptedAt &lt; :staleCutoffIso) """, ) suspend fun recoverStaleInFlight: Int</ID>
-    <ID>LongParameterList:PendingReviewSheetHost.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) internal fun PendingReviewSheetHost</ID>
     <ID>LongParameterList:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
     <ID>LongParameterList:PendingViewModel.kt:PendingViewModel$private fun launchStateTransition</ID>
     <ID>LongParameterList:RecurringScreen.kt:@Composable fun RecurringScreen</ID>

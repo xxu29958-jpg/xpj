@@ -58,19 +58,27 @@ import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditTextField
 import com.ticketbox.ui.screens.expense.ExpenseEditTextFieldState
 
+data class ManualExpenseSheetState(
+    val categories: List<String>,
+    val saving: Boolean,
+    val recentMerchants: List<RecentMerchant> = emptyList(),
+    val initialCurrency: CurrencyCode = FxContract.HomeCurrency,
+    val errorMessage: String? = null,
+)
+
+data class ManualExpenseSheetActions(
+    val onCreate: (ExpenseDraft) -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualExpenseSheet(
-    categories: List<String>,
-    saving: Boolean,
-    recentMerchants: List<RecentMerchant> = emptyList(),
-    initialCurrency: CurrencyCode = FxContract.HomeCurrency,
-    errorMessage: String? = null,
-    onCreate: (ExpenseDraft) -> Unit,
-    onDismiss: () -> Unit,
+    state: ManualExpenseSheetState,
+    actions: ManualExpenseSheetActions,
 ) {
     var amountText by rememberSaveable { mutableStateOf("") }
-    var currency by rememberSaveable(initialCurrency) { mutableStateOf(initialCurrency) }
+    var currency by rememberSaveable(state.initialCurrency) { mutableStateOf(state.initialCurrency) }
     var merchant by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf(DEFAULT_EXPENSE_CATEGORIES.first()) }
     var note by rememberSaveable { mutableStateOf("") }
@@ -178,7 +186,7 @@ fun ManualExpenseSheet(
         val draft = draftOrMessage() ?: return
         // The sheet closes only after the repository reports success.
         message = null
-        onCreate(draft)
+        actions.onCreate(draft)
     }
 
     Column(
@@ -190,33 +198,33 @@ fun ManualExpenseSheet(
             compact = keyboardVisible,
         ) {
             ExpenseCurrencyFields(
-                currency = currency,
-                onCurrencyChange = {
-                    currency = it
+                    currency = currency,
+                    onCurrencyChange = {
+                        currency = it
                 },
                 amountText = amountText,
                 onAmountChange = { amountText = it },
                 options = ExpenseCurrencyFieldOptions(
-                    enabled = !saving,
+                    enabled = !state.saving,
                     autoFocusAmount = false,
                     showFxHint = false,
                     showSectionTitle = false,
                     supportingText = stringResource(R.string.ledger_manual_amount_supporting_text),
                 ),
             )
-            val feedbackMessage = message ?: errorMessage
+            val feedbackMessage = message ?: state.errorMessage
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_merchant_label),
                     value = merchant,
                     placeholder = stringResource(R.string.ledger_manual_merchant_placeholder),
-                    enabled = !saving,
+                    enabled = !state.saving,
                 ),
                 onValueChange = { merchant = it },
                 modifier = Modifier.fillMaxWidth(),
             )
             ManualRecentMerchantsSection(
-                recentMerchants = recentMerchants,
+                recentMerchants = state.recentMerchants,
                 selectedMerchant = merchant,
                 onPick = { picked ->
                     merchant = picked.merchant
@@ -227,13 +235,13 @@ fun ManualExpenseSheet(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_category_label),
                     value = category,
-                    enabled = !saving,
+                    enabled = !state.saving,
                 ),
                 onValueChange = { category = it },
                 modifier = Modifier.fillMaxWidth(),
             )
             ManualCategoryChoices(
-                categories = categories,
+                categories = state.categories,
                 selectedCategory = category,
                 onCategoryChange = { category = it },
             )
@@ -241,7 +249,7 @@ fun ManualExpenseSheet(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_note_label),
                     value = note,
-                    enabled = !saving,
+                    enabled = !state.saving,
                     singleLine = false,
                     minLines = 1,
                 ),
@@ -256,8 +264,8 @@ fun ManualExpenseSheet(
             )
             ManualExpenseActionSlot(
                 feedbackMessage = feedbackMessage,
-                saving = saving,
-                onDismiss = onDismiss,
+                saving = state.saving,
+                onDismiss = actions.onDismiss,
                 onSubmit = ::submitDraft,
             )
         }

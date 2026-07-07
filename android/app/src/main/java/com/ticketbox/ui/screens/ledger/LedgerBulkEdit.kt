@@ -146,48 +146,57 @@ private fun LedgerSelectionActions(
  * Category is the primary action; tags are opt-in because the client sends the
  * whole tag string, so applying tags replaces existing tags instead of merging.
  */
+@Immutable
+internal data class LedgerBulkEditSheetState(
+    val selectedCount: Int,
+    val selectedHaveTags: Boolean,
+    val categories: List<String>,
+    val applying: Boolean,
+)
+
+internal data class LedgerBulkEditSheetActions(
+    val onApplyCategory: (String) -> Unit,
+    val onApplyTags: (String) -> Unit,
+)
+
 @Composable
 internal fun LedgerBulkEditSheet(
-    selectedCount: Int,
-    selectedHaveTags: Boolean,
-    categories: List<String>,
-    applying: Boolean,
-    onApplyCategory: (String) -> Unit,
-    onApplyTags: (String) -> Unit,
+    state: LedgerBulkEditSheetState,
+    actions: LedgerBulkEditSheetActions,
 ) {
     var category by rememberSaveable { mutableStateOf("") }
     var tagsEnabled by rememberSaveable { mutableStateOf(false) }
     var tags by rememberSaveable { mutableStateOf("") }
     var showTagConfirm by remember { mutableStateOf(false) }
 
-    AppSheetScaffold(title = stringResource(R.string.ledger_bulk_title, selectedCount)) {
+    AppSheetScaffold(title = stringResource(R.string.ledger_bulk_title, state.selectedCount)) {
         LedgerBulkCategorySection(
             state = LedgerBulkCategoryState(
                 category = category,
-                categories = categories,
-                applying = applying,
-                selectedCount = selectedCount,
+                categories = state.categories,
+                applying = state.applying,
+                selectedCount = state.selectedCount,
             ),
             actions = LedgerBulkCategoryActions(
                 onCategoryChange = { category = it },
-                onApplyCategory = { onApplyCategory(category) },
+                onApplyCategory = { actions.onApplyCategory(category) },
             ),
         )
         LedgerBulkTagsSection(
             state = LedgerBulkTagsState(
                 tagsEnabled = tagsEnabled,
                 tags = tags,
-                applying = applying,
-                selectedCount = selectedCount,
+                applying = state.applying,
+                selectedCount = state.selectedCount,
             ),
             actions = LedgerBulkTagsActions(
                 onTagsEnabledChange = { tagsEnabled = it },
                 onTagsChange = { tags = it },
                 onApplyTags = {
-                    if (selectedHaveTags) {
+                    if (state.selectedHaveTags) {
                         showTagConfirm = true
                     } else {
-                        onApplyTags(tags)
+                        actions.onApplyTags(tags)
                     }
                 },
             ),
@@ -202,7 +211,7 @@ internal fun LedgerBulkEditSheet(
             confirmButton = {
                 TextButton(onClick = {
                     showTagConfirm = false
-                    onApplyTags(tags)
+                    actions.onApplyTags(tags)
                 }) { Text(stringResource(R.string.ledger_bulk_tags_confirm_replace)) }
             },
             dismissButton = {

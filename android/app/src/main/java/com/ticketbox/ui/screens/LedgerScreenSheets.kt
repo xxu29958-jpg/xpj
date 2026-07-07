@@ -9,6 +9,8 @@ import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetActions
+import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetState
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheetActions
@@ -79,12 +81,16 @@ private fun LedgerManualSheetHost(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = dismissManualSheet, sheetState = sheetState) {
         ManualExpenseSheet(
-            categories = state.categories,
-            saving = state.creatingManual,
-            recentMerchants = state.recentMerchants,
-            errorMessage = state.manualCreateError?.asString(),
-            onCreate = actions.onManualCreate,
-            onDismiss = dismissManualSheet,
+            state = ManualExpenseSheetState(
+                categories = state.categories,
+                saving = state.creatingManual,
+                recentMerchants = state.recentMerchants,
+                errorMessage = state.manualCreateError?.asString(),
+            ),
+            actions = ManualExpenseSheetActions(
+                onCreate = actions.onManualCreate,
+                onDismiss = dismissManualSheet,
+            ),
         )
     }
 }
@@ -138,12 +144,16 @@ private fun LedgerBulkEditHost(
     if (!chromeState.showBulkEdit || !state.selectionMode || state.readOnly) return
     ModalBottomSheet(onDismissRequest = { chromeState.showBulkEdit = false }) {
         LedgerBulkEditSheet(
-            selectedCount = state.selectedCount,
-            selectedHaveTags = state.selectedHaveTags,
-            categories = state.categories,
-            applying = state.applyingBatch,
-            onApplyCategory = actions.onApplyBatchCategory,
-            onApplyTags = actions.onApplyBatchTags,
+            state = LedgerBulkEditSheetState(
+                selectedCount = state.selectedCount,
+                selectedHaveTags = state.selectedHaveTags,
+                categories = state.categories,
+                applying = state.applyingBatch,
+            ),
+            actions = LedgerBulkEditSheetActions(
+                onApplyCategory = actions.onApplyBatchCategory,
+                onApplyTags = actions.onApplyBatchTags,
+            ),
         )
     }
 }
