@@ -34,7 +34,10 @@ import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.ReceivablesScreen
+import com.ticketbox.ui.screens.RecurringCandidateActions
+import com.ticketbox.ui.screens.RecurringItemActions
 import com.ticketbox.ui.screens.RecurringScreen
+import com.ticketbox.ui.screens.RecurringScreenActions
 import com.ticketbox.ui.screens.RepaymentDraftInboxScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.upload.prepareScreenshotUpload
@@ -121,12 +124,18 @@ internal fun RecurringRoute(
     val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
     RecurringScreen(
         state = state,
-        onRefresh = recurringViewModel::refresh,
-        onConfirmCandidate = recurringViewModel::confirmCandidate,
-        onPause = recurringViewModel::pause,
-        onResume = recurringViewModel::resume,
-        onArchive = recurringViewModel::archive,
-        onBack = onBack,
+        actions = RecurringScreenActions(
+            onRefresh = recurringViewModel::refresh,
+            items = RecurringItemActions(
+                onPause = recurringViewModel::pause,
+                onResume = recurringViewModel::resume,
+                onArchive = recurringViewModel::archive,
+            ),
+            candidates = RecurringCandidateActions(
+                onConfirmCandidate = recurringViewModel::confirmCandidate,
+            ),
+            onBack = onBack,
+        ),
     )
 }
 
@@ -462,23 +471,12 @@ internal fun StatsRoute(
 
     StatsScreen(
         state = state,
-        onMonthChange = monthlyStatsViewModel::setMonth,
-        onTagChange = monthlyStatsViewModel::setTag,
-        onRefresh = { reloadAllStats(monthlyStatsViewModel, reportsViewModel) },
-        onOpenSpendingGoal = { shellState.openStatsSecondary(StatsSecondaryPage.SpendingGoal) },
-        onOpenBudget = { shellState.openStatsSecondary(StatsSecondaryPage.Budget) },
-        onOpenRecurring = { shellState.openStatsSecondary(StatsSecondaryPage.Recurring) },
-        onOpenIncomePlans = { shellState.openStatsSecondary(StatsSecondaryPage.IncomePlans) },
-        onOpenDebtGoals = { shellState.openStatsSecondary(StatsSecondaryPage.DebtGoals) },
-        // §三报表钻取:post 一次性请求(当前统计月+被点分类)并切到账本 tab,
-        // LedgerRoute 的 LaunchedEffect 消费(取走即清)。
-        onDrillToLedger = { category ->
-            shellState.ledgerDrill.post(LedgerDrillRequest(month = monthlyState.month, category = category))
-            shellState.selectBottomTab(BottomTab.Ledger.key)
-        },
-        // 轴3 粒度切换:VM 持粒度并重拉,UI selected 用服务端回显。
-        onGranularityChange = reportsViewModel::setGranularity,
-        onRankingMetricChange = reportsViewModel::setRankingMetric,
+        actions = statsScreenActions(
+            monthly = monthlyStatsViewModel,
+            reports = reportsViewModel,
+            shellState = shellState,
+            month = monthlyState.month,
+        ),
     )
 }
 
@@ -487,7 +485,7 @@ internal fun StatsRoute(
  * 标签列表（否则删掉的标签会滞留在筛选 chip），再按当前月 + 标签重同步 monthly / budget / reports。抽成
  * 纯函数消除两处逐字重复，调用方显式传 [monthlyState]（与原内联 lambda 捕获完全一致，无行为变化）。
  */
-private fun reloadAllStats(
+internal fun reloadAllStats(
     monthly: MonthlyStatsViewModel,
     reports: StatsReportsViewModel,
 ) {

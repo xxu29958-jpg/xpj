@@ -76,12 +76,7 @@ private enum class RecurringTab(@param:StringRes val labelRes: Int) {
 @Composable
 fun RecurringScreen(
     state: RecurringUiState,
-    onRefresh: () -> Unit,
-    onConfirmCandidate: (RecurringCandidate) -> Unit,
-    onPause: (String, Long) -> Unit,
-    onResume: (String, Long) -> Unit,
-    onArchive: (String) -> Unit,
-    onBack: (() -> Unit)? = null,
+    actions: RecurringScreenActions,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
@@ -114,8 +109,8 @@ fun RecurringScreen(
             title = stringResource(R.string.recurring_header_title),
             subtitle = stringResource(R.string.recurring_header_subtitle),
             backText = stringResource(R.string.recurring_back_to_stats),
-            onBack = onBack,
-            hasBottomBar = onBack == null,
+            onBack = actions.onBack,
+            hasBottomBar = actions.onBack == null,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
         refresh = AppSecondaryRefreshState(
@@ -123,7 +118,7 @@ fun RecurringScreen(
                 loading = state.loading,
                 hasReadableData = hasReadableData,
             ),
-            onRefresh = onRefresh,
+            onRefresh = actions.onRefresh,
         ),
         slots = AppSecondaryPageSlots(
             actions = {
@@ -159,12 +154,8 @@ fun RecurringScreen(
                     currencyDisplay = currencyDisplay,
                     canModify = state.canModify,
                 ),
-                actions = RecurringItemActions(
-                    onRetry = onRefresh,
-                    onPause = onPause,
-                    onResume = onResume,
-                    onArchive = onArchive,
-                ),
+                onRetry = actions.onRefresh,
+                actions = actions.items,
             )
         }
         item {
@@ -172,12 +163,29 @@ fun RecurringScreen(
                 section = candidateSection,
                 currencyDisplay = currencyDisplay,
                 canModify = state.canModify,
-                onRetry = onRefresh,
-                onConfirmCandidate = onConfirmCandidate,
+                onRetry = actions.onRefresh,
+                actions = actions.candidates,
             )
         }
     }
 }
+
+data class RecurringScreenActions(
+    val onRefresh: () -> Unit,
+    val items: RecurringItemActions,
+    val candidates: RecurringCandidateActions,
+    val onBack: (() -> Unit)? = null,
+)
+
+data class RecurringItemActions(
+    val onPause: (String, Long) -> Unit,
+    val onResume: (String, Long) -> Unit,
+    val onArchive: (String) -> Unit,
+)
+
+data class RecurringCandidateActions(
+    val onConfirmCandidate: (RecurringCandidate) -> Unit,
+)
 
 @Composable
 private fun RecurringStatusBadge(
@@ -230,6 +238,7 @@ private fun RecurringTabRow(
 @Composable
 private fun RecurringItemsCard(
     state: RecurringItemsCardState,
+    onRetry: () -> Unit,
     actions: RecurringItemActions,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -260,7 +269,7 @@ private fun RecurringItemsCard(
                 ReadableListBodyState.LoadFailed -> AppErrorState(
                     title = stringResource(R.string.recurring_items_load_failed_title),
                     body = stringResource(R.string.recurring_items_load_failed_body),
-                    onRetry = actions.onRetry,
+                    onRetry = onRetry,
                 )
                 ReadableListBodyState.Loading,
                 ReadableListBodyState.Empty,
@@ -294,13 +303,6 @@ private data class RecurringItemsCardState(
     val section: RecurringListSectionModel<RecurringItem>,
     val currencyDisplay: CurrencyDisplay,
     val canModify: Boolean,
-)
-
-private data class RecurringItemActions(
-    val onRetry: () -> Unit,
-    val onPause: (String, Long) -> Unit,
-    val onResume: (String, Long) -> Unit,
-    val onArchive: (String) -> Unit,
 )
 
 @Composable
@@ -426,7 +428,7 @@ private fun RecurringCandidatesCard(
     currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
     onRetry: () -> Unit,
-    onConfirmCandidate: (RecurringCandidate) -> Unit,
+    actions: RecurringCandidateActions,
 ) {
     val candidates = section.rows
     AppSectionGroup(
@@ -463,7 +465,7 @@ private fun RecurringCandidatesCard(
                     ),
                 ) {
                     candidates.take(8).forEach { candidate ->
-                        CandidateRow(candidate, currencyDisplay, canModify, onConfirmCandidate)
+                        CandidateRow(candidate, currencyDisplay, canModify, actions)
                     }
                 }
             }
@@ -476,7 +478,7 @@ private fun CandidateRow(
     candidate: RecurringCandidate,
     currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
-    onConfirmCandidate: (RecurringCandidate) -> Unit,
+    actions: RecurringCandidateActions,
 ) {
     val merchantFallback = stringResource(R.string.recurring_candidate_merchant_fallback)
     val content = @Composable {
@@ -515,7 +517,7 @@ private fun CandidateRow(
             verticalAlignment = Alignment.Top,
             content = content,
             action = { actionModifier ->
-                Button(modifier = actionModifier, onClick = { onConfirmCandidate(candidate) }) {
+                Button(modifier = actionModifier, onClick = { actions.onConfirmCandidate(candidate) }) {
                     Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.recurring_candidate_confirm_description))
                     Text(stringResource(R.string.recurring_candidate_confirm))
                 }

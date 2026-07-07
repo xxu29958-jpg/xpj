@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -55,6 +56,14 @@ import com.ticketbox.viewmodel.StatsUiState
 
 private const val StatsTagFilterOptionLimit = 12
 
+internal object StatsPlanningMenuTestTags {
+    const val SpendingGoal = "stats_planning_menu_spending_goal"
+    const val Budget = "stats_planning_menu_budget"
+    const val Recurring = "stats_planning_menu_recurring"
+    const val IncomePlans = "stats_planning_menu_income_plans"
+    const val DebtGoals = "stats_planning_menu_debt_goals"
+}
+
 internal data class StatsTopPanelActions(
     val onOpenMonthPicker: () -> Unit,
     val onTagChange: (String) -> Unit,
@@ -62,7 +71,7 @@ internal data class StatsTopPanelActions(
     val planning: StatsPlanningActions,
 )
 
-internal data class StatsPlanningActions(
+data class StatsPlanningActions(
     val onOpenSpendingGoal: () -> Unit,
     val onOpenBudget: () -> Unit,
     val onOpenRecurring: () -> Unit,
@@ -110,22 +119,27 @@ private fun StatsPlanningMenu(actions: StatsPlanningActions) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_spending_goal)) },
                 onClick = { menuOpen = false; actions.onOpenSpendingGoal() },
+                modifier = Modifier.testTag(StatsPlanningMenuTestTags.SpendingGoal),
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_budget)) },
                 onClick = { menuOpen = false; actions.onOpenBudget() },
+                modifier = Modifier.testTag(StatsPlanningMenuTestTags.Budget),
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_recurring)) },
                 onClick = { menuOpen = false; actions.onOpenRecurring() },
+                modifier = Modifier.testTag(StatsPlanningMenuTestTags.Recurring),
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
                 onClick = { menuOpen = false; actions.onOpenIncomePlans() },
+                modifier = Modifier.testTag(StatsPlanningMenuTestTags.IncomePlans),
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
                 onClick = { menuOpen = false; actions.onOpenDebtGoals() },
+                modifier = Modifier.testTag(StatsPlanningMenuTestTags.DebtGoals),
             )
         }
     }
