@@ -81,8 +81,7 @@ internal fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFil
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun NeedsReviewFilterBar(
-    selected: NeedsReviewFilter,
-    counts: PendingQueueCounts,
+    state: NeedsReviewFilterBarState,
     onSelect: (NeedsReviewFilter) -> Unit,
 ) {
     FlowRow(
@@ -92,19 +91,24 @@ internal fun NeedsReviewFilterBar(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        visibleNeedsReviewFilters(counts, selected).forEach { f ->
+        visibleNeedsReviewFilters(state.counts, state.selected).forEach { f ->
             AppFilterChip(
                 label = stringResource(
                     R.string.pending_filter_chip_label,
                     stringResource(f.labelRes),
-                    counts.countFor(f),
+                    state.counts.countFor(f),
                 ),
-                selected = f == selected,
+                selected = f == state.selected,
                 onClick = { onSelect(f) },
             )
         }
     }
 }
+
+internal data class NeedsReviewFilterBarState(
+    val selected: NeedsReviewFilter,
+    val counts: PendingQueueCounts,
+)
 
 private fun PendingQueueCounts.countFor(filter: NeedsReviewFilter): Int = when (filter) {
     NeedsReviewFilter.All -> all

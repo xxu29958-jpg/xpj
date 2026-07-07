@@ -47,10 +47,7 @@ internal fun UploadProgressCard() {
 
 @Composable
 internal fun EmptyPendingState(
-    uploading: Boolean,
-    loading: Boolean = false,
-    readOnly: Boolean,
-    showUploadGuide: Boolean,
+    state: EmptyPendingStateModel,
     onToggleGuide: () -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -60,37 +57,39 @@ internal fun EmptyPendingState(
     ) {
         PendingStateTitle(
             icon = Icons.Filled.AddPhotoAlternate,
-            title = if (loading) {
+            title = if (state.loading) {
                 stringResource(R.string.pending_empty_card_title_loading)
             } else {
                 stringResource(R.string.pending_empty_card_title)
             },
-            body = if (readOnly) {
+            body = if (state.readOnly) {
                 stringResource(R.string.pending_empty_card_body_readonly)
-            } else if (loading) {
+            } else if (state.loading) {
                 stringResource(R.string.pending_empty_card_body_loading)
             } else {
                 stringResource(R.string.pending_empty_card_body)
             },
         )
-        if (loading) {
+        if (state.loading) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
         PendingEmptyActions(
-            state = PendingEmptyActionState(
-                uploading = uploading,
-                loading = loading,
-                readOnly = readOnly,
-                showUploadGuide = showUploadGuide,
-            ),
+            state = state,
             onToggleGuide = onToggleGuide,
             onRefresh = onRefresh,
         )
-        if (showUploadGuide && !readOnly) {
+        if (state.showUploadGuide && !state.readOnly) {
             PendingUploadGuide()
         }
     }
 }
+
+internal data class EmptyPendingStateModel(
+    val uploading: Boolean,
+    val loading: Boolean = false,
+    val readOnly: Boolean,
+    val showUploadGuide: Boolean,
+)
 
 @Composable
 private fun PendingUploadGuide() {
@@ -112,7 +111,7 @@ private fun PendingUploadGuide() {
 
 @Composable
 private fun PendingEmptyActions(
-    state: PendingEmptyActionState,
+    state: EmptyPendingStateModel,
     onToggleGuide: () -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -141,13 +140,6 @@ private fun PendingEmptyActions(
         )
     }
 }
-
-private data class PendingEmptyActionState(
-    val uploading: Boolean,
-    val loading: Boolean,
-    val readOnly: Boolean,
-    val showUploadGuide: Boolean,
-)
 
 @Composable
 private fun PendingInlineAction(
