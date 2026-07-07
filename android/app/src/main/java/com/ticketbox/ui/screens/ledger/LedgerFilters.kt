@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
 import com.ticketbox.domain.model.shiftLedgerMonth
 import com.ticketbox.ui.components.displayMonthLabel
@@ -271,9 +272,11 @@ internal fun LedgerInlineButton(
 ) {
     AppOutlinedButton(
         modifier = modifier.heightIn(min = AppSpacing.controlMinHeight),
-        enabled = enabled,
         onClick = onClick,
-        contentPadding = PaddingValues(horizontal = AppSpacing.compactPadding, vertical = 0.dp),
+        options = AppOutlinedButtonOptions(
+            enabled = enabled,
+            contentPadding = PaddingValues(horizontal = AppSpacing.compactPadding, vertical = 0.dp),
+        ),
     ) {
         if (icon != null) {
             Icon(

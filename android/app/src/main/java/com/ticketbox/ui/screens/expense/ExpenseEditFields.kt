@@ -23,9 +23,13 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppAsyncImage
+import com.ticketbox.ui.components.AppAsyncImageLayout
+import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
@@ -79,14 +83,19 @@ internal fun EditDraftPreviewCard(
             if (state.expense.imagePath != null) {
                 AppAsyncImage(
                     image = state.previewImage,
-                    placeholder = if (state.imageLoading) {
-                        stringResource(R.string.expense_edit_preview_image_loading)
-                    } else {
-                        stringResource(R.string.expense_edit_preview_image_saved)
-                    },
-                    contentScale = ContentScale.Crop,
-                    compact = true,
-                    compactSize = DpSize(width = 104.dp, height = 136.dp),
+                    presentation = AppAsyncImagePresentation(
+                        placeholder = if (state.imageLoading) {
+                            stringResource(R.string.expense_edit_preview_image_loading)
+                        } else {
+                            stringResource(R.string.expense_edit_preview_image_saved)
+                        },
+                        contentDescription = stringResource(R.string.components_async_image_content_description),
+                        contentScale = ContentScale.Crop,
+                    ),
+                    layout = AppAsyncImageLayout(
+                        compact = true,
+                        compactSize = DpSize(width = 104.dp, height = 136.dp),
+                    ),
                 )
             }
             EditDraftPreviewDetails(
@@ -166,8 +175,10 @@ private fun EditDraftPreviewActionsRow(
             modifier = Modifier
                 .weight(0.82f)
                 .height(AppSpacing.controlMinHeight),
-            enabled = !state.imageLoading,
-            contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = 0.dp),
+            options = AppOutlinedButtonOptions(
+                enabled = !state.imageLoading,
+                contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = 0.dp),
+            ),
             onClick = actions.onToggleLargeImage,
         ) {
             PreviewActionText(
@@ -183,8 +194,10 @@ private fun EditDraftPreviewActionsRow(
                 modifier = Modifier
                     .weight(1f)
                     .height(AppSpacing.controlMinHeight),
-                enabled = !state.ocrRunning,
-                contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = 0.dp),
+                options = AppOutlinedButtonOptions(
+                    enabled = !state.ocrRunning,
+                    contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = 0.dp),
+                ),
                 onClick = actions.onRetryOcr,
             ) {
                 PreviewActionText(
@@ -234,7 +247,7 @@ internal fun ExpenseRepaymentDraftPanel(
         )
         AppOutlinedButton(
             modifier = Modifier.fillMaxWidth(),
-            enabled = !creating,
+            options = AppOutlinedButtonOptions(enabled = !creating),
             onClick = onCreate,
         ) {
             Text(
@@ -262,7 +275,7 @@ internal fun SelectableCategoryChip(
         selected = selected,
         onClick = onClick,
         label = label,
-        enabled = enabled,
+        options = AppFilterChipOptions(enabled = enabled),
     )
 }
 

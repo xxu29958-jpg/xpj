@@ -28,9 +28,9 @@ fun <T : Any> AppSegmentedControl(
         options.forEach { option ->
             AppFilterChip(
                 selected = selectedValue == option.value,
-                enabled = option.enabled,
                 onClick = { onValueChange(option.value) },
                 label = option.label,
+                options = AppFilterChipOptions(enabled = option.enabled),
             )
         }
     }

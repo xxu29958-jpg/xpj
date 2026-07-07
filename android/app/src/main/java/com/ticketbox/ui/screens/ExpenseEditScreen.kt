@@ -27,6 +27,8 @@ import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppAsyncImage
+import com.ticketbox.ui.components.AppAsyncImageLayout
+import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -470,13 +472,16 @@ fun ExpenseEditScreen(
         if (showLargeImage && currentExpense.imagePath != null) {
             AppAsyncImage(
                 image = state.fullImage ?: previewImage,
-                placeholder = if (state.imageLoading) {
-                    stringResource(R.string.expense_edit_large_image_loading)
-                } else {
-                    stringResource(R.string.expense_edit_large_image_failed)
-                },
-                contentScale = ContentScale.Fit,
-                displayHeight = 420.dp,
+                presentation = AppAsyncImagePresentation(
+                    placeholder = if (state.imageLoading) {
+                        stringResource(R.string.expense_edit_large_image_loading)
+                    } else {
+                        stringResource(R.string.expense_edit_large_image_failed)
+                    },
+                    contentDescription = stringResource(R.string.components_async_image_content_description),
+                    contentScale = ContentScale.Fit,
+                ),
+                layout = AppAsyncImageLayout(displayHeight = 420.dp),
             )
         }
 

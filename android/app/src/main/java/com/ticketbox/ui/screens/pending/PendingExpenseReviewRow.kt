@@ -40,6 +40,8 @@ import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAsyncImage
+import com.ticketbox.ui.components.AppAsyncImageLayout
+import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.appTapWithoutDrag
@@ -130,11 +132,13 @@ private fun PendingExpenseLeadingMark(item: PendingExpenseReviewItem) {
     if (item.expense.imagePath != null) {
         AppAsyncImage(
             image = item.thumbnail,
-            placeholder = stringResource(R.string.pending_row_image_placeholder),
-            compact = true,
-            compactSize = size,
-            shape = RoundedCornerShape(AppRadius.small),
-            contentScale = ContentScale.Crop,
+            presentation = AppAsyncImagePresentation(
+                placeholder = stringResource(R.string.pending_row_image_placeholder),
+                contentDescription = stringResource(R.string.components_async_image_content_description),
+                shape = RoundedCornerShape(AppRadius.small),
+                contentScale = ContentScale.Crop,
+            ),
+            layout = AppAsyncImageLayout(compact = true, compactSize = size),
         )
     } else {
         PendingCategoryMark(item.expense.category, size)

@@ -27,6 +27,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.QuietOutlinedButton
@@ -336,9 +337,8 @@ private fun RowScope.CompactTextAction(
 ) {
     AppOutlinedButton(
         modifier = Modifier.weight(weight).defaultMinSize(minHeight = 48.dp),
-        enabled = enabled,
-        danger = danger,
         onClick = onClick,
+        options = AppOutlinedButtonOptions(enabled = enabled, danger = danger),
     ) {
         ExpenseEditActionLabel(text)
     }

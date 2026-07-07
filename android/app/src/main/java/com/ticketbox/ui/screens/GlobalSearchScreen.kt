@@ -38,6 +38,7 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
@@ -267,13 +268,15 @@ private fun SearchFilterChips(
                 label = state.monthFilter.takeIf { it.isNotBlank() }
                     ?.let { displayMonthLabel(it) }
                     ?: stringResource(R.string.global_search_filter_month_all),
-                trailingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.ExpandMore,
-                        contentDescription = stringResource(R.string.global_search_filter_month_picker_description),
-                        modifier = Modifier.size(FilterChipDefaults.IconSize),
-                    )
-                },
+                options = AppFilterChipOptions(
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.ExpandMore,
+                            contentDescription = stringResource(R.string.global_search_filter_month_picker_description),
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    },
+                ),
             )
             SelectableFilterChip(
                 selected = state.categoryFilter.isBlank(),

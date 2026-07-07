@@ -36,6 +36,7 @@ import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionFeedback
 import com.ticketbox.ui.components.AppSheetActionFeedbackState
@@ -446,6 +447,8 @@ fun SelectableFilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
-        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+        options = AppFilterChipOptions(
+            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+        ),
     )
 }

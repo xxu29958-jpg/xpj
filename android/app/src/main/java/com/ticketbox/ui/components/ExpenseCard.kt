@@ -133,10 +133,12 @@ fun ExpenseCard(
                 if (expense.imagePath != null) {
                     AppAsyncImage(
                         image = thumbnail,
-                        placeholder = stringResource(R.string.components_expense_card_thumbnail_placeholder),
-                        contentScale = ContentScale.Crop,
-                        compact = true,
-                        compactSize = imageSize,
+                        presentation = AppAsyncImagePresentation(
+                            placeholder = stringResource(R.string.components_expense_card_thumbnail_placeholder),
+                            contentDescription = stringResource(R.string.components_async_image_content_description),
+                            contentScale = ContentScale.Crop,
+                        ),
+                        layout = AppAsyncImageLayout(compact = true, compactSize = imageSize),
                     )
                 } else {
                     CategoryMark(expense.category)
@@ -239,8 +241,11 @@ fun ExpenseCard(
                 }
                 AppAsyncImage(
                     image = thumbnail,
-                    placeholder = imagePlaceholder,
-                    contentScale = ContentScale.Crop,
+                    presentation = AppAsyncImagePresentation(
+                        placeholder = imagePlaceholder,
+                        contentDescription = stringResource(R.string.components_async_image_content_description),
+                        contentScale = ContentScale.Crop,
+                    ),
                 )
             }
 
@@ -321,7 +326,7 @@ fun ExpenseCard(
                     if (showRejectAction) {
                         Spacer(Modifier.weight(0.15f))
                         AppOutlinedButton(
-                            enabled = actionsEnabled,
+                            options = AppOutlinedButtonOptions(enabled = actionsEnabled),
                             onClick = { showRejectDialog = true },
                         ) {
                             Text(
@@ -334,7 +339,7 @@ fun ExpenseCard(
                 }
                 if (showDuplicateAction && expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
                     AppOutlinedButton(
-                        enabled = actionsEnabled,
+                        options = AppOutlinedButtonOptions(enabled = actionsEnabled),
                         onClick = onKeepDuplicate,
                     ) {
                         Text(
