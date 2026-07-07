@@ -4,7 +4,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.screens.pending.sheets.BulkConfirmSheetActions
 import com.ticketbox.ui.screens.pending.sheets.BulkConfirmSheetContent
+import com.ticketbox.ui.screens.pending.sheets.BulkConfirmSheetState
 import com.ticketbox.ui.screens.pending.sheets.DuplicateConfirmSheetContent
 import com.ticketbox.ui.screens.pending.sheets.MissingAmountSheetContent
 import com.ticketbox.ui.screens.pending.sheets.QuickCategorySheetContent
@@ -80,14 +82,18 @@ internal fun PendingReviewSheetHost(
         }
         is PendingSheet.BulkConfirm -> ModalBottomSheet(onDismissRequest = onDismiss) {
             BulkConfirmSheetContent(
-                readyCount = readyCount,
-                missingAmountSkipCount = missingAmountSkip,
-                duplicateSkipCount = duplicateSkip,
-                inProgress = bulkRunning,
-                confirmedCount = bulkConfirmed,
-                totalCount = bulkTotal,
-                onConfirmReady = onConfirmReady,
-                onDismiss = onDismiss,
+                state = BulkConfirmSheetState(
+                    readyCount = readyCount,
+                    missingAmountSkipCount = missingAmountSkip,
+                    duplicateSkipCount = duplicateSkip,
+                    inProgress = bulkRunning,
+                    confirmedCount = bulkConfirmed,
+                    totalCount = bulkTotal,
+                ),
+                actions = BulkConfirmSheetActions(
+                    onConfirmReady = onConfirmReady,
+                    onDismiss = onDismiss,
+                ),
             )
         }
     }
