@@ -97,12 +97,16 @@ class RuleRepositoryOutboxFallbackTest {
         adapter: com.squareup.moshi.JsonAdapter<CategoryRuleUpdateRequest>? = null,
         deleteAdapter: com.squareup.moshi.JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest>? = null,
     ): RuleRepository = RuleRepository(
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
-        outbox = outbox,
-        categoryRuleUpdateAdapter = adapter,
-        categoryRuleDeleteAdapter = deleteAdapter,
+        binding = ServerSessionBinding(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = seededSettingsStore(),
+            tokenStore = seededTokenStore(),
+        ),
+        offlineMutations = CategoryRuleOfflineMutationWiring(
+            outbox = outbox,
+            updateAdapter = adapter,
+            deleteAdapter = deleteAdapter,
+        ),
     )
 
     // region — saveExpenseAllowingOffline mirror
@@ -465,11 +469,15 @@ class RuleRepositoryOutboxFallbackTest {
         }
 
         val repo = RuleRepository(
-            apiClient = TestApiServiceFactory(api),
-            settingsStore = settings,
-            tokenStore = tokens,
-            outbox = outbox,
-            categoryRuleDeleteAdapter = deleteAdapter,
+            binding = ServerSessionBinding(
+                apiClient = TestApiServiceFactory(api),
+                settingsStore = settings,
+                tokenStore = tokens,
+            ),
+            offlineMutations = CategoryRuleOfflineMutationWiring(
+                outbox = outbox,
+                deleteAdapter = deleteAdapter,
+            ),
         )
 
         val result = repo.deleteCategoryRuleAllowingOffline(baseline)

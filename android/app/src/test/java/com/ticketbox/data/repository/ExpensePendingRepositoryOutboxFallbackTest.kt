@@ -260,12 +260,16 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
 
         val repo = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = TestApiServiceFactory(api),
-            settingsStore = settings,
-            tokenStore = tokens,
+            binding = ServerSessionBinding(
+                apiClient = TestApiServiceFactory(api),
+                settingsStore = settings,
+                tokenStore = tokens,
+            ),
             deviceNameProvider = { "Android Test" },
-            outbox = outbox,
-            patchExpenseAdapter = adapter,
+            offlineMutations = ExpenseOfflineMutationWiring(
+                outbox = outbox,
+                patchExpenseAdapter = adapter,
+            ),
         )
 
         val result = repo.saveExpenseAllowingOffline(baseline.id, draft, baseline)

@@ -63,13 +63,17 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     private fun createRepo(api: ApiService, dao: FakeExpenseDao, outbox: OutboxRepository): ExpenseRepository =
         ExpenseRepository(
             expenseDao = dao,
-            apiClient = TestApiServiceFactory(api),
-            settingsStore = seededSettingsStore(),
-            tokenStore = seededTokenStore(),
+            binding = ServerSessionBinding(
+                apiClient = TestApiServiceFactory(api),
+                settingsStore = seededSettingsStore(),
+                tokenStore = seededTokenStore(),
+            ),
             deviceNameProvider = { "Android Test" },
-            outbox = outbox,
-            patchExpenseAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
-            manualCreateAdapter = moshi().adapter(ExpenseManualCreateRequestDto::class.java),
+            offlineMutations = ExpenseOfflineMutationWiring(
+                outbox = outbox,
+                patchExpenseAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
+                manualCreateAdapter = moshi().adapter(ExpenseManualCreateRequestDto::class.java),
+            ),
         )
 
     @Test

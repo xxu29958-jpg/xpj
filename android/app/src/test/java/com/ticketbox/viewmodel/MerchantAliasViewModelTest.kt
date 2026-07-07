@@ -11,6 +11,7 @@ import com.ticketbox.data.repository.MerchantConflictDetails
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.ServerSessionBinding
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
@@ -205,15 +206,19 @@ class MerchantAliasViewModelTest {
         val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply(configureApi)
         val apiFactory = FakeApiServiceFactory(api)
         val merchantRepository = MerchantRepository(
-            apiClient = apiFactory,
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = apiFactory,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
         )
         val expenseRepository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = apiFactory,
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = apiFactory,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
         )
         return Harness(
             api = api,

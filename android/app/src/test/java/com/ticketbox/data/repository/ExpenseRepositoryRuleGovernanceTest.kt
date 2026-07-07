@@ -27,15 +27,19 @@ class ExpenseRepositoryRuleGovernanceTest {
         val apiClient = FakeApiServiceFactory(apiService)
         val expenseRepository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = apiClient,
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = apiClient,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
         val ruleRepository = RuleRepository(
-            apiClient = apiClient,
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = apiClient,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             onConfirmedChanged = { expenseRepository.syncConfirmed() },
         )
 
@@ -65,9 +69,11 @@ class ExpenseRepositoryRuleGovernanceTest {
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val ruleRepository = RuleRepository(
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
         )
 
         val applications = ruleRepository.ruleApplications().getOrThrow()
@@ -93,9 +99,11 @@ class ExpenseRepositoryRuleGovernanceTest {
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val merchantRepository = MerchantRepository(
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
         )
 
         val listed = merchantRepository.merchantAliases().getOrThrow()

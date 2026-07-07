@@ -28,9 +28,11 @@ class ExpenseRepositoryNotificationDraftTest {
         val apiClient = FakeApiServiceFactory(apiService)
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = apiClient,
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = apiClient,
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -70,9 +72,11 @@ class ExpenseRepositoryNotificationDraftTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
         val ledgerIdAtNotification = repository.currentActiveLedgerId()

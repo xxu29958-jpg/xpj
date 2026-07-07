@@ -31,12 +31,16 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
 
     private fun recognizeTextRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
+        binding = ServerSessionBinding(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = seededSettingsStore(),
+            tokenStore = seededTokenStore(),
+        ),
         deviceNameProvider = { "Android Test" },
-        outbox = outbox,
-        recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
+        offlineMutations = ExpenseOfflineMutationWiring(
+            outbox = outbox,
+            recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
+        ),
     )
 
     @Test

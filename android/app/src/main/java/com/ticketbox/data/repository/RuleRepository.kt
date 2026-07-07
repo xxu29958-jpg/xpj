@@ -2,8 +2,6 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
@@ -13,7 +11,6 @@ import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplicationRollback
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 import java.io.IOException
 import java.util.UUID
 
@@ -26,30 +23,19 @@ import java.util.UUID
  * confirmed-cache via ExpenseRepository.syncConfirmed().
  */
 class RuleRepository(
-    private val apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val binding: ServerSessionBinding,
     private val onConfirmedChanged: suspend () -> Unit = { },
-    /**
-     * ADR-0038 PR-2g.4: outbox surface for the offline-aware
-     * [updateCategoryRuleAllowingOffline] entrypoint. ``null``
-     * keeps every pre-PR-2g.4 test that didn't wire the outbox at
-     * the old behaviour — the new method falls back to the direct
-     * failure path when outbox/adapter aren't both supplied.
-     */
-    private val outbox: OutboxRepository? = null,
-    private val categoryRuleUpdateAdapter: JsonAdapter<CategoryRuleUpdateRequest>? = null,
-    /**
-     * ADR-0038 PR-2g.5: adapter for [CategoryRuleDeleteRequest].
-     * Same null-default contract as ``categoryRuleUpdateAdapter``
-     * — if either ``outbox`` or this adapter is missing,
-     * [deleteCategoryRuleAllowingOffline] falls back to the direct
-     * failure path.
-     */
-    private val categoryRuleDeleteAdapter: JsonAdapter<CategoryRuleDeleteRequest>? = null,
+    private val offlineMutations: CategoryRuleOfflineMutationWiring = CategoryRuleOfflineMutationWiring(),
 ) {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val settingsStore = binding.settingsStore
+    private val outbox get() = offlineMutations.outbox
+    private val categoryRuleUpdateAdapter get() = offlineMutations.updateAdapter
+    private val categoryRuleDeleteAdapter get() = offlineMutations.deleteAdapter
+    private val ledgerRequestGuard = LedgerRequestGuard(
+        binding.settingsStore,
+        binding.tokenStore,
+        binding.apiProvider,
+    )
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Rule",
@@ -211,7 +197,7 @@ class RuleRepository(
      */
     private suspend fun enqueueUpdateCategoryRule(
         context: CategoryRuleOutboxContext,
-        adapter: com.squareup.moshi.JsonAdapter<CategoryRuleUpdateRequest>,
+        adapter: JsonAdapter<CategoryRuleUpdateRequest>,
         request: CategoryRuleUpdateRequest,
     ) {
         context.bound.requireStillActive()
@@ -327,7 +313,7 @@ class RuleRepository(
      */
     private suspend fun enqueueDeleteCategoryRule(
         context: CategoryRuleOutboxContext,
-        adapter: com.squareup.moshi.JsonAdapter<CategoryRuleDeleteRequest>,
+        adapter: JsonAdapter<CategoryRuleDeleteRequest>,
         request: CategoryRuleDeleteRequest,
     ) {
         context.bound.requireStillActive()

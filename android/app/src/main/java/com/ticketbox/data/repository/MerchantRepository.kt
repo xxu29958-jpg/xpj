@@ -2,8 +2,6 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
@@ -16,7 +14,6 @@ import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MerchantCatalogMergeResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 import java.io.IOException
 import java.util.UUID
 
@@ -27,27 +24,18 @@ import java.util.UUID
  */
 @Suppress("TooManyFunctions")
 class MerchantRepository(
-    private val apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
-    /**
-     * ADR-0038 PR-2g.5: optional outbox + delete-adapter for the
-     * offline-aware [deleteMerchantAliasAllowingOffline] entrypoint.
-     * ``null`` defaults preserve every pre-PR-2g.5 test caller
-     * (they fall back to the direct failure path on IOException).
-     */
-    private val outbox: OutboxRepository? = null,
-    private val merchantAliasDeleteAdapter: JsonAdapter<MerchantAliasDeleteRequest>? = null,
-    /**
-     * ADR-0038 PR-2g.6: adapter for [MerchantAliasUpdateRequest].
-     * Same null-default contract — if either ``outbox`` or this
-     * adapter is missing, [updateMerchantAliasAllowingOffline]
-     * falls back to the direct failure path.
-     */
-    private val merchantAliasUpdateAdapter: JsonAdapter<MerchantAliasUpdateRequest>? = null,
+    private val binding: ServerSessionBinding,
+    private val offlineMutations: MerchantAliasOfflineMutationWiring = MerchantAliasOfflineMutationWiring(),
 ) {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val settingsStore = binding.settingsStore
+    private val outbox get() = offlineMutations.outbox
+    private val merchantAliasDeleteAdapter get() = offlineMutations.deleteAdapter
+    private val merchantAliasUpdateAdapter get() = offlineMutations.updateAdapter
+    private val ledgerRequestGuard = LedgerRequestGuard(
+        binding.settingsStore,
+        binding.tokenStore,
+        binding.apiProvider,
+    )
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Merchant",
@@ -295,7 +283,7 @@ class MerchantRepository(
      */
     private suspend fun enqueueDeleteMerchantAlias(
         context: MerchantAliasOutboxContext,
-        adapter: com.squareup.moshi.JsonAdapter<MerchantAliasDeleteRequest>,
+        adapter: JsonAdapter<MerchantAliasDeleteRequest>,
         request: MerchantAliasDeleteRequest,
     ) {
         context.bound.requireStillActive()
@@ -383,7 +371,7 @@ class MerchantRepository(
      */
     private suspend fun enqueueUpdateMerchantAlias(
         context: MerchantAliasOutboxContext,
-        adapter: com.squareup.moshi.JsonAdapter<MerchantAliasUpdateRequest>,
+        adapter: JsonAdapter<MerchantAliasUpdateRequest>,
         request: MerchantAliasUpdateRequest,
     ) {
         context.bound.requireStillActive()

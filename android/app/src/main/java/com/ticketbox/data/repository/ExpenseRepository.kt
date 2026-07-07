@@ -1,15 +1,6 @@
 package com.ticketbox.data.repository
 
-import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.ExpenseDao
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
-import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
-import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
-import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
-import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.BillSplitInbox
@@ -31,7 +22,6 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.ServerSettings
-import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -43,39 +33,14 @@ import kotlinx.coroutines.flow.Flow
  */
 class ExpenseRepository(
     expenseDao: ExpenseDao,
-    apiClient: ApiServiceFactory,
-    settingsStore: TicketboxSettingsStore,
-    tokenStore: SessionTokenStore,
+    binding: ServerSessionBinding,
     deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
-    apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
     sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(
-        settingsStore,
-        tokenStore,
+        binding.settingsStore,
+        binding.tokenStore,
         expenseDao,
     ),
-    /**
-     * ADR-0038 PR-2g.3: optional outbox + adapter. When wired,
-     * mutations whose direct ApiService call fails with IOException
-     * fall back to enqueueing a PendingMutation row so the worker
-     * (PR-2g.2) replays once connectivity returns. AppContainer
-     * passes the real instances; existing tests that don't care
-     * about offline routing default to ``null`` and keep the
-     * pre-PR-2g.3 behaviour (IOException → safeCall failure).
-     */
-    outbox: OutboxRepository? = null,
-    patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
-    // ADR-0038 PR-2g.7: token-only adapter for the offline-aware
-    // confirm / reject call sites. Same null-keeps-old-behaviour
-    // contract as patchExpenseAdapter.
-    expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
-    // PR-D: body-carrying adapter for the offline-aware items editor.
-    replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
-    // ADR-0042 Slice E-1: body-carrying adapter for the offline-aware splits editor.
-    replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
-    // ADR-0042 Slice E-2: body-carrying adapter for the offline-aware "粘贴文字识别".
-    recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
-    // issue #65 slice 4: body adapter for the offline-aware manual create.
-    manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>? = null,
+    offlineMutations: ExpenseOfflineMutationWiring = ExpenseOfflineMutationWiring(),
 ) : ServerBindingRepository,
     PendingReviewActions,
     LedgerActions,
@@ -84,18 +49,10 @@ class ExpenseRepository(
     ExpenseEditActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
+        binding = binding,
         deviceNameProvider = deviceNameProvider,
-        apiProvider = apiProvider,
         sessionCoordinator = sessionCoordinator,
-        outbox = outbox,
-        patchExpenseAdapter = patchExpenseAdapter,
-        expenseStateTokenAdapter = expenseStateTokenAdapter,
-        replaceItemsAdapter = replaceItemsAdapter,
-        replaceSplitsAdapter = replaceSplitsAdapter,
-        recognizeTextAdapter = recognizeTextAdapter,
-        manualCreateAdapter = manualCreateAdapter,
+        offlineMutations = offlineMutations,
     )
     /**
      * 见 [ExpenseRepositoryCore.onConfirmedCommitted]：确认态落本地缓存的单点回调
@@ -112,7 +69,7 @@ class ExpenseRepository(
     private val pendingRepository = ExpensePendingRepository(core)
     private val ledgerRepository = ExpenseLedgerRepositoryActions(core)
     private val statsRepository = ExpenseStatsRepositoryActions(core, ledgerRepository)
-    private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, settingsStore)
+    private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, binding.settingsStore)
     private val detailRepository = ExpenseDetailRepository(core)
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)

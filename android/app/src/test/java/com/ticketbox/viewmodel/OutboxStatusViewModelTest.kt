@@ -10,6 +10,7 @@ import com.ticketbox.data.repository.FakePendingMutationDao
 import com.ticketbox.data.repository.FakeSessionTokenStore
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.ServerSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -91,9 +92,11 @@ class OutboxStatusViewModelTest {
         val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
         val expenseRepository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = api,
-            settingsStore = boundSettingsStore(),
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = api,
+                settingsStore = boundSettingsStore(),
+                tokenStore = tokenStore,
+            ),
         )
         return Harness(
             outbox = OutboxRepository(dao = FakePendingMutationDao()),

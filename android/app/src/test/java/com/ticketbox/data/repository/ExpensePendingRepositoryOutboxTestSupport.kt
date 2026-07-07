@@ -113,13 +113,17 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         stateTokenAdapter: com.squareup.moshi.JsonAdapter<ExpenseStateTokenRequest>? = null,
     ): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
+        binding = ServerSessionBinding(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = seededSettingsStore(),
+            tokenStore = seededTokenStore(),
+        ),
         deviceNameProvider = { "Android Test" },
-        outbox = outbox,
-        patchExpenseAdapter = adapter,
-        expenseStateTokenAdapter = stateTokenAdapter,
+        offlineMutations = ExpenseOfflineMutationWiring(
+            outbox = outbox,
+            patchExpenseAdapter = adapter,
+            expenseStateTokenAdapter = stateTokenAdapter,
+        ),
     )
 
     protected fun successExpenseDto(serverUpdatedAt: String = "2026-05-20T13:00:00.000Z"): ExpenseDto =
@@ -184,12 +188,16 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
 
     protected fun itemsRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
+        binding = ServerSessionBinding(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = seededSettingsStore(),
+            tokenStore = seededTokenStore(),
+        ),
         deviceNameProvider = { "Android Test" },
-        outbox = outbox,
-        replaceItemsAdapter = moshi().adapter(ExpenseItemReplaceRequestDto::class.java),
+        offlineMutations = ExpenseOfflineMutationWiring(
+            outbox = outbox,
+            replaceItemsAdapter = moshi().adapter(ExpenseItemReplaceRequestDto::class.java),
+        ),
     )
 
     protected sealed interface ApiResult {

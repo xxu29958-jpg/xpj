@@ -26,9 +26,11 @@ class ExpenseRepositoryExpenseDetailTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -89,9 +91,11 @@ class ExpenseRepositoryExpenseDetailTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -131,9 +135,11 @@ class ExpenseRepositoryExpenseDetailTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -176,9 +182,11 @@ class ExpenseRepositoryExpenseDetailTest {
         val apiClient = FakeApiServiceFactory(apiService)
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = apiClient,
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = apiClient,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -196,9 +204,11 @@ class ExpenseRepositoryExpenseDetailTest {
         val dao = FakeExpenseDao()
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
-            settingsStore = boundSettingsStore(),
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+                settingsStore = boundSettingsStore(),
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -225,9 +235,11 @@ class ExpenseRepositoryExpenseDetailTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 

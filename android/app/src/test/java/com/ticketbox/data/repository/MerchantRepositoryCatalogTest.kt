@@ -39,10 +39,14 @@ class MerchantRepositoryCatalogTest {
         api: ApiService,
         outbox: OutboxRepository? = null,
     ): MerchantRepository = MerchantRepository(
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = settingsStore(),
-        tokenStore = tokenStore(),
-        outbox = outbox,
+        binding = ServerSessionBinding(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = settingsStore(),
+            tokenStore = tokenStore(),
+        ),
+        offlineMutations = MerchantAliasOfflineMutationWiring(
+            outbox = outbox,
+        ),
     )
 
     @Test
