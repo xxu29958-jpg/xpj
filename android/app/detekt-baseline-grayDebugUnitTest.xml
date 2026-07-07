@@ -9,7 +9,6 @@
     <ID>LongMethod:ExpenseRepositoryAuthCheckTest.kt:ExpenseRepositoryAuthCheckTest$@Test fun authCheckLedgerCorrectionClearsTargetCacheBeforeIdentitySwitch</ID>
     <ID>LongMethod:LedgerRepositoryInvitationTest.kt:LedgerRepositoryInvitationTest$@Test fun acceptInvitationSlowResponseDoesNotOverwriteBindingChangedDuringRequest</ID>
     <ID>LongMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
-    <ID>LongParameterList:ExpenseDaoContractTest.kt:ExpenseDaoContractTest$private fun entity: ExpenseEntity</ID>
     <ID>LongParameterList:ExpensePendingRepositoryOutboxTestSupport.kt:ExpensePendingRepositoryOutboxTestBase.ApiServiceStub</ID>
     <ID>LongParameterList:LedgerRepositoryTestFixtures.kt:StubApi</ID>
     <ID>LongParameterList:OutboxDrainWorkerTest.kt:OutboxDrainWorkerTest$private fun summary</ID>
