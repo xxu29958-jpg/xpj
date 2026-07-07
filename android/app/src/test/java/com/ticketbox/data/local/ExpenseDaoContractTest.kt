@@ -13,8 +13,14 @@ class ExpenseDaoContractTest {
     fun upsertForLedgerUpdatesConfirmedCacheWithoutDuplicating() = runTest {
         val dao = FakeExpenseDao()
 
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 7, amountCents = 1000, merchant = "first"))
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 7, amountCents = 1888, merchant = "updated"))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 7, amountCents = 1000, fixture = ExpenseEntityFixture(merchant = "first")),
+        )
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 7, amountCents = 1888, fixture = ExpenseEntityFixture(merchant = "updated")),
+        )
 
         val confirmed = dao.getConfirmed("owner")
         assertEquals(1, confirmed.size)
@@ -57,8 +63,14 @@ class ExpenseDaoContractTest {
     fun upsertDoesNotMoveSameServerIdAcrossLedgers() = runTest {
         val dao = FakeExpenseDao()
 
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 42, merchant = "owner row"))
-        dao.upsertByServerIdForLedger("L_family", entity("L_family", serverId = 42, merchant = "family row"))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 42, fixture = ExpenseEntityFixture(merchant = "owner row")),
+        )
+        dao.upsertByServerIdForLedger(
+            "L_family",
+            entity("L_family", serverId = 42, fixture = ExpenseEntityFixture(merchant = "family row")),
+        )
 
         val owner = dao.getConfirmed("owner").single()
         val family = dao.getConfirmed("L_family").single()
@@ -115,29 +127,44 @@ class ExpenseDaoContractTest {
         // versions still apply (identical token = identical server payload).
         val dao = FakeExpenseDao()
 
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "patched", rowVersion = 5))
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "stale-sync", rowVersion = 3))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 9, fixture = ExpenseEntityFixture(merchant = "patched", rowVersion = 5)),
+        )
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 9, fixture = ExpenseEntityFixture(merchant = "stale-sync", rowVersion = 3)),
+        )
 
         val row = dao.getConfirmed("owner").single()
         assertEquals("patched", row.merchant)
         assertEquals(5L, row.rowVersion)
 
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "newer", rowVersion = 6))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 9, fixture = ExpenseEntityFixture(merchant = "newer", rowVersion = 6)),
+        )
         assertEquals("newer", dao.getConfirmed("owner").single().merchant)
     }
 
     @Test
     fun bulkUpsertGuardFiltersStaleRowsPerEntity() = runTest {
         val dao = FakeExpenseDao()
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1, merchant = "a-v4", rowVersion = 4))
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 2, merchant = "b-v1", rowVersion = 1))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 1, fixture = ExpenseEntityFixture(merchant = "a-v4", rowVersion = 4)),
+        )
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 2, fixture = ExpenseEntityFixture(merchant = "b-v1", rowVersion = 1)),
+        )
 
         dao.upsertAllByServerIdForLedger(
             "owner",
             listOf(
-                entity("owner", serverId = 1, merchant = "a-stale", rowVersion = 2),
-                entity("owner", serverId = 2, merchant = "b-v3", rowVersion = 3),
-                entity("owner", serverId = 3, merchant = "c-new", rowVersion = 1),
+                entity("owner", serverId = 1, fixture = ExpenseEntityFixture(merchant = "a-stale", rowVersion = 2)),
+                entity("owner", serverId = 2, fixture = ExpenseEntityFixture(merchant = "b-v3", rowVersion = 3)),
+                entity("owner", serverId = 3, fixture = ExpenseEntityFixture(merchant = "c-new", rowVersion = 1)),
             ),
         )
 
@@ -154,15 +181,21 @@ class ExpenseDaoContractTest {
         // was in flight is missing from that response by timing alone — the
         // prune must only delete rows that already existed pre-fetch.
         val dao = FakeExpenseDao()
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1, merchant = "pre-existing"))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 1, fixture = ExpenseEntityFixture(merchant = "pre-existing")),
+        )
         val preFetchSnapshot = dao.confirmedServerIdsForLedger("owner").toSet()
         // Confirmed mid-fetch: cached after the snapshot, absent from the
         // (stale) response below.
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 2, merchant = "in-flight-confirm"))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 2, fixture = ExpenseEntityFixture(merchant = "in-flight-confirm")),
+        )
 
         dao.applyConfirmedSyncForLedger(
             ledgerId = "owner",
-            expenses = listOf(entity("owner", serverId = 1, merchant = "pre-existing")),
+            expenses = listOf(entity("owner", serverId = 1, fixture = ExpenseEntityFixture(merchant = "pre-existing"))),
             replaceCache = false,
             pruneScope = preFetchSnapshot,
         )
@@ -174,7 +207,10 @@ class ExpenseDaoContractTest {
     fun confirmedSyncPruneStillRemovesServerDeletedRows() = runTest {
         val dao = FakeExpenseDao()
         dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1))
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 9, merchant = "deleted-on-server"))
+        dao.upsertByServerIdForLedger(
+            "owner",
+            entity("owner", serverId = 9, fixture = ExpenseEntityFixture(merchant = "deleted-on-server")),
+        )
         val preFetchSnapshot = dao.confirmedServerIdsForLedger("owner").toSet()
 
         dao.applyConfirmedSyncForLedger(
@@ -224,7 +260,7 @@ class ExpenseDaoContractTest {
         dao.applyPendingSyncForLedger(
             ledgerId = "owner",
             expenses = listOf(
-                entity("owner", serverId = 2, status = "pending", merchant = "updated"),
+                entity("owner", serverId = 2, status = "pending", fixture = ExpenseEntityFixture(merchant = "updated")),
                 entity("owner", serverId = 3, status = "pending"),
             ),
         )
@@ -297,20 +333,24 @@ class ExpenseDaoContractTest {
         assertEquals(42L, row.serverId, "the canonical server row is still cached so the create isn't lost")
     }
 
+    private data class ExpenseEntityFixture(
+        val merchant: String? = "merchant",
+        val rowVersion: Long = 1L,
+    )
+
     private fun entity(
         ledgerId: String,
         serverId: Long,
         status: String = "confirmed",
         amountCents: Long? = 100,
-        merchant: String? = "merchant",
-        rowVersion: Long = 1L,
+        fixture: ExpenseEntityFixture = ExpenseEntityFixture(),
     ): ExpenseEntity {
         return ExpenseEntity(
             ledgerId = ledgerId,
             serverId = serverId,
             publicId = "public-$ledgerId-$serverId",
             amountCents = amountCents,
-            merchant = merchant,
+            merchant = fixture.merchant,
             category = "餐饮",
             note = null,
             source = "iPhone截图",
@@ -328,7 +368,7 @@ class ExpenseDaoContractTest {
             createdAt = "2026-05-04T08:00:00Z",
             confirmedAt = if (status == "confirmed") "2026-05-04T08:30:00Z" else null,
             updatedAt = "2026-05-04T08:30:00Z",
-            rowVersion = rowVersion,
+            rowVersion = fixture.rowVersion,
         )
     }
 }
