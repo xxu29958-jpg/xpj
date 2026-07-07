@@ -4,18 +4,22 @@ import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
+import com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.ExpenseOfflineMutationWiring
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LocalLedgerSessionCoordinator
+import com.ticketbox.data.repository.MerchantAliasOfflineMutationWiring
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.RepaymentDraftRepository
 import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.data.repository.ServerSessionBinding
 import com.ticketbox.data.repository.TagRepository
 import com.ticketbox.security.SecureTokenStore
 
@@ -43,6 +47,12 @@ internal class RepositoryGraph(
     private val apiServiceProvider = dependencies.apiServiceProvider
     private val outbox = dependencies.outbox.repository
     private val outboxAdapters = dependencies.outbox.adapters
+    private val serverSessionBinding = ServerSessionBinding(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
 
     private val ledgerSessionCoordinator = LocalLedgerSessionCoordinator(
         settingsStore = settingsStore,
@@ -53,22 +63,21 @@ internal class RepositoryGraph(
 
     val expenseRepository = ExpenseRepository(
         expenseDao = database.expenseDao(),
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
-        apiProvider = apiServiceProvider,
         sessionCoordinator = ledgerSessionCoordinator,
+        binding = serverSessionBinding,
         // PR-2g.3: pass the outbox + adapter so the PATCH expense
         // call site can fall back to enqueue on IOException.
         // PR-2g.7: + token adapter for confirm/reject offline routing.
-        outbox = outbox,
-        patchExpenseAdapter = outboxAdapters.patchExpenseAdapter,
-        expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
-        replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
-        replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,
-        recognizeTextAdapter = outboxAdapters.recognizeTextAdapter,
-        // issue #65 slice 4: offline-aware manual create.
-        manualCreateAdapter = outboxAdapters.manualCreateAdapter,
+        offlineMutations = ExpenseOfflineMutationWiring(
+            outbox = outbox,
+            patchExpenseAdapter = outboxAdapters.patchExpenseAdapter,
+            expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
+            replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
+            replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,
+            recognizeTextAdapter = outboxAdapters.recognizeTextAdapter,
+            // issue #65 slice 4: offline-aware manual create.
+            manualCreateAdapter = outboxAdapters.manualCreateAdapter,
+        ),
     )
 
     val ledgerRepository = LedgerRepository(
@@ -131,28 +140,26 @@ internal class RepositoryGraph(
     )
 
     val ruleRepository = RuleRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
-        apiProvider = apiServiceProvider,
+        binding = serverSessionBinding,
         onConfirmedChanged = { expenseRepository.syncConfirmed() },
         // PR-2g.4: outbox + adapter for updateCategoryRuleAllowingOffline.
         // PR-2g.5: + deleteAdapter for deleteCategoryRuleAllowingOffline.
-        outbox = outbox,
-        categoryRuleUpdateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
-        categoryRuleDeleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
+        offlineMutations = CategoryRuleOfflineMutationWiring(
+            outbox = outbox,
+            updateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
+            deleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
+        ),
     )
 
     val merchantRepository = MerchantRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
-        apiProvider = apiServiceProvider,
+        binding = serverSessionBinding,
         // PR-2g.5: outbox + delete adapter.
         // PR-2g.6: + update adapter for updateMerchantAliasAllowingOffline.
-        outbox = outbox,
-        merchantAliasDeleteAdapter = outboxAdapters.merchantAliasDeleteAdapter,
-        merchantAliasUpdateAdapter = outboxAdapters.merchantAliasUpdateAdapter,
+        offlineMutations = MerchantAliasOfflineMutationWiring(
+            outbox = outbox,
+            deleteAdapter = outboxAdapters.merchantAliasDeleteAdapter,
+            updateAdapter = outboxAdapters.merchantAliasUpdateAdapter,
+        ),
     )
 
     // ADR-0043 slice C — tag management. Online-only (契约 7): no outbox / no

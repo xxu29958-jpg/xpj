@@ -48,9 +48,11 @@ class ExpenseRepositoryAuthCheckTest {
         )
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -102,9 +104,11 @@ class ExpenseRepositoryAuthCheckTest {
         }
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -164,9 +168,11 @@ class ExpenseRepositoryAuthCheckTest {
         )
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -204,9 +210,11 @@ class ExpenseRepositoryAuthCheckTest {
             )
             val repository = ExpenseRepository(
                 expenseDao = FakeExpenseDao(),
-                apiClient = apiClient,
-                settingsStore = settingsStore,
-                tokenStore = tokenStore,
+                binding = ServerSessionBinding(
+                    apiClient = apiClient,
+                    settingsStore = settingsStore,
+                    tokenStore = tokenStore,
+                ),
                 deviceNameProvider = { "Android Test Device" },
             )
             val viewModel = ViewModelProvider(
@@ -281,9 +289,11 @@ class ExpenseRepositoryAuthCheckTest {
         )
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 

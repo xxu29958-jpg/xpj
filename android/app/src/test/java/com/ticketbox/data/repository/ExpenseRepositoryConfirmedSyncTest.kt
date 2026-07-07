@@ -28,9 +28,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -46,9 +48,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         val apiService = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = boundSettingsStore(),
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = boundSettingsStore(),
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -65,9 +69,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         val settingsStore = boundSettingsStore()
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -98,9 +104,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -118,9 +126,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         val settingsStore = boundSettingsStore()
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -146,9 +156,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -180,9 +192,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 
@@ -223,9 +237,11 @@ class ExpenseRepositoryConfirmedSyncTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
-            settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
             deviceNameProvider = { "Android Test Device" },
         )
 

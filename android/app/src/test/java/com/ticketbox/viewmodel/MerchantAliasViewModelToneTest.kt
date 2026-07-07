@@ -12,6 +12,7 @@ import com.ticketbox.data.repository.FakeSessionTokenStore
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.ServerSessionBinding
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
@@ -149,15 +150,19 @@ class MerchantAliasViewModelToneTest {
         val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
         val apiFactory = FixedApiServiceFactory(service)
         val merchantRepository = MerchantRepository(
-            apiClient = apiFactory,
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = apiFactory,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
         )
         val expenseRepository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            apiClient = apiFactory,
-            settingsStore = settingsStore,
-            tokenStore = tokenStore,
+            binding = ServerSessionBinding(
+                apiClient = apiFactory,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
         )
         return Harness(
             vm = MerchantAliasViewModel(

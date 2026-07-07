@@ -40,12 +40,16 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
 
     private fun splitsRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
+        binding = ServerSessionBinding(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = seededSettingsStore(),
+            tokenStore = seededTokenStore(),
+        ),
         deviceNameProvider = { "Android Test" },
-        outbox = outbox,
-        replaceSplitsAdapter = moshi().adapter(ExpenseSplitReplaceRequestDto::class.java),
+        offlineMutations = ExpenseOfflineMutationWiring(
+            outbox = outbox,
+            replaceSplitsAdapter = moshi().adapter(ExpenseSplitReplaceRequestDto::class.java),
+        ),
     )
 
     @Test

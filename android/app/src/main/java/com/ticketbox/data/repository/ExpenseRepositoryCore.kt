@@ -45,67 +45,32 @@ internal data class ConfirmedSyncRequest(
 
 internal class ExpenseRepositoryCore(
     val expenseDao: ExpenseDao,
-    val settingsStore: TicketboxSettingsStore,
-    val tokenStore: SessionTokenStore,
+    val binding: ServerSessionBinding,
     val deviceNameProvider: () -> String,
-    val apiProvider: ApiServiceProvider,
     val sessionCoordinator: LocalLedgerSessionCoordinator,
-    /**
-     * ADR-0038 PR-2g.3: outbox surface for the call sites that
-     * route through it on network failure. ``null`` keeps every
-     * pre-existing test that didn't wire the outbox at the old
-     * behaviour — the IOException catch in
-     * [ExpensePendingRepository.updateExpense] no-ops when either
-     * the outbox OR the matching payload adapter is missing.
-     */
-    val outbox: OutboxRepository? = null,
-    val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
-    /**
-     * ADR-0038 PR-2g.7: token-only payload adapter shared between the
-     * offline-aware confirm / reject call sites
-     * ([ExpensePendingRepository.confirmExpenseAllowingOffline] /
-     * ``rejectExpenseAllowingOffline``) and the matching dispatchers.
-     * ``null`` keeps pre-PR-2g.7 tests (no outbox wiring) on the
-     * direct-only path — the IOException catch falls back to a hard
-     * failure when either the outbox OR this adapter is missing.
-     */
-    val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
-    /**
-     * PR-D: body-carrying payload adapter shared between the offline-aware
-     * items editor ([ExpenseDetailRepository.replaceExpenseItemsAllowingOffline])
-     * and [ReplaceItemsDispatcher]. ``null`` keeps pre-PR-D tests (no outbox
-     * wiring) on the direct-only path — the IOException catch falls back to a
-     * hard failure when either the outbox OR this adapter is missing.
-     */
-    val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
-    /**
-     * ADR-0042 Slice E-1: body-carrying payload adapter shared between the
-     * offline-aware splits editor
-     * ([ExpenseDetailRepository.replaceExpenseSplitsAllowingOffline]) and
-     * [ReplaceSplitsDispatcher]. ``null`` keeps pre-Slice-E-1 tests (no outbox
-     * wiring) on the direct-only path — the IOException catch falls back to a
-     * hard failure when either the outbox OR this adapter is missing.
-     */
-    val replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
-    /**
-     * ADR-0042 Slice E-2: body-carrying payload adapter shared between the
-     * offline-aware "粘贴文字识别"
-     * ([ExpenseDetailRepository.recognizeTextAllowingOffline]) and
-     * [RecognizeTextDispatcher]. ``null`` keeps pre-Slice-E-2 tests (no outbox
-     * wiring) on the direct-only path — the IOException catch falls back to a
-     * hard failure when either the outbox OR this adapter is missing.
-     */
-    val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
-    /**
-     * issue #65 slice 4: body adapter for the offline-aware manual create
-     * ([ExpenseLedgerRepositoryActions.createManualExpense] / [enqueueLocalCreate])
-     * and the [CreateExpenseDispatcher] replay. ``null`` keeps pre-slice-4 tests
-     * (no outbox wiring) on the direct-only create path. (Added as a ctor
-     * param like the sibling adapters — the LongParameterList baseline entry for
-     * this constructor has no parameter list, so it absorbs the new arg.)
-     */
-    val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>? = null,
+    val offlineMutations: ExpenseOfflineMutationWiring = ExpenseOfflineMutationWiring(),
 ) {
+    val settingsStore: TicketboxSettingsStore
+        get() = binding.settingsStore
+    val tokenStore: SessionTokenStore
+        get() = binding.tokenStore
+    val apiProvider: ApiServiceProvider
+        get() = binding.apiProvider
+    val outbox: OutboxRepository?
+        get() = offlineMutations.outbox
+    val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>?
+        get() = offlineMutations.patchExpenseAdapter
+    val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>?
+        get() = offlineMutations.expenseStateTokenAdapter
+    val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>?
+        get() = offlineMutations.replaceItemsAdapter
+    val replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>?
+        get() = offlineMutations.replaceSplitsAdapter
+    val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>?
+        get() = offlineMutations.recognizeTextAdapter
+    val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>?
+        get() = offlineMutations.manualCreateAdapter
+
     val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Repository",
@@ -339,8 +304,9 @@ internal class ExpenseRepositoryCore(
             settingsStore.clear()
             tokenStore.clear()
         }
-        if (outbox != null) {
-            outbox.withBindingTransition(clearExistingRows = true) {
+        val outboxRef = outbox
+        if (outboxRef != null) {
+            outboxRef.withBindingTransition(clearExistingRows = true) {
                 clearStores()
             }
         } else {

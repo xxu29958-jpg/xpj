@@ -18,12 +18,11 @@ class ExpenseRepositoryBindServerTest {
         }
         val tokenStore = FakeSessionTokenStore(events)
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 1)
-        val repository = ExpenseRepository(
-            expenseDao = FakeExpenseDao(),
-            apiClient = FakeApiServiceFactory(apiService),
+        val repository = bindRepository(
+            dao = FakeExpenseDao(),
+            apiFactory = FakeApiServiceFactory(apiService),
             settingsStore = settingsStore,
             tokenStore = tokenStore,
-            deviceNameProvider = { "Android Test Device" },
         )
 
         val result = repository.bindServer("https://api.example.com/", "123456").getOrThrow()
@@ -87,12 +86,11 @@ class ExpenseRepositoryBindServerTest {
         val tokenStore = FakeSessionTokenStore(events).apply { saveToken("old-session-token") }
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 1)
         val apiFactory = FakeApiServiceFactory(apiService)
-        val repository = ExpenseRepository(
-            expenseDao = dao,
-            apiClient = apiFactory,
+        val repository = bindRepository(
+            dao = dao,
+            apiFactory = apiFactory,
             settingsStore = settingsStore,
             tokenStore = tokenStore,
-            deviceNameProvider = { "Android Test Device" },
         )
 
         val result = repository.bindServer("https://new.example.com", "123456").getOrThrow()
@@ -128,12 +126,11 @@ class ExpenseRepositoryBindServerTest {
                 )
             }
         }
-        val repository = ExpenseRepository(
-            expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
+        val repository = bindRepository(
+            dao = dao,
+            apiFactory = FakeApiServiceFactory(apiService),
             settingsStore = settingsStore,
             tokenStore = tokenStore,
-            deviceNameProvider = { "Android Test Device" },
         )
 
         val result = repository.bindServer("https://api.example.com", "123456").getOrThrow()
@@ -154,12 +151,11 @@ class ExpenseRepositoryBindServerTest {
         val tokenStore = FakeSessionTokenStore(events)
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 1)
         val apiFactory = FakeApiServiceFactory(apiService)
-        val repository = ExpenseRepository(
-            expenseDao = dao,
-            apiClient = apiFactory,
+        val repository = bindRepository(
+            dao = dao,
+            apiFactory = apiFactory,
             settingsStore = settingsStore,
             tokenStore = tokenStore,
-            deviceNameProvider = { "Android Test Device" },
         )
 
         val bindResult = repository.bindServer("https://api.example.com", "123456").getOrThrow()
@@ -170,4 +166,19 @@ class ExpenseRepositoryBindServerTest {
         assertEquals("高德", dao.getConfirmed("owner").single().merchant)
         assertEquals("session-token", apiFactory.tokenValues.last())
     }
+
+    private fun bindRepository(
+        dao: FakeExpenseDao,
+        apiFactory: FakeApiServiceFactory,
+        settingsStore: FakeTicketboxSettingsStore,
+        tokenStore: FakeSessionTokenStore,
+    ): ExpenseRepository = ExpenseRepository(
+        expenseDao = dao,
+        binding = ServerSessionBinding(
+            apiClient = apiFactory,
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+        ),
+        deviceNameProvider = { "Android Test Device" },
+    )
 }

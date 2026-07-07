@@ -27,9 +27,11 @@ class MerchantRepositoryConflictDecodeTest {
             """"conflict_merchant_status":"active",""" +
             """"conflict_merchant_deleted":false}"""
         val repo = MerchantRepository(
-            apiClient = TestApiServiceFactory(UpdateConflictApiService(httpException(409, body))),
-            settingsStore = boundSettingsStore(),
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            binding = ServerSessionBinding(
+                apiClient = TestApiServiceFactory(UpdateConflictApiService(httpException(409, body))),
+                settingsStore = boundSettingsStore(),
+                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            ),
         )
 
         val result = repo.updateMerchantCatalog(

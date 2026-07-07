@@ -73,12 +73,16 @@ class MerchantRepositoryOutboxFallbackTest {
         deleteAdapter: com.squareup.moshi.JsonAdapter<MerchantAliasDeleteRequest>? = null,
         updateAdapter: com.squareup.moshi.JsonAdapter<MerchantAliasUpdateRequest>? = null,
     ): MerchantRepository = MerchantRepository(
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
-        outbox = outbox,
-        merchantAliasDeleteAdapter = deleteAdapter,
-        merchantAliasUpdateAdapter = updateAdapter,
+        binding = ServerSessionBinding(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = seededSettingsStore(),
+            tokenStore = seededTokenStore(),
+        ),
+        offlineMutations = MerchantAliasOfflineMutationWiring(
+            outbox = outbox,
+            deleteAdapter = deleteAdapter,
+            updateAdapter = updateAdapter,
+        ),
     )
 
     private fun aliasDto(updatedAt: String = "2026-05-20T13:00:00.000Z"): MerchantAliasDto =
