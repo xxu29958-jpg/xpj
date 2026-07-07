@@ -5,9 +5,10 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -15,6 +16,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.stats.StatsPlanningActions
+import com.ticketbox.ui.screens.stats.StatsPlanningMenuTestTags
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.StatsUiState
 import org.junit.Assert.assertEquals
@@ -53,32 +55,41 @@ class StatsPlanningMenuTest {
 
         composeRule.onNodeWithContentDescription(menuDescription)
             .assert(hasStateDescription(expanded))
-        composeRule.onNodeWithText(context.getString(R.string.stats_header_open_budget)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.stats_header_open_income_plans)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.stats_header_open_debt_goals)).assertIsDisplayed()
+        assertPlanningMenuItem(
+            tag = StatsPlanningMenuTestTags.Budget,
+            label = context.getString(R.string.stats_header_open_budget),
+        )
+        assertPlanningMenuItem(
+            tag = StatsPlanningMenuTestTags.IncomePlans,
+            label = context.getString(R.string.stats_header_open_income_plans),
+        )
+        assertPlanningMenuItem(
+            tag = StatsPlanningMenuTestTags.DebtGoals,
+            label = context.getString(R.string.stats_header_open_debt_goals),
+        )
 
         clickPlanningMenuItem(
-            label = context.getString(R.string.stats_header_open_spending_goal),
+            tag = StatsPlanningMenuTestTags.SpendingGoal,
             assertHit = { assertEquals(1, hits.spendingGoal) },
         )
         openPlanningMenu(menuDescription)
         clickPlanningMenuItem(
-            label = context.getString(R.string.stats_header_open_budget),
+            tag = StatsPlanningMenuTestTags.Budget,
             assertHit = { assertEquals(1, hits.budget) },
         )
         openPlanningMenu(menuDescription)
         clickPlanningMenuItem(
-            label = context.getString(R.string.stats_header_open_recurring),
+            tag = StatsPlanningMenuTestTags.Recurring,
             assertHit = { assertEquals(1, hits.recurring) },
         )
         openPlanningMenu(menuDescription)
         clickPlanningMenuItem(
-            label = context.getString(R.string.stats_header_open_income_plans),
+            tag = StatsPlanningMenuTestTags.IncomePlans,
             assertHit = { assertEquals(1, hits.incomePlans) },
         )
         openPlanningMenu(menuDescription)
         clickPlanningMenuItem(
-            label = context.getString(R.string.stats_header_open_debt_goals),
+            tag = StatsPlanningMenuTestTags.DebtGoals,
             assertHit = { assertEquals(1, hits.debtGoals) },
         )
     }
@@ -89,12 +100,21 @@ class StatsPlanningMenuTest {
     }
 
     private fun clickPlanningMenuItem(
-        label: String,
+        tag: String,
         assertHit: () -> Unit,
     ) {
-        composeRule.onNodeWithText(label).performClick()
+        composeRule.onNodeWithTag(tag).performClick()
         composeRule.waitForIdle()
         assertHit()
+    }
+
+    private fun assertPlanningMenuItem(
+        tag: String,
+        label: String,
+    ) {
+        composeRule.onNodeWithTag(tag)
+            .assert(hasText(label))
+            .assertIsDisplayed()
     }
 
     private fun hasStateDescription(value: String): SemanticsMatcher {
