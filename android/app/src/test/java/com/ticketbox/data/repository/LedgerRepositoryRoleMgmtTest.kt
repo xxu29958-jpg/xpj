@@ -15,15 +15,17 @@ class LedgerRepositoryRoleMgmtTest {
     @Test
     fun updateFamilyMemberRolePostsTrimmedRoleAndMapsResponse() = runTest {
         val api = StubApi(
-            roleUpdateResult = LedgerMemberDto(
-                memberId = 2,
-                accountId = 22,
-                accountPublicId = "acc_member",
-                accountName = "家人",
-                role = "viewer",
-                createdAt = "2026-05-01T00:00:00Z",
-                disabledAt = null,
-                isSelf = false,
+            LedgerStubApiState(
+                roleUpdateResult = LedgerMemberDto(
+                    memberId = 2,
+                    accountId = 22,
+                    accountPublicId = "acc_member",
+                    accountName = "家人",
+                    role = "viewer",
+                    createdAt = "2026-05-01T00:00:00Z",
+                    disabledAt = null,
+                    isSelf = false,
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
@@ -56,15 +58,17 @@ class LedgerRepositoryRoleMgmtTest {
     @Test
     fun disableFamilyMemberPostsTargetAndMapsResponse() = runTest {
         val api = StubApi(
-            disableResult = LedgerMemberDto(
-                memberId = 2,
-                accountId = 22,
-                accountPublicId = "acc_member",
-                accountName = "家人",
-                role = "member",
-                createdAt = "2026-05-01T00:00:00Z",
-                disabledAt = "2026-05-13T00:00:00Z",
-                isSelf = false,
+            LedgerStubApiState(
+                disableResult = LedgerMemberDto(
+                    memberId = 2,
+                    accountId = 22,
+                    accountPublicId = "acc_member",
+                    accountName = "家人",
+                    role = "member",
+                    createdAt = "2026-05-01T00:00:00Z",
+                    disabledAt = "2026-05-13T00:00:00Z",
+                    isSelf = false,
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
@@ -87,31 +91,33 @@ class LedgerRepositoryRoleMgmtTest {
     @Test
     fun transferOwnerDemotesSelfRoleAndRefreshesLedgerCache() = runTest {
         val api = StubApi(
-            transferResult = OwnerTransferResponseDto(
-                ledgerId = "L_family",
-                previousOwner = LedgerMemberDto(
-                    memberId = 1,
-                    accountId = 11,
-                    accountPublicId = "acc_self",
-                    accountName = "我",
-                    role = "member",
-                    createdAt = "2026-05-01T00:00:00Z",
-                    disabledAt = null,
-                    isSelf = true,
+            LedgerStubApiState(
+                transferResult = OwnerTransferResponseDto(
+                    ledgerId = "L_family",
+                    previousOwner = LedgerMemberDto(
+                        memberId = 1,
+                        accountId = 11,
+                        accountPublicId = "acc_self",
+                        accountName = "我",
+                        role = "member",
+                        createdAt = "2026-05-01T00:00:00Z",
+                        disabledAt = null,
+                        isSelf = true,
+                    ),
+                    newOwner = LedgerMemberDto(
+                        memberId = 2,
+                        accountId = 22,
+                        accountPublicId = "acc_new",
+                        accountName = "家人",
+                        role = "owner",
+                        createdAt = "2026-05-02T00:00:00Z",
+                        disabledAt = null,
+                        isSelf = false,
+                    ),
                 ),
-                newOwner = LedgerMemberDto(
-                    memberId = 2,
-                    accountId = 22,
-                    accountPublicId = "acc_new",
-                    accountName = "家人",
-                    role = "owner",
-                    createdAt = "2026-05-02T00:00:00Z",
-                    disabledAt = null,
-                    isSelf = false,
+                listLedgersResult = LedgerListResponseDto(
+                    ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
                 ),
-            ),
-            listLedgersResult = LedgerListResponseDto(
-                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
             ),
         )
         val store = LedgerFakeSettingsStore().apply {

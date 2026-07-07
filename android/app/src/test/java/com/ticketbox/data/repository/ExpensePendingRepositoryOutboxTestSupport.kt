@@ -197,6 +197,18 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         data class Throw(val exception: Throwable) : ApiResult
     }
 
+    protected data class ApiServiceStubExtras(
+        val updateExpenseResultById: Map<String, ApiResult> = emptyMap(),
+        val recognizeTextResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("recognizeText not configured"),
+        ),
+        val acknowledgeException: Throwable? = null,
+        val delegate: ApiService = FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+        ),
+    )
+
     /**
      * Minimal ApiService stand-in: every method falls through to a
      * delegate that throws (via FakeApiService), but ``updateExpense``
@@ -209,7 +221,6 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         // ADR-0042 Slice C: per-expense-id overrides so a fan-out test can mix
         // outcomes (id 1 → Success, id 2 → IOException, id 3 → 409) in one batch.
         // Falls back to ``updateExpenseResult`` for ids not in the map.
-        private val updateExpenseResultById: Map<String, ApiResult> = emptyMap(),
         private val confirmExpenseResult: ApiResult = ApiResult.Throw(
             IllegalStateException("confirmExpense not configured"),
         ),
@@ -222,17 +233,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         private val retryOcrResult: ApiResult = ApiResult.Throw(
             IllegalStateException("retryOcr not configured"),
         ),
-        private val recognizeTextResult: ApiResult = ApiResult.Throw(
-            IllegalStateException("recognizeText not configured"),
-        ),
-        // acknowledge returns ExpenseItemsResponseDto (not ExpenseDto), so
-        // it can't reuse ApiResult; null exception = success.
-        private val acknowledgeException: Throwable? = null,
-        private val delegate: ApiService = FakeApiService(
-            events = mutableListOf(),
-            confirmedFailuresRemaining = 0,
-        ),
-    ) : ApiService by delegate {
+        private val extras: ApiServiceStubExtras = ApiServiceStubExtras(),
+    ) : ApiService by extras.delegate {
         // ADR-0042: records the Idempotency-Key the repository supplied on each
         // direct attempt so tests can assert it matches the enqueued row's key.
         // Captured before the result is applied so the IOException path still
@@ -271,7 +273,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         ): ExpenseDto {
             lastIdempotencyKey = idempotencyKey
             lastUpdateRequest = request
-            return when (val r = updateExpenseResultById[id] ?: updateExpenseResult) {
+            return when (val r = extras.updateExpenseResultById[id] ?: updateExpenseResult) {
                 is ApiResult.Success -> r.dto
                 is ApiResult.Throw -> throw r.exception
             }
@@ -333,7 +335,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         ): ExpenseDto {
             lastRecognizeTextIdempotencyKey = idempotencyKey
             lastRecognizeTextRequest = request
-            return when (val r = recognizeTextResult) {
+            return when (val r = extras.recognizeTextResult) {
                 is ApiResult.Success -> r.dto
                 is ApiResult.Throw -> throw r.exception
             }
@@ -345,7 +347,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             idempotencyKey: String?,
         ): ExpenseItemsResponseDto {
             lastAcknowledgeIdempotencyKey = idempotencyKey
-            acknowledgeException?.let { throw it }
+            extras.acknowledgeException?.let { throw it }
             return ExpenseItemsResponseDto(
                 expenseId = id.toLongOrNull() ?: 0L,
                 rowVersion = 1L,

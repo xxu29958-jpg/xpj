@@ -142,8 +142,10 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val target = expense(
             id = 16L,
             amountCents = null,
-            originalCurrencyCode = CurrencyCode.USD,
-            originalAmountMinor = null,
+            details = PendingExpenseDetails(
+                originalCurrencyCode = CurrencyCode.USD,
+                useAmountAsOriginalMinor = false,
+            ),
         )
         val fake = FakeReviewActions(pending = listOf(target))
         fake.updateResponder = { _, draft ->

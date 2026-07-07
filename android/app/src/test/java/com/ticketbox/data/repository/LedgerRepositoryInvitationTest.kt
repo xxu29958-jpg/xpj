@@ -23,17 +23,19 @@ class LedgerRepositoryInvitationTest {
     fun acceptInvitationPersistsTokenIdentityAndWipesLocalAccountCache() = runTest {
         val newToken = "session-token-fresh"
         val api = StubApi(
-            acceptResult = InvitationAcceptResponseDto(
-                sessionToken = newToken,
-                accountName = "二号",
-                ledgerId = "L_family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel 8",
-                role = "member",
-            ),
-            // refreshLedgers is called after accept; let it succeed with a tiny list.
-            listLedgersResult = LedgerListResponseDto(
-                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+            LedgerStubApiState(
+                acceptResult = InvitationAcceptResponseDto(
+                    sessionToken = newToken,
+                    accountName = "二号",
+                    ledgerId = "L_family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel 8",
+                    role = "member",
+                ),
+                // refreshLedgers is called after accept; let it succeed with a tiny list.
+                listLedgersResult = LedgerListResponseDto(
+                    ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
@@ -80,13 +82,15 @@ class LedgerRepositoryInvitationTest {
     @Test
     fun acceptInvitationSlowResponseDoesNotOverwriteBindingChangedDuringRequest() = runTest {
         val api = StubApi(
-            acceptResult = InvitationAcceptResponseDto(
-                sessionToken = "invite-token",
-                accountName = "邀请账号",
-                ledgerId = "L_invited",
-                ledgerName = "邀请账本",
-                deviceName = "Invite Pixel",
-                role = "member",
+            LedgerStubApiState(
+                acceptResult = InvitationAcceptResponseDto(
+                    sessionToken = "invite-token",
+                    accountName = "邀请账号",
+                    ledgerId = "L_invited",
+                    ledgerName = "邀请账本",
+                    deviceName = "Invite Pixel",
+                    role = "member",
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
@@ -150,11 +154,13 @@ class LedgerRepositoryInvitationTest {
     fun previewInvitationReturnsTargetWithoutReplacingExistingBinding() = runTest {
         val ledgerName = "家庭共同账本" + "很长".repeat(20)
         val api = StubApi(
-            previewResult = InvitationPreviewResponseDto(
-                ledgerId = "L_family",
-                ledgerName = ledgerName,
-                role = "viewer",
-                expiresAt = "2026-05-20T00:00:00Z",
+            LedgerStubApiState(
+                previewResult = InvitationPreviewResponseDto(
+                    ledgerId = "L_family",
+                    ledgerName = ledgerName,
+                    role = "viewer",
+                    expiresAt = "2026-05-20T00:00:00Z",
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
@@ -202,7 +208,7 @@ class LedgerRepositoryInvitationTest {
 
     @Test
     fun previewInvitationNetworkFailurePreservesExistingBinding() = runTest {
-        val api = StubApi(previewError = IOException("timeout"))
+        val api = StubApi(LedgerStubApiState(previewError = IOException("timeout")))
         val store = LedgerFakeSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
@@ -247,8 +253,10 @@ class LedgerRepositoryInvitationTest {
     fun acceptInvitationServerErrorPreservesOldTokenAndBinding() = runTest {
         val errorJson = "{\"error\":\"invalid_invite_token\",\"message\":\"邀请已过期或不存在\"}"
         val api = StubApi(
-            acceptError = HttpException(
-                Response.error<Any>(400, errorJson.toResponseBody("application/json".toMediaType())),
+            LedgerStubApiState(
+                acceptError = HttpException(
+                    Response.error<Any>(400, errorJson.toResponseBody("application/json".toMediaType())),
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }

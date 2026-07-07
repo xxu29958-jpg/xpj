@@ -9,10 +9,6 @@
     <ID>LongMethod:ExpenseRepositoryAuthCheckTest.kt:ExpenseRepositoryAuthCheckTest$@Test fun authCheckLedgerCorrectionClearsTargetCacheBeforeIdentitySwitch</ID>
     <ID>LongMethod:LedgerRepositoryInvitationTest.kt:LedgerRepositoryInvitationTest$@Test fun acceptInvitationSlowResponseDoesNotOverwriteBindingChangedDuringRequest</ID>
     <ID>LongMethod:ReportsRepositoryTest.kt:ReportsApiHandler$override fun invoke: Any?</ID>
-    <ID>LongParameterList:ExpensePendingRepositoryOutboxTestSupport.kt:ExpensePendingRepositoryOutboxTestBase.ApiServiceStub</ID>
-    <ID>LongParameterList:LedgerRepositoryTestFixtures.kt:StubApi</ID>
-    <ID>LongParameterList:OutboxDrainWorkerTest.kt:OutboxDrainWorkerTest$private fun summary</ID>
-    <ID>LongParameterList:PendingViewModelReviewTestSupport.kt:PendingViewModelReviewTestBase$protected fun expense: Expense</ID>
     <ID>TooManyFunctions:ApiServiceProviderTest.kt:ProviderSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:AppViewModelBindingTest.kt:FakeAppSettingsStore : TicketboxSettingsStore</ID>
     <ID>TooManyFunctions:BudgetRepositoryTest.kt:BudgetFakeSettingsStore : TicketboxSettingsStore</ID>

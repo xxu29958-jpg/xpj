@@ -66,7 +66,7 @@ internal class AcknowledgeItemsMismatchDispatcherTest : ExpensePendingRepository
     @Test
     fun `409 idempotency_key_in_progress is retried, not dropped`() = runTest {
         val body = """{"error":"idempotency_key_in_progress","message":"操作正在处理中，请稍后再试。"}"""
-        val stub = ApiServiceStub(acknowledgeException = httpException(409, body))
+        val stub = ApiServiceStub(extras = ApiServiceStubExtras(acknowledgeException = httpException(409, body)))
 
         val result = dispatcherFor(stub).dispatch(ackRow(idempotencyKey = "key-abc"))
 
@@ -79,7 +79,7 @@ internal class AcknowledgeItemsMismatchDispatcherTest : ExpensePendingRepository
     @Test
     fun `409 state_conflict still surfaces as a Conflict row`() = runTest {
         val body = """{"error":"state_conflict","message":"账单已被其它端修改"}"""
-        val stub = ApiServiceStub(acknowledgeException = httpException(409, body))
+        val stub = ApiServiceStub(extras = ApiServiceStubExtras(acknowledgeException = httpException(409, body)))
 
         val result = dispatcherFor(stub).dispatch(ackRow(idempotencyKey = "key-abc"))
 

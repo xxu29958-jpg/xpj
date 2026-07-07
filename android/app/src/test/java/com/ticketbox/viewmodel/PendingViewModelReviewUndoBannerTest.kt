@@ -198,7 +198,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         //   - INTENTIONALLY CHANGED (UX wording / affordance):
         //       * NO 撤销 banner (user wasn't trying to delete)
         //       * message identifies the current duplicate-review draft
-        val target = expense(id = 600L, duplicateStatus = "suspected")
+        val target = expense(id = 600L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
         val vm = PendingViewModel(fake)
@@ -225,7 +225,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         // but exercising the Queued (offline) outcome. Same preserved-vs-
         // changed split: row leaves pending optimistically, sheet
         // closes, NO banner, message reads "已离线忽略，联网后同步".
-        val target = expense(id = 601L, duplicateStatus = "suspected")
+        val target = expense(id = 601L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectOfflineResponder = {
             Result.success(

@@ -42,7 +42,7 @@ class LedgerRepositoryCreateInvitationTest {
 
     @Test
     fun createsMemberInvitationAgainstActiveLedgerAndMapsPlaintextToken() = runTest {
-        val api = StubApi(createInvitationResult = createdResponse(role = "member"))
+        val api = StubApi(LedgerStubApiState(createInvitationResult = createdResponse(role = "member")))
         val store = boundStore()
         val created = repoWith(api, store)
             .createFamilyInvitation(role = "member")
@@ -59,7 +59,7 @@ class LedgerRepositoryCreateInvitationTest {
 
     @Test
     fun trimsRoleAndAcceptsViewer() = runTest {
-        val api = StubApi(createInvitationResult = createdResponse(role = "viewer"))
+        val api = StubApi(LedgerStubApiState(createInvitationResult = createdResponse(role = "viewer")))
         val store = boundStore()
         val created = repoWith(api, store)
             .createFamilyInvitation(role = " viewer ")
@@ -80,7 +80,7 @@ class LedgerRepositoryCreateInvitationTest {
 
     @Test
     fun apiFailureFoldsIntoResultFailure() = runTest {
-        val api = StubApi(createInvitationError = RuntimeException("boom"))
+        val api = StubApi(LedgerStubApiState(createInvitationError = RuntimeException("boom")))
         val store = boundStore()
         val result = repoWith(api, store).createFamilyInvitation(role = "member")
         assertTrue(result.isFailure)

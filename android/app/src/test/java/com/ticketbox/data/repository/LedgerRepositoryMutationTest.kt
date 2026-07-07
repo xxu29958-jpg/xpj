@@ -39,11 +39,13 @@ class LedgerRepositoryMutationTest {
     fun switchLedgerRotatesTokenAndClearsTargetCacheFirst() = runTest {
         val newToken = "session-token-new"
         val api = StubApi(
-            switchResult = LedgerSwitchResponseDto(
-                sessionToken = newToken,
-                ledger = ledgerDto("L_house", "家庭账本", role = "viewer"),
-                accountName = "我",
-                deviceName = "Pixel",
+            LedgerStubApiState(
+                switchResult = LedgerSwitchResponseDto(
+                    sessionToken = newToken,
+                    ledger = ledgerDto("L_house", "家庭账本", role = "viewer"),
+                    accountName = "我",
+                    deviceName = "Pixel",
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
@@ -75,8 +77,10 @@ class LedgerRepositoryMutationTest {
     fun switchLedgerFailurePreservesOldToken() = runTest {
         val errorJson = "{\"error\":\"forbidden\",\"message\":\"无权访问该账本\"}"
         val api = StubApi(
-            switchError = HttpException(
-                Response.error<Any>(403, errorJson.toResponseBody("application/json".toMediaType())),
+            LedgerStubApiState(
+                switchError = HttpException(
+                    Response.error<Any>(403, errorJson.toResponseBody("application/json".toMediaType())),
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
@@ -100,18 +104,20 @@ class LedgerRepositoryMutationTest {
         val firstStarted = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
         val api = StubApi(
-            switchHandler = { ledgerId ->
-                if (ledgerId == "L_first") {
-                    firstStarted.complete(Unit)
-                    releaseFirst.await()
-                }
-                LedgerSwitchResponseDto(
-                    sessionToken = "token-$ledgerId",
-                    ledger = ledgerDto(ledgerId, ledgerId, role = "owner"),
-                    accountName = "我",
-                    deviceName = "Pixel",
-                )
-            },
+            LedgerStubApiState(
+                switchHandler = { ledgerId ->
+                    if (ledgerId == "L_first") {
+                        firstStarted.complete(Unit)
+                        releaseFirst.await()
+                    }
+                    LedgerSwitchResponseDto(
+                        sessionToken = "token-$ledgerId",
+                        ledger = ledgerDto(ledgerId, ledgerId, role = "owner"),
+                        accountName = "我",
+                        deviceName = "Pixel",
+                    )
+                },
+            ),
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
@@ -152,23 +158,25 @@ class LedgerRepositoryMutationTest {
         }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val api = StubApi(
-            switchHandler = { ledgerId ->
-                tokenStore.saveToken("new-token")
-                store.saveIdentity(
-                    accountName = "新账号",
-                    ledgerId = "L_new",
-                    ledgerName = "新账本",
-                    deviceName = "New Pixel",
-                    role = "owner",
-                    boundAt = "2026-05-01T00:05:00Z",
-                )
-                LedgerSwitchResponseDto(
-                    sessionToken = "switched-token",
-                    ledger = ledgerDto(ledgerId, "家庭账本", role = "viewer"),
-                    accountName = "旧账号",
-                    deviceName = "Old Pixel",
-                )
-            },
+            LedgerStubApiState(
+                switchHandler = { ledgerId ->
+                    tokenStore.saveToken("new-token")
+                    store.saveIdentity(
+                        accountName = "新账号",
+                        ledgerId = "L_new",
+                        ledgerName = "新账本",
+                        deviceName = "New Pixel",
+                        role = "owner",
+                        boundAt = "2026-05-01T00:05:00Z",
+                    )
+                    LedgerSwitchResponseDto(
+                        sessionToken = "switched-token",
+                        ledger = ledgerDto(ledgerId, "家庭账本", role = "viewer"),
+                        accountName = "旧账号",
+                        deviceName = "Old Pixel",
+                    )
+                },
+            ),
         )
         val repo = LedgerRepository(
             apiClient = LedgerStubApiFactory(api),

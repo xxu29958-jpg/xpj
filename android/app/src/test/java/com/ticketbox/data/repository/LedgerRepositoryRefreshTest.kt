@@ -16,7 +16,7 @@ class LedgerRepositoryRefreshTest {
             ledgerDto("L_owner", "我的小票夹", role = "owner", isDefault = true),
             ledgerDto("L_house", "家庭账本", role = "viewer", isDefault = false),
         )
-        val api = StubApi(listLedgersResult = LedgerListResponseDto(ledgers))
+        val api = StubApi(LedgerStubApiState(listLedgersResult = LedgerListResponseDto(ledgers)))
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val dao = LedgerFakeDao()
@@ -38,8 +38,10 @@ class LedgerRepositoryRefreshTest {
     @Test
     fun refreshLedgersPersistsActiveLedgerRoleChange() = runTest {
         val api = StubApi(
-            listLedgersResult = LedgerListResponseDto(
-                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "viewer", isDefault = true)),
+            LedgerStubApiState(
+                listLedgersResult = LedgerListResponseDto(
+                    ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "viewer", isDefault = true)),
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
@@ -70,7 +72,7 @@ class LedgerRepositoryRefreshTest {
     @Test
     fun refreshLedgersSlowResponseDoesNotOverwriteCacheAfterBindingChanges() = runTest {
         val oldLedgers = listOf(ledgerDto("L_old", "旧账本", role = "viewer", isDefault = true))
-        val api = StubApi(listLedgersResult = LedgerListResponseDto(oldLedgers))
+        val api = StubApi(LedgerStubApiState(listLedgersResult = LedgerListResponseDto(oldLedgers)))
         val store = LedgerFakeSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
@@ -126,7 +128,7 @@ class LedgerRepositoryRefreshTest {
     @Test
     fun refreshLedgersWrapsRuntimeExceptions() = runTest {
         val repo = LedgerRepository(
-            apiClient = LedgerStubApiFactory(StubApi(listLedgersError = RuntimeException("json bad"))),
+            apiClient = LedgerStubApiFactory(StubApi(LedgerStubApiState(listLedgersError = RuntimeException("json bad")))),
             settingsStore = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") },
             tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
             expenseDao = LedgerFakeDao(),
