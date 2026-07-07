@@ -51,19 +51,17 @@ internal fun PendingMessageCard(message: String) {
 
 @Composable
 internal fun PendingTop(
-    counts: PendingQueueCounts,
-    uploading: Boolean,
-    readOnly: Boolean,
+    state: PendingTopState,
     onUploadScreenshot: () -> Unit,
     trailingAction: (@Composable () -> Unit)? = null,
 ) {
-    val pendingCount = counts.all
+    val pendingCount = state.counts.all
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         AppPageHeader(
             title = stringResource(R.string.pending_top_title),
             subtitle = when {
                 pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_has_items)
-                readOnly -> stringResource(R.string.pending_top_subtitle_empty_readonly)
+                state.readOnly -> stringResource(R.string.pending_top_subtitle_empty_readonly)
                 else -> stringResource(R.string.pending_top_subtitle_empty)
             },
         ) {
@@ -78,19 +76,19 @@ internal fun PendingTop(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PendingCountMetric(count = pendingCount, modifier = Modifier.weight(1f))
-                    if (!readOnly) {
+                    if (!state.readOnly) {
                         PendingUploadAction(
-                            uploading = uploading,
+                            uploading = state.uploading,
                             onUploadScreenshot = onUploadScreenshot,
                         )
                     }
                 }
             }
 
-            !readOnly -> {
+            !state.readOnly -> {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     PendingUploadAction(
-                        uploading = uploading,
+                        uploading = state.uploading,
                         onUploadScreenshot = onUploadScreenshot,
                     )
                 }
@@ -98,6 +96,12 @@ internal fun PendingTop(
         }
     }
 }
+
+internal data class PendingTopState(
+    val counts: PendingQueueCounts,
+    val uploading: Boolean,
+    val readOnly: Boolean,
+)
 
 @Composable
 private fun PendingCountMetric(

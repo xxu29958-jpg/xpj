@@ -29,9 +29,11 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.pending.EmptyPendingState
+import com.ticketbox.ui.screens.pending.EmptyPendingStateModel
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
+import com.ticketbox.ui.screens.pending.NeedsReviewFilterBarState
 import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
 import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
@@ -47,6 +49,7 @@ import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
+import com.ticketbox.ui.screens.pending.PendingTopState
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.ui.screens.pending.pendingListBodyState
@@ -177,9 +180,11 @@ fun PendingScreen(
     ) {
         item {
             PendingTop(
-                counts = queueCounts,
-                uploading = state.uploading,
-                readOnly = readOnly,
+                state = PendingTopState(
+                    counts = queueCounts,
+                    uploading = state.uploading,
+                    readOnly = readOnly,
+                ),
                 onUploadScreenshot = onUploadScreenshot,
                 trailingAction = if (state.items.isNotEmpty()) {
                     {
@@ -271,10 +276,12 @@ fun PendingScreen(
             bodyState == PendingListBodyState.Empty -> {
                 item {
                     EmptyPendingState(
-                        uploading = state.uploading,
-                        loading = state.loading,
-                        readOnly = readOnly,
-                        showUploadGuide = showUploadGuide,
+                        state = EmptyPendingStateModel(
+                            uploading = state.uploading,
+                            loading = state.loading,
+                            readOnly = readOnly,
+                            showUploadGuide = showUploadGuide,
+                        ),
                         onToggleGuide = { showUploadGuide = !showUploadGuide },
                         onRefresh = onRefresh,
                     )
@@ -285,8 +292,10 @@ fun PendingScreen(
                 if (shouldShowNeedsReviewFilterBar(queueCounts, needsReviewFilter)) {
                     item {
                         NeedsReviewFilterBar(
-                            selected = needsReviewFilter,
-                            counts = queueCounts,
+                            state = NeedsReviewFilterBarState(
+                                selected = needsReviewFilter,
+                                counts = queueCounts,
+                            ),
                             onSelect = { needsReviewFilter = it },
                         )
                     }
