@@ -148,8 +148,6 @@
     <ID>LongParameterList:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
     <ID>LongParameterList:PendingViewModel.kt:PendingViewModel$private fun launchStateTransition</ID>
     <ID>LongParameterList:RecurringScreen.kt:@Composable fun RecurringScreen</ID>
-    <ID>LongParameterList:RecurringScreen.kt:@Composable private fun RecurringItemRow</ID>
-    <ID>LongParameterList:RecurringScreen.kt:@Composable private fun RecurringItemsCard</ID>
     <ID>LongParameterList:RuleRepository.kt:RuleRepository</ID>
     <ID>LongParameterList:ServerSettingsScreen.kt:@Composable fun ServerSettingsScreen</ID>
     <ID>LongParameterList:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
