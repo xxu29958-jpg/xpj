@@ -51,60 +51,71 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
 
+@Immutable
+internal data class LedgerToolsSheetState(
+    val ledger: LedgerUiState,
+    val canExport: Boolean,
+)
+
+@Immutable
+internal data class LedgerToolsSheetActions(
+    val onCategoryChange: (String) -> Unit,
+    val onTagChange: (String) -> Unit,
+    val onQueryChange: (String) -> Unit,
+    val onClearFilters: () -> Unit,
+    val onViewModeChange: (LedgerViewMode) -> Unit,
+    val onSync: () -> Unit,
+    val onExportCsv: () -> Unit,
+    val onOpenBillSplit: () -> Unit,
+    val onOpenDebts: () -> Unit,
+    val onOpenReceivables: () -> Unit,
+    val onOpenRepaymentDrafts: () -> Unit,
+    val onOpenGlobalSearch: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 @Composable
 internal fun LedgerToolsSheet(
-    state: LedgerUiState,
-    canExport: Boolean,
-    onCategoryChange: (String) -> Unit,
-    onTagChange: (String) -> Unit,
-    onQueryChange: (String) -> Unit,
-    onClearFilters: () -> Unit,
-    onViewModeChange: (LedgerViewMode) -> Unit,
-    onSync: () -> Unit,
-    onExportCsv: () -> Unit,
-    onOpenBillSplit: () -> Unit,
-    onOpenDebts: () -> Unit,
-    onOpenReceivables: () -> Unit,
-    onOpenRepaymentDrafts: () -> Unit,
-    onOpenGlobalSearch: () -> Unit,
-    onDismiss: () -> Unit,
+    state: LedgerToolsSheetState,
+    actions: LedgerToolsSheetActions,
 ) {
-    val hasUserFilters = state.categoryFilter.isNotBlank() || state.tagFilter.isNotBlank() || state.query.isNotBlank()
+    val ledger = state.ledger
+    val hasUserFilters = ledger.categoryFilter.isNotBlank() || ledger.tagFilter.isNotBlank() || ledger.query.isNotBlank()
     AppSheetScaffold(
         title = stringResource(R.string.ledger_tools_title),
         subtitle = stringResource(R.string.ledger_tools_subtitle),
     ) {
         LedgerFilterTools(
-            state = state,
-            onCategoryChange = onCategoryChange,
-            onTagChange = onTagChange,
-            onQueryChange = onQueryChange,
-            onOpenGlobalSearch = onOpenGlobalSearch,
+            state = ledger,
+            onCategoryChange = actions.onCategoryChange,
+            onTagChange = actions.onTagChange,
+            onQueryChange = actions.onQueryChange,
+            onOpenGlobalSearch = actions.onOpenGlobalSearch,
         )
         LedgerToolDivider()
         LedgerViewTools(
-            selectedMode = state.viewMode,
-            onViewModeChange = onViewModeChange,
+            selectedMode = ledger.viewMode,
+            onViewModeChange = actions.onViewModeChange,
         )
         LedgerToolDivider()
         LedgerDataTools(
-            state = state,
-            canExport = canExport,
-            onSync = onSync,
-            onExportCsv = onExportCsv,
+            state = ledger,
+            canExport = state.canExport,
+            onSync = actions.onSync,
+            onExportCsv = actions.onExportCsv,
         )
         LedgerToolDivider()
         LedgerRelationshipTools(
-            onOpenBillSplit = onOpenBillSplit,
-            onOpenDebts = onOpenDebts,
-            onOpenReceivables = onOpenReceivables,
-            onOpenRepaymentDrafts = onOpenRepaymentDrafts,
+            onOpenBillSplit = actions.onOpenBillSplit,
+            onOpenDebts = actions.onOpenDebts,
+            onOpenReceivables = actions.onOpenReceivables,
+            onOpenRepaymentDrafts = actions.onOpenRepaymentDrafts,
         )
         LedgerToolsFooter(
             hasUserFilters = hasUserFilters,
-            showNoExport = state.items.isEmpty(),
-            onClearFilters = onClearFilters,
-            onDismiss = onDismiss,
+            showNoExport = ledger.items.isEmpty(),
+            onClearFilters = actions.onClearFilters,
+            onDismiss = actions.onDismiss,
         )
     }
 }

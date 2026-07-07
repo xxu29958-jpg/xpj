@@ -57,6 +57,8 @@ import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseEditDatePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
 import com.ticketbox.ui.screens.expense.ExpenseEditMoreSection
+import com.ticketbox.ui.screens.expense.ExpenseEditMoreSectionActions
+import com.ticketbox.ui.screens.expense.ExpenseEditMoreSectionState
 import com.ticketbox.ui.screens.expense.ExpenseEditNoteField
 import com.ticketbox.ui.screens.expense.ExpenseEditRecognizeTextDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
@@ -506,23 +508,27 @@ fun ExpenseEditScreen(
         }
 
         ExpenseEditMoreSection(
-            tags = tags,
-            onTagsChange = { tags = it },
-            valueScoreText = valueScoreText,
-            onValueScoreChange = { valueScoreText = it },
-            regretScoreText = regretScoreText,
-            onRegretScoreChange = { regretScoreText = it },
-            rawTextDisplay = rawTextDisplay,
-            moreExpanded = moreExpanded,
-            onToggleMore = { moreExpanded = !moreExpanded },
-            rawTextExpanded = rawTextExpanded,
-            onToggleRawText = { rawTextExpanded = !rawTextExpanded },
-            ocrRunning = state.ocrRunning,
-            saving = state.saving,
-            readOnly = readOnly,
-            canRecognize = expense.status == "pending",
-            onRetryOcr = onRetryOcr,
-            onRecognizeText = onOpenRecognizeText,
+            state = ExpenseEditMoreSectionState(
+                tags = tags,
+                valueScoreText = valueScoreText,
+                regretScoreText = regretScoreText,
+                rawTextDisplay = rawTextDisplay,
+                moreExpanded = moreExpanded,
+                rawTextExpanded = rawTextExpanded,
+                ocrRunning = state.ocrRunning,
+                saving = state.saving,
+                readOnly = readOnly,
+                canRecognize = expense.status == "pending",
+            ),
+            actions = ExpenseEditMoreSectionActions(
+                onTagsChange = { tags = it },
+                onValueScoreChange = { valueScoreText = it },
+                onRegretScoreChange = { regretScoreText = it },
+                onToggleMore = { moreExpanded = !moreExpanded },
+                onToggleRawText = { rawTextExpanded = !rawTextExpanded },
+                onRetryOcr = onRetryOcr,
+                onRecognizeText = onOpenRecognizeText,
+            ),
         )
 
         // 保存 / 确认入账 / 删除 与校验提示现在浮在底部操作栏（见 bottomBar），

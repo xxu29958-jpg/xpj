@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,23 +20,34 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SettingsUiState
 
+@Immutable
+data class ServerSettingsScreenState(
+    val settings: SettingsUiState,
+    val showAdvancedTools: Boolean,
+)
+
+@Immutable
+data class ServerSettingsScreenActions(
+    val onBack: () -> Unit,
+    val onTestConnection: () -> Unit,
+    val onRunDiagnostics: () -> Unit,
+    val onRefreshServerSettings: () -> Unit,
+    val onSync: () -> Unit,
+)
+
 @Composable
 fun ServerSettingsScreen(
-    state: SettingsUiState,
-    showAdvancedTools: Boolean,
-    onBack: () -> Unit,
-    onTestConnection: () -> Unit,
-    onRunDiagnostics: () -> Unit,
-    onRefreshServerSettings: () -> Unit,
-    onSync: () -> Unit,
+    state: ServerSettingsScreenState,
+    actions: ServerSettingsScreenActions,
 ) {
+    val settings = state.settings
     var showDiagnosticsDetails by remember { mutableStateOf(false) }
-    val pageTitle = if (showAdvancedTools) {
+    val pageTitle = if (state.showAdvancedTools) {
         stringResource(R.string.settings_server_page_title_advanced)
     } else {
         stringResource(R.string.settings_server_page_title_basic)
     }
-    val pageSubtitle = if (showAdvancedTools) {
+    val pageSubtitle = if (state.showAdvancedTools) {
         stringResource(R.string.settings_server_page_subtitle_advanced)
     } else {
         stringResource(R.string.settings_server_page_subtitle_basic)
@@ -43,30 +55,30 @@ fun ServerSettingsScreen(
     SettingsPageFrame(
         title = pageTitle,
         subtitle = pageSubtitle,
-        onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
+        onBack = actions.onBack,
+        status = { AppStatusBanner(message = settings.message, tone = settings.messageTone) },
     ) {
         AccountStatusCard(
             state = AccountStatusCardState(
-                serverSettings = state.confirmedServerSettings(),
-                serverUrl = state.serverUrl,
-                accountName = state.accountName,
-                ledgerName = state.ledgerName,
-                deviceName = state.deviceName,
-                role = state.role,
-                lastUploadAt = state.lastUploadAt,
-                lastSyncAt = state.lastConfirmedSyncAt,
-                busy = state.busy,
+                serverSettings = settings.confirmedServerSettings(),
+                serverUrl = settings.serverUrl,
+                accountName = settings.accountName,
+                ledgerName = settings.ledgerName,
+                deviceName = settings.deviceName,
+                role = settings.role,
+                lastUploadAt = settings.lastUploadAt,
+                lastSyncAt = settings.lastConfirmedSyncAt,
+                busy = settings.busy,
             ),
             actions = AccountStatusCardActions(
-                onCheckConnection = onTestConnection,
+                onCheckConnection = actions.onTestConnection,
                 onSync = {
-                    onSync()
-                    onRefreshServerSettings()
+                    actions.onSync()
+                    actions.onRefreshServerSettings()
                 },
             ),
         )
-        if (showAdvancedTools) {
+        if (state.showAdvancedTools) {
             SettingsSection(title = stringResource(R.string.settings_server_section_internal_tools), icon = Icons.Filled.Settings) {
                 Text(
                     text = stringResource(R.string.settings_server_internal_tools_hint),
@@ -76,21 +88,21 @@ fun ServerSettingsScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
-                        enabled = !state.busy,
-                        onClick = onRunDiagnostics,
+                        enabled = !settings.busy,
+                        onClick = actions.onRunDiagnostics,
                     ) {
                         Text(stringResource(R.string.settings_server_button_run_diagnostics))
                     }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
-                        enabled = !state.busy,
-                        onClick = onRefreshServerSettings,
+                        enabled = !settings.busy,
+                        onClick = actions.onRefreshServerSettings,
                     ) {
                         Text(stringResource(R.string.settings_server_button_refresh_settings))
                     }
                 }
                 AdvancedStatusCard(
-                    diagnostics = state.diagnostics,
+                    diagnostics = settings.diagnostics,
                     expanded = showDiagnosticsDetails,
                     onToggleExpanded = { showDiagnosticsDetails = !showDiagnosticsDetails },
                 )
