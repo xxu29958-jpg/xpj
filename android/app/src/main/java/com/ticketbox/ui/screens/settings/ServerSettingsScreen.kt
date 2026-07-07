@@ -47,20 +47,24 @@ fun ServerSettingsScreen(
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         AccountStatusCard(
-            serverSettings = state.confirmedServerSettings(),
-            serverUrl = state.serverUrl,
-            accountName = state.accountName,
-            ledgerName = state.ledgerName,
-            deviceName = state.deviceName,
-            role = state.role,
-            lastUploadAt = state.lastUploadAt,
-            lastSyncAt = state.lastConfirmedSyncAt,
-            busy = state.busy,
-            onCheckConnection = onTestConnection,
-            onSync = {
-                onSync()
-                onRefreshServerSettings()
-            },
+            state = AccountStatusCardState(
+                serverSettings = state.confirmedServerSettings(),
+                serverUrl = state.serverUrl,
+                accountName = state.accountName,
+                ledgerName = state.ledgerName,
+                deviceName = state.deviceName,
+                role = state.role,
+                lastUploadAt = state.lastUploadAt,
+                lastSyncAt = state.lastConfirmedSyncAt,
+                busy = state.busy,
+            ),
+            actions = AccountStatusCardActions(
+                onCheckConnection = onTestConnection,
+                onSync = {
+                    onSync()
+                    onRefreshServerSettings()
+                },
+            ),
         )
         if (showAdvancedTools) {
             SettingsSection(title = stringResource(R.string.settings_server_section_internal_tools), icon = Icons.Filled.Settings) {
