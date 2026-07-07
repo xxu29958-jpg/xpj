@@ -114,30 +114,44 @@ import com.ticketbox.viewmodel.SettingsUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+internal data class AccountStatusCardState(
+    val serverSettings: ServerSettings?,
+    val serverUrl: String? = null,
+    val accountName: String? = null,
+    val ledgerName: String? = null,
+    val deviceName: String? = null,
+    val role: String? = null,
+    val lastUploadAt: String?,
+    val lastSyncAt: String?,
+    val busy: Boolean = false,
+)
+
+internal data class AccountStatusCardActions(
+    val onCheckConnection: (() -> Unit)? = null,
+    val onSync: (() -> Unit)? = null,
+)
+
 @Composable
 internal fun AccountStatusCard(
-    serverSettings: ServerSettings?,
-    serverUrl: String? = null,
-    accountName: String? = null,
-    ledgerName: String? = null,
-    deviceName: String? = null,
-    role: String? = null,
-    lastUploadAt: String?,
-    lastSyncAt: String?,
-    busy: Boolean = false,
-    onCheckConnection: (() -> Unit)? = null,
-    onSync: (() -> Unit)? = null,
+    state: AccountStatusCardState,
+    actions: AccountStatusCardActions = AccountStatusCardActions(),
 ) {
+    val serverSettings = state.serverSettings
+    val checkConnection = actions.onCheckConnection
+    val sync = actions.onSync
+    val busy = state.busy
+    val serverUrl = state.serverUrl
+    val lastSyncAt = state.lastSyncAt
     val displayAccount = serverSettings?.accountName?.takeIf { it.isNotBlank() }
-        ?: accountName?.takeIf { it.isNotBlank() }
+        ?: state.accountName?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.settings_account_default_account)
     val displayLedger = serverSettings?.ledgerName?.takeIf { it.isNotBlank() }
-        ?: ledgerName?.takeIf { it.isNotBlank() }
+        ?: state.ledgerName?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.settings_account_default_ledger)
     val displayDevice = serverSettings?.deviceName?.takeIf { it.isNotBlank() }
-        ?: deviceName?.takeIf { it.isNotBlank() }
+        ?: state.deviceName?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.settings_account_default_device)
-    val roleCode = serverSettings?.role?.takeIf { it.isNotBlank() } ?: role?.takeIf { it.isNotBlank() }
+    val roleCode = serverSettings?.role?.takeIf { it.isNotBlank() } ?: state.role?.takeIf { it.isNotBlank() }
     val displayRole = roleCode?.let { stringResource(accountRoleLabelRes(it)) }
         ?: stringResource(R.string.settings_account_role_unknown)
     val ledgerScope = serverSettings?.ledgerIsDefault?.let { stringResource(accountScopeLabelRes(it)) }
@@ -151,7 +165,7 @@ internal fun AccountStatusCard(
     } else {
         stringResource(R.string.settings_account_source_local_cache)
     }
-    val latestUploadAt = serverSettings?.latestUploadAt ?: lastUploadAt
+    val latestUploadAt = serverSettings?.latestUploadAt ?: state.lastUploadAt
     val storageText = when (serverSettings?.storageStatus) {
         null -> null
         "normal" -> stringResource(R.string.settings_account_storage_normal)
@@ -222,7 +236,7 @@ internal fun AccountStatusCard(
                 AccountInfoLine(label = stringResource(R.string.settings_account_storage_label), value = it)
             }
         }
-        if (onCheckConnection != null && onSync != null) {
+        if (checkConnection != null && sync != null) {
             Row(
                 modifier = Modifier.padding(top = AppSpacing.tinyGap),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -235,12 +249,12 @@ internal fun AccountStatusCard(
                     },
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
-                    onClick = onCheckConnection,
+                    onClick = checkConnection,
                 )
                 Button(
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
-                    onClick = onSync,
+                    onClick = sync,
                 ) {
                     Text(stringResource(R.string.settings_account_button_update_ledger))
                 }
