@@ -138,17 +138,14 @@ internal class FakeApiService(
     override suspend fun refreshSession(): RefreshSessionResponseDto = unsupported()
 
     override suspend fun confirmedExpenses(
-        page: Int,
-        pageSize: Int,
-        month: String?,
-        category: String?,
-        tag: String?,
-        timezone: String?,
+        query: Map<String, String>,
     ): PaginatedExpensesDto {
+        val page = query["page"]?.toIntOrNull() ?: 1
+        val pageSize = query["page_size"]?.toIntOrNull() ?: 50
         events += "syncConfirmed"
-        lastConfirmedMonth = month
-        lastConfirmedCategory = category
-        lastConfirmedTag = tag
+        lastConfirmedMonth = query["month"]
+        lastConfirmedCategory = query["category"]
+        lastConfirmedTag = query["tag"]
         lastConfirmedPageSize = pageSize
         onConfirmedRequest?.invoke()
         if (confirmedFailuresRemaining > 0) {
@@ -532,20 +529,10 @@ internal class FakeApiService(
 
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
     override suspend fun reportsOverview(
-        month: String?,
-        granularity: String,
-        topN: Int,
-        merchantCategory: String?,
-        rankingMetric: String,
-        timezone: String?,
+        query: Map<String, String>,
     ): ReportsOverviewDto = unsupported()
     override suspend fun reportsOverviewCsv(
-        month: String?,
-        granularity: String,
-        topN: Int,
-        merchantCategory: String?,
-        rankingMetric: String,
-        timezone: String?,
+        query: Map<String, String>,
     ): Response<ResponseBody> = unsupported()
     override suspend fun goals(
         month: String?,

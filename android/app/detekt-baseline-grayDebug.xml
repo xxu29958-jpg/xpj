@@ -103,9 +103,6 @@
     <ID>LongMethod:TagStatsCard.kt:@Composable private fun TagStatsRow</ID>
     <ID>LongMethod:Theme.kt:@Composable fun TicketboxAtmosphereBackground</ID>
     <ID>LongMethod:ThemeVisuals.kt:fun themeVisualsForSkin: ThemeVisuals</ID>
-    <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/expenses/confirmed") suspend fun confirmedExpenses: PaginatedExpensesDto</ID>
-    <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/reports/overview") suspend fun reportsOverview: ReportsOverviewDto</ID>
-    <ID>LongParameterList:ApiService.kt:ApiService$@GET("api/reports/overview.csv") @Streaming suspend fun reportsOverviewCsv: Response&lt;ResponseBody&gt;</ID>
     <ID>LongParameterList:AppAsyncImage.kt:@Composable fun AppAsyncImage</ID>
     <ID>LongParameterList:AppButtons.kt:@Composable fun AppOutlinedButton</ID>
     <ID>LongParameterList:AppFilterChip.kt:@Composable fun AppFilterChip</ID>

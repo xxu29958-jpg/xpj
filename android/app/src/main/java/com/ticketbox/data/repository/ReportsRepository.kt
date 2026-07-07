@@ -122,12 +122,7 @@ class ReportsRepository(
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
                 api.reportsOverview(
-                    month = cleanQuery.month,
-                    granularity = cleanQuery.granularity.apiValue,
-                    topN = cleanQuery.topN,
-                    merchantCategory = cleanQuery.merchantCategory,
-                    rankingMetric = cleanQuery.rankingMetric.apiValue,
-                    timezone = currentTimezoneId(),
+                    query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
                 ).toDomain()
             }
         }
@@ -139,12 +134,7 @@ class ReportsRepository(
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
                 val response = api.reportsOverviewCsv(
-                    month = cleanQuery.month,
-                    granularity = cleanQuery.granularity.apiValue,
-                    topN = cleanQuery.topN,
-                    merchantCategory = cleanQuery.merchantCategory,
-                    rankingMetric = cleanQuery.rankingMetric.apiValue,
-                    timezone = currentTimezoneId(),
+                    query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
                 )
                 val bytes = readExportBody(response)
                 CsvExport(
@@ -573,6 +563,7 @@ private fun ReportsOverviewQuery.validated(): Result<ReportsOverviewQuery> {
         )
     }.mapError()
 }
+
 
 private fun GoalDraft.validated(): Result<GoalDraft> {
     return runCatching {
