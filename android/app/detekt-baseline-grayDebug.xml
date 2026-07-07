@@ -109,7 +109,6 @@
     <ID>LongParameterList:AppPageScaffold.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun AppScrollableContent</ID>
     <ID>LongParameterList:AppearanceScreen.kt:@Composable fun AppearanceScreen</ID>
     <ID>LongParameterList:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>
-    <ID>LongParameterList:DraggableReorderColumn.kt:@Composable fun &lt;T : Any&gt; DraggableReorderColumn</ID>
     <ID>LongParameterList:ExpenseCard.kt:@OptIn(ExperimentalLayoutApi::class) @Composable fun ExpenseCard</ID>
     <ID>LongParameterList:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>

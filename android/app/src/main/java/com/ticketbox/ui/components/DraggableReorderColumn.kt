@@ -26,34 +26,46 @@ import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppMotion
 import kotlin.math.roundToInt
 
+data class DraggableReorderItems<T : Any>(
+    val values: List<T>,
+    val key: (T) -> Any,
+)
+
+data class DraggableReorderBehavior(
+    val onMove: (from: Int, to: Int) -> Unit,
+    val enabled: Boolean = true,
+)
+
+data class DraggableReorderLayout(
+    val spacing: Dp = 12.dp,
+    val estimatedItemHeight: Dp = 72.dp,
+)
+
 /**
  * 长按拾起 + 拖动排序的通用列表。不引第三方库 (V0.10 硬约束)。
- * 调用方按自家 row 实际高度传入 [estimatedItemHeight]; DashboardCardRow 等 8 张同高卡片够用。
+ * 调用方按自家 row 实际高度传入 [DraggableReorderLayout.estimatedItemHeight]。
  * content lambda 提供 (index, item, isDragging), 便于消费方计算 canMoveUp/canMoveDown。
  */
 @Composable
 fun <T : Any> DraggableReorderColumn(
-    items: List<T>,
-    key: (T) -> Any,
-    onMove: (from: Int, to: Int) -> Unit,
+    items: DraggableReorderItems<T>,
+    behavior: DraggableReorderBehavior,
     modifier: Modifier = Modifier,
-    spacing: Dp = 12.dp,
-    estimatedItemHeight: Dp = 72.dp,
-    enabled: Boolean = true,
+    layout: DraggableReorderLayout = DraggableReorderLayout(),
     content: @Composable (index: Int, item: T, isDragging: Boolean) -> Unit,
 ) {
     val haptics = rememberAppHaptics()
     val density = LocalDensity.current
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
-    val rowStepPx = with(density) { (estimatedItemHeight + spacing).toPx() }
+    val rowStepPx = with(density) { (layout.estimatedItemHeight + layout.spacing).toPx() }
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(spacing),
+        verticalArrangement = Arrangement.spacedBy(layout.spacing),
     ) {
-        items.forEachIndexed { index, item ->
-            val itemKey = remember(item) { key(item) }
+        items.values.forEachIndexed { index, item ->
+            val itemKey = remember(item) { items.key(item) }
             val isDragging = draggingIndex == index
             val liftElevation by animateDpAsState(
                 targetValue = if (isDragging) AppElevation.draggingCard else 0.dp,
@@ -66,8 +78,8 @@ fun <T : Any> DraggableReorderColumn(
                     .zIndex(if (isDragging) 1f else 0f)
                     .offset { IntOffset(0, if (isDragging) dragOffsetY.roundToInt() else 0) }
                     .shadow(elevation = liftElevation)
-                    .pointerInput(itemKey, enabled, items.size) {
-                        if (!enabled) return@pointerInput
+                    .pointerInput(itemKey, behavior.enabled, items.values.size) {
+                        if (!behavior.enabled) return@pointerInput
                         detectDragGesturesAfterLongPress(
                             onDragStart = { draggingIndex = index; dragOffsetY = 0f; haptics.tick() },
                             onDragEnd = { draggingIndex = null; dragOffsetY = 0f },
@@ -76,14 +88,14 @@ fun <T : Any> DraggableReorderColumn(
                                 dragOffsetY += drag.y
                                 var current = draggingIndex ?: return@detectDragGesturesAfterLongPress
                                 val half = rowStepPx / 2f
-                                while (dragOffsetY > half && current < items.lastIndex) {
-                                    onMove(current, current + 1)
+                                while (dragOffsetY > half && current < items.values.lastIndex) {
+                                    behavior.onMove(current, current + 1)
                                     current += 1
                                     draggingIndex = current
                                     dragOffsetY -= rowStepPx
                                 }
                                 while (dragOffsetY < -half && current > 0) {
-                                    onMove(current, current - 1)
+                                    behavior.onMove(current, current - 1)
                                     current -= 1
                                     draggingIndex = current
                                     dragOffsetY += rowStepPx
