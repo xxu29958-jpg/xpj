@@ -30,8 +30,8 @@ class ExpenseFiltersTest {
     @Test
     fun fallsBackToConfirmedAtWhenExpenseTimeIsBlank() {
         val items = listOf(
-            expense(id = 1, category = "购物", expenseTime = null, confirmedAt = "2026-05-03T04:20:00Z"),
-            expense(id = 2, category = "购物", expenseTime = null, confirmedAt = "2026-04-03T04:20:00Z"),
+            expense(id = 1, category = "购物", expenseTime = null, details = FixtureDetails(confirmedAt = "2026-05-03T04:20:00Z")),
+            expense(id = 2, category = "购物", expenseTime = null, details = FixtureDetails(confirmedAt = "2026-04-03T04:20:00Z")),
         )
 
         val filtered = filterConfirmedExpenses(
@@ -123,9 +123,9 @@ class ExpenseFiltersTest {
     @Test
     fun monthlyStatsFallbackUsesConfirmedAtAtLocalMonthBoundary() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = null, confirmedAt = "2026-04-30T16:30:00Z", amountCents = 1200),
-            expense(id = 2, category = "餐饮", expenseTime = null, confirmedAt = "2026-04-30T15:30:00Z", amountCents = 2300),
-            expense(id = 3, category = "交通", expenseTime = null, confirmedAt = "2026-04-30T16:40:00Z", amountCents = 3400),
+            expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 1200, details = FixtureDetails(confirmedAt = "2026-04-30T16:30:00Z")),
+            expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 2300, details = FixtureDetails(confirmedAt = "2026-04-30T15:30:00Z")),
+            expense(id = 3, category = "交通", expenseTime = null, amountCents = 3400, details = FixtureDetails(confirmedAt = "2026-04-30T16:40:00Z")),
         )
         val zone = ZoneId.of("Asia/Shanghai")
 
@@ -163,7 +163,7 @@ class ExpenseFiltersTest {
         assertEquals(
             "2026-05",
             expenseLedgerMonth(
-                expense(id = 2, category = "餐饮", expenseTime = null, confirmedAt = "2026-04-30T16:30:00Z"),
+                expense(id = 2, category = "餐饮", expenseTime = null, details = FixtureDetails(confirmedAt = "2026-04-30T16:30:00Z")),
                 zoneId = zone,
             ),
         )
@@ -193,10 +193,10 @@ class ExpenseFiltersTest {
     @Test
     fun filtersByMerchantNoteTagsAndSourceQuery() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", merchant = "美团外卖"),
-            expense(id = 2, category = "交通", expenseTime = "2026-05-03T04:20:00Z", note = "地铁通勤"),
-            expense(id = 3, category = "购物", expenseTime = "2026-05-03T04:20:00Z", tags = "真香"),
-            expense(id = 4, category = "其他", expenseTime = "2026-05-03T04:20:00Z", source = "手动记账"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(merchant = "美团外卖")),
+            expense(id = 2, category = "交通", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(note = "地铁通勤")),
+            expense(id = 3, category = "购物", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(tags = "真香")),
+            expense(id = 4, category = "其他", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(source = "手动记账")),
         )
 
         assertEquals(
@@ -232,9 +232,9 @@ class ExpenseFiltersTest {
     @Test
     fun filtersByExactNormalizedTag() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", tags = " 周末 ，AI"),
-            expense(id = 2, category = "购物", expenseTime = "2026-05-04T04:20:00Z", tags = "周末采购"),
-            expense(id = 3, category = "交通", expenseTime = "2026-05-05T04:20:00Z", tags = "ai"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(tags = " 周末 ，AI")),
+            expense(id = 2, category = "购物", expenseTime = "2026-05-04T04:20:00Z", details = FixtureDetails(tags = "周末采购")),
+            expense(id = 3, category = "交通", expenseTime = "2026-05-05T04:20:00Z", details = FixtureDetails(tags = "ai")),
         )
 
         assertEquals(
@@ -257,7 +257,7 @@ class ExpenseFiltersTest {
     fun buildsSevenDayTrendUsingExpenseTimeFallback() {
         val items = listOf(
             expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
-            expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
+            expense(id = 2, category = "交通", expenseTime = null, amountCents = 2300, details = FixtureDetails(confirmedAt = "2026-05-04T04:20:00Z")),
             expense(id = 3, category = "购物", expenseTime = "2026-04-28T04:20:00Z", amountCents = 9900),
         )
 
@@ -278,7 +278,7 @@ class ExpenseFiltersTest {
     fun buildsMonthComparisonUsingLocalCache() {
         val items = listOf(
             expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
-            expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
+            expense(id = 2, category = "交通", expenseTime = null, amountCents = 2300, details = FixtureDetails(confirmedAt = "2026-05-04T04:20:00Z")),
             expense(id = 3, category = "购物", expenseTime = "2026-04-28T04:20:00Z", amountCents = 2000),
             expense(id = 4, category = "购物", expenseTime = "2026-03-28T04:20:00Z", amountCents = 9900),
         )
@@ -307,11 +307,11 @@ class ExpenseFiltersTest {
     @Test
     fun recentMerchantsAreNewestFirstDedupedAndCarryLastCategory() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-01T04:00:00Z", merchant = "早餐店"),
-            expense(id = 2, category = "交通", expenseTime = "2026-05-05T04:00:00Z", merchant = "地铁"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-01T04:00:00Z", details = FixtureDetails(merchant = "早餐店")),
+            expense(id = 2, category = "交通", expenseTime = "2026-05-05T04:00:00Z", details = FixtureDetails(merchant = "地铁")),
             // Same merchant as #1 but more recent AND a different category — the
             // newest occurrence must win the slot and supply the category.
-            expense(id = 3, category = "夜宵", expenseTime = "2026-05-06T04:00:00Z", merchant = "早餐店"),
+            expense(id = 3, category = "夜宵", expenseTime = "2026-05-06T04:00:00Z", details = FixtureDetails(merchant = "早餐店")),
         )
 
         val recent = recentLedgerMerchants(items)
@@ -328,11 +328,11 @@ class ExpenseFiltersTest {
     @Test
     fun recentMerchantsSkipBlankMerchantsAndRespectLimit() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-01T04:00:00Z", merchant = "A"),
-            expense(id = 2, category = "餐饮", expenseTime = "2026-05-02T04:00:00Z", merchant = "  "),
-            expense(id = 3, category = "餐饮", expenseTime = "2026-05-03T04:00:00Z", merchant = null),
-            expense(id = 4, category = "餐饮", expenseTime = "2026-05-04T04:00:00Z", merchant = "B"),
-            expense(id = 5, category = "餐饮", expenseTime = "2026-05-05T04:00:00Z", merchant = "C"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-01T04:00:00Z", details = FixtureDetails(merchant = "A")),
+            expense(id = 2, category = "餐饮", expenseTime = "2026-05-02T04:00:00Z", details = FixtureDetails(merchant = "  ")),
+            expense(id = 3, category = "餐饮", expenseTime = "2026-05-03T04:00:00Z", details = FixtureDetails(merchant = null)),
+            expense(id = 4, category = "餐饮", expenseTime = "2026-05-04T04:00:00Z", details = FixtureDetails(merchant = "B")),
+            expense(id = 5, category = "餐饮", expenseTime = "2026-05-05T04:00:00Z", details = FixtureDetails(merchant = "C")),
         )
 
         // Blank/null merchants drop out; limit caps the list (newest first).
@@ -346,8 +346,8 @@ class ExpenseFiltersTest {
     @Test
     fun recentMerchantsFallBackToConfirmedAtForRecency() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = null, confirmedAt = "2026-05-01T04:00:00Z", merchant = "旧店"),
-            expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-09T04:00:00Z", merchant = "新店"),
+            expense(id = 1, category = "餐饮", expenseTime = null, details = FixtureDetails(confirmedAt = "2026-05-01T04:00:00Z", merchant = "旧店")),
+            expense(id = 2, category = "交通", expenseTime = null, details = FixtureDetails(confirmedAt = "2026-05-09T04:00:00Z", merchant = "新店")),
         )
 
         assertEquals(
@@ -370,9 +370,9 @@ class ExpenseFiltersTest {
     @Test
     fun buildsMonthlyStatsFromLocalConfirmedCache() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200, tags = "真香，AI，真香"),
-            expense(id = 2, category = "餐饮", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
-            expense(id = 3, category = "购物", expenseTime = "2026-05-05T04:20:00Z", amountCents = 9900, tags = "必要"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200, details = FixtureDetails(tags = "真香，AI，真香")),
+            expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 2300, details = FixtureDetails(confirmedAt = "2026-05-04T04:20:00Z")),
+            expense(id = 3, category = "购物", expenseTime = "2026-05-05T04:20:00Z", amountCents = 9900, details = FixtureDetails(tags = "必要")),
             expense(id = 4, category = "交通", expenseTime = "2026-04-30T04:20:00Z", amountCents = 400),
         )
 
@@ -572,25 +572,29 @@ class ExpenseFiltersTest {
         )
     }
 
+    private data class FixtureDetails(
+        val confirmedAt: String? = "2026-05-03T04:20:00Z",
+        val merchant: String? = "测试商家",
+        val note: String? = null,
+        val tags: String? = null,
+        val source: String = "iPhone截图",
+    )
+
     private fun expense(
         id: Long,
         category: String,
         expenseTime: String?,
-        confirmedAt: String? = "2026-05-03T04:20:00Z",
         amountCents: Long? = 100,
-        merchant: String? = "测试商家",
-        note: String? = null,
-        tags: String? = null,
-        source: String = "iPhone截图",
+        details: FixtureDetails = FixtureDetails(),
     ): Expense {
         return Expense(
             id = id,
             publicId = "test-$id",
             amountCents = amountCents,
-            merchant = merchant,
+            merchant = details.merchant,
             category = category,
-            note = note,
-            source = source,
+            note = details.note,
+            source = details.source,
             imagePath = null,
             thumbnailPath = null,
             imageHash = null,
@@ -599,7 +603,7 @@ class ExpenseFiltersTest {
             duplicateStatus = "none",
             duplicateOfId = null,
             duplicateReason = null,
-            tags = tags,
+            tags = details.tags,
             valueScore = null,
             regretScore = null,
             status = "confirmed",
@@ -607,7 +611,7 @@ class ExpenseFiltersTest {
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = "2026-05-01T00:00:00Z",
             rowVersion = 1L,
-            confirmedAt = confirmedAt,
+            confirmedAt = details.confirmedAt,
             rejectedAt = null,
         )
     }
