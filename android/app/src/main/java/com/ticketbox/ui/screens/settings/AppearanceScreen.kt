@@ -98,32 +98,58 @@ import com.ticketbox.viewmodel.AppearanceUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class AppearanceScreenState(
+    val appearance: AppearanceUiState,
+    val preferences: AppearancePreferenceState,
+)
+
+data class AppearancePreferenceState(
+    val currentSkin: AppSkin,
+    val currentCurrency: CurrencyCode,
+)
+
+data class AppearanceScreenActions(
+    val onBack: () -> Unit,
+    val preferences: AppearancePreferenceActions,
+    val background: AppearanceBackgroundActions,
+    val immersion: AppearanceImmersionActions,
+)
+
+data class AppearancePreferenceActions(
+    val onSkinChange: (AppSkin) -> Unit,
+    val onCurrencyChange: (CurrencyCode) -> Unit,
+)
+
+data class AppearanceBackgroundActions(
+    val onOpenGallery: () -> Unit,
+    val onPickCustomImage: () -> Unit,
+    val onPreviewThemeDefault: () -> Unit,
+    val onClearBackgroundImage: () -> Unit,
+)
+
+data class AppearanceImmersionActions(
+    val onModeChange: (ImmersionMode) -> Unit,
+    val onParallaxChange: (Boolean) -> Unit,
+    val onReduceMotionChange: (Boolean) -> Unit,
+)
+
 @Composable
 fun AppearanceScreen(
-    state: AppearanceUiState,
-    currentSkin: AppSkin,
-    currentCurrency: CurrencyCode,
-    onBack: () -> Unit,
-    onSkinChange: (AppSkin) -> Unit,
-    onCurrencyChange: (CurrencyCode) -> Unit,
-    onOpenGallery: () -> Unit,
-    onPickCustomImage: () -> Unit,
-    onPreviewThemeDefault: () -> Unit,
-    onClearBackgroundImage: () -> Unit,
-    onImmersionModeChange: (ImmersionMode) -> Unit,
-    onParallaxChange: (Boolean) -> Unit,
-    onReduceMotionChange: (Boolean) -> Unit,
+    state: AppearanceScreenState,
+    actions: AppearanceScreenActions,
 ) {
+    val appearance = state.appearance
+    val preferences = state.preferences
     SettingsPageFrame(
         title = stringResource(R.string.appearance_page_title),
         subtitle = stringResource(R.string.appearance_page_subtitle),
-        onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
+        onBack = actions.onBack,
+        status = { AppStatusBanner(message = appearance.message, tone = appearance.messageTone) },
     ) {
         AppearanceOverviewSection(
-            currentSkin = currentSkin,
-            currentCurrency = currentCurrency,
-            backgroundSettings = state.backgroundSettings,
+            currentSkin = preferences.currentSkin,
+            currentCurrency = preferences.currentCurrency,
+            backgroundSettings = appearance.backgroundSettings,
         )
         SettingsSection(title = stringResource(R.string.appearance_section_skin_title), icon = Icons.Filled.Palette) {
             AppSkin.entries.chunked(2).forEach { rowSkins ->
@@ -135,8 +161,8 @@ fun AppearanceScreen(
                         SkinOptionCard(
                             modifier = Modifier.weight(1f),
                             skin = skin,
-                            selected = skin == currentSkin,
-                            onClick = { onSkinChange(skin) },
+                            selected = skin == preferences.currentSkin,
+                            onClick = { actions.preferences.onSkinChange(skin) },
                         )
                     }
                     if (rowSkins.size == 1) {
@@ -146,16 +172,16 @@ fun AppearanceScreen(
             }
         }
         CurrencySection(
-            currentCurrency = currentCurrency,
-            onCurrencyChange = onCurrencyChange,
+            currentCurrency = preferences.currentCurrency,
+            onCurrencyChange = actions.preferences.onCurrencyChange,
         )
         SettingsSection(title = stringResource(R.string.appearance_section_background_title), icon = Icons.Filled.Image) {
             SettingsOpenPanel(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
                     ThemeMoodPreview(
-                        settings = state.backgroundSettings,
-                        skin = currentSkin,
+                        settings = appearance.backgroundSettings,
+                        skin = preferences.currentSkin,
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -165,14 +191,14 @@ fun AppearanceScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(stringResource(R.string.appearance_background_current_label), style = MaterialTheme.typography.titleSmall)
                             Text(
-                                text = backgroundSourceLabel(state.backgroundSettings),
+                                text = backgroundSourceLabel(appearance.backgroundSettings),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         SkinPill(
-                            text = stringResource(immersionModeNameRes(state.backgroundSettings.immersionMode)),
+                            text = stringResource(immersionModeNameRes(appearance.backgroundSettings.immersionMode)),
                             scheme = MaterialTheme.colorScheme,
-                            visuals = themeVisualsForSkin(currentSkin),
+                            visuals = themeVisualsForSkin(preferences.currentSkin),
                             emphasized = false,
                         )
                     }
@@ -180,26 +206,26 @@ fun AppearanceScreen(
                         BackgroundActionButton(
                             text = stringResource(R.string.appearance_background_open_gallery),
                             modifier = Modifier.weight(1f),
-                            onClick = onOpenGallery,
+                            onClick = actions.background.onOpenGallery,
                         )
                         BackgroundActionButton(
                             text = stringResource(R.string.appearance_background_pick_image),
                             modifier = Modifier.weight(1f),
-                            onClick = onPickCustomImage,
+                            onClick = actions.background.onPickCustomImage,
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                         BackgroundActionButton(
                             text = stringResource(R.string.appearance_background_follow_theme),
                             modifier = Modifier.weight(1f),
-                            onClick = onPreviewThemeDefault,
+                            onClick = actions.background.onPreviewThemeDefault,
                         )
                         BackgroundActionButton(
                             text = stringResource(R.string.appearance_background_clear_image),
                             modifier = Modifier.weight(1f),
-                            enabled = state.backgroundSettings.source == BackgroundSource.CustomImage &&
-                                state.backgroundSettings.customImagePath != null,
-                            onClick = onClearBackgroundImage,
+                            enabled = appearance.backgroundSettings.source == BackgroundSource.CustomImage &&
+                                appearance.backgroundSettings.customImagePath != null,
+                            onClick = actions.background.onClearBackgroundImage,
                         )
                     }
                     Text(
@@ -211,22 +237,22 @@ fun AppearanceScreen(
         }
         SettingsSection(title = stringResource(R.string.appearance_section_immersion_title), icon = Icons.Filled.Tune) {
             ImmersionModePicker(
-                selected = state.backgroundSettings.immersionMode,
-                onSelect = onImmersionModeChange,
+                selected = appearance.backgroundSettings.immersionMode,
+                onSelect = actions.immersion.onModeChange,
             )
             BackgroundSwitchLine(
                 title = stringResource(R.string.appearance_parallax_title),
                 subtitle = stringResource(R.string.appearance_parallax_subtitle),
-                checked = state.backgroundSettings.enableParallax && !state.backgroundSettings.reduceMotion,
-                enabled = !state.backgroundSettings.reduceMotion,
-                onCheckedChange = onParallaxChange,
+                checked = appearance.backgroundSettings.enableParallax && !appearance.backgroundSettings.reduceMotion,
+                enabled = !appearance.backgroundSettings.reduceMotion,
+                onCheckedChange = actions.immersion.onParallaxChange,
             )
             BackgroundSwitchLine(
                 title = stringResource(R.string.appearance_reduce_motion_title),
                 subtitle = stringResource(R.string.appearance_reduce_motion_subtitle),
-                checked = state.backgroundSettings.reduceMotion,
+                checked = appearance.backgroundSettings.reduceMotion,
                 enabled = true,
-                onCheckedChange = onReduceMotionChange,
+                onCheckedChange = actions.immersion.onReduceMotionChange,
             )
         }
     }

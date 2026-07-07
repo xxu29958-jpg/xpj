@@ -40,12 +40,27 @@ import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.BillSplitScreen
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.settings.AboutScreen
+import com.ticketbox.ui.screens.settings.AppearanceBackgroundActions
+import com.ticketbox.ui.screens.settings.AppearanceImmersionActions
+import com.ticketbox.ui.screens.settings.AppearancePreferenceActions
+import com.ticketbox.ui.screens.settings.AppearancePreferenceState
 import com.ticketbox.ui.screens.settings.AppearanceScreen
+import com.ticketbox.ui.screens.settings.AppearanceScreenActions
+import com.ticketbox.ui.screens.settings.AppearanceScreenState
 import com.ticketbox.ui.screens.settings.BackgroundCropScreen
 import com.ticketbox.ui.screens.settings.BackgroundGalleryScreen
 import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.BackgroundTasksScreen
+import com.ticketbox.ui.screens.settings.CategoryRulesApplicationActions
+import com.ticketbox.ui.screens.settings.CategoryRulesApplicationState
+import com.ticketbox.ui.screens.settings.CategoryRulesInteractionState
+import com.ticketbox.ui.screens.settings.CategoryRulesRuleActions
+import com.ticketbox.ui.screens.settings.CategoryRulesRuleListState
 import com.ticketbox.ui.screens.settings.CategoryRulesScreen
+import com.ticketbox.ui.screens.settings.CategoryRulesScreenActions
+import com.ticketbox.ui.screens.settings.CategoryRulesScreenState
+import com.ticketbox.ui.screens.settings.CategoryRulesStatusState
+import com.ticketbox.ui.screens.settings.CategoryRulesUndoActions
 import com.ticketbox.ui.screens.settings.DashboardCardsScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
@@ -274,22 +289,34 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.Appearance -> AppearanceScreen(
-            state = states.appearance,
-            currentSkin = chromeState.currentSkin,
-            currentCurrency = chromeState.currentCurrency,
-            onBack = { route = SettingsDestination.Root },
-            onSkinChange = actions.onSkinChange,
-            onCurrencyChange = actions.onCurrencyChange,
-            onOpenGallery = { route = SettingsDestination.BackgroundGallery },
-            onPickCustomImage = ::launchImagePicker,
-            onPreviewThemeDefault = ::previewThemeDefault,
-            onClearBackgroundImage = {
-                backgroundImageStore.deleteCustomBackground(states.appearance.backgroundSettings.customImagePath)
-                actions.onClearBackgroundImage()
-            },
-            onImmersionModeChange = actions.onImmersionModeChange,
-            onParallaxChange = actions.onParallaxChange,
-            onReduceMotionChange = actions.onReduceMotionChange,
+            state = AppearanceScreenState(
+                appearance = states.appearance,
+                preferences = AppearancePreferenceState(
+                    currentSkin = chromeState.currentSkin,
+                    currentCurrency = chromeState.currentCurrency,
+                ),
+            ),
+            actions = AppearanceScreenActions(
+                onBack = { route = SettingsDestination.Root },
+                preferences = AppearancePreferenceActions(
+                    onSkinChange = actions.onSkinChange,
+                    onCurrencyChange = actions.onCurrencyChange,
+                ),
+                background = AppearanceBackgroundActions(
+                    onOpenGallery = { route = SettingsDestination.BackgroundGallery },
+                    onPickCustomImage = ::launchImagePicker,
+                    onPreviewThemeDefault = ::previewThemeDefault,
+                    onClearBackgroundImage = {
+                        backgroundImageStore.deleteCustomBackground(states.appearance.backgroundSettings.customImagePath)
+                        actions.onClearBackgroundImage()
+                    },
+                ),
+                immersion = AppearanceImmersionActions(
+                    onModeChange = actions.onImmersionModeChange,
+                    onParallaxChange = actions.onParallaxChange,
+                    onReduceMotionChange = actions.onReduceMotionChange,
+                ),
+            ),
         )
 
         SettingsDestination.BackgroundGallery -> BackgroundGalleryScreen(
@@ -361,26 +388,44 @@ internal fun SettingsDestinationHost(
         }
 
         SettingsDestination.CategoryRules -> CategoryRulesScreen(
-            rules = states.rules.categoryRules,
-            rulesLoading = states.rules.categoryRulesLoading,
-            busy = states.rules.busy,
-            readOnly = !ledgerRoleCanModify(states.settings.role),
-            message = states.rules.message,
-            messageTone = states.rules.messageTone,
-            onBack = { route = SettingsDestination.Root },
-            onCreateRule = actions.onCreateRule,
-            onUpdateRule = actions.onUpdateRule,
-            onToggleRule = actions.onToggleRule,
-            onDeleteRule = actions.onDeleteRule,
-            applications = states.rules.ruleApplications,
-            applicationsLoading = states.rules.ruleApplicationsLoading,
-            confirmedPreview = states.rules.confirmedRulesPreview,
-            onPreviewApplyConfirmedRules = actions.onPreviewApplyConfirmedRules,
-            onConfirmApplyConfirmedRules = actions.onConfirmApplyConfirmedRules,
-            onRollbackRuleApplication = actions.onRollbackRuleApplication,
-            undoableRule = states.rules.undoableRule,
-            onUndoDelete = actions.onUndoRuleDelete,
-            onDismissUndo = actions.onDismissRuleUndo,
+            state = CategoryRulesScreenState(
+                rules = CategoryRulesRuleListState(
+                    rules = states.rules.categoryRules,
+                    loading = states.rules.categoryRulesLoading,
+                ),
+                interaction = CategoryRulesInteractionState(
+                    busy = states.rules.busy,
+                    readOnly = !ledgerRoleCanModify(states.settings.role),
+                ),
+                status = CategoryRulesStatusState(
+                    message = states.rules.message,
+                    messageTone = states.rules.messageTone,
+                ),
+                applications = CategoryRulesApplicationState(
+                    history = states.rules.ruleApplications,
+                    loading = states.rules.ruleApplicationsLoading,
+                    confirmedPreview = states.rules.confirmedRulesPreview,
+                ),
+                undoableRule = states.rules.undoableRule,
+            ),
+            actions = CategoryRulesScreenActions(
+                onBack = { route = SettingsDestination.Root },
+                rules = CategoryRulesRuleActions(
+                    onCreate = actions.onCreateRule,
+                    onUpdate = actions.onUpdateRule,
+                    onToggle = actions.onToggleRule,
+                    onDelete = actions.onDeleteRule,
+                ),
+                applications = CategoryRulesApplicationActions(
+                    onPreviewApplyConfirmedRules = actions.onPreviewApplyConfirmedRules,
+                    onConfirmApplyConfirmedRules = actions.onConfirmApplyConfirmedRules,
+                    onRollbackRuleApplication = actions.onRollbackRuleApplication,
+                ),
+                undo = CategoryRulesUndoActions(
+                    onUndoDelete = actions.onUndoRuleDelete,
+                    onDismiss = actions.onDismissRuleUndo,
+                ),
+            ),
         )
 
         SettingsDestination.MerchantAliases -> MerchantAliasesScreen(

@@ -43,74 +43,109 @@ import com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationHistory
 import com.ticketbox.ui.screens.settings.categoryrules.RollbackRuleApplicationDialog
 import kotlinx.coroutines.delay
 
+data class CategoryRulesScreenState(
+    val rules: CategoryRulesRuleListState,
+    val interaction: CategoryRulesInteractionState,
+    val status: CategoryRulesStatusState,
+    val applications: CategoryRulesApplicationState,
+    val undoableRule: CategoryRule?,
+)
+
+data class CategoryRulesRuleListState(
+    val rules: List<CategoryRule>,
+    val loading: Boolean,
+)
+
+data class CategoryRulesInteractionState(
+    val busy: Boolean,
+    val readOnly: Boolean,
+)
+
+data class CategoryRulesStatusState(
+    val message: UiText?,
+    val messageTone: MessageTone,
+)
+
+data class CategoryRulesApplicationState(
+    val history: List<RuleApplicationBatch>,
+    val loading: Boolean,
+    val confirmedPreview: RuleApplyConfirmedResult?,
+)
+
+data class CategoryRulesScreenActions(
+    val onBack: () -> Unit,
+    val rules: CategoryRulesRuleActions,
+    val applications: CategoryRulesApplicationActions,
+    val undo: CategoryRulesUndoActions,
+)
+
+data class CategoryRulesRuleActions(
+    val onCreate: (String, String, Int) -> Unit,
+    val onUpdate: (CategoryRule, String, String, Int) -> Unit,
+    val onToggle: (CategoryRule) -> Unit,
+    val onDelete: (CategoryRule) -> Unit,
+)
+
+data class CategoryRulesApplicationActions(
+    val onPreviewApplyConfirmedRules: () -> Unit,
+    val onConfirmApplyConfirmedRules: () -> Unit,
+    val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
+)
+
+data class CategoryRulesUndoActions(
+    val onUndoDelete: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 @Composable
 fun CategoryRulesScreen(
-    rules: List<CategoryRule>,
-    rulesLoading: Boolean,
-    busy: Boolean,
-    readOnly: Boolean,
-    // No default: every caller must wire the ViewModel status channel.
-    message: UiText?,
-    messageTone: MessageTone,
-    onBack: () -> Unit,
-    onCreateRule: (String, String, Int) -> Unit,
-    onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
-    onToggleRule: (CategoryRule) -> Unit,
-    onDeleteRule: (CategoryRule) -> Unit,
-    applications: List<RuleApplicationBatch>,
-    applicationsLoading: Boolean,
-    confirmedPreview: RuleApplyConfirmedResult?,
-    onPreviewApplyConfirmedRules: () -> Unit,
-    onConfirmApplyConfirmedRules: () -> Unit,
-    onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
-    undoableRule: CategoryRule? = null,
-    onUndoDelete: () -> Unit = {},
-    onDismissUndo: () -> Unit = {},
+    state: CategoryRulesScreenState,
+    actions: CategoryRulesScreenActions,
 ) {
     var form by remember { mutableStateOf<CategoryRuleDraftForm?>(null) }
     var deletingRule by remember { mutableStateOf<CategoryRule?>(null) }
     var rollbackApplication by remember { mutableStateOf<RuleApplicationBatch?>(null) }
     val validationFieldsMessage = stringResource(R.string.category_rule_form_validation_fields)
     val validationPriorityMessage = stringResource(R.string.category_rule_form_validation_priority)
-    val actions = CategoryRulesActions(
-        onCreateRule = onCreateRule,
-        onUpdateRule = onUpdateRule,
-        onToggleRule = onToggleRule,
-        onDeleteRule = onDeleteRule,
-        onPreviewApplyConfirmedRules = onPreviewApplyConfirmedRules,
-        onConfirmApplyConfirmedRules = onConfirmApplyConfirmedRules,
-        onRollbackRuleApplication = onRollbackRuleApplication,
-        onUndoDelete = onUndoDelete,
-        onDismissUndo = onDismissUndo,
+    val contentActions = CategoryRulesActions(
+        onCreateRule = actions.rules.onCreate,
+        onUpdateRule = actions.rules.onUpdate,
+        onToggleRule = actions.rules.onToggle,
+        onDeleteRule = actions.rules.onDelete,
+        onPreviewApplyConfirmedRules = actions.applications.onPreviewApplyConfirmedRules,
+        onConfirmApplyConfirmedRules = actions.applications.onConfirmApplyConfirmedRules,
+        onRollbackRuleApplication = actions.applications.onRollbackRuleApplication,
+        onUndoDelete = actions.undo.onUndoDelete,
+        onDismissUndo = actions.undo.onDismiss,
     )
 
     CategoryRuleDeleteDialogHost(
         rule = deletingRule,
         onDismiss = { deletingRule = null },
-        onConfirm = actions.onDeleteRule,
+        onConfirm = contentActions.onDeleteRule,
     )
     CategoryRuleRollbackDialogHost(
         application = rollbackApplication,
         onDismiss = { rollbackApplication = null },
-        onConfirm = actions.onRollbackRuleApplication,
+        onConfirm = contentActions.onRollbackRuleApplication,
     )
 
     SettingsPageFrame(
         title = stringResource(R.string.category_rules_page_title),
-        subtitle = categoryRuleSummary(rules),
-        onBack = onBack,
-        status = { AppStatusBanner(message = message, tone = messageTone) },
+        subtitle = categoryRuleSummary(state.rules.rules),
+        onBack = actions.onBack,
+        status = { AppStatusBanner(message = state.status.message, tone = state.status.messageTone) },
     ) {
         CategoryRulesContent(
             state = CategoryRulesContentState(
-                rules = rules,
-                rulesLoading = rulesLoading,
-                busy = busy,
-                readOnly = readOnly,
-                applications = applications,
-                applicationsLoading = applicationsLoading,
-                confirmedPreview = confirmedPreview,
-                undoableRule = undoableRule,
+                rules = state.rules.rules,
+                rulesLoading = state.rules.loading,
+                busy = state.interaction.busy,
+                readOnly = state.interaction.readOnly,
+                applications = state.applications.history,
+                applicationsLoading = state.applications.loading,
+                confirmedPreview = state.applications.confirmedPreview,
+                undoableRule = state.undoableRule,
             ),
             editor = CategoryRulesEditorBinding(
                 form = form,
@@ -118,7 +153,7 @@ fun CategoryRulesScreen(
                 validationFieldsMessage = validationFieldsMessage,
                 validationPriorityMessage = validationPriorityMessage,
             ),
-            actions = actions,
+            actions = contentActions,
             onRequestDelete = { deletingRule = it },
             onRequestRollback = { rollbackApplication = it },
         )
