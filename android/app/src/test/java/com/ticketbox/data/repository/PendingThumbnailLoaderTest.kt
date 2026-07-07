@@ -121,14 +121,8 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())
 
-    override suspend fun uploadScreenshot(
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-        preparationDurationMs: Long?,
-        sourceSizeBytes: Long?,
-        expectedLedgerId: String?,
-    ): Result<Long> = Result.failure(IllegalStateException("not exercised"))
+    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> =
+        Result.failure(IllegalStateException("not exercised"))
 }
 
 private fun image(label: String): ProtectedImage =

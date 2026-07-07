@@ -4,6 +4,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -264,9 +265,12 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         advanceUntilIdle()
 
         vm.uploadScreenshot(
-            fileName = "receipt.jpg",
-            contentType = "image/jpeg",
-            bytes = byteArrayOf(1, 2, 3),
+            PreparedUploadImage(
+                fileName = "receipt.jpg",
+                contentType = "image/jpeg",
+                bytes = byteArrayOf(1, 2, 3),
+                sourceSizeBytes = 3L,
+            ),
             uploadAlreadyStarted = true,
         )
         advanceUntilIdle()

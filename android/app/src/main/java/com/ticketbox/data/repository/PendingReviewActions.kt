@@ -6,6 +6,15 @@ import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
+data class ScreenshotUploadRequest(
+    val fileName: String,
+    val contentType: String?,
+    val bytes: ByteArray,
+    val preparationDurationMs: Long? = null,
+    val sourceSizeBytes: Long? = null,
+    val expectedLedgerId: String? = null,
+)
+
 /**
  * v0.4-alpha4 M1：PendingViewModel 依赖反转用接口。
  *
@@ -149,14 +158,7 @@ interface PendingReviewActions {
      */
     suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun categories(): Result<List<String>>
-    suspend fun uploadScreenshot(
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-        preparationDurationMs: Long? = null,
-        sourceSizeBytes: Long? = null,
-        expectedLedgerId: String? = null,
-    ): Result<Long>
+    suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long>
 }
 
 /**

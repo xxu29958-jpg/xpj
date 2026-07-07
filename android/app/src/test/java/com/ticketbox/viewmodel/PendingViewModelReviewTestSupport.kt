@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.PendingReviewActions
+import com.ticketbox.data.repository.ScreenshotUploadRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -266,17 +267,10 @@ internal class FakeReviewActions(
     // share tests can assert order + count without leaking bytes.
     val uploadedFileNames = mutableListOf<String>()
 
-    override suspend fun uploadScreenshot(
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-        preparationDurationMs: Long?,
-        sourceSizeBytes: Long?,
-        expectedLedgerId: String?,
-    ): Result<Long> {
+    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> {
         uploadCalls += 1
-        uploadedFileNames += fileName
-        uploadResponder?.let { return it(fileName) }
+        uploadedFileNames += request.fileName
+        uploadResponder?.let { return it(request.fileName) }
         return Result.failure(IllegalStateException("upload not exercised in tests"))
     }
 }

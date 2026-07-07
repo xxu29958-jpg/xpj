@@ -113,14 +113,7 @@ private fun rememberSingleImageUploadLauncher(
                 viewModel.uploadPreparationFailed()
                 return@launch
             }
-            viewModel.uploadScreenshot(
-                fileName = selected.fileName,
-                contentType = selected.contentType,
-                bytes = selected.bytes,
-                preparationDurationMs = selected.preparationDurationMs,
-                sourceSizeBytes = selected.sourceSizeBytes,
-                uploadAlreadyStarted = true,
-            )
+            viewModel.uploadScreenshot(selected, uploadAlreadyStarted = true)
         }
     }
 

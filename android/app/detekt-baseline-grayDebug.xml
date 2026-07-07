@@ -147,10 +147,8 @@
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND targetId = :targetId AND status IN (:pendingStatus, :inFlightStatus, :conflictStatus, :failedStatus) ORDER BY createdAt ASC, id ASC """, ) suspend fun activeForTarget: List&lt;PendingMutationEntity&gt;</ID>
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ SELECT COUNT(*) &gt; 0 FROM pending_mutations WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND targetId = :targetId AND status IN (:inFlightStatus, :conflictStatus, :failedStatus) """, ) suspend fun hasUnresolvedRowForTarget: Boolean</ID>
     <ID>LongParameterList:PendingMutationDao.kt:PendingMutationDao$@Query( """ UPDATE pending_mutations SET status = :pendingStatus, lastError = :recoveryMessage WHERE serverUrl = :serverUrl AND ledgerId = :ledgerId AND status = :inFlightStatus AND (attemptedAt IS NULL OR attemptedAt &lt; :staleCutoffIso) """, ) suspend fun recoverStaleInFlight: Int</ID>
-    <ID>LongParameterList:PendingReviewActions.kt:PendingReviewActions$suspend fun uploadScreenshot: Result&lt;Long&gt;</ID>
     <ID>LongParameterList:PendingReviewSheetHost.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) internal fun PendingReviewSheetHost</ID>
     <ID>LongParameterList:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
-    <ID>LongParameterList:PendingViewModel.kt:PendingViewModel$fun uploadScreenshot</ID>
     <ID>LongParameterList:PendingViewModel.kt:PendingViewModel$private fun launchStateTransition</ID>
     <ID>LongParameterList:RecurringScreen.kt:@Composable fun RecurringScreen</ID>
     <ID>LongParameterList:RecurringScreen.kt:@Composable private fun RecurringItemRow</ID>
