@@ -40,6 +40,13 @@ enum class AppChipDensity {
 
 private val LocalAppChipDensity = compositionLocalOf { AppChipDensity.Standard }
 
+data class AppFilterChipOptions(
+    val enabled: Boolean = true,
+    val selectedContainerColor: Color? = null,
+    val leadingIcon: (@Composable () -> Unit)? = null,
+    val trailingIcon: (@Composable () -> Unit)? = null,
+)
+
 @Composable
 fun AppCompactChips(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalAppChipDensity provides AppChipDensity.Compact) {
@@ -53,10 +60,7 @@ fun AppFilterChip(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    selectedContainerColor: Color? = null,
-    leadingIcon: (@Composable () -> Unit)? = null,
-    trailingIcon: (@Composable () -> Unit)? = null,
+    options: AppFilterChipOptions = AppFilterChipOptions(),
 ) {
     val density = LocalDensity.current
     val chipDensity = LocalAppChipDensity.current
@@ -64,12 +68,12 @@ fun AppFilterChip(
     val shape = RoundedCornerShape(AppRadius.extraSmall)
     val metrics = appFilterChipMetrics(
         label = label,
-        hasIcon = leadingIcon != null || trailingIcon != null,
+        hasIcon = options.leadingIcon != null || options.trailingIcon != null,
         fontScale = density.fontScale,
         chipDensity = chipDensity,
     )
     val containerColor = if (selected) {
-        selectedContainerColor ?: visuals.chipSelected.copy(alpha = AppAlpha.opaque)
+        options.selectedContainerColor ?: visuals.chipSelected.copy(alpha = AppAlpha.opaque)
     } else {
         visuals.chipUnselected.copy(alpha = AppAlpha.soft)
     }
@@ -86,13 +90,13 @@ fun AppFilterChip(
     Row(
         modifier = modifier
             .defaultMinSize(minHeight = metrics.minHeight)
-            .alpha(if (enabled) 1f else AppAlpha.strong)
+            .alpha(if (options.enabled) 1f else AppAlpha.strong)
             .clip(shape)
             .background(containerColor)
             .border(width = 1.dp, color = borderColor, shape = shape)
             .selectable(
                 selected = selected,
-                enabled = enabled,
+                enabled = options.enabled,
                 role = Role.Button,
                 onClick = onClick,
             )
@@ -101,14 +105,14 @@ fun AppFilterChip(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CompositionLocalProvider(LocalContentColor provides contentColor) {
-            leadingIcon?.invoke()
+            options.leadingIcon?.invoke()
             AppFilterChipLabel(
                 label = label,
                 selected = selected,
                 contentColor = contentColor,
                 chipDensity = chipDensity,
             )
-            trailingIcon?.invoke()
+            options.trailingIcon?.invoke()
         }
     }
 }

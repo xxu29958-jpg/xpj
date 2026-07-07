@@ -55,6 +55,15 @@ private const val ControlBorderPressedAlpha = 0.62f
 private const val ControlContainerIdleAlpha = 0.62f
 private const val ControlContainerPressedAlpha = 0.86f
 
+data class AppOutlinedButtonOptions(
+    val enabled: Boolean = true,
+    val danger: Boolean = false,
+    val contentPadding: PaddingValues = PaddingValues(
+        horizontal = AppSpacing.compactGap,
+        vertical = AppSpacing.miniGap,
+    ),
+)
+
 @Composable
 fun AppPrimaryButton(
     text: String,
@@ -170,10 +179,12 @@ fun QuietOutlinedButton(
 ) {
     AppOutlinedButton(
         modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
-        enabled = enabled,
-        contentPadding = PaddingValues(
-            horizontal = AppSpacing.compactGap,
-            vertical = AppSpacing.miniGap,
+        options = AppOutlinedButtonOptions(
+            enabled = enabled,
+            contentPadding = PaddingValues(
+                horizontal = AppSpacing.compactGap,
+                vertical = AppSpacing.miniGap,
+            ),
         ),
         onClick = onClick,
     ) {
@@ -197,26 +208,21 @@ fun QuietOutlinedButton(
 fun AppOutlinedButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    danger: Boolean = false,
-    contentPadding: PaddingValues = PaddingValues(
-        horizontal = AppSpacing.compactGap,
-        vertical = AppSpacing.miniGap,
-    ),
+    options: AppOutlinedButtonOptions = AppOutlinedButtonOptions(),
     content: @Composable RowScope.() -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val roleColor = if (danger) MaterialTheme.colorScheme.error else visuals.primary
+    val roleColor = if (options.danger) MaterialTheme.colorScheme.error else visuals.primary
     val borderColor by animateColorAsState(
         targetValue = roleColor.copy(
-            alpha = if (pressed && enabled) ControlBorderPressedAlpha else ControlBorderIdleAlpha,
+            alpha = if (pressed && options.enabled) ControlBorderPressedAlpha else ControlBorderIdleAlpha,
         ),
         label = "appOutlinedButtonBorder",
     )
     val containerColor by animateColorAsState(
-        targetValue = if (pressed && enabled) {
+        targetValue = if (pressed && options.enabled) {
             visuals.chipSelected.copy(alpha = ControlContainerPressedAlpha)
         } else {
             visuals.solidCard.copy(alpha = ControlContainerIdleAlpha)
@@ -225,12 +231,12 @@ fun AppOutlinedButton(
     )
     OutlinedButton(
         modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
-        enabled = enabled,
+        enabled = options.enabled,
         onClick = onClick,
         interactionSource = interactionSource,
-        contentPadding = contentPadding,
+        contentPadding = options.contentPadding,
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            contentColor = if (options.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f),
             containerColor = containerColor,
             disabledContainerColor = visuals.solidCard.copy(alpha = 0.38f),

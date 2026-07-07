@@ -32,6 +32,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
@@ -310,7 +311,11 @@ private fun SyncStatusRecoveryActions(
 ) {
     if (primary == null) {
         AppAdaptiveTrailingActionRow {
-            AppOutlinedButton(modifier = it, onClick = danger.onClick, enabled = danger.enabled, danger = true) {
+            AppOutlinedButton(
+                modifier = it,
+                onClick = danger.onClick,
+                options = AppOutlinedButtonOptions(enabled = danger.enabled, danger = true),
+            ) {
                 Text(danger.text)
             }
         }
@@ -332,8 +337,7 @@ private fun SyncStatusRecoveryActions(
                 AppOutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = danger.onClick,
-                    enabled = danger.enabled,
-                    danger = true,
+                    options = AppOutlinedButtonOptions(enabled = danger.enabled, danger = true),
                 ) {
                     Text(danger.text)
                 }
@@ -349,7 +353,10 @@ private fun SyncStatusRecoveryActions(
                     enabled = primary.enabled,
                     onClick = primary.onClick,
                 )
-                AppOutlinedButton(onClick = danger.onClick, enabled = danger.enabled, danger = true) {
+                AppOutlinedButton(
+                    onClick = danger.onClick,
+                    options = AppOutlinedButtonOptions(enabled = danger.enabled, danger = true),
+                ) {
                     Text(danger.text)
                 }
             }

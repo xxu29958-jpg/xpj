@@ -60,6 +60,7 @@ import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppFormFieldGroup
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
@@ -486,7 +487,7 @@ private fun AddIncomePlanSheet(
                             selected = draft.sourceType == source,
                             onClick = { actions.onSourceType(source) },
                             label = stringResource(incomeSourceTypeLabelRes(source)),
-                            enabled = !state.isSubmitting,
+                            options = AppFilterChipOptions(enabled = !state.isSubmitting),
                         )
                     }
                 }
@@ -505,7 +506,7 @@ private fun AddIncomePlanSheet(
                             selected = draft.frequency == frequency,
                             onClick = { actions.onFrequency(frequency) },
                             label = stringResource(incomeFrequencyLabelRes(frequency)),
-                            enabled = !state.isSubmitting,
+                            options = AppFilterChipOptions(enabled = !state.isSubmitting),
                         )
                     }
                 }

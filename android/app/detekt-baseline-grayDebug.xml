@@ -103,9 +103,6 @@
     <ID>LongMethod:TagStatsCard.kt:@Composable private fun TagStatsRow</ID>
     <ID>LongMethod:Theme.kt:@Composable fun TicketboxAtmosphereBackground</ID>
     <ID>LongMethod:ThemeVisuals.kt:fun themeVisualsForSkin: ThemeVisuals</ID>
-    <ID>LongParameterList:AppAsyncImage.kt:@Composable fun AppAsyncImage</ID>
-    <ID>LongParameterList:AppButtons.kt:@Composable fun AppOutlinedButton</ID>
-    <ID>LongParameterList:AppFilterChip.kt:@Composable fun AppFilterChip</ID>
     <ID>LongParameterList:AppPageScaffold.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun AppScrollableContent</ID>
     <ID>LongParameterList:AppearanceScreen.kt:@Composable fun AppearanceScreen</ID>
     <ID>LongParameterList:CategoryRulesScreen.kt:@Composable fun CategoryRulesScreen</ID>

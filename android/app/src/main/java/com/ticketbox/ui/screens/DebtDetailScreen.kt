@@ -33,6 +33,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSheetAction
@@ -249,7 +250,7 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit) {
                 AppOutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { onAction(DebtAction.Void) },
-                    danger = true,
+                    options = AppOutlinedButtonOptions(danger = true),
                 ) {
                     Text(stringResource(R.string.debt_action_void_title))
                 }
@@ -268,7 +269,10 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit) {
                     text = stringResource(R.string.debt_action_adjustment_title),
                     onClick = { onAction(DebtAction.Adjustment) },
                 )
-                AppOutlinedButton(onClick = { onAction(DebtAction.Void) }, danger = true) {
+                AppOutlinedButton(
+                    onClick = { onAction(DebtAction.Void) },
+                    options = AppOutlinedButtonOptions(danger = true),
+                ) {
                     Text(stringResource(R.string.debt_action_void_title))
                 }
             }

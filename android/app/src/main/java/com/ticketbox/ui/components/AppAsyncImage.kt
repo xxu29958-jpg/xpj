@@ -38,6 +38,19 @@ import com.valentinilk.shimmer.shimmer
 private const val MAX_PREVIEW_LONG_SIDE = 2048
 private const val MAX_PREVIEW_PIXELS = 4_194_304
 
+data class AppAsyncImagePresentation(
+    val placeholder: String,
+    val contentDescription: String?,
+    val shape: Shape = RoundedCornerShape(AppRadius.small),
+    val contentScale: ContentScale = ContentScale.Crop,
+)
+
+data class AppAsyncImageLayout(
+    val compact: Boolean = false,
+    val compactSize: DpSize = DpSize(width = 96.dp, height = 128.dp),
+    val displayHeight: Dp? = null,
+)
+
 /**
  * Coil 3 包装的异步图片加载器，统一处理：
  * - crossfade（淡入避免闪白）
@@ -58,13 +71,11 @@ private const val MAX_PREVIEW_PIXELS = 4_194_304
 fun AppAsyncImage(
     image: ProtectedImage?,
     modifier: Modifier = Modifier,
-    placeholder: String = stringResource(R.string.components_async_image_placeholder),
-    contentDescription: String? = stringResource(R.string.components_async_image_content_description),
-    shape: Shape = RoundedCornerShape(AppRadius.small),
-    contentScale: ContentScale = ContentScale.Crop,
-    compact: Boolean = false,
-    compactSize: DpSize = DpSize(width = 96.dp, height = 128.dp),
-    displayHeight: Dp? = null,
+    presentation: AppAsyncImagePresentation = AppAsyncImagePresentation(
+        placeholder = stringResource(R.string.components_async_image_placeholder),
+        contentDescription = stringResource(R.string.components_async_image_content_description),
+    ),
+    layout: AppAsyncImageLayout = AppAsyncImageLayout(),
 ) {
     val context = LocalContext.current
     val request = remember(image) {
@@ -77,15 +88,15 @@ fun AppAsyncImage(
         }
     }
     val sizeModifier = when {
-        compact -> Modifier.size(compactSize)
-        displayHeight != null -> Modifier.fillMaxWidth().height(displayHeight)
+        layout.compact -> Modifier.size(layout.compactSize)
+        layout.displayHeight != null -> Modifier.fillMaxWidth().height(layout.displayHeight)
         else -> Modifier.fillMaxWidth().aspectRatio(4f / 5f)
     }
 
     Box(
         modifier = modifier
             .then(sizeModifier)
-            .clip(shape)
+            .clip(presentation.shape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
         contentAlignment = Alignment.Center,
     ) {
@@ -94,10 +105,10 @@ fun AppAsyncImage(
                 .fillMaxSize()
                 .shimmer(),
         ) {
-            SkeletonBlock(modifier = Modifier.fillMaxSize(), shape = shape)
+            SkeletonBlock(modifier = Modifier.fillMaxSize(), shape = presentation.shape)
         }
         Text(
-            text = placeholder,
+            text = presentation.placeholder,
             modifier = Modifier.padding(AppSpacing.contentGap),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
@@ -106,9 +117,9 @@ fun AppAsyncImage(
         request?.let {
             AsyncImage(
                 model = it,
-                contentDescription = contentDescription,
+                contentDescription = presentation.contentDescription,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale,
+                contentScale = presentation.contentScale,
             )
         }
     }

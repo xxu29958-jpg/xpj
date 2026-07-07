@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -41,13 +42,15 @@ internal fun StatsMonthChip(
             onClick = onClick,
             label = selectedMonth.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
                 ?: stringResource(R.string.stats_empty_month_chip_all),
-            trailingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.ExpandMore,
-                    contentDescription = stringResource(R.string.stats_empty_month_chip_description),
-                    modifier = Modifier.size(AppSpacing.cardPadding),
-                )
-            },
+            options = AppFilterChipOptions(
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.ExpandMore,
+                        contentDescription = stringResource(R.string.stats_empty_month_chip_description),
+                        modifier = Modifier.size(AppSpacing.cardPadding),
+                    )
+                },
+            ),
         )
     }
 }
