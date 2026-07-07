@@ -121,6 +121,20 @@ object AppPageDefaults {
 internal val LocalAppImeVisible = compositionLocalOf { false }
 
 @Immutable
+data class AppPageChrome(
+    val role: PageRole,
+    val hasBottomBar: Boolean = true,
+    val horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
+    val includeStatusBarPadding: Boolean = true,
+)
+
+data class AppScrollablePageChrome(
+    val page: AppPageChrome,
+    val contentWidth: AppAdaptiveContentWidth = AppAdaptiveContentWidth.FullWidth,
+    val verticalArrangement: Arrangement.Vertical? = null,
+)
+
+@Immutable
 data class AppPageLayoutValues(
     val horizontalPadding: Dp,
     val statusPadding: Dp,
@@ -165,10 +179,7 @@ object BottomBarAwarePadding {
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun rememberAppPageLayout(
-    role: PageRole,
-    hasBottomBar: Boolean = true,
-    horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = true,
+    chrome: AppPageChrome,
 ): AppPageLayoutValues {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -192,14 +203,14 @@ fun rememberAppPageLayout(
         )
         measuredStatusTop
     }
-    val safeTop = if (includeStatusBarPadding) statusTop else 0.dp
-    val bottomViewportPadding = BottomBarAwarePadding.viewport(hasBottomBar = hasBottomBar)
+    val safeTop = if (chrome.includeStatusBarPadding) statusTop else 0.dp
+    val bottomViewportPadding = BottomBarAwarePadding.viewport(hasBottomBar = chrome.hasBottomBar)
     val bottomPadding = bottomViewportPadding + AppPageDefaults.BottomContentExtraPadding
-    val pageDensity = role.density
+    val pageDensity = chrome.role.density
     val contentTopPadding = AppPageDefaults.topContentPadding(pageDensity)
 
     return AppPageLayoutValues(
-        horizontalPadding = horizontalPadding,
+        horizontalPadding = chrome.horizontalPadding,
         statusPadding = safeTop,
         contentTopPadding = contentTopPadding,
         bottomViewportPadding = bottomViewportPadding,
@@ -220,19 +231,11 @@ fun rememberAppPageLayout(
  */
 @Composable
 fun AppPageScaffold(
-    role: PageRole,
+    chrome: AppPageChrome,
     modifier: Modifier = Modifier,
-    hasBottomBar: Boolean = true,
-    horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = true,
     content: @Composable (AppPageLayoutValues) -> Unit,
 ) {
-    val layout = rememberAppPageLayout(
-        role = role,
-        hasBottomBar = hasBottomBar,
-        horizontalPadding = horizontalPadding,
-        includeStatusBarPadding = includeStatusBarPadding,
-    )
+    val layout = rememberAppPageLayout(chrome = chrome)
 
     Box(
         modifier = modifier
@@ -258,13 +261,8 @@ fun AppPageScaffold(
  */
 @Composable
 fun AppPageScrollableColumn(
-    role: PageRole,
+    chrome: AppScrollablePageChrome,
     modifier: Modifier = Modifier,
-    hasBottomBar: Boolean = true,
-    horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = true,
-    contentWidth: AppAdaptiveContentWidth = AppAdaptiveContentWidth.FullWidth,
-    verticalArrangement: Arrangement.Vertical? = null,
     bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.(AppPageLayoutValues) -> Unit,
 ) {
@@ -273,17 +271,14 @@ fun AppPageScrollableColumn(
     var bottomBarHeight by remember { mutableStateOf(0.dp) }
 
     AppPageScaffold(
-        role = role,
+        chrome = chrome.page,
         modifier = modifier,
-        hasBottomBar = hasBottomBar,
-        horizontalPadding = horizontalPadding,
-        includeStatusBarPadding = includeStatusBarPadding,
     ) { layout ->
         // align(BottomCenter) needs a BoxScope — the scaffold's content lambda has
         // no receiver, so the column + floating bar pair gets its own Box root.
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val resolvedContentMaxWidth = resolvedContentMaxWidth(contentWidth)
+                val resolvedContentMaxWidth = resolvedContentMaxWidth(chrome.contentWidth)
                 val visibleStatusPadding = layout.visibleStatusPadding()
                 Box(
                     modifier = Modifier
@@ -307,7 +302,7 @@ fun AppPageScrollableColumn(
                                 top = layout.contentTopPadding,
                                 bottom = layout.bottomContentExtraPadding,
                             ),
-                        verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+                        verticalArrangement = chrome.verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
                     ) {
                         content(layout)
                     }
@@ -364,11 +359,13 @@ fun AppScrollableContent(
     var bottomBarHeight by remember { mutableStateOf(0.dp) }
 
     AppPageScaffold(
-        role = role,
+        chrome = AppPageChrome(
+            role = role,
+            hasBottomBar = hasBottomBar,
+            horizontalPadding = horizontalPadding,
+            includeStatusBarPadding = includeStatusBarPadding,
+        ),
         modifier = modifier,
-        hasBottomBar = hasBottomBar,
-        horizontalPadding = horizontalPadding,
-        includeStatusBarPadding = includeStatusBarPadding,
     ) { layout ->
         val refreshState = rememberPullToRefreshState()
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
