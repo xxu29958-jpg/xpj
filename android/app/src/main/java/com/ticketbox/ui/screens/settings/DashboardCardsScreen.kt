@@ -30,7 +30,10 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSwitch
+import com.ticketbox.ui.components.DraggableReorderBehavior
 import com.ticketbox.ui.components.DraggableReorderColumn
+import com.ticketbox.ui.components.DraggableReorderItems
+import com.ticketbox.ui.components.DraggableReorderLayout
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -132,12 +135,18 @@ private fun DashboardCardsList(
     val enabled = state.canModify && !state.saving
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         DraggableReorderColumn(
-            items = state.cards,
-            key = { it.key },
-            spacing = AppSpacing.compactGap,
-            estimatedItemHeight = AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall,
-            enabled = enabled,
-            onMove = actions.onReorder,
+            items = DraggableReorderItems(
+                values = state.cards,
+                key = { it.key },
+            ),
+            behavior = DraggableReorderBehavior(
+                onMove = actions.onReorder,
+                enabled = enabled,
+            ),
+            layout = DraggableReorderLayout(
+                spacing = AppSpacing.compactGap,
+                estimatedItemHeight = AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall,
+            ),
         ) { index, card, _ ->
             DashboardCardRow(
                 row = DashboardCardRowState(
