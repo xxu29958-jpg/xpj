@@ -112,29 +112,53 @@ import com.ticketbox.viewmodel.SettingsUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class SettingsRootNavigationActions(
+    val ledgerFamily: SettingsRootLedgerFamilyNavigationActions,
+    val bookkeeping: SettingsRootBookkeepingNavigationActions,
+    val dataTools: SettingsRootDataToolsNavigationActions,
+    val alertsAppearance: SettingsRootAlertsAppearanceNavigationActions,
+    val connectionSystem: SettingsRootConnectionSystemNavigationActions,
+)
+
+data class SettingsRootLedgerFamilyNavigationActions(
+    val onOpenLedgers: () -> Unit,
+    val onOpenFamilyMembers: () -> Unit,
+    val onOpenMyDevices: () -> Unit,
+    val onOpenJoinFamilyLedger: () -> Unit,
+    val onOpenBillSplits: () -> Unit,
+)
+
+data class SettingsRootBookkeepingNavigationActions(
+    val onOpenCategoryRules: () -> Unit,
+    val onOpenMerchantAliases: () -> Unit,
+    val onOpenTagManagement: () -> Unit,
+    val onOpenRecycleBin: () -> Unit,
+)
+
+data class SettingsRootDataToolsNavigationActions(
+    val onOpenDashboardCards: () -> Unit,
+    val onOpenDataExport: () -> Unit,
+    val onOpenIncomePlans: () -> Unit,
+)
+
+data class SettingsRootAlertsAppearanceNavigationActions(
+    val onOpenNotifications: () -> Unit,
+    val onOpenAppearance: () -> Unit,
+)
+
+data class SettingsRootConnectionSystemNavigationActions(
+    val onOpenServer: () -> Unit,
+    val onOpenSyncStatus: () -> Unit,
+    val onOpenBackgroundTasks: () -> Unit,
+    val onOpenSecurity: () -> Unit,
+    val onOpenAbout: () -> Unit,
+)
+
 @Composable
 fun SettingsRootScreen(
     state: SettingsUiState,
     showAdvancedTools: Boolean,
-    onOpenServer: () -> Unit,
-    onOpenAppearance: () -> Unit,
-    onOpenDashboardCards: () -> Unit,
-    onOpenCategoryRules: () -> Unit,
-    onOpenMerchantAliases: () -> Unit,
-    onOpenTagManagement: () -> Unit,
-    onOpenRecycleBin: () -> Unit = {},
-    onOpenDataExport: () -> Unit,
-    onOpenNotifications: () -> Unit,
-    onOpenSecurity: () -> Unit,
-    onOpenLedgers: () -> Unit = {},
-    onOpenFamilyMembers: () -> Unit = {},
-    onOpenMyDevices: () -> Unit = {},
-    onOpenJoinFamilyLedger: () -> Unit = {},
-    onOpenBillSplits: () -> Unit = {},
-    onOpenBackgroundTasks: () -> Unit = {},
-    onOpenSyncStatus: () -> Unit = {},
-    onOpenIncomePlans: () -> Unit = {},
-    onOpenAbout: () -> Unit,
+    navigationActions: SettingsRootNavigationActions,
 ) {
     val connectionTitle = if (showAdvancedTools) {
         stringResource(R.string.settings_root_connection_title_advanced)
@@ -162,40 +186,40 @@ fun SettingsRootScreen(
             }
             SettingsRootAccountSummary(
                 state = state,
-                onOpenConnection = onOpenServer,
+                onOpenConnection = navigationActions.connectionSystem.onOpenServer,
             )
             SettingsSection(title = stringResource(R.string.settings_root_section_ledger_family), icon = Icons.Filled.Group) {
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_ledgers_title),
                     subtitle = stringResource(R.string.settings_root_entry_ledgers_subtitle),
                     icon = Icons.Filled.FolderShared,
-                    onClick = onOpenLedgers,
+                    onClick = navigationActions.ledgerFamily.onOpenLedgers,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_family_members_title),
                     subtitle = stringResource(R.string.settings_root_entry_family_members_subtitle),
                     icon = Icons.Filled.Group,
-                    onClick = onOpenFamilyMembers,
+                    onClick = navigationActions.ledgerFamily.onOpenFamilyMembers,
                 )
                 if (state.role == LEDGER_ROLE_OWNER) {
                     SettingsEntryRow(
                         title = stringResource(R.string.settings_root_entry_my_devices_title),
                         subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
                         icon = Icons.Filled.Devices,
-                        onClick = onOpenMyDevices,
+                        onClick = navigationActions.ledgerFamily.onOpenMyDevices,
                     )
                 }
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_join_family_title),
                     subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),
                     icon = Icons.Filled.GroupAdd,
-                    onClick = onOpenJoinFamilyLedger,
+                    onClick = navigationActions.ledgerFamily.onOpenJoinFamilyLedger,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_bill_splits_title),
                     subtitle = stringResource(R.string.settings_root_entry_bill_splits_subtitle),
                     icon = Icons.Filled.Group,
-                    onClick = onOpenBillSplits,
+                    onClick = navigationActions.ledgerFamily.onOpenBillSplits,
                 )
             }
             SettingsSection(title = stringResource(R.string.settings_root_section_bookkeeping_data), icon = Icons.Filled.Category) {
@@ -203,43 +227,43 @@ fun SettingsRootScreen(
                     title = stringResource(R.string.settings_root_entry_category_rules_title),
                     subtitle = stringResource(R.string.settings_root_entry_category_rules_subtitle),
                     icon = Icons.Filled.Category,
-                    onClick = onOpenCategoryRules,
+                    onClick = navigationActions.bookkeeping.onOpenCategoryRules,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_merchant_aliases_title),
                     subtitle = stringResource(R.string.settings_root_entry_merchant_aliases_subtitle),
                     icon = Icons.Filled.Tune,
-                    onClick = onOpenMerchantAliases,
+                    onClick = navigationActions.bookkeeping.onOpenMerchantAliases,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_tag_management_title),
                     subtitle = stringResource(R.string.settings_root_entry_tag_management_subtitle),
                     icon = Icons.AutoMirrored.Filled.Label,
-                    onClick = onOpenTagManagement,
+                    onClick = navigationActions.bookkeeping.onOpenTagManagement,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_recycle_bin_title),
                     subtitle = stringResource(R.string.settings_root_entry_recycle_bin_subtitle),
                     icon = Icons.Filled.DeleteOutline,
-                    onClick = onOpenRecycleBin,
+                    onClick = navigationActions.bookkeeping.onOpenRecycleBin,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_dashboard_cards_title),
                     subtitle = stringResource(R.string.settings_root_entry_dashboard_cards_subtitle),
                     icon = Icons.Filled.DashboardCustomize,
-                    onClick = onOpenDashboardCards,
+                    onClick = navigationActions.dataTools.onOpenDashboardCards,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_data_export_title),
                     subtitle = stringResource(R.string.settings_root_entry_data_export_subtitle),
                     icon = Icons.Filled.FileDownload,
-                    onClick = onOpenDataExport,
+                    onClick = navigationActions.dataTools.onOpenDataExport,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_income_plans_title),
                     subtitle = stringResource(R.string.settings_root_entry_income_plans_subtitle),
                     icon = Icons.Filled.AccountBalanceWallet,
-                    onClick = onOpenIncomePlans,
+                    onClick = navigationActions.dataTools.onOpenIncomePlans,
                 )
             }
             SettingsSection(title = stringResource(R.string.settings_root_section_alerts_appearance), icon = Icons.Filled.Palette) {
@@ -247,13 +271,13 @@ fun SettingsRootScreen(
                     title = stringResource(R.string.settings_root_entry_notifications_title),
                     subtitle = stringResource(R.string.settings_root_entry_notifications_subtitle),
                     icon = Icons.Filled.Notifications,
-                    onClick = onOpenNotifications,
+                    onClick = navigationActions.alertsAppearance.onOpenNotifications,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_appearance_title),
                     subtitle = stringResource(R.string.settings_root_entry_appearance_subtitle),
                     icon = Icons.Filled.Palette,
-                    onClick = onOpenAppearance,
+                    onClick = navigationActions.alertsAppearance.onOpenAppearance,
                 )
             }
             SettingsSection(title = stringResource(R.string.settings_root_section_connection_system), icon = Icons.Filled.Security) {
@@ -261,19 +285,19 @@ fun SettingsRootScreen(
                     title = connectionTitle,
                     subtitle = connectionSubtitle,
                     icon = Icons.Filled.CloudDone,
-                    onClick = onOpenServer,
+                    onClick = navigationActions.connectionSystem.onOpenServer,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_offline_sync_title),
                     subtitle = stringResource(R.string.settings_root_entry_offline_sync_subtitle),
                     icon = Icons.Filled.Sync,
-                    onClick = onOpenSyncStatus,
+                    onClick = navigationActions.connectionSystem.onOpenSyncStatus,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_background_tasks_title),
                     subtitle = stringResource(R.string.settings_root_entry_background_tasks_subtitle),
                     icon = Icons.Filled.Tune,
-                    onClick = onOpenBackgroundTasks,
+                    onClick = navigationActions.connectionSystem.onOpenBackgroundTasks,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_security_title),
@@ -283,13 +307,13 @@ fun SettingsRootScreen(
                         stringResource(R.string.settings_root_entry_security_subtitle_unlocked)
                     },
                     icon = Icons.Filled.Security,
-                    onClick = onOpenSecurity,
+                    onClick = navigationActions.connectionSystem.onOpenSecurity,
                 )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_about_title),
                     subtitle = stringResource(R.string.settings_root_entry_about_subtitle),
                     icon = Icons.Filled.Info,
-                    onClick = onOpenAbout,
+                    onClick = navigationActions.connectionSystem.onOpenAbout,
                 )
             }
         }

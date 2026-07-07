@@ -138,9 +138,6 @@
     <ID>LongParameterList:PendingViewModel.kt:PendingViewModel$private fun launchStateTransition</ID>
     <ID>LongParameterList:RecurringScreen.kt:@Composable fun RecurringScreen</ID>
     <ID>LongParameterList:RuleRepository.kt:RuleRepository</ID>
-    <ID>LongParameterList:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
-    <ID>LongParameterList:SettingsRootScreen.kt:@Composable fun SettingsRootScreen</ID>
-    <ID>LongParameterList:SettingsRoute.kt:@Composable internal fun SettingsRoute</ID>
     <ID>LongParameterList:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
     <ID>LongParameterList:SwipeableActionRow.kt:@Composable fun SwipeableActionRow</ID>
     <ID>LongParameterList:TicketboxApp.kt:@Composable fun TicketboxApp</ID>

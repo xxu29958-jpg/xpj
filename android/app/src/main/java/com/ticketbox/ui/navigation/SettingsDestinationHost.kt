@@ -59,6 +59,12 @@ import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreenActions
 import com.ticketbox.ui.screens.settings.ServerSettingsScreenState
+import com.ticketbox.ui.screens.settings.SettingsRootAlertsAppearanceNavigationActions
+import com.ticketbox.ui.screens.settings.SettingsRootBookkeepingNavigationActions
+import com.ticketbox.ui.screens.settings.SettingsRootConnectionSystemNavigationActions
+import com.ticketbox.ui.screens.settings.SettingsRootDataToolsNavigationActions
+import com.ticketbox.ui.screens.settings.SettingsRootLedgerFamilyNavigationActions
+import com.ticketbox.ui.screens.settings.SettingsRootNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute as SettingsDestination
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
@@ -95,6 +101,12 @@ internal data class SettingsRouteStates(
     val rules: CategoryRulesUiState,
     val merchant: MerchantAliasUiState,
     val appearance: AppearanceUiState,
+)
+
+internal data class SettingsDestinationChromeState(
+    val currentSkin: AppSkin,
+    val currentCurrency: CurrencyCode,
+    val showAdvancedTools: Boolean,
 )
 
 internal data class SettingsRouteActions(
@@ -151,9 +163,7 @@ internal data class SettingsRouteRepositories(
 @Composable
 internal fun SettingsDestinationHost(
     states: SettingsRouteStates,
-    currentSkin: AppSkin,
-    currentCurrency: CurrencyCode,
-    showAdvancedTools: Boolean,
+    chromeState: SettingsDestinationChromeState,
     onSecondaryActiveChange: (Boolean) -> Unit = {},
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
@@ -209,32 +219,44 @@ internal fun SettingsDestinationHost(
     when (val currentRoute = route) {
         SettingsDestination.Root -> SettingsRootScreen(
             state = states.settings,
-            showAdvancedTools = showAdvancedTools,
-            onOpenServer = { route = SettingsDestination.Server },
-            onOpenAppearance = { route = SettingsDestination.Appearance },
-            onOpenDashboardCards = { route = SettingsDestination.DashboardCards },
-            onOpenCategoryRules = { route = SettingsDestination.CategoryRules },
-            onOpenMerchantAliases = { route = SettingsDestination.MerchantAliases },
-            onOpenTagManagement = { route = SettingsDestination.TagManagement },
-            onOpenRecycleBin = { route = SettingsDestination.RecycleBin },
-            onOpenDataExport = { route = SettingsDestination.DataExport },
-            onOpenNotifications = { route = SettingsDestination.NotificationPreferences },
-            onOpenSecurity = { route = SettingsDestination.SecurityPrivacy },
-            onOpenLedgers = { route = SettingsDestination.Ledgers },
-            onOpenFamilyMembers = { route = SettingsDestination.FamilyMembers },
-            onOpenMyDevices = { route = SettingsDestination.MyDevices },
-            onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
-            onOpenBillSplits = { route = SettingsDestination.BillSplits },
-            onOpenBackgroundTasks = { route = SettingsDestination.BackgroundTasks },
-            onOpenSyncStatus = { route = SettingsDestination.SyncStatus },
-            onOpenIncomePlans = { route = SettingsDestination.IncomePlans },
-            onOpenAbout = { route = SettingsDestination.About },
+            showAdvancedTools = chromeState.showAdvancedTools,
+            navigationActions = SettingsRootNavigationActions(
+                ledgerFamily = SettingsRootLedgerFamilyNavigationActions(
+                    onOpenLedgers = { route = SettingsDestination.Ledgers },
+                    onOpenFamilyMembers = { route = SettingsDestination.FamilyMembers },
+                    onOpenMyDevices = { route = SettingsDestination.MyDevices },
+                    onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
+                    onOpenBillSplits = { route = SettingsDestination.BillSplits },
+                ),
+                bookkeeping = SettingsRootBookkeepingNavigationActions(
+                    onOpenCategoryRules = { route = SettingsDestination.CategoryRules },
+                    onOpenMerchantAliases = { route = SettingsDestination.MerchantAliases },
+                    onOpenTagManagement = { route = SettingsDestination.TagManagement },
+                    onOpenRecycleBin = { route = SettingsDestination.RecycleBin },
+                ),
+                dataTools = SettingsRootDataToolsNavigationActions(
+                    onOpenDashboardCards = { route = SettingsDestination.DashboardCards },
+                    onOpenDataExport = { route = SettingsDestination.DataExport },
+                    onOpenIncomePlans = { route = SettingsDestination.IncomePlans },
+                ),
+                alertsAppearance = SettingsRootAlertsAppearanceNavigationActions(
+                    onOpenNotifications = { route = SettingsDestination.NotificationPreferences },
+                    onOpenAppearance = { route = SettingsDestination.Appearance },
+                ),
+                connectionSystem = SettingsRootConnectionSystemNavigationActions(
+                    onOpenServer = { route = SettingsDestination.Server },
+                    onOpenSyncStatus = { route = SettingsDestination.SyncStatus },
+                    onOpenBackgroundTasks = { route = SettingsDestination.BackgroundTasks },
+                    onOpenSecurity = { route = SettingsDestination.SecurityPrivacy },
+                    onOpenAbout = { route = SettingsDestination.About },
+                ),
+            ),
         )
 
         SettingsDestination.Server -> ServerSettingsScreen(
             state = ServerSettingsScreenState(
                 settings = states.settings,
-                showAdvancedTools = showAdvancedTools,
+                showAdvancedTools = chromeState.showAdvancedTools,
             ),
             actions = ServerSettingsScreenActions(
                 onBack = { route = SettingsDestination.Root },
@@ -247,8 +269,8 @@ internal fun SettingsDestinationHost(
 
         SettingsDestination.Appearance -> AppearanceScreen(
             state = states.appearance,
-            currentSkin = currentSkin,
-            currentCurrency = currentCurrency,
+            currentSkin = chromeState.currentSkin,
+            currentCurrency = chromeState.currentCurrency,
             onBack = { route = SettingsDestination.Root },
             onSkinChange = actions.onSkinChange,
             onCurrencyChange = actions.onCurrencyChange,
@@ -301,7 +323,7 @@ internal fun SettingsDestinationHost(
 
         is SettingsDestination.BackgroundPreview -> BackgroundPreviewScreen(
             initialSettings = currentRoute.settings,
-            currentSkin = currentSkin,
+            currentSkin = chromeState.currentSkin,
             title = currentRoute.title,
             onBack = { route = SettingsDestination.Appearance },
             onApply = { settings ->

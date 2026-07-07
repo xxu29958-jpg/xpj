@@ -12,14 +12,18 @@ import com.ticketbox.viewmodel.CategoryRulesViewModel
 import com.ticketbox.viewmodel.MerchantAliasViewModel
 import com.ticketbox.viewmodel.SettingsViewModel
 
+internal data class SettingsPreferenceControls(
+    val currentSkin: AppSkin,
+    val currentCurrency: CurrencyCode,
+    val onSkinChange: (AppSkin) -> Unit,
+    val onCurrencyChange: (CurrencyCode) -> Unit,
+)
+
 @Composable
 internal fun SettingsRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
-    currentSkin: AppSkin,
-    currentCurrency: CurrencyCode,
-    onSkinChange: (AppSkin) -> Unit,
-    onCurrencyChange: (CurrencyCode) -> Unit,
+    preferenceControls: SettingsPreferenceControls,
     onBindingCleared: () -> Unit,
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
@@ -47,9 +51,11 @@ internal fun SettingsRoute(
             merchant = merchantState,
             appearance = appearanceState,
         ),
-        currentSkin = currentSkin,
-        currentCurrency = currentCurrency,
-        showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
+        chromeState = SettingsDestinationChromeState(
+            currentSkin = preferenceControls.currentSkin,
+            currentCurrency = preferenceControls.currentCurrency,
+            showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
+        ),
         onSecondaryActiveChange = { shellState.settingsSecondaryActive = it },
         actions = SettingsRouteActions(
             onTestConnection = settingsViewModel::testConnection,
@@ -78,8 +84,8 @@ internal fun SettingsRoute(
             onPreviewApplyConfirmedRules = categoryRulesViewModel::previewApplyConfirmedRules,
             onConfirmApplyConfirmedRules = categoryRulesViewModel::confirmApplyConfirmedRules,
             onRollbackRuleApplication = categoryRulesViewModel::rollbackRuleApplication,
-            onSkinChange = onSkinChange,
-            onCurrencyChange = onCurrencyChange,
+            onSkinChange = preferenceControls.onSkinChange,
+            onCurrencyChange = preferenceControls.onCurrencyChange,
             onApplyBackgroundSettings = appearanceViewModel::applyBackgroundSettings,
             onClearBackgroundImage = appearanceViewModel::clearBackgroundImage,
             onBackgroundImageError = appearanceViewModel::backgroundImageCopyFailed,
