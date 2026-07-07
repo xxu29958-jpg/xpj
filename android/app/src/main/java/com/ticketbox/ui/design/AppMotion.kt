@@ -31,9 +31,6 @@ object AppMotion {
     /** v0.10 拖拽拾起动效时长（DraggableReorderColumn 等）。 */
     const val dragLiftMillis: Int = 160
 
-    /** v0.10 左右滑揭示动效时长（SwipeableActionRow 等）。 */
-    const val swipeRevealMillis: Int = 180
-
     /** M3 emphasized standard —— 适合大部分状态切换（hover、selection、show/hide）。 */
     val easeStandard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
