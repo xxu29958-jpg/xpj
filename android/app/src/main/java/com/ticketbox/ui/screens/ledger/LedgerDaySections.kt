@@ -64,8 +64,10 @@ internal fun LazyListScope.ledgerDaySection(
                 state = LedgerExpenseRowState(
                     expense = expense,
                     viewMode = sectionState.viewMode,
-                    selectionMode = sectionState.selectionMode,
-                    selected = expense.id in sectionState.selectedIds,
+                    selection = LedgerExpenseSelectionState(
+                        enabled = sectionState.selectionMode,
+                        selected = expense.id in sectionState.selectedIds,
+                    ),
                 ),
                 actions = actions,
             )
@@ -76,8 +78,7 @@ internal fun LazyListScope.ledgerDaySection(
 private data class LedgerExpenseRowState(
     val expense: Expense,
     val viewMode: LedgerViewMode,
-    val selectionMode: Boolean,
-    val selected: Boolean,
+    val selection: LedgerExpenseSelectionState,
 )
 
 @Composable
@@ -86,32 +87,27 @@ private fun LedgerExpenseRow(
     actions: LedgerDaySectionActions,
 ) {
     val expense = state.expense
-    val onToggle = { actions.onToggleSelect(expense.id) }
-    val onLongPress = { actions.onEnterSelection(expense.id) }
+    val itemState = LedgerExpenseItemState(
+        expense = expense,
+        selection = state.selection,
+    )
+    val itemActions = LedgerExpenseItemActions(
+        onOpen = { actions.onEdit(expense) },
+        onToggleSelection = { actions.onToggleSelect(expense.id) },
+        onEnterSelection = { actions.onEnterSelection(expense.id) },
+    )
     when (state.viewMode) {
         LedgerViewMode.Card -> LedgerExpenseCard(
-            expense = expense,
-            onEdit = { actions.onEdit(expense) },
-            selectionMode = state.selectionMode,
-            selected = state.selected,
-            onToggleSelect = onToggle,
-            onLongPress = onLongPress,
+            state = itemState,
+            actions = itemActions,
         )
         LedgerViewMode.List -> LedgerExpenseListRow(
-            expense = expense,
-            onEdit = { actions.onEdit(expense) },
-            selectionMode = state.selectionMode,
-            selected = state.selected,
-            onToggleSelect = onToggle,
-            onLongPress = onLongPress,
+            state = itemState,
+            actions = itemActions,
         )
         LedgerViewMode.Table -> LedgerExpenseTableRow(
-            expense = expense,
-            onEdit = { actions.onEdit(expense) },
-            selectionMode = state.selectionMode,
-            selected = state.selected,
-            onToggleSelect = onToggle,
-            onLongPress = onLongPress,
+            state = itemState,
+            actions = itemActions,
         )
     }
 }

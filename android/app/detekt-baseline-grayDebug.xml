@@ -119,9 +119,6 @@
     <ID>LongParameterList:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>LongParameterList:ExpenseRepository.kt:ExpenseRepository</ID>
     <ID>LongParameterList:ExpenseRepositoryCore.kt:ExpenseRepositoryCore</ID>
-    <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseCard</ID>
-    <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseListRow</ID>
-    <ID>LongParameterList:LedgerItems.kt:@Composable internal fun LedgerExpenseTableRow</ID>
     <ID>LongParameterList:LedgerScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LedgerScreen</ID>
     <ID>LongParameterList:MainNavGraph.kt:@Composable @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter") private fun MainRoute</ID>
     <ID>LongParameterList:MainNavGraph.kt:@Composable internal fun MainNavGraph</ID>

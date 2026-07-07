@@ -69,6 +69,22 @@ internal data class LedgerDayHeaderUi(
     val expanded: Boolean = true,
 )
 
+internal data class LedgerExpenseSelectionState(
+    val enabled: Boolean,
+    val selected: Boolean,
+)
+
+internal data class LedgerExpenseItemState(
+    val expense: Expense,
+    val selection: LedgerExpenseSelectionState,
+)
+
+internal data class LedgerExpenseItemActions(
+    val onOpen: () -> Unit,
+    val onToggleSelection: () -> Unit,
+    val onEnterSelection: () -> Unit,
+)
+
 /**
  * Day-group header: date on the left, that day's subtotal on the right. The
  * subtotal uses tabular figures and ink color (金额永远用墨), matching the
@@ -180,20 +196,23 @@ private fun LedgerDayHeaderToggleIcon(state: LedgerDayHeaderUi) {
 
 @Composable
 internal fun LedgerExpenseCard(
-    expense: Expense,
-    onEdit: () -> Unit,
-    selectionMode: Boolean = false,
-    selected: Boolean = false,
-    onToggleSelect: () -> Unit = {},
-    onLongPress: () -> Unit = {},
+    state: LedgerExpenseItemState,
+    actions: LedgerExpenseItemActions,
 ) {
     val visuals = LocalThemeVisuals.current
+    val expense = state.expense
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { if (selectionMode) onToggleSelect() else onEdit() },
-                onLongClick = onLongPress,
+                onClick = {
+                    if (state.selection.enabled) {
+                        actions.onToggleSelection()
+                    } else {
+                        actions.onOpen()
+                    }
+                },
+                onLongClick = actions.onEnterSelection,
             ),
     ) {
         AppAdaptiveContentActionStateRow(
@@ -206,8 +225,8 @@ internal fun LedgerExpenseCard(
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (selectionMode) {
-                        Checkbox(checked = selected, onCheckedChange = null)
+                    if (state.selection.enabled) {
+                        Checkbox(checked = state.selection.selected, onCheckedChange = null)
                     }
                     LedgerCategoryMark(category = expense.category, density = AppListDensity.Standard)
                     Column(
@@ -275,13 +294,10 @@ internal fun LedgerExpenseCard(
 
 @Composable
 internal fun LedgerExpenseListRow(
-    expense: Expense,
-    onEdit: () -> Unit,
-    selectionMode: Boolean = false,
-    selected: Boolean = false,
-    onToggleSelect: () -> Unit = {},
-    onLongPress: () -> Unit = {},
+    state: LedgerExpenseItemState,
+    actions: LedgerExpenseItemActions,
 ) {
+    val expense = state.expense
     val rowMetrics = AppDensity.rowMetrics(AppListDensity.Compact)
     val timeText = ledgerRowTime(expense.ledgerTimestamp()) ?: stringResource(R.string.ledger_item_time_empty)
     val metaText = stringResource(R.string.ledger_item_meta, timeText, expense.category)
@@ -289,8 +305,14 @@ internal fun LedgerExpenseListRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { if (selectionMode) onToggleSelect() else onEdit() },
-                onLongClick = onLongPress,
+                onClick = {
+                    if (state.selection.enabled) {
+                        actions.onToggleSelection()
+                    } else {
+                        actions.onOpen()
+                    }
+                },
+                onLongClick = actions.onEnterSelection,
             ),
     ) {
         AppAdaptiveContentActionRow(
@@ -303,8 +325,8 @@ internal fun LedgerExpenseListRow(
                     horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (selectionMode) {
-                        Checkbox(checked = selected, onCheckedChange = null)
+                    if (state.selection.enabled) {
+                        Checkbox(checked = state.selection.selected, onCheckedChange = null)
                     }
                     LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
                     LedgerListTextBlock(
@@ -327,20 +349,23 @@ internal fun LedgerExpenseListRow(
 
 @Composable
 internal fun LedgerExpenseTableRow(
-    expense: Expense,
-    onEdit: () -> Unit,
-    selectionMode: Boolean = false,
-    selected: Boolean = false,
-    onToggleSelect: () -> Unit = {},
-    onLongPress: () -> Unit = {},
+    state: LedgerExpenseItemState,
+    actions: LedgerExpenseItemActions,
 ) {
     val visuals = LocalThemeVisuals.current
+    val expense = state.expense
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { if (selectionMode) onToggleSelect() else onEdit() },
-                onLongClick = onLongPress,
+                onClick = {
+                    if (state.selection.enabled) {
+                        actions.onToggleSelection()
+                    } else {
+                        actions.onOpen()
+                    }
+                },
+                onLongClick = actions.onEnterSelection,
             ),
     ) {
         AppAdaptiveContentActionStateRow(
@@ -353,8 +378,8 @@ internal fun LedgerExpenseTableRow(
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (selectionMode) {
-                        Checkbox(checked = selected, onCheckedChange = null)
+                    if (state.selection.enabled) {
+                        Checkbox(checked = state.selection.selected, onCheckedChange = null)
                     }
                     Column(
                         modifier = Modifier.weight(LedgerItemLayout.TableMerchantWeight),
