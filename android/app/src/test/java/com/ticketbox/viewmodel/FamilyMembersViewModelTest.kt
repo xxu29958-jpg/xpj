@@ -12,6 +12,7 @@ import com.ticketbox.data.repository.LedgerFakeDao
 import com.ticketbox.data.repository.LedgerFakeSettingsStore
 import com.ticketbox.data.repository.LedgerFakeTokenStore
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.LedgerStubApiState
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.StubApi
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
@@ -42,10 +43,10 @@ class FamilyMembersViewModelTest {
     fun auditRefreshFailureKeepsExistingAuditRows() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 membersResult = LedgerMemberListResponseDto(listOf(memberDto())),
                 auditResult = LedgerAuditListResponseDto(listOf(auditDto("audit-1"))),
-            )
+            ))
             val vm = harness(api)
 
             vm.refresh(activeLedgerId = ledger, currentRole = LEDGER_ROLE_OWNER)
@@ -68,10 +69,10 @@ class FamilyMembersViewModelTest {
     fun nonOwnerRefreshClearsAuditRowsAndSkipsAuditFetch() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 membersResult = LedgerMemberListResponseDto(listOf(memberDto())),
                 auditResult = LedgerAuditListResponseDto(listOf(auditDto("audit-1"))),
-            )
+            ))
             val vm = harness(api)
 
             vm.refresh(activeLedgerId = ledger, currentRole = LEDGER_ROLE_OWNER)
@@ -92,7 +93,7 @@ class FamilyMembersViewModelTest {
     fun invitationFailureShowsDangerTone() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(createInvitationError = RuntimeException("offline"))
+            val api = StubApi(LedgerStubApiState(createInvitationError = RuntimeException("offline")))
             val vm = harness(api)
 
             vm.createInvitation(role = LEDGER_ROLE_MEMBER, activeLedgerId = ledger)
@@ -131,13 +132,13 @@ class FamilyMembersViewModelTest {
     fun memberActionSuccessShowsSuccessToneAfterRefresh() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 membersResult = LedgerMemberListResponseDto(
                     listOf(memberDto(), memberDto(id = 2, name = "Member", role = LEDGER_ROLE_VIEWER, isSelf = false)),
                 ),
                 auditResult = LedgerAuditListResponseDto(emptyList()),
                 roleUpdateResult = memberDto(id = 2, name = "Member", role = LEDGER_ROLE_VIEWER, isSelf = false),
-            )
+            ))
             val vm = harness(api)
             var changed = false
 
@@ -162,7 +163,7 @@ class FamilyMembersViewModelTest {
     fun ownerTransferSuccessShowsSuccessToneWithoutAuditRefresh() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 membersResult = LedgerMemberListResponseDto(
                     listOf(memberDto(role = LEDGER_ROLE_MEMBER), memberDto(id = 2, name = "Member", isSelf = false)),
                 ),
@@ -172,7 +173,7 @@ class FamilyMembersViewModelTest {
                     newOwner = memberDto(id = 2, name = "Member", role = LEDGER_ROLE_OWNER, isSelf = false),
                 ),
                 listLedgersResult = LedgerListResponseDto(listOf(ledgerDto())),
-            )
+            ))
             val vm = harness(api)
 
             vm.runAction(

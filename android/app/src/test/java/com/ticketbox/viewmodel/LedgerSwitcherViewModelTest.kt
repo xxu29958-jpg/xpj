@@ -9,6 +9,7 @@ import com.ticketbox.data.repository.LedgerFakeSettingsStore
 import com.ticketbox.data.repository.LedgerFakeTokenStore
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
+import com.ticketbox.data.repository.LedgerStubApiState
 import com.ticketbox.data.repository.StubApi
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -34,7 +35,7 @@ class LedgerSwitcherViewModelTest {
     fun refreshFailureShowsDangerTone() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(listLedgersError = RuntimeException("offline"))
+            val api = StubApi(LedgerStubApiState(listLedgersError = RuntimeException("offline")))
             val vm = harness(api)
 
             vm.refresh()
@@ -52,11 +53,11 @@ class LedgerSwitcherViewModelTest {
     fun refreshFailureKeepsCachedRowsButMarksListFailed() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 listLedgersResult = LedgerListResponseDto(
                     listOf(ledgerDto(ledger, "My receipts"), ledgerDto("L_family", "Family ledger")),
                 ),
-            )
+            ))
             val vm = harness(api)
 
             vm.refresh()
@@ -97,7 +98,7 @@ class LedgerSwitcherViewModelTest {
     fun switchFailureShowsDangerTone() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(switchError = RuntimeException("boom"))
+            val api = StubApi(LedgerStubApiState(switchError = RuntimeException("boom")))
             val vm = harness(api)
 
             vm.switchTo("L_family") {}
@@ -115,7 +116,7 @@ class LedgerSwitcherViewModelTest {
     fun switchSuccessKeepsSuccessToneThroughFollowUpRefresh() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 switchResult = LedgerSwitchResponseDto(
                     sessionToken = "new-token",
                     ledger = ledgerDto("L_family", "Family ledger"),
@@ -125,7 +126,7 @@ class LedgerSwitcherViewModelTest {
                 listLedgersResult = LedgerListResponseDto(
                     listOf(ledgerDto(ledger, "My receipts"), ledgerDto("L_family", "Family ledger")),
                 ),
-            )
+            ))
             val vm = harness(api)
             var switched = false
 
@@ -148,12 +149,12 @@ class LedgerSwitcherViewModelTest {
     fun createSuccessKeepsSuccessToneThroughFollowUpRefresh() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 createResult = ledgerDto("L_new", "Travel ledger"),
                 listLedgersResult = LedgerListResponseDto(
                     listOf(ledgerDto(ledger, "My receipts"), ledgerDto("L_new", "Travel ledger")),
                 ),
-            )
+            ))
             val vm = harness(api)
             var created = false
 

@@ -28,7 +28,12 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val ready = expense(id = 10L, amountCents = 100L, merchant = "M1")
         val missingAmount = expense(id = 11L, amountCents = null, merchant = "M2")
         val missingMerchant = expense(id = 12L, amountCents = 100L, merchant = null)
-        val suspected = expense(id = 13L, amountCents = 100L, merchant = "M3", duplicateStatus = "suspected")
+        val suspected = expense(
+            id = 13L,
+            amountCents = 100L,
+            merchant = "M3",
+            details = PendingExpenseDetails(duplicateStatus = "suspected"),
+        )
         val missingCategory = expense(id = 14L, amountCents = 100L, merchant = "M4", category = "")
         val fake = FakeReviewActions(
             pending = listOf(ready, missingAmount, missingMerchant, suspected, missingCategory),
@@ -72,7 +77,12 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
 
     @Test
     fun confirmReadyExpensesShowsHintWhenNoneReady() = review {
-        val onlyDup = expense(id = 30L, amountCents = 100L, merchant = "M", duplicateStatus = "suspected")
+        val onlyDup = expense(
+            id = 30L,
+            amountCents = 100L,
+            merchant = "M",
+            details = PendingExpenseDetails(duplicateStatus = "suspected"),
+        )
         val fake = FakeReviewActions(pending = listOf(onlyDup))
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
@@ -86,7 +96,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
 
     @Test
     fun markNotDuplicateClearsSuspectedAndKeepsItem() = review {
-        val target = expense(id = 40L, duplicateStatus = "suspected")
+        val target = expense(id = 40L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.markNotDuplicateResponder = { Result.success(target.copy(duplicateStatus = "none")) }
         val vm = PendingViewModel(fake)
@@ -107,7 +117,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         // PR-2g.8: offline mark-not-duplicate. The item STAYS in the
         // pending list (unlike confirm/reject) with the badge cleared,
         // and the user sees the "联网后同步" hint.
-        val target = expense(id = 52L, duplicateStatus = "suspected")
+        val target = expense(id = 52L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.markNotDuplicateOfflineResponder = {
             Result.success(
@@ -130,7 +140,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
 
     @Test
     fun rejectExpenseRemovesItem() = review {
-        val target = expense(id = 41L, duplicateStatus = "suspected")
+        val target = expense(id = 41L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
         val vm = PendingViewModel(fake)
@@ -170,7 +180,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
 
     @Test
     fun rejectQueuedOfflineRemovesItemWithOfflineMessage() = review {
-        val target = expense(id = 51L, duplicateStatus = "suspected")
+        val target = expense(id = 51L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectOfflineResponder = {
             Result.success(

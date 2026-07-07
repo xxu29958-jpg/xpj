@@ -252,7 +252,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         val dao = FakePendingMutationDao()
         val outbox = OutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(acknowledgeException = IOException("net out"))
+        val api = ApiServiceStub(extras = ApiServiceStubExtras(acknowledgeException = IOException("net out")))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
 
         val outcome = repo.acknowledgeItemsMismatchAllowingOffline(baseline, current)
@@ -421,7 +421,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         val outbox = OutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(
-            acknowledgeException = httpException(409, """{"error":"state_conflict","message":"账单已修改"}"""),
+            extras = ApiServiceStubExtras(
+                acknowledgeException = httpException(409, """{"error":"state_conflict","message":"账单已修改"}"""),
+            ),
         )
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
 

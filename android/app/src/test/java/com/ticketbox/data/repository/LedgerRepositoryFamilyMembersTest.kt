@@ -16,27 +16,29 @@ class LedgerRepositoryFamilyMembersTest {
     @Test
     fun refreshFamilyMembersMapsServerFieldsToDomain() = runTest {
         val api = StubApi(
-            membersResult = LedgerMemberListResponseDto(
-                members = listOf(
-                    LedgerMemberDto(
-                        memberId = 1,
-                        accountId = 11,
-                        accountPublicId = "acc_owner",
-                        accountName = "阿方",
-                        role = "owner",
-                        createdAt = "2026-05-01T00:00:00Z",
-                        disabledAt = null,
-                        isSelf = true,
-                    ),
-                    LedgerMemberDto(
-                        memberId = 2,
-                        accountId = 22,
-                        accountPublicId = "acc_viewer",
-                        accountName = "",
-                        role = "viewer",
-                        createdAt = null,
-                        disabledAt = "2026-05-02T00:00:00Z",
-                        isSelf = false,
+            LedgerStubApiState(
+                membersResult = LedgerMemberListResponseDto(
+                    members = listOf(
+                        LedgerMemberDto(
+                            memberId = 1,
+                            accountId = 11,
+                            accountPublicId = "acc_owner",
+                            accountName = "阿方",
+                            role = "owner",
+                            createdAt = "2026-05-01T00:00:00Z",
+                            disabledAt = null,
+                            isSelf = true,
+                        ),
+                        LedgerMemberDto(
+                            memberId = 2,
+                            accountId = 22,
+                            accountPublicId = "acc_viewer",
+                            accountName = "",
+                            role = "viewer",
+                            createdAt = null,
+                            disabledAt = "2026-05-02T00:00:00Z",
+                            isSelf = false,
+                        ),
                     ),
                 ),
             ),
@@ -67,17 +69,19 @@ class LedgerRepositoryFamilyMembersTest {
     @Test
     fun refreshFamilyMembersPersistsSelfRoleDowngrade() = runTest {
         val api = StubApi(
-            membersResult = LedgerMemberListResponseDto(
-                members = listOf(
-                    LedgerMemberDto(
-                        memberId = 1,
-                        accountId = 11,
-                        accountPublicId = "acc_self",
-                        accountName = "我",
-                        role = "viewer",
-                        createdAt = "2026-05-01T00:00:00Z",
-                        disabledAt = null,
-                        isSelf = true,
+            LedgerStubApiState(
+                membersResult = LedgerMemberListResponseDto(
+                    members = listOf(
+                        LedgerMemberDto(
+                            memberId = 1,
+                            accountId = 11,
+                            accountPublicId = "acc_self",
+                            accountName = "我",
+                            role = "viewer",
+                            createdAt = "2026-05-01T00:00:00Z",
+                            disabledAt = null,
+                            isSelf = true,
+                        ),
                     ),
                 ),
             ),
@@ -110,17 +114,19 @@ class LedgerRepositoryFamilyMembersTest {
     @Test
     fun refreshFamilyMembersSlowResponseDoesNotPersistRoleAfterLedgerSwitch() = runTest {
         val api = StubApi(
-            membersResult = LedgerMemberListResponseDto(
-                members = listOf(
-                    LedgerMemberDto(
-                        memberId = 1,
-                        accountId = 11,
-                        accountPublicId = "acc_self",
-                        accountName = "我",
-                        role = "viewer",
-                        createdAt = "2026-05-01T00:00:00Z",
-                        disabledAt = null,
-                        isSelf = true,
+            LedgerStubApiState(
+                membersResult = LedgerMemberListResponseDto(
+                    members = listOf(
+                        LedgerMemberDto(
+                            memberId = 1,
+                            accountId = 11,
+                            accountPublicId = "acc_self",
+                            accountName = "我",
+                            role = "viewer",
+                            createdAt = "2026-05-01T00:00:00Z",
+                            disabledAt = null,
+                            isSelf = true,
+                        ),
                     ),
                 ),
             ),
@@ -171,23 +177,25 @@ class LedgerRepositoryFamilyMembersTest {
     @Test
     fun refreshFamilyAuditMapsServerFieldsAndClampsLimit() = runTest {
         val api = StubApi(
-            auditResult = LedgerAuditListResponseDto(
-                items = listOf(
-                    LedgerAuditDto(
-                        publicId = "audit-1",
-                        ledgerId = "L_family",
-                        action = "member_role_changed",
-                        actorAccountPublicId = "acc_owner",
-                        actorAccountName = "阿方",
-                        targetAccountPublicId = "acc_member",
-                        targetAccountName = "",
-                        targetMemberId = 2,
-                        invitationPublicId = null,
-                        previousRole = "member",
-                        newRole = "viewer",
-                        result = "success",
-                        detail = "hidden-detail",
-                        createdAt = "2026-05-13T00:00:00Z",
+            LedgerStubApiState(
+                auditResult = LedgerAuditListResponseDto(
+                    items = listOf(
+                        LedgerAuditDto(
+                            publicId = "audit-1",
+                            ledgerId = "L_family",
+                            action = "member_role_changed",
+                            actorAccountPublicId = "acc_owner",
+                            actorAccountName = "阿方",
+                            targetAccountPublicId = "acc_member",
+                            targetAccountName = "",
+                            targetMemberId = 2,
+                            invitationPublicId = null,
+                            previousRole = "member",
+                            newRole = "viewer",
+                            result = "success",
+                            detail = "hidden-detail",
+                            createdAt = "2026-05-13T00:00:00Z",
+                        ),
                     ),
                 ),
             ),

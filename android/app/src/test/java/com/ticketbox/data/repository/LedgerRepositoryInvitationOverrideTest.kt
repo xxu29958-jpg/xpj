@@ -28,16 +28,18 @@ class LedgerRepositoryInvitationOverrideTest {
         // unlocked, exactly like pairing-code binding.
         val newToken = "session-token-joined"
         val api = StubApi(
-            acceptResult = InvitationAcceptResponseDto(
-                sessionToken = newToken,
-                accountName = "新成员",
-                ledgerId = "L_family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel 9",
-                role = "member",
-            ),
-            listLedgersResult = LedgerListResponseDto(
-                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+            LedgerStubApiState(
+                acceptResult = InvitationAcceptResponseDto(
+                    sessionToken = newToken,
+                    accountName = "新成员",
+                    ledgerId = "L_family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel 9",
+                    role = "member",
+                ),
+                listLedgersResult = LedgerListResponseDto(
+                    ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore()
@@ -107,13 +109,15 @@ class LedgerRepositoryInvitationOverrideTest {
         // repository API allows it), the stored token must NOT be attached to
         // a request leaving for the override host.
         val api = StubApi(
-            acceptResult = InvitationAcceptResponseDto(
-                sessionToken = "tk_other_server",
-                accountName = "新成员",
-                ledgerId = "L_other",
-                ledgerName = "另一台账本",
-                deviceName = "Pixel 9",
-                role = "member",
+            LedgerStubApiState(
+                acceptResult = InvitationAcceptResponseDto(
+                    sessionToken = "tk_other_server",
+                    accountName = "新成员",
+                    ledgerId = "L_other",
+                    ledgerName = "另一台账本",
+                    deviceName = "Pixel 9",
+                    role = "member",
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://old.example.com") }
@@ -144,11 +148,13 @@ class LedgerRepositoryInvitationOverrideTest {
     @Test
     fun previewInvitationWithServerUrlOverrideWorksUnboundAndPersistsNothing() = runTest {
         val api = StubApi(
-            previewResult = InvitationPreviewResponseDto(
-                ledgerId = "L_family",
-                ledgerName = "家庭账本",
-                role = "member",
-                expiresAt = "2026-07-01T00:00:00Z",
+            LedgerStubApiState(
+                previewResult = InvitationPreviewResponseDto(
+                    ledgerId = "L_family",
+                    ledgerName = "家庭账本",
+                    role = "member",
+                    expiresAt = "2026-07-01T00:00:00Z",
+                ),
             ),
         )
         val store = LedgerFakeSettingsStore()

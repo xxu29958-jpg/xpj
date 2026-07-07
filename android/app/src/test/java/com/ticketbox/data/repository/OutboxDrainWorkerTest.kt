@@ -17,33 +17,35 @@ import kotlin.test.assertFailsWith
  */
 class OutboxDrainWorkerTest {
 
-    private fun summary(
-        attempted: Int = 0,
-        done: Int = 0,
-        conflicts: Int = 0,
-        failures: Int = 0,
-        retryable: Int = 0,
-        discarded: Int = 0,
-        unsupported: Int = 0,
-        raced: Int = 0,
-        aborted: Int = 0,
-    ) = DrainSummary(
-        attempted = attempted,
-        done = done,
-        conflicts = conflicts,
-        failures = failures,
-        retryable = retryable,
-        discarded = discarded,
-        unsupported = unsupported,
-        raced = raced,
-        aborted = aborted,
+    private data class DrainSummaryFixture(
+        val attempted: Int = 0,
+        val done: Int = 0,
+        val conflicts: Int = 0,
+        val failures: Int = 0,
+        val retryable: Int = 0,
+        val discarded: Int = 0,
+        val unsupported: Int = 0,
+        val raced: Int = 0,
+        val aborted: Int = 0,
+    )
+
+    private fun summary(fixture: DrainSummaryFixture = DrainSummaryFixture()) = DrainSummary(
+        attempted = fixture.attempted,
+        done = fixture.done,
+        conflicts = fixture.conflicts,
+        failures = fixture.failures,
+        retryable = fixture.retryable,
+        discarded = fixture.discarded,
+        unsupported = fixture.unsupported,
+        raced = fixture.raced,
+        aborted = fixture.aborted,
     )
 
     @Test
     fun `idle queue → SUCCESS`() {
         assertEquals(
             DrainOutcome.SUCCESS,
-            OutboxDrainWorker.classify(summary(attempted = 0)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 0))),
         )
     }
 
@@ -54,7 +56,7 @@ class OutboxDrainWorkerTest {
         // current schedule and burn cycles on the same dead network.
         assertEquals(
             DrainOutcome.RETRY,
-            OutboxDrainWorker.classify(summary(attempted = 3, retryable = 3)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 3, retryable = 3))),
         )
     }
 
@@ -66,7 +68,7 @@ class OutboxDrainWorkerTest {
         assertEquals(
             DrainOutcome.SUCCESS,
             OutboxDrainWorker.classify(
-                summary(attempted = 4, done = 1, retryable = 3),
+                summary(DrainSummaryFixture(attempted = 4, done = 1, retryable = 3)),
             ),
         )
     }
@@ -77,7 +79,7 @@ class OutboxDrainWorkerTest {
         // failure — flag SUCCESS so the schedule continues normally.
         assertEquals(
             DrainOutcome.SUCCESS,
-            OutboxDrainWorker.classify(summary(attempted = 2, conflicts = 2)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 2, conflicts = 2))),
         )
     }
 
@@ -87,7 +89,7 @@ class OutboxDrainWorkerTest {
         // user's problem to fix, not the worker's reason to retry.
         assertEquals(
             DrainOutcome.SUCCESS,
-            OutboxDrainWorker.classify(summary(attempted = 1, failures = 1)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 1, failures = 1))),
         )
     }
 
@@ -97,7 +99,7 @@ class OutboxDrainWorkerTest {
         // No backoff needed.
         assertEquals(
             DrainOutcome.SUCCESS,
-            OutboxDrainWorker.classify(summary(attempted = 1, discarded = 1)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 1, discarded = 1))),
         )
     }
 
@@ -109,7 +111,7 @@ class OutboxDrainWorkerTest {
         // retry-after-upgrade. The worker has nothing to retry.
         assertEquals(
             DrainOutcome.SUCCESS,
-            OutboxDrainWorker.classify(summary(attempted = 1, unsupported = 1)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 1, unsupported = 1))),
         )
     }
 
@@ -121,7 +123,7 @@ class OutboxDrainWorkerTest {
         // the winning drain is the one taking responsibility.
         assertEquals(
             DrainOutcome.SUCCESS,
-            OutboxDrainWorker.classify(summary(attempted = 3, raced = 3)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 3, raced = 3))),
         )
     }
 
@@ -134,7 +136,7 @@ class OutboxDrainWorkerTest {
         // out the 15-min periodic tick.
         assertEquals(
             DrainOutcome.RETRY,
-            OutboxDrainWorker.classify(summary(attempted = 3, aborted = 3)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 3, aborted = 3))),
         )
     }
 
@@ -145,7 +147,7 @@ class OutboxDrainWorkerTest {
         // the post-binding-transition state.
         assertEquals(
             DrainOutcome.SUCCESS,
-            OutboxDrainWorker.classify(summary(attempted = 4, done = 1, aborted = 3)),
+            OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 4, done = 1, aborted = 3))),
         )
     }
 
@@ -180,12 +182,12 @@ class OutboxDrainWorkerTest {
         // Sanity: a real engine return path lands at the same
         // outcome we'd get from calling classify() directly.
         val doneOutcome = OutboxDrainWorker.runDrain {
-            summary(attempted = 2, done = 2)
+            summary(DrainSummaryFixture(attempted = 2, done = 2))
         }
         assertEquals(DrainOutcome.SUCCESS, doneOutcome)
 
         val retryOutcome = OutboxDrainWorker.runDrain {
-            summary(attempted = 1, retryable = 1)
+            summary(DrainSummaryFixture(attempted = 1, retryable = 1))
         }
         assertEquals(DrainOutcome.RETRY, retryOutcome)
     }

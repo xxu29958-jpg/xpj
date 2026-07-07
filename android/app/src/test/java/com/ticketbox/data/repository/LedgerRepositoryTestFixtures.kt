@@ -77,7 +77,7 @@ internal class LedgerStubApiFactory(private val service: ApiService) : ApiServic
     }
 }
 
-internal class StubApi(
+internal data class LedgerStubApiState(
     var listLedgersResult: LedgerListResponseDto? = null,
     var listLedgersError: Throwable? = null,
     var createResult: LedgerDto? = null,
@@ -95,22 +95,36 @@ internal class StubApi(
     var acceptError: Throwable? = null,
     var createInvitationResult: com.ticketbox.data.remote.dto.InvitationCreateResponseDto? = null,
     var createInvitationError: Throwable? = null,
-    val createInvitationTargets: MutableList<String> = mutableListOf(),
-    val createInvitationRequests: MutableList<com.ticketbox.data.remote.dto.InvitationCreateRequestDto> = mutableListOf(),
-    val switchRequests: MutableList<String> = mutableListOf(),
-    val memberLedgerRequests: MutableList<String> = mutableListOf(),
-    val auditRequests: MutableList<Pair<String, Int>> = mutableListOf(),
-    val roleUpdateTargets: MutableList<Pair<String, Long>> = mutableListOf(),
-    val roleUpdateRequests: MutableList<LedgerMemberRoleUpdateRequestDto> = mutableListOf(),
-    val disableTargets: MutableList<Pair<String, Long>> = mutableListOf(),
-    val transferTargets: MutableList<Pair<String, Long>> = mutableListOf(),
-    val previewRequests: MutableList<InvitationPreviewRequestDto> = mutableListOf(),
-    val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf(),
+)
+
+internal class StubApi(
+    private val state: LedgerStubApiState = LedgerStubApiState(),
 ) : ApiService {
     var onLedgerMembers: (() -> Unit)? = null
     var onListLedgers: (() -> Unit)? = null
     var onAcceptInvitation: (() -> Unit)? = null
     var auditError: Throwable? = null
+    var listLedgersError: Throwable?
+        get() = state.listLedgersError
+        set(value) {
+            state.listLedgersError = value
+        }
+    var listLedgersResult: LedgerListResponseDto?
+        get() = state.listLedgersResult
+        set(value) {
+            state.listLedgersResult = value
+        }
+    val createInvitationTargets: MutableList<String> = mutableListOf()
+    val createInvitationRequests: MutableList<com.ticketbox.data.remote.dto.InvitationCreateRequestDto> = mutableListOf()
+    val switchRequests: MutableList<String> = mutableListOf()
+    val memberLedgerRequests: MutableList<String> = mutableListOf()
+    val auditRequests: MutableList<Pair<String, Int>> = mutableListOf()
+    val roleUpdateTargets: MutableList<Pair<String, Long>> = mutableListOf()
+    val roleUpdateRequests: MutableList<LedgerMemberRoleUpdateRequestDto> = mutableListOf()
+    val disableTargets: MutableList<Pair<String, Long>> = mutableListOf()
+    val transferTargets: MutableList<Pair<String, Long>> = mutableListOf()
+    val previewRequests: MutableList<InvitationPreviewRequestDto> = mutableListOf()
+    val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf()
 
     // issue #65 slice 6b device routes (body-level so the baselined ctor stays put).
     var devicesResult: com.ticketbox.data.remote.dto.MyDeviceListResponseDto? = null
@@ -134,13 +148,13 @@ internal class StubApi(
     val recycleBinRestoreRequests: MutableList<com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto> = mutableListOf()
 
     override suspend fun listLedgers(): LedgerListResponseDto {
-        listLedgersError?.let { throw it }
+        state.listLedgersError?.let { throw it }
         onListLedgers?.invoke()
-        return listLedgersResult ?: LedgerListResponseDto(ledgers = emptyList())
+        return state.listLedgersResult ?: LedgerListResponseDto(ledgers = emptyList())
     }
 
     override suspend fun createLedger(request: LedgerCreateRequestDto): LedgerDto {
-        return createResult ?: LedgerDto(
+        return state.createResult ?: LedgerDto(
             ledgerId = "L_new",
             name = request.name,
             role = "owner",
@@ -152,21 +166,21 @@ internal class StubApi(
 
     override suspend fun switchLedger(ledgerId: String): LedgerSwitchResponseDto {
         switchRequests += ledgerId
-        switchError?.let { throw it }
-        switchHandler?.let { return it(ledgerId) }
-        return switchResult ?: error("Unexpected switch call")
+        state.switchError?.let { throw it }
+        state.switchHandler?.let { return it(ledgerId) }
+        return state.switchResult ?: error("Unexpected switch call")
     }
 
     override suspend fun ledgerMembers(ledgerId: String): LedgerMemberListResponseDto {
         memberLedgerRequests += ledgerId
         onLedgerMembers?.invoke()
-        return membersResult ?: error("Unexpected members call")
+        return state.membersResult ?: error("Unexpected members call")
     }
 
     override suspend fun ledgerAudit(ledgerId: String, limit: Int): LedgerAuditListResponseDto {
         auditRequests += ledgerId to limit
         auditError?.let { throw it }
-        return auditResult ?: error("Unexpected audit call")
+        return state.auditResult ?: error("Unexpected audit call")
     }
 
     override suspend fun updateLedgerMemberRole(
@@ -176,12 +190,12 @@ internal class StubApi(
     ): LedgerMemberDto {
         roleUpdateTargets += ledgerId to memberId
         roleUpdateRequests += request
-        return roleUpdateResult ?: error("Unexpected role update call")
+        return state.roleUpdateResult ?: error("Unexpected role update call")
     }
 
     override suspend fun disableLedgerMember(ledgerId: String, memberId: Long): LedgerMemberDto {
         disableTargets += ledgerId to memberId
-        return disableResult ?: error("Unexpected disable call")
+        return state.disableResult ?: error("Unexpected disable call")
     }
 
     override suspend fun transferLedgerOwner(
@@ -189,7 +203,7 @@ internal class StubApi(
         memberId: Long,
     ): OwnerTransferResponseDto {
         transferTargets += ledgerId to memberId
-        return transferResult ?: error("Unexpected transfer call")
+        return state.transferResult ?: error("Unexpected transfer call")
     }
 
     override suspend fun createInvitation(
@@ -198,23 +212,23 @@ internal class StubApi(
     ): com.ticketbox.data.remote.dto.InvitationCreateResponseDto {
         createInvitationTargets += ledgerId
         createInvitationRequests += request
-        createInvitationError?.let { throw it }
-        return createInvitationResult ?: error("Unexpected createInvitation call")
+        state.createInvitationError?.let { throw it }
+        return state.createInvitationResult ?: error("Unexpected createInvitation call")
     }
 
     override suspend fun previewInvitation(
         request: InvitationPreviewRequestDto,
     ): InvitationPreviewResponseDto {
         previewRequests += request
-        previewError?.let { throw it }
-        return previewResult ?: error("Unexpected preview call")
+        state.previewError?.let { throw it }
+        return state.previewResult ?: error("Unexpected preview call")
     }
 
     override suspend fun acceptInvitation(request: InvitationAcceptRequestDto): InvitationAcceptResponseDto {
         acceptRequests += request
-        acceptError?.let { throw it }
+        state.acceptError?.let { throw it }
         onAcceptInvitation?.invoke()
-        return acceptResult ?: error("Unexpected accept call")
+        return state.acceptResult ?: error("Unexpected accept call")
     }
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto = ledgerUnsupported()

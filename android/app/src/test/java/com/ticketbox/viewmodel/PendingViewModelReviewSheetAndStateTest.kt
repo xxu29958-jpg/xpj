@@ -229,7 +229,13 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val thumbnailResponse = CompletableDeferred<Result<ProtectedImage>>()
         val fake = FakeReviewActions(
-            pending = listOf(expense(id = 92L, merchant = "Old Ledger", imagePath = "uploads/old.jpg")),
+            pending = listOf(
+                expense(
+                    id = 92L,
+                    merchant = "Old Ledger",
+                    details = PendingExpenseDetails(imagePath = "uploads/old.jpg"),
+                ),
+            ),
             activeLedgerFlow = ledgerFlow,
         )
         fake.thumbnailResponder = { thumbnailResponse.await() }

@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.LedgerFakeSettingsStore
 import com.ticketbox.data.repository.LedgerFakeTokenStore
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
+import com.ticketbox.data.repository.LedgerStubApiState
 import com.ticketbox.data.repository.StubApi
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +51,7 @@ class JoinFamilyLedgerViewModelTest {
     fun previewThenAcceptRoutesAcceptThroughPreviewedServerUrl() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 previewResult = InvitationPreviewResponseDto(
                     ledgerId = "L_family",
                     ledgerName = "家庭账本",
@@ -65,7 +66,7 @@ class JoinFamilyLedgerViewModelTest {
                     deviceName = "Pixel 9",
                     role = "member",
                 ),
-            )
+            ))
             val (viewModel, store, tokenStore) = unboundHarness(api)
 
             viewModel.previewInvitation("inv_VM", serverUrlOverride = "https://join.example.com")
@@ -103,14 +104,14 @@ class JoinFamilyLedgerViewModelTest {
     fun serverUrlEditAfterPreviewDropsPreviewAndBlocksAccept() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 previewResult = InvitationPreviewResponseDto(
                     ledgerId = "L_family",
                     ledgerName = "家庭账本",
                     role = "member",
                     expiresAt = null,
                 ),
-            )
+            ))
             val (viewModel, _, _) = unboundHarness(api)
 
             viewModel.previewInvitation("inv_VM", serverUrlOverride = "https://join.example.com")
@@ -140,7 +141,7 @@ class JoinFamilyLedgerViewModelTest {
     fun tokenEditAfterPreviewFailureClearsStaleError() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(previewError = IOException("offline"))
+            val api = StubApi(LedgerStubApiState(previewError = IOException("offline")))
             val (viewModel, _, _) = unboundHarness(api)
 
             viewModel.previewInvitation("bad", serverUrlOverride = "https://join.example.com")
@@ -158,14 +159,14 @@ class JoinFamilyLedgerViewModelTest {
     fun identityEditAfterAcceptValidationFailureKeepsPreviewAndClearsError() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 previewResult = InvitationPreviewResponseDto(
                     ledgerId = "L_family",
                     ledgerName = "瀹跺涵璐︽湰",
                     role = "member",
                     expiresAt = null,
                 ),
-            )
+            ))
             val (viewModel, _, _) = unboundHarness(api)
 
             viewModel.previewInvitation("inv_VM", serverUrlOverride = "https://join.example.com")
@@ -193,14 +194,14 @@ class JoinFamilyLedgerViewModelTest {
     fun resetReturnsRetainedViewModelToFreshState() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi(
+            val api = StubApi(LedgerStubApiState(
                 previewResult = InvitationPreviewResponseDto(
                     ledgerId = "L_family",
                     ledgerName = "家庭账本",
                     role = "member",
                     expiresAt = null,
                 ),
-            )
+            ))
             val (viewModel, _, _) = unboundHarness(api)
 
             viewModel.previewInvitation("inv_VM", serverUrlOverride = "https://join.example.com")
