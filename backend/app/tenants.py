@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from hmac import compare_digest
-from typing import Any
+from typing import TypeAlias
 
 from app.config import get_settings
 from app.errors import AppError
@@ -13,6 +14,7 @@ from app.errors import AppError
 DEFAULT_TENANT_ID = "owner"
 DEFAULT_TENANT_NAME = "我的小票夹"
 TENANT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+TenantConfigEntry: TypeAlias = Mapping[str, object]
 
 
 @dataclass(frozen=True)
@@ -65,7 +67,7 @@ def _clean_tenant_name(value: str | None) -> str:
     return cleaned or DEFAULT_TENANT_NAME
 
 
-def _tenant_from_mapping(raw: dict[str, Any]) -> Tenant:
+def _tenant_from_mapping(raw: TenantConfigEntry) -> Tenant:
     return Tenant(
         id=_clean_tenant_id(str(raw.get("id") or "")),
         name=_clean_tenant_name(str(raw.get("name") or "")),

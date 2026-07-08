@@ -33,13 +33,14 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TypeAlias
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
 from app.models.ocr_facts import OCR_PROVIDER_VALUES
+from app.services._json_types import JsonObject
 from app.services.learning_service._algorithm_registry import (
     ALGORITHM_TYPES,
     BUDGET_SUGGESTION,
@@ -162,6 +163,9 @@ __all__ = [
     "withdraw_algorithm_version",
 ]
 
+LearningPayload: TypeAlias = JsonObject
+LearningSignalMarker: TypeAlias = JsonObject
+
 
 @dataclass(frozen=True)
 class DecisionDraft:
@@ -177,7 +181,7 @@ class DecisionDraft:
     decision_type: str
     algorithm_version: str
     subject_kind: str
-    payload: dict[str, Any]
+    payload: LearningPayload
     subject_id: int | None = None
     subject_public_id: str | None = None
     score: float | None = None
@@ -207,13 +211,13 @@ class EventDraft:
     subject_id: int | None = None
     decision_id: int | None = None
     actor_account_id: int | None = None
-    before_payload: dict[str, Any] | None = None
-    after_payload: dict[str, Any] | None = None
+    before_payload: LearningPayload | None = None
+    after_payload: LearningPayload | None = None
     signal_type: str | None = None
-    signal_marker: dict[str, Any] | None = None
+    signal_marker: LearningSignalMarker | None = None
 
 
-def _dumps(payload: dict[str, Any] | None) -> str | None:
+def _dumps(payload: LearningPayload | None) -> str | None:
     if payload is None:
         return None
     return json.dumps(payload, sort_keys=True, ensure_ascii=False)

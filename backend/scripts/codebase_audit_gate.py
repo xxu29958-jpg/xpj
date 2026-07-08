@@ -55,7 +55,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "service_public_no_private": 5,  # +1 批7 ledger_has_any_expense — a one-query lifetime existence probe has no private helpers to call; the counter's pass-through heuristic matches its shape, banked as legitimate
     "global_usage": 0,  # 2026-07-08: process-local CSRF/executor/Windows-task state moved behind lifecycle stores.
     "cached_singletons": 3,
-    "nested_dict_args": 16,  # −1 PG-only slice 5 (retired cut-over machinery)
+    "nested_dict_args": 0,  # 2026-07-08: JSON/DTO boundary signatures use named contracts.
     "mixed_return_functions": 0,
     "broad_exception": 0,  # 2026-07-08: remaining broad catches narrowed to cleanup/fail-soft exception families.
     "generic_raises": 0,  # 2026-07-08: remaining direct RuntimeError raises now use narrow startup/service contract exceptions.

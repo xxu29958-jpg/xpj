@@ -23,13 +23,18 @@ import logging
 import threading
 from contextlib import contextmanager
 from time import monotonic
-from typing import Any
+from typing import TypeAlias, cast
 from urllib import error, request
 
 from app.config import get_settings
 from app.errors import AppError
+from app.services._json_types import JsonObject
 
 logger = logging.getLogger(__name__)
+
+LocalVisionChatRequest: TypeAlias = JsonObject
+LocalVisionChatResponse: TypeAlias = JsonObject
+LocalVisionModelJson: TypeAlias = JsonObject
 
 
 class _LocalLlmSlotLimiter:
@@ -113,7 +118,7 @@ def resolve_local_llm_model(base_url: str) -> str:
     return str(model_id)
 
 
-def post_chat_completion(payload: dict[str, Any]) -> dict[str, Any]:
+def post_chat_completion(payload: LocalVisionChatRequest) -> LocalVisionChatResponse:
     settings = get_settings()
     endpoint = f"{settings.local_llm_base_url}/chat/completions"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -125,7 +130,7 @@ def post_chat_completion(payload: dict[str, Any]) -> dict[str, Any]:
     )
     try:
         with request.urlopen(req, timeout=settings.local_llm_timeout_seconds) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return cast(LocalVisionChatResponse, json.loads(response.read().decode("utf-8")))
     except error.HTTPError as exc:
         detail_bytes = exc.read(4096)
         logger.warning(
@@ -139,7 +144,7 @@ def post_chat_completion(payload: dict[str, Any]) -> dict[str, Any]:
         raise AppError("server_error", "本地大模型服务不可用。", status_code=500) from exc
 
 
-def extract_message_content(response: dict[str, Any]) -> str:
+def extract_message_content(response: LocalVisionChatResponse) -> str:
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
         raise AppError("server_error", "本地大模型返回格式不正确。", status_code=500)
@@ -161,7 +166,7 @@ def rewrap_code_fence(content: str) -> str:
     return "\n".join(lines).strip()
 
 
-def parse_json_object(content: str) -> dict[str, Any]:
+def parse_json_object(content: str) -> LocalVisionModelJson:
     cleaned = content.strip()
     if cleaned.startswith("```"):
         cleaned = rewrap_code_fence(cleaned)
@@ -175,12 +180,12 @@ def parse_json_object(content: str) -> dict[str, Any]:
         raise AppError("server_error", "本地大模型返回的 JSON 无法解析。", status_code=500) from exc
     if not isinstance(payload, dict):
         raise AppError("server_error", "本地大模型返回的 JSON 不是对象。", status_code=500)
-    return payload
+    return cast(LocalVisionModelJson, payload)
 
 
 def call_local_llm_vision(
     image_bytes: bytes, media_type: str | None, prompt_text: str
-) -> dict[str, Any]:
+) -> LocalVisionModelJson:
     """Run one image through the local vision model and return its JSON object.
 
     Encodes ``image_bytes`` inline as a data URL, resolves the model (pinned or
@@ -195,7 +200,7 @@ def call_local_llm_vision(
     media = media_type or "image/jpeg"
     encoded = base64.b64encode(image_bytes).decode("ascii")
     model = settings.local_llm_model or resolve_local_llm_model(settings.local_llm_base_url)
-    payload = {
+    payload: LocalVisionChatRequest = {
         "model": model,
         "temperature": 0,
         "messages": [

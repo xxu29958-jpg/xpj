@@ -22,7 +22,6 @@ import json
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +31,7 @@ from app.config import PLACEHOLDER_SECRETS, get_settings
 from app.errors import AppError
 from app.models import BudgetAdvisorAuditLog, BudgetAdvisorQuotaLock
 from app.services import app_meta_service
+from app.services.budget_advisor_service._models import BudgetAdvisorOutboundPayload
 from app.services.budget_advisor_service._provider_names import (
     LIVE_PROVIDER_NAMES,
     canonical_provider_name,
@@ -84,7 +84,7 @@ def _audit_signing_secret(db: Session) -> str:
     return key
 
 
-def compute_input_hash(db: Session, payload: dict[str, Any]) -> str:
+def compute_input_hash(db: Session, payload: BudgetAdvisorOutboundPayload) -> str:
     """HMAC-SHA256 of the outbound payload, keyed by the per-install audit secret
     (ADR-0045). The hash is a write-only tamper-evidence fingerprint — never
     re-verified (the payload itself is never stored), so a key change is harmless."""

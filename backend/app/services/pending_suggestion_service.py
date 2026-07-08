@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TypeAlias, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
+from app.services._json_types import JsonObject
 from app.services.learning_service import (
     DecisionDraft,
     EventDraft,
@@ -34,6 +35,8 @@ from app.services.learning_service._algorithm_registry import (
 from app.services.learning_service._algorithm_registry import (
     get as get_algorithm_type,
 )
+
+DecisionPayload: TypeAlias = JsonObject
 
 
 @dataclass(frozen=True)
@@ -254,7 +257,7 @@ def _ensure_decision(
     expense: Expense,
     decision_type: str,
     algorithm_version: str,
-    payload: dict[str, Any],
+    payload: DecisionPayload,
     score: float | None,
 ) -> AlgorithmDecision:
     existing = active_decision_for_subject(
@@ -294,16 +297,14 @@ def _ensure_decision(
     return decision
 
 
-def _loads(payload: str | None) -> dict[str, Any]:
+def _loads(payload: str | None) -> DecisionPayload:
     if not payload:
         return {}
     loaded = json.loads(payload)
-    return loaded if isinstance(loaded, dict) else {}
+    return cast(DecisionPayload, loaded) if isinstance(loaded, dict) else {}
 
 
-def _feedback_marker_payload(
-    decision_type: str, payload: dict[str, Any]
-) -> dict[str, Any]:
+def _feedback_marker_payload(decision_type: str, payload: DecisionPayload) -> DecisionPayload:
     if decision_type == CATEGORY_SUGGESTION.decision_type:
         return {"category": payload.get("category")}
     if decision_type == DUPLICATE_CANDIDATE.decision_type:
