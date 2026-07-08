@@ -23,7 +23,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
+from app.errors import AppError, PathTraversalError
 from app.fx_constants import FX_STATUS_PENDING
 from app.models import Expense
 from app.schemas import NotificationDraftCreateRequest
@@ -179,7 +179,7 @@ def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str |
 def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | None:
     try:
         return generate_thumbnail(relative_path, tenant_id=tenant_id)
-    except Exception:
+    except (OSError, PathTraversalError, RecursionError, RuntimeError, ValueError):
         # Thumbnail is an optional artifact — never block the surrounding
         # upload / enrichment on it. The failure is still recorded so
         # health checks can see "thumbnails are silently failing".

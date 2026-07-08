@@ -54,7 +54,7 @@ def generate_thumbnail(
             image.thumbnail(size)
             rgb = image.convert("RGB")
             rgb.save(thumbnail_path, format="JPEG", quality=82, optimize=True)
-    except Exception:
+    except (OSError, RecursionError, ValueError):
         # PIL raises many flavors here (UnidentifiedImageError, OSError,
         # ValueError, sometimes RecursionError on malformed input).
         # Thumbnail is optional — return None so the caller treats this
