@@ -8,17 +8,20 @@ _MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "_audit_ci_gap.
 
 
 def _load() -> object:
-    # Load straight from the file path instead of inserting backend/scripts onto
-    # sys.path: a process-wide sys.path mutation here would shadow same-named
-    # modules for every later test in the run. Register the module under its own
-    # name first so dataclass annotation resolution (which looks the module up in
-    # sys.modules) works during exec.
-    spec = importlib.util.spec_from_file_location("_audit_ci_gap", _MODULE_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    old_path = list(sys.path)
+    module_dir = str(_MODULE_PATH.parent)
+    if module_dir not in sys.path:
+        sys.path.insert(0, module_dir)
+    # Register the module before exec so dataclass annotation resolution works.
+    try:
+        spec = importlib.util.spec_from_file_location("_audit_ci_gap", _MODULE_PATH)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path[:] = old_path
 
 
 def test_ci_gap_scans_run_commands_not_comments(tmp_path: Path) -> None:
