@@ -2,11 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
-    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
-    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
-    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getConfirmed: List&lt;ExpenseEntity&gt;</ID>
-    <ID>CyclomaticComplexMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getPending: List&lt;ExpenseEntity&gt;</ID>
     <ID>CyclomaticComplexMethod:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>CyclomaticComplexMethod:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
     <ID>CyclomaticComplexMethod:ExpenseMappers.kt:fun ExpenseDraft.toRequest: ExpenseUpdateRequest</ID>
@@ -21,10 +16,7 @@
     <ID>CyclomaticComplexMethod:SettingsDestinationHost.kt:@Composable internal fun SettingsDestinationHost</ID>
     <ID>CyclomaticComplexMethod:SettingsServerComponents.kt:@Composable internal fun AccountStatusCard</ID>
     <ID>CyclomaticComplexMethod:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
-    <ID>LargeClass:ExpenseDao_Impl.kt:ExpenseDao_Impl : ExpenseDao</ID>
-    <ID>LargeClass:PendingMutationDao_Impl.kt:PendingMutationDao_Impl : PendingMutationDao</ID>
     <ID>LongMethod:AppDatabase.kt:AppDatabase.Companion.&lt;no name provided&gt;$override fun migrate</ID>
-    <ID>LongMethod:AppDatabase_Impl.kt:AppDatabase_Impl.&lt;no name provided&gt;$public override fun onValidateSchema: RoomOpenDelegate.ValidationResult</ID>
     <ID>LongMethod:AppearanceScreen.kt:@Composable fun AppearanceScreen</ID>
     <ID>LongMethod:BackgroundCropScreen.kt:@Composable fun BackgroundCropScreen</ID>
     <ID>LongMethod:BackgroundGalleryScreen.kt:@Composable fun BackgroundGalleryScreen</ID>
@@ -37,12 +29,6 @@
     <ID>LongMethod:ComponentPreviewSamples.kt:@Preview(showBackground = true) @Composable private fun AppVisualComponentsPreview</ID>
     <ID>LongMethod:CurrencySection.kt:@Composable private fun CurrencyOptionCard</ID>
     <ID>LongMethod:DuplicateConfirmSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun DuplicateConfirmSheetContent</ID>
-    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override fun observeConfirmed: Flow&lt;List&lt;ExpenseEntity&gt;&gt;</ID>
-    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerId: ExpenseEntity?</ID>
-    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun findByServerIds: List&lt;ExpenseEntity&gt;</ID>
-    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getConfirmed: List&lt;ExpenseEntity&gt;</ID>
-    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl$public override suspend fun getPending: List&lt;ExpenseEntity&gt;</ID>
-    <ID>LongMethod:ExpenseDao_Impl.kt:ExpenseDao_Impl.&lt;no name provided&gt;$protected override fun bind</ID>
     <ID>LongMethod:ExpenseEditMoreSection.kt:@Composable internal fun ExpenseEditMoreSection</ID>
     <ID>LongMethod:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
     <ID>LongMethod:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
@@ -70,11 +56,6 @@
     <ID>LongMethod:OutboxDrainEngine.kt:OutboxDrainEngine$suspend fun drainOnce: DrainSummary</ID>
     <ID>LongMethod:PendingComponents.kt:@Composable internal fun PendingTop</ID>
     <ID>LongMethod:PendingEmptyStates.kt:@Composable internal fun EmptyPendingState</ID>
-    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override fun observeConflictRows: Flow&lt;List&lt;PendingMutationEntity&gt;&gt;</ID>
-    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override fun observeFailedRows: Flow&lt;List&lt;PendingMutationEntity&gt;&gt;</ID>
-    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override suspend fun activeForTarget: List&lt;PendingMutationEntity&gt;</ID>
-    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override suspend fun nextPendingBatch: List&lt;PendingMutationEntity&gt;</ID>
-    <ID>LongMethod:PendingMutationDao_Impl.kt:PendingMutationDao_Impl$public override suspend fun nextRunnableBatch: List&lt;PendingMutationEntity&gt;</ID>
     <ID>LongMethod:PendingScreen.kt:@Composable @OptIn(ExperimentalMaterial3Api::class) fun PendingScreen</ID>
     <ID>LongMethod:PendingViewModel.kt:PendingViewModel$fun undoReject</ID>
     <ID>LongMethod:PendingViewModelReviewActions.kt:fun PendingViewModel.confirmReadyExpenses</ID>
@@ -104,7 +85,6 @@
     <ID>TooManyFunctions:BudgetViewModel.kt:BudgetViewModel : ViewModel</ID>
     <ID>TooManyFunctions:CategoryRulesViewModel.kt:CategoryRulesViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao</ID>
-    <ID>TooManyFunctions:ExpenseDao_Impl.kt:ExpenseDao_Impl : ExpenseDao</ID>
     <ID>TooManyFunctions:ExpenseDetailRepository.kt:ExpenseDetailRepository</ID>
     <ID>TooManyFunctions:ExpenseEditActions.kt:ExpenseEditActions</ID>
     <ID>TooManyFunctions:ExpenseEditV1Details.kt:com.ticketbox.ui.screens.expense.ExpenseEditV1Details.kt</ID>
@@ -121,7 +101,6 @@
     <ID>TooManyFunctions:MonthlyStatsViewModel.kt:MonthlyStatsViewModel : ViewModel</ID>
     <ID>TooManyFunctions:OutboxRepository.kt:OutboxRepository</ID>
     <ID>TooManyFunctions:PendingMutationDao.kt:PendingMutationDao</ID>
-    <ID>TooManyFunctions:PendingMutationDao_Impl.kt:PendingMutationDao_Impl : PendingMutationDao</ID>
     <ID>TooManyFunctions:PendingReviewActions.kt:PendingReviewActions</ID>
     <ID>TooManyFunctions:PendingViewModel.kt:PendingViewModel : ViewModel</ID>
     <ID>TooManyFunctions:PendingViewModelReviewActions.kt:com.ticketbox.viewmodel.PendingViewModelReviewActions.kt</ID>
