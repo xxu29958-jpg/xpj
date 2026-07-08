@@ -55,16 +55,7 @@ def _csv_rows(response_text: str) -> list[dict[str, str]]:
     return list(csv.DictReader(StringIO(response_text.lstrip("\ufeff"))))
 
 
-def test_foreign_home_amount_drives_stats_reports_budget_and_export(
-    client: TestClient, *, identity,
-) -> None:
-    _set_manual_rate(client, currency_code="USD", rate_date="2026-05-04", rate_to_cny="7", identity=identity)
-
-    expense = _create_foreign_manual_expense(
-        client,
-        original_amount_minor=12345,
-        merchant="Home Amount Cafe",
-     identity=identity)
+def _assert_resolved_home_amount_expense(expense: dict) -> None:
     assert expense["status"] == "confirmed"
     assert expense["amount_cents"] == 86415
     assert expense["home_amount_cents"] == 86415
@@ -72,6 +63,8 @@ def test_foreign_home_amount_drives_stats_reports_budget_and_export(
     assert expense["original_currency_code"] == "USD"
     assert Decimal(expense["exchange_rate_to_cny"]) == Decimal("7.00000000")
 
+
+def _assert_home_amount_monthly_stats(client: TestClient, *, identity) -> None:
     stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=UTC",
         headers=identity.app_headers,
@@ -82,6 +75,8 @@ def test_foreign_home_amount_drives_stats_reports_budget_and_export(
         {"category": "餐饮", "amount_cents": 86415, "count": 1}
     ]
 
+
+def _assert_home_amount_report(client: TestClient, *, identity) -> None:
     report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC&granularity=day&top_n=3",
         headers=identity.app_headers,
@@ -109,6 +104,8 @@ def test_foreign_home_amount_drives_stats_reports_budget_and_export(
         }
     ]
 
+
+def _assert_home_amount_budget(client: TestClient, *, identity) -> None:
     budget = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
         headers=identity.app_headers,
@@ -131,6 +128,8 @@ def test_foreign_home_amount_drives_stats_reports_budget_and_export(
         }
     ]
 
+
+def _assert_home_amount_csv_export(client: TestClient, *, identity) -> None:
     exported = client.get("/api/expenses/export.csv?month=2026-05", headers=identity.app_headers)
     assert exported.status_code == 200, exported.text
     rows = _csv_rows(exported.text)
@@ -140,6 +139,24 @@ def test_foreign_home_amount_drives_stats_reports_budget_and_export(
     assert rows[0]["original_amount_minor"] == "12345"
     assert rows[0]["exchange_rate_to_cny"] == "7.00000000"
     assert rows[0]["exchange_rate_source"] == "manual"
+
+
+def test_foreign_home_amount_drives_stats_reports_budget_and_export(
+    client: TestClient, *, identity,
+) -> None:
+    _set_manual_rate(client, currency_code="USD", rate_date="2026-05-04", rate_to_cny="7", identity=identity)
+    expense = _create_foreign_manual_expense(
+        client,
+        identity=identity,
+        original_amount_minor=12345,
+        merchant="Home Amount Cafe",
+    )
+
+    _assert_resolved_home_amount_expense(expense)
+    _assert_home_amount_monthly_stats(client, identity=identity)
+    _assert_home_amount_report(client, identity=identity)
+    _assert_home_amount_budget(client, identity=identity)
+    _assert_home_amount_csv_export(client, identity=identity)
 
 
 def test_missing_foreign_rate_stays_pending_without_fake_home_amount(

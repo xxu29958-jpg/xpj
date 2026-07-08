@@ -149,7 +149,7 @@ def test_admin_device_management_is_scoped_to_visible_ledgers(client: TestClient
     assert revoke.status_code == 404
 
 
-def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, *, identity) -> None:
+def _insert_member_device_with_private_ledger_sessions() -> tuple[str, str, str, str]:
     now = now_utc()
     with SessionLocal() as db:
         member_account = Account(display_name="family member private owner", created_at=now)
@@ -220,13 +220,16 @@ def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, 
         )
         public_id = device.public_id
         db.commit()
+    return public_id, shared_token_hash, private_token_hash, private_link_hash
 
-    response = client.post(
-        f"/api/admin/devices/{public_id}/revoke",
-        headers=identity.admin_headers,
-    )
 
-    assert response.status_code == 200, response.text
+def _assert_only_shared_ledger_session_revoked(
+    *,
+    public_id: str,
+    shared_token_hash: str,
+    private_token_hash: str,
+    private_link_hash: str,
+) -> None:
     with SessionLocal() as db:
         shared_token = db.query(AuthToken).filter(AuthToken.token_hash == shared_token_hash).one()
         private_token = db.query(AuthToken).filter(AuthToken.token_hash == private_token_hash).one()
@@ -236,6 +239,24 @@ def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, 
         assert private_token.revoked_at is None
         assert private_link.revoked_at is None
         assert device.revoked_at is None
+
+
+def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, *, identity) -> None:
+    public_id, shared_token_hash, private_token_hash, private_link_hash = (
+        _insert_member_device_with_private_ledger_sessions()
+    )
+    response = client.post(
+        f"/api/admin/devices/{public_id}/revoke",
+        headers=identity.admin_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    _assert_only_shared_ledger_session_revoked(
+        public_id=public_id,
+        shared_token_hash=shared_token_hash,
+        private_token_hash=private_token_hash,
+        private_link_hash=private_link_hash,
+    )
 
 
 def test_admin_devices_scope_requires_owned_ledgers_not_visible_membership(client: TestClient, *, identity) -> None:
