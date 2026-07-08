@@ -16,7 +16,7 @@ from app.services.learning_service import (
     ocr_facts_for_expense,
     record_ocr_fact,
 )
-from app.services.ocr_service import OcrResult, apply_ocr_result
+from app.services.ocr_service import OcrApplyContractError, OcrResult, apply_ocr_result
 from tests._infra.assets import PNG_BYTES
 
 
@@ -168,7 +168,7 @@ def test_session_bound_apply_requires_fact_pairing(*, identity) -> None:
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
-        with pytest.raises(RuntimeError, match="apply_ocr_result_and_append_fact"):
+        with pytest.raises(OcrApplyContractError, match="apply_ocr_result_and_append_fact"):
             apply_ocr_result(
                 expense,
                 OcrResult(raw_text="unpaired mirror text\n12.00", confidence=0.8),

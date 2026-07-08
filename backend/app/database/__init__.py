@@ -36,10 +36,16 @@ from app.version import BACKEND_VERSION
 
 _logger = logging.getLogger(__name__)
 
+
+class DatabaseMigrationPreflightError(RuntimeError):
+    """Startup migration preflight failed before Alembic could safely run."""
+
+
 __all__ = [
     "BACKEND_ROOT",
     "BASELINE_MIGRATION_NAME",
     "Base",
+    "DatabaseMigrationPreflightError",
     "SessionLocal",
     "engine",
     "get_db",
@@ -199,7 +205,7 @@ def _assert_role_can_alter_existing_schema(connection) -> None:
     current = connection.scalar(text("SELECT current_user"))
     sample = ", ".join(f"{row.tablename}(属主={row.tableowner})" for row in rows[:8])
     suffix = "" if len(rows) <= 8 else f" 等共 {len(rows)} 张表"
-    raise RuntimeError(
+    raise DatabaseMigrationPreflightError(
         f"拒绝执行数据库迁移:当前数据库角色 '{current}' 不是下列表的属主、"
         f"也不是属主角色的成员或超级用户,ALTER / ADD CONSTRAINT 迁移会失败"
         f"(历史 cut-over 表属主错位陷阱)。请先用超级用户归位表属主"
@@ -261,7 +267,7 @@ def _backup_before_upgrade(current_revision: str | None, head: str) -> None:
     try:
         entry = create_pre_upgrade_backup()
     except Exception as exc:
-        raise RuntimeError(
+        raise DatabaseMigrationPreflightError(
             f"拒绝执行数据库迁移:迁移前自动备份失败({exc})。迁移是不可逆启动步骤,"
             f"未成功备份不迁移(数据安全优先)。请确认 pg_dump 可用、备份目录可写后重启;"
             f"若已手动备份且确需跳过,设 SKIP_PRE_MIGRATION_BACKUP=true 再重启。"

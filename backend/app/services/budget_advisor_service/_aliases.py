@@ -27,6 +27,10 @@ from app.models import (
 _MAX_ALLOCATION_RETRIES = 5
 
 
+class BudgetAdvisorAliasAllocationError(RuntimeError):
+    """AI advisor alias allocation exhausted its deterministic collision retry budget."""
+
+
 def get_or_create_merchant_anon(
     db: Session, *, tenant_id: str, merchant_canonical: str
 ) -> str:
@@ -141,7 +145,9 @@ def assign_transaction_temp_id(
                 return re_check.temp_id
             continue
         return candidate
-    raise RuntimeError("budget_advisor_aliases: failed to allocate ephemeral tx id")
+    raise BudgetAdvisorAliasAllocationError(
+        "budget_advisor_aliases: failed to allocate ephemeral tx id"
+    )
 
 
 def resolve_merchant_anon(
@@ -234,4 +240,6 @@ def _allocate(
                 return re_check.anon_id
             continue
         return candidate
-    raise RuntimeError(f"budget_advisor_aliases: failed to allocate {prefix} anon_id")
+    raise BudgetAdvisorAliasAllocationError(
+        f"budget_advisor_aliases: failed to allocate {prefix} anon_id"
+    )

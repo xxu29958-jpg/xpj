@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
-from app.database import _assert_role_can_alter_existing_schema
+from app.database import DatabaseMigrationPreflightError, _assert_role_can_alter_existing_schema
 from app.database._core import settings
 
 _GUARD_ROLE = "xpj_owner_preflight_role"
@@ -76,7 +76,7 @@ def test_owner_preflight_blocks_role_without_membership(guard_role):
     try:
         with eng.begin() as conn:
             assert conn.scalar(text("SELECT current_user")) == guard_role
-            with pytest.raises(RuntimeError, match="表属主"):
+            with pytest.raises(DatabaseMigrationPreflightError, match="表属主"):
                 _assert_role_can_alter_existing_schema(conn)
     finally:
         eng.dispose()

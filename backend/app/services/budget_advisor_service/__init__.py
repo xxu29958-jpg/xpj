@@ -25,6 +25,7 @@ with an explicit user-confirmation step.
 from __future__ import annotations
 
 from app.services.budget_advisor_service._aliases import (
+    BudgetAdvisorAliasAllocationError,
     assign_transaction_temp_id,
     cleanup_session,
     get_or_create_member_anon,
@@ -82,6 +83,7 @@ __all__ = [
     "AdvisorRunResult",
     "AdvisorStatus",
     "BudgetAdvice",
+    "BudgetAdvisorAliasAllocationError",
     "BudgetAdvisorProvider",
     "BudgetInputs",
     "BudgetSuggestion",

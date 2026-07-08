@@ -76,7 +76,7 @@ def test_pre_migration_backup_failure_aborts_migration(monkeypatch):
 
     _stamp_below_head(db_pkg)
 
-    with pytest.raises(RuntimeError, match="迁移前自动备份失败"):
+    with pytest.raises(db_pkg.DatabaseMigrationPreflightError, match="迁移前自动备份失败"):
         db_pkg._stamp_alembic_baseline_if_needed()
     assert ran_upgrade == [], "upgrade must NOT run when the pre-migration backup fails"
 

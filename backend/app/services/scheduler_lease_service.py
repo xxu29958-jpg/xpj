@@ -21,9 +21,9 @@ string value relied on.
 Transaction contract: the lease coordinates across workers by committing
 autonomously, so it must own its session's transaction lifecycle. Callers pass
 a session with **no in-flight transaction** (commit or roll back business work
-first); ``try_claim_scheduler_lease`` raises ``RuntimeError`` on a session that
-already carries uncommitted work instead of silently committing it. Every
-in-tree caller claims on a dedicated short-lived session
+first); ``try_claim_scheduler_lease`` raises ``SchedulerLeaseTransactionError``
+on a session that already carries uncommitted work instead of silently
+committing it. Every in-tree caller claims on a dedicated short-lived session
 (``with SessionLocal() as db: try_claim_scheduler_lease(db, ...)``).
 """
 
@@ -41,6 +41,10 @@ from app.services.time_service import now_utc
 _SCHEDULER_NAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 # scheduler_leases.name is the VARCHAR(64) primary key.
 _MAX_LEASE_NAME_LENGTH = 64
+
+
+class SchedulerLeaseTransactionError(RuntimeError):
+    """Lease claim was attempted on a session carrying unrelated work."""
 
 
 def _clean_lease_name(name: str) -> str:
@@ -63,11 +67,12 @@ def try_claim_scheduler_lease(
     ``db`` must have no in-flight transaction: the lease commits autonomously to
     coordinate workers, so a session carrying uncommitted business work would
     have that work silently committed. Such a session is rejected with
-    ``RuntimeError`` — commit or roll back caller work before claiming.
+    ``SchedulerLeaseTransactionError`` — commit or roll back caller work before
+    claiming.
     """
 
     if db.in_transaction():
-        raise RuntimeError(
+        raise SchedulerLeaseTransactionError(
             "scheduler lease must be claimed on a session with no in-flight "
             "transaction; commit or roll back caller work before claiming"
         )
@@ -89,4 +94,4 @@ def try_claim_scheduler_lease(
     return claimed
 
 
-__all__ = ["try_claim_scheduler_lease"]
+__all__ = ["SchedulerLeaseTransactionError", "try_claim_scheduler_lease"]

@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import reset_settings_cache
-from app.main import _assert_admin_api_gate_safe
+from app.main import UnsafeAdminApiConfigurationError, _assert_admin_api_gate_safe
 
 
 @pytest.fixture()
@@ -38,7 +38,7 @@ def test_public_admin_without_access_refuses_boot(reset_settings) -> None:
     reset_settings.delenv("CLOUDFLARE_ACCESS_TEAM_DOMAIN", raising=False)
     reset_settings.delenv("CLOUDFLARE_ACCESS_AUD", raising=False)
     reset_settings_cache()
-    with pytest.raises(RuntimeError, match="ALLOW_PUBLIC_ADMIN_API"):
+    with pytest.raises(UnsafeAdminApiConfigurationError, match="ALLOW_PUBLIC_ADMIN_API"):
         _assert_admin_api_gate_safe()
 
 
@@ -50,7 +50,7 @@ def test_public_admin_with_partial_access_refuses_boot(reset_settings) -> None:
     )
     reset_settings.delenv("CLOUDFLARE_ACCESS_AUD", raising=False)
     reset_settings_cache()
-    with pytest.raises(RuntimeError, match="CLOUDFLARE_ACCESS_AUD"):
+    with pytest.raises(UnsafeAdminApiConfigurationError, match="CLOUDFLARE_ACCESS_AUD"):
         _assert_admin_api_gate_safe()
 
 

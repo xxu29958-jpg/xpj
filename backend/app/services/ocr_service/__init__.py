@@ -19,6 +19,7 @@ public surface is re-exported below.
 from __future__ import annotations
 
 from app.services.ocr_service._apply import (
+    OcrApplyContractError,
     apply_ocr_result,
     collect_auto_ocr_extractions,
     collect_auto_ocr_results,
@@ -61,6 +62,7 @@ __all__ = [
     "OcrProvider",
     "OcrResult",
     "OcrExtraction",
+    "OcrApplyContractError",
     "OcrFactSnapshot",
     "RapidOcrProvider",
     "apply_ocr_result",

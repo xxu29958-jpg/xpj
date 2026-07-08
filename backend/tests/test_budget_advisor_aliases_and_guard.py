@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.errors import DataIntegrityError
 from app.models import Account, Ledger
 from app.services.budget_advisor_service import (
+    BudgetAdvisorAliasAllocationError,
     BudgetInputs,
     CategorySnapshot,
     assign_transaction_temp_id,
@@ -49,6 +50,10 @@ def _full_inputs() -> BudgetInputs:
             CategorySnapshot(category=DEFAULT_CATEGORIES[0], amount_cents=120000, count=18)
         ],
     )
+
+
+def test_budget_advisor_alias_error_is_facade_exported() -> None:
+    assert issubclass(BudgetAdvisorAliasAllocationError, RuntimeError)
 
 
 def test_to_outbound_dict_only_contains_current_builder_keys() -> None:
