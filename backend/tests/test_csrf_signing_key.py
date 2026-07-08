@@ -31,12 +31,12 @@ def test_csrf_secret_prefers_real_env_over_persisted(monkeypatch: pytest.MonkeyP
     # Backward compat: an operator who deliberately set a real ADMIN_TOKEN keeps it.
     monkeypatch.setenv("ADMIN_TOKEN", "a-real-operator-secret")
     reset_settings_cache()
-    saved_key = csrf_mw._persisted_csrf_key
+    saved_key = csrf_mw._PERSISTED_CSRF_KEY_STORE.get()
     csrf_mw.set_persisted_csrf_key("persisted-key")
     try:
         assert csrf_mw._csrf_secret() == b"a-real-operator-secret"
     finally:
-        csrf_mw._persisted_csrf_key = saved_key
+        csrf_mw._PERSISTED_CSRF_KEY_STORE.set_bytes_for_testing(saved_key)
         reset_settings_cache()
 
 
@@ -46,10 +46,10 @@ def test_csrf_secret_rejects_placeholder_and_falls_back_to_persisted(monkeypatch
     monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", "")
     monkeypatch.setenv("APP_TOKEN", "")
     reset_settings_cache()
-    saved_key = csrf_mw._persisted_csrf_key
+    saved_key = csrf_mw._PERSISTED_CSRF_KEY_STORE.get()
     csrf_mw.set_persisted_csrf_key("persisted-key")
     try:
         assert csrf_mw._csrf_secret() == b"persisted-key"
     finally:
-        csrf_mw._persisted_csrf_key = saved_key
+        csrf_mw._PERSISTED_CSRF_KEY_STORE.set_bytes_for_testing(saved_key)
         reset_settings_cache()

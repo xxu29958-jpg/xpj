@@ -1,8 +1,8 @@
 """ADR-0030 in-process long-task execution model.
 
 Design:
-    - One module-level ``ThreadPoolExecutor`` (max_workers=2) bounds the
-      number of concurrent background tasks per backend instance.
+    - One module-owned executor pool (max_workers=2) bounds the number of
+      concurrent background tasks per backend instance.
     - Production task implementations live in an explicit runtime catalog
       (see ``background_task_registry.runtime_handler_registry``). Tests may
       inject a per-test registry through :func:`isolated_registered_handlers_for_testing`;
@@ -131,24 +131,36 @@ def get_registered_handlers() -> dict[str, TaskHandler]:
 # -------------------------------------------------------------------------
 # Executor lifecycle
 
-_executor: ThreadPoolExecutor | None = None
+
+class _ExecutorPool:
+    """Owns the process-local background executor lifecycle."""
+
+    def __init__(self) -> None:
+        self._executor: ThreadPoolExecutor | None = None
+
+    def get(self) -> ThreadPoolExecutor:
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(
+                max_workers=MAX_WORKERS, thread_name_prefix="xpj-bgtask"
+            )
+        return self._executor
+
+    def shutdown(self, *, wait: bool) -> None:
+        if self._executor is not None:
+            self._executor.shutdown(wait=wait, cancel_futures=True)
+            self._executor = None
+
+
+_EXECUTOR_POOL = _ExecutorPool()
 
 
 def _get_executor() -> ThreadPoolExecutor:
-    global _executor
-    if _executor is None:
-        _executor = ThreadPoolExecutor(
-            max_workers=MAX_WORKERS, thread_name_prefix="xpj-bgtask"
-        )
-    return _executor
+    return _EXECUTOR_POOL.get()
 
 
 def shutdown_executor(wait: bool = False) -> None:
     """For graceful shutdown / tests. After this, enqueue() will rebuild."""
-    global _executor
-    if _executor is not None:
-        _executor.shutdown(wait=wait, cancel_futures=True)
-        _executor = None
+    _EXECUTOR_POOL.shutdown(wait=wait)
 
 
 # -------------------------------------------------------------------------

@@ -66,15 +66,33 @@ class TaskStatusVM:
     last_result_failed: bool = False
 
 
+class _TaskStatusCache:
+    """Short-lived process cache for expensive schtasks queries."""
+
+    def __init__(self) -> None:
+        self._entry: tuple[float, list[TaskStatusVM]] | None = None
+
+    def fresh_rows(self, now: float) -> list[TaskStatusVM] | None:
+        if self._entry is None or now - self._entry[0] >= _CACHE_TTL_SECONDS:
+            return None
+        return list(self._entry[1])
+
+    def store(self, now: float, rows: list[TaskStatusVM]) -> None:
+        self._entry = (now, rows)
+
+    def reset(self) -> None:
+        self._entry = None
+
+
+_TASK_STATUS_CACHE = _TaskStatusCache()
+
+
 def _task_names() -> tuple[str, ...]:
     raw = os.environ.get("XPJ_WINDOWS_TASK_NAMES", "").strip()
     if not raw:
         return _DEFAULT_TASKS
     parts = [p.strip() for p in raw.split(",") if p.strip()]
     return tuple(parts) if parts else _DEFAULT_TASKS
-
-
-_cache: tuple[float, list[TaskStatusVM]] | None = None
 
 
 def _parse_last_result(value: str) -> int | None:
@@ -215,16 +233,16 @@ def list_windows_tasks(*, force_refresh: bool = False) -> list[TaskStatusVM]:
     Cached for 30 seconds because schtasks spawns a process and the Owner
     index re-renders frequently while the operator inspects it.
     """
-    global _cache
     now = time.monotonic()
-    if not force_refresh and _cache is not None and now - _cache[0] < _CACHE_TTL_SECONDS:
-        return list(_cache[1])
+    if not force_refresh:
+        cached_rows = _TASK_STATUS_CACHE.fresh_rows(now)
+        if cached_rows is not None:
+            return cached_rows
     rows = [_query_one(name) for name in _task_names()]
-    _cache = (now, rows)
+    _TASK_STATUS_CACHE.store(now, rows)
     return list(rows)
 
 
 def reset_cache() -> None:
     """Test helper: clear the in-process status cache."""
-    global _cache
-    _cache = None
+    _TASK_STATUS_CACHE.reset()
