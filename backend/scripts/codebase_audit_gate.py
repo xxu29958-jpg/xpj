@@ -81,7 +81,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
 CODEBASE_DEBT_LIMITS.update(
     {
         "files_over_500": 16,
-        "long_functions": 38,
+        "long_functions": 36,  # 2026-07-09: ledger isolation high-risk tests split into semantic helpers.
         "deep_nesting_functions": 0,
         "broad_exception": 0,
         "unreferenced_modules": 223,
