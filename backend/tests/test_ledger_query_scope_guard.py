@@ -169,19 +169,27 @@ def _find_unscoped_query_sites() -> list[QuerySite]:
         for function in _iter_functions(tree):
             function_name = function.name
             for statement in _iter_query_statements(function):
-                for model in sorted(_models_referenced(statement)):
-                    if _has_ledger_scope(statement, model):
-                        continue
-                    sites.append(
-                        QuerySite(
-                            path=_relative_app_path(path),
-                            function=function_name,
-                            line=statement.lineno,
-                            model=model,
-                            snippet=_snippet(text, statement),
-                        )
-                    )
+                sites.extend(_unscoped_sites_for_statement(path, text, function_name, statement))
     return sites
+
+
+def _unscoped_sites_for_statement(
+    path: Path,
+    text: str,
+    function_name: str,
+    statement: ast.stmt,
+) -> list[QuerySite]:
+    return [
+        QuerySite(
+            path=_relative_app_path(path),
+            function=function_name,
+            line=statement.lineno,
+            model=model,
+            snippet=_snippet(text, statement),
+        )
+        for model in sorted(_models_referenced(statement))
+        if not _has_ledger_scope(statement, model)
+    ]
 
 
 def _iter_python_files() -> list[Path]:

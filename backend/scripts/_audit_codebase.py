@@ -514,23 +514,13 @@ def audit_type_hint_coverage() -> DebtCounts:
         tree = parse(p)
         if not tree:
             continue
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                total_fns += 1
-                has_ret = node.returns is not None
-                has_args = all(
-                    a.annotation is not None
-                    for a in (node.args.args + node.args.kwonlyargs + node.args.posonlyargs)
-                    if a.arg not in {"self", "cls"}
-                )
-                if has_ret or has_args:
-                    annotated += 1
-                if has_ret and has_args:
-                    fully += 1
-                if not has_ret and not has_args:
-                    length = (getattr(node, "end_lineno", None) or node.lineno) - node.lineno
-                    if length > 20:
-                        unannotated_long.append((p, node.lineno, length, node.name))
+        file_total, file_annotated, file_fully, file_unannotated = _type_hint_counts_for_tree(
+            p, tree
+        )
+        total_fns += file_total
+        annotated += file_annotated
+        fully += file_fully
+        unannotated_long.extend(file_unannotated)
     pct_any = (annotated / total_fns * 100) if total_fns else 0
     pct_full = (fully / total_fns * 100) if total_fns else 0
     print("== E1. Type-hint coverage ==")
@@ -542,6 +532,35 @@ def audit_type_hint_coverage() -> DebtCounts:
         print(f"    {length:3d}L  {p}:{ln}  {name}")
     print()
     return {"unannotated_long_functions": len(unannotated_long)}
+
+
+def _type_hint_counts_for_tree(
+    p: pathlib.Path,
+    tree: ast.Module,
+) -> tuple[int, int, int, list[tuple[pathlib.Path, int, int, str]]]:
+    total_fns = 0
+    annotated = 0
+    fully = 0
+    unannotated_long: list[tuple[pathlib.Path, int, int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        total_fns += 1
+        has_ret = node.returns is not None
+        has_args = all(
+            a.annotation is not None
+            for a in (node.args.args + node.args.kwonlyargs + node.args.posonlyargs)
+            if a.arg not in {"self", "cls"}
+        )
+        if has_ret or has_args:
+            annotated += 1
+        if has_ret and has_args:
+            fully += 1
+        if not has_ret and not has_args:
+            length = (getattr(node, "end_lineno", None) or node.lineno) - node.lineno
+            if length > 20:
+                unannotated_long.append((p, node.lineno, length, node.name))
+    return total_fns, annotated, fully, unannotated_long
 
 
 def audit_deep_arg_dicts() -> DebtCounts:
@@ -614,26 +633,43 @@ def audit_return_type_inconsistency() -> DebtCounts:
         tree = parse(p)
         if not tree:
             continue
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                has_value_return = False
-                has_bare_return = False
-                for sub in _own_return_nodes(node):
-                    if sub.value is None or (isinstance(sub.value, ast.Constant) and sub.value.value is None):
-                        has_bare_return = True
-                    else:
-                        has_value_return = True
-                if (
-                    has_value_return
-                    and has_bare_return
-                    and not _return_annotation_allows_none(node.returns)
-                ):
-                    items.append((p, node.lineno, node.name))
+        items.extend(_mixed_return_items_for_tree(p, tree))
     print(f"== E3. Functions with mixed `return X` and `return None/return` ({len(items)}) ==")
     for p, ln, name in items[:40]:
         print(f"  {p}:{ln}  {name}")
     print()
     return {"mixed_return_functions": len(items)}
+
+
+def _mixed_return_items_for_tree(
+    p: pathlib.Path,
+    tree: ast.Module,
+) -> list[tuple[pathlib.Path, int, str]]:
+    items: list[tuple[pathlib.Path, int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        has_value_return, has_bare_return = _function_return_shapes(node)
+        if (
+            has_value_return
+            and has_bare_return
+            and not _return_annotation_allows_none(node.returns)
+        ):
+            items.append((p, node.lineno, node.name))
+    return items
+
+
+def _function_return_shapes(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[bool, bool]:
+    has_value_return = False
+    has_bare_return = False
+    for sub in _own_return_nodes(node):
+        if sub.value is None or (isinstance(sub.value, ast.Constant) and sub.value.value is None):
+            has_bare_return = True
+        else:
+            has_value_return = True
+    return has_value_return, has_bare_return
 
 
 # -----------------------------------------------------------------------------
@@ -653,37 +689,9 @@ def audit_bare_except() -> DebtCounts:
         # here keeps the audit signal focused on accidental swallows.
         ble001_lines = _suppressed_lines(p, "BLE001")
         for node in ast.walk(tree):
-            if isinstance(node, ast.ExceptHandler):
-                if node.type is None:
-                    is_broad_or_bare = True
-                    bare.append((p, node.lineno))
-                else:
-                    t = ast.unparse(node.type)
-                    is_broad_or_bare = t in {"Exception", "BaseException"}
-                    if is_broad_or_bare and node.lineno not in ble001_lines:
-                        broad.append((p, node.lineno, t))
-                # Swallowed (body is `pass` or just `...`). Only flag the
-                # broad/bare variants — `except ValueError: pass` and
-                # `except AppError: pass` are the project's idiomatic
-                # narrow-exception fallback (peer-IP parsing, idempotent
-                # revoke, path-traversal compat); audit shouldn't second-
-                # guess a deliberately narrow catch.
-                body = node.body
-                if (
-                    is_broad_or_bare
-                    and len(body) == 1
-                    and isinstance(body[0], (ast.Pass, ast.Expr))
-                    and (
-                        isinstance(body[0], ast.Pass)
-                        or (
-                            isinstance(body[0], ast.Expr)
-                            and isinstance(body[0].value, ast.Constant)
-                            and body[0].value.value is ...
-                        )
-                    )
-                    and node.lineno not in ble001_lines
-                ):
-                    swallow.append((p, node.lineno))
+            if not isinstance(node, ast.ExceptHandler):
+                continue
+            _collect_exception_handler_debt(p, node, ble001_lines, bare, broad, swallow)
     print(f"== F1. Bare `except:` ({len(bare)}) ==")
     for p, ln in bare:
         print(f"  {p}:{ln}")
@@ -701,6 +709,45 @@ def audit_bare_except() -> DebtCounts:
         "broad_exception": len(broad),
         "swallowed_exceptions": len(swallow),
     }
+
+
+def _collect_exception_handler_debt(
+    p: pathlib.Path,
+    node: ast.ExceptHandler,
+    ble001_lines: set[int],
+    bare: list[tuple[pathlib.Path, int]],
+    broad: list[tuple[pathlib.Path, int, str]],
+    swallow: list[tuple[pathlib.Path, int]],
+) -> None:
+    if node.type is None:
+        is_broad_or_bare = True
+        bare.append((p, node.lineno))
+    else:
+        t = ast.unparse(node.type)
+        is_broad_or_bare = t in {"Exception", "BaseException"}
+        if is_broad_or_bare and node.lineno not in ble001_lines:
+            broad.append((p, node.lineno, t))
+    if _is_swallowed_broad_handler(node, is_broad_or_bare, ble001_lines):
+        swallow.append((p, node.lineno))
+
+
+def _is_swallowed_broad_handler(
+    node: ast.ExceptHandler,
+    is_broad_or_bare: bool,
+    ble001_lines: set[int],
+) -> bool:
+    # Swallowed (body is `pass` or just `...`). Only flag broad/bare variants;
+    # narrow fallback catches are an intentional project idiom.
+    if not is_broad_or_bare or node.lineno in ble001_lines or len(node.body) != 1:
+        return False
+    statement = node.body[0]
+    if isinstance(statement, ast.Pass):
+        return True
+    return (
+        isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Constant)
+        and statement.value.value is ...
+    )
 
 
 def audit_raise_generic() -> DebtCounts:
