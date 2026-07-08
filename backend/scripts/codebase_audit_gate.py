@@ -61,7 +61,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "generic_raises": 0,  # 2026-07-08: remaining direct RuntimeError raises now use narrow startup/service contract exceptions.
     "todo_markers": 9,
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
-    "credentials_risk": 4,
+    "credentials_risk": 0,
     "n_plus_one": 2,
     # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the
     # /web/pending route; bank the reduction so unreferenced_modules can't
