@@ -151,12 +151,9 @@ def scan() -> list[tuple[str, str]]:
 # a reviewed-invariant keyword (static / preview / internal / no data surface).
 # A Chinese literal not listed here fails the lane. Categories: static catalog /
 # preview sample / static formatter / internal keyword-match / no-data-surface
-# tail / static fallback-default / static appearance label (ratchet-candidate).
+# tail / static fallback-default / static catalog values.
 # Shrink this over time; do NOT add the data/domain layers.
 ALLOWLIST: dict[str, str] = {
-    "android/app/src/main/java/com/ticketbox/ui/appearance/AppearanceDefaults.kt :: 跟随主题": "static appearance source label; ratchet-candidate residual",
-    "android/app/src/main/java/com/ticketbox/ui/appearance/AppearanceDefaults.kt :: 内置背景": "static appearance source label; ratchet-candidate residual",
-    "android/app/src/main/java/com/ticketbox/ui/appearance/AppearanceDefaults.kt :: 自定义图片": "static appearance source label; ratchet-candidate residual",
     "android/app/src/main/java/com/ticketbox/ui/appearance/BackgroundCatalog.kt :: 自然": "static catalog: built-in background group name",
     "android/app/src/main/java/com/ticketbox/ui/appearance/BackgroundCatalog.kt :: 情绪": "static catalog: built-in background group name",
     "android/app/src/main/java/com/ticketbox/ui/appearance/BackgroundCatalog.kt :: 极简": "static catalog: built-in background group name",
@@ -190,11 +187,6 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 刷新": "preview sample data, not shipped UI",
     "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 外观与主题": "preview sample data, not shipped UI",
     "android/app/src/main/java/com/ticketbox/ui/components/ComponentPreviewSamples.kt :: 主题皮肤、自定义背景、沉浸强度": "preview sample data, not shipped UI",
-    # bottom-nav preview 标签已改走 stringResource(R.string.nav_tab_*),不再硬编码——allowlist 缩 4 条。
-    "android/app/src/main/java/com/ticketbox/ui/components/DuplicateNotice.kt :: 图片 hash": "internal keyword match on server duplicate-reason",
-    "android/app/src/main/java/com/ticketbox/ui/components/DuplicateNotice.kt :: 金额": "internal keyword match on server duplicate-reason",
-    "android/app/src/main/java/com/ticketbox/ui/components/DuplicateNotice.kt :: 商家": "internal keyword match on server duplicate-reason",
-    "android/app/src/main/java/com/ticketbox/ui/components/DuplicateNotice.kt :: 时间": "internal keyword match on server duplicate-reason",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: 待填写金额": "static formatter: null-amount fallback display",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: 汇率待同步": "static formatter: pending-rate fallback display",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt ::  · 汇率 1 ": "static formatter: exchange-rate line assembly",
@@ -202,11 +194,8 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: 未设置": "static formatter: blank-date fallback display",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: yyyy年M月d日": "static formatter: date pattern",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: yyyy年M月d日 HH:mm": "static formatter: date-time pattern",
-    "android/app/src/main/java/com/ticketbox/ui/components/MonthPicker.kt :: ${}年${}月": "static formatter: year-month label",
     "android/app/src/main/java/com/ticketbox/ui/screens/LedgerGrouping.kt :: M月d日 E": "static formatter: date-group pattern",
     "android/app/src/main/java/com/ticketbox/ui/screens/stats/ReportsInsightChartModels.kt :: ${}¥${}万": "static formatter: amount 万 (ten-thousand) unit",
-    "android/app/src/main/java/com/ticketbox/ui/screens/stats/StatsMetricGrid.kt :: AI订阅": "internal domain-category match (DefaultCategories value)",
-    "android/app/src/main/java/com/ticketbox/ui/screens/stats/StatsMetricGrid.kt :: AI 订阅": "internal domain-category match (spaced legacy variant)",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelItemsEditor.kt :: 未命名": "static fallback-default item name value",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelSplitsEditor.kt :: 未命名成员": "static fallback-default split member name value",
 }
