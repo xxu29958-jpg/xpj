@@ -54,9 +54,9 @@ def generate_thumbnail(
             image.thumbnail(size)
             rgb = image.convert("RGB")
             rgb.save(thumbnail_path, format="JPEG", quality=82, optimize=True)
-    except Exception:
+    except (Image.DecompressionBombError, OSError, RecursionError, ValueError):
         # PIL raises many flavors here (UnidentifiedImageError, OSError,
-        # ValueError, sometimes RecursionError on malformed input).
+        # ValueError, DecompressionBombError, sometimes RecursionError on malformed input).
         # Thumbnail is optional — return None so the caller treats this
         # row as "no thumbnail" rather than failing the upload.
         return None

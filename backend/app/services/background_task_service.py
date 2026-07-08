@@ -44,6 +44,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -237,7 +238,7 @@ def enqueue_or_get_active(
         db.add(task)
         db.commit()
         db.refresh(task)
-    except Exception:
+    except SQLAlchemyError:
         db.rollback()
         raise
 

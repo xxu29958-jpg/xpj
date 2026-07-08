@@ -6,8 +6,10 @@ import csv
 import logging
 from io import StringIO
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.services.category_service import normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.reports_service._aggregation import (
@@ -147,7 +149,7 @@ def six_month_summary(
                 if budget.configured
                 else 0
             )
-        except Exception:
+        except (AppError, SQLAlchemyError):
             logger.exception(
                 "reports trend6: get_monthly_budget failed for ledger=%s month=%s",
                 tenant_id,

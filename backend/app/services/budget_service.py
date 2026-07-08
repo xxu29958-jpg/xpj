@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -390,7 +391,7 @@ def upsert_monthly_budget(
             timezone_name=timezone_name,
         )
         db.commit()
-    except Exception:
+    except SQLAlchemyError:
         db.rollback()
         raise
     return response
