@@ -62,7 +62,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "todo_markers": 9,
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
-    "n_plus_one": 2,
+    "n_plus_one": 0,
     # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the
     # /web/pending route; bank the reduction so unreferenced_modules can't
     # silently re-creep.
@@ -188,6 +188,10 @@ CODEBASE_DEBT_LIMITS.update({"todo_markers": 0})
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2389})  # +1 OCR benchmark local_llm harness test; +1 error-copy map parser fixture; +16 ci-gap release APK policy parser tests; +17 release APK path-gate parser tests.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2391})  # +2 backend generic-raises cleanup facade export pins.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2392})  # +1 broad-exception slice: thumbnail DecompressionBombError degrades to no thumbnail.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2394})  # +2 n_plus_one slice: audit pins business-loop query detection and bounded IntegrityError recovery de-noising.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2396})  # +2 n_plus_one slice P3 coverage: startup tenant-id union collection and invalid-id fail-close.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2397})  # +1 n_plus_one slice P3 coverage: batched ledger-id collision allocation skips taken candidates and fails closed when exhausted.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2398})  # +1 n_plus_one slice P3 coverage: batched pairing-code/invitation/upload-link public-id allocators skip taken candidates and fail closed when exhausted.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({

@@ -180,6 +180,109 @@ def _expense_tag_mirror_drifted(db: Session, expense: Expense) -> bool:
     return desired_keys != current_keys
 
 
+def _expense_tag_key_sets(
+    db: Session, tenant_id: str, expense_ids: set[int]
+) -> dict[int, set[str]]:
+    if not expense_ids:
+        return {}
+    rows = db.execute(
+        select(ExpenseTag.expense_id, Tag.key)
+        .join(Tag, Tag.id == ExpenseTag.tag_id)
+        .where(ExpenseTag.tenant_id == tenant_id)
+        .where(ExpenseTag.expense_id.in_(expense_ids))
+        .where(Tag.tenant_id == tenant_id)
+    )
+    keys_by_expense_id: dict[int, set[str]] = {}
+    for expense_id, key in rows:
+        keys_by_expense_id.setdefault(int(expense_id), set()).add(str(key))
+    return keys_by_expense_id
+
+
+def _expense_tag_links_by_id(
+    db: Session, tenant_id: str, expense_ids: set[int]
+) -> dict[int, list[ExpenseTag]]:
+    if not expense_ids:
+        return {}
+    links = list(
+        db.scalars(
+            ledger_scoped_select(ExpenseTag, tenant_id).where(
+                ExpenseTag.expense_id.in_(expense_ids)
+            )
+        )
+    )
+    links_by_expense_id: dict[int, list[ExpenseTag]] = {}
+    for link in links:
+        links_by_expense_id.setdefault(link.expense_id, []).append(link)
+    return links_by_expense_id
+
+
+def _tags_by_key_for_names(
+    db: Session, tenant_id: str, names: list[str]
+) -> dict[str, Tag]:
+    names_by_key: dict[str, str] = {}
+    for name in names:
+        key = tag_key(name)
+        if key and key not in names_by_key:
+            names_by_key[key] = clean_tag_name(name)
+    if not names_by_key:
+        return {}
+
+    tags_by_key = {
+        tag.key: tag
+        for tag in db.scalars(
+            ledger_scoped_select(Tag, tenant_id).where(Tag.key.in_(set(names_by_key)))
+        )
+    }
+    now = now_utc()
+    created = False
+    for key, name in names_by_key.items():
+        tag = tags_by_key.get(key)
+        if tag is None:
+            tag = Tag(
+                tenant_id=tenant_id,
+                name=name,
+                key=key,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(tag)
+            tags_by_key[key] = tag
+            created = True
+            continue
+        if tag.deleted_at is not None:
+            tag.deleted_at = None
+            tag.updated_at = now
+            bump_row_version(tag)
+    if created:
+        db.flush()
+    return tags_by_key
+
+
+def _replace_expense_tag_links(
+    db: Session,
+    *,
+    expense: Expense,
+    target_tag_ids: set[int],
+    existing_links: list[ExpenseTag],
+) -> None:
+    existing_by_tag_id = {link.tag_id: link for link in existing_links}
+    created_at = now_utc()
+    for tag_id in target_tag_ids:
+        if tag_id not in existing_by_tag_id:
+            db.add(
+                ExpenseTag(
+                    tenant_id=expense.tenant_id,
+                    expense_id=expense.id,
+                    tag_id=tag_id,
+                    created_at=created_at,
+                )
+            )
+
+    for link in existing_links:
+        if link.tag_id not in target_tag_ids:
+            db.delete(link)
+
+
 def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int = 500) -> int:
     """Repair expenses whose ``tags`` string and ``expense_tags`` rows drifted.
 
@@ -188,7 +291,8 @@ def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int
     Only expenses whose link key set differs from the string's are touched, and
     each fix bumps the expense ``row_version`` so a stale cross-surface PATCH
     can't silently revert the repair (契约 1 / [[feedback_row_version_bump_rule]]).
-    Paged + committed per batch (§12); returns the number of expenses repaired.
+    Keyset-pages the mirror surface, reads each page's relation rows in bulk,
+    then commits repairs per batch (§12); returns the number of expenses repaired.
 
     Idempotent — a second pass over already-consistent rows writes nothing.
     Closes the partial-drift gap :func:`backfill_expense_tags` can't (it only
@@ -196,26 +300,54 @@ def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int
     """
     fixed = 0
     last_id = 0
+    page_size = max(1, batch_size)
     while True:
         expenses = list(
             db.scalars(
                 ledger_scoped_select(Expense, tenant_id)
                 .where(Expense.id > last_id)
                 .order_by(Expense.id.asc())
-                .limit(batch_size)
+                .limit(page_size)
             )
         )
         if not expenses:
             break
-        batch_fixed = 0
+        last_id = expenses[-1].id
+        expense_ids = {expense.id for expense in expenses}
+        current_keys_by_id = _expense_tag_key_sets(db, tenant_id, expense_ids)
+
+        drifted_expenses: list[Expense] = []
+        desired_names_by_id: dict[int, list[str]] = {}
         for expense in expenses:
-            last_id = expense.id
-            if _expense_tag_mirror_drifted(db, expense):
-                set_expense_tags(db, expense, expense.tags)
-                bump_row_version(expense)
-                batch_fixed += 1
-        if batch_fixed:
+            names = parse_tags(expense.tags)
+            desired_names_by_id[expense.id] = names
+            desired_keys = {tag_key(name) for name in names}
+            if desired_keys != current_keys_by_id.get(expense.id, set()):
+                drifted_expenses.append(expense)
+        if not drifted_expenses:
+            db.expunge_all()
+            continue
+
+        drifted_ids = {expense.id for expense in drifted_expenses}
+        desired_names = [
+            name for expense in drifted_expenses for name in desired_names_by_id[expense.id]
+        ]
+        tags_by_key = _tags_by_key_for_names(db, tenant_id, desired_names)
+        links_by_expense_id = _expense_tag_links_by_id(db, tenant_id, drifted_ids)
+
+        for expense in drifted_expenses:
+            names = desired_names_by_id[expense.id]
+            expense.tags = format_tags(names)
+            target_tag_ids = {tags_by_key[tag_key(name)].id for name in names}
+            _replace_expense_tag_links(
+                db,
+                expense=expense,
+                target_tag_ids=target_tag_ids,
+                existing_links=links_by_expense_id.get(expense.id, []),
+            )
+            bump_row_version(expense)
+        fixed += len(drifted_expenses)
+        if drifted_expenses:
             db.commit()
         db.expunge_all()
-        fixed += batch_fixed
     return fixed

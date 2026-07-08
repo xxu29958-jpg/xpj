@@ -18,6 +18,8 @@ from app.services.identity_service import (
 from app.services.session_lifecycle_service import upload_link_expires_at
 from app.services.time_service import ensure_utc, now_utc, to_iso
 
+UPLOAD_LINK_PUBLIC_ID_CANDIDATE_COUNT = 8
+
 
 def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
     ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == link.ledger_id).limit(1))
@@ -297,10 +299,12 @@ def delete_upload_link(
 def _new_public_id(db: Session) -> str:
     from uuid import uuid4
 
-    while True:
-        candidate = str(uuid4())
-        if db.scalar(select(UploadLink.id).where(UploadLink.public_id == candidate).limit(1)) is None:
+    candidates = [str(uuid4()) for _ in range(UPLOAD_LINK_PUBLIC_ID_CANDIDATE_COUNT)]
+    existing = set(db.scalars(select(UploadLink.public_id).where(UploadLink.public_id.in_(candidates))))
+    for candidate in candidates:
+        if candidate not in existing:
             return candidate
+    raise AppError("server_error", status_code=500)
 
 
 def _upload_url_path(upload_key: str, default_timezone: str | None) -> str:

@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import inspect, select, text, union
+from sqlalchemy.orm import Session
 
 from app.database._core import SessionLocal, engine
 from app.database._tenant_id_check import _validate_legacy_tenant_ids
@@ -125,6 +126,22 @@ def _tenant_scoped_models() -> tuple[type, ...]:
     )
 
 
+def _legacy_tenant_id_selects(existing_tables: set[str]) -> list:
+    selects = []
+    for model in _tenant_scoped_models():
+        if model.__tablename__ not in existing_tables:
+            continue
+        selects.append(select(model.tenant_id).where(model.tenant_id.is_not(None)))
+    return selects
+
+
+def _collect_legacy_tenant_ids(db: Session, existing_tables: set[str]) -> set[str]:
+    tenant_id_selects = _legacy_tenant_id_selects(existing_tables)
+    if not tenant_id_selects:
+        return set()
+    return {str(value) for value in db.scalars(union(*tenant_id_selects)) if value}
+
+
 def seed_identity_data() -> None:
     from app.services.identity_service import ensure_identity_for_existing_ledger_ids, ensure_identity_seed
 
@@ -135,16 +152,7 @@ def seed_identity_data() -> None:
         # that can't see schema/rows still uncommitted in this session's
         # transaction — which the PG per-test rollback-isolation lane relies on.
         existing = set(inspect(db.connection()).get_table_names())
-        ids: set[str] = set()
-        for model in _tenant_scoped_models():
-            table_name = model.__tablename__
-            if table_name not in existing:
-                continue
-            ids.update(
-                str(value)
-                for value in db.scalars(select(model.tenant_id).distinct())
-                if value
-            )
+        ids = _collect_legacy_tenant_ids(db, existing)
         _validate_legacy_tenant_ids(ids, source="tenant-scoped tables")
         if ids:
             ensure_identity_for_existing_ledger_ids(db, ids)

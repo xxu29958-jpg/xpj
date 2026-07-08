@@ -39,6 +39,8 @@ from app.services.session_lifecycle_service import (
 )
 from app.services.time_service import ensure_utc, now_utc, to_iso
 
+INVITATION_TOKEN_CANDIDATE_COUNT = 8
+
 
 @dataclass(frozen=True)
 class InvitationSummary:
@@ -79,6 +81,20 @@ class InvitationPreviewResult:
     expires_at: str | None
 
 
+def _new_unique_invite_token(db: Session) -> tuple[str, str]:
+    candidates = [
+        (token := new_invite_token(), hash_secret(token))
+        for _ in range(INVITATION_TOKEN_CANDIDATE_COUNT)
+    ]
+    existing_hashes = set(
+        db.scalars(select(Invitation.token_hash).where(Invitation.token_hash.in_({h for _, h in candidates})))
+    )
+    for token, token_hash in candidates:
+        if token_hash not in existing_hashes:
+            return token, token_hash
+    raise AppError("server_error", status_code=500)
+
+
 def invitation_summary(invitation: Invitation, used_by_name: str | None) -> InvitationSummary:
     return InvitationSummary(
         public_id=invitation.public_id,
@@ -110,12 +126,7 @@ def create_invitation(
     require_active_owner(db, ledger_id=ledger.ledger_id, account_id=created_by_account_id)
     ttl = max(1, min(ttl_days, 30))
     expires_at = now_utc() + timedelta(days=ttl)
-    # Loop until unique token (collisions astronomically unlikely)
-    while True:
-        token = new_invite_token()
-        token_hash = hash_secret(token)
-        if db.scalar(select(Invitation.id).where(Invitation.token_hash == token_hash).limit(1)) is None:
-            break
+    token, token_hash = _new_unique_invite_token(db)
     cleaned_note = clean_note(note)
     invitation = Invitation(
         ledger_id=ledger.ledger_id,
