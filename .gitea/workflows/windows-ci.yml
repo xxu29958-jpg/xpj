@@ -8,6 +8,7 @@ on:
       - "fix/**"
       - "perf/**"
       - "refactor/**"
+      - "codex/**"
   workflow_dispatch:
 
 jobs:

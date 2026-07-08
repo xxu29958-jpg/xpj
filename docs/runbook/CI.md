@@ -13,14 +13,14 @@
 本地降级 workflow 文件：
 
 ```text
-.gitea/workflows/windows-ci.yml          # 四个 job，所有 push 都跑
+.gitea/workflows/windows-ci.yml          # 四个 job，白名单 push 跑
 .gitea/workflows/android-connected.yml   # 模拟器 lane，只在 Android 源变更时跑（path-filtered）
 ```
 
 触发条件：
 
-- GitHub: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`，以及 pull_request 到 `main`
-- local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`
+- GitHub: push 到 `main`，以及 pull_request 到 `main`。工作分支不再单独触发云端重型 push CI，避免同一 PR head 被 push + pull_request 跑两遍；PR 打开或更新时仍完整跑云端主路径。
+- local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`、`codex/**`
 - 手动 `workflow_dispatch`
 
 GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队；只作为云端不可用、发布候选本机验收、或宿主特有 emulator/打包问题的降级确认。Gitea 与 runner 在 home-server 上人工启动；如果本地 push 后 run 一直排队不动，先确认它们活着。
@@ -44,7 +44,7 @@ PG-only 之后该 job 没有数据库，不跑 pytest / smoke——全量测试�
 
 ### backend-postgres（全量测试）
 
-用 runner 本机的 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离），在**单个 step 的 try/finally 内**完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest（`xpj_test` 库，与 smoke 的 `xpj_smoke` 分库）→ 按 postmaster PID 定向拆库。teardown 写在 finally 是硬要求，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
+GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest（`xpj_test` 库，与 smoke 的 `xpj_smoke` 分库）。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
 
 ### desktop-manager
 
@@ -90,4 +90,4 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 ## CI 是合并底线
 
-任何后端、Android、release 脚本变更都不能绕过当前 GitHub push/PR 触发的云端 job 绿灯；Android 源变更还会触发 connected lane。local-Gitea CI 是降级备用和本机验收，不再作为主路径排队瓶颈。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
+任何后端、Android、release 脚本变更都不能绕过当前 GitHub PR / main-push 云端 job 绿灯；Android 源变更还会在 PR 或 main push 上触发 connected lane。local-Gitea CI 是降级备用和本机验收，不再作为主路径排队瓶颈。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。

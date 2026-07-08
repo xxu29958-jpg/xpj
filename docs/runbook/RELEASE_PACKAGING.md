@@ -148,7 +148,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.
 
 ## 9. RC 发包源与交接红线
 
-自托管 Gitea CI 不上传 APK artifact（GitHub 时代的 `scripts\verify_rc_artifacts.ps1` 门禁靠 `gh run download` 拉取 GitHub Actions artifact，已随 GitHub→Gitea 迁移整体退役并删除）。当前版本真机验收包的**唯一来源是本机构建**：CI 四 job 全绿后，在同一 commit 上按 §4 构建、按 §8（`accept_gray_release.ps1`）校验，通过即为当前发布候选；未过校验的包不得发给任何用户。
+自托管 Gitea CI 不上传 APK artifact（GitHub 时代的 `scripts\verify_rc_artifacts.ps1` 门禁靠 `gh run download` 拉取 GitHub Actions artifact，已随 GitHub→Gitea 迁移整体退役并删除）。当前版本真机验收包的**唯一来源是本机构建**：CI 四 job 全绿后，在同一 commit 上按 §4 构建、按 §8（`accept_gray_release.ps1`）校验，通过即为当前发布候选；未过校验的包不得发给任何用户。这里的 local-Gitea 绑定是 RC 本机验收约束，不替代 GitHub PR/main-push 云端合并门。
 
 「CI 全绿 + 同一 commit + 干净树」不再只是本节散文，由验收脚本**强制执行**（`Assert-ReleaseProvenance`）：
 

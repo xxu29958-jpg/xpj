@@ -10,13 +10,10 @@ name: CI
 
 on:
   push:
+    # Work branches are validated by the pull_request trigger below. Keeping
+    # push heavy CI to main avoids running the same PR head twice.
     branches:
       - main
-      - "feat/**"
-      - "fix/**"
-      - "perf/**"
-      - "refactor/**"
-      - "codex/**"
   pull_request:
     branches:
       - main
