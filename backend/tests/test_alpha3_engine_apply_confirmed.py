@@ -42,9 +42,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     )
 
 
-def test_rule_apply_confirmed_dry_run_then_confirm_integration(
-    client: TestClient, *, identity,
-) -> None:
+def _seed_confirmed_apply_candidates() -> tuple[int, int]:
     confirmed_id = insert_confirmed_expense(
         amount_cents=4200,
         merchant="ConfirmedApplyCafe",
@@ -66,6 +64,10 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
         target.tags = "真香"
         other.tags = "必要"
         db.commit()
+    return confirmed_id, non_matching_id
+
+
+def _create_confirmed_apply_rule(client: TestClient, *, identity) -> int:
     created = client.post(
         "/api/rules/categories",
         headers=identity.app_headers,
@@ -84,9 +86,17 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
     rule_id = created.json()["id"]
     assert created.json()["amount_min_cents"] == 1000
     assert created.json()["tag_contains"] == "真香"
+    return rule_id
 
+
+def _assert_confirmed_apply_preview_is_non_mutating(
+    client: TestClient,
+    *,
+    identity,
+    confirmed_id: int,
+    non_matching_id: int,
+) -> str:
     preview = client.post("/api/rules/apply-confirmed", headers=identity.app_headers)
-
     assert preview.status_code == 200
     body = preview.json()
     assert body["dry_run"] is True
@@ -102,16 +112,26 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
         assert other is not None
         assert other.category == "其他"
         assert db.scalar(select(RuleApplicationBatch).where(RuleApplicationBatch.tenant_id == "owner")) is None
+    return body["preview_token"]
 
+
+def _confirm_confirmed_apply_preview(client: TestClient, *, identity, preview_token: str) -> None:
     response = client.post(
         "/api/rules/apply-confirmed",
         headers=identity.app_headers,
-        json={"confirm": True, "preview_token": body["preview_token"]},
+        json={"confirm": True, "preview_token": preview_token},
     )
-
     assert response.status_code == 200
     assert response.json()["dry_run"] is False
     assert response.json()["changed_count"] == 1
+
+
+def _assert_confirmed_apply_persisted(
+    *,
+    confirmed_id: int,
+    non_matching_id: int,
+    rule_id: int,
+) -> None:
     with SessionLocal() as db:
         expense = db.scalar(select(Expense).where(Expense.id == confirmed_id))
         other = db.scalar(select(Expense).where(Expense.id == non_matching_id))
@@ -136,6 +156,25 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
         assert change.rule_id == rule_id
         assert change.before_category == "其他"
         assert change.after_category == "餐饮"
+
+
+def test_rule_apply_confirmed_dry_run_then_confirm_integration(
+    client: TestClient, *, identity,
+) -> None:
+    confirmed_id, non_matching_id = _seed_confirmed_apply_candidates()
+    rule_id = _create_confirmed_apply_rule(client, identity=identity)
+    preview_token = _assert_confirmed_apply_preview_is_non_mutating(
+        client,
+        identity=identity,
+        confirmed_id=confirmed_id,
+        non_matching_id=non_matching_id,
+    )
+    _confirm_confirmed_apply_preview(client, identity=identity, preview_token=preview_token)
+    _assert_confirmed_apply_persisted(
+        confirmed_id=confirmed_id,
+        non_matching_id=non_matching_id,
+        rule_id=rule_id,
+    )
 
 
 def test_rule_apply_confirmed_reports_scan_limit(client: TestClient, *, identity) -> None:

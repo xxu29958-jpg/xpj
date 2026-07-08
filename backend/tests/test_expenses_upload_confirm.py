@@ -18,13 +18,13 @@ from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT
 
 
-def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) -> None:
-    expense_id = upload_png(client, identity=identity)
-
+def _assert_uploaded_expense_detail(client: TestClient, *, identity, expense_id: int) -> None:
     detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200
     assert detail.json()["id"] == expense_id
 
+
+def _assert_uploaded_expense_pending_row(client: TestClient, *, identity, expense_id: int) -> None:
     pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     item = next(expense for expense in pending.json() if expense["id"] == expense_id)
@@ -35,6 +35,8 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     assert "\\" not in item["image_path"]
     assert item["image_hash"]
 
+
+def _assert_uploaded_image_access_contract(client: TestClient, *, identity, expense_id: int) -> None:
     image_without_token = client.get(f"/api/expenses/{expense_id}/image")
     assert image_without_token.status_code == 401
     assert image_without_token.json()["error"] == "invalid_token"
@@ -49,10 +51,14 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     assert thumbnail.status_code == 200
     assert thumbnail.content.startswith(b"\xff\xd8")
 
+
+def _assert_upload_confirm_requires_amount(client: TestClient, *, identity, expense_id: int) -> None:
     response = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 400
     assert response.json()["error"] == "amount_required"
 
+
+def _complete_uploaded_expense_fields(client: TestClient, *, identity, expense_id: int) -> None:
     response = patch_expense(
         client,
         expense_id,
@@ -68,10 +74,14 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     assert response.status_code == 200
     assert response.json()["amount_cents"] == 3680
 
+
+def _confirm_completed_upload(client: TestClient, *, identity, expense_id: int) -> None:
     response = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json()["status"] == "confirmed"
 
+
+def _assert_confirmed_upload_surfaces(client: TestClient, *, identity) -> None:
     confirmed = client.get(
         "/api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=餐饮",
         headers=identity.app_headers,
@@ -100,6 +110,18 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200
     assert stats.json()["total_amount_cents"] == 3680
+
+
+def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
+
+    _assert_uploaded_expense_detail(client, identity=identity, expense_id=expense_id)
+    _assert_uploaded_expense_pending_row(client, identity=identity, expense_id=expense_id)
+    _assert_uploaded_image_access_contract(client, identity=identity, expense_id=expense_id)
+    _assert_upload_confirm_requires_amount(client, identity=identity, expense_id=expense_id)
+    _complete_uploaded_expense_fields(client, identity=identity, expense_id=expense_id)
+    _confirm_completed_upload(client, identity=identity, expense_id=expense_id)
+    _assert_confirmed_upload_surfaces(client, identity=identity)
 
 
 def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestClient, *, identity) -> None:

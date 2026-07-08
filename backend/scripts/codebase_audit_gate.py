@@ -81,7 +81,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
 CODEBASE_DEBT_LIMITS.update(
     {
         "files_over_500": 15,
-        "long_functions": 29,  # 2026-07-09: tenant/viewer write guard tests split into semantic contracts.
+        "long_functions": 22,  # 2026-07-09: backend test contract long functions split into semantic assertions.
         "deep_nesting_functions": 0,
         "broad_exception": 0,
         "unreferenced_modules": 223,

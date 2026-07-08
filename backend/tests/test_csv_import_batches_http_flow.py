@@ -24,6 +24,107 @@ def _demote_owner_ledger_to_viewer() -> None:
         db.commit()
 
 
+def _create_rich_csv_import_batch(client: TestClient, *, identity) -> dict:
+    csv = "\n".join(
+        [
+            "amount_yuan,merchant,category,note,expense_time,tags,source",
+            '19.90,CSV咖啡店,餐饮,导入早餐,2026-05-06T00:30:00Z,"外卖，咖啡",支付宝账单',
+            '88.00,CSV文具店,购物,导入文具,2026-04-30T16:30:00Z,"办公",支付宝账单',
+            "",
+        ]
+    )
+    created = client.post(
+        "/api/imports/csv",
+        headers=identity.app_headers,
+        files={"csv_file": ("rich-rows.csv", csv.encode("utf-8"), "text/csv")},
+    )
+    assert created.status_code == 201, created.json()
+    batch = created.json()
+    assert batch["total_rows"] == 2
+    assert batch["valid_rows"] == 2
+    assert batch["error_rows"] == 0
+    return batch
+
+
+def _apply_rich_csv_import_batch(client: TestClient, *, identity, public_id: str) -> None:
+    applied = client.post(
+        f"/api/imports/csv/{public_id}/apply",
+        headers=identity.app_headers,
+        json={"batch_size": 10},
+    )
+    assert applied.status_code == 200, applied.json()
+    assert applied.json()["inserted_count"] == 2
+    assert applied.json()["remaining_valid_rows"] == 0
+
+
+def _assert_imported_coffee_pending_row(client: TestClient, *, identity) -> int:
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
+    assert pending.status_code == 200, pending.json()
+    target = next(item for item in pending.json() if item["merchant"] == "CSV咖啡店")
+    assert target["status"] == "pending"
+    assert target["amount_cents"] == 1990
+    assert target["category"] == "餐饮"
+    assert target["tags"] == "外卖, 咖啡"
+    assert target["source"] == "支付宝账单"
+    assert target["expense_time"] == "2026-05-06T00:30:00Z"
+    return target["id"]
+
+
+def _confirm_imported_coffee_expense(client: TestClient, *, identity, expense_id: int) -> None:
+    confirmed = confirm_expense_api(client, expense_id, headers=identity.app_headers)
+    assert confirmed.status_code == 200, confirmed.json()
+    assert confirmed.json()["status"] == "confirmed"
+
+
+def _assert_coffee_import_stats(client: TestClient, *, identity) -> None:
+    stats = client.get(
+        "/api/stats/monthly?month=2026-05&tag=咖啡",
+        headers=identity.app_headers,
+    )
+    assert stats.status_code == 200, stats.json()
+    stats_body = stats.json()
+    assert stats_body["total_amount_cents"] == 1990
+    assert stats_body["count"] == 1
+    assert stats_body["by_category"] == [
+        {"category": "餐饮", "amount_cents": 1990, "count": 1}
+    ]
+    by_tag = {row["tag"]: row for row in stats_body["by_tag"]}
+    assert by_tag == {
+        "外卖": {"tag": "外卖", "amount_cents": 1990, "count": 1},
+        "咖啡": {"tag": "咖啡", "amount_cents": 1990, "count": 1},
+    }
+
+
+def _assert_coffee_import_filter_and_export(client: TestClient, *, identity) -> None:
+    filtered = client.get(
+        "/api/expenses/confirmed?month=2026-05&category=餐饮&tag=咖啡",
+        headers=identity.app_headers,
+    )
+    assert filtered.status_code == 200, filtered.json()
+    filtered_body = filtered.json()
+    assert filtered_body["total"] == 1
+    assert filtered_body["items"][0]["merchant"] == "CSV咖啡店"
+    assert filtered_body["items"][0]["source"] == "支付宝账单"
+
+    category_miss = client.get(
+        "/api/expenses/confirmed?month=2026-05&category=购物",
+        headers=identity.app_headers,
+    )
+    assert category_miss.status_code == 200, category_miss.json()
+    assert category_miss.json()["total"] == 0
+
+    exported = client.get(
+        "/api/expenses/export.csv?month=2026-05&category=餐饮&tag=咖啡",
+        headers=identity.app_headers,
+    )
+    assert exported.status_code == 200, exported.text
+    assert "text/csv" in exported.headers["content-type"]
+    assert "CSV咖啡店" in exported.text
+    assert "支付宝账单" in exported.text
+    assert "外卖, 咖啡" in exported.text
+    assert "CSV文具店" not in exported.text
+
+
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient, *, identity) -> None:
     csv = "amount_yuan,merchant,category\nabc,Bad,餐饮\n4.50,Good,交通\n"
     created = client.post(
@@ -80,94 +181,12 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
 def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
     client: TestClient, *, identity,
 ) -> None:
-    csv = "\n".join(
-        [
-            "amount_yuan,merchant,category,note,expense_time,tags,source",
-            '19.90,CSV咖啡店,餐饮,导入早餐,2026-05-06T00:30:00Z,"外卖，咖啡",支付宝账单',
-            '88.00,CSV文具店,购物,导入文具,2026-04-30T16:30:00Z,"办公",支付宝账单',
-            "",
-        ]
-    )
-    created = client.post(
-        "/api/imports/csv",
-        headers=identity.app_headers,
-        files={"csv_file": ("rich-rows.csv", csv.encode("utf-8"), "text/csv")},
-    )
-    assert created.status_code == 201, created.json()
-    batch = created.json()
-    assert batch["total_rows"] == 2
-    assert batch["valid_rows"] == 2
-    assert batch["error_rows"] == 0
-
-    applied = client.post(
-        f"/api/imports/csv/{batch['public_id']}/apply",
-        headers=identity.app_headers,
-        json={"batch_size": 10},
-    )
-    assert applied.status_code == 200, applied.json()
-    assert applied.json()["inserted_count"] == 2
-    assert applied.json()["remaining_valid_rows"] == 0
-
-    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
-    assert pending.status_code == 200, pending.json()
-    target = next(item for item in pending.json() if item["merchant"] == "CSV咖啡店")
-    assert target["status"] == "pending"
-    assert target["amount_cents"] == 1990
-    assert target["category"] == "餐饮"
-    assert target["tags"] == "外卖, 咖啡"
-    assert target["source"] == "支付宝账单"
-    assert target["expense_time"] == "2026-05-06T00:30:00Z"
-
-    confirmed = confirm_expense_api(
-        client, target["id"], headers=identity.app_headers
-    )
-    assert confirmed.status_code == 200, confirmed.json()
-    assert confirmed.json()["status"] == "confirmed"
-
-    stats = client.get(
-        "/api/stats/monthly?month=2026-05&tag=咖啡",
-        headers=identity.app_headers,
-    )
-    assert stats.status_code == 200, stats.json()
-    stats_body = stats.json()
-    assert stats_body["total_amount_cents"] == 1990
-    assert stats_body["count"] == 1
-    assert stats_body["by_category"] == [
-        {"category": "餐饮", "amount_cents": 1990, "count": 1}
-    ]
-    by_tag = {row["tag"]: row for row in stats_body["by_tag"]}
-    assert by_tag == {
-        "外卖": {"tag": "外卖", "amount_cents": 1990, "count": 1},
-        "咖啡": {"tag": "咖啡", "amount_cents": 1990, "count": 1},
-    }
-
-    filtered = client.get(
-        "/api/expenses/confirmed?month=2026-05&category=餐饮&tag=咖啡",
-        headers=identity.app_headers,
-    )
-    assert filtered.status_code == 200, filtered.json()
-    filtered_body = filtered.json()
-    assert filtered_body["total"] == 1
-    assert filtered_body["items"][0]["merchant"] == "CSV咖啡店"
-    assert filtered_body["items"][0]["source"] == "支付宝账单"
-
-    category_miss = client.get(
-        "/api/expenses/confirmed?month=2026-05&category=购物",
-        headers=identity.app_headers,
-    )
-    assert category_miss.status_code == 200, category_miss.json()
-    assert category_miss.json()["total"] == 0
-
-    exported = client.get(
-        "/api/expenses/export.csv?month=2026-05&category=餐饮&tag=咖啡",
-        headers=identity.app_headers,
-    )
-    assert exported.status_code == 200, exported.text
-    assert "text/csv" in exported.headers["content-type"]
-    assert "CSV咖啡店" in exported.text
-    assert "支付宝账单" in exported.text
-    assert "外卖, 咖啡" in exported.text
-    assert "CSV文具店" not in exported.text
+    batch = _create_rich_csv_import_batch(client, identity=identity)
+    _apply_rich_csv_import_batch(client, identity=identity, public_id=batch["public_id"])
+    expense_id = _assert_imported_coffee_pending_row(client, identity=identity)
+    _confirm_imported_coffee_expense(client, identity=identity, expense_id=expense_id)
+    _assert_coffee_import_stats(client, identity=identity)
+    _assert_coffee_import_filter_and_export(client, identity=identity)
 
 
 def test_csv_import_viewer_can_read_batch_but_cannot_create_or_apply(client: TestClient, *, identity) -> None:

@@ -75,8 +75,7 @@ def test_csv_import_apply_lease_is_atomically_claimed(client: TestClient) -> Non
         assert inserted == 0
 
 
-def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(client: TestClient) -> None:
-    del client
+def _create_batch_with_one_claimed_row() -> tuple[str, int]:
     with SessionLocal() as setup_db:
         batch = create_csv_import_batch(
             setup_db,
@@ -94,6 +93,56 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
             apply_token="worker-a",
         )
         assert len(claimed_ids) == 1
+    return public_id, batch_id
+
+
+def _assert_owner_csv_expense_count(db, expected: int) -> None:
+    inserted = db.scalar(
+        select(func.count())
+        .select_from(Expense)
+        .where(Expense.tenant_id == "owner")
+        .where(Expense.source == "CSV导入")
+    )
+    assert inserted == expected
+
+
+def _assert_batch_row_statuses(db, *, batch_id: int, expected: list[str]) -> None:
+    rows = list(
+        db.scalars(
+            select(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.batch_id == batch_id)
+            .order_by(CsvImportRow.line_number.asc())
+        )
+    )
+    assert sorted(row.status for row in rows) == expected
+
+
+def _assert_active_row_claim_blocks_retry(db, *, public_id: str) -> None:
+    with pytest.raises(AppError) as exc_info:
+        apply_csv_import_batch(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            batch_size=10,
+        )
+    assert exc_info.value.status_code == 409
+
+
+def _expire_applying_rows(db, *, batch_id: int) -> None:
+    db.execute(
+        update(CsvImportRow)
+        .where(CsvImportRow.tenant_id == "owner")
+        .where(CsvImportRow.batch_id == batch_id)
+        .where(CsvImportRow.status == "applying")
+        .values(updated_at=now_utc() - timedelta(minutes=10))
+    )
+    db.commit()
+
+
+def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(client: TestClient) -> None:
+    del client
+    public_id, batch_id = _create_batch_with_one_claimed_row()
 
     with SessionLocal() as db:
         applied = apply_csv_import_batch(
@@ -104,51 +153,12 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
         )
         assert applied.inserted_count == 1
         assert applied.remaining_valid_rows == 1
+        _assert_owner_csv_expense_count(db, 1)
+        _assert_batch_row_statuses(db, batch_id=batch_id, expected=["applied", "applying"])
+        _assert_active_row_claim_blocks_retry(db, public_id=public_id)
+        _assert_owner_csv_expense_count(db, 1)
 
-        inserted = db.scalar(
-            select(func.count())
-            .select_from(Expense)
-            .where(Expense.tenant_id == "owner")
-            .where(Expense.source == "CSV导入")
-        )
-        assert inserted == 1
-
-        rows = list(
-            db.scalars(
-                select(CsvImportRow)
-                .where(CsvImportRow.tenant_id == "owner")
-                .where(CsvImportRow.batch_id == batch_id)
-                .order_by(CsvImportRow.line_number.asc())
-            )
-        )
-        assert sorted(row.status for row in rows) == ["applied", "applying"]
-
-        with pytest.raises(AppError) as exc_info:
-            apply_csv_import_batch(
-                db,
-                tenant_id="owner",
-                public_id=public_id,
-                batch_size=10,
-            )
-        assert exc_info.value.status_code == 409
-
-        inserted_after_retry = db.scalar(
-            select(func.count())
-            .select_from(Expense)
-            .where(Expense.tenant_id == "owner")
-            .where(Expense.source == "CSV导入")
-        )
-        assert inserted_after_retry == 1
-
-        db.execute(
-            update(CsvImportRow)
-            .where(CsvImportRow.tenant_id == "owner")
-            .where(CsvImportRow.batch_id == batch_id)
-            .where(CsvImportRow.status == "applying")
-            .values(updated_at=now_utc() - timedelta(minutes=10))
-        )
-        db.commit()
-
+        _expire_applying_rows(db, batch_id=batch_id)
         recovered = apply_csv_import_batch(
             db,
             tenant_id="owner",
@@ -157,23 +167,8 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
         )
         assert recovered.inserted_count == 1
         assert recovered.remaining_valid_rows == 0
-
-        final_rows = list(
-            db.scalars(
-                select(CsvImportRow)
-                .where(CsvImportRow.tenant_id == "owner")
-                .where(CsvImportRow.batch_id == batch_id)
-            )
-        )
-        assert sorted(row.status for row in final_rows) == ["applied", "applied"]
-
-        final_inserted = db.scalar(
-            select(func.count())
-            .select_from(Expense)
-            .where(Expense.tenant_id == "owner")
-            .where(Expense.source == "CSV导入")
-        )
-        assert final_inserted == 2
+        _assert_batch_row_statuses(db, batch_id=batch_id, expected=["applied", "applied"])
+        _assert_owner_csv_expense_count(db, 2)
 
 
 def test_csv_import_recovers_legacy_stale_applying_row_without_apply_token(client: TestClient) -> None:
