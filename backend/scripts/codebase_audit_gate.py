@@ -184,7 +184,7 @@ STRICT_EQUALITY_BASELINE.update({
     "mutate_token_exempted": 122,
     "mutate_token_reason_create_row": 32,
 })
-CODEBASE_DEBT_LIMITS.update({"todo_markers": 8})
+CODEBASE_DEBT_LIMITS.update({"todo_markers": 0})
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2372})  # +1 OCR benchmark local_llm harness test; +1 error-copy map parser fixture; +16 ci-gap release APK policy parser tests.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.

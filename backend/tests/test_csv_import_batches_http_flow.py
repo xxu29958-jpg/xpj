@@ -29,7 +29,7 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
     created = client.post(
         "/api/imports/csv",
         headers=identity.app_headers,
-        files={"csv_file": ("C:\\temp\\rows.csv", csv.encode("utf-8"), "text/csv")},
+        files={"csv_file": ("C:\\scratch\\rows.csv", csv.encode("utf-8"), "text/csv")},
     )
     assert created.status_code == 201, created.json()
     batch = created.json()

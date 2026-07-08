@@ -8,7 +8,7 @@ in your AI answer means 麦当劳") before showing it to the user.
 - ``AiMerchantAnonMap``: real merchant canonical name → ``merchant_NNN``.
 - ``AiMemberAnonMap``: real account id → ``member_N``.
 - ``AiTransactionTempIdMap``: per-AI-session expense id → ``tx_NNN``
-  (scoped to a single advisor call so temp ids can be reused / pruned).
+  (scoped to a single advisor call so ephemeral ids can be reused / pruned).
 """
 
 from __future__ import annotations

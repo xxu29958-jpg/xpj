@@ -1,6 +1,6 @@
 """v1.2 follow-up — small registry for algorithm types.
 
-ADR-0037 left a TODO: ``decision_type`` and ``algorithm_version`` were
+ADR-0037 originally called out that ``decision_type`` and ``algorithm_version`` were
 scattered as string constants across each suggestion service
 (``"category_suggestion"`` in ``pending_suggestion_service``,
 ``ALGORITHM_VERSION = "category-history-v1"`` in
