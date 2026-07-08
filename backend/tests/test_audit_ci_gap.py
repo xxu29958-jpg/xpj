@@ -185,7 +185,7 @@ jobs:
 
 
 def test_ci_gap_gradle_prose_mention_does_not_satisfy(tmp_path: Path) -> None:
-    """A task name inside echo/prose (no gradlew invocation on the line)
+    """A task name inside echo/prose (no real gradlew invocation on the line)
     must not satisfy the gradle pins."""
     mod = _load()
     workflows = tmp_path / ".gitea" / "workflows"
@@ -198,7 +198,9 @@ jobs:
     steps:
       - run: |
           echo "we used to run :app:testGrayDebugUnitTest here"
+          echo "./gradlew --no-daemon :app:testGrayDebugUnitTest"
           Write-Host ":app:lintGrayDebug moved elsewhere"
+          Write-Host "./gradlew --no-daemon :app:lintGrayDebug"
 """,
         encoding="utf-8",
     )
@@ -208,6 +210,203 @@ jobs:
     missing = mod._missing_gradle_tasks(commands)
     assert ":app:testGrayDebugUnitTest" in missing
     assert ":app:lintGrayDebug" in missing
+
+
+def test_ci_gap_release_apk_policy_requires_real_single_github_invocation(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: |
+          echo "./gradlew --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease"
+          ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease
+          ./gradlew --no-daemon --max-workers=1 :app:assembleInternalRelease
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert mod._github_ci_release_apk_policy_violations(commands) == [
+        "GitHub Android release APK builds must run gray/internal release tasks in one Gradle invocation"
+    ]
+
+
+def test_ci_gap_release_apk_policy_accepts_multiline_tokenized_invocation(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: |
+          ./gradlew --no-daemon \\
+            :app:assembleInternalRelease \\
+            --max-workers 1 \\
+            :app:assembleGrayRelease
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert mod._github_ci_release_apk_policy_violations(commands) == []
+
+
+def test_ci_gap_release_apk_policy_accepts_folded_yaml_invocation(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: >
+          ./gradlew --no-daemon
+          --max-workers=1
+          :app:assembleGrayRelease
+          :app:assembleInternalRelease
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert mod._github_ci_release_apk_policy_violations(commands) == []
+
+
+def test_ci_gap_release_apk_policy_ignores_inline_shell_comments(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease # :app:assembleInternalRelease --stop
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert ":app:assembleInternalRelease" in mod._missing_gradle_tasks(commands)
+    assert mod._github_ci_release_apk_policy_violations(commands) == [
+        "GitHub Android release APK builds must run gray/internal release tasks in one Gradle invocation"
+    ]
+
+
+def test_ci_gap_release_apk_policy_ignores_comments_after_shell_separator(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease ;# :app:assembleInternalRelease
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert ":app:assembleInternalRelease" in mod._missing_gradle_tasks(commands)
+    assert mod._github_ci_release_apk_policy_violations(commands) == [
+        "GitHub Android release APK builds must run gray/internal release tasks in one Gradle invocation"
+    ]
+
+
+def test_ci_gap_release_apk_policy_splits_shell_command_operators(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease && ./gradlew --no-daemon --max-workers=1 :app:assembleInternalRelease
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert mod._github_ci_release_apk_policy_violations(commands) == [
+        "GitHub Android release APK builds must run gray/internal release tasks in one Gradle invocation"
+    ]
+
+
+def test_ci_gap_release_apk_policy_does_not_merge_literal_block_without_continuation(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: |
+          ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease
+          : :app:assembleInternalRelease
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert mod._github_ci_release_apk_policy_violations(commands) == [
+        "GitHub Android release APK builds must run gray/internal release tasks in one Gradle invocation"
+    ]
+
+
+def test_ci_gap_release_apk_policy_bans_github_gradle_stop_anywhere(tmp_path: Path) -> None:
+    mod = _load()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "android-connected-test.yml").write_text(
+        """
+name: Android Connected
+jobs:
+  connected:
+    steps:
+      - run: ./gradlew --no-daemon --stop
+""",
+        encoding="utf-8",
+    )
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows)
+
+    assert mod._github_ci_release_apk_policy_violations(commands) == [
+        "GitHub CI must not call gradlew --stop during Android lanes"
+    ]
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

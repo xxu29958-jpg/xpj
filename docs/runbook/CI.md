@@ -63,7 +63,7 @@ gradlew :app:lintGrayDebug
 gradlew :app:detektGrayDebug :app:detektGrayDebugUnitTest   # Kotlin 复杂度门（六阈值；type-resolving——plain :app:detekt 会静默跳过 LongParameterList；存量冻结 per-variant baseline）
 gradlew :app:assembleGrayDebug
 gradlew :app:assembleInternalDebug
-gradlew :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + shrinkResources 保温
+gradlew --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + shrinkResources 保温；同一次调用复用配置/缓存/单用 daemon
 # apksigner 校验两个 debug APK = 仓库级稳定 debug 证书（指纹钉自 android/config/debug/README.md）
 ```
 
@@ -73,7 +73,7 @@ GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装
 
 云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。
 
-`release_audit.py` 的 ci-gap lane 静态扫 `.github/workflows/*.yml` 和 `.gitea/workflows/*.yml`，钉住 11 个 gradle task（上述清单 + ksp regen + detekt 两变体 + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），防止 lane 静默丢失。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单**，否则该 lane 立刻红。
+`release_audit.py` 的 ci-gap lane 静态扫 `.github/workflows/*.yml` 和 `.gitea/workflows/*.yml`，钉住 11 个 gradle task（上述清单 + ksp regen + detekt 两变体 + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），并额外钉住 GitHub Android release APK 必须同一次 Gradle 调用构建 gray/internal 两个 release 变体且不得插入 `gradlew --stop`，防止 release APK lane 退回两次冷启动慢路径。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单 / policy pins**，否则该 lane 立刻红。
 
 ## 安全边界
 

@@ -357,12 +357,10 @@ jobs:
       - name: Android release APK builds
         # Release builds run R8 minify + shrinkResources, keeping keep-rules warm
         # in CI instead of discovering Retrofit/Moshi issues only on a manual
-        # release assemble.
-        run: |
-          ./gradlew --stop || true
-          ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease
-          ./gradlew --stop || true
-          ./gradlew --no-daemon --max-workers=1 :app:assembleInternalRelease
+        # release assemble. Keep both release variants in one Gradle invocation:
+        # R8 stays serialized by max-workers=1, but configuration, caches, and
+        # the single-use daemon are reused instead of being paid twice.
+        run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease
 
       - name: Verify debug APK signing certificate
         # Compute the expected fingerprint from the committed debug keystore
