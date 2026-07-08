@@ -108,6 +108,254 @@ def _assert_permission_denied(response, *, label: str) -> None:
     assert payload["message"] == VIEWER_WRITE_MESSAGE, label
 
 
+def _assert_web_posts_denied(
+    web_client: TestClient,
+    requests: list[tuple[str, str, dict[str, object]]],
+) -> None:
+    for label, path, data in requests:
+        response = web_client.post(path, data=data, follow_redirects=False)
+        _assert_permission_denied(response, label=label)
+
+
+def _assert_web_viewer_import_preview_denied(web_client: TestClient, *, ledger_id: str) -> None:
+    import_preview = web_client.post(
+        "/web/import/preview",
+        data={"ledger_id": ledger_id},
+        files={"csv_file": ("rows.csv", b"amount_yuan,merchant\n1.00,Cafe\n", "text/csv")},
+        follow_redirects=False,
+    )
+    _assert_permission_denied(import_preview, label="csv import preview")
+
+
+def _assert_web_viewer_expense_posts_denied(web_client: TestClient, *, ledger_id: str) -> None:
+    _assert_web_posts_denied(
+        web_client,
+        [
+            (
+                "expense save",
+                "/web/expenses/999/save",
+                {
+                    "ledger_id": ledger_id,
+                    "amount_yuan": "8.50",
+                    "merchant": "Cafe",
+                    "category": "餐饮",
+                },
+            ),
+            ("expense confirm", "/web/expenses/999/confirm", {"ledger_id": ledger_id}),
+            ("expense reject", "/web/expenses/999/reject", {"ledger_id": ledger_id}),
+            ("expense undo", "/web/expenses/999/undo", {"ledger_id": ledger_id}),
+            (
+                "bulk review",
+                "/web/review/bulk",
+                {"ledger_id": ledger_id, "action": "confirm_ready", "expense_ids": ["999"]},
+            ),
+            (
+                "pending batch reject",
+                "/web/pending/batch-reject",
+                {"ledger_id": ledger_id, "expense_ids": ["999"]},
+            ),
+            (
+                "confirmed batch update",
+                "/web/confirmed/batch-update",
+                {
+                    "ledger_id": ledger_id,
+                    "action": "set_category",
+                    "expense_ids": ["999"],
+                    "category": "餐饮",
+                },
+            ),
+        ],
+    )
+
+
+def _assert_web_viewer_rule_posts_denied(web_client: TestClient, *, ledger_id: str) -> None:
+    _assert_web_posts_denied(
+        web_client,
+        [
+            (
+                "rules create",
+                "/web/rules/create",
+                {
+                    "ledger_id": ledger_id,
+                    "keyword": "Kimi",
+                    "category": "AI订阅",
+                    "priority": "1",
+                },
+            ),
+            (
+                "rules toggle",
+                "/web/rules/999/toggle",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+            (
+                "rules delete",
+                "/web/rules/999/delete",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+            ("rules apply pending", "/web/rules/apply-pending", {"ledger_id": ledger_id}),
+            (
+                "rules apply confirmed",
+                "/web/rules/apply-confirmed",
+                {"ledger_id": ledger_id, "preview_confirmed": "yes"},
+            ),
+            (
+                "rules rollback",
+                "/web/rules/applications/missing/rollback",
+                {"ledger_id": ledger_id},
+            ),
+        ],
+    )
+
+
+def _assert_web_viewer_merchant_posts_denied(web_client: TestClient, *, ledger_id: str) -> None:
+    _assert_web_posts_denied(
+        web_client,
+        [
+            (
+                "merchant catalog create",
+                "/web/merchants/catalog/create",
+                {"ledger_id": ledger_id, "display_name": "星巴克"},
+            ),
+            (
+                "merchant catalog toggle",
+                "/web/merchants/catalog/missing/toggle",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+            (
+                "merchant catalog rename",
+                "/web/merchants/catalog/missing/rename",
+                {
+                    "ledger_id": ledger_id,
+                    "expected_row_version": 999999,
+                    "display_name": "重命名",
+                },
+            ),
+            (
+                "merchant catalog merge",
+                "/web/merchants/catalog/missing/merge",
+                {
+                    "ledger_id": ledger_id,
+                    "expected_row_version": 999999,
+                    "target": "other:999999",
+                    "alias_policy": "none",
+                },
+            ),
+            (
+                "merchant catalog delete",
+                "/web/merchants/catalog/missing/delete",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+            (
+                "merchant alias create",
+                "/web/merchants/aliases/create",
+                {"ledger_id": ledger_id, "canonical_merchant": "星巴克", "alias": "STARBUCKS"},
+            ),
+            (
+                "merchant alias toggle",
+                "/web/merchants/aliases/missing/toggle",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+            (
+                "merchant alias delete",
+                "/web/merchants/aliases/missing/delete",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+        ],
+    )
+
+
+def _assert_web_viewer_tag_posts_denied(web_client: TestClient, *, ledger_id: str) -> None:
+    _assert_web_posts_denied(
+        web_client,
+        [
+            (
+                "tag rename",
+                "/web/tags/missing/rename",
+                {"ledger_id": ledger_id, "expected_row_version": 999999, "name": "x"},
+            ),
+            (
+                "tag delete",
+                "/web/tags/missing/delete",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+            (
+                "tag merge",
+                "/web/tags/missing/merge",
+                {
+                    "ledger_id": ledger_id,
+                    "expected_row_version": 999999,
+                    "target": "other:999999",
+                },
+            ),
+            (
+                "tag undo",
+                "/web/tags/mutations/missing/undo",
+                {"ledger_id": ledger_id, "expected_row_version": 999999},
+            ),
+        ],
+    )
+
+
+def _assert_web_viewer_operational_posts_denied(
+    web_client: TestClient,
+    *,
+    ledger_id: str,
+) -> None:
+    import_payload = json.dumps(
+        [
+            {
+                "amount_cents": 850,
+                "merchant": "Cafe",
+                "category": "餐饮",
+                "note": "",
+                "expense_time": None,
+                "tags": "",
+                "source": "CSV导入",
+            }
+        ],
+        ensure_ascii=False,
+    )
+    _assert_web_posts_denied(
+        web_client,
+        [
+            (
+                # ADR-0043 review: cancelling a background task sets
+                # cancellation_requested_at — a write. The writer-role gate fires
+                # before the task lookup, so a dummy public_id still 403s a viewer.
+                "task cancel",
+                "/web/tasks/missing/cancel",
+                {"ledger_id": ledger_id},
+            ),
+            (
+                "csv import confirm",
+                "/web/import/confirm",
+                {"ledger_id": ledger_id, "payload": import_payload},
+            ),
+            (
+                "csv import apply",
+                "/web/import/missing/apply",
+                {"ledger_id": ledger_id, "batch_size": "1"},
+            ),
+            (
+                "uncategorized bulk set",
+                "/web/categories/uncategorized/bulk-set",
+                {"ledger_id": ledger_id, "expense_ids": ["999"], "category": "餐饮"},
+            ),
+            ("duplicate keep", "/web/duplicates/999/keep", {"ledger_id": ledger_id}),
+            (
+                "duplicate reject current",
+                "/web/duplicates/999/reject-current",
+                {"ledger_id": ledger_id},
+            ),
+            (
+                "duplicate reject original",
+                "/web/duplicates/999/reject-original",
+                {"ledger_id": ledger_id},
+            ),
+        ],
+    )
+
+
 def test_viewer_cannot_upload_android_screenshot(client: TestClient, *, identity) -> None:
     _, _, viewer_token = _make_role_token(client, "viewer", identity=identity)
 
@@ -174,170 +422,12 @@ def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient, *, iden
 
 def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClient, *, identity) -> None:
     ledger_id = _make_web_ledger_with_role(web_client, "viewer", identity=identity)
-    import_payload = json.dumps(
-        [
-            {
-                "amount_cents": 850,
-                "merchant": "Cafe",
-                "category": "餐饮",
-                "note": "",
-                "expense_time": None,
-                "tags": "",
-                "source": "CSV导入",
-            }
-        ],
-        ensure_ascii=False,
-    )
-    import_preview = web_client.post(
-        "/web/import/preview",
-        data={"ledger_id": ledger_id},
-        files={"csv_file": ("rows.csv", b"amount_yuan,merchant\n1.00,Cafe\n", "text/csv")},
-        follow_redirects=False,
-    )
-    _assert_permission_denied(import_preview, label="csv import preview")
-
-    requests = [
-        (
-            "expense save",
-            "/web/expenses/999/save",
-            {"ledger_id": ledger_id, "amount_yuan": "8.50", "merchant": "Cafe", "category": "餐饮"},
-        ),
-        ("expense confirm", "/web/expenses/999/confirm", {"ledger_id": ledger_id}),
-        ("expense reject", "/web/expenses/999/reject", {"ledger_id": ledger_id}),
-        ("expense undo", "/web/expenses/999/undo", {"ledger_id": ledger_id}),
-        (
-            "bulk review",
-            "/web/review/bulk",
-            {"ledger_id": ledger_id, "action": "confirm_ready", "expense_ids": ["999"]},
-        ),
-        (
-            "pending batch reject",
-            "/web/pending/batch-reject",
-            {"ledger_id": ledger_id, "expense_ids": ["999"]},
-        ),
-        (
-            "confirmed batch update",
-            "/web/confirmed/batch-update",
-            {"ledger_id": ledger_id, "action": "set_category", "expense_ids": ["999"], "category": "餐饮"},
-        ),
-        (
-            "rules create",
-            "/web/rules/create",
-            {"ledger_id": ledger_id, "keyword": "Kimi", "category": "AI订阅", "priority": "1"},
-        ),
-        (
-            "rules toggle",
-            "/web/rules/999/toggle",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        (
-            "rules delete",
-            "/web/rules/999/delete",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        ("rules apply pending", "/web/rules/apply-pending", {"ledger_id": ledger_id}),
-        ("rules apply confirmed", "/web/rules/apply-confirmed", {"ledger_id": ledger_id, "preview_confirmed": "yes"}),
-        (
-            "rules rollback",
-            "/web/rules/applications/missing/rollback",
-            {"ledger_id": ledger_id},
-        ),
-        (
-            "merchant catalog create",
-            "/web/merchants/catalog/create",
-            {"ledger_id": ledger_id, "display_name": "星巴克"},
-        ),
-        (
-            "merchant catalog toggle",
-            "/web/merchants/catalog/missing/toggle",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        (
-            "merchant catalog rename",
-            "/web/merchants/catalog/missing/rename",
-            {"ledger_id": ledger_id, "expected_row_version": 999999, "display_name": "重命名"},
-        ),
-        (
-            "merchant catalog merge",
-            "/web/merchants/catalog/missing/merge",
-            {
-                "ledger_id": ledger_id,
-                "expected_row_version": 999999,
-                "target": "other:999999",
-                "alias_policy": "none",
-            },
-        ),
-        (
-            "merchant catalog delete",
-            "/web/merchants/catalog/missing/delete",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        (
-            "merchant alias create",
-            "/web/merchants/aliases/create",
-            {"ledger_id": ledger_id, "canonical_merchant": "星巴克", "alias": "STARBUCKS"},
-        ),
-        (
-            "merchant alias toggle",
-            "/web/merchants/aliases/missing/toggle",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        (
-            "merchant alias delete",
-            "/web/merchants/aliases/missing/delete",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        (
-            "tag rename",
-            "/web/tags/missing/rename",
-            {"ledger_id": ledger_id, "expected_row_version": 999999, "name": "x"},
-        ),
-        (
-            "tag delete",
-            "/web/tags/missing/delete",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        (
-            "tag merge",
-            "/web/tags/missing/merge",
-            {
-                "ledger_id": ledger_id,
-                "expected_row_version": 999999,
-                "target": "other:999999",
-            },
-        ),
-        (
-            "tag undo",
-            "/web/tags/mutations/missing/undo",
-            {"ledger_id": ledger_id, "expected_row_version": 999999},
-        ),
-        (
-            # ADR-0043 review: cancelling a background task sets
-            # cancellation_requested_at — a write. The writer-role gate fires
-            # before the task lookup, so a dummy public_id still 403s a viewer.
-            "task cancel",
-            "/web/tasks/missing/cancel",
-            {"ledger_id": ledger_id},
-        ),
-        (
-            "csv import confirm",
-            "/web/import/confirm",
-            {"ledger_id": ledger_id, "payload": import_payload},
-        ),
-        ("csv import apply", "/web/import/missing/apply", {"ledger_id": ledger_id, "batch_size": "1"}),
-        (
-            "uncategorized bulk set",
-            "/web/categories/uncategorized/bulk-set",
-            {"ledger_id": ledger_id, "expense_ids": ["999"], "category": "餐饮"},
-        ),
-        ("duplicate keep", "/web/duplicates/999/keep", {"ledger_id": ledger_id}),
-        ("duplicate reject current", "/web/duplicates/999/reject-current", {"ledger_id": ledger_id}),
-        ("duplicate reject original", "/web/duplicates/999/reject-original", {"ledger_id": ledger_id}),
-    ]
-
-    for label, path, data in requests:
-        response = web_client.post(path, data=data, follow_redirects=False)
-        _assert_permission_denied(response, label=label)
+    _assert_web_viewer_import_preview_denied(web_client, ledger_id=ledger_id)
+    _assert_web_viewer_expense_posts_denied(web_client, ledger_id=ledger_id)
+    _assert_web_viewer_rule_posts_denied(web_client, ledger_id=ledger_id)
+    _assert_web_viewer_merchant_posts_denied(web_client, ledger_id=ledger_id)
+    _assert_web_viewer_tag_posts_denied(web_client, ledger_id=ledger_id)
+    _assert_web_viewer_operational_posts_denied(web_client, ledger_id=ledger_id)
 
 
 def test_viewer_can_export_confirmed_csv_from_api_and_web(web_client: TestClient, *, identity) -> None:
