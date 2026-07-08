@@ -41,7 +41,7 @@ SESSION_COOKIE_NAME = "__Host-session"
 SESSION_COOKIE_MAX_AGE_SECONDS = WEB_SESSION_TTL_SECONDS  # fixed 8h server-side TTL
 # `__Host-` prefix demands: Secure, Path=/, no Domain attribute. Browsers
 # refuse to honour the cookie if any of these is missing or modified.
-# See https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes
+# See the MDN cookie-prefix reference for the browser-side invariants.
 
 
 def set_session_cookie(response: Response, session_token: str) -> None:
