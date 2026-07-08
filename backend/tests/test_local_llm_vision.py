@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from io import BytesIO
 from types import SimpleNamespace
+from typing import get_origin, get_type_hints
 from unittest.mock import patch
 from urllib import error
 
@@ -19,12 +20,34 @@ import pytest
 
 import app.services.local_llm_vision as vision
 from app.errors import AppError
+from app.services._json_types import JsonObject, JsonValue
 from app.services.local_llm_vision import (
     call_local_llm_vision,
     local_llm_slot,
     parse_json_object,
     post_chat_completion,
 )
+
+
+def _assert_json_boundary_type_hints_resolve() -> None:
+    from app.services.background_task_response import BackgroundTaskResponsePayload
+    from app.services.budget_advisor_service._providers import OpenAiCompatBudgetAdvisor
+    from app.services.learning_service import DecisionDraft, EventDraft
+    from app.services.pending_suggestion_service import _loads
+
+    assert get_origin(JsonObject) is dict
+    assert JsonValue is not None
+    for target in (
+        post_chat_completion,
+        parse_json_object,
+        call_local_llm_vision,
+        BackgroundTaskResponsePayload,
+        OpenAiCompatBudgetAdvisor._post_chat_completion,
+        DecisionDraft,
+        EventDraft,
+        _loads,
+    ):
+        assert get_type_hints(target)
 
 
 def test_local_llm_http_error_body_is_not_exposed_in_app_error() -> None:
@@ -72,6 +95,7 @@ def test_local_llm_slot_uses_current_limit_without_parallel_semaphore_escape() -
 
 
 def test_parse_json_object_unwraps_markdown_code_fence() -> None:
+    _assert_json_boundary_type_hints_resolve()
     payload = parse_json_object('```json\n{"merchant": "花呗", "installment_count": 12}\n```')
 
     assert payload == {"merchant": "花呗", "installment_count": 12}

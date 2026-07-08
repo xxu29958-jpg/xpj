@@ -4,22 +4,41 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from datetime import datetime
+from typing import TypedDict, cast
 
 from app.models import BackgroundTask
+from app.services._json_types import JsonObject
 
 logger = logging.getLogger(__name__)
 
 
-def to_response_dict(task: BackgroundTask) -> dict[str, Any]:
+class BackgroundTaskResponsePayload(TypedDict):
+    public_id: str
+    task_type: str
+    status: str
+    progress_current: int
+    progress_total: int | None
+    progress_message: str | None
+    error_code: str | None
+    error_message: str | None
+    result_summary: JsonObject | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    last_progress_at: datetime | None
+    cancellation_requested_at: datetime | None
+
+
+def to_response_dict(task: BackgroundTask) -> BackgroundTaskResponsePayload:
     """Convert an ORM row into a BackgroundTaskResponse-compatible dict."""
 
-    result_summary: dict[str, Any] | None = None
+    result_summary: JsonObject | None = None
     if task.result_summary_json:
         try:
             decoded = json.loads(task.result_summary_json)
             if isinstance(decoded, dict):
-                result_summary = decoded
+                result_summary = cast(JsonObject, decoded)
         except json.JSONDecodeError:
             logger.warning(
                 "background_task %s has malformed result_summary_json", task.id

@@ -8,11 +8,12 @@ boundary has been reviewed.
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from typing import Any
+from typing import cast
 
 from app.errors import DataIntegrityError
 from app.services.budget_advisor_service._models import (
     ALLOWED_INCOME_SOURCE_TYPES,
+    BudgetAdvisorOutboundPayload,
     BudgetInputs,
 )
 from app.services.category_common import DEFAULT_CATEGORIES
@@ -46,7 +47,7 @@ _LIST_KEY_TO_ALLOWED_ROW_KEYS: dict[str, frozenset[str]] = {
 _ALLOWED_ADVISOR_CATEGORIES = frozenset(DEFAULT_CATEGORIES)
 
 
-def to_outbound_dict(inputs: BudgetInputs) -> dict[str, Any]:
+def to_outbound_dict(inputs: BudgetInputs) -> BudgetAdvisorOutboundPayload:
     """Canonical serialisation with fail-closed schema validation."""
 
     if not is_dataclass(inputs):
@@ -55,10 +56,10 @@ def to_outbound_dict(inputs: BudgetInputs) -> dict[str, Any]:
         )
     payload = asdict(inputs)
     validate_outbound_payload(payload)
-    return payload
+    return cast(BudgetAdvisorOutboundPayload, payload)
 
 
-def validate_outbound_payload(payload: dict[str, Any]) -> None:
+def validate_outbound_payload(payload: object) -> None:
     """Raise if ``payload`` includes keys outside the outbound contract."""
 
     if not isinstance(payload, dict):
@@ -108,7 +109,7 @@ def validate_outbound_payload(payload: dict[str, Any]) -> None:
             )
 
 
-def _validate_income_plan(rows: Any) -> None:
+def _validate_income_plan(rows: object) -> None:
     """Income rows are not category-bearing: validate the key set and a
     fail-closed ``source_type`` allowlist so no free-text (potential PII)
     source type can ever reach a provider."""

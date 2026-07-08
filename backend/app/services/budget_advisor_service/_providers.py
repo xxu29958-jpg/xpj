@@ -24,7 +24,7 @@ import json
 import logging
 import re
 from ipaddress import ip_address
-from typing import Any
+from typing import cast
 from urllib import error, request
 from urllib.parse import urlparse
 
@@ -32,6 +32,8 @@ from app.config import get_settings
 from app.errors import AppError, DataIntegrityError
 from app.services.budget_advisor_service._models import (
     BudgetAdvice,
+    BudgetAdvisorChatRequest,
+    BudgetAdvisorChatResponse,
     BudgetAdvisorProvider,
     BudgetInputs,
     BudgetSuggestion,
@@ -144,7 +146,7 @@ class OpenAiCompatBudgetAdvisor:
             logger.exception("budget_advisor_openai_compat: outbound guard rejected payload")
             return None
 
-        request_body = {
+        request_body: BudgetAdvisorChatRequest = {
             "model": self._model,
             "temperature": 0,
             "messages": [
@@ -179,7 +181,7 @@ class OpenAiCompatBudgetAdvisor:
             logger.exception("budget_advisor_openai_compat: unexpected parse error")
             return None
 
-    def _post_chat_completion(self, body: dict[str, Any]) -> dict[str, Any]:
+    def _post_chat_completion(self, body: BudgetAdvisorChatRequest) -> BudgetAdvisorChatResponse:
         endpoint = f"{self._base_url}/chat/completions"
         encoded = json.dumps(body, ensure_ascii=False).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -197,7 +199,7 @@ class OpenAiCompatBudgetAdvisor:
                         len(raw),
                     )
                     raise AppError("server_error", "AI 服务暂时不可用。", status_code=500)
-                return json.loads(raw.decode("utf-8"))
+                return cast(BudgetAdvisorChatResponse, json.loads(raw.decode("utf-8")))
         except error.HTTPError as exc:
             detail = _sanitize_provider_error_detail(
                 exc.read(4096).decode("utf-8", errors="replace")
@@ -257,7 +259,7 @@ def get_budget_advisor(provider_name: str | None = None) -> BudgetAdvisorProvide
     return EmptyBudgetAdvisor()
 
 
-def _extract_message_content(response_json: dict[str, Any]) -> str:
+def _extract_message_content(response_json: BudgetAdvisorChatResponse) -> str:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
         raise AppError("server_error", "AI 返回格式不正确。", status_code=500)

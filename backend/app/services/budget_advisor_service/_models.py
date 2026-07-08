@@ -17,7 +17,9 @@ Intentionally excluded:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, TypeAlias, TypedDict
+
+from app.services._json_types import JsonObject
 
 # ADR-0036: income source types safe to send to a provider. ``source_type`` is
 # free text in storage (a user could type an employer name), so the builder
@@ -74,6 +76,38 @@ class BudgetInputs:
     # monthly recurring spend + how many active items — never per-merchant rows.
     recurring_total_monthly_cents: int = 0
     recurring_active_count: int = 0
+
+
+class BudgetAdvisorCategoryPayload(TypedDict):
+    category: str
+    amount_cents: int
+    count: int
+
+
+class BudgetAdvisorHistoricalBaselinePayload(TypedDict):
+    category: str
+    median_cents: int
+    p75_cents: int
+
+
+class BudgetAdvisorIncomePlanPayload(TypedDict):
+    source_type: str
+    amount_cents: int
+    pay_day: int
+
+
+class BudgetAdvisorOutboundPayload(TypedDict):
+    month: str
+    home_currency: str
+    category_breakdown: list[BudgetAdvisorCategoryPayload]
+    historical_baseline: list[BudgetAdvisorHistoricalBaselinePayload]
+    income_plan: list[BudgetAdvisorIncomePlanPayload]
+    recurring_total_monthly_cents: int
+    recurring_active_count: int
+
+
+BudgetAdvisorChatRequest: TypeAlias = JsonObject
+BudgetAdvisorChatResponse: TypeAlias = JsonObject
 
 
 @dataclass(frozen=True)

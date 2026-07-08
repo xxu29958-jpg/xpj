@@ -46,7 +46,9 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TypeAlias
+
+from app.services._json_types import JsonObject, JsonValue
 
 __all__ = [
     "ALGORITHM_TYPES",
@@ -60,6 +62,9 @@ __all__ = [
     "get",
     "is_registered",
 ]
+
+AlgorithmPayload: TypeAlias = Mapping[str, JsonValue]
+AlgorithmMarker: TypeAlias = JsonObject
 
 
 @dataclass(frozen=True)
@@ -111,7 +116,7 @@ class AlgorithmType:
             return self.dismissed_retention_days
         return self.default_retention_days
 
-    def build_marker(self, payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    def build_marker(self, payload: AlgorithmPayload) -> AlgorithmMarker | None:
         """Reduce a decision payload to its canonical marker.
 
         Returns ``None`` when the type has no ``marker_keys`` (e.g.
@@ -200,8 +205,8 @@ def decision_types() -> tuple[str, ...]:
 
 
 def build_feedback_marker(
-    decision_type: str, payload: Mapping[str, Any]
-) -> dict[str, Any] | None:
+    decision_type: str, payload: AlgorithmPayload
+) -> AlgorithmMarker | None:
     """Convenience: ``get(decision_type).build_marker(payload)`` without
     the per-call ``get`` boilerplate. Returns ``None`` for types that
     don't define a marker (no feedback-de-dup loop)."""
@@ -209,7 +214,7 @@ def build_feedback_marker(
     return get(decision_type).build_marker(payload)
 
 
-def canonical_marker_hash(marker: Mapping[str, Any] | None) -> str | None:
+def canonical_marker_hash(marker: AlgorithmMarker | None) -> str | None:
     """SHA-256 hex of the canonical JSON encoding of ``marker``.
 
     Canonical means ``sort_keys=True`` and ``ensure_ascii=False``, so
