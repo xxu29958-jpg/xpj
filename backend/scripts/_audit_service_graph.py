@@ -57,7 +57,7 @@ def _build_service_graphs(
             continue
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, SyntaxError, UnicodeDecodeError):
             continue
         rel = str(p).replace(os.sep, "/")
         me = rel.removesuffix(".py").replace("/", ".")

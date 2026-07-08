@@ -108,6 +108,7 @@ def post_bootstrap_owner(
     secret: str = Depends(require_http_bootstrap_secret),
     db: Session = Depends(get_db),
 ) -> BootstrapOwnerResponse:
+    committed = False
     try:
         result = bootstrap_owner(
             db,
@@ -119,14 +120,14 @@ def post_bootstrap_owner(
         )
         _consume_secret(db, secret)
         db.commit()
-    except Exception:
-        # AppError translation for the race-condition case is owned by
-        # _consume_secret. Everything else (real schema bug, unexpected
-        # IntegrityError, etc.) rolls back and propagates as-is so the
-        # global handler surfaces a generic server_error rather than a
-        # misleading "secret already used".
-        db.rollback()
-        raise
+        committed = True
+    finally:
+        if not committed:
+            # AppError translation for the race-condition case is owned by
+            # _consume_secret. Everything else rolls back and propagates as-is
+            # so the global handler surfaces a generic server_error rather than
+            # a misleading "secret already used".
+            db.rollback()
     return BootstrapOwnerResponse(**result.__dict__)
 
 

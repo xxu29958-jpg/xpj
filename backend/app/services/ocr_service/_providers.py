@@ -68,12 +68,18 @@ class RapidOcrProvider:
         image_path, _ = resolve_protected_image(expense.image_path, expense.tenant_id)
         try:
             result = RapidOCR()(str(image_path))
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
             raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
 
-        texts = [text.strip() for text in (result.txts or ()) if text and text.strip()]
+        try:
+            raw_texts = result.txts or ()
+            raw_scores = result.scores or ()
+        except AttributeError as exc:
+            raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
+
+        texts = [text.strip() for text in raw_texts if text and text.strip()]
         raw_text = "\n".join(texts)
-        scores = [float(score) for score in (result.scores or ()) if score is not None]
+        scores = [float(score) for score in raw_scores if score is not None]
         confidence = (sum(scores) / len(scores)) if scores else None
         return _merge_result_with_text_parse(
             OcrResult(raw_text=raw_text, confidence=confidence),

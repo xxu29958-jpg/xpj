@@ -57,7 +57,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "cached_singletons": 3,
     "nested_dict_args": 16,  # −1 PG-only slice 5 (retired cut-over machinery)
     "mixed_return_functions": 0,
-    "broad_exception": 8,  # 2026-07-08: narrowed rollback-only DB catches plus optional thumbnail/report degradation catches.
+    "broad_exception": 0,  # 2026-07-08: remaining broad catches narrowed to cleanup/fail-soft exception families.
     "generic_raises": 0,  # 2026-07-08: remaining direct RuntimeError raises now use narrow startup/service contract exceptions.
     "todo_markers": 9,
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
@@ -83,7 +83,7 @@ CODEBASE_DEBT_LIMITS.update(
         "files_over_500": 16,
         "long_functions": 38,
         "deep_nesting_functions": 0,
-        "broad_exception": 8,
+        "broad_exception": 0,
         "unreferenced_modules": 223,
     }
 )  # ADR-0052 recycle-bin follow-up; 2026-07-06 cleanup retired the one-shot migrator, compressed gate prose, split smoke_test orchestration, narrowed audit scanner fallbacks, and ratcheted post-batch broad exceptions.
@@ -192,6 +192,7 @@ STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2394})  # +2 n_plus_one
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2396})  # +2 n_plus_one slice P3 coverage: startup tenant-id union collection and invalid-id fail-close.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2397})  # +1 n_plus_one slice P3 coverage: batched ledger-id collision allocation skips taken candidates and fails closed when exhausted.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2398})  # +1 n_plus_one slice P3 coverage: batched pairing-code/invitation/upload-link public-id allocators skip taken candidates and fail closed when exhausted.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2399})  # +1 broad-exception tail: RapidOCR result shape drift maps to AppError so auto OCR remains fail-soft.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
