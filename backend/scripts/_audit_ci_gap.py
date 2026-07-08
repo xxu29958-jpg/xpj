@@ -7,19 +7,19 @@ import re
 import sys
 from dataclasses import dataclass
 
+from ci_gap_release_scope import release_apk_scope_policy_violations
+
 
 @dataclass(frozen=True)
 class RequiredCommand:
     label: str
     pattern: re.Pattern[str]
 
-
 @dataclass(frozen=True)
 class WorkflowCommand:
     workflow: pathlib.Path
     text: str
     folded: bool = False
-
 
 @dataclass(frozen=True)
 class GradleInvocation:
@@ -477,6 +477,8 @@ def main() -> int:
         missing.append(f"ci invocation: {invocation}")
     for violation in _github_ci_release_apk_policy_violations(commands):
         missing.append(f"ci policy: {violation}")
+    for violation in release_apk_scope_policy_violations({command.workflow for command in commands}):
+        missing.append(f"ci policy: {violation}")
 
     if missing:
         print("=== CI gap audit: FAIL ===")
@@ -491,7 +493,6 @@ def main() -> int:
         f"Actions workflows: {workflow_labels}) ==="
     )
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

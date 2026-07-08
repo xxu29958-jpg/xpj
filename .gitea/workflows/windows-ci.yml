@@ -425,16 +425,68 @@ jobs:
           }
           Write-Host "Room schema snapshots match the committed files"
 
-      - name: Android verification and APK builds
+      - name: Detect release APK scope
+        id: release-apk-scope
+        working-directory: ${{ github.workspace }}
+        shell: powershell
+        run: |
+          function Set-ReleaseApkRequired([string]$value) {
+            [System.IO.File]::AppendAllText(
+              $env:GITHUB_OUTPUT,
+              "release_apk_required=$value`n",
+              [System.Text.UTF8Encoding]::new($false)
+            )
+          }
+
+          $eventName = "${{ github.event_name }}"
+          $refName = "${{ github.ref_name }}"
+          if ($eventName -eq "workflow_dispatch" -or $refName -eq "main") {
+            Set-ReleaseApkRequired "true"
+            Write-Host "Release APK builds required for main/manual events."
+            exit 0
+          }
+
+          $changed = @(git diff --name-only origin/main...HEAD)
+          if ($LASTEXITCODE -ne 0) {
+            $changed = @(git diff --name-only origin/main HEAD)
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to compute changed files against origin/main"
+          }
+          $changed | ForEach-Object { Write-Host $_ }
+
+          $releaseRelevant = $changed | Where-Object {
+            $_ -match '^(android/|\.github/workflows/|\.gitea/workflows/)'
+          } | Select-Object -First 1
+          if ($releaseRelevant) {
+            Set-ReleaseApkRequired "true"
+            Write-Host "Release APK builds required by Android/CI changes."
+          } else {
+            Set-ReleaseApkRequired "false"
+            Write-Host "Release APK builds skipped for branch without Android/CI changes."
+          }
+
+      - name: Android verification and debug APK builds
         # Keep the same required Gradle gates, but run them in one invocation
         # after the Room schema drift check. On the single Windows runner this
         # avoids paying Gradle configuration + single-use daemon startup six
         # separate times while preserving the same fail-fast behavior.
         #
-        # Detekt remains type-resolving (both grayDebug variants), and release
-        # builds still run R8 minify + shrinkResources. Unsigned release APKs
-        # are expected in CI because the release signingConfig is optional.
-        run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease
+        # Detekt remains type-resolving (both grayDebug variants). Release
+        # builds are path-gated in the next step because R8/minify dominates
+        # backend-only PR time while still being required for Android/CI changes.
+        run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest :app:assembleGrayDebug :app:assembleInternalDebug
+
+      - name: Android release APK builds
+        if: steps.release-apk-scope.outputs.release_apk_required == 'true'
+        # Release builds still run R8 minify + shrinkResources for Android/CI
+        # changes. Unsigned release APKs are expected in CI because the release
+        # signingConfig is optional.
+        run: .\gradlew.bat --no-daemon :app:assembleGrayRelease :app:assembleInternalRelease
+
+      - name: Skip Android release APK builds
+        if: steps.release-apk-scope.outputs.release_apk_required != 'true'
+        run: Write-Host "Release APK builds are path-gated for this branch."
 
       - name: Verify debug APK signing certificate
         # Both debug APKs must carry the repository-level stable debug

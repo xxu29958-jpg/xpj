@@ -354,13 +354,42 @@ jobs:
       - name: Android debug APK builds
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug
 
+      - name: Detect release APK scope
+        id: release-apk-scope
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "release_apk_required=true" >> "$GITHUB_OUTPUT"
+            echo "Release APK builds required for non-PR events."
+            exit 0
+          fi
+
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed="$(git diff --name-only "${base}...${head}")"
+          printf '%s\n' "$changed"
+
+          if printf '%s\n' "$changed" | grep -E '^(android/|\.github/workflows/|\.gitea/workflows/)' >/dev/null; then
+            echo "release_apk_required=true" >> "$GITHUB_OUTPUT"
+            echo "Release APK builds required by Android/CI changes."
+          else
+            echo "release_apk_required=false" >> "$GITHUB_OUTPUT"
+            echo "Release APK builds skipped for PR without Android/CI changes."
+          fi
+
       - name: Android release APK builds
+        if: steps.release-apk-scope.outputs.release_apk_required == 'true'
         # Release builds run R8 minify + shrinkResources, keeping keep-rules warm
         # in CI instead of discovering Retrofit/Moshi issues only on a manual
         # release assemble. Keep both release variants in one Gradle invocation:
         # R8 stays serialized by max-workers=1, but configuration, caches, and
         # the single-use daemon are reused instead of being paid twice.
         run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease
+
+      - name: Skip Android release APK builds
+        if: steps.release-apk-scope.outputs.release_apk_required != 'true'
+        run: echo "Release APK builds are path-gated for this PR."
 
       - name: Verify debug APK signing certificate
         # Compute the expected fingerprint from the committed debug keystore
