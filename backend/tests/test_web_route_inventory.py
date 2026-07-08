@@ -311,6 +311,8 @@ def test_owner_live_provider_routes_use_shared_advisor_runner(
     assert "_render_budget_advise(" in source
 
     render_source = inspect.getsource(endpoint.__globals__["_render_budget_advise"])
-    assert "run_budget_advisor(" in render_source
+    assert "_budget_advice_response(" in render_source
+    advice_source = inspect.getsource(endpoint.__globals__["_budget_advice_response"])
+    assert "run_budget_advisor(" in advice_source
     assert "run_advise: bool = Form(default=False)" in source
     assert "allow_outbound=run_advise" in source

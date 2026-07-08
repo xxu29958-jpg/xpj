@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -118,29 +120,16 @@ def _render_budget_advise(
         reserved_buffer_cents=reserved_cents,
     )
 
-    advice = None
-    advise_error: str | None = None
-    if run_advise and provider_name != "empty":
-        if not allow_outbound:
-            advise_error = "AI advisor calls require the form button so request checks can run."
-        else:
-            try:
-                actor_role = _actor_role(request, ledger_id=selected, options=options)
-                actor_account_id = _actor_account_id(request)
-                result = run_budget_advisor(
-                    db,
-                    tenant_id=selected,
-                    actor_account_id=actor_account_id,
-                    actor_role=actor_role,
-                    month=month_label,
-                    timezone_name="Asia/Shanghai",
-                )
-                advice = result.advice
-                provider_name = result.provider_name
-                if advice is None and result.reason_code:
-                    advise_error = result.reason_code
-            except AppError as exc:
-                advise_error = exc.message or exc.error
+    advice, advise_error, provider_name = _budget_advice_response(
+        request,
+        db=db,
+        selected=selected,
+        options=options,
+        month_label=month_label,
+        provider_name=provider_name,
+        run_advise=run_advise,
+        allow_outbound=allow_outbound,
+    )
 
     ctx = _base_ctx(
         request,
@@ -165,6 +154,40 @@ def _render_budget_advise(
         run_advise=run_advise,
     )
     return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx)
+
+
+def _budget_advice_response(
+    request: Request,
+    *,
+    db: Session,
+    selected: str,
+    options: list,
+    month_label: str,
+    provider_name: str,
+    run_advise: bool,
+    allow_outbound: bool,
+) -> tuple[Any, str | None, str]:
+    if not run_advise or provider_name == "empty":
+        return None, None, provider_name
+    if not allow_outbound:
+        return None, "AI advisor calls require the form button so request checks can run.", provider_name
+    try:
+        actor_role = _actor_role(request, ledger_id=selected, options=options)
+        actor_account_id = _actor_account_id(request)
+        result = run_budget_advisor(
+            db,
+            tenant_id=selected,
+            actor_account_id=actor_account_id,
+            actor_role=actor_role,
+            month=month_label,
+            timezone_name="Asia/Shanghai",
+        )
+    except AppError as exc:
+        return None, exc.message or exc.error, provider_name
+
+    advice = result.advice
+    advise_error = result.reason_code if advice is None and result.reason_code else None
+    return advice, advise_error, result.provider_name
 
 
 def _actor_role(request: Request, *, ledger_id: str, options) -> str:

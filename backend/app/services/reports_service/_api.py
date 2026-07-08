@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 from io import StringIO
+from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -169,29 +170,7 @@ def six_month_summary(
     return results
 
 
-def export_reports_overview_csv(
-    db: Session,
-    *,
-    month: str,
-    tenant_id: str,
-    timezone_name: str | None = None,
-    granularity: ReportGranularity = "day",
-    top_n: int = 8,
-    merchant_category: str | None = None,
-    ranking_metric: ReportRankingMetric = "amount",
-) -> str:
-    overview = reports_overview(
-        db,
-        month=month,
-        tenant_id=tenant_id,
-        timezone_name=timezone_name,
-        granularity=granularity,
-        top_n=top_n,
-        merchant_category=merchant_category,
-        ranking_metric=ranking_metric,
-    )
-    output = StringIO()
-    writer = csv.writer(output, lineterminator="\n")
+def _write_overview_summary(writer: Any, overview: dict) -> None:
     writer.writerow(["section", "field", "value"])
     for field in [
         "month",
@@ -212,6 +191,9 @@ def export_reports_overview_csv(
     ]:
         value = overview.get(field)
         writer.writerow(["summary", field, "" if value is None else safe_csv_cell(value)])
+
+
+def _write_overview_trend(writer: Any, overview: dict) -> None:
     writer.writerow([])
     writer.writerow(["section", "bucket", "label", "amount_cents", "count"])
     for point in overview["trend"]:
@@ -224,6 +206,9 @@ def export_reports_overview_csv(
                 point["count"],
             ]
         )
+
+
+def _write_overview_merchant_ranking(writer: Any, overview: dict) -> None:
     writer.writerow([])
     writer.writerow(["section", "rank", "merchant", "amount_cents", "count"])
     for index, item in enumerate(overview["merchant_ranking"], start=1):
@@ -236,6 +221,9 @@ def export_reports_overview_csv(
                 item["count"],
             ]
         )
+
+
+def _write_overview_category_comparison(writer: Any, overview: dict) -> None:
     writer.writerow([])
     writer.writerow(
         [
@@ -270,4 +258,33 @@ def export_reports_overview_csv(
                 item["year_over_year_delta_count"],
             ]
         )
+
+
+def export_reports_overview_csv(
+    db: Session,
+    *,
+    month: str,
+    tenant_id: str,
+    timezone_name: str | None = None,
+    granularity: ReportGranularity = "day",
+    top_n: int = 8,
+    merchant_category: str | None = None,
+    ranking_metric: ReportRankingMetric = "amount",
+) -> str:
+    overview = reports_overview(
+        db,
+        month=month,
+        tenant_id=tenant_id,
+        timezone_name=timezone_name,
+        granularity=granularity,
+        top_n=top_n,
+        merchant_category=merchant_category,
+        ranking_metric=ranking_metric,
+    )
+    output = StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    _write_overview_summary(writer, overview)
+    _write_overview_trend(writer, overview)
+    _write_overview_merchant_ranking(writer, overview)
+    _write_overview_category_comparison(writer, overview)
     return output.getvalue()
