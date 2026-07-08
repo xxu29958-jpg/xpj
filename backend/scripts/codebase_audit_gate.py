@@ -50,7 +50,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # PR-A expanded undo_reject_expense docstring (ABA + child resource
     # contract) tipped one function over the 80-line threshold; bank +1.
     "long_functions": 37,  # −4 PG-only slice 2 (retired SQLite migrator/validator); −1 slice 5 (retired cut-over machinery)
-    "deep_nesting_functions": 6,
+    "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 5,  # +1 批7 ledger_has_any_expense — a one-query lifetime existence probe has no private helpers to call; the counter's pass-through heuristic matches its shape, banked as legitimate
     "global_usage": 5,  # +1 ADR-0045 csrf startup-stash singleton; −2 PG-only slice 2 (retired _backup.py _sqlite_backup_done guard)
@@ -82,7 +82,7 @@ CODEBASE_DEBT_LIMITS.update(
     {
         "files_over_500": 16,
         "long_functions": 38,
-        "deep_nesting_functions": 4,
+        "deep_nesting_functions": 0,
         "broad_exception": 8,
         "unreferenced_modules": 223,
     }
