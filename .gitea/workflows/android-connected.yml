@@ -18,6 +18,7 @@ on:
       - "fix/**"
       - "perf/**"
       - "refactor/**"
+      - "codex/**"
     paths:
       - "android/app/src/**"
       - "android/gradle/**"

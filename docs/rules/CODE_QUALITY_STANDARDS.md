@@ -65,17 +65,19 @@ ratchet）、Room schema 漂移门、R8 release 编译、apksigner 指纹钉。
 
 ## main 合并纪律（工作流执行，非平台 Branch Protection）
 
-自托管 gitea 上 main **有意不配** branch protection（API 实查零条目，直推物理可行）：
-单管理员本地实例，平台级强制审批与 [ENGINEERING_RULES §13](ENGINEERING_RULES.md)
-「强制多人 code review = 当前阶段不做」冲突。纪律由工作流执行：
+main 合并不依赖平台 Branch Protection 作为唯一强制（历史上的自托管 gitea main 也有意不配
+branch protection，API 实查零条目）：单管理员项目里，平台级强制审批与
+[ENGINEERING_RULES §13](ENGINEERING_RULES.md)「强制多人 code review = 当前阶段不做」冲突。
+纪律由工作流执行：
 
-- 代码 / 配置一律走 `fix/** feat/** perf/** refactor/**` 分支 + PR；windows-ci 全
-  job 绿（Android 源变更再加 connected lane）才有资格合并。
-- **merge 必须由用户显式授权**（gitea 网页或 API），AI 不自行合并默认分支。
+- 代码 / 配置一律走 `codex/**` 或 `fix/** feat/** perf/** refactor/**` 工作分支 + PR；
+  GitHub PR 云端主路径全绿（Android 源变更再加 connected lane）才有资格合并，local-Gitea
+  作为降级备用。
+- **merge 必须由用户显式授权**（GitHub 网页、`gh` 或 API；local-Gitea 仅降级备用），AI 不自行合并默认分支。
 - 纯文档改动可直推 main（2026-05-22 授权），推后仍跑 CI 校验。
 - RC 发包另有 commit/CI 绑定硬门禁（`accept_gray_release.ps1` 的
   `Assert-ReleaseProvenance`，见 `docs/runbook/RELEASE_PACKAGING.md` §9）。
-- merge 后三端同步：local-gitea → 本地 main → gitee。
+- merge 后三端同步：GitHub origin → 本地 main → gitee；local-Gitea 启动后再补降级面同步。
 
 ## 参考来源
 

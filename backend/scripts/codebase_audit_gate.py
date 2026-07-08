@@ -226,13 +226,13 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
       1. ``GITHUB_BASE_REF`` (the CI runner sets this on PR events to
          the target branch name; fetched as ``origin/<branch>``).
       2. ``XPJ_AUDIT_BASE_REF`` (manual override for ad-hoc CI).
-      3. else: local ``refs/heads/main`` (``origin`` here is the dead GitHub mirror,
-         so ``origin/main`` is stale) / CI push (``GITHUB_SHA`` set) → ``origin/main``.
+      3. else: local ``refs/heads/main`` / CI push (``GITHUB_SHA`` set) →
+         ``origin/main`` (GitHub main on cloud CI).
     """
     explicit_ref = os.environ.get("GITHUB_BASE_REF") or os.environ.get("XPJ_AUDIT_BASE_REF")
     if explicit_ref:  # bare branch (e.g. ``main``) → fetched remote ``origin/main``
         git_ref = explicit_ref if "/" in explicit_ref else f"origin/{explicit_ref}"
-    else:  # local: refs/heads/main (origin=dead GitHub); CI push (GITHUB_SHA): origin/main
+    else:  # local: refs/heads/main; CI push (GITHUB_SHA): origin/main
         git_ref = "origin/main" if os.environ.get("GITHUB_SHA") else "refs/heads/main"
     backend_root = Path(__file__).resolve().parent.parent
     try:

@@ -2,7 +2,7 @@
 
 > 把反复踩中的 CI 工具坑固化成一篇查得到的 runbook。**做这几类活前先读**：跑本地重型 Gradle 验证（`--stop` / classes.jar 锁）、起或改 CI lane、判一条 CI run 是真红还是良性、合 PR（`gh pr merge` / gitea `merge`）、连发合并后核验、三端同步。
 >
-> 本仓 CI 真相：**主 CI 在 GitHub Actions（origin `xxu29958-jpg/xpj`，云端）**，三条 workflow `.github/workflows/{ci,android-connected-test,codeql}.yml`；自托管 **gitea（`localhost:3000/codex/xiaopiaojia`）是次要兜底**，两条 workflow `.gitea/workflows/{windows-ci,android-connected}.yml`，常没起。两套 workflow 的分支 trigger / job 结构刻意对齐（`_audit_ci_gap.py` 联合扫 `.github` + `.gitea`），但**运行环境、merge API、日志拿法不同**——别把 gitea 的事实套到 GitHub 上，反之亦然。
+> 本仓 CI 真相：**主 CI 在 GitHub Actions（origin `xxu29958-jpg/xpj`，云端）**，三条 workflow `.github/workflows/{ci,android-connected-test,codeql}.yml`；自托管 **gitea（`localhost:3000/codex/xiaopiaojia`）是次要兜底**，两条 workflow `.gitea/workflows/{windows-ci,android-connected}.yml`，常没起。两套 workflow 的 job 覆盖 / audit 覆盖刻意对齐，但 trigger 面有意不同（GitHub 走 PR/main-push，Gitea 走白名单 push + 手动），且**运行环境、merge API、日志拿法不同**——别把 gitea 的事实套到 GitHub 上，反之亦然。
 
 ---
 
@@ -21,25 +21,26 @@
 
 ---
 
-## 坑 2：CI trigger 是 push（无强制 `pull_request`）+ 分支白名单，`chore/**`/`docs/**` 不触发
+## 坑 2：本地 Gitea trigger 是 push 白名单；GitHub 工作分支靠 PR 触发
 
-**症状**：清理/重构类 PR 用了 `chore/ui-xxx` 分支名，push 后 CI 没跑（无该分支 run、commit checks=0、纯建 PR 也不触发），误以为卡住。
+**症状**：清理/重构类 PR push 后没看到云端 push run，或在 local-Gitea 上用了 `chore/ui-xxx` 分支名后 CI 没跑，误以为卡住。
 
-**根因**：分支 pattern 是白名单，`chore/**` / `docs/**` / `test/**` **不在其中**。两套 workflow 的 push 分支白名单：
+**根因**：GitHub 云端重型 CI 已改为 **pull_request 到 main + push main**，工作分支 push 不再单独跑一套，避免同一 PR head 被 push + pull_request 双跑。local-Gitea 降级 workflow 仍只有 push 白名单，`chore/**` / `docs/**` / `test/**` 不在其中。
 
 ```
-# GitHub .github/workflows/ci.yml        →  main, feat/**, fix/**, perf/**, refactor/**, codex/**
-# GitHub android-connected-test.yml      →  同上 + paths 过滤(android 源/gradle 配置/workflow 自身)
-# GitHub codeql.yml                       →  push: main, codex/**  +  schedule cron "37 3 * * 1"
-# gitea  .gitea/workflows/windows-ci.yml →  main, feat/**, fix/**, perf/**, refactor/**   (无 codex/**)
+# GitHub .github/workflows/ci.yml        →  pull_request: main; push: main; workflow_dispatch
+# GitHub android-connected-test.yml      →  pull_request: main + paths; push: main + paths; workflow_dispatch
+# GitHub codeql.yml                       →  pull_request: main; push: main; workflow_dispatch; schedule cron "37 3 * * 1"
+# gitea  .gitea/workflows/windows-ci.yml →  main, feat/**, fix/**, perf/**, refactor/**, codex/**
 # gitea  android-connected.yml            →  同 windows-ci + paths 过滤
 ```
 
-注意三处差异：① **GitHub 三条 workflow 都额外带 `pull_request: branches: [main]` trigger**（gitea 两条**只有 push + workflow_dispatch，无 pull_request**）；② GitHub 分支白名单含 `codex/**`，gitea 不含；③ CodeQL 的 push trigger **只有 `main` + `codex/**`**（feat/fix/perf/refactor 分支的 push 不单独触发 CodeQL，靠它们的 PR `pull_request` 事件触发）。
+注意三处差异：① **GitHub 三条 workflow 都带 `pull_request: branches: [main]` trigger**（gitea 两条**只有 push + workflow_dispatch，无 pull_request**）；② GitHub 工作分支 push 不跑重 CI，必须开 PR 或手动 `workflow_dispatch`；③ CodeQL 的工作分支扫描靠 PR 的 `pull_request` 事件或手动 `workflow_dispatch`，周计划只扫默认分支，push 只保 main。
 
 **正确做法**：
-- 起清理 / 重构 PR 分支优先 `refactor/**`（在所有白名单内），别用 `chore/**`。
-- 发现 PR 无 CI run，先核分支名是否在 trigger pattern；在 gitea 上对 `chore/` 分支补救用 workflow_dispatch：
+- 起清理 / 重构 PR 分支可以用 `codex/**` 或 `refactor/**`；GitHub 云端以 PR 为准。
+- 发现 GitHub PR 无 CI run，先确认 PR 是否打开/同步到 `main`，再看 workflow 是否被手动禁用。
+- 在 gitea 上对不在白名单内的分支补救用 workflow_dispatch：
 
 ```
 # gitea 手动触发(workflow_dispatch)
@@ -47,22 +48,22 @@ POST /api/v1/repos/codex/xiaopiaojia/actions/workflows/windows-ci.yml/dispatches
 body: { "ref": "<分支名>" }
 ```
 
-- 改 Android 源时，**会同时触发两条 run**（regular android-unit + path-filtered connected/emulator lane），单 runner 串行总排队变长——判「该 PR 全绿」前先按改动面想清楚应有几条 run，别把「connected 还没跑」当卡住。
+- 改 Android 源时，GitHub PR 会触发 regular Android job 和 path-filtered connected/emulator lane；local-Gitea 如启用则仍按 push 白名单排队。判「该 PR 全绿」前先按改动面想清楚应有几条 run，别把「connected 还没跑」当卡住。
 
-**铁律**：分支名不在 trigger 白名单 = CI 静默不跑；清理活走 `refactor/**`。
+**铁律**：GitHub 工作分支靠 PR 触发；local-Gitea 分支名不在 push 白名单 = CI 静默不跑。
 
 ---
 
-## 坑 3：GitHub 每 commit 双 run + concurrency 取消旧 run 的「fail」是良性
+## 坑 3：旧的 GitHub 双 run 噪声已收口；只认最新 head run
 
-**症状**：`gh pr checks N` 里看到一个 Android job 显示 `fail`，常是跑 ~40min 后在 OWASP 步报 `##[error]The operation was canceled.`，误判真红。
+**症状**：`gh pr checks N` 里看到旧提交的 Android job 显示 `fail`，常是跑一段时间后报 `##[error]The operation was canceled.`，误判真红。
 
-**根因**：GitHub 上 push 事件 + pull_request 事件各触发一遍 ci.yml → **每 commit 两套 Backend/Android/Desktop job**。workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 会**取消被超越的那个 run**；被取消的 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。本仓**无强制 branch protection**，所以 `mergeStateStatus=UNSTABLE` + `mergeable=MERGEABLE` 即可合。
+**根因**：GitHub 工作分支 push 不再触发重型 CI，正常 PR head 只有 pull_request 这一套；但同一 PR 连续 push 时，workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 仍会**取消旧 head run**。被取消的旧 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。本仓**无强制 branch protection**，所以 `mergeStateStatus=UNSTABLE` + `mergeable=MERGEABLE` 即可合。
 
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
 - 红 triage：先 `gh run view --job <id>` 看哪步 ✗，再 `gh run view --job <id> --log` 全日志搜 `^e: `(detekt finding)/ `FAILED` / `failures="[1-9]` / `error:` 定位文件:行。别被被取消 run 的「fail」唬住，也别把 workflow 里 `echo "::error::..."` 的守卫定义文本当真错。
-- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`。emulator `Connected (emulator)` 与 OWASP flake **非 required、不挡合**。
+- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 数据源 flake **非 required、不挡合**。
 
 **铁律**：被 concurrency 取消的旧 run 的 `fail` 是噪声；只认最新 head 那条 run。
 
@@ -152,7 +153,7 @@ gh pr merge N --merge --delete-branch
 
 ## 坑 9：三端同步顺序（merge 后）
 
-**症状**：merge 后忘了同步镜像，或对 `origin`（死 GitHub）乱 fetch。
+**症状**：merge 后忘了同步镜像，或把 `origin` / `gitee` / `local-gitea` 的权威性弄反。
 
 **根因**：本仓有多个远端，权威性不同：`origin` = GitHub `xxu29958-jpg/xpj`（云端主 CI，merge 在此发生）；`gitee` = cloud mirror `xygr/small-ticket-holder`；`local-gitea`（:3000）= 次要兜底，服务常没起。
 
@@ -168,7 +169,7 @@ git push gitee main                  # 推 cloud mirror
 - `gh pr merge --delete-branch` 会顺手删本地+远端 feature 分支并切回 main，后续 `git branch -D` 报 not found 是良性。
 - 每步结果用 `git rev-parse` 验证，**别靠 `$?` 链**（PS 下 git stderr 会污染 `$?`，ff 静默跳过）。
 
-**铁律**：merge 后 fetch origin → 本地 main `--ff-only` → push gitee；local-gitea 没起就跳，别 fetch 死 origin。
+**铁律**：merge 后 fetch origin → 本地 main `--ff-only` → push gitee；local-gitea 没起就跳，起来后再补。
 
 ---
 
@@ -176,13 +177,13 @@ git push gitee main                  # 推 cloud mirror
 
 逐站点核验 workflow 文件后，以下记忆陈述与真实文件不符，文中已按真实事实修正：
 
-1. **`project_github_actions_ci_behavior.md` 把分支 trigger 指向 gitea**，并称「GitHub Actions 的 trigger 见 `project_ci_branch_trigger` 那条（讲 gitea）」。实际 `.github/workflows/ci.yml` 自带 push 白名单 **`main, feat/**, fix/**, perf/**, refactor/**, codex/**`**（比 gitea 多 `codex/**`）**且三条 GitHub workflow 都带 `pull_request: branches: [main]`**。gitea 两条 workflow 才是「无 pull_request、无 codex/**」。两者不可混用。
+1. **`project_github_actions_ci_behavior.md` 把分支 trigger 指向 gitea**，并称「GitHub Actions 的 trigger 见 `project_ci_branch_trigger` 那条（讲 gitea）」。实际 GitHub 三条 workflow 都带 `pull_request: branches: [main]`，push 只保 `main`；gitea 两条 workflow 才是「无 pull_request、靠 push 分支白名单」。两者不可混用。
 
 2. **`project_ci_branch_trigger.md` 整篇以 `.gitea/workflows/windows-ci.yml` 为「the」trigger 真相**。该描述对 gitea 准确，但本仓**主 CI 是 GitHub Actions**——GitHub 侧有 `pull_request` trigger（纯建 PR 会触发，与该记忆「没 pull_request trigger，纯建 PR 不触发」相反）。文档已分两套列清。
 
 3. **backend-postgres 运行环境**：`project_github_actions_ci_behavior.md` / HANDOFF 未区分。真实情况——**GitHub `ci.yml` 的 `Backend (PostgreSQL)` 跑在 `ubuntu-latest` + PG17 service 容器（:5432，tmpfs）**；**gitea `windows-ci.yml` 的同名 job 跑在 windows-latest + initdb 起的 ephemeral 集群（:5433）**。HANDOFF 提到的 `:5433` 仅属 gitea 侧，GitHub 侧是 service 容器 :5432。
 
-4. **CodeQL trigger**：记忆只笼统说「Analyze×4」。真实 `codeql.yml` 的 **push 只触发 `main` + `codex/**`**，外加 `schedule: cron "37 3 * * 1"`；feat/fix 等分支靠 PR 的 `pull_request` 事件触发 CodeQL。4 条 Analyze job 名核实无误：`actions` / `javascript-typescript` / `python` / `java-kotlin`。
+4. **CodeQL trigger**：记忆只笼统说「Analyze×4」。真实 `codeql.yml` 的 **push 只触发 `main`**，外加 `pull_request: main` 和 `schedule: cron "37 3 * * 1"`；工作分支靠 PR 的 `pull_request` 事件触发 CodeQL。4 条 Analyze job 名核实无误：`actions` / `javascript-typescript` / `python` / `java-kotlin`。
 
 5. **emulator AVD/路径**：gitea `android-connected.yml` 用 runner 宿主用户级 AVD `ticketbox_api36_host`（与记忆一致）；但 **GitHub `android-connected-test.yml` 用 `reactivecircus/android-emulator-runner@v2` 动态起 pixel_6 / api-36，无 `ticketbox_api36_host`**。HANDOFF 把宿主 AVD 当成两端通用，实为 gitea 专属。
 

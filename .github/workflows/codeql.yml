@@ -7,12 +7,14 @@ name: CodeQL
 
 on:
   push:
+    # Work branches are scanned by pull_request or explicit workflow_dispatch.
+    # The weekly schedule scans the default branch.
     branches:
       - main
-      - "codex/**"
   pull_request:
     branches:
       - main
+  workflow_dispatch:
   schedule:
     - cron: "37 3 * * 1"
 

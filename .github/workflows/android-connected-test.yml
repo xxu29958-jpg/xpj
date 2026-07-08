@@ -9,13 +9,10 @@ name: Android Connected Test
 
 on:
   push:
+    # Work branches are validated by pull_request path filters below. Keeping
+    # push emulator runs to main avoids duplicate PR-head emulator boots.
     branches:
       - main
-      - "feat/**"
-      - "fix/**"
-      - "perf/**"
-      - "refactor/**"
-      - "codex/**"
     paths:
       - "android/app/src/**"
       - "android/gradle/**"
