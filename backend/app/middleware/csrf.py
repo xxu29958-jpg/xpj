@@ -116,18 +116,33 @@ def _peer_host(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
+class _PersistedCsrfKeyStore:
+    """Process-local CSRF signing key loaded once from app_meta at startup."""
+
+    def __init__(self) -> None:
+        self._key: bytes | None = None
+
+    def set_text(self, key: str | None) -> None:
+        self._key = key.encode("utf-8") if key else None
+
+    def set_bytes_for_testing(self, key: bytes | None) -> None:
+        self._key = key
+
+    def get(self) -> bytes | None:
+        return self._key
+
+
 # ADR-0045: the per-install CSRF signing key resolved at startup (from app_meta),
 # stashed here so the per-request middleware never opens a DB session. Set once by
 # the lifespan via :func:`set_persisted_csrf_key`; process-immutable like settings.
-_persisted_csrf_key: bytes | None = None
+_PERSISTED_CSRF_KEY_STORE = _PersistedCsrfKeyStore()
 
 
 def set_persisted_csrf_key(key: str | None) -> None:
     """Stash the per-install CSRF signing key (ADR-0045). Called from lifespan
     after :func:`app.services.csrf_key_service.get_or_create_csrf_signing_key`
     provisions it in ``app_meta``; tests use it to drive the no-key path."""
-    global _persisted_csrf_key
-    _persisted_csrf_key = key.encode("utf-8") if key else None
+    _PERSISTED_CSRF_KEY_STORE.set_text(key)
 
 
 def _csrf_secret() -> bytes | None:
@@ -140,7 +155,7 @@ def _csrf_secret() -> bytes | None:
         candidate = (raw or "").strip()
         if candidate and candidate not in PLACEHOLDER_SECRETS:
             return candidate.encode("utf-8")
-    return _persisted_csrf_key
+    return _PERSISTED_CSRF_KEY_STORE.get()
 
 
 def assert_csrf_signing_key_available() -> None:

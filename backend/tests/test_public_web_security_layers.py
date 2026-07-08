@@ -168,13 +168,13 @@ def test_public_web_csrf_secret_missing_fails_closed(
     monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", "")
     monkeypatch.setenv("APP_TOKEN", "")
     reset_settings_cache()
-    saved_key = csrf_mw._persisted_csrf_key
+    saved_key = csrf_mw._PERSISTED_CSRF_KEY_STORE.get()
     csrf_mw.set_persisted_csrf_key(None)
     try:
         pub = _public_client()
         resp = pub.get("/web/auth/login")
     finally:
-        csrf_mw._persisted_csrf_key = saved_key
+        csrf_mw._PERSISTED_CSRF_KEY_STORE.set_bytes_for_testing(saved_key)
         reset_settings_cache()
 
     assert resp.status_code == 500
@@ -194,13 +194,13 @@ def test_public_web_csrf_persisted_key_covers_placeholder_env(
     monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", "")
     monkeypatch.setenv("APP_TOKEN", "")
     reset_settings_cache()
-    saved_key = csrf_mw._persisted_csrf_key
+    saved_key = csrf_mw._PERSISTED_CSRF_KEY_STORE.get()
     csrf_mw.set_persisted_csrf_key("per-install-csrf-key")
     try:
         pub = _public_client()
         resp = pub.get("/web/auth/login")
     finally:
-        csrf_mw._persisted_csrf_key = saved_key
+        csrf_mw._PERSISTED_CSRF_KEY_STORE.set_bytes_for_testing(saved_key)
         reset_settings_cache()
 
     assert resp.status_code == 200

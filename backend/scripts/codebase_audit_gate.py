@@ -53,7 +53,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 5,  # +1 批7 ledger_has_any_expense — a one-query lifetime existence probe has no private helpers to call; the counter's pass-through heuristic matches its shape, banked as legitimate
-    "global_usage": 5,  # +1 ADR-0045 csrf startup-stash singleton; −2 PG-only slice 2 (retired _backup.py _sqlite_backup_done guard)
+    "global_usage": 0,  # 2026-07-08: process-local CSRF/executor/Windows-task state moved behind lifecycle stores.
     "cached_singletons": 3,
     "nested_dict_args": 16,  # −1 PG-only slice 5 (retired cut-over machinery)
     "mixed_return_functions": 0,
