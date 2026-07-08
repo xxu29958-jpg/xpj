@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 import pytest
 from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
@@ -8,6 +11,13 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
+
+
+@dataclass(frozen=True)
+class PendingUploadIds:
+    owner: int
+    tester: int
+    tester_duplicate: int
 
 
 def _manual_expense(
@@ -33,7 +43,7 @@ def _manual_expense(
     return int(response.json()["id"])
 
 
-def _candidate_payload(item: dict) -> dict:
+def _candidate_payload(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "merchant": item["merchant"],
         "amount_cents": item["amount_cents"],
@@ -51,7 +61,7 @@ def local_web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identity) -> None:
+def _seed_recurring_expense_pairs(client: TestClient, *, identity: Any) -> None:
     _manual_expense(
         client,
         identity.app_headers,
@@ -85,29 +95,58 @@ def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identit
         category="TesterOnlyCategory",
     )
 
-    owner_pending_id = upload_png(client, identity=identity, headers=identity.upload_headers)
-    tester_pending_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
-    tester_duplicate_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
 
+def _upload_pending_images(client: TestClient, *, identity: Any) -> PendingUploadIds:
+    return PendingUploadIds(
+        owner=upload_png(client, identity=identity, headers=identity.upload_headers),
+        tester=upload_png(
+            client,
+            identity=identity,
+            headers=identity.gray_upload_headers,
+            path=identity.gray_upload_url_path,
+        ),
+        tester_duplicate=upload_png(
+            client,
+            identity=identity,
+            headers=identity.gray_upload_headers,
+            path=identity.gray_upload_url_path,
+        ),
+    )
+
+
+def _assert_pending_expenses_are_ledger_scoped(
+    client: TestClient,
+    *,
+    identity: Any,
+    upload_ids: PendingUploadIds,
+) -> None:
     owner_pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     tester_pending = client.get("/api/expenses/pending", headers=identity.gray_app_headers)
     assert owner_pending.status_code == 200
     assert tester_pending.status_code == 200
-    assert [row["id"] for row in owner_pending.json()] == [owner_pending_id]
+    assert [row["id"] for row in owner_pending.json()] == [upload_ids.owner]
     assert {row["id"] for row in tester_pending.json()} == {
-        tester_pending_id,
-        tester_duplicate_id,
+        upload_ids.tester,
+        upload_ids.tester_duplicate,
     }
 
     for path in (
-        f"/api/expenses/{tester_pending_id}",
-        f"/api/expenses/{tester_pending_id}/image",
-        f"/api/expenses/{tester_pending_id}/thumbnail",
+        f"/api/expenses/{upload_ids.tester}",
+        f"/api/expenses/{upload_ids.tester}/image",
+        f"/api/expenses/{upload_ids.tester}/thumbnail",
     ):
         assert client.get(path, headers=identity.app_headers).status_code == 404
 
+
+def _assert_stats_data_quality_and_duplicates_are_ledger_scoped(
+    client: TestClient,
+    *,
+    identity: Any,
+    upload_ids: PendingUploadIds,
+) -> None:
     owner_stats = client.get(
-        "/api/stats/monthly?month=2026-01&timezone=UTC", headers=identity.app_headers
+        "/api/stats/monthly?month=2026-01&timezone=UTC",
+        headers=identity.app_headers,
     )
     tester_stats = client.get(
         "/api/stats/monthly?month=2026-01&timezone=UTC",
@@ -132,8 +171,12 @@ def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identit
     assert owner_duplicates.status_code == 200
     assert tester_duplicates.status_code == 200
     assert owner_duplicates.json() == []
-    assert [row["id"] for row in tester_duplicates.json()] == [tester_duplicate_id]
+    assert [row["id"] for row in tester_duplicates.json()] == [
+        upload_ids.tester_duplicate
+    ]
 
+
+def _assert_exports_are_ledger_scoped(client: TestClient, *, identity: Any) -> None:
     owner_csv = client.get("/api/expenses/export.csv", headers=identity.app_headers)
     tester_csv = client.get("/api/expenses/export.csv", headers=identity.gray_app_headers)
     assert owner_csv.status_code == 200
@@ -143,6 +186,8 @@ def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identit
     assert "TesterRecurring" in tester_csv.text
     assert "OwnerRecurring" not in tester_csv.text
 
+
+def _assert_rules_are_ledger_scoped(client: TestClient, *, identity: Any) -> None:
     owner_rule = client.post(
         "/api/rules/categories",
         headers=identity.app_headers,
@@ -158,8 +203,15 @@ def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identit
     assert tester_rules.status_code == 200
     assert all(row["keyword"] != "owner-rule-token" for row in tester_rules.json())
 
+
+def _assert_recurring_candidates_are_ledger_scoped(
+    client: TestClient,
+    *,
+    identity: Any,
+) -> None:
     owner_candidates = client.get(
-        "/api/insights/recurring-candidates?timezone=UTC", headers=identity.app_headers
+        "/api/insights/recurring-candidates?timezone=UTC",
+        headers=identity.app_headers,
     )
     tester_candidates = client.get(
         "/api/insights/recurring-candidates?timezone=UTC",
@@ -183,12 +235,11 @@ def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identit
     public_id = owner_recurring.json()["public_id"]
     assert (
         client.get(
-            f"/api/recurring/items/{public_id}", headers=identity.gray_app_headers
+            f"/api/recurring/items/{public_id}",
+            headers=identity.gray_app_headers,
         ).status_code
         == 404
     )
-    # ADR-0038 PR-A: pause now requires expected_row_version; cross-tenant should
-    # still 404 (ledger-scoped query finds no row to apply the token to).
     assert (
         client.post(
             f"/api/recurring/items/{public_id}/pause",
@@ -199,11 +250,37 @@ def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identit
     )
 
 
+def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identity) -> None:
+    _seed_recurring_expense_pairs(client, identity=identity)
+    upload_ids = _upload_pending_images(client, identity=identity)
+
+    _assert_pending_expenses_are_ledger_scoped(
+        client,
+        identity=identity,
+        upload_ids=upload_ids,
+    )
+    _assert_stats_data_quality_and_duplicates_are_ledger_scoped(
+        client,
+        identity=identity,
+        upload_ids=upload_ids,
+    )
+    _assert_exports_are_ledger_scoped(client, identity=identity)
+    _assert_rules_are_ledger_scoped(client, identity=identity)
+    _assert_recurring_candidates_are_ledger_scoped(client, identity=identity)
+
+
 def test_protected_image_rejects_path_pointing_at_another_ledger(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     owner_id = upload_png(client, identity=identity, headers=identity.upload_headers)
-    tester_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
+    tester_id = upload_png(
+        client,
+        identity=identity,
+        headers=identity.gray_upload_headers,
+        path=identity.gray_upload_url_path,
+    )
 
     with SessionLocal() as db:
         owner = db.get(Expense, owner_id)
@@ -219,14 +296,13 @@ def test_protected_image_rejects_path_pointing_at_another_ledger(
     assert owner_image.json()["error"] == "image_not_found"
 
     tester_image = client.get(
-        f"/api/expenses/{tester_id}/image", headers=identity.gray_app_headers
+        f"/api/expenses/{tester_id}/image",
+        headers=identity.gray_app_headers,
     )
     assert tester_image.status_code == 200
 
 
-def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
-    local_web_client: TestClient, *, identity,
-) -> None:
+def _seed_web_ledger_expenses(local_web_client: TestClient, *, identity: Any) -> None:
     _manual_expense(
         local_web_client,
         identity.app_headers,
@@ -244,6 +320,8 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
         category="TesterWebCategory",
     )
 
+
+def _assert_web_exports_are_ledger_scoped(local_web_client: TestClient) -> None:
     owner_export = local_web_client.get("/web/export.csv?ledger_id=owner")
     tester_export = local_web_client.get("/web/export.csv?ledger_id=tester_1")
     assert owner_export.status_code == 200
@@ -253,6 +331,8 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     assert "TesterWebOnly" in tester_export.text
     assert "OwnerWebOnly" not in tester_export.text
 
+
+def _preview_tester_import_batch(local_web_client: TestClient) -> str:
     imported_preview = local_web_client.post(
         "/web/import/preview",
         data={"ledger_id": "tester_1"},
@@ -261,8 +341,10 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
                 "tester.csv",
                 (
                     b"amount_cents,merchant,category,expense_time,source\n"
-                    b"777,TesterImportedOnly,TesterWebCategory,2026-01-06T00:00:00+00:00,CSV\n"
-                    b"bad,TesterImportError,TesterWebCategory,2026-01-07T00:00:00+00:00,CSV\n"
+                    b"777,TesterImportedOnly,TesterWebCategory,"
+                    b"2026-01-06T00:00:00+00:00,CSV\n"
+                    b"bad,TesterImportError,TesterWebCategory,"
+                    b"2026-01-07T00:00:00+00:00,CSV\n"
                 ),
                 "text/csv",
             )
@@ -270,15 +352,18 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
         follow_redirects=False,
     )
     assert imported_preview.status_code == 303
-    location = imported_preview.headers["location"]
-    batch_path = location.split("?", 1)[0]
+    return imported_preview.headers["location"].split("?", 1)[0]
 
-    # Cross-ledger batch access stays invisible — since the audit-P2 flash
-    # rework these /web pages redirect back to /web/import with the same
-    # "导入批次不存在" copy as a truly-missing id (no existence oracle),
-    # instead of the previous bare-JSON 404.
+
+def _assert_import_batch_is_hidden_from_owner(
+    local_web_client: TestClient,
+    *,
+    batch_path: str,
+    identity: Any,
+) -> None:
     owner_batch = local_web_client.get(
-        f"{batch_path}?ledger_id=owner", follow_redirects=False
+        f"{batch_path}?ledger_id=owner",
+        follow_redirects=False,
     )
     assert owner_batch.status_code == 303
     assert owner_batch.headers["location"].startswith("/web/import?")
@@ -293,20 +378,24 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     assert owner_apply.headers["location"].startswith("/web/import?")
 
     owner_errors = local_web_client.get(
-        f"{batch_path}/errors.csv?ledger_id=owner", follow_redirects=False
+        f"{batch_path}/errors.csv?ledger_id=owner",
+        follow_redirects=False,
     )
     assert owner_errors.status_code == 303
     assert owner_errors.headers["location"].startswith("/web/import?")
 
-    owner_pending_before_tester_apply = local_web_client.get(
-        "/api/expenses/pending", headers=identity.app_headers
+    owner_pending_before_apply = local_web_client.get(
+        "/api/expenses/pending",
+        headers=identity.app_headers,
     )
-    assert owner_pending_before_tester_apply.status_code == 200
+    assert owner_pending_before_apply.status_code == 200
     assert all(
         row["merchant"] != "TesterImportedOnly"
-        for row in owner_pending_before_tester_apply.json()
+        for row in owner_pending_before_apply.json()
     )
 
+
+def _apply_tester_import_batch(local_web_client: TestClient, *, batch_path: str) -> None:
     imported = local_web_client.post(
         f"{batch_path}/apply",
         data={"ledger_id": "tester_1", "batch_size": "500"},
@@ -314,17 +403,29 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     )
     assert imported.status_code == 303
 
-    owner_pending = local_web_client.get("/api/expenses/pending", headers=identity.app_headers)
+
+def _assert_imported_rows_stay_in_tester_ledger(
+    local_web_client: TestClient,
+    *,
+    identity: Any,
+) -> None:
+    owner_pending = local_web_client.get(
+        "/api/expenses/pending",
+        headers=identity.app_headers,
+    )
     tester_pending = local_web_client.get(
-        "/api/expenses/pending", headers=identity.gray_app_headers
+        "/api/expenses/pending",
+        headers=identity.gray_app_headers,
     )
     assert all(row["merchant"] != "TesterImportedOnly" for row in owner_pending.json())
     assert any(row["merchant"] == "TesterImportedOnly" for row in tester_pending.json())
 
-    # UI/UX 批 14: /web/stats 归并进 /web/reports;高风险账本隔离断言改打报表页
-    # (商家名出现在大额支出表 + 注入的商家排行 JSON,仍严格账本隔离)。
+
+def _assert_web_reports_and_invalid_ledger_scope(local_web_client: TestClient) -> None:
     owner_reports = local_web_client.get("/web/reports?ledger_id=owner&month=2026-01")
-    tester_reports = local_web_client.get("/web/reports?ledger_id=tester_1&month=2026-01")
+    tester_reports = local_web_client.get(
+        "/web/reports?ledger_id=tester_1&month=2026-01"
+    )
     assert owner_reports.status_code == 200
     assert tester_reports.status_code == 200
     assert "OwnerWebOnly" in owner_reports.text
@@ -335,3 +436,25 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     invalid_ledger = local_web_client.get("/web?ledger_id=not_a_real_ledger")
     assert invalid_ledger.status_code == 400
     assert invalid_ledger.json()["error"] == "invalid_request"
+
+
+def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
+    local_web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    _seed_web_ledger_expenses(local_web_client, identity=identity)
+    _assert_web_exports_are_ledger_scoped(local_web_client)
+    batch_path = _preview_tester_import_batch(local_web_client)
+
+    _assert_import_batch_is_hidden_from_owner(
+        local_web_client,
+        batch_path=batch_path,
+        identity=identity,
+    )
+    _apply_tester_import_batch(local_web_client, batch_path=batch_path)
+    _assert_imported_rows_stay_in_tester_ledger(
+        local_web_client,
+        identity=identity,
+    )
+    _assert_web_reports_and_invalid_ledger_scope(local_web_client)
