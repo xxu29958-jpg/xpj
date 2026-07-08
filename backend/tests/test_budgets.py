@@ -86,9 +86,7 @@ def _assert_permission_denied(response, *, label: str) -> None:
     assert payload["message"] == VIEWER_WRITE_MESSAGE, label
 
 
-def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
-    client: TestClient, *, identity,
-) -> None:
+def _seed_monthly_budget_dashboard_sources(client: TestClient, identity: object) -> None:
     # Anchor created_at to the test's target month (2026-05). The default
     # ``now_utc()`` makes this test wall-clock-dependent: once now_utc()
     # crosses into 2026-06, the recurring's created_at falls outside the
@@ -149,6 +147,8 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
         expense_time="2026-05-05T12:00:00Z",
     )
 
+
+def _upsert_may_budget(client: TestClient, identity: object) -> dict:
     response = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
         headers=identity.app_headers,
@@ -164,7 +164,10 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
         },
     )
     assert response.status_code == 200, response.json()
-    payload = response.json()
+    return response.json()
+
+
+def _assert_owner_budget_dashboard(payload: dict) -> None:
     assert payload["ledger_id"] == "owner"
     assert payload["configured"] is True
     assert payload["fixed_amount_cents"] == 6800
@@ -191,6 +194,8 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
         },
     ]
 
+
+def _assert_gray_budget_dashboard(client: TestClient, identity: object) -> None:
     gray = client.get("/api/budgets/monthly?month=2026-05&timezone=UTC", headers=identity.gray_app_headers)
     assert gray.status_code == 200, gray.json()
     gray_payload = gray.json()
@@ -202,6 +207,15 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     assert gray_payload["remaining_amount_cents"] == 0
     assert gray_payload["overspent_amount_cents"] == 0
     assert gray_payload["category_budgets"] == []
+
+
+def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
+    client: TestClient, *, identity,
+) -> None:
+    _seed_monthly_budget_dashboard_sources(client, identity)
+    payload = _upsert_may_budget(client, identity)
+    _assert_owner_budget_dashboard(payload)
+    _assert_gray_budget_dashboard(client, identity)
 
 
 def test_monthly_budget_fixed_spend_uses_recurring_month_membership(

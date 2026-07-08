@@ -82,9 +82,7 @@ def _assert_permission_denied(response, *, label: str) -> None:
     assert payload["message"] == VIEWER_WRITE_MESSAGE, label
 
 
-def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
-    client: TestClient, *, identity,
-) -> None:
+def _seed_shared_time_scope_expenses() -> None:
     _insert_expense(
         amount_cents=1200,
         merchant="早餐店",
@@ -135,6 +133,8 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
         confirmed_at=datetime(2026, 5, 1, 1, 1, tzinfo=UTC),
     )
 
+
+def _create_shared_time_scope_goals(client: TestClient, identity: object) -> None:
     _create_goal(
         client,
         headers=identity.app_headers,
@@ -151,6 +151,8 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
         target_amount_cents=2000,
     )
 
+
+def _assert_monthly_stats_shared_scope(client: TestClient, identity: object) -> dict:
     stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=Asia/Shanghai",
         headers=identity.app_headers,
@@ -163,7 +165,14 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
         {"category": "交通", "amount_cents": 2300, "count": 1},
         {"category": "餐饮", "amount_cents": 1200, "count": 1},
     ]
+    return stats_payload
 
+
+def _assert_report_matches_monthly_stats(
+    client: TestClient,
+    identity: object,
+    stats_payload: dict,
+) -> None:
     report = client.get(
         "/api/reports/overview?month=2026-05&timezone=Asia/Shanghai&granularity=day",
         headers=identity.app_headers,
@@ -187,6 +196,8 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
     assert "已拒绝不应统计" not in str(report_payload)
     assert "灰度账本不应串入" not in str(report_payload)
 
+
+def _assert_goals_match_monthly_stats(client: TestClient, identity: object) -> None:
     goals = client.get(
         "/api/goals?month=2026-05&timezone=Asia/Shanghai",
         headers=identity.app_headers,
@@ -198,6 +209,8 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
     assert goal_payloads["餐饮目标"]["spent_amount_cents"] == 1200
     assert goal_payloads["餐饮目标"]["progress_percent"] == 60
 
+
+def _assert_utc_time_scope(client: TestClient, identity: object) -> None:
     utc_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=UTC",
         headers=identity.app_headers,
@@ -222,9 +235,16 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
     assert utc_goal_payloads["餐饮目标"]["spent_amount_cents"] == 1200
 
 
-def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
-    client: TestClient, *, identity,
-) -> None:
+def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(client: TestClient, *, identity) -> None:
+    _seed_shared_time_scope_expenses()
+    _create_shared_time_scope_goals(client, identity)
+    stats_payload = _assert_monthly_stats_shared_scope(client, identity)
+    _assert_report_matches_monthly_stats(client, identity, stats_payload)
+    _assert_goals_match_monthly_stats(client, identity)
+    _assert_utc_time_scope(client, identity)
+
+
+def _seed_ledger_isolation_expenses() -> None:
     _insert_expense(
         amount_cents=1100,
         merchant="Owner 早餐",
@@ -242,6 +262,9 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
         expense_time=datetime(2026, 5, 2, 0, 0, tzinfo=UTC),
         confirmed_at=datetime(2026, 5, 2, 0, 1, tzinfo=UTC),
     )
+
+
+def _create_ledger_isolation_goals(client: TestClient, identity: object) -> dict:
     owner_goal = _create_goal(
         client,
         headers=identity.app_headers,
@@ -258,7 +281,10 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
         target_amount_cents=7000,
         timezone="UTC",
     )
+    return owner_goal
 
+
+def _assert_stats_are_ledger_isolated(client: TestClient, identity: object) -> None:
     owner_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=UTC",
         headers=identity.app_headers,
@@ -272,6 +298,8 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     assert owner_stats.json()["total_amount_cents"] == 1100
     assert gray_stats.json()["total_amount_cents"] == 6600
 
+
+def _assert_reports_are_ledger_isolated(client: TestClient, identity: object) -> None:
     owner_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
         headers=identity.app_headers,
@@ -287,6 +315,8 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     assert "Gray 地铁" not in str(owner_report.json())
     assert "Owner 早餐" not in str(gray_report.json())
 
+
+def _assert_goals_are_ledger_isolated(client: TestClient, identity: object) -> None:
     owner_goals = client.get(
         "/api/goals?month=2026-05&timezone=UTC",
         headers=identity.app_headers,
@@ -304,6 +334,8 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
         ("Gray Goal", 6600)
     ]
 
+
+def _assert_viewer_can_read_reports_and_goals(client: TestClient, identity: object) -> None:
     _demote_owner_ledger_to_viewer()
     viewer_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
@@ -318,6 +350,12 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     assert viewer_goals.status_code == 200, viewer_goals.json()
     assert viewer_goals.json()["items"][0]["name"] == "Owner Goal"
 
+
+def _assert_viewer_goal_writes_are_denied(
+    client: TestClient,
+    identity: object,
+    owner_goal: dict,
+) -> None:
     _assert_permission_denied(
         client.post(
             "/api/goals?timezone=UTC",
@@ -338,3 +376,13 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
         ),
         label="viewer goal patch",
     )
+
+
+def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(client: TestClient, *, identity) -> None:
+    _seed_ledger_isolation_expenses()
+    owner_goal = _create_ledger_isolation_goals(client, identity)
+    _assert_stats_are_ledger_isolated(client, identity)
+    _assert_reports_are_ledger_isolated(client, identity)
+    _assert_goals_are_ledger_isolated(client, identity)
+    _assert_viewer_can_read_reports_and_goals(client, identity)
+    _assert_viewer_goal_writes_are_denied(client, identity, owner_goal)
