@@ -60,7 +60,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "broad_exception": 22,  # −1 PG-only slice 2 (retired SQLite migrator/validator). +1 P1 启动迁移前备份 gate(_backup_before_upgrade 对任何备份失败 fail-CLOSED——必须 catch-any 才能在 pg_dump/磁盘/校验等任意失败时中止迁移,窄 catch 会漏失败放过迁移=破坏安全目的). −1 2026-07-06 retired one-shot identity fixture migrator.
     "generic_raises": 0,  # 2026-07-08: remaining direct RuntimeError raises now use narrow startup/service contract exceptions.
     "todo_markers": 9,
-    "hardcoded_urls": 12,  # +2 ADR-0027 Frankfurter default URL (config default, mirrors ECB inline pattern)
+    "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 4,
     "n_plus_one": 2,
     # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the

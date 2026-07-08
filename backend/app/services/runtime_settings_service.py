@@ -111,10 +111,8 @@ def _validate_public_base_url(raw: str) -> str:
     dev). Public hostnames must use ``https://`` — UploadLink URLs include
     the ``upload_key`` in the path, which is a credential.
 
-    Allowed:   https://api.example.com   http://127.0.0.1:8000
-    Rejected:  http://api.example.com    (public http downgrade attack)
-               https://api.example.com/  (trailing slash / path)
-               https://api.example.com?x=1
+    Allowed:   HTTPS origin for the public host, or an HTTP loopback origin.
+    Rejected:  public HTTP downgrade, trailing path, query string, or fragment.
     """
     value = (raw or "").strip()
     if not value:
@@ -131,7 +129,7 @@ def _validate_public_base_url(raw: str) -> str:
     if not parsed.netloc:
         raise AppError(
             "invalid_request",
-            "公网域名必须包含主机名，例如 https://api.example.com。",
+            "公网域名必须包含主机名，例如填写你的 HTTPS 公网域名。",
             status_code=422,
         )
     if parsed.username or parsed.password:
@@ -151,7 +149,7 @@ def _validate_public_base_url(raw: str) -> str:
     if parsed.path.rstrip("/"):
         raise AppError(
             "invalid_request",
-            "公网域名只能填写域名根（不允许带路径），例如 https://api.example.com。",
+            "公网域名只能填写域名根（不允许带路径），例如填写你的 HTTPS 公网域名。",
             status_code=422,
         )
     if parsed.query or parsed.fragment:
