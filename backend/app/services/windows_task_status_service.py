@@ -130,90 +130,57 @@ def _last_result_failed(value: str) -> bool:
     return code not in _TASK_SCHEDULER_INFO_RESULTS
 
 
-def _query_one(task_name: str) -> TaskStatusVM:
-    if sys.platform != "win32":
-        return TaskStatusVM(
-            name=task_name,
-            available=False,
-            status="Unknown",
-            last_run="",
-            last_result="",
-            next_run="",
-            note="非 Windows 主机",
-        )
+def _unavailable_task_status(task_name: str, note: str) -> TaskStatusVM:
+    return TaskStatusVM(
+        name=task_name,
+        available=False,
+        status="Unknown",
+        last_run="",
+        last_result="",
+        next_run="",
+        note=note,
+    )
+
+
+def _query_schtasks(task_name: str) -> subprocess.CompletedProcess[bytes] | TaskStatusVM:
     try:
-        proc = subprocess.run(  # noqa: S603 - args fixed, task_name from allow-list
+        return subprocess.run(  # noqa: S603 - args fixed, task_name from allow-list
             ["schtasks.exe", "/Query", "/TN", task_name, "/FO", "CSV", "/V"],
             capture_output=True,
             timeout=_QUERY_TIMEOUT_SECONDS,
             check=False,
         )
     except FileNotFoundError:
-        return TaskStatusVM(
-            name=task_name,
-            available=False,
-            status="Unknown",
-            last_run="",
-            last_result="",
-            next_run="",
-            note="未找到 schtasks.exe",
-        )
+        return _unavailable_task_status(task_name, "未找到 schtasks.exe")
     except subprocess.TimeoutExpired:
-        return TaskStatusVM(
-            name=task_name,
-            available=False,
-            status="Unknown",
-            last_run="",
-            last_result="",
-            next_run="",
-            note="查询超时",
-        )
+        return _unavailable_task_status(task_name, "查询超时")
     except OSError as exc:
-        return TaskStatusVM(
-            name=task_name,
-            available=False,
-            status="Unknown",
-            last_run="",
-            last_result="",
-            next_run="",
-            note=f"查询失败：{exc.strerror or exc.__class__.__name__}",
+        return _unavailable_task_status(
+            task_name,
+            f"查询失败：{exc.strerror or exc.__class__.__name__}",
         )
-    if proc.returncode != 0:
-        return TaskStatusVM(
-            name=task_name,
-            available=False,
-            status="Unknown",
-            last_run="",
-            last_result="",
-            next_run="",
-            note="未注册或无权限",
-        )
-    # Decode tolerantly: schtasks may emit GBK on zh-CN Windows hosts.
-    raw = proc.stdout
-    if isinstance(raw, bytes):
-        for codec in ("utf-8", "gbk", "mbcs"):
-            try:
-                text = raw.decode(codec)
-                break
-            except (UnicodeDecodeError, LookupError):
-                continue
-        else:
-            text = raw.decode("utf-8", errors="replace")
-    else:
-        text = raw
+
+
+def _decode_schtasks_stdout(raw: bytes | str) -> str:
+    if not isinstance(raw, bytes):
+        return raw
+    for codec in ("utf-8", "gbk", "mbcs"):
+        try:
+            return raw.decode(codec)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def _first_schtasks_row(task_name: str, text: str) -> dict[str, str] | TaskStatusVM:
     reader = csv.DictReader(io.StringIO(text))
     try:
-        row = next(reader)
+        return next(reader)
     except StopIteration:
-        return TaskStatusVM(
-            name=task_name,
-            available=False,
-            status="Unknown",
-            last_run="",
-            last_result="",
-            next_run="",
-            note="schtasks 无返回行",
-        )
+        return _unavailable_task_status(task_name, "schtasks 无返回行")
+
+
+def _task_status_from_row(task_name: str, row: dict[str, str]) -> TaskStatusVM:
     last_result = row.get("Last Result", "").strip()
     return TaskStatusVM(
         name=task_name,
@@ -225,6 +192,21 @@ def _query_one(task_name: str) -> TaskStatusVM:
         note=_last_result_note(last_result),
         last_result_failed=_last_result_failed(last_result),
     )
+
+
+def _query_one(task_name: str) -> TaskStatusVM:
+    if sys.platform != "win32":
+        return _unavailable_task_status(task_name, "非 Windows 主机")
+    proc = _query_schtasks(task_name)
+    if isinstance(proc, TaskStatusVM):
+        return proc
+    if proc.returncode != 0:
+        return _unavailable_task_status(task_name, "未注册或无权限")
+    # Decode tolerantly: schtasks may emit GBK on zh-CN Windows hosts.
+    row = _first_schtasks_row(task_name, _decode_schtasks_stdout(proc.stdout))
+    if isinstance(row, TaskStatusVM):
+        return row
+    return _task_status_from_row(task_name, row)
 
 
 def list_windows_tasks(*, force_refresh: bool = False) -> list[TaskStatusVM]:

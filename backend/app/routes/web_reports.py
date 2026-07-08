@@ -55,20 +55,80 @@ def _percent(value: int, maximum: int) -> int:
     return max(2, min(100, round(value * 100 / maximum)))
 
 
-def _view_model(payload: dict) -> dict:
-    max_trend = max([int(point["amount_cents"]) for point in payload["trend"]] or [0])
-    max_merchant = max([int(row["amount_cents"]) for row in payload["merchant_ranking"]] or [0])
-    max_category = max(
+def _trend_view(points: list[dict]) -> list[dict]:
+    maximum = max([int(point["amount_cents"]) for point in points] or [0])
+    return [
+        {
+            "bucket": point["bucket"],
+            "label": point["label"],
+            "amount_yuan": _amount_yuan(int(point["amount_cents"])),
+            "amount_cents": int(point["amount_cents"]),
+            "count": int(point["count"]),
+            "percent": _percent(int(point["amount_cents"]), maximum),
+        }
+        for point in points
+    ]
+
+
+def _merchant_ranking_view(rows: list[dict]) -> list[dict]:
+    maximum = max([int(row["amount_cents"]) for row in rows] or [0])
+    return [
+        {
+            "merchant": row["merchant"],
+            "amount_yuan": _amount_yuan(int(row["amount_cents"])),
+            "amount_cents": int(row["amount_cents"]),
+            "count": int(row["count"]),
+            "percent": _percent(int(row["amount_cents"]), maximum),
+        }
+        for row in rows
+    ]
+
+
+def _category_comparison_max(rows: list[dict]) -> int:
+    return max(
         [
             max(
                 int(row["amount_cents"]),
                 int(row["previous_amount_cents"]),
                 int(row["year_over_year_amount_cents"]),
             )
-            for row in payload["category_comparison"]
+            for row in rows
         ]
         or [0]
     )
+
+
+def _category_comparison_view(rows: list[dict]) -> list[dict]:
+    maximum = _category_comparison_max(rows)
+    return [
+        {
+            "category": row["category"],
+            "amount_yuan": _amount_yuan(int(row["amount_cents"])),
+            "previous_amount_yuan": _amount_yuan(int(row["previous_amount_cents"])),
+            "delta_amount_yuan": _amount_yuan(int(row["delta_amount_cents"])),
+            "year_over_year_amount_yuan": _amount_yuan(int(row["year_over_year_amount_cents"])),
+            "year_over_year_delta_amount_yuan": _amount_yuan(
+                int(row["year_over_year_delta_amount_cents"])
+            ),
+            "amount_cents": int(row["amount_cents"]),
+            "previous_amount_cents": int(row["previous_amount_cents"]),
+            "delta_amount_cents": int(row["delta_amount_cents"]),
+            "year_over_year_amount_cents": int(row["year_over_year_amount_cents"]),
+            "year_over_year_delta_amount_cents": int(row["year_over_year_delta_amount_cents"]),
+            "count": int(row["count"]),
+            "previous_count": int(row["previous_count"]),
+            "delta_count": int(row["delta_count"]),
+            "year_over_year_count": int(row["year_over_year_count"]),
+            "year_over_year_delta_count": int(row["year_over_year_delta_count"]),
+            "current_percent": _percent(int(row["amount_cents"]), maximum),
+            "previous_percent": _percent(int(row["previous_amount_cents"]), maximum),
+            "year_over_year_percent": _percent(int(row["year_over_year_amount_cents"]), maximum),
+        }
+        for row in rows
+    ]
+
+
+def _view_model(payload: dict) -> dict:
     return {
         "month": payload["month"],
         "timezone": payload["timezone"],
@@ -90,60 +150,9 @@ def _view_model(payload: dict) -> dict:
         ),
         "year_over_year_delta_amount_cents": int(payload["year_over_year_delta_amount_cents"]),
         "year_over_year_delta_count": int(payload["year_over_year_delta_count"]),
-        "trend": [
-            {
-                "bucket": point["bucket"],
-                "label": point["label"],
-                "amount_yuan": _amount_yuan(int(point["amount_cents"])),
-                "amount_cents": int(point["amount_cents"]),
-                "count": int(point["count"]),
-                "percent": _percent(int(point["amount_cents"]), max_trend),
-            }
-            for point in payload["trend"]
-        ],
-        "merchant_ranking": [
-            {
-                "merchant": row["merchant"],
-                "amount_yuan": _amount_yuan(int(row["amount_cents"])),
-                "amount_cents": int(row["amount_cents"]),
-                "count": int(row["count"]),
-                "percent": _percent(int(row["amount_cents"]), max_merchant),
-            }
-            for row in payload["merchant_ranking"]
-        ],
-        "category_comparison": [
-            {
-                "category": row["category"],
-                "amount_yuan": _amount_yuan(int(row["amount_cents"])),
-                "previous_amount_yuan": _amount_yuan(int(row["previous_amount_cents"])),
-                "delta_amount_yuan": _amount_yuan(int(row["delta_amount_cents"])),
-                "year_over_year_amount_yuan": _amount_yuan(
-                    int(row["year_over_year_amount_cents"])
-                ),
-                "year_over_year_delta_amount_yuan": _amount_yuan(
-                    int(row["year_over_year_delta_amount_cents"])
-                ),
-                "amount_cents": int(row["amount_cents"]),
-                "previous_amount_cents": int(row["previous_amount_cents"]),
-                "delta_amount_cents": int(row["delta_amount_cents"]),
-                "year_over_year_amount_cents": int(row["year_over_year_amount_cents"]),
-                "year_over_year_delta_amount_cents": int(
-                    row["year_over_year_delta_amount_cents"]
-                ),
-                "count": int(row["count"]),
-                "previous_count": int(row["previous_count"]),
-                "delta_count": int(row["delta_count"]),
-                "year_over_year_count": int(row["year_over_year_count"]),
-                "year_over_year_delta_count": int(row["year_over_year_delta_count"]),
-                "current_percent": _percent(int(row["amount_cents"]), max_category),
-                "previous_percent": _percent(int(row["previous_amount_cents"]), max_category),
-                "year_over_year_percent": _percent(
-                    int(row["year_over_year_amount_cents"]),
-                    max_category,
-                ),
-            }
-            for row in payload["category_comparison"]
-        ],
+        "trend": _trend_view(payload["trend"]),
+        "merchant_ranking": _merchant_ranking_view(payload["merchant_ranking"]),
+        "category_comparison": _category_comparison_view(payload["category_comparison"]),
     }
 
 
