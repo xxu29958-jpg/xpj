@@ -27,6 +27,10 @@ from app.services.time_service import ensure_utc
 logger = logging.getLogger(__name__)
 
 
+class OcrApplyContractError(RuntimeError):
+    """OCR draft application would break the required fact-and-mirror pairing."""
+
+
 def extract_ocr_result(
     expense: Expense,
     provider: OcrProvider | None = None,
@@ -208,7 +212,7 @@ def _apply_ocr_result_to_expense(
 def _ensure_ocr_apply_is_not_session_bound(expense: Expense) -> None:
     state = sa_inspect(expense, raiseerr=False)
     if state is not None and (state.persistent or state.pending):
-        raise RuntimeError(
+        raise OcrApplyContractError(
             "apply_ocr_result cannot mutate a Session-bound Expense; "
             "use apply_ocr_result_and_append_fact so OCR facts stay paired "
             "with the response mirror."

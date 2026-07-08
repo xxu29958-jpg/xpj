@@ -58,7 +58,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "nested_dict_args": 16,  # −1 PG-only slice 5 (retired cut-over machinery)
     "mixed_return_functions": 0,
     "broad_exception": 22,  # −1 PG-only slice 2 (retired SQLite migrator/validator). +1 P1 启动迁移前备份 gate(_backup_before_upgrade 对任何备份失败 fail-CLOSED——必须 catch-any 才能在 pg_dump/磁盘/校验等任意失败时中止迁移,窄 catch 会漏失败放过迁移=破坏安全目的). −1 2026-07-06 retired one-shot identity fixture migrator.
-    "generic_raises": 7,  # +1 ⑥ P3#3 scheduler_lease.try_claim_scheduler_lease 在途事务守卫 RuntimeError (检测到 db.in_transaction() 即 raise, 防偷提交调用方未提交事务; API 误用前置条件非用户面 AppError, 镜像 main.py 启动守卫 RuntimeError 先例). −3 PG-only slice 5 (retired v1_migration handler RuntimeError raises + mark_v1_cut_over). +1 P1 启动迁移属主预检 RuntimeError(_assert_role_can_alter_existing_schema 致命启动条件,无 HTTP AppError 适配,镜像 main.py 既有启动 RuntimeError 守卫). +1 P1 启动迁移前备份 fail-closed RuntimeError(_backup_before_upgrade 备份失败即致命中止,镜像同款启动 RuntimeError)
+    "generic_raises": 0,  # 2026-07-08: remaining direct RuntimeError raises now use narrow startup/service contract exceptions.
     "todo_markers": 9,
     "hardcoded_urls": 12,  # +2 ADR-0027 Frankfurter default URL (config default, mirrors ECB inline pattern)
     "credentials_risk": 4,
@@ -186,6 +186,7 @@ STRICT_EQUALITY_BASELINE.update({
 })
 CODEBASE_DEBT_LIMITS.update({"todo_markers": 0})
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2389})  # +1 OCR benchmark local_llm harness test; +1 error-copy map parser fixture; +16 ci-gap release APK policy parser tests; +17 release APK path-gate parser tests.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2391})  # +2 backend generic-raises cleanup facade export pins.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({

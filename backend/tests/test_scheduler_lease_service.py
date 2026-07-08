@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import AppMeta, SchedulerLease
-from app.services.scheduler_lease_service import try_claim_scheduler_lease
+from app.services.scheduler_lease_service import SchedulerLeaseTransactionError, try_claim_scheduler_lease
 from app.services.time_service import now_utc
 
 
@@ -74,7 +74,7 @@ def test_scheduler_lease_refuses_session_with_inflight_transaction(*, identity) 
         db.add(AppMeta(key=probe_key, value="x", updated_at=now_utc()))
         db.flush()  # emits SQL -> session now has an in-flight, uncommitted tx
         assert db.in_transaction()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(SchedulerLeaseTransactionError):
             try_claim_scheduler_lease(
                 db,
                 name="fx_rate_sync",
@@ -85,6 +85,13 @@ def test_scheduler_lease_refuses_session_with_inflight_transaction(*, identity) 
     # The in-flight probe row must not have been committed by the lease claim.
     with SessionLocal() as db:
         assert db.scalar(select(AppMeta).where(AppMeta.key == probe_key)) is None
+
+
+def test_scheduler_lease_transaction_error_is_exported() -> None:
+    assert "SchedulerLeaseTransactionError" in __import__(
+        "app.services.scheduler_lease_service",
+        fromlist=["__all__"],
+    ).__all__
 
 
 def test_two_sessions_concurrent_claim_yields_single_winner() -> None:
