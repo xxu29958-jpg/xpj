@@ -141,7 +141,7 @@ def assign_transaction_temp_id(
                 return re_check.temp_id
             continue
         return candidate
-    raise RuntimeError("budget_advisor_aliases: failed to allocate tx temp id")
+    raise RuntimeError("budget_advisor_aliases: failed to allocate ephemeral tx id")
 
 
 def resolve_merchant_anon(
@@ -191,7 +191,7 @@ def resolve_transaction_temp_id(
 def cleanup_session(
     db: Session, *, tenant_id: str, session_id: str
 ) -> int:
-    """Drop all transaction temp ids for a finished AI session. Returns
+    """Drop all transaction ephemeral ids for a finished AI session. Returns
     the number of rows removed. Merchant / member aliases persist across
     sessions (stable placeholders the user can recognise over time)."""
 

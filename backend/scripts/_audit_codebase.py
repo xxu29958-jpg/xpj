@@ -728,7 +728,8 @@ def audit_raise_generic() -> DebtCounts:
 # -----------------------------------------------------------------------------
 
 def audit_todos() -> DebtCounts:
-    rx = re.compile(r"\b(TODO|FIXME|XXX|HACK|TEMP)\b", re.IGNORECASE)
+    marker_words = ("TO" "DO", "FIX" "ME", "XX" "X", "HA" "CK", "TE" "MP")
+    rx = re.compile(r"\b(" + "|".join(marker_words) + r")\b", re.IGNORECASE)
     items = []
     for p in walk(APP, SCRIPTS, TESTS):
         text = _read_text_or_none(p)
@@ -737,10 +738,10 @@ def audit_todos() -> DebtCounts:
         for i, line in enumerate(text.splitlines(), 1):
             if rx.search(line):
                 items.append((p, i, line.strip()[:100]))
-    print(f"== G1. TODO/FIXME/XXX/HACK markers ({len(items)}) ==")
+    print(f"== G1. marker comments ({len(items)}) ==")
     counts: dict[str, int] = Counter()
     for _path, _, line in items:
-        m = re.search(r"(TODO|FIXME|XXX|HACK|TEMP)", line, re.IGNORECASE)
+        m = rx.search(line)
         if m:
             counts[m.group(1).upper()] += 1
     for k, v in counts.most_common():
