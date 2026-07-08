@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -17,10 +18,6 @@ from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
-UPLOAD_TOKEN = "smoke-upload-token"
-APP_TOKEN = "smoke-app-token"
-ADMIN_TOKEN = "smoke-admin-token"
-SMOKE_BOOTSTRAP_SECRET = "smoke-bootstrap-secret"
 SESSION_TOKEN = ""
 BOOTSTRAP_ADMIN_TOKEN = ""
 UPLOAD_PATH = ""
@@ -45,6 +42,29 @@ class ApiResult:
 
     def json(self) -> dict | list:
         return json.loads(self.body.decode("utf-8"))
+
+
+@dataclass(frozen=True)
+class SmokeLegacyCredentials:
+    upload: str
+    app: str
+    admin: str
+    bootstrap: str
+
+
+def build_smoke_legacy_credentials() -> SmokeLegacyCredentials:
+    def credential(label: str) -> str:
+        return f"xpj-smoke-{label}-{secrets.token_urlsafe(24)}"
+
+    return SmokeLegacyCredentials(
+        upload=credential("upload"),
+        app=credential("app"),
+        admin=credential("admin"),
+        bootstrap=credential("bootstrap"),
+    )
+
+
+SMOKE_CREDENTIALS = build_smoke_legacy_credentials()
 
 
 def free_port() -> int:
@@ -135,9 +155,9 @@ def start_server(port: int) -> subprocess.Popen:
     env = os.environ.copy()
     env.update(
         {
-            "UPLOAD_TOKEN": UPLOAD_TOKEN,
-            "APP_TOKEN": APP_TOKEN,
-            "ADMIN_TOKEN": ADMIN_TOKEN,
+            "UPLOAD_TOKEN": SMOKE_CREDENTIALS.upload,
+            "APP_TOKEN": SMOKE_CREDENTIALS.app,
+            "ADMIN_TOKEN": SMOKE_CREDENTIALS.admin,
             # PG-only (debt #4): the smoke runs the full bootstrap → upload →
             # OCC-token → confirm flow against PostgreSQL. CI's backend-postgres
             # lane sets SMOKE_DATABASE_URL to its ephemeral cluster; a local run
@@ -152,7 +172,7 @@ def start_server(port: int) -> subprocess.Popen:
             "GENERATE_THUMBNAIL": "true",
             "OCR_PROVIDER": "empty",
             "ENABLE_HTTP_BOOTSTRAP": "true",
-            "HTTP_BOOTSTRAP_SECRET": SMOKE_BOOTSTRAP_SECRET,
+            "HTTP_BOOTSTRAP_SECRET": SMOKE_CREDENTIALS.bootstrap,
             "XPJ_EXTRA_LOOPBACK_HOSTS": f"{HOST}:{port}",
         }
     )
@@ -267,7 +287,7 @@ def _bootstrap_owner(base_url: str) -> dict:
         f"{base_url}/api/bootstrap/owner",
         headers={
             "Content-Type": "application/json",
-            "X-Bootstrap-Secret": SMOKE_BOOTSTRAP_SECRET,
+            "X-Bootstrap-Secret": SMOKE_CREDENTIALS.bootstrap,
         },
         body=bootstrap_body,
     )
@@ -311,11 +331,19 @@ def _check_auth_and_legacy_tokens(base_url: str) -> None:
     assert_equal(result.json()["device_name"], "smoke-android", "auth check device")
     print("OK auth check")
 
-    result = request("GET", f"{base_url}/api/auth/check", headers={"Authorization": f"Bearer {APP_TOKEN}"})
+    result = request(
+        "GET",
+        f"{base_url}/api/auth/check",
+        headers={"Authorization": f"Bearer {SMOKE_CREDENTIALS.app}"},
+    )
     assert_error(result, 401, "legacy_auth_removed")
     print("OK legacy app token removed")
 
-    result = request("GET", f"{base_url}/api/upload/check", headers={"Upload-Token": UPLOAD_TOKEN})
+    result = request(
+        "GET",
+        f"{base_url}/api/upload/check",
+        headers={"Upload-Token": SMOKE_CREDENTIALS.upload},
+    )
     assert_error(result, 401, "legacy_auth_removed")
     result = request("GET", f"{base_url}/api/upload/check", headers={"Upload-Token": "bad"})
     assert_error(result, 401, "invalid_token")
@@ -334,7 +362,7 @@ def _check_maintenance_and_upload_guards(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}{UPLOAD_PATH}",
-        headers={"Upload-Token": UPLOAD_TOKEN, "Content-Type": bad_content_type},
+        headers={"Upload-Token": SMOKE_CREDENTIALS.upload, "Content-Type": bad_content_type},
         body=bad_body,
     )
     assert_error(result, 400, "unsupported_file_type")
