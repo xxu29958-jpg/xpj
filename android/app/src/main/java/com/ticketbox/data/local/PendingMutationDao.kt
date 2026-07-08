@@ -404,7 +404,7 @@ interface PendingMutationDao {
             WHERE sib.serverUrl = pm.serverUrl
               AND sib.ledgerId = pm.ledgerId
               AND sib.targetId = pm.targetId
-              AND sib.status IN (:inFlightStatus, :conflictStatus, :failedStatus)
+              AND sib.status IN (:unresolvedStatuses)
           )
           AND NOT EXISTS (
             SELECT 1 FROM pending_mutations AS older
@@ -425,9 +425,7 @@ interface PendingMutationDao {
         serverUrl: String,
         ledgerId: String,
         pendingStatus: String,
-        inFlightStatus: String,
-        conflictStatus: String,
-        failedStatus: String,
+        unresolvedStatuses: Collection<String>,
         limit: Int,
     ): List<PendingMutationEntity>
 
@@ -502,16 +500,14 @@ interface PendingMutationDao {
         WHERE serverUrl = :serverUrl
           AND ledgerId = :ledgerId
           AND targetId = :targetId
-          AND status IN (:inFlightStatus, :conflictStatus, :failedStatus)
+          AND status IN (:unresolvedStatuses)
         """,
     )
     suspend fun hasUnresolvedRowForTarget(
         serverUrl: String,
         ledgerId: String,
         targetId: String,
-        inFlightStatus: String,
-        conflictStatus: String,
-        failedStatus: String,
+        unresolvedStatuses: Collection<String>,
     ): Boolean
 
     /**
@@ -534,19 +530,17 @@ interface PendingMutationDao {
     @Query(
         """
         UPDATE pending_mutations
-        SET status = :pendingStatus,
+        SET status = 'pending',
             lastError = :recoveryMessage
         WHERE serverUrl = :serverUrl
           AND ledgerId = :ledgerId
-          AND status = :inFlightStatus
+          AND status = 'in_flight'
           AND (attemptedAt IS NULL OR attemptedAt < :staleCutoffIso)
         """,
     )
     suspend fun recoverStaleInFlight(
         serverUrl: String,
         ledgerId: String,
-        pendingStatus: String,
-        inFlightStatus: String,
         staleCutoffIso: String,
         recoveryMessage: String,
     ): Int
@@ -562,7 +556,7 @@ interface PendingMutationDao {
         WHERE serverUrl = :serverUrl
           AND ledgerId = :ledgerId
           AND targetId = :targetId
-          AND status IN (:pendingStatus, :inFlightStatus, :conflictStatus, :failedStatus)
+          AND status IN (:activeStatuses)
         ORDER BY createdAt ASC, id ASC
         """,
     )
@@ -570,10 +564,7 @@ interface PendingMutationDao {
         serverUrl: String,
         ledgerId: String,
         targetId: String,
-        pendingStatus: String,
-        inFlightStatus: String,
-        conflictStatus: String,
-        failedStatus: String,
+        activeStatuses: Collection<String>,
     ): List<PendingMutationEntity>
 
     /**

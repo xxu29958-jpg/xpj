@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
+import com.ticketbox.data.local.PendingMutationStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -230,14 +231,11 @@ class FakePendingMutationDao : PendingMutationDao {
         serverUrl: String,
         ledgerId: String,
         pendingStatus: String,
-        inFlightStatus: String,
-        conflictStatus: String,
-        failedStatus: String,
+        unresolvedStatuses: Collection<String>,
         limit: Int,
     ): List<PendingMutationEntity> {
-        val unresolved = setOf(inFlightStatus, conflictStatus, failedStatus)
         val unresolvedTargets = rows.values
-            .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status in unresolved }
+            .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status in unresolvedStatuses }
             .map { it.targetId }
             .toSet()
         val batch = rows.values
@@ -271,35 +269,30 @@ class FakePendingMutationDao : PendingMutationDao {
         serverUrl: String,
         ledgerId: String,
         targetId: String,
-        inFlightStatus: String,
-        conflictStatus: String,
-        failedStatus: String,
+        unresolvedStatuses: Collection<String>,
     ): Boolean {
-        val unresolved = setOf(inFlightStatus, conflictStatus, failedStatus)
         return rows.values.any {
             it.serverUrl == serverUrl &&
                 it.ledgerId == ledgerId &&
                 it.targetId == targetId &&
-                it.status in unresolved
+                it.status in unresolvedStatuses
         }
     }
 
     override suspend fun recoverStaleInFlight(
         serverUrl: String,
         ledgerId: String,
-        pendingStatus: String,
-        inFlightStatus: String,
         staleCutoffIso: String,
         recoveryMessage: String,
     ): Int {
         val victims = rows.values.filter {
             it.serverUrl == serverUrl &&
                 it.ledgerId == ledgerId &&
-                it.status == inFlightStatus &&
+                it.status == PendingMutationStatus.InFlight.wireValue &&
                 (it.attemptedAt == null || it.attemptedAt < staleCutoffIso)
         }
         for (row in victims) {
-            rows[row.id] = row.copy(status = pendingStatus, lastError = recoveryMessage)
+            rows[row.id] = row.copy(status = PendingMutationStatus.Pending.wireValue, lastError = recoveryMessage)
         }
         if (victims.isNotEmpty()) refreshObservables()
         return victims.size
@@ -309,18 +302,14 @@ class FakePendingMutationDao : PendingMutationDao {
         serverUrl: String,
         ledgerId: String,
         targetId: String,
-        pendingStatus: String,
-        inFlightStatus: String,
-        conflictStatus: String,
-        failedStatus: String,
+        activeStatuses: Collection<String>,
     ): List<PendingMutationEntity> {
-        val active = setOf(pendingStatus, inFlightStatus, conflictStatus, failedStatus)
         return rows.values
             .filter {
                 it.serverUrl == serverUrl &&
                     it.ledgerId == ledgerId &&
                     it.targetId == targetId &&
-                    it.status in active
+                    it.status in activeStatuses
             }
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
     }

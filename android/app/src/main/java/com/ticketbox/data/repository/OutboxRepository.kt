@@ -336,9 +336,7 @@ class OutboxRepository(
             serverUrl = binding.serverUrl,
             ledgerId = binding.ledgerId,
             pendingStatus = PendingMutationStatus.Pending.wireValue,
-            inFlightStatus = PendingMutationStatus.InFlight.wireValue,
-            conflictStatus = PendingMutationStatus.Conflict.wireValue,
-            failedStatus = PendingMutationStatus.Failed.wireValue,
+            unresolvedStatuses = UNRESOLVED_STATUS_VALUES,
             limit = limit,
         )
         if (candidates.isEmpty()) return emptyList()
@@ -392,8 +390,6 @@ class OutboxRepository(
             dao.recoverStaleInFlight(
                 serverUrl = binding.serverUrl,
                 ledgerId = binding.ledgerId,
-                pendingStatus = PendingMutationStatus.Pending.wireValue,
-                inFlightStatus = PendingMutationStatus.InFlight.wireValue,
                 staleCutoffIso = ISO.format(cutoff),
                 recoveryMessage = "recovered_from_stuck_in_flight",
             )
@@ -687,10 +683,7 @@ class OutboxRepository(
                 serverUrl = binding.serverUrl,
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
-                pendingStatus = PendingMutationStatus.Pending.wireValue,
-                inFlightStatus = PendingMutationStatus.InFlight.wireValue,
-                conflictStatus = PendingMutationStatus.Conflict.wireValue,
-                failedStatus = PendingMutationStatus.Failed.wireValue,
+                activeStatuses = ACTIVE_STATUS_VALUES,
             )
         }.map { it.toDomain() }
 
@@ -802,6 +795,17 @@ class OutboxRepository(
          *  abandoned by a cancelled / dead worker and is swept
          *  back to PENDING at next drain start. */
         const val DEFAULT_STALE_IN_FLIGHT_MS: Long = 5L * 60L * 1000L
+        private val UNRESOLVED_STATUS_VALUES = listOf(
+            PendingMutationStatus.InFlight.wireValue,
+            PendingMutationStatus.Conflict.wireValue,
+            PendingMutationStatus.Failed.wireValue,
+        )
+        private val ACTIVE_STATUS_VALUES = listOf(
+            PendingMutationStatus.Pending.wireValue,
+            PendingMutationStatus.InFlight.wireValue,
+            PendingMutationStatus.Conflict.wireValue,
+            PendingMutationStatus.Failed.wireValue,
+        )
     }
 }
 
