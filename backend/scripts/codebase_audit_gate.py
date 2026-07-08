@@ -187,6 +187,7 @@ STRICT_EQUALITY_BASELINE.update({
 CODEBASE_DEBT_LIMITS.update({"todo_markers": 0})
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2389})  # +1 OCR benchmark local_llm harness test; +1 error-copy map parser fixture; +16 ci-gap release APK policy parser tests; +17 release APK path-gate parser tests.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2391})  # +2 backend generic-raises cleanup facade export pins.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2392})  # +1 broad-exception slice: thumbnail DecompressionBombError degrades to no thumbnail.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({

@@ -179,7 +179,7 @@ def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str |
 def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | None:
     try:
         return generate_thumbnail(relative_path, tenant_id=tenant_id)
-    except (OSError, PathTraversalError, RecursionError, RuntimeError, ValueError):
+    except _thumbnail_failure_errors():
         # Thumbnail is an optional artifact — never block the surrounding
         # upload / enrichment on it. The failure is still recorded so
         # health checks can see "thumbnails are silently failing".
@@ -190,6 +190,21 @@ def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | 
             relative_path,
         )
         return None
+
+
+def _thumbnail_failure_errors() -> tuple[type[BaseException], ...]:
+    base_errors: tuple[type[BaseException], ...] = (
+        OSError,
+        PathTraversalError,
+        RecursionError,
+        RuntimeError,
+        ValueError,
+    )
+    try:
+        from PIL import Image
+    except ImportError:
+        return base_errors
+    return (*base_errors, Image.DecompressionBombError)
 
 
 def _expense_has_pending_fx(expense: Expense) -> bool:

@@ -468,6 +468,26 @@ def test_upload_thumbnail_failure_does_not_block_pending(
     assert item["thumbnail_path"] is None
 
 
+def test_generate_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
+    from PIL import Image
+
+    from app.services.thumb_service import generate_thumbnail
+
+    saved = save_upload_bytes(
+        PNG_BYTES,
+        tenant_id="owner",
+        filename="ticket.png",
+        content_type="image/png",
+    )
+
+    def reject_oversized_image(*args, **kwargs):
+        raise Image.DecompressionBombError("thumbnail source too large")
+
+    monkeypatch.setattr(Image, "open", reject_oversized_image)
+
+    assert generate_thumbnail(saved.relative_path, tenant_id="owner") is None
+
+
 def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
     monkeypatch, *, identity
 ) -> None:
