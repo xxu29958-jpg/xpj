@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -47,6 +47,16 @@ from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
 
 logger = logging.getLogger(__name__)
+
+_AUTO_ENRICHMENT_FAILURES = (
+    AppError,
+    ImportError,
+    SQLAlchemyError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+)
 
 
 __all__ = [
@@ -119,6 +129,7 @@ def create_pending_expense(
         created_at=now,
         updated_at=now,
     )
+    created = False
     try:
         db.add(expense)
         db.flush()
@@ -128,12 +139,13 @@ def create_pending_expense(
         expense.updated_at = now_utc()
         db.commit()
         db.refresh(expense)
+        created = True
         return expense
-    except Exception:
-        db.rollback()
-        delete_relative_upload(thumbnail_path)
-        delete_relative_upload(saved_file.relative_path)
-        raise
+    finally:
+        if not created:
+            db.rollback()
+            delete_relative_upload(thumbnail_path)
+            delete_relative_upload(saved_file.relative_path)
 
 
 def enrich_pending_expense(
@@ -194,7 +206,7 @@ def enrich_pending_expense(
             expense.updated_at = now_utc()
             bump_row_version(expense)
             db.commit()
-        except Exception:
+        except _AUTO_ENRICHMENT_FAILURES:
             # Auto-enrichment runs after the upload response has already
             # been returned to the client. We intentionally don't propagate
             # — the row is still in `pending` and the user can retry OCR

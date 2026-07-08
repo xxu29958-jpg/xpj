@@ -14,6 +14,7 @@ other public symbols are direct re-exports.
 from __future__ import annotations
 
 import logging
+import subprocess
 
 from app.database._core import (
     BACKEND_ROOT,
@@ -32,6 +33,7 @@ from app.database._seed import (
     seed_runtime_data,
 )
 from app.database._uploads import migrate_upload_paths_to_tenant_dirs
+from app.errors import AppError
 from app.version import BACKEND_VERSION
 
 _logger = logging.getLogger(__name__)
@@ -98,6 +100,7 @@ def _stamp_alembic_baseline_if_needed() -> None:
         from alembic import command
         from alembic.config import Config
         from alembic.script import ScriptDirectory
+        from alembic.util import CommandError
     except ImportError:
         return
 
@@ -110,7 +113,7 @@ def _stamp_alembic_baseline_if_needed() -> None:
     cfg.set_main_option("script_location", str(backend_root / "migrations"))
     try:
         head = ScriptDirectory.from_config(cfg).get_current_head()
-    except Exception:
+    except (CommandError, OSError):
         return
     if head is None:
         return
@@ -266,7 +269,7 @@ def _backup_before_upgrade(current_revision: str | None, head: str) -> None:
 
     try:
         entry = create_pre_upgrade_backup()
-    except Exception as exc:
+    except (AppError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
         raise DatabaseMigrationPreflightError(
             f"拒绝执行数据库迁移:迁移前自动备份失败({exc})。迁移是不可逆启动步骤,"
             f"未成功备份不迁移(数据安全优先)。请确认 pg_dump 可用、备份目录可写后重启;"

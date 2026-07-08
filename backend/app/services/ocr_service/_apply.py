@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import inspect as sa_inspect
 
 from app.config import get_settings
+from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import Expense
 from app.services.category_service import normalize_category
@@ -25,6 +26,8 @@ from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc
 
 logger = logging.getLogger(__name__)
+
+_AUTO_OCR_FAILURES = (AppError, ImportError, OSError, RuntimeError, ValueError, TypeError)
 
 
 class OcrApplyContractError(RuntimeError):
@@ -101,7 +104,7 @@ def collect_auto_ocr_extractions(
                     )
                 )
         return results
-    except Exception:
+    except _AUTO_OCR_FAILURES:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
         logger.exception("auto OCR failed for expense=%s ledger=%s", expense.id, expense.tenant_id)
         return []

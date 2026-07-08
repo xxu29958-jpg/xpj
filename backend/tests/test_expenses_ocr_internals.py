@@ -6,6 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 import app.services.ocr_service._apply as ocr_apply
+import app.services.ocr_service._providers as ocr_providers
+from app.errors import AppError
 from app.models import Expense
 from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.ocr_service import (
@@ -183,3 +185,22 @@ def test_local_llm_prompt_uses_canonical_categories_and_server_owned_source() ->
         assert category in prompt
     assert "Do not return source" in prompt
     assert "never 0" in prompt
+
+
+def test_rapidocr_result_shape_drift_maps_to_app_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    class NoOcrFields:
+        pass
+
+    class FakeRapidOCR:
+        def __call__(self, path: str) -> NoOcrFields:
+            return NoOcrFields()
+
+    monkeypatch.setitem(__import__("sys").modules, "rapidocr", SimpleNamespace(RapidOCR=lambda: FakeRapidOCR()))
+    image_path = tmp_path / "ticket.png"
+    image_path.write_bytes(b"fake image bytes")
+    monkeypatch.setattr(ocr_providers, "resolve_protected_image", lambda *_args: (image_path, "image/png"))
+
+    with pytest.raises(AppError) as exc_info:
+        ocr_providers.RapidOcrProvider().extract(Expense(image_path="uploads/ticket.png", tenant_id="owner"))
+
+    assert exc_info.value.error == "server_error"
