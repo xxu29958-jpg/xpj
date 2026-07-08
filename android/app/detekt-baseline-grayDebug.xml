@@ -21,7 +21,6 @@
     <ID>LongMethod:BackgroundCropScreen.kt:@Composable fun BackgroundCropScreen</ID>
     <ID>LongMethod:BackgroundGalleryScreen.kt:@Composable fun BackgroundGalleryScreen</ID>
     <ID>LongMethod:BackgroundPreviewScreen.kt:@Composable fun BackgroundPreviewScreen</ID>
-    <ID>LongMethod:BackgroundTasksScreen.kt:@Composable private fun TaskRow</ID>
     <ID>LongMethod:BindServerScreen.kt:@Composable fun BindServerScreen</ID>
     <ID>LongMethod:CategoryStructureCard.kt:@Composable internal fun CategoryStructureCard</ID>
     <ID>LongMethod:CategoryStructureCard.kt:@Composable private fun CategoryStructureBarRow</ID>
@@ -51,7 +50,6 @@
     <ID>LongMethod:LedgerToolsSheet.kt:@Composable internal fun LedgerToolsSheet</ID>
     <ID>LongMethod:LocalLedgerSessionCoordinator.kt:LocalLedgerSessionCoordinator$private suspend fun applyTransitionLocked</ID>
     <ID>LongMethod:MerchantAliasesScreen.kt:@Composable fun MerchantAliasesScreen</ID>
-    <ID>LongMethod:MerchantAliasesScreen.kt:@Composable private fun MerchantAliasCard</ID>
     <ID>LongMethod:MissingAmountSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun MissingAmountSheetContent</ID>
     <ID>LongMethod:OutboxDrainEngine.kt:OutboxDrainEngine$suspend fun drainOnce: DrainSummary</ID>
     <ID>LongMethod:PendingComponents.kt:@Composable internal fun PendingTop</ID>
@@ -73,13 +71,9 @@
     <ID>LongMethod:SettingsServerComponents.kt:@Composable internal fun AccountStatusCard</ID>
     <ID>LongMethod:SettingsServerComponents.kt:@Composable internal fun PreviewRoleCard</ID>
     <ID>LongMethod:SplitsEditorSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun SplitsEditorSheet</ID>
-    <ID>LongMethod:StatsMetricGrid.kt:@Composable private fun BudgetProgressCard</ID>
-    <ID>LongMethod:StatsMetricGrid.kt:@Composable private fun StatsMetricCard</ID>
     <ID>LongMethod:StatsOverviewCard.kt:@Composable internal fun StatsOverviewCard</ID>
-    <ID>LongMethod:StatsOverviewCard.kt:@Composable private fun HeroSparkline</ID>
     <ID>LongMethod:StatsScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun StatsScreen</ID>
     <ID>LongMethod:TagManagementScreen.kt:@Composable fun TagManagementScreen</ID>
-    <ID>LongMethod:TagStatsCard.kt:@Composable private fun TagStatsRow</ID>
     <ID>LongMethod:Theme.kt:@Composable fun TicketboxAtmosphereBackground</ID>
     <ID>LongMethod:ThemeVisuals.kt:fun themeVisualsForSkin: ThemeVisuals</ID>
     <ID>TooManyFunctions:BudgetViewModel.kt:BudgetViewModel : ViewModel</ID>
