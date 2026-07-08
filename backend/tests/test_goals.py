@@ -82,7 +82,7 @@ def _assert_permission_denied(response, *, label: str) -> None:
     assert payload["message"] == VIEWER_WRITE_MESSAGE, label
 
 
-def test_goals_create_list_and_progress_by_total_and_category(client: TestClient, *, identity) -> None:
+def _seed_goal_progress_expenses(client: TestClient, identity: object) -> None:
     _manual_expense(
         client,
         headers=identity.app_headers,
@@ -108,6 +108,8 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
         confirmed_at=None,
     )
 
+
+def _create_total_spending_goal(client: TestClient, identity: object) -> None:
     total_goal = client.post(
         "/api/goals?timezone=UTC",
         headers=identity.app_headers,
@@ -124,6 +126,8 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     assert total_payload["progress_percent"] == 84
     assert total_payload["progress_state"] == "near_limit"
 
+
+def _assert_duplicate_total_goal_rejected(client: TestClient, identity: object) -> None:
     duplicate_total = client.post(
         "/api/goals?timezone=UTC",
         headers=identity.app_headers,
@@ -136,6 +140,8 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     assert duplicate_total.status_code == 409
     assert duplicate_total.json()["error"] == "invalid_request"
 
+
+def _create_category_spending_goal(client: TestClient, identity: object) -> None:
     category_goal = client.post(
         "/api/goals?timezone=UTC",
         headers=identity.app_headers,
@@ -154,6 +160,8 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     assert category_payload["progress_percent"] == 60
     assert category_payload["progress_state"] == "on_track"
 
+
+def _assert_duplicate_category_goal_rejected(client: TestClient, identity: object) -> None:
     duplicate_category = client.post(
         "/api/goals?timezone=UTC",
         headers=identity.app_headers,
@@ -167,11 +175,22 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     assert duplicate_category.status_code == 409
     assert duplicate_category.json()["error"] == "invalid_request"
 
+
+def _assert_goal_list_progress(client: TestClient, identity: object) -> None:
     goals = client.get("/api/goals?month=2026-05&timezone=UTC", headers=identity.app_headers)
     assert goals.status_code == 200, goals.json()
     items = goals.json()["items"]
     assert [item["name"] for item in items] == ["本月总支出", "控制餐饮"]
     assert [item["spent_amount_cents"] for item in items] == [4200, 1200]
+
+
+def test_goals_create_list_and_progress_by_total_and_category(client: TestClient, *, identity) -> None:
+    _seed_goal_progress_expenses(client, identity)
+    _create_total_spending_goal(client, identity)
+    _assert_duplicate_total_goal_rejected(client, identity)
+    _create_category_spending_goal(client, identity)
+    _assert_duplicate_category_goal_rejected(client, identity)
+    _assert_goal_list_progress(client, identity)
 
 
 def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClient, *, identity) -> None:
