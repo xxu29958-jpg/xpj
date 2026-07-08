@@ -17,10 +17,15 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.database import SessionLocal
+from app.errors import AppError
 from app.main import app
+from app.models import Account, Ledger
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
+from app.services import ledger_service
 
 
 @pytest.fixture()
@@ -76,6 +81,36 @@ def test_create_ledger_with_admin_token_adds_membership(client: TestClient, *, i
     # The list endpoint now includes the new ledger for the same account.
     listed = client.get("/api/ledgers", headers=identity.app_headers).json()["ledgers"]
     assert any(row["ledger_id"] == new_id for row in listed)
+
+
+def test_new_ledger_id_batches_collision_checks(monkeypatch: pytest.MonkeyPatch, *, identity) -> None:
+    def set_token_hex_values(values: list[str]) -> None:
+        generated = iter(values)
+        monkeypatch.setattr(ledger_service.secrets, "token_hex", lambda _bytes: next(generated))
+
+    with SessionLocal() as db:
+        owner_id = db.scalar(select(Account.id).order_by(Account.id.asc()))
+        assert owner_id is not None
+
+        db.add(Ledger(ledger_id="ledger_taken", name="Taken", owner_account_id=owner_id))
+        db.flush()
+        set_token_hex_values(
+            ["taken", "free"]
+            + [f"unused_{index}" for index in range(ledger_service.LEDGER_ID_ALLOCATION_RETRIES - 2)]
+        )
+        assert ledger_service._new_ledger_id(db) == "ledger_free"
+
+        colliding_values = [
+            f"colliding_{index}" for index in range(ledger_service.LEDGER_ID_ALLOCATION_RETRIES)
+        ]
+        db.add_all(
+            Ledger(ledger_id=f"ledger_{value}", name=f"Taken {index}", owner_account_id=owner_id)
+            for index, value in enumerate(colliding_values)
+        )
+        db.flush()
+        set_token_hex_values(colliding_values)
+        with pytest.raises(AppError):
+            ledger_service._new_ledger_id(db)
 
 
 def test_create_ledger_validates_name(client: TestClient, *, identity) -> None:

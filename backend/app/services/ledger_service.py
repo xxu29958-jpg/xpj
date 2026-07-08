@@ -40,6 +40,7 @@ from app.tenants import DEFAULT_TENANT_ID
 LEDGER_ID_PREFIX = "ledger_"
 LEDGER_NAME_MAX_LEN = 60
 LEDGER_ID_RANDOM_BYTES = 6  # 12 hex chars; ledger_id stays well under 64 chars.
+LEDGER_ID_ALLOCATION_RETRIES = 8
 
 # Ledger-lifecycle audit actions (mirrors invitation_common's verb_noun naming).
 AUDIT_LEDGER_ARCHIVED = "ledger_archived"
@@ -82,9 +83,13 @@ def _normalize_ledger_name(value: str | None) -> str:
 
 def _new_ledger_id(db: Session) -> str:
     """Generate a unique public ``ledger_id``. Retries on the rare collision."""
-    for _ in range(8):
-        candidate = f"{LEDGER_ID_PREFIX}{secrets.token_hex(LEDGER_ID_RANDOM_BYTES)}"
-        if db.scalar(select(Ledger.id).where(Ledger.ledger_id == candidate).limit(1)) is None:
+    candidates = [
+        f"{LEDGER_ID_PREFIX}{secrets.token_hex(LEDGER_ID_RANDOM_BYTES)}"
+        for _ in range(LEDGER_ID_ALLOCATION_RETRIES)
+    ]
+    existing = set(db.scalars(select(Ledger.ledger_id).where(Ledger.ledger_id.in_(candidates))))
+    for candidate in candidates:
+        if candidate not in existing:
             return candidate
     raise AppError("server_error", status_code=500)
 

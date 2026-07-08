@@ -23,6 +23,8 @@ from app.services.session_lifecycle_service import (
 )
 from app.services.time_service import now_utc, to_iso
 
+PAIRING_CODE_CANDIDATE_COUNT = 16
+
 
 def _create_device(db: Session, account_id: int, device_name: str, platform: str) -> Device:
     device = Device(
@@ -73,6 +75,22 @@ def _create_upload_link(
     )
 
 
+def _new_unique_pairing_code(db: Session) -> tuple[str, str]:
+    candidates = [
+        (code := new_pairing_code(), hash_pairing_code(code))
+        for _ in range(PAIRING_CODE_CANDIDATE_COUNT)
+    ]
+    existing_hashes = set(
+        db.scalars(
+            select(PairingCode.code_hash).where(PairingCode.code_hash.in_({code_hash for _, code_hash in candidates}))
+        )
+    )
+    for code, code_hash in candidates:
+        if code_hash not in existing_hashes:
+            return code, code_hash
+    raise AppError("server_error", status_code=500)
+
+
 def _create_pairing_code(
     db: Session,
     *,
@@ -86,11 +104,7 @@ def _create_pairing_code(
         raise AppError("invalid_request", status_code=422)
     ttl = max(1, min(ttl_minutes, 60))
     expires_at = now_utc() + timedelta(minutes=ttl)
-    while True:
-        code = new_pairing_code()
-        code_hash = hash_pairing_code(code)
-        if db.scalar(select(PairingCode.id).where(PairingCode.code_hash == code_hash).limit(1)) is None:
-            break
+    code, code_hash = _new_unique_pairing_code(db)
     pairing = PairingCode(
         code_hash=code_hash,
         ledger_id=ledger.ledger_id,

@@ -868,51 +868,213 @@ _DB_CALL_MARKERS = (
 )
 
 
-def _is_bounded_range_retry(n: ast.For) -> bool:
-    """``for _ in range(N): ...`` collision-retry idiom (bounded N)."""
-    target_is_discard = isinstance(n.target, ast.Name) and n.target.id == "_"
-    iter_is_range = (
+def _is_cursor_expr(node: ast.expr) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id.startswith("last_") or "cursor" in node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr.startswith("last_") or "cursor" in node.attr
+    return False
+
+
+def _is_ordered_key_expr(node: ast.expr) -> bool:
+    return isinstance(node, ast.Attribute) and node.attr in {
+        "created_at",
+        "id",
+        "public_id",
+        "row_version",
+        "updated_at",
+    }
+
+
+def _has_keyset_cursor_predicate(node: ast.expr) -> bool:
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.Compare):
+            continue
+        left = sub.left
+        for op, comparator in zip(sub.ops, sub.comparators, strict=False):
+            if not isinstance(op, (ast.Gt, ast.GtE, ast.Lt, ast.LtE)):
+                left = comparator
+                continue
+            if (
+                _is_ordered_key_expr(left)
+                and _is_cursor_expr(comparator)
+                or _is_cursor_expr(left)
+                and _is_ordered_key_expr(comparator)
+            ):
+                return True
+            left = comparator
+    return False
+
+
+def _is_keyset_page_fetch(node: ast.expr) -> bool:
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "list"
+        and node.args
+    ):
+        node = node.args[0]
+    if not isinstance(node, ast.Call):
+        return False
+    src = ast.unparse(node)
+    func_src = ast.unparse(node.func)
+    return (
+        any(marker in func_src for marker in _DB_CALL_MARKERS)
+        and ".where(" in src
+        and ".order_by(" in src
+        and ".limit(" in src
+        and _has_keyset_cursor_predicate(node)
+    )
+
+
+def _is_range_loop(n: ast.For) -> bool:
+    return (
         isinstance(n.iter, ast.Call)
         and isinstance(n.iter.func, ast.Name)
         and n.iter.func.id == "range"
     )
-    return target_is_discard and iter_is_range
+
+
+def _is_retry_budget_range_loop(n: ast.For) -> bool:
+    def is_retry_budget_arg(node: ast.expr) -> bool:
+        if isinstance(node, ast.Name):
+            text = node.id
+        elif isinstance(node, ast.Attribute):
+            text = node.attr
+        else:
+            return False
+        upper_text = text.upper()
+        return text.isupper() and ("RETRY" in upper_text or "TRIES" in upper_text)
+
+    def is_fixed_retry_budget(node: ast.expr) -> bool:
+        if is_retry_budget_arg(node):
+            return True
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+            return is_fixed_retry_budget(node.left) and isinstance(node.right, ast.Constant)
+        return False
+
+    if not _is_range_loop(n):
+        return False
+    args = n.iter.args
+    if len(args) == 1:
+        return is_fixed_retry_budget(args[0])
+    if len(args) in {2, 3}:
+        return (
+            isinstance(args[0], ast.Constant)
+            and is_fixed_retry_budget(args[1])
+            and (len(args) == 2 or isinstance(args[2], ast.Constant))
+        )
+    return False
+
+
+def _catches_integrity_error(handler: ast.ExceptHandler) -> bool:
+    def is_integrity_error(node: ast.expr | None) -> bool:
+        if node is None:
+            return False
+        if isinstance(node, ast.Name):
+            return node.id == "IntegrityError"
+        if isinstance(node, ast.Attribute):
+            return node.attr == "IntegrityError"
+        if isinstance(node, ast.Tuple):
+            return any(is_integrity_error(elt) for elt in node.elts)
+        return False
+
+    return is_integrity_error(handler.type)
 
 
 class _NPlusOneVisitor(ast.NodeVisitor):
     def __init__(self, file_path: pathlib.Path, items: list):
         self.loop_stack = 0
+        self.loop_kind_stack: list[str] = []
+        self.retry_loop_outer_depth_stack: list[int] = []
+        self.integrity_recovery_depth_stack: list[tuple[int, int]] = []
         self._file_path = file_path
         self._items = items
 
-    def _visit_loop(self, iter_expr, body, orelse):
+    def _visit_loop(
+        self,
+        iter_expr,
+        body,
+        orelse,
+        *,
+        bounded_retry: bool = False,
+        kind: str = "for",
+    ):
         # iter expression evaluates ONCE — stream consumer pattern.
         if iter_expr is not None:
             self.visit(iter_expr)
+        outer_depth = self.loop_stack
         self.loop_stack += 1
+        self.loop_kind_stack.append(kind)
+        if bounded_retry:
+            self.retry_loop_outer_depth_stack.append(outer_depth)
         for stmt in body:
             self.visit(stmt)
+        if bounded_retry:
+            self.retry_loop_outer_depth_stack.pop()
+        self.loop_kind_stack.pop()
         self.loop_stack -= 1
         for stmt in orelse:
             self.visit(stmt)
 
     def visit_For(self, n):
-        if _is_bounded_range_retry(n):
-            return
-        self._visit_loop(n.iter, n.body, n.orelse)
+        self._visit_loop(
+            n.iter,
+            n.body,
+            n.orelse,
+            bounded_retry=_is_retry_budget_range_loop(n),
+        )
 
     def visit_AsyncFor(self, n):
-        self._visit_loop(n.iter, n.body, n.orelse)
+        self._visit_loop(n.iter, n.body, n.orelse, kind="async_for")
 
     def visit_While(self, n):
-        # `while True:` is the project's collision-retry idiom.
-        if isinstance(n.test, ast.Constant) and n.test.value is True:
+        self.loop_stack += 1
+        self.loop_kind_stack.append("while")
+        try:
+            self.visit(n.test)
+            for stmt in n.body:
+                self.visit(stmt)
+        finally:
+            self.loop_kind_stack.pop()
+            self.loop_stack -= 1
+        for stmt in n.orelse:
+            self.visit(stmt)
+
+    def visit_Assign(self, n):
+        if (
+            self.loop_stack == 1
+            and self.loop_kind_stack
+            and self.loop_kind_stack[-1] == "while"
+            and _is_keyset_page_fetch(n.value)
+        ):
+            for target in n.targets:
+                self.visit(target)
             return
-        self._visit_loop(None, n.body, n.orelse)
-        self.visit(n.test)
+        self.generic_visit(n)
+
+    def visit_ExceptHandler(self, n):
+        if n.type is not None:
+            self.visit(n.type)
+        if self.retry_loop_outer_depth_stack and _catches_integrity_error(n):
+            self.integrity_recovery_depth_stack.append(
+                (self.loop_stack, self.retry_loop_outer_depth_stack[-1])
+            )
+            for stmt in n.body:
+                self.visit(stmt)
+            self.integrity_recovery_depth_stack.pop()
+            return
+        for stmt in n.body:
+            self.visit(stmt)
 
     def visit_Call(self, n):
-        if self.loop_stack > 0:
+        in_integrity_recovery = False
+        if self.integrity_recovery_depth_stack:
+            recovery_depth, retry_outer_depth = self.integrity_recovery_depth_stack[-1]
+            in_integrity_recovery = (
+                self.loop_stack == recovery_depth and retry_outer_depth == 0
+            )
+        if self.loop_stack > 0 and not in_integrity_recovery:
             src = ast.unparse(n.func)
             if any(m in src for m in _DB_CALL_MARKERS):
                 self._items.append((self._file_path, n.lineno, src))

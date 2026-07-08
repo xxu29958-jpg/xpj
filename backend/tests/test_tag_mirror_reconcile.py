@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Expense, ExpenseTag
+from app.services import tag_service
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.tag_service import reconcile_expense_tag_mirror
 from app.services.time_service import now_utc
@@ -171,7 +172,12 @@ def test_reconcile_leaves_unrelated_expense_unbumped(client: TestClient, *, iden
     assert len(_links(clean_id)) == 1
 
 
-def test_reconcile_repairs_across_multiple_batches(client: TestClient, *, identity) -> None:
+def test_reconcile_repairs_across_multiple_batches(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
     """ADR '分批': keyset-paged reconcile repairs every drifted row across batch
     boundaries, each bumped exactly once, with a correct total count."""
     for i in range(3):
@@ -187,9 +193,19 @@ def test_reconcile_repairs_across_multiple_batches(client: TestClient, *, identi
         db.commit()
     assert len(before) == 3
 
+    page_sizes: list[int] = []
+    original = tag_service._expense_tag_key_sets
+
+    def wrapped_expense_tag_key_sets(db, tenant_id, expense_ids):
+        page_sizes.append(len(expense_ids))
+        return original(db, tenant_id, expense_ids)
+
+    monkeypatch.setattr(tag_service, "_expense_tag_key_sets", wrapped_expense_tag_key_sets)
+
     with SessionLocal() as db:
         assert reconcile_expense_tag_mirror(db, "owner", batch_size=2) == 3
 
+    assert page_sizes == [2, 1]
     for expense_id, version in before.items():
         assert _row_version(expense_id) == version + 1  # each bumped exactly once
         assert len(_links(expense_id)) == 1  # link rebuilt
