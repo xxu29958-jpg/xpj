@@ -125,6 +125,55 @@ def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -
         assert str(current_count) in violations[0]
 
 
+def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
+    monkeypatch,
+    capsys,
+) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", {"backend_pytest_count": 2403})
+    monkeypatch.setattr(mod, "_read_base_strict_baseline", lambda: (False, {}))
+    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+
+    assert mod.evaluate_pr_delta_metrics({"unexpected_counter": 1}) == 1
+
+    captured = capsys.readouterr()
+    assert "baseline entries that the audit lane didn't report" in captured.out
+    assert "audit reported counters with no baseline entry" in captured.out
+    assert "couldn't read base baseline" in captured.out
+    assert "GITHUB_BASE_REF=main" in captured.out
+
+
+def test_pr_delta_flags_extra_and_unreadable_base_independently(
+    monkeypatch,
+    capsys,
+) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    baseline = {"backend_pytest_count": 2403}
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+    monkeypatch.setattr(mod, "_read_base_strict_baseline", lambda: (True, baseline))
+
+    assert mod.evaluate_pr_delta_metrics({
+        "backend_pytest_count": 2403,
+        "unexpected_counter": 1,
+    }) == 1
+
+    extra_only = capsys.readouterr()
+    assert "audit reported counters with no baseline entry" in extra_only.out
+    assert "baseline entries that the audit lane didn't report" not in extra_only.out
+    assert "couldn't read base baseline" not in extra_only.out
+
+    monkeypatch.setattr(mod, "_read_base_strict_baseline", lambda: (False, {}))
+    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+
+    assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1
+
+    unreadable_only = capsys.readouterr()
+    assert "couldn't read base baseline" in unreadable_only.out
+    assert "GITHUB_BASE_REF=main" in unreadable_only.out
+    assert "audit reported counters with no baseline entry" not in unreadable_only.out
+    assert "baseline entries that the audit lane didn't report" not in unreadable_only.out
+
+
 def test_mutate_token_ledger_is_consistent_with_live_tables() -> None:
     import app.main  # noqa: F401 — importing the app registers every model on Base.metadata
     from app.database import Base
