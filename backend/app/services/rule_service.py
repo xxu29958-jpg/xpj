@@ -226,50 +226,79 @@ def update_rule(
     tag_contains: str | None | object = _UNSET,
     commit: bool = True,
 ) -> CategoryRule:
-    """Update a category rule with ADR-0038 atomic optimistic concurrency.
+    """Update a rule through the DB row-version predicate."""
+    rule_id, rule_tenant_id, existing_min, existing_max = _snapshot_rule_update_context(
+        rule
+    )
+    update_values = _build_rule_update_values(
+        existing_min=existing_min,
+        existing_max=existing_max,
+        keyword=keyword,
+        category=category,
+        enabled=enabled,
+        priority=priority,
+        amount_min_cents=amount_min_cents,
+        amount_max_cents=amount_max_cents,
+        source_contains=source_contains,
+        tag_contains=tag_contains,
+    )
+    rowcount = claim_row_with_token(
+        db,
+        CategoryRule,
+        pk_id=rule_id,
+        tenant_id=rule_tenant_id,
+        expected_row_version=expected_row_version,
+        set_values=update_values,
+    )
+    if rowcount != 1:
+        _raise_rule_update_miss(db, tenant_id=rule_tenant_id, rule_id=rule_id)
+    if commit:
+        db.commit()
+    return _refresh_updated_rule(db, tenant_id=rule_tenant_id, rule_id=rule_id)
 
-    Runs ``UPDATE category_rules SET ..., updated_at = now
-    WHERE id = :id AND tenant_id = :tenant_id AND updated_at =
-    :expected`` and branches on ``rowcount``. ``rowcount == 0``
-    means either:
 
-    - the row was deleted concurrently → ``rule_not_found`` 404, or
-    - another writer mutated ``updated_at`` since the client's read →
-      ``state_conflict`` 409.
-
-    The DB predicate is the authoritative version check (not the
-    Python-side ``rule.updated_at != expected`` comparison), so two
-    sessions that both read the same ``updated_at`` and race into the
-    write path cannot both win — only the first ``UPDATE WHERE`` will
-    match a row.
-    """
-    # Snapshot identity + default-source fields up front. If a
-    # concurrent session deleted this row already, the ORM instance
-    # may be in the "deleted" state; surface that as 404 rather than
-    # an opaque SQLAlchemy error during the UPDATE WHERE build.
+def _snapshot_rule_update_context(
+    rule: CategoryRule,
+) -> tuple[int, str, int | None, int | None]:
     try:
-        rule_id = rule.id
-        rule_tenant_id = rule.tenant_id
-        existing_min = rule.amount_min_cents
-        existing_max = rule.amount_max_cents
+        return (
+            rule.id,
+            rule.tenant_id,
+            rule.amount_min_cents,
+            rule.amount_max_cents,
+        )
     except ObjectDeletedError as exc:
         raise AppError("rule_not_found", status_code=404) from exc
 
-    update_values: dict[str, Any] = {}
+
+def _build_rule_update_values(
+    *,
+    existing_min: int | None,
+    existing_max: int | None,
+    keyword: str | None,
+    category: str | None,
+    enabled: bool | None,
+    priority: int | None,
+    amount_min_cents: int | None | object,
+    amount_max_cents: int | None | object,
+    source_contains: str | None | object,
+    tag_contains: str | None | object,
+) -> dict[str, Any]:
+    values: dict[str, Any] = {}
     if keyword is not None:
         cleaned = keyword.strip()
         if not cleaned:
             raise AppError("invalid_request", status_code=422)
-        update_values["keyword"] = cleaned
+        values["keyword"] = cleaned
     if category is not None:
         normalised = normalize_category(category)
         if not normalised:
             raise AppError("invalid_request", status_code=422)
-        update_values["category"] = normalised
+        values["category"] = normalised
     if enabled is not None:
-        update_values["enabled"] = enabled
+        values["enabled"] = enabled
     if priority is not None:
-        update_values["priority"] = priority
+        values["priority"] = priority
     if amount_min_cents is not _UNSET or amount_max_cents is not _UNSET:
         min_value = (
             existing_min
@@ -281,35 +310,28 @@ def update_rule(
             if amount_max_cents is _UNSET
             else cast(int | None, amount_max_cents)
         )
-        min_value, max_value = _clean_amount_range(min_value, max_value)
-        update_values["amount_min_cents"] = min_value
-        update_values["amount_max_cents"] = max_value
+        values["amount_min_cents"], values["amount_max_cents"] = _clean_amount_range(
+            min_value, max_value
+        )
     if source_contains is not _UNSET:
-        update_values["source_contains"] = _clean_optional_text(
+        values["source_contains"] = _clean_optional_text(
             cast(str | None, source_contains)
         )
     if tag_contains is not _UNSET:
-        update_values["tag_contains"] = _clean_optional_text(
-            cast(str | None, tag_contains)
-        )
-    update_values["updated_at"] = now_utc()
+        values["tag_contains"] = _clean_optional_text(cast(str | None, tag_contains))
+    values["updated_at"] = now_utc()
+    return values
 
-    rowcount = claim_row_with_token(
-        db,
-        CategoryRule,
-        pk_id=rule_id,
-        tenant_id=rule_tenant_id,
-        expected_row_version=expected_row_version,
-        set_values=update_values,
-    )
-    if rowcount != 1:
-        db.rollback()
-        current = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
-        if current is None:
-            raise AppError("rule_not_found", status_code=404)
-        raise AppError("state_conflict", status_code=409)
-    if commit:
-        db.commit()
+
+def _raise_rule_update_miss(db: Session, *, tenant_id: str, rule_id: int) -> None:
+    db.rollback()
+    current = find_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
+    if current is None:
+        raise AppError("rule_not_found", status_code=404)
+    raise AppError("state_conflict", status_code=409)
+
+
+def _refresh_updated_rule(db: Session, *, tenant_id: str, rule_id: int) -> CategoryRule:
     # Force the read-back to hit the DB. claim_row_with_token's default
     # synchronize_session="auto" (evaluate) cannot sync the in-session row on
     # PostgreSQL — it compares the aware timestamptz updated_at against the
@@ -317,11 +339,7 @@ def update_rule(
     # =False the identity-map row would stay stale and return the pre-update
     # value. expire_all mirrors the expense-update path (ADR-0041).
     db.expire_all()
-    refreshed = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
-    # rowcount == 1 means the row exists and was just updated; the
-    # follow-up find cannot return None unless something else deleted
-    # the row between our UPDATE and this SELECT, in which case the
-    # caller should also treat it as a server-side anomaly.
+    refreshed = find_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
     assert refreshed is not None
     return refreshed
 

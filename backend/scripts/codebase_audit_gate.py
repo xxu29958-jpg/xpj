@@ -35,7 +35,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
     "files_over_500": 15,
-    "long_functions": 8,  # 2026-07-09: recurring, income, and split replace flows split.
+    "long_functions": 7,  # 2026-07-09: rule update OCC flow split.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 4,  # 2026-07-09: category summary extraction added a real private aggregation boundary.
