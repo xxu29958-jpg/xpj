@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select, update
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
-from app.models import BillSplitInvitation, Expense
+from app.models import BillSplitInvitation, Expense, LedgerMember
 from app.services.bill_split_service._common import (
     SPLIT_RECEIVED_SOURCE,
     _audit,
@@ -30,67 +31,129 @@ def accept_invitation(
     accepting_account_id: int,
     target_ledger_id: str,
 ) -> tuple[BillSplitInvitation, Expense]:
-    """Receiver accepts; service creates the decoupled Expense in the
-    receiver's chosen ledger and binds the invitation.
+    """Receiver accepts and binds a received Expense in their chosen ledger.
 
-    Concurrency (ADR-0038 PR-C): the bind is an **atomic claim**, not a
-    SELECT-then-write. The receiver expense is flushed first (to obtain
-    its id), then a single ``UPDATE bill_split_invitations SET
-    status='accepted', ... WHERE id AND status='invited'`` flips the
-    state. ``rowcount == 0`` means a peer accept already won; we roll back
-    the just-flushed expense and re-resolve the now-settled invitation
-    idempotently. A partial-unique index on
-    ``expenses.split_origin_invitation_id`` is the DB-level backstop: two
-    received expenses for one invitation can never both commit, so even a
-    path that skipped the claim cannot double the receiver's money."""
+    Concurrency (ADR-0038 PR-C): the bind is an atomic claim, not a
+    SELECT-then-write. The receiver expense is flushed first, then a guarded
+    UPDATE flips the invitation from invited to accepted while binding the
+    received expense and receiver member fields. Losing races roll back the
+    tentative expense and re-resolve the settled invitation idempotently.
+    """
     inv = get_invitation(db, public_id)
+    _ensure_accepting_receiver(inv, accepting_account_id)
 
-    # Identity check first — don't leak any other state if caller isn't
-    # the receiver.
-    if accepting_account_id != inv.receiver_account_id:
-        raise AppError("invitation_not_yours", status_code=403)
-
-    # Fast path: already settled (idempotent re-accept / terminal status).
     settled = _resolve_settled_accept(db, inv, target_ledger_id)
     if settled is not None:
         return settled
 
-    # Expiry check (do not silently auto-expire here — if exactly at TTL,
-    # let the caller see a clear "expired" error then run the sweeper).
-    if ensure_utc(inv.expires_at) <= now_utc():
-        if _mark_expired(db, inv):
-            raise AppError("invitation_expired", status_code=410)
-        # The expiry flip matched 0 rows: a peer settled the invitation
-        # between our status read and the flip. Re-read and resolve like
-        # a lost accept; a peer-driven expiry still surfaces as 410.
-        fresh = get_invitation(db, public_id)
-        if fresh.status == "expired":
-            raise AppError("invitation_expired", status_code=410)
-        settled = _resolve_settled_accept(db, fresh, target_ledger_id)
-        if settled is not None:
-            return settled
-        raise AppError("server_error", status_code=500)
+    settled = _resolve_expired_or_peer_settled_accept(
+        db, public_id, inv, target_ledger_id
+    )
+    if settled is not None:
+        return settled
 
-    # Target ledger constraints.
+    target_member = _load_accept_target_member(
+        db,
+        inv=inv,
+        target_ledger_id=target_ledger_id,
+        accepting_account_id=accepting_account_id,
+    )
+    accepted_at = now_utc()
+    received = _build_received_expense(
+        inv,
+        target_ledger_id=target_ledger_id,
+        accepted_at=accepted_at,
+    )
+    db.add(received)
+
+    lost_accept = _flush_received_expense(db, public_id, target_ledger_id)
+    if lost_accept is not None:
+        return lost_accept
+
+    if not _claim_invitation_acceptance(
+        db,
+        inv=inv,
+        received_expense_id=received.id,
+        target_ledger_id=target_ledger_id,
+        target_member_id=target_member.id,
+        accepted_at=accepted_at,
+    ):
+        db.rollback()
+        return _resolve_lost_accept(db, public_id, target_ledger_id, None)
+
+    _audit(
+        db,
+        target_ledger_id,
+        "bill_split_accepted",
+        actor_account_id=accepting_account_id,
+        target_account_id=inv.sender_account_id,
+        invitation_public_id=inv.public_id,
+    )
+    _create_accept_debt_if_enabled(db, inv, target_ledger_id)
+    db.commit()
+    db.refresh(inv)
+    db.refresh(received)
+    return inv, received
+
+
+def _ensure_accepting_receiver(
+    inv: BillSplitInvitation, accepting_account_id: int
+) -> None:
+    # Identity check first; do not leak invitation state to a non-receiver.
+    if accepting_account_id != inv.receiver_account_id:
+        raise AppError("invitation_not_yours", status_code=403)
+
+
+def _resolve_expired_or_peer_settled_accept(
+    db: Session,
+    public_id: str,
+    inv: BillSplitInvitation,
+    target_ledger_id: str,
+) -> tuple[BillSplitInvitation, Expense] | None:
+    """Handle accept-time expiry and the race where expiry loses to accept."""
+    if ensure_utc(inv.expires_at) > now_utc():
+        return None
+    if _mark_expired(db, inv):
+        raise AppError("invitation_expired", status_code=410)
+
+    fresh = get_invitation(db, public_id)
+    if fresh.status == "expired":
+        raise AppError("invitation_expired", status_code=410)
+    settled = _resolve_settled_accept(db, fresh, target_ledger_id)
+    if settled is not None:
+        return settled
+    raise AppError("server_error", status_code=500)
+
+
+def _load_accept_target_member(
+    db: Session,
+    *,
+    inv: BillSplitInvitation,
+    target_ledger_id: str,
+    accepting_account_id: int,
+) -> LedgerMember:
     if target_ledger_id == inv.sender_ledger_id:
         raise AppError(
             "ledger_forbidden",
             "不能接受到 sender 的同一个账本。",
             status_code=403,
         )
-    target_member = _load_writer_member(db, target_ledger_id, accepting_account_id)
+    return _load_writer_member(db, target_ledger_id, accepting_account_id)
 
-    # Build the receiver-side expense from the snapshot. The receiver owes
-    # ``amount_cents`` in the HOME currency — the agreed share, not the
-    # parent's original-currency total — so the expense lands in plain
-    # home-currency form (original == home, rate == 1), the same shape
-    # ``apply_exchange_rate_fields`` writes for home-currency amounts.
-    # Copying the parent's full ``original_amount_minor`` / rate here would
-    # break the ``amount_cents == original × rate`` invariant on a row whose
-    # money fields are then frozen by ``IMMUTABLE_ON_SPLIT_RECEIVED``; the
-    # invitation keeps the parent's original-currency snapshot for display.
-    now = now_utc()
-    received = Expense(
+
+def _build_received_expense(
+    inv: BillSplitInvitation,
+    *,
+    target_ledger_id: str,
+    accepted_at: datetime,
+) -> Expense:
+    """Build the receiver-side expense from the frozen invitation snapshot.
+
+    The receiver owes ``amount_cents`` in HOME currency, so the received row is
+    plain home-currency money (original == home, rate == 1). The invitation
+    keeps the parent's original-currency snapshot for display.
+    """
+    return Expense(
         tenant_id=target_ledger_id,
         amount_cents=inv.amount_cents,
         home_currency_code=inv.home_currency_code,
@@ -106,84 +169,73 @@ def accept_invitation(
         source=SPLIT_RECEIVED_SOURCE,
         status="confirmed",
         expense_time=inv.expense_time_snapshot,
-        created_at=now,
-        updated_at=now,
-        confirmed_at=now,
+        created_at=accepted_at,
+        updated_at=accepted_at,
+        confirmed_at=accepted_at,
         split_origin_invitation_id=inv.public_id,
     )
-    db.add(received)
+
+
+def _flush_received_expense(
+    db: Session,
+    public_id: str,
+    target_ledger_id: str,
+) -> tuple[BillSplitInvitation, Expense] | None:
     try:
-        db.flush()  # need received.id for invitation.received_expense_id
+        db.flush()  # Need received.id for invitation.received_expense_id.
     except IntegrityError as exc:  # noqa: BLE001
-        # partial-unique backstop tripped: a peer already created the
-        # received expense for this invitation. Discard ours, resolve
-        # against the winner.
+        # The partial-unique backstop says a peer already created the received
+        # expense. Discard ours and resolve against the winner.
         db.rollback()
         return _resolve_lost_accept(db, public_id, target_ledger_id, exc)
+    return None
 
-    # Atomic claim: flip invited→accepted only while still 'invited', binding
-    # every accepted-state field (receiver ledger/member + received_expense_id)
-    # in one UPDATE so no reader can observe a half-bound 'accepted' row.
+
+def _claim_invitation_acceptance(
+    db: Session,
+    *,
+    inv: BillSplitInvitation,
+    received_expense_id: int,
+    target_ledger_id: str,
+    target_member_id: int,
+    accepted_at: datetime,
+) -> bool:
+    """Atomically flip invited -> accepted while binding accepted-state fields."""
     rowcount = db.execute(
         update(BillSplitInvitation)
         .where(BillSplitInvitation.id == inv.id)
         .where(BillSplitInvitation.status == "invited")
         .values(
             status="accepted",
-            accepted_at=now,
-            received_expense_id=received.id,
+            accepted_at=accepted_at,
+            received_expense_id=received_expense_id,
             receiver_ledger_id=target_ledger_id,
-            receiver_member_id=target_member.id,
+            receiver_member_id=target_member_id,
         )
         .execution_options(synchronize_session=False)
     ).rowcount
-    if rowcount != 1:
-        # Lost the race between our flush and our claim: a peer flipped the
-        # status. Discard the tentative expense (+ the no-op UPDATE) and
-        # resolve against the winner.
-        db.rollback()
-        return _resolve_lost_accept(db, public_id, target_ledger_id, None)
+    return rowcount == 1
 
-    _audit(db, target_ledger_id, "bill_split_accepted",
-           actor_account_id=accepting_account_id,
-           target_account_id=inv.sender_account_id,
-           invitation_public_id=inv.public_id)
-    # ADR-0049 §4: when Debt rollout is on, the accepted split also creates the
-    # receiver's member Debt (i_owe the sender) in THIS transaction, so the
-    # expense, the invited→accepted claim, and the Debt commit together or not
-    # at all. Gated off by default (ADR §0.1 runtime subset). A re-accept never
-    # reaches here (the fast path returned the settled result above), so it
-    # cannot create a second Debt; uq_debts_source backstops any race. The
-    # receiver owes the home-currency share ``inv.amount_cents``; pass
-    # ``target_ledger_id`` (the claim just bound receiver_ledger_id, which the
-    # in-session ``inv`` may not reflect yet) and the invitation's frozen
-    # ``home_currency_code``.
-    #
-    # ADR-0049 §5.2 / slice 5: when the sender (creditor) is NOT a member of
-    # ``target_ledger_id`` (e.g. the receiver's personal ledger), the repayment
-    # confirm/reject path is now ACCOUNT-scoped — it resolves the Debt by
-    # participant identity (debtor OR creditor account) unioned with ledger
-    # membership, so the cross-ledger creditor can confirm/reject and clear this
-    # Debt (debt_service ``_load_participant_debt`` / ``lock_and_fold(account_id=)``).
-    # That closed the §0.1 hard-boundary prerequisite for ``DEBT_ROLLOUT_ENABLED``,
-    # which now defaults ON (⑤b activation): the creditor discovery + confirm UX
-    # shipped on all three surfaces and pre-rollout backfill self-heals on startup
-    # (ADR §4 / §0.1). An install can still opt out with DEBT_ROLLOUT_ENABLED=false.
-    if get_settings().debt_rollout_enabled:
-        create_bill_split_debt(
-            db,
-            ledger_id=target_ledger_id,
-            receiver_account_id=inv.receiver_account_id,
-            sender_account_id=inv.sender_account_id,
-            amount_cents=inv.amount_cents,
-            home_currency_code=inv.home_currency_code,
-            source_invitation_public_id=inv.public_id,
-            event_time=inv.expense_time_snapshot,
-        )
-    db.commit()
-    db.refresh(inv)
-    db.refresh(received)
-    return inv, received
+
+def _create_accept_debt_if_enabled(
+    db: Session, inv: BillSplitInvitation, target_ledger_id: str
+) -> None:
+    """Create the receiver's member debt in the same transaction when enabled."""
+    if not get_settings().debt_rollout_enabled:
+        return
+    # ADR-0049: accepted expense, invitation claim, and member debt commit
+    # together. Re-accept returns before this helper, and uq_debts_source
+    # backstops any unexpected race.
+    create_bill_split_debt(
+        db,
+        ledger_id=target_ledger_id,
+        receiver_account_id=inv.receiver_account_id,
+        sender_account_id=inv.sender_account_id,
+        amount_cents=inv.amount_cents,
+        home_currency_code=inv.home_currency_code,
+        source_invitation_public_id=inv.public_id,
+        event_time=inv.expense_time_snapshot,
+    )
 
 
 def _resolve_settled_accept(
@@ -191,11 +243,10 @@ def _resolve_settled_accept(
 ) -> tuple[BillSplitInvitation, Expense] | None:
     """Interpret an invitation that is no longer freshly acceptable.
 
-    - ``accepted`` → idempotent re-accept: return the bound expense when the
-      target ledger matches, else ``state_conflict`` (already accepted to a
-      different ledger).
-    - any other terminal status → ``invitation_not_acceptable``.
-    - ``invited`` → ``None`` (caller proceeds to accept).
+    - ``accepted`` -> idempotent re-accept: return the bound expense when the
+      target ledger matches, else ``state_conflict``.
+    - any other terminal status -> ``invitation_not_acceptable``.
+    - ``invited`` -> ``None`` (caller proceeds to accept).
 
     Pure read + raise; never commits. Shared by the fast-path pre-check and
     the post-rollback recovery so both read a settled invitation identically.
@@ -225,14 +276,7 @@ def _resolve_lost_accept(
     target_ledger_id: str,
     cause: Exception | None,
 ) -> tuple[BillSplitInvitation, Expense]:
-    """Recovery after a peer accept won (claim matched 0 rows, or the
-    partial-unique backstop tripped at flush). ``db.rollback()`` must have
-    run first so this re-reads committed state. Returns the peer's bound
-    expense (idempotent) or raises the terminal error a re-submit would.
-
-    If the re-read still shows ``invited`` the failure was not a peer-accept
-    race (an unexpected constraint violation / visibility quirk); surface it
-    as ``server_error`` rather than masking it as a conflict."""
+    """Recover after a peer accept won the claim or partial-unique race."""
     inv = get_invitation(db, public_id)
     settled = _resolve_settled_accept(db, inv, target_ledger_id)
     if settled is not None:
@@ -259,14 +303,18 @@ def reject_invitation(
         .execution_options(synchronize_session=False)
     ).rowcount
     if rowcount != 1:
-        # A peer settled the invitation first — same outcome as having read
+        # A peer settled the invitation first; same outcome as having read
         # the settled row up front.
         db.rollback()
         raise AppError("invitation_not_acceptable", status_code=409)
-    _audit(db, inv.sender_ledger_id, "bill_split_rejected",
-           actor_account_id=None,
-           target_account_id=rejecting_account_id,
-           invitation_public_id=inv.public_id)
+    _audit(
+        db,
+        inv.sender_ledger_id,
+        "bill_split_rejected",
+        actor_account_id=None,
+        target_account_id=rejecting_account_id,
+        invitation_public_id=inv.public_id,
+    )
     db.commit()
     db.refresh(inv)
     return inv
@@ -280,12 +328,11 @@ def cancel_invitation(
         raise AppError("invitation_not_yours", status_code=403)
     _load_writer_member(db, inv.sender_ledger_id, sender_account_id)
     if inv.status != "invited":
-        # Already terminal — accepted invitations CANNOT be cancelled
-        # because the receiver already has a real expense.
+        # Already terminal; accepted invitations cannot be cancelled because
+        # the receiver already has a real expense.
         raise AppError("invitation_not_cancellable", status_code=409)
-    # Atomic flip (mirrors the accept claim): a sender cancel racing a
-    # receiver accept must lose once the accept claim lands — the receiver
-    # already holds a confirmed expense at that point.
+    # Atomic flip (mirrors the accept claim): a sender cancel racing a receiver
+    # accept must lose once the accept claim lands.
     rowcount = db.execute(
         update(BillSplitInvitation)
         .where(BillSplitInvitation.id == inv.id)
@@ -296,23 +343,26 @@ def cancel_invitation(
     if rowcount != 1:
         db.rollback()
         raise AppError("invitation_not_cancellable", status_code=409)
-    _audit(db, inv.sender_ledger_id, "bill_split_cancelled",
-           actor_account_id=sender_account_id,
-           target_account_id=inv.receiver_account_id,
-           invitation_public_id=inv.public_id)
+    _audit(
+        db,
+        inv.sender_ledger_id,
+        "bill_split_cancelled",
+        actor_account_id=sender_account_id,
+        target_account_id=inv.receiver_account_id,
+        invitation_public_id=inv.public_id,
+    )
     db.commit()
     db.refresh(inv)
     return inv
 
 
 def expire_invitations(db: Session) -> int:
-    """Sweeper: anything ``invited`` with ``expires_at < now`` → expired.
+    """Sweeper: anything ``invited`` with ``expires_at < now`` -> expired.
 
-    A single guarded ``UPDATE … WHERE status='invited' … RETURNING`` so a
-    row concurrently accepted/rejected/cancelled after any earlier read can
-    never be clobbered to 'expired'. Returns count of newly-expired rows.
-    Intended to be called from a scheduled background task ([[ADR-0030]]
-    handler) or on demand."""
+    A single guarded ``UPDATE ... WHERE status='invited' ... RETURNING`` means
+    a row concurrently accepted/rejected/cancelled after an earlier read can
+    never be clobbered to expired.
+    """
     now = now_utc()
     expired = db.execute(
         update(BillSplitInvitation)
@@ -327,18 +377,21 @@ def expire_invitations(db: Session) -> int:
         .execution_options(synchronize_session=False)
     ).all()
     for row in expired:
-        _audit(db, row.sender_ledger_id, "bill_split_expired",
-               actor_account_id=None,
-               target_account_id=row.receiver_account_id,
-               invitation_public_id=row.public_id)
+        _audit(
+            db,
+            row.sender_ledger_id,
+            "bill_split_expired",
+            actor_account_id=None,
+            target_account_id=row.receiver_account_id,
+            invitation_public_id=row.public_id,
+        )
     if expired:
         db.commit()
     return len(expired)
 
 
 def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
-    """Best-effort expiry flip; ``False`` when a peer settled the row first
-    (the guarded UPDATE matched 0 rows — nothing was written)."""
+    """Best-effort expiry flip; false means a peer settled the row first."""
     rowcount = db.execute(
         update(BillSplitInvitation)
         .where(BillSplitInvitation.id == inv.id)
@@ -349,9 +402,13 @@ def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
     if rowcount != 1:
         db.rollback()
         return False
-    _audit(db, inv.sender_ledger_id, "bill_split_expired",
-           actor_account_id=None,
-           target_account_id=inv.receiver_account_id,
-           invitation_public_id=inv.public_id)
+    _audit(
+        db,
+        inv.sender_ledger_id,
+        "bill_split_expired",
+        actor_account_id=None,
+        target_account_id=inv.receiver_account_id,
+        invitation_public_id=inv.public_id,
+    )
     db.commit()
     return True
