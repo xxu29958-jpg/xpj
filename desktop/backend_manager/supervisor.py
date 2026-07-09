@@ -1,6 +1,6 @@
 """Backend process supervision — owns exactly one uvicorn process and keeps it alive.
 
-The OS-touching operations (spawn / tree-kill / port-clear / health probe / clock)
+The OS-touching operations (spawn / tree-kill / health probe / clock)
 are injected so the lifecycle logic is unit-testable without real subprocesses.
 
 Two correctness rules this module exists to enforce:
@@ -36,11 +36,18 @@ class ManagedProcess(Protocol):
         """Most recent captured stdout/stderr lines (newest last)."""
         ...
 
+    def wait(self, timeout: float) -> int:
+        """Wait for process exit, raising ``TimeoutError`` if it stays alive."""
+        ...
+
+
+class SupervisorControlError(RuntimeError):
+    """Raised when an ownership-safe lifecycle operation cannot be completed."""
+
 
 # Injected callable signatures (real implementations live in ``process.py``).
 SpawnFn = "callable[[], ManagedProcess]"
-TreeKillFn = "callable[[int], None]"
-KillPortFn = "callable[[], None]"
+TreeKillFn = "callable[[int], bool]"
 HealthFn = "callable[[], bool]"
 ClockFn = "callable[[], float]"
 
@@ -65,6 +72,7 @@ class SupervisorStatus:
     auto_restart: bool
     restarts: int
     log: list[str]
+    control_error: str | None
 
 
 class BackendSupervisor:
@@ -75,14 +83,12 @@ class BackendSupervisor:
         *,
         spawn,
         tree_kill,
-        kill_port,
         health,
         config: SupervisorConfig | None = None,
         clock=time.monotonic,
     ) -> None:
         self._spawn = spawn
         self._tree_kill = tree_kill
-        self._kill_port = kill_port
         self._health = health
         self._clock = clock
         self._config = config or SupervisorConfig()
@@ -93,6 +99,7 @@ class BackendSupervisor:
         self._spawned_at: float | None = None
         self._unhealthy_streak = 0
         self._adopted = False  # tracking an externally-started healthy backend (we don't own its pid)
+        self._last_control_error: str | None = None
 
         self.auto_restart = True
         self.restarts = 0
@@ -124,43 +131,60 @@ class BackendSupervisor:
         self._proc = None
         self._spawned_at = None
         self._unhealthy_streak = 0
+        self._last_control_error = None
 
     def stop(self) -> None:
         """Tree-kill the backend and stop supervising it (no auto-restart)."""
         with self._lock:
+            if self._adopted:
+                raise SupervisorControlError(
+                    "当前后端由管理器外部启动，不能安全停止；请使用它原来的启动方式停止。",
+                )
             self._managed = False
             self._terminate()
+            self._last_control_error = None
 
     def restart(self) -> None:
         """Tree-kill and respawn a fresh backend."""
         with self._lock:
             self._managed = True
+            if self._adopted:
+                raise SupervisorControlError(
+                    "当前后端由管理器外部启动，不能安全重启；请使用它原来的启动方式重启。",
+                )
             self._terminate()
-            self._kill_port()
             self._launch()
 
     # ---- supervision tick (called by the monitor thread or tests) --------
     def tick(self) -> None:
         """One supervision step: restart the backend if it has died or gone unhealthy."""
         with self._lock:
-            if not (self._managed and self.auto_restart):
-                return
-            if self._adopted:
-                # An externally-started backend we adopted. Sustained health
-                # failure (past grace) means it's effectively gone — _check_health
-                # takes over with our own process via _restart_internal.
+            try:
+                if not (self._managed and self.auto_restart):
+                    return
+                if self._adopted:
+                    # An externally-started backend we adopted. Sustained health
+                    # failure (past grace) means it's effectively gone — _check_health
+                    # takes over with our own process via _restart_internal.
+                    self._check_health()
+                    return
+                if not self._alive():
+                    if self._health():
+                        self._adopt()
+                        return
+                    self._restart_internal()
+                    return
                 self._check_health()
-                return
-            if not self._alive():
-                self._restart_internal()
-                return
-            self._check_health()
+            except (OSError, SupervisorControlError) as exc:
+                self._last_control_error = str(exc)
+                raise
 
     def _check_health(self) -> None:
         if self._within_grace():
             return
         if self._health():
             self._unhealthy_streak = 0
+            self._last_control_error = None
             return
         self._unhealthy_streak += 1
         if self._unhealthy_streak >= self._config.unhealthy_restarts_after:
@@ -177,25 +201,31 @@ class BackendSupervisor:
         self._proc = self._spawn()
         self._spawned_at = self._clock()
         self._unhealthy_streak = 0
+        self._last_control_error = None
 
     def _terminate(self) -> None:
-        if self._proc is not None:
-            self._tree_kill(self._proc.pid)
+        proc = self._proc
+        if proc is not None:
+            kill_requested = self._tree_kill(proc.pid)
+            try:
+                proc.wait(timeout=5.0)
+            except TimeoutError as exc:
+                detail = "taskkill 未成功" if not kill_requested else "进程未在 taskkill 后退出"
+                raise SupervisorControlError(f"停止后端失败：{detail}（PID {proc.pid}）。") from exc
+            if not kill_requested and self._health():
+                self._adopt()
+                raise SupervisorControlError(
+                    "后端父进程已退出，但服务端口仍有健康实例；管理器没有误杀该外部进程。",
+                )
         self._proc = None
         self._spawned_at = None
+        self._adopted = False
 
     def _restart_internal(self) -> None:
-        self.restarts += 1
-        owned = self._proc is not None  # only clear the port for a backend we spawned
         self._adopted = False
         self._terminate()
-        if owned:
-            # Clear our own backend's worker residue (we just tree-killed its
-            # parent). When taking over a now-unhealthy ADOPTED backend we own
-            # nothing, so we never port-kill it — uvicorn surfaces a bind error
-            # instead if that process is still holding the port.
-            self._kill_port()
         self._launch()
+        self.restarts += 1
 
     def _alive(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
@@ -214,6 +244,7 @@ class BackendSupervisor:
                 auto_restart=self.auto_restart,
                 restarts=self.restarts,
                 log=(self._proc.recent_log() if self._proc else []),
+                control_error=self._last_control_error,
             )
 
     def toggle_auto_restart(self) -> bool:
@@ -224,4 +255,7 @@ class BackendSupervisor:
     def run_monitor(self, stop_event: threading.Event) -> None:
         """Block in the supervision loop until ``stop_event`` is set (run in a daemon thread)."""
         while not stop_event.wait(self._config.tick_seconds):
-            self.tick()
+            try:
+                self.tick()
+            except (OSError, SupervisorControlError):
+                continue

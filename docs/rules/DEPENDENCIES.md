@@ -5,6 +5,7 @@
 ## 基本规则
 
 - 后端 Python 依赖固定在 `backend/requirements.txt` 和 `backend/requirements-dev.txt`。
+- Desktop Manager Python 运行依赖固定在 `desktop/requirements.txt`;与后端共用的库保持同一锁定版本。
 - Android 依赖版本集中在 `android/gradle/libs.versions.toml`。
 - 不在业务模块里散写第三方版本号。
 - 默认使用稳定版；预发布版本必须有明确理由，并写入 ADR。

@@ -2,4 +2,8 @@
 # psutil: per-adapter IPv4 enumeration (the only reliable LAN-IP source behind a
 # Clash/full-tunnel VPN, where socket routing is hijacked). Optional - netinfo
 # degrades to hostname resolution if it is absent.
-psutil>=5.9
+psutil==7.2.2
+# Required by config.py to read the active source/ProgramData .env. Keep this
+# aligned with backend/requirements.txt so the manager and backend parse the
+# same deployment configuration with one tested dotenv version.
+python-dotenv==1.2.2

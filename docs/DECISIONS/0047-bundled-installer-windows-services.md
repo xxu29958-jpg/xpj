@@ -53,7 +53,7 @@ owner 要把后端**发给亲友独立自用**（对方自己当 owner、自己�
 
 3. **PG 隐形 + connect-retry 必需（非 best-effort）+ 应用角色建库**：`depend=` 只保证 PG 服务到 RUNNING，**不保证已接受连接**（经典 SCM 竞争）→ 后端启动必须**有界退避重试直到 PG 接受连接**（杀现 `start_backend` 历史「4 秒判死」类 bug；启动期会跑 Alembic [[feedback_backend_start_runs_migrations_on_user_db]]，故重试要包住启动期 DB 访问）。安装后以应用角色 `ticketbox` 建库 / 迁移——cluster 默认以 postgres 超级用户建（正是 owner 错位陷阱 [[project_pg_cutover_table_owner_trap]]），故角色初始化是 cluster 建好后**必跑**步（`fix_table_owners.sql` 自检进首启）。用户从不配 DATABASE_URL、不知有 PG。
 
-4. **EXE = 主机管理器，不在关键路径（bootstrap / 配设备全走 loopback API，二维码只塞短期码）**：GUI 控制台（起停 / 状态 / 健康 / LAN 地址 + 二维码 / serve APK / 引导式网络面板）；关掉它服务照跑；经 SCM 控制服务（需提权）。
+4. **EXE = 主机管理器，不在关键路径（bootstrap / 配设备全走 loopback API，二维码只塞短期码）**：GUI 控制台（起停 / 状态 / 健康 / LAN 地址 + 二维码 / serve APK / 引导式网络面板）；关掉它服务照跑。GUI/localhost HTTP 控制面本身必须保持普通权限；每次 SCM 起停只为 `start` / `stop` / `restart` 固定动作拉起短命 UAC helper，执行完立即退出。禁止让常驻高权限进程同时提供含控制 token/日志的 localhost HTTP 页面，避免普通本机进程把它当作高权限代理。
    * **bootstrap owner = 调 loopback `POST /api/bootstrap/owner`（已存在：`enable_http_bootstrap` + 一次性 `http_bootstrap_secret`，用后消费），非直接写 DB**；一次性 secret 即「一次性凭证用后失效」机制。
    * **配新设备 = 调 loopback `POST /api/bootstrap/pairing-codes`（已存在，admin + loopback 边界），二维码只塞短时单次 `PairingCode`**（模型已有 `expires_at` NOT NULL + `used_at` 单次、只存 hash）——**绝不塞长期 token**。设备拿 pairing code 换 `AuthToken`（绑 `Device`、有 `revoked_at` / `expires_at`，可单设备撤销）。
    * **`/owner` 永远 loopback-only**（已由 `require_owner_console_local` TCP peer + Host 头双检强制，[[0028]] / §14；无公网模式，不随分发形态放宽）。

@@ -388,7 +388,8 @@ if (Test-Path -LiteralPath $catalogPath) {
 
 $requirementsPaths = @(
     (Join-Path $ProjectRoot "backend/requirements.txt"),
-    (Join-Path $ProjectRoot "backend/requirements-dev.txt")
+    (Join-Path $ProjectRoot "backend/requirements-dev.txt"),
+    (Join-Path $ProjectRoot "desktop/requirements.txt")
 ) | Where-Object { Test-Path -LiteralPath $_ }
 
 if ($requirementsPaths.Count -gt 0) {
