@@ -48,20 +48,67 @@ def create_invitation(
 
     Sender does NOT specify receiver_ledger_id — receiver picks at accept.
     """
+    _validate_invitation_request(
+        sender_account_id=sender_account_id,
+        receiver_account_id=receiver_account_id,
+        amount_cents=amount_cents,
+    )
+    sender_member = _load_writer_member(db, sender_ledger_id, sender_account_id)
+    expense = _load_split_parent_expense(
+        db, sender_ledger_id=sender_ledger_id, expense_id=expense_id
+    )
+    _ensure_parent_can_be_split(expense, amount_cents=amount_cents)
+    sender, receiver = _load_invitation_parties(
+        db,
+        sender_account_id=sender_account_id,
+        receiver_account_id=receiver_account_id,
+    )
+    _ensure_invitation_capacity(
+        db,
+        expense=expense,
+        receiver_account_id=receiver_account_id,
+        amount_cents=amount_cents,
+    )
+    invitation = _build_invitation(
+        sender_account_id=sender_account_id,
+        sender_ledger_id=sender_ledger_id,
+        sender_member_id=sender_member.id,
+        expense=expense,
+        sender=sender,
+        receiver=receiver,
+        receiver_account_id=receiver_account_id,
+        amount_cents=amount_cents,
+    )
+    db.add(invitation)
+    # Flush before audit so invitation.public_id is available.
+    _flush_invitation_or_raise(db)
+    _audit(
+        db,
+        sender_ledger_id,
+        "bill_split_invited",
+        actor_account_id=sender_account_id,
+        target_account_id=receiver_account_id,
+        invitation_public_id=invitation.public_id,
+    )
+    db.commit()
+    db.refresh(invitation)
+    return invitation
+
+
+def _validate_invitation_request(
+    *, sender_account_id: int, receiver_account_id: int, amount_cents: int
+) -> None:
     if amount_cents <= 0:
         raise AppError("split_amount_invalid", "请填写大于 0 的拆账金额。", status_code=422)
-
     if receiver_account_id == sender_account_id:
         raise AppError("split_receiver_invalid", status_code=422)
 
-    # 1. Sender's role on sender_ledger must be writer.
-    sender_member = _load_writer_member(db, sender_ledger_id, sender_account_id)
 
-    # 2. Expense must belong to sender's ledger. Row-lock the parent so the
-    # active_split_total read + cap check + insert below serialize against
-    # concurrent invites on the same parent (PG-only 债 #1: replaces the
-    # SQLite-only BEGIN IMMEDIATE writer guard; FOR UPDATE is dialect-portable —
-    # PG locks the row, SQLite ignores it).
+def _load_split_parent_expense(
+    db: Session, *, sender_ledger_id: str, expense_id: int
+) -> Expense:
+    # Row-lock the parent so active-split total + cap check + insert serialize
+    # against concurrent invites on the same parent (PG locks, SQLite ignores).
     expense = db.scalar(
         select(Expense)
         .where(Expense.id == expense_id)
@@ -70,16 +117,16 @@ def create_invitation(
     )
     if expense is None:
         raise AppError("expense_not_found", status_code=404)
+    return expense
 
-    # 3. No chain split.
+
+def _ensure_parent_can_be_split(expense: Expense, *, amount_cents: int) -> None:
     if expense.source == SPLIT_RECEIVED_SOURCE:
         raise AppError(
             "split_chain_not_allowed",
             "不能对收到的拆账邀请再次拆账。",
             status_code=400,
         )
-
-    # 4. Amount must not exceed parent expense.
     if expense.amount_cents is None:
         raise AppError(
             "split_parent_amount_missing",
@@ -93,15 +140,26 @@ def create_invitation(
             status_code=422,
         )
 
-    # 5. Receiver account must exist; build display snapshots. Keep the
-    # public error generic so this endpoint cannot be used as an account
-    # existence oracle.
+
+def _load_invitation_parties(
+    db: Session, *, sender_account_id: int, receiver_account_id: int
+) -> tuple[Account, Account]:
     receiver = db.get(Account, receiver_account_id)
     if receiver is None:
         raise AppError("split_receiver_invalid", status_code=422)
     sender = db.get(Account, sender_account_id)
     assert sender is not None  # AuthContext already validated this
+    return sender, receiver
 
+
+def _ensure_invitation_capacity(
+    db: Session,
+    *,
+    expense: Expense,
+    receiver_account_id: int,
+    amount_cents: int,
+) -> None:
+    assert expense.amount_cents is not None
     active_split_total = int(
         db.scalar(
             select(func.coalesce(func.sum(BillSplitInvitation.amount_cents), 0))
@@ -127,13 +185,25 @@ def create_invitation(
     if pending_duplicate is not None:
         raise AppError("split_invitation_already_pending", status_code=409)
 
+
+def _build_invitation(
+    *,
+    sender_account_id: int,
+    sender_ledger_id: str,
+    sender_member_id: int,
+    expense: Expense,
+    sender: Account,
+    receiver: Account,
+    receiver_account_id: int,
+    amount_cents: int,
+) -> BillSplitInvitation:
     now = now_utc()
     home_currency = normalize_currency_code(expense.home_currency_code)
     original_currency = normalize_currency_code(expense.original_currency_code)
-    invitation = BillSplitInvitation(
+    return BillSplitInvitation(
         sender_account_id=sender_account_id,
         sender_ledger_id=sender_ledger_id,
-        sender_member_id=sender_member.id,
+        sender_member_id=sender_member_id,
         sender_expense_id=expense.id,
         sender_display_name=_display_name(sender),
         receiver_account_id=receiver_account_id,
@@ -152,21 +222,16 @@ def create_invitation(
         expires_at=now + INVITATION_TTL,
         created_at=now,
     )
-    db.add(invitation)
+
+
+def _flush_invitation_or_raise(db: Session) -> None:
     try:
-        db.flush()  # need invitation.public_id for audit row
+        db.flush()
     except IntegrityError as exc:
         db.rollback()
         if _is_pending_duplicate_error(exc):
             raise AppError("split_invitation_already_pending", status_code=409) from exc
         raise
-    _audit(db, sender_ledger_id, "bill_split_invited",
-           actor_account_id=sender_account_id,
-           target_account_id=receiver_account_id,
-           invitation_public_id=invitation.public_id)
-    db.commit()
-    db.refresh(invitation)
-    return invitation
 
 
 def _exchange_rate_datetime(value: date | datetime | None) -> datetime | None:
