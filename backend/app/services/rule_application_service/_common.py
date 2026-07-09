@@ -63,6 +63,17 @@ def _non_auto_fillable_category_count(db: Session, *, tenant_id: str, status: st
     return int(count or 0)
 
 
+def _enabled_rules(db: Session, *, tenant_id: str) -> list[CategoryRule]:
+    return list(
+        db.scalars(
+            ledger_scoped_select(CategoryRule, tenant_id)
+            .where(CategoryRule.enabled == True)  # noqa: E712
+            .where(CategoryRule.deleted_at.is_(None))
+            .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
+        )
+    )
+
+
 def _iso_or_none(value: object) -> str | None:
     if value is None:
         return None
