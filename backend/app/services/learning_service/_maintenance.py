@@ -127,6 +127,93 @@ def _expired_count(
     return expired
 
 
+def _count_algorithm_decisions(
+    db: Session, *, tenant_id: str | None = None, active_only: bool = False
+) -> int:
+    stmt = select(func.count(AlgorithmDecision.id))
+    if active_only:
+        stmt = stmt.where(AlgorithmDecision.status == "active")
+    if tenant_id is not None:
+        stmt = stmt.where(AlgorithmDecision.tenant_id == tenant_id)
+    return int(db.scalar(stmt) or 0)
+
+
+def _count_ledger_learning_events(
+    db: Session, *, tenant_id: str | None = None
+) -> int:
+    stmt = select(func.count(LedgerLearningEvent.id))
+    if tenant_id is not None:
+        stmt = stmt.where(LedgerLearningEvent.tenant_id == tenant_id)
+    return int(db.scalar(stmt) or 0)
+
+
+def _count_ocr_facts(db: Session, *, tenant_id: str | None = None) -> int:
+    stmt = select(func.count(OcrFact.id))
+    if tenant_id is not None:
+        stmt = stmt.where(OcrFact.tenant_id == tenant_id)
+    return int(db.scalar(stmt) or 0)
+
+
+def _algorithm_decision_snapshot(
+    db: Session, *, tenant_id: str | None = None
+) -> LearningTableSnapshot:
+    return LearningTableSnapshot(
+        total_rows=_count_algorithm_decisions(db, tenant_id=tenant_id),
+        expired_candidate_rows=_expired_count(
+            db,
+            model=AlgorithmDecision,
+            timestamp_column=lambda r: r.created_at,
+            # Every terminal status is cleanup-eligible; active rows are
+            # never pruned regardless of age.
+            status_filter=lambda r: r.status in TERMINAL_DECISION_STATUSES,
+            tenant_id=tenant_id,
+        ),
+    )
+
+
+def _ledger_learning_event_snapshot(
+    db: Session, *, tenant_id: str | None = None
+) -> LearningTableSnapshot:
+    return LearningTableSnapshot(
+        total_rows=_count_ledger_learning_events(db, tenant_id=tenant_id),
+        expired_candidate_rows=_expired_count(
+            db,
+            model=LedgerLearningEvent,
+            timestamp_column=lambda r: r.created_at,
+            tenant_id=tenant_id,
+        ),
+    )
+
+
+def _ocr_fact_snapshot(
+    db: Session, *, tenant_id: str | None = None
+) -> LearningTableSnapshot:
+    return LearningTableSnapshot(
+        total_rows=_count_ocr_facts(db, tenant_id=tenant_id),
+        expired_candidate_rows=_expired_count(
+            db,
+            model=OcrFact,
+            timestamp_column=lambda r: r.extracted_at,
+            tenant_id=tenant_id,
+        ),
+    )
+
+
+def _last_cleanup_summary(db: Session, *, tenant_id: str | None = None) -> dict | None:
+    last_summary_raw = get_value(
+        db, _scoped_meta_key(LEARNING_CLEANUP_LAST_SUMMARY_KEY, tenant_id)
+    )
+    if not last_summary_raw:
+        return None
+    try:
+        parsed = json.loads(last_summary_raw)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
 def get_status_overview(
     db: Session, *, tenant_id: str | None = None
 ) -> LearningStatusOverview:
@@ -138,83 +225,22 @@ def get_status_overview(
     authenticated admin's tenant; only background cron-style callers
     (none today) should keep the None default.
     """
-
-    ad_stmt_total = select(func.count(AlgorithmDecision.id))
-    ad_stmt_active = select(func.count(AlgorithmDecision.id)).where(
-        AlgorithmDecision.status == "active"
-    )
-    ev_stmt_total = select(func.count(LedgerLearningEvent.id))
-    oc_stmt_total = select(func.count(OcrFact.id))
-    if tenant_id is not None:
-        ad_stmt_total = ad_stmt_total.where(
-            AlgorithmDecision.tenant_id == tenant_id
-        )
-        ad_stmt_active = ad_stmt_active.where(
-            AlgorithmDecision.tenant_id == tenant_id
-        )
-        ev_stmt_total = ev_stmt_total.where(
-            LedgerLearningEvent.tenant_id == tenant_id
-        )
-        oc_stmt_total = oc_stmt_total.where(OcrFact.tenant_id == tenant_id)
-
-    ad_total = int(db.scalar(ad_stmt_total) or 0)
-    ad_active = int(db.scalar(ad_stmt_active) or 0)
-    ad_expired = _expired_count(
-        db,
-        model=AlgorithmDecision,
-        timestamp_column=lambda r: r.created_at,
-        # Every terminal status is cleanup-eligible; active rows are
-        # never pruned regardless of age.
-        status_filter=lambda r: r.status in TERMINAL_DECISION_STATUSES,
-        tenant_id=tenant_id,
-    )
-
-    ev_total = int(db.scalar(ev_stmt_total) or 0)
-    ev_expired = _expired_count(
-        db,
-        model=LedgerLearningEvent,
-        timestamp_column=lambda r: r.created_at,
-        tenant_id=tenant_id,
-    )
-
-    oc_total = int(db.scalar(oc_stmt_total) or 0)
-    oc_expired = _expired_count(
-        db,
-        model=OcrFact,
-        timestamp_column=lambda r: r.extracted_at,
-        tenant_id=tenant_id,
-    )
-
     last_cleanup = get_value(
         db, _scoped_meta_key(LEARNING_CLEANUP_LAST_RUN_KEY, tenant_id)
     )
-    last_summary_raw = get_value(
-        db, _scoped_meta_key(LEARNING_CLEANUP_LAST_SUMMARY_KEY, tenant_id)
-    )
-    last_summary: dict | None = None
-    if last_summary_raw:
-        try:
-            parsed = json.loads(last_summary_raw)
-            if isinstance(parsed, dict):
-                last_summary = parsed
-        except (json.JSONDecodeError, ValueError):
-            last_summary = None
-    stale_active = stale_active_count(db, tenant_id=tenant_id)
 
     return LearningStatusOverview(
-        algorithm_decisions=LearningTableSnapshot(
-            total_rows=ad_total, expired_candidate_rows=ad_expired
+        algorithm_decisions=_algorithm_decision_snapshot(db, tenant_id=tenant_id),
+        ledger_learning_events=_ledger_learning_event_snapshot(
+            db, tenant_id=tenant_id
         ),
-        ledger_learning_events=LearningTableSnapshot(
-            total_rows=ev_total, expired_candidate_rows=ev_expired
+        ocr_facts=_ocr_fact_snapshot(db, tenant_id=tenant_id),
+        active_decisions=_count_algorithm_decisions(
+            db, tenant_id=tenant_id, active_only=True
         ),
-        ocr_facts=LearningTableSnapshot(
-            total_rows=oc_total, expired_candidate_rows=oc_expired
-        ),
-        active_decisions=ad_active,
-        stale_active_candidates=stale_active,
+        stale_active_candidates=stale_active_count(db, tenant_id=tenant_id),
         last_cleanup_at=last_cleanup,
-        last_cleanup_summary=last_summary,
+        last_cleanup_summary=_last_cleanup_summary(db, tenant_id=tenant_id),
     )
 
 

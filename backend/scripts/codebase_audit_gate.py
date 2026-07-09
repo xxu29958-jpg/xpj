@@ -28,28 +28,14 @@ from pathlib import Path
 
 DebtCounts = dict[str, int]
 
-# Re-baselined for the v1.1 working tree (AI budget advisor + auth/migration
-# hardening + this round's review fixes). ``files_over_500`` rose to 12 because
-# the heavily-refactored ``background_task_service`` and the tenant-isolation
-# tests in ``test_background_tasks`` legitimately grew past 500 — splitting
-# cohesive files purely to stay under the line is the wrong trade. The lowered
-# counters (nested_dict_args / service_public_no_private / unreferenced_modules)
-# bank real reductions so they cannot silently regress later.
-#
-# ``route_layer_imports`` and ``mixed_return_functions`` are now 0: the audit
-# was de-noised (route lane no longer counts the ``get_db`` DI import; the
-# mixed-return lane skips declared Optionals and no longer attributes a nested
-# closure's bare return to its parent), and the few genuine cases were moved
-# into services (device_public_id / active_ledger_name) or behind TYPE_CHECKING.
-# Both at 0 means any real route→model import or implicit-None return now fails.
+# ``CODEBASE_DEBT_LIMITS`` is active configuration, not an audit log. Keep the
+# current ceilings here and put detailed ratchet provenance in commits/PR notes.
+# Zero ceilings mean the scanner lane is now strict and any reintroduction fails.
 CODEBASE_DEBT_LIMITS: DebtCounts = {
-    # 12→13: ADR-0038 undo pushed routes/expenses.py past 500. 13→14: ADR-0041
-    # self-describing items/splits tests grew test_expense_splits.py past 500.
-    # Splitting cohesive files purely to stay under the line is the wrong trade.
-    "files_over_500": 17,  # +1 ADR-0049 #4: models/debt.py crossed 500 (498→534) adding member-repayment + RepaymentDraft FK/CHECK backstops with the load-bearing circular-FK/use_alter note. +1 slice 3: routes/debts.py (member-repayment-proposal routes; proposal tests split by concern stay under the gate).
-    # PR-A expanded undo_reject_expense docstring (ABA + child resource
-    # contract) tipped one function over the 80-line threshold; bank +1.
-    "long_functions": 37,  # −4 PG-only slice 2 (retired SQLite migrator/validator); −1 slice 5 (retired cut-over machinery)
+    # Keep active ceilings here. Older ratchet provenance belongs in git history,
+    # not in executable override chains.
+    "files_over_500": 15,
+    "long_functions": 13,  # 2026-07-09: merchant-alias update and learning-status overview split.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 4,  # 2026-07-09: category summary extraction added a real private aggregation boundary.
@@ -59,14 +45,11 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "mixed_return_functions": 0,
     "broad_exception": 0,  # 2026-07-08: remaining broad catches narrowed to cleanup/fail-soft exception families.
     "generic_raises": 0,  # 2026-07-08: remaining direct RuntimeError raises now use narrow startup/service contract exceptions.
-    "todo_markers": 9,
+    "todo_markers": 0,
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the
-    # /web/pending route; bank the reduction so unreferenced_modules can't
-    # silently re-creep.
-    "unreferenced_modules": 219,  # +1 issue #65 slice 6a owner "My Devices" (routes.devices + services.owner_device_service — covered via /api/ledgers/{id}/devices route tests in test_my_devices, not direct submodule-path import; net +1, schemas._identity already referenced). +1 ⑥ debt 账单 OCR slice 1 routes/debt_bills.py（POST /api/debts/parse-bill——经路由测试 HTTP 覆盖，非 direct submodule-path import；local_llm_vision + debt_bill_parse_service 被 test 直接 import 故不计）. −1 ADR-0049 web 面 slice 4 (web_debt_goals 直接 import goal_debt_repayment_service.list_debt_repayment_goals → 该模块由 facade-only 转为 referenced，bank improved-INFO 防回归). −2 ADR-0049 web 面 slice 2a (web_debts 直接 import ledger_service+debt_service helpers → referenced, bank improved-INFO); +3 ADR-0049 §杠杆③ slice 3a (routes.repayment_drafts + schemas._repayment_drafts + debt_service._repayment_draft — covered via /api/repayment-drafts route tests + debt_service.__init__ re-export, not direct submodule-path import); +2 ADR-0043 tag_management_service + tag_undo_service (covered via /api/tags route tests, not direct import); +2 slice C web_tags + owner_console._tag_cleanup (HTTP-tested, not direct import); −15 PG-only slice 2 (retired _migrations/ + _validate/ submodules); −1 slice 5 (retired cut-over modules); −4 ratchet tightens on the gate's own improved-INFO (2026-06-11, 2026-06-12 ×3 — 批14 retiring web_stats, 扫尾W2 list_sent_for_expense wired); +6 ADR-0049 slice 1 Debt domain (models.debt / routes.debts / schemas._debts / debt_service._create+_query+_fold — covered via /api/debts route tests + test_debt_fold service imports, not direct submodule-path import); +6 ADR-0049 slice 2 Debt fact-write submodules (debt_service._serialize+_money+_guards+_repayment+_adjustment+_void — re-exported via debt_service.__init__ + exercised via /api/debts/{id}/repayments|adjustments|repayment-voids|void route tests, not direct submodule-path import); +1 ADR-0049 slice 3 debt_service._proposal (re-exported via debt_service.__init__ + exercised via /api/debts/{id}/repayment-proposals route tests, not direct submodule-path import); +1 ADR-0049 slice 6 goal_debt_repayment_service (re-exported via goal_service facade + exercised via /api/goals debt routes, not direct submodule-path import); +1 ADR-0049 slice 8e-3 debt_service._forgive (re-exported via debt_service.__init__ + exercised via /api/debts/{id}/forgive route tests, not direct submodule-path import) — APPROX, orchestrator finalizes
+    "unreferenced_modules": 223,  # Noisy lane; actual is lower, but keep unratcheted until a dedicated module-reference cleanup.
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -77,16 +60,6 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_paths": 0,
     "magic_numbers": 0,
 }
-
-CODEBASE_DEBT_LIMITS.update(
-    {
-        "files_over_500": 15,
-        "long_functions": 15,  # 2026-07-09: low-risk category/recurring production long functions split.
-        "deep_nesting_functions": 0,
-        "broad_exception": 0,
-        "unreferenced_modules": 223,
-    }
-)  # ADR-0052 recycle-bin follow-up; 2026-07-06 cleanup retired the one-shot migrator, compressed gate prose, split smoke_test orchestration, narrowed audit scanner fallbacks, and ratcheted post-batch broad exceptions.
 
 
 def evaluate_debt(counts: DebtCounts) -> int:
@@ -184,7 +157,6 @@ STRICT_EQUALITY_BASELINE.update({
     "mutate_token_exempted": 122,
     "mutate_token_reason_create_row": 32,
 })
-CODEBASE_DEBT_LIMITS.update({"todo_markers": 0})
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2389})  # +1 OCR benchmark local_llm harness test; +1 error-copy map parser fixture; +16 ci-gap release APK policy parser tests; +17 release APK path-gate parser tests.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2391})  # +2 backend generic-raises cleanup facade export pins.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2392})  # +1 broad-exception slice: thumbnail DecompressionBombError degrades to no thumbnail.
