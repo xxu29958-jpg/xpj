@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
@@ -17,6 +19,21 @@ from app.services.soft_delete_policy import (
     is_within_undo_window,
 )
 from app.services.time_service import now_utc
+
+
+@dataclass(frozen=True)
+class _MerchantAliasIdentity:
+    item_id: int
+    tenant_id: str
+    public_id: str
+
+
+@dataclass(frozen=True)
+class _MerchantAliasValues:
+    canonical_display: str
+    canonical_key: str
+    alias_display: str
+    alias_key: str
 
 
 def _clean_merchant(value: str | None) -> tuple[str, str]:
@@ -89,6 +106,92 @@ def _ensure_alias_available(
     existing = _get_alias_by_key(db, tenant_id=tenant_id, alias_key=alias_key)
     if existing is not None and existing.id != current_id:
         raise AppError("merchant_alias_conflict", status_code=409)
+
+
+def _alias_identity(item: MerchantAlias) -> _MerchantAliasIdentity:
+    try:
+        return _MerchantAliasIdentity(
+            item_id=item.id,
+            tenant_id=item.tenant_id,
+            public_id=item.public_id,
+        )
+    except ObjectDeletedError as exc:
+        raise AppError("merchant_alias_not_found", status_code=404) from exc
+
+
+def _alias_values(item: MerchantAlias) -> _MerchantAliasValues:
+    try:
+        return _MerchantAliasValues(
+            canonical_display=item.canonical_merchant,
+            canonical_key=item.canonical_key,
+            alias_display=item.alias,
+            alias_key=item.alias_key,
+        )
+    except ObjectDeletedError as exc:
+        raise AppError("merchant_alias_not_found", status_code=404) from exc
+
+
+def _alias_update_values(
+    current: _MerchantAliasValues,
+    *,
+    canonical_merchant: str | None,
+    alias: str | None,
+) -> _MerchantAliasValues:
+    canonical_display = current.canonical_display
+    canonical_key = current.canonical_key
+    alias_display = current.alias_display
+    alias_key = current.alias_key
+    if canonical_merchant is not None:
+        canonical_display, canonical_key = _clean_merchant(canonical_merchant)
+    if alias is not None:
+        alias_display, alias_key = _clean_merchant(alias)
+    if alias_key == canonical_key:
+        raise AppError("invalid_request", "别名不能和标准商家相同。", status_code=422)
+    return _MerchantAliasValues(
+        canonical_display=canonical_display,
+        canonical_key=canonical_key,
+        alias_display=alias_display,
+        alias_key=alias_key,
+    )
+
+
+def _alias_set_values(
+    values: _MerchantAliasValues, *, enabled: bool | None
+) -> dict[str, object]:
+    set_values: dict[str, object] = {
+        "canonical_merchant": values.canonical_display,
+        "canonical_key": values.canonical_key,
+        "alias": values.alias_display,
+        "alias_key": values.alias_key,
+        "updated_at": now_utc(),
+    }
+    if enabled is not None:
+        set_values["enabled"] = enabled
+    return set_values
+
+
+def _raise_alias_update_conflict(db: Session, identity: _MerchantAliasIdentity) -> None:
+    db.rollback()
+    current = _get_alias_by_public_id(
+        db, tenant_id=identity.tenant_id, public_id=identity.public_id
+    )
+    if current is None:
+        raise AppError("merchant_alias_not_found", status_code=404)
+    raise AppError("state_conflict", status_code=409)
+
+
+def _refresh_alias_after_update(
+    db: Session, identity: _MerchantAliasIdentity
+) -> MerchantAlias:
+    db.expire_all()
+    refreshed = _get_alias_by_public_id(
+        db, tenant_id=identity.tenant_id, public_id=identity.public_id
+    )
+    # rowcount == 1 means the row exists and was just updated; the follow-
+    # up find cannot return None unless something else deleted the row
+    # between our UPDATE and this SELECT.
+    assert refreshed is not None
+    return refreshed
 
 
 def list_merchant_aliases(db: Session, tenant_id: str) -> list[MerchantAlias]:
@@ -173,71 +276,36 @@ def update_merchant_alias(
     SQLAlchemy error during the UPDATE WHERE build. Same shape as
     :func:`update_rule`.
     """
-    try:
-        item_id = item.id
-        item_tenant_id = item.tenant_id
-        item_public_id = item.public_id
-        canonical_display = item.canonical_merchant
-        canonical_key = item.canonical_key
-        alias_display = item.alias
-        alias_key = item.alias_key
-    except ObjectDeletedError as exc:
-        raise AppError("merchant_alias_not_found", status_code=404) from exc
-
-    if canonical_merchant is not None:
-        canonical_display, canonical_key = _clean_merchant(canonical_merchant)
-    if alias is not None:
-        alias_display, alias_key = _clean_merchant(alias)
-    if alias_key == canonical_key:
-        raise AppError("invalid_request", "别名不能和标准商家相同。", status_code=422)
+    identity = _alias_identity(item)
+    values = _alias_update_values(
+        _alias_values(item),
+        canonical_merchant=canonical_merchant,
+        alias=alias,
+    )
     _ensure_alias_available(
         db,
-        tenant_id=item_tenant_id,
-        alias_key=alias_key,
-        current_id=item_id,
+        tenant_id=identity.tenant_id,
+        alias_key=values.alias_key,
+        current_id=identity.item_id,
     )
-
-    set_values: dict[str, object] = {
-        "canonical_merchant": canonical_display,
-        "canonical_key": canonical_key,
-        "alias": alias_display,
-        "alias_key": alias_key,
-        "updated_at": now_utc(),
-    }
-    if enabled is not None:
-        set_values["enabled"] = enabled
 
     rowcount = claim_row_with_token(
         db,
         MerchantAlias,
-        pk_id=item_id,
-        tenant_id=item_tenant_id,
+        pk_id=identity.item_id,
+        tenant_id=identity.tenant_id,
         expected_row_version=expected_row_version,
-        set_values=set_values,
+        set_values=_alias_set_values(values, enabled=enabled),
     )
     if rowcount != 1:
-        db.rollback()
-        current = _get_alias_by_public_id(
-            db, tenant_id=item_tenant_id, public_id=item_public_id
-        )
-        if current is None:
-            raise AppError("merchant_alias_not_found", status_code=404)
-        raise AppError("state_conflict", status_code=409)
+        _raise_alias_update_conflict(db, identity)
     if commit:
         db.commit()
     # Force the read-back to hit the DB: claim_row_with_token's default
     # synchronize_session="auto" can't sync the in-session row on PostgreSQL
     # (aware timestamptz vs the naive OCC predicate), so with expire_on_commit
     # =False the identity-map row would return the pre-update value (ADR-0041).
-    db.expire_all()
-    refreshed = _get_alias_by_public_id(
-        db, tenant_id=item_tenant_id, public_id=item_public_id
-    )
-    # rowcount == 1 means the row exists and was just updated; the follow-
-    # up find cannot return None unless something else deleted the row
-    # between our UPDATE and this SELECT.
-    assert refreshed is not None
-    return refreshed
+    return _refresh_alias_after_update(db, identity)
 
 
 def delete_merchant_alias(
