@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Expense, RecurringItem
 from app.services.owner_console_service._common import _owner_ledger_ids
@@ -39,25 +40,23 @@ def _count_recurring(db: Session, ledger_ids: list[str], status: str) -> int:
     )
 
 
-def get_recurring_ops(db: Session) -> RecurringOpsVM:
-    ledger_ids = _owner_ledger_ids(db)
-    if not ledger_ids:
-        return RecurringOpsVM(
-            active_count=0,
-            paused_count=0,
-            archived_count=0,
-            due_soon_count=0,
-            overdue_count=0,
-            notification_pending_count=0,
-            notification_recent_24h_count=0,
-            notification_incomplete_count=0,
-        )
+def _empty_recurring_ops() -> RecurringOpsVM:
+    return RecurringOpsVM(
+        active_count=0,
+        paused_count=0,
+        archived_count=0,
+        due_soon_count=0,
+        overdue_count=0,
+        notification_pending_count=0,
+        notification_recent_24h_count=0,
+        notification_incomplete_count=0,
+    )
 
-    now = now_utc()
-    today = now.date()
-    soon = today + timedelta(days=7)
-    notification_filter = Expense.source.like("通知草稿:%")
-    due_soon = int(
+
+def _count_due_soon(
+    db: Session, ledger_ids: list[str], *, today: date, soon: date
+) -> int:
+    return int(
         db.scalar(
             select(func.count())
             .select_from(RecurringItem)
@@ -69,7 +68,10 @@ def get_recurring_ops(db: Session) -> RecurringOpsVM:
         )
         or 0
     )
-    overdue = int(
+
+
+def _count_overdue(db: Session, ledger_ids: list[str], *, today: date) -> int:
+    return int(
         db.scalar(
             select(func.count())
             .select_from(RecurringItem)
@@ -80,44 +82,69 @@ def get_recurring_ops(db: Session) -> RecurringOpsVM:
         )
         or 0
     )
-    notification_pending = int(
+
+
+def _notification_draft_filter() -> ColumnElement[bool]:
+    return Expense.source.like("通知草稿:%")
+
+
+def _count_notification_pending(db: Session, ledger_ids: list[str]) -> int:
+    return int(
         db.scalar(
             select(func.count())
             .select_from(Expense)
             .where(Expense.tenant_id.in_(ledger_ids))
-            .where(notification_filter)
+            .where(_notification_draft_filter())
             .where(Expense.status == "pending")
         )
         or 0
     )
-    notification_recent = int(
+
+
+def _count_notification_recent(
+    db: Session, ledger_ids: list[str], *, now: datetime
+) -> int:
+    return int(
         db.scalar(
             select(func.count())
             .select_from(Expense)
             .where(Expense.tenant_id.in_(ledger_ids))
-            .where(notification_filter)
+            .where(_notification_draft_filter())
             .where(Expense.created_at >= now - timedelta(hours=24))
         )
         or 0
     )
-    notification_incomplete = int(
+
+
+def _count_notification_incomplete(db: Session, ledger_ids: list[str]) -> int:
+    return int(
         db.scalar(
             select(func.count())
             .select_from(Expense)
             .where(Expense.tenant_id.in_(ledger_ids))
-            .where(notification_filter)
+            .where(_notification_draft_filter())
             .where(Expense.status == "pending")
             .where((Expense.amount_cents.is_(None)) | (Expense.merchant.is_(None)))
         )
         or 0
     )
+
+
+def get_recurring_ops(db: Session) -> RecurringOpsVM:
+    ledger_ids = _owner_ledger_ids(db)
+    if not ledger_ids:
+        return _empty_recurring_ops()
+
+    now = now_utc()
+    today = now.date()
+    soon = today + timedelta(days=7)
     return RecurringOpsVM(
         active_count=_count_recurring(db, ledger_ids, "active"),
         paused_count=_count_recurring(db, ledger_ids, "paused"),
         archived_count=_count_recurring(db, ledger_ids, "archived"),
-        due_soon_count=due_soon,
-        overdue_count=overdue,
-        notification_pending_count=notification_pending,
-        notification_recent_24h_count=notification_recent,
-        notification_incomplete_count=notification_incomplete,
+        due_soon_count=_count_due_soon(db, ledger_ids, today=today, soon=soon),
+        overdue_count=_count_overdue(db, ledger_ids, today=today),
+        notification_pending_count=_count_notification_pending(db, ledger_ids),
+        notification_recent_24h_count=_count_notification_recent(db, ledger_ids, now=now),
+        notification_incomplete_count=_count_notification_incomplete(db, ledger_ids),
     )
