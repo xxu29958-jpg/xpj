@@ -199,6 +199,13 @@ def test_codebase_debt_regression_returns_one() -> None:
     assert gate.evaluate_debt(counts) == 1
 
 
+def test_codebase_debt_extra_counter_returns_one() -> None:
+    gate = _load_gate()
+    counts = dict(gate.CODEBASE_DEBT_LIMITS)
+    counts["new_unmanaged_smell"] = 1
+    assert gate.evaluate_debt(counts) == 1
+
+
 def test_codebase_main_propagates_audit_regression(monkeypatch) -> None:
     mod = _load()
     gate = _load_gate()
