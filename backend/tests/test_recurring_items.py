@@ -10,9 +10,38 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember, RecurringItem
+from app.schemas import RecurringCandidateConfirmRequest
+from app.services.recurring_candidate_confirmation_service import (
+    confirm_recurring_candidate as confirm_recurring_candidate_service,
+)
 from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
+
+
+def test_recurring_candidate_confirmation_service_creates_item_directly() -> None:
+    last_seen = _seed_monthly_candidate()
+    payload = RecurringCandidateConfirmRequest(
+        merchant="ChatGPT Plus",
+        amount_cents=20000,
+        occurrence_count=3,
+        last_seen_at=last_seen,
+        confidence="high",
+        frequency="monthly",
+    )
+
+    with SessionLocal() as db:
+        item = confirm_recurring_candidate_service(
+            db,
+            tenant_id="owner",
+            payload=payload,
+            timezone_name="UTC",
+        )
+        assert item.tenant_id == "owner"
+        assert item.merchant_key == "chatgpt plus"
+        assert item.baseline_amount_cents == 20000
+        assert item.occurrence_count == 3
+        assert item.next_expected_date.isoformat() == "2026-06-05"
 
 
 def _seed_monthly_candidate(*, merchant: str = "ChatGPT Plus", amount_cents: int = 20000) -> datetime:

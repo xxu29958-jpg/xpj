@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import NoReturn
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -68,53 +69,103 @@ def replace_expense_splits(
     actor_account_id: int | None,
     commit: bool = True,
 ) -> ExpenseSplitsResponse:
+    members = _active_members_for_split_payload(db, tenant_id=tenant_id, payload=payload)
+    now = now_utc()
+    expense = _claim_expense_for_split_replace(
+        db,
+        tenant_id=tenant_id,
+        expense_id=expense_id,
+        expected_row_version=payload.expected_row_version,
+        now=now,
+    )
+    existing = _expense_splits(db, tenant_id=tenant_id, expense_id=expense.id)
+    existing_members = _members_for_existing_splits(db, tenant_id=tenant_id, splits=existing)
+    before_snapshot = _audit_snapshot(existing, existing_members)
+    new_splits = _replace_split_rows(db, expense=expense, payload=payload, existing=existing, now=now)
+    _add_split_audit(
+        db,
+        expense=expense,
+        actor_account_id=actor_account_id,
+        before_snapshot=before_snapshot,
+        after_snapshot=_audit_snapshot(new_splits, members),
+    )
+    _finish_split_replace(db, expense=expense, commit=commit)
+    return _build_response(db, expense)
+
+
+def _active_members_for_split_payload(
+    db: Session, *, tenant_id: str, payload: ExpenseSplitReplaceRequest
+) -> dict[int, _SplitMember]:
     member_ids = [item.member_id for item in payload.splits]
-    if len(member_ids) != len(set(member_ids)):
-        raise AppError("invalid_request", "同一个家庭成员不能重复拆账。", status_code=422)
+    _require_unique_split_members(member_ids)
     members = _members_by_id(
         db,
         tenant_id=tenant_id,
         member_ids=member_ids,
         active_only=True,
     )
-    missing_member_ids = sorted(set(member_ids) - set(members))
-    if missing_member_ids:
+    if sorted(set(member_ids) - set(members)):
         raise AppError("member_not_found", status_code=404)
+    return members
 
-    now = now_utc()
+
+def _require_unique_split_members(member_ids: list[int]) -> None:
+    if len(member_ids) != len(set(member_ids)):
+        raise AppError("invalid_request", "同一个家庭成员不能重复拆账。", status_code=422)
+
+
+def _claim_expense_for_split_replace(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense_id: int,
+    expected_row_version: int,
+    now: datetime,
+) -> Expense:
     rowcount = claim_row_with_token(
         db,
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_row_version=payload.expected_row_version,
+        expected_row_version=expected_row_version,
         set_values={"updated_at": now},
         extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
         synchronize_session=False,
     )
     if rowcount != 1:
-        db.expire_all()
-        current = resolve_expense(db, tenant_id, expense_id)
-        if current is None or current.status not in EDITABLE_STATUSES:
-            raise AppError("expense_not_found", status_code=404)
-        raise AppError("state_conflict", status_code=409)
+        _raise_split_replace_claim_conflict(db, tenant_id=tenant_id, expense_id=expense_id)
     db.expire_all()
-    expense = get_expense(db, expense_id, tenant_id)
+    return get_expense(db, expense_id, tenant_id)
 
-    existing = list(
+
+def _raise_split_replace_claim_conflict(
+    db: Session, *, tenant_id: str, expense_id: int
+) -> NoReturn:
+    db.expire_all()
+    current = resolve_expense(db, tenant_id, expense_id)
+    if current is None or current.status not in EDITABLE_STATUSES:
+        raise AppError("expense_not_found", status_code=404)
+    raise AppError("state_conflict", status_code=409)
+
+
+def _expense_splits(db: Session, *, tenant_id: str, expense_id: int) -> list[ExpenseSplit]:
+    return list(
         db.scalars(
             ledger_scoped_select(ExpenseSplit, tenant_id).where(
-                ExpenseSplit.expense_id == expense.id
+                ExpenseSplit.expense_id == expense_id
             )
         )
     )
-    existing_members = _members_by_id(
-        db,
-        tenant_id=tenant_id,
-        member_ids=[split.member_id for split in existing],
-        active_only=False,
-    )
-    before_snapshot = _audit_snapshot(existing, existing_members)
+
+
+def _replace_split_rows(
+    db: Session,
+    *,
+    expense: Expense,
+    payload: ExpenseSplitReplaceRequest,
+    existing: list[ExpenseSplit],
+    now: datetime,
+) -> list[ExpenseSplit]:
     for split in existing:
         db.delete(split)
     db.flush()
@@ -133,13 +184,10 @@ def replace_expense_splits(
         )
         new_splits.append(split)
         db.add(split)
-    _add_split_audit(
-        db,
-        expense=expense,
-        actor_account_id=actor_account_id,
-        before_snapshot=before_snapshot,
-        after_snapshot=_audit_snapshot(new_splits, members),
-    )
+    return new_splits
+
+
+def _finish_split_replace(db: Session, *, expense: Expense, commit: bool) -> None:
     # ADR-0042: the idempotent route folds the key-record + this mutation into a
     # single commit (commit=False → flush only); online /web callers keep
     # commit=True.
@@ -148,7 +196,6 @@ def replace_expense_splits(
         db.refresh(expense)
     else:
         db.flush()
-    return _build_response(db, expense)
 
 
 def _members_by_id(

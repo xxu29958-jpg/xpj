@@ -35,7 +35,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
     "files_over_500": 15,
-    "long_functions": 11,  # 2026-07-09: rule application enabled-rule query centralized.
+    "long_functions": 8,  # 2026-07-09: recurring, income, and split replace flows split.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 4,  # 2026-07-09: category summary extraction added a real private aggregation boundary.
@@ -164,7 +164,7 @@ STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2394})  # +2 n_plus_one
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2396})  # +2 n_plus_one slice P3 coverage: startup tenant-id union collection and invalid-id fail-close.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2397})  # +1 n_plus_one slice P3 coverage: batched ledger-id collision allocation skips taken candidates and fails closed when exhausted.
 STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2398})  # +1 n_plus_one slice P3 coverage: batched pairing-code/invitation/upload-link public-id allocators skip taken candidates and fail closed when exhausted.
-STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2399})  # +1 broad-exception tail: RapidOCR result shape drift maps to AppError so auto OCR remains fail-soft.
+STRICT_EQUALITY_BASELINE.update({"backend_pytest_count": 2400})  # +1 recurring candidate confirmation service direct-create coverage after service split; previous +1 broad-exception tail: RapidOCR result shape drift maps to AppError so auto OCR remains fail-soft.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({

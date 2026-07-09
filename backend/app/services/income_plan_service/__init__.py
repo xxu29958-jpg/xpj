@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Literal
+from typing import Literal, NoReturn
 
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
@@ -142,70 +142,35 @@ def update_income_plan(
     """Partial update. Archived plans cannot be edited directly."""
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
-    if plan.status == "archived":
-        raise AppError(
-            "state_conflict",
-            "已归档的收入不能直接修改，请先恢复。",
-            status_code=409,
-        )
-
-    plan_id = plan.id
-    new_label = plan.label
-    new_source_type = plan.source_type
-    new_amount_cents = plan.amount_cents
-    new_pay_day = plan.pay_day
-    new_frequency = plan.frequency or "monthly"
-    new_income_month = plan.income_month
-
-    if label is not None:
-        new_label = _clean_label(label)
-    if source_type is not None:
-        new_source_type = _clean_source_type(source_type)
-    if amount_cents is not None:
-        if amount_cents < 0:
-            raise AppError("invalid_request", "金额不能为负数。", status_code=422)
-        new_amount_cents = amount_cents
-    if pay_day is not None:
-        _validate_pay_day(pay_day)
-        new_pay_day = pay_day
-    if frequency is not None:
-        new_frequency = _clean_frequency(frequency)
-    if income_month_provided:
-        new_income_month = income_month
-    new_income_month = _normalize_income_month(
-        frequency=new_frequency,
-        income_month=new_income_month,
-    )
+    _require_active_income_plan(plan)
 
     when = now or now_utc()
+    new_frequency = _updated_income_frequency(plan, frequency)
     rowcount = claim_row_with_token(
         db,
         MonthlyIncomePlan,
-        pk_id=plan_id,
+        pk_id=plan.id,
         tenant_id=tenant_id,
         expected_row_version=expected_row_version,
         set_values={
-            "label": new_label,
-            "source_type": new_source_type,
+            "label": _updated_income_label(plan, label),
+            "source_type": _updated_income_source_type(plan, source_type),
             "frequency": new_frequency,
-            "income_month": new_income_month,
-            "amount_cents": new_amount_cents,
-            "pay_day": new_pay_day,
+            "income_month": _updated_income_month(
+                plan,
+                frequency=new_frequency,
+                income_month=income_month,
+                income_month_provided=income_month_provided,
+            ),
+            "amount_cents": _updated_income_amount_cents(plan, amount_cents),
+            "pay_day": _updated_income_pay_day(plan, pay_day),
             "updated_at": when,
         },
         extra_where=(MonthlyIncomePlan.status == "active",),
         synchronize_session=False,
     )
     if rowcount != 1:
-        db.rollback()
-        current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
-        if current.status == "archived":
-            raise AppError(
-                "state_conflict",
-                "已归档的收入不能直接修改，请先恢复。",
-                status_code=409,
-            )
-        raise AppError("state_conflict", status_code=409)
+        _raise_income_plan_edit_conflict(db, tenant_id=tenant_id, public_id=public_id)
     if commit:
         db.commit()
     else:
@@ -321,6 +286,76 @@ def total_monthly_income_cents(
     statement = statement.where(_applicable_income_clause(clean_month, as_of_date=as_of_date))
     total = db.scalar(statement)
     return int(total or 0)
+
+
+def _require_active_income_plan(plan: MonthlyIncomePlan) -> None:
+    if plan.status == "archived":
+        raise AppError(
+            "state_conflict",
+            "已归档的收入不能直接修改，请先恢复。",
+            status_code=409,
+        )
+
+
+def _updated_income_label(plan: MonthlyIncomePlan, label: str | None) -> str:
+    if label is None:
+        return plan.label
+    return _clean_label(label)
+
+
+def _updated_income_source_type(plan: MonthlyIncomePlan, source_type: str | None) -> str:
+    if source_type is None:
+        return plan.source_type
+    return _clean_source_type(source_type)
+
+
+def _updated_income_amount_cents(plan: MonthlyIncomePlan, amount_cents: int | None) -> int:
+    if amount_cents is None:
+        return plan.amount_cents
+    if amount_cents < 0:
+        raise AppError("invalid_request", "金额不能为负数。", status_code=422)
+    return amount_cents
+
+
+def _updated_income_pay_day(plan: MonthlyIncomePlan, pay_day: int | None) -> int:
+    if pay_day is None:
+        return plan.pay_day
+    _validate_pay_day(pay_day)
+    return pay_day
+
+
+def _updated_income_frequency(plan: MonthlyIncomePlan, frequency: str | None) -> IncomeFrequency:
+    if frequency is None:
+        return plan.frequency or "monthly"  # type: ignore[return-value]
+    return _clean_frequency(frequency)
+
+
+def _updated_income_month(
+    plan: MonthlyIncomePlan,
+    *,
+    frequency: str,
+    income_month: str | None,
+    income_month_provided: bool,
+) -> str | None:
+    selected_income_month = income_month if income_month_provided else plan.income_month
+    return _normalize_income_month(
+        frequency=frequency,
+        income_month=selected_income_month,
+    )
+
+
+def _raise_income_plan_edit_conflict(
+    db: Session, *, tenant_id: str, public_id: str
+) -> NoReturn:
+    db.rollback()
+    current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    if current.status == "archived":
+        raise AppError(
+            "state_conflict",
+            "已归档的收入不能直接修改，请先恢复。",
+            status_code=409,
+        )
+    raise AppError("state_conflict", status_code=409)
 
 
 def _income_plan_base_select(*, tenant_id: str):

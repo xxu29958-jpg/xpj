@@ -1,24 +1,22 @@
 from __future__ import annotations
 
-from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import func, or_, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
-from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
-from app.services.insights_service import normalize_merchant, recurring_candidates
-from app.services.optimistic_concurrency import bump_row_version
+from app.schemas import RecurringItemResponse
+from app.services.insights_service import normalize_merchant
+from app.services.recurring_candidate_confirmation_service import (
+    confirm_recurring_candidate as confirm_recurring_candidate,
+)  # noqa: F401
 from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
-from app.services.time_service import ensure_utc, now_utc, safe_zone
+from app.services.time_service import now_utc
 
-VALID_FREQUENCIES = {"monthly"}
 VALID_STATUSES = {"active", "paused", "archived"}
 ANOMALY_THRESHOLD_PERCENT = 30
 RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT = 100
@@ -32,66 +30,11 @@ class RecurringAmountAnomaly:
     amount_delta_percent: int | None = None
 
 
-def _clean_frequency(value: str | None) -> str:
-    frequency = (value or "monthly").strip()
-    if frequency not in VALID_FREQUENCIES:
-        raise AppError("recurring_frequency_invalid", status_code=422)
-    return frequency
-
-
 def _clean_status(value: str | None) -> str:
     status = (value or "").strip()
     if status not in VALID_STATUSES:
         raise AppError("recurring_status_invalid", status_code=422)
     return status
-
-
-def _add_one_month(value: date) -> date:
-    year = value.year + (1 if value.month == 12 else 0)
-    month = 1 if value.month == 12 else value.month + 1
-    day = min(value.day, monthrange(year, month)[1])
-    return date(year, month, day)
-
-
-def _next_expected_date(last_seen_at: datetime | None, timezone_name: str | None) -> date | None:
-    utc_value = ensure_utc(last_seen_at)
-    if utc_value is None:
-        return None
-    resolved_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
-    local_date = utc_value.astimezone(safe_zone(resolved_timezone)).date()
-    return _add_one_month(local_date)
-
-
-def _find_recurring_candidate(
-    db: Session,
-    *,
-    tenant_id: str,
-    merchant_key: str,
-    amount_cents: int,
-    timezone_name: str | None,
-) -> dict | None:
-    for item in recurring_candidates(db, tenant_id=tenant_id, timezone_name=timezone_name):
-        if normalize_merchant(item.get("merchant")) != merchant_key:
-            continue
-        if int(item.get("amount_cents") or 0) != amount_cents:
-            continue
-        return item
-    return None
-
-
-def _existing_item(
-    db: Session,
-    *,
-    tenant_id: str,
-    merchant_key: str,
-    frequency: str,
-) -> RecurringItem | None:
-    return db.scalar(
-        ledger_scoped_select(RecurringItem, tenant_id)
-        .where(RecurringItem.merchant_key == merchant_key)
-        .where(RecurringItem.frequency == frequency)
-        .limit(1)
-    )
 
 
 def recurring_item_response(
@@ -206,99 +149,6 @@ def _is_recurring_like_amount(item: RecurringItem, amount_cents: int) -> bool:
         return False
     delta_percent = abs(amount_cents - reference) * 100 / reference
     return delta_percent <= RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT
-
-
-def confirm_recurring_candidate(
-    db: Session,
-    *,
-    tenant_id: str,
-    payload: RecurringCandidateConfirmRequest,
-    timezone_name: str | None = None,
-) -> RecurringItem:
-    merchant = payload.merchant.strip()
-    merchant_key = normalize_merchant(merchant)
-    if not merchant_key:
-        raise AppError("recurring_candidate_not_found", status_code=404)
-    frequency = _clean_frequency(payload.frequency)
-    amount_cents = int(payload.amount_cents)
-
-    candidate = _find_recurring_candidate(
-        db,
-        tenant_id=tenant_id,
-        merchant_key=merchant_key,
-        amount_cents=amount_cents,
-        timezone_name=timezone_name,
-    )
-    if candidate is None:
-        raise AppError("recurring_candidate_not_found", status_code=404)
-
-    existing = _existing_item(
-        db,
-        tenant_id=tenant_id,
-        merchant_key=merchant_key,
-        frequency=frequency,
-    )
-    if existing is not None:
-        if existing.status == "archived" or existing.archived_at is not None:
-            last_seen_at = ensure_utc(payload.last_seen_at) or ensure_utc(candidate.get("last_seen_at"))
-            confidence = payload.confidence or candidate.get("confidence")
-            now = now_utc()
-            existing.merchant_name = str(candidate.get("merchant") or merchant)
-            existing.baseline_amount_cents = amount_cents
-            existing.last_amount_cents = amount_cents
-            existing.occurrence_count = max(
-                int(payload.occurrence_count or 0),
-                int(candidate.get("occurrence_count") or 0),
-                int(existing.occurrence_count or 0),
-            )
-            existing.last_seen_at = last_seen_at
-            existing.next_expected_date = payload.next_expected_date or _next_expected_date(last_seen_at, timezone_name)
-            existing.status = "active"
-            existing.confidence = str(confidence) if confidence else None
-            existing.source = "candidate"
-            existing.paused_at = None
-            existing.archived_at = None
-            existing.updated_at = now
-            bump_row_version(existing)
-            db.commit()
-            db.refresh(existing)
-        return existing
-
-    last_seen_at = ensure_utc(payload.last_seen_at) or ensure_utc(candidate.get("last_seen_at"))
-    confidence = payload.confidence or candidate.get("confidence")
-    now = now_utc()
-    item = RecurringItem(
-        tenant_id=tenant_id,
-        merchant_key=merchant_key,
-        merchant_name=str(candidate.get("merchant") or merchant),
-        frequency=frequency,
-        baseline_amount_cents=amount_cents,
-        last_amount_cents=amount_cents,
-        occurrence_count=max(int(payload.occurrence_count or 0), int(candidate.get("occurrence_count") or 0)),
-        last_seen_at=last_seen_at,
-        next_expected_date=payload.next_expected_date or _next_expected_date(last_seen_at, timezone_name),
-        status="active",
-        confidence=str(confidence) if confidence else None,
-        source="candidate",
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(item)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        existing_after_race = _existing_item(
-            db,
-            tenant_id=tenant_id,
-            merchant_key=merchant_key,
-            frequency=frequency,
-        )
-        if existing_after_race is not None:
-            return existing_after_race
-        raise
-    db.refresh(item)
-    return item
 
 
 def list_recurring_items(
