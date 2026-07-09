@@ -18,6 +18,9 @@ from app.models import Expense
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import ensure_utc, local_month_label
 
+_RecurringEntry = tuple[datetime, int, str]
+_RecurringCandidate = dict[str, object]
+
 
 def _display_merchant(values: Iterable[str]) -> str:
     # Pick the most-frequent original spelling as the display label, with the
@@ -51,6 +54,86 @@ def _amount_close(values: list[int]) -> tuple[bool, int]:
     return (hi - lo) <= tolerance, representative
 
 
+def _recurring_timezone(timezone_name: str | None) -> str:
+    return (timezone_name or "").strip() or get_settings().ocr_default_timezone
+
+
+def _confirmed_expenses_for_recurring(db: Session, *, tenant_id: str) -> list[Expense]:
+    return list(
+        db.scalars(
+            select(Expense)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.status == "confirmed")
+            .where(Expense.merchant.is_not(None))
+        )
+    )
+
+
+def _group_recurring_entries(expenses: Iterable[Expense]) -> dict[str, list[_RecurringEntry]]:
+    grouped: dict[str, list[_RecurringEntry]] = defaultdict(list)
+    for expense in expenses:
+        merchant_raw = (expense.merchant or "").strip()
+        key = normalize_merchant(merchant_raw)
+        if not key:
+            continue
+        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        if when is None:
+            continue
+        amount = int(expense.amount_cents or 0)
+        if amount <= 0:
+            continue
+        grouped[key].append((when, amount, merchant_raw))
+    return grouped
+
+
+def _distinct_month_count(entries: list[_RecurringEntry], timezone_name: str) -> int:
+    month_labels: set[str] = set()
+    for when, _amount, _raw in entries:
+        label = local_month_label(when, timezone_name)
+        if label:
+            month_labels.add(label)
+    return len(month_labels)
+
+
+def _recurring_reason(occurrence_count: int) -> str:
+    if occurrence_count >= 3:
+        return f"近 {occurrence_count} 个月金额接近，每月出现"
+    return f"已连续 {occurrence_count} 个月出现，金额接近"
+
+
+def _candidate_from_entries(
+    entries: list[_RecurringEntry], *, timezone_name: str, min_occurrences: int
+) -> _RecurringCandidate | None:
+    entries.sort(key=lambda triple: triple[0])
+    occurrence_count = _distinct_month_count(entries, timezone_name)
+    if occurrence_count < min_occurrences:
+        return None
+
+    amounts = [amount for _, amount, _ in entries]
+    amount_ok, representative = _amount_close(amounts)
+    if not amount_ok:
+        return None
+
+    display = _display_merchant(raw for _, _, raw in entries)
+    return {
+        "merchant": display,
+        "amount_cents": int(representative),
+        "occurrence_count": occurrence_count,
+        "last_seen_at": entries[-1][0],
+        "confidence": "high" if occurrence_count >= 3 else "medium",
+        "reason": _recurring_reason(occurrence_count),
+    }
+
+
+def _sort_recurring_candidates(
+    candidates: list[_RecurringCandidate],
+) -> list[_RecurringCandidate]:
+    return sorted(
+        candidates,
+        key=lambda item: (-int(item["occurrence_count"]), -int(item["amount_cents"]), str(item["merchant"])),
+    )
+
+
 def recurring_candidates(
     db: Session,
     *,
@@ -69,67 +152,14 @@ def recurring_candidates(
         occurrence_count (distinct months), last_seen_at, confidence, reason.
     Never writes.
     """
-    tz = (timezone_name or "").strip() or get_settings().ocr_default_timezone
+    tz = _recurring_timezone(timezone_name)
+    grouped = _group_recurring_entries(_confirmed_expenses_for_recurring(db, tenant_id=tenant_id))
 
-    expenses = list(
-        db.scalars(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.status == "confirmed")
-            .where(Expense.merchant.is_not(None))
-        )
-    )
-
-    # Bucket: normalized_key -> list of (datetime, amount_cents, raw_merchant)
-    grouped: dict[str, list[tuple[datetime, int, str]]] = defaultdict(list)
-    for expense in expenses:
-        merchant_raw = (expense.merchant or "").strip()
-        key = normalize_merchant(merchant_raw)
-        if not key:
-            continue
-        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
-        if when is None:
-            continue
-        amount = int(expense.amount_cents or 0)
-        if amount <= 0:
-            continue
-        grouped[key].append((when, amount, merchant_raw))
-
-    candidates: list[dict] = []
+    candidates: list[_RecurringCandidate] = []
     for _, entries in grouped.items():
-        entries.sort(key=lambda triple: triple[0])
-        # distinct month labels
-        month_labels: set[str] = set()
-        for when, _amount, _raw in entries:
-            label = local_month_label(when, tz)
-            if label:
-                month_labels.add(label)
-        occurrence_count = len(month_labels)
-        if occurrence_count < min_occurrences:
-            continue
-        amounts = [amount for _, amount, _ in entries]
-        amount_ok, representative = _amount_close(amounts)
-        if not amount_ok:
-            continue
-        last_when = entries[-1][0]
-        display = _display_merchant(raw for _, _, raw in entries)
-        confidence = "high" if occurrence_count >= 3 else "medium"
-        reason = (
-            f"近 {occurrence_count} 个月金额接近，每月出现"
-            if occurrence_count >= 3
-            else f"已连续 {occurrence_count} 个月出现，金额接近"
+        candidate = _candidate_from_entries(
+            entries, timezone_name=tz, min_occurrences=min_occurrences
         )
-        candidates.append(
-            {
-                "merchant": display,
-                "amount_cents": int(representative),
-                "occurrence_count": occurrence_count,
-                "last_seen_at": last_when,
-                "confidence": confidence,
-                "reason": reason,
-            }
-        )
-    candidates.sort(
-        key=lambda item: (-item["occurrence_count"], -item["amount_cents"], item["merchant"])
-    )
-    return candidates
+        if candidate is not None:
+            candidates.append(candidate)
+    return list(_sort_recurring_candidates(candidates))

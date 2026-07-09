@@ -52,7 +52,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "long_functions": 37,  # −4 PG-only slice 2 (retired SQLite migrator/validator); −1 slice 5 (retired cut-over machinery)
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
-    "service_public_no_private": 5,  # +1 批7 ledger_has_any_expense — a one-query lifetime existence probe has no private helpers to call; the counter's pass-through heuristic matches its shape, banked as legitimate
+    "service_public_no_private": 4,  # 2026-07-09: category summary extraction added a real private aggregation boundary.
     "global_usage": 0,  # 2026-07-08: process-local CSRF/executor/Windows-task state moved behind lifecycle stores.
     "cached_singletons": 3,
     "nested_dict_args": 0,  # 2026-07-08: JSON/DTO boundary signatures use named contracts.
@@ -81,7 +81,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
 CODEBASE_DEBT_LIMITS.update(
     {
         "files_over_500": 15,
-        "long_functions": 18,  # 2026-07-09: low-risk report/web/task production long functions split.
+        "long_functions": 15,  # 2026-07-09: low-risk category/recurring production long functions split.
         "deep_nesting_functions": 0,
         "broad_exception": 0,
         "unreferenced_modules": 223,

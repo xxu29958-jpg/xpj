@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -135,18 +136,37 @@ class CategoryDashboard:
     uncategorized_pending: int = 0
 
 
-def list_category_summary(
-    db: Session, *, tenant_id: str, month: str, timezone_name: str | None = None
-) -> CategoryDashboard:
-    """Return per-category counts/amounts for the dashboard.
+def _display_category(key: str) -> str:
+    return key or "未分类"
 
-    Confirmed amounts/counts are scoped to ``[start, end)`` of ``month``
-    based on expense time first, then confirmed time. Pending counts are global per category so
-    the user can see lingering uncategorized rows regardless of month.
-    """
-    start, end = month_bounds_utc(month, timezone_name)
+
+def _is_uncategorized_category(key: str) -> bool:
+    return key in UNCATEGORIZED_CATEGORIES
+
+
+def _pending_counts_by_category(db: Session, *, tenant_id: str) -> dict[str, int]:
+    pending_rows = db.execute(
+        select(Expense.category, func.count(Expense.id))
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status == "pending")
+        .group_by(Expense.category)
+    ).all()
+    pending_by_category: dict[str, int] = {}
+    for category, count in pending_rows:
+        key = normalize_category(category)
+        pending_by_category[key] = pending_by_category.get(key, 0) + int(count)
+    return pending_by_category
+
+
+def _confirmed_summaries_by_category(
+    db: Session,
+    *,
+    tenant_id: str,
+    start: datetime,
+    end: datetime,
+    pending_by_category: dict[str, int],
+) -> dict[str, CategorySummary]:
     stat_time = stat_time_expr()
-
     confirmed_rows = db.execute(
         select(
             Expense.category,
@@ -161,57 +181,57 @@ def list_category_summary(
         .group_by(Expense.category)
     ).all()
 
-    pending_rows = db.execute(
-        select(Expense.category, func.count(Expense.id))
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "pending")
-        .group_by(Expense.category)
-    ).all()
-    pending_by_category: dict[str, int] = {}
-    for category, count in pending_rows:
-        key = normalize_category(category)
-        pending_by_category[key] = pending_by_category.get(key, 0) + int(count)
-
     aggregated: dict[str, CategorySummary] = {}
     for category, count, amount in confirmed_rows:
         key = normalize_category(category)
-        existing = aggregated.get(key)
         confirmed_count = int(count)
         confirmed_amount = int(amount or 0)
+        existing = aggregated.get(key)
         if existing is None:
             aggregated[key] = CategorySummary(
-                category=key or "未分类",
+                category=_display_category(key),
                 confirmed_count=confirmed_count,
                 pending_count=int(pending_by_category.get(key, 0)),
                 confirmed_amount_cents=confirmed_amount,
-                is_uncategorized=key in UNCATEGORIZED_CATEGORIES,
+                is_uncategorized=_is_uncategorized_category(key),
             )
-        else:
-            aggregated[key] = CategorySummary(
-                category=existing.category,
-                confirmed_count=existing.confirmed_count + confirmed_count,
-                pending_count=existing.pending_count,
-                confirmed_amount_cents=existing.confirmed_amount_cents + confirmed_amount,
-                is_uncategorized=existing.is_uncategorized,
-            )
-    # Categories that exist only in pending also show up.
+            continue
+        aggregated[key] = CategorySummary(
+            category=existing.category,
+            confirmed_count=existing.confirmed_count + confirmed_count,
+            pending_count=existing.pending_count,
+            confirmed_amount_cents=existing.confirmed_amount_cents + confirmed_amount,
+            is_uncategorized=existing.is_uncategorized,
+        )
+    return aggregated
+
+
+def _add_pending_only_summaries(
+    aggregated: dict[str, CategorySummary], pending_by_category: dict[str, int]
+) -> None:
     for key, count in pending_by_category.items():
         if key in aggregated:
             continue
         aggregated[key] = CategorySummary(
-            category=key or "未分类",
+            category=_display_category(key),
             confirmed_count=0,
             pending_count=int(count),
             confirmed_amount_cents=0,
-            is_uncategorized=key in UNCATEGORIZED_CATEGORIES,
+            is_uncategorized=_is_uncategorized_category(key),
         )
 
-    summaries = sorted(
+
+def _sort_category_summaries(
+    aggregated: dict[str, CategorySummary],
+) -> list[CategorySummary]:
+    return sorted(
         aggregated.values(),
         key=lambda s: (s.is_uncategorized, -s.confirmed_amount_cents, s.category),
     )
 
-    rule_count = int(
+
+def _category_rule_count(db: Session, *, tenant_id: str) -> int:
+    return int(
         db.scalar(
             select(func.count(CategoryRule.id))
             .where(CategoryRule.tenant_id == tenant_id)
@@ -219,13 +239,33 @@ def list_category_summary(
         )
         or 0
     )
-    uncategorized_pending = sum(
-        s.pending_count for s in summaries if s.is_uncategorized
+
+
+def list_category_summary(
+    db: Session, *, tenant_id: str, month: str, timezone_name: str | None = None
+) -> CategoryDashboard:
+    """Return per-category counts/amounts for the dashboard.
+
+    Confirmed amounts/counts are scoped to ``[start, end)`` of ``month``
+    based on expense time first, then confirmed time. Pending counts are global per category so
+    the user can see lingering uncategorized rows regardless of month.
+    """
+    start, end = month_bounds_utc(month, timezone_name)
+    pending_by_category = _pending_counts_by_category(db, tenant_id=tenant_id)
+    aggregated = _confirmed_summaries_by_category(
+        db,
+        tenant_id=tenant_id,
+        start=start,
+        end=end,
+        pending_by_category=pending_by_category,
     )
+    _add_pending_only_summaries(aggregated, pending_by_category)
+    summaries = _sort_category_summaries(aggregated)
+    uncategorized_pending = sum(s.pending_count for s in summaries if s.is_uncategorized)
     return CategoryDashboard(
         month=month,
         summaries=summaries,
-        rule_count=rule_count,
+        rule_count=_category_rule_count(db, tenant_id=tenant_id),
         uncategorized_pending=uncategorized_pending,
     )
 
