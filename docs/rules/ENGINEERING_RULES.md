@@ -336,7 +336,9 @@ UI 字符串必须走资源文件，预留 i18n 通道。
   `docs/architecture/PROJECT_STRUCTURE.md` + `docs/architecture/ARCHITECTURE.md`。
 * **接口契约** —— 本项目落在 `docs/architecture/API.md`（OpenAPI snapshot 在
   `docs/architecture/openapi_contract.json`）。
-* **关键决策记录** —— 本项目落在 `docs/DECISIONS/`（MADR 格式）。
+* **关键决策记录** —— 本项目落在 `docs/DECISIONS/`；新决定使用
+  `docs/rules/ADR_TEMPLATE.md` 的 schema-v2 契约格式，机器状态以
+  `docs/current/adr-registry.json` 为准，完整门禁见 `docs/rules/ADR_CONTRACT_STANDARD.md`。
 * **验收清单** —— 本项目分散在 release runbook（`docs/runbook/RELEASE_PACKAGING.md`、
   `docs/runbook/GRAY_ACCEPTANCE_EXECUTION.md`、`docs/runbook/ROLLBACK.md` 末尾验收段）。
 * **运维 Runbook** —— 部署 / 备份 / 恢复 / 故障处理。本项目落在 `docs/runbook/`

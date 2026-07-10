@@ -23,11 +23,16 @@ https://api.我的域名.com
 
 金额：
 
-- `amount_cents` 是后端权威计算后的 home amount minor 字段；当前默认 home currency 为 `CNY`，历史字段名保持不变以兼容旧数据。
+> 当前实施注记（`0f1092e6`）：以下是 ADR-0061 的目标契约。默认 CNY 路径继续有效；非 CNY home
+> currency 的持久 binding、bootstrap contract 及 Android/Web/CSV 格式化尚未全链路闭合，实施状态见
+> [ADR_STATUS](../current/ADR_STATUS.md)。
+
+- `amount_cents` 是后端权威计算后的 home-currency integer minor-unit 字段；当前默认 home currency 为 `CNY`，历史字段名保持不变以兼容旧数据（ADR-0061）。
 - 统计、预算、报表、Goals 均只汇总后端返回的 home amount，不直接相加外币原始金额。
-- 单笔外币账单保存原始金额快照和当时汇率快照：`original_currency_code`、`original_amount_minor`、`exchange_rate_to_cny`、`exchange_rate_date`、`exchange_rate_source`。
+- 单笔外币账单保存原始金额快照和当时汇率快照：`original_currency_code`、`original_amount_minor`、`exchange_rate_to_cny`、`exchange_rate_date`、`exchange_rate_source`。`exchange_rate_to_cny` 是遗留兼容名，语义是换算到当前 configured home currency；新字段不得继续使用 `_to_cny` 命名。
 - 新客户端提交账单时只提交 `original_currency`、`original_amount`、`spent_at` 和用户确认信息；不得提交汇率，不得自行折算 home amount。
-- 旧客户端只传 `amount_cents` 时，后端按当前 home currency 原始金额和 `rate=1` 兼容。
+- 旧客户端只传 `amount_cents` 时，仅在服务端已有持久 home-currency binding 且该客户端明确兼容时，
+  才按该 home currency 的 minor units 和 `rate=1` 处理；上下文缺失或未知时拒绝写入。
 - 汇率缺失时后端返回 `fx_status=pending`，不得由前端默认 1:1。
 - 不使用 float/double 保存金额。
 
@@ -2181,7 +2186,7 @@ timezone=Asia/Shanghai
 校验：
 
 - `month` 必须是 `YYYY-MM` 且月份有效。
-- 金额字段使用分，`total_amount_cents`、`non_monthly_amount_cents`、分类预算金额不能为负；`rollover_amount_cents` 允许为负，用于表达上月超支带入。
+- 金额字段使用当前 home currency 的整数 minor units（默认 CNY 时为分）；`total_amount_cents`、`non_monthly_amount_cents`、分类预算金额不能为负；`rollover_amount_cents` 允许为负，用于表达上月超支带入。
 - 分类会按现有分类归一规则处理；归一后重复的分类预算返回 `invalid_request`。
 - 已归档月份不能直接覆盖，返回 `409 state_conflict`；需先从回收站恢复再修改。
 

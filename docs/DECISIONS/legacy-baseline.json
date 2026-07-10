@@ -1,0 +1,261 @@
+{
+  "schema_version": 3,
+  "bootstrap_base_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+  "entries": [
+    {
+      "id": "0001",
+      "path": "docs/DECISIONS/0001-money-uses-cents.md",
+      "sha256": "819c71a157d5b6046a7fe256e83402ec1fa00aff4ec27a0671852f0de1447dd1"
+    },
+    {
+      "id": "0002",
+      "path": "docs/DECISIONS/0002-expense-time-vs-created-at.md",
+      "sha256": "56bf189fd568205107baaf1ca8abe6c7fe05cda2aa03dcfe191421b8f189899c"
+    },
+    {
+      "id": "0003",
+      "path": "docs/DECISIONS/0003-uploads-not-public.md",
+      "sha256": "e32ad593f1ee1aeed30d77f83272698408440a98582307675f754faaec734b32"
+    },
+    {
+      "id": "0004",
+      "path": "docs/DECISIONS/0004-auth-check-not-health.md",
+      "sha256": "f71e1d2cec4e8d5f7cbdef90f8ce13540421b1fab8441c75894ecb184a6c4af3"
+    },
+    {
+      "id": "0005",
+      "path": "docs/DECISIONS/0005-room-serverid-upsert.md",
+      "sha256": "52713b3ca3cde18468e3f46a68c9fe5d5a1b8a20952bee4a0047bb0d2a94d04a"
+    },
+    {
+      "id": "0006",
+      "path": "docs/DECISIONS/0006-windows-powershell-utf8-bom.md",
+      "sha256": "7b430cecde0fc0e1331a5902797ae300370b7026dd54e4aac7e6730290c2522c"
+    },
+    {
+      "id": "0007",
+      "path": "docs/DECISIONS/0007-real-device-preflight.md",
+      "sha256": "eea8614aac9ef61af91bf1a573471dfdfc743d00d86a73c797c22af75e604a5b"
+    },
+    {
+      "id": "0008",
+      "path": "docs/DECISIONS/0008-public-uuid-and-theme-json.md",
+      "sha256": "bd17c1908372cfaf1dd27b9f1fce7b33ca65f3280393d7ebf80a40799a23f5e4"
+    },
+    {
+      "id": "0009",
+      "path": "docs/DECISIONS/0009-android-version-catalog.md",
+      "sha256": "c3695459d98e5fe8d5b895a0afe2b0ace15a4454ff8b8a0c66120deab8b38ee1"
+    },
+    {
+      "id": "0010",
+      "path": "docs/DECISIONS/0010-dependency-version-audit.md",
+      "sha256": "25a76fb9b54373cc0f135503386967f0a791add17aaab80e8a9b6c9fd0a1c82d"
+    },
+    {
+      "id": "0011",
+      "path": "docs/DECISIONS/0011-android-toolchain-upgrade.md",
+      "sha256": "246320ea6764086b90e677d2d80373e1839a0385d8a764e57394ff3da66eb833"
+    },
+    {
+      "id": "0012",
+      "path": "docs/DECISIONS/0012-app-error-copy-vs-diagnostics.md",
+      "sha256": "4e1cd61ad3bd06965e0de638836874198fd25f30bca8601205371f9b22bf0928"
+    },
+    {
+      "id": "0013",
+      "path": "docs/DECISIONS/0013-category-catalog-and-legacy-alias.md",
+      "sha256": "766a9e60ccd48e14bbc38f3c3ffdd6ba8f4dd0c6c42a0229a08beb1edb61f888"
+    },
+    {
+      "id": "0014",
+      "path": "docs/DECISIONS/0014-ios-shortcut-file-body.md",
+      "sha256": "be1a5ab927f34b27af62a5109f8aa1a2256c64458753bb334af81fa1ec09ab88"
+    },
+    {
+      "id": "0015",
+      "path": "docs/DECISIONS/0015-ocr-provider-pipeline.md",
+      "sha256": "68dfdc39d858bfa6ae94023de6ccf67aa437b846a200709b63eab1350c7e0725"
+    },
+    {
+      "id": "0016",
+      "path": "docs/DECISIONS/0016-performance-and-stability-baseline.md",
+      "sha256": "54a9385399e2f93d6d8487d571428be78a24e5557e757f10cf9a6dd5ae83b9a4"
+    },
+    {
+      "id": "0017",
+      "path": "docs/DECISIONS/0017-gray-release-product-boundary.md",
+      "sha256": "9ac184ddbc1c1ba79041cc3007b1c50e86022b87d3cf59a71f91127508351e47"
+    },
+    {
+      "id": "0019",
+      "path": "docs/DECISIONS/0019-android-custom-background-local-only.md",
+      "sha256": "f5d1a298d23ef1e7312eaf4d57157f3cb9f86de6c059f6a0957fae2f2a4c7d17"
+    },
+    {
+      "id": "0020",
+      "path": "docs/DECISIONS/0020-alipay-receipt-rule-priority.md",
+      "sha256": "a8c2d31d2db78287d3a1df936d6153da94dc0192b22ba76fadcc0ee126466d48"
+    },
+    {
+      "id": "0021",
+      "path": "docs/DECISIONS/0021-ocr-draft-field-provenance.md",
+      "sha256": "62f89fe898cdbce6389a644adfceff87f4c04a1a440889b2b9ea362f45f94cf5"
+    },
+    {
+      "id": "0022",
+      "path": "docs/DECISIONS/0022-family-ledger-permission-model.md",
+      "sha256": "b5b2ef86515cf2b68468559c66655b14228346bb3dbccdf92bb4ce783d7a97e5"
+    },
+    {
+      "id": "0023",
+      "path": "docs/DECISIONS/0023-chart-library-policy.md",
+      "sha256": "b2cd94557c1dec0e8d86303813bb76288d2e118c45707f94e56bae37802a9f32"
+    },
+    {
+      "id": "0024",
+      "path": "docs/DECISIONS/0024-tri-surface-ui-ux-unification.md",
+      "sha256": "6db53fca8dd3455167f761a30d5e6bca108e64d8b09efd418a9a8698b0e09d36"
+    },
+    {
+      "id": "0025",
+      "path": "docs/DECISIONS/0025-v0.9-android-chart-library-vico.md",
+      "sha256": "f14c4617829ab1bb4fed11df311702352866e78e0b4913c771d945a0dd0cb5b8"
+    },
+    {
+      "id": "0026",
+      "path": "docs/DECISIONS/0026-v0.9-web-chart-library-echarts.md",
+      "sha256": "747db92c026960309d92bd22ba2082769b85abcf1e404aefec7aac1d99c886c6"
+    },
+    {
+      "id": "0027",
+      "path": "docs/DECISIONS/0027-backend-authoritative-fx.md",
+      "sha256": "bc04bd4848ca967290773645c7006fa9a231ea364172985260725af9eb317e60"
+    },
+    {
+      "id": "0028",
+      "path": "docs/DECISIONS/0028-public-web-session-gated.md",
+      "sha256": "54daef8c13af55f3de1975cfb60a90db63740b56f65d4335caa474a164bc7b73"
+    },
+    {
+      "id": "0029",
+      "path": "docs/DECISIONS/0029-household-bill-split-privacy.md",
+      "sha256": "e813e8e34fbb1cce5dd95f0177f2fc623b6865cf8c6f40f462672dc092024278"
+    },
+    {
+      "id": "0030",
+      "path": "docs/DECISIONS/0030-long-task-execution-model.md",
+      "sha256": "d06579223793b346d2b65f991fc104ba4fba2b083594f6054e2abd46f8bc6e93"
+    },
+    {
+      "id": "0031",
+      "path": "docs/DECISIONS/0031-v1-data-migration-protocol.md",
+      "sha256": "57d9d234f6c024f961de6a670c4e14d07c1dcbb57e7bba5802d176701a9545c7"
+    },
+    {
+      "id": "0035",
+      "path": "docs/DECISIONS/0035-line-items-discount-tax-mismatch.md",
+      "sha256": "71099564237dc3c0edfdf456f4d264c9fc3b1c42252ee02ac089e4625dcd3463"
+    },
+    {
+      "id": "0036",
+      "path": "docs/DECISIONS/0036-v1.1-ai-budget-provider-privacy-boundary.md",
+      "sha256": "669c04f071d3ad645eac187eba5395168b44353428870d50b6dc61381602fb29"
+    },
+    {
+      "id": "0037",
+      "path": "docs/DECISIONS/0037-v1.2-learning-feedback-dual-tables.md",
+      "sha256": "cf55ad259620f4a4ae0fbc5535d2c2dd445c249dd3874ae85fd3314c90ef97ae"
+    },
+    {
+      "id": "0038",
+      "path": "docs/DECISIONS/0038-v1.3-multi-surface-sync.md",
+      "sha256": "87dfaa779abce04e353f41f0da8cec5688b946c66eb317b1d0cc4d9435616554"
+    },
+    {
+      "id": "0039",
+      "path": "docs/DECISIONS/0039-adr-implementation-calibration.md",
+      "sha256": "ddc4dde5317d32827a9ea93b51c7f7c5b3417f143574bb1737b7373f9575faab"
+    },
+    {
+      "id": "0040",
+      "path": "docs/DECISIONS/0040-outbox-subresource-target-and-child-undo.md",
+      "sha256": "b0a9b33e5ab7b4ea50865f79dfc127531882fc10f0add60a38094e536568e62b"
+    },
+    {
+      "id": "0041",
+      "path": "docs/DECISIONS/0041-postgresql-engine-migration.md",
+      "sha256": "71d042798e03a25a888c2cc1025dc1b2d4076970f7f80a1bf1c9ca5983124816"
+    },
+    {
+      "id": "0042",
+      "path": "docs/DECISIONS/0042-offline-availability-and-request-idempotency.md",
+      "sha256": "4f37e5d9e54fae4cd3cd0e3288a494fbe991208c01a71346f5e1a7c26d6682df"
+    },
+    {
+      "id": "0043",
+      "path": "docs/DECISIONS/0043-tag-management.md",
+      "sha256": "6d498010410e95a560bb34d79d6844c9385b17ef0612e3f7e567d77a293f19ac"
+    },
+    {
+      "id": "0044",
+      "path": "docs/DECISIONS/0044-android-string-resourcing.md",
+      "sha256": "81402f10eb98c12b0e7da94e6ab41e3ddd745f1e6c885a38a2168c09c3110ed9"
+    },
+    {
+      "id": "0045",
+      "path": "docs/DECISIONS/0045-csrf-signing-key.md",
+      "sha256": "19918cb492c2421ae64993ec341aff439c3cfbc3e725302686b4c0e972752672"
+    },
+    {
+      "id": "0046",
+      "path": "docs/DECISIONS/0046-android-recurring-reminder-detection-source.md",
+      "sha256": "ddc358d2166c1204912c72b95c628e7f976dd4aaefb34808999178b473add850"
+    },
+    {
+      "id": "0047",
+      "path": "docs/DECISIONS/0047-bundled-installer-windows-services.md",
+      "sha256": "231236af2e77e1c76b6a70349fd440961d9363d48afcff0fa23f577d80167ad6"
+    },
+    {
+      "id": "0048",
+      "path": "docs/DECISIONS/0048-rive-mascot-animation.md",
+      "sha256": "6701c09c02b43803ee519b8425f7fac951e6580b88260d78b30e34e750147240"
+    },
+    {
+      "id": "0049",
+      "path": "docs/DECISIONS/0049-debt-domain-contract.md",
+      "sha256": "fbba0fa23e7d4921c9a81a8e685c5240cf7e73e65085893f457bbd2521025f83"
+    },
+    {
+      "id": "0050",
+      "path": "docs/DECISIONS/0050-android-baseline-profile-prerelease.md",
+      "sha256": "9b05efcc8925368bd37114d523e4cd603c4fc533dde1775868888bd8666a24ed"
+    },
+    {
+      "id": "0051",
+      "path": "docs/DECISIONS/0051-unified-recycle-bin.md",
+      "sha256": "da460bc465771795f325c7b4e2d8d28f7243561b17b6695ed285c5bcecf34af1"
+    },
+    {
+      "id": "0052",
+      "path": "docs/DECISIONS/0052-master-delete-recycle-bin-scope.md",
+      "sha256": "651ef7f5e3fe62a50938b10959f6abb24a19e43f213f055321315e0464584556"
+    },
+    {
+      "id": "0053",
+      "path": "docs/DECISIONS/0053-merchant-catalog-contract.md",
+      "sha256": "f729123a6686813dfd0481bd1c791405d34c90433744adff32612ef753792b23"
+    },
+    {
+      "id": "0054",
+      "path": "docs/DECISIONS/0054-merchant-catalog-merge-rename.md",
+      "sha256": "f1f21fb0d5478ee17d4bdc2ac524bc3761e069faacef1e64beeaaf8460cb5d6e"
+    },
+    {
+      "id": "0055",
+      "path": "docs/DECISIONS/0055-android-chart-native-canvas-tokens.md",
+      "sha256": "3c3d4b8806cfda0210f2694a858d530a4f69906bff3268b76ea5312434e4fc1b"
+    }
+  ]
+}

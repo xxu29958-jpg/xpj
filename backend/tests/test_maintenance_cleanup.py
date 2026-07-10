@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
+import logging
 import os
+import re
 from dataclasses import replace
 from datetime import timedelta
 
@@ -34,6 +37,18 @@ def _expense(expense_id: int) -> Expense:
 
 def _absolute(relative_path: str) -> str:
     return str((BACKEND_ROOT / relative_path).resolve())
+
+
+def _load_packaging_launch():
+    launch_path = BACKEND_ROOT / "packaging" / "launch.py"
+    spec = importlib.util.spec_from_file_location(
+        "ticketbox_cleanup_test_launch",
+        launch_path,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestClient, monkeypatch, *, identity) -> None:
@@ -110,6 +125,68 @@ def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
         row = db.get(Expense, expense_id)
         assert row is not None
         assert row.image_deleted_at is None
+
+
+def test_cleanup_rejected_images_does_not_disguise_missing_bytes_as_deleted(
+    client: TestClient,
+    monkeypatch,
+    caplog,
+    tmp_path,
+    *,
+    identity,
+) -> None:
+    from app.services import cleanup_service
+
+    expense_id = _upload_png(client, identity=identity)
+    rejected = reject_expense_api(client, expense_id, headers=identity.app_headers)
+    assert rejected.status_code == 200
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None and expense.image_path is not None
+        expense.rejected_at = now_utc() - timedelta(days=3)
+        missing_reference = expense.image_path
+        missing_tenant_id = expense.tenant_id
+        missing_path = _absolute(missing_reference)
+        db.commit()
+
+    os.unlink(missing_path)
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(
+        cleanup_service,
+        "get_settings",
+        lambda: replace(settings, delete_rejected_after_days=1),
+    )
+
+    response = client.post(
+        "/api/maintenance/cleanup-rejected",
+        headers=identity.admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted_images"] == 0
+    with SessionLocal() as db:
+        row = db.get(Expense, expense_id)
+        assert row is not None
+        assert row.image_deleted_at is None
+    integrity_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "upload_integrity_missing"
+    ]
+    assert len(integrity_records) == 1
+    record = integrity_records[0]
+    assert re.fullmatch(r"[0-9a-f]{16}", record.reference_digest)
+
+    launch = _load_packaging_launch()
+    config = launch._build_log_config(tmp_path / "logs", console=False)
+    formatter = logging.Formatter(config["formatters"]["plain"]["format"])
+    formatted = formatter.format(record)
+    assert "event=upload_integrity_missing" in formatted
+    assert f"reference_digest={record.reference_digest}" in formatted
+    assert missing_tenant_id not in formatted
+    assert missing_reference not in formatted
+    assert missing_path not in formatted
 
 
 def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monkeypatch, *, identity) -> None:

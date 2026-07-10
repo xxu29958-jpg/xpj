@@ -1,0 +1,1350 @@
+{
+  "schema_version": 2,
+  "front_matter_schema_version": 2,
+  "portfolio_reviewed_at": "2026-07-11",
+  "code_baseline": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+  "baseline_scope": "main runtime evidence at 0f1092e6; installer overlay is represented only by schema-v2 ADR-0062..0064",
+  "entries": [
+    {
+      "id": "0001",
+      "path": "docs/DECISIONS/0001-money-uses-cents.md",
+      "title": "金额使用分保存",
+      "summary": "历史决定：整数金额、禁 float；当前 minor-unit 语义见 0061",
+      "current_scope": "权威金额使用有界整数 minor-unit 与显式币种；0061/0073 定义 binding、舍入、更正和投影",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "权威金额没有 float、FX 使用 Decimal；但多数列仍是 32-bit Integer，部分 parser 上限超出 DB，标题“分”也不适用于 JPY/KRW。 处置：保留并收紧为“有界 signed 64-bit minor unit + 显式 currency/rounding”；ADR-0061/ADR-0073 refine。退款使用 linked reversal fact。"
+    },
+    {
+      "id": "0002",
+      "path": "docs/DECISIONS/0002-expense-time-vs-created-at.md",
+      "title": "区分消费时间和创建时间",
+      "summary": "统计优先 `expense_time`，空时回退 `confirmed_at`",
+      "current_scope": "仅保留事件时间与记录创建时间分离的历史原则；现行账务 calendar binding 由 0070 裁决",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "`spending_contract_service.stat_time_expr()` 已用 `expense_time → confirmed_at`；但 naive 输入在手工/CSV/OCR 路径被解释成不同 zone，账务时区不是持久 binding。 处置：supersede 当前适用范围：新 accounting-calendar ADR 定义 aware-only、accounting date、DST、设备错钟和迁移；保留历史事实/创建时间分离原则。"
+    },
+    {
+      "id": "0003",
+      "path": "docs/DECISIONS/0003-uploads-not-public.md",
+      "title": "uploads 不公开暴露",
+      "summary": "图片只能经鉴权 `GET /api/expenses/{id}/image` 取",
+      "current_scope": "收据原图不得静态公开；资产权威、完整性、同代备份与恢复由 0071 refine",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "security-identity",
+      "risk_level": "critical",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "原图经租户鉴权 API 读取且非静态目录；响应仍暴露内部 path/hash，读取不重验 hash，DB 引用与 bytes 缺失无完整恢复协议。 处置：保留并收紧访问边界；另立 binary-asset authority/recovery ADR。内部路径逐步从公共 DTO 移除。"
+    },
+    {
+      "id": "0004",
+      "path": "docs/DECISIONS/0004-auth-check-not-health.md",
+      "title": "绑定服务器使用认证检查接口",
+      "summary": "绑定校验用 `/api/auth/check`，不用 `/api/health`",
+      "current_scope": "连接预检分别证明可达性与已鉴权 identity/capability；不永久冻结检查 URL",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "security-identity",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "Android `AuthApi.checkAuth()` 和连接仓储不会把 health 当身份；预检也先区分可达与鉴权。 处置：保留并放宽路径细节：长期契约是 authenticated identity/capability check，不永久冻结 `/api/auth/check` URL。"
+    },
+    {
+      "id": "0005",
+      "path": "docs/DECISIONS/0005-room-serverid-upsert.md",
+      "title": "Room `(ledgerId, serverId)` 唯一同步",
+      "summary": "本地 upsert 以账本作用域避免跨账本改写",
+      "current_scope": "Room confirmed 数据仅是按 server/ledger/resource identity 可重建投影；离线 intent 由 0069 裁决",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "data-consistency",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "`ExpenseEntity` 及 DAO 以 ledger scope + server/public/client identity + rowVersion upsert；outbox/OCC 已超出原决定。 处置：保留并收窄到可重建缓存身份；ADR-0042 接管 intent、OCC 与 committed-but-unseen。"
+    },
+    {
+      "id": "0006",
+      "path": "docs/DECISIONS/0006-windows-powershell-utf8-bom.md",
+      "title": "Windows PowerShell 脚本用 UTF-8 with BOM",
+      "summary": "`.ps1` 带 BOM，`.env` 不带 BOM",
+      "current_scope": "仅 Windows adapter 的 PowerShell 5.1 BOM/CRLF 兼容，不进入领域核心",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "deployment-runtime",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "编码脚本和 CI 守卫 Windows PowerShell 5.1 BOM/CRLF。 处置：保留但限定 Windows adapter；Linux/容器/领域代码不继承。"
+    },
+    {
+      "id": "0007",
+      "path": "docs/DECISIONS/0007-real-device-preflight.md",
+      "title": "实机联调预检",
+      "summary": "双层预检：本机脚本 + App 设置页自检",
+      "current_scope": "历史 iPhone→Windows→Android 实机 profile；已迁出架构决定并转版本化 runbook",
+      "decision_status": "deprecated",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "deployment-runtime",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "脚本仍冻结 iPhone→Windows→Android debug 拓扑，并允许 token 通过 CLI/process env；残留 pending 清理没有持久幂等记录。 处置：废弃为 ADR，迁为版本化 E2E profile/runbook；凭证改安全输入/ACL 临时文件 + TTL，清理结果可观测。"
+    },
+    {
+      "id": "0008",
+      "path": "docs/DECISIONS/0008-public-uuid-and-theme-json.md",
+      "title": "公共 UUID 与主题 JSON 边界",
+      "summary": "`public_id` 用于跨端；主题 JSON 不暴露 UI",
+      "current_scope": "公共资源 ID 协议与 Android local-only 主题配置是两项独立边界，待拆分治理",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "data-consistency",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "public ID 已扩到多资源；主题实际由 Android DataStore/本机资源管理，不是 JSON 业务权威。 处置：拆分：公共资源身份进入协议 ADR；主题只保留 local-only 客户端配置，不与业务身份共用决定。"
+    },
+    {
+      "id": "0009",
+      "path": "docs/DECISIONS/0009-android-version-catalog.md",
+      "title": "Android 依赖用 Version Catalog",
+      "summary": "版本统一在 `libs.versions.toml`",
+      "current_scope": "Android 依赖版本与 constraints 统一进入 catalog；预发布仅允许有期限、有退出条件的例外",
+      "decision_status": "accepted",
+      "implementation_status": "nonconformant",
+      "verification_status": "failed",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "依赖大体由 catalog 管理，但 `android/app/build.gradle.kts` 仍硬编码 serialization force；项目已有经批准 alpha 例外。 处置：收紧并标 partial/nonconformant；constraints 也进 catalog，预发布用限时例外与退出条件，删除“永不预发布”绝对句。"
+    },
+    {
+      "id": "0010",
+      "path": "docs/DECISIONS/0010-dependency-version-audit.md",
+      "title": "依赖版本审计",
+      "summary": "`check_dependency_versions.ps1` 默认只报告",
+      "current_scope": "依赖 freshness advisory 与许可证、漏洞、来源、hash、provenance release gate 分离",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "`check_dependency_versions.ps1` 默认只报新版；它不证明许可证、漏洞、来源、hash 或构建可追溯。 处置：修订：freshness advisory 与确定性 release gate 分开；联网结果不得作为唯一可重复证据。"
+    },
+    {
+      "id": "0011",
+      "path": "docs/DECISIONS/0011-android-toolchain-upgrade.md",
+      "title": "Android 构建工具链升级",
+      "summary": "AGP 9.2 / Gradle 9.4.1 / Kotlin 2.3",
+      "current_scope": "历史 AGP/Gradle/Kotlin/KSP 升级快照；现由依赖注册表和显式例外裁决",
+      "decision_status": "deprecated",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "固定版本仍匹配当前 catalog，但它是一次升级快照；“无 alpha”已被 ADR-0050 有条件反转。 处置：废弃为 informational 历史；版本与例外由依赖注册表/新决定裁决。"
+    },
+    {
+      "id": "0012",
+      "path": "docs/DECISIONS/0012-app-error-copy-vs-diagnostics.md",
+      "title": "App 错误文案与诊断日志分离",
+      "summary": "主流程生活化文案，技术细节进 Logcat",
+      "current_scope": "稳定用户错误语义与脱敏诊断分离；写失败说明副作用、outbox、冲突与重试安全",
+      "decision_status": "accepted",
+      "implementation_status": "nonconformant",
+      "verification_status": "failed",
+      "decision_type": "client-interaction",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "`ErrorUiText.kt` / `NetworkErrorHandler.kt` 仍可能把 `Throwable.message` 给用户；图片 debug 日志可能记录响应 body。 处置：修订并收紧：未知错误用稳定 copy；诊断 allowlist/脱敏；写失败必须说明副作用、outbox、重试安全和冲突。"
+    },
+    {
+      "id": "0013",
+      "path": "docs/DECISIONS/0013-category-catalog-and-legacy-alias.md",
+      "title": "分类目录与旧分类兼容",
+      "summary": "13 类默认，`吃饭` 归一到 `餐饮`",
+      "current_scope": "分类是可演进 catalog；跨端 alias、版本兼容、迁移与退役必须显式",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "后端默认目录、账本自定义分类和 Android alias 并存，说明它不是封闭 enum；双端常量可能漂移。 处置：保留并收紧 catalog/version、旧客户端兼容、alias 迁移与退役规则。"
+    },
+    {
+      "id": "0014",
+      "path": "docs/DECISIONS/0014-ios-shortcut-file-body.md",
+      "title": "iOS Shortcut 使用 File body",
+      "summary": "快捷指令首选 File 而非 Form",
+      "current_scope": "历史 iOS Shortcut 互操作 runbook；上传能力、UploadLink、限额和流式校验由现行协议裁决",
+      "decision_status": "deprecated",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "security-identity",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "后端受限 raw body 与 multipart 都支持；iOS 版本、UA 和 Cloudflare 1010 是历史环境经验。 处置：废弃为架构决定，迁 iOS Shortcut runbook；UploadLink、限额、流式校验由身份/上传协议承担。"
+    },
+    {
+      "id": "0015",
+      "path": "docs/DECISIONS/0015-ocr-provider-pipeline.md",
+      "title": "OCR Provider Pipeline",
+      "summary": "三层 provider / parse / expense；`OCR_AUTO_RUN` 默认关",
+      "current_scope": "OCR provider/parse/fact/draft 分层；建议可追踪、人工确认入账、provider 最小外发且有背压",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "dependency-technology",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "provider/parse/draft 分层、失败不阻断上传、只写 pending 均成立；`OcrFact` 已替代旧 raw_text 叙述，同票 enrichment 尚无单飞。 处置：修订 provenance/version、provider egress、背压和失败可见性；保留“自动化只建议”。"
+    },
+    {
+      "id": "0016",
+      "path": "docs/DECISIONS/0016-performance-and-stability-baseline.md",
+      "title": "性能与稳定性基线",
+      "summary": "SQL 层聚合 + Retrofit 复用 + 批量 upsert + 限并发缩略图",
+      "current_scope": "历史 SQLite/无后台框架性能基线；当前 PostgreSQL 容量、背压、任务事实与 executor adapter 由 0072 裁决",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "performance-capacity",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "仍冻结 SQLite、无后台任务框架；当前是 PostgreSQL、后台任务、Room/web 多投影。分页、聚合、cache 等局部原则仍有价值。 处置：由 PG capacity/backpressure/task ADR supersede；旧拓扑条款废弃，局部性能原则迁入 successor。"
+    },
+    {
+      "id": "0017",
+      "path": "docs/DECISIONS/0017-gray-release-product-boundary.md",
+      "title": "灰度版产品边界",
+      "summary": "普通用户不看 token / 域名 / 端口 / 诊断",
+      "current_scope": "历史灰度上传工具产品边界；当前家庭账务事实系统及八承重域由 0066 裁决",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "client-interaction",
+      "risk_level": "standard",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "当前已有家庭账本、债务、预算、邀请、owner transfer、公开 Web session；Basic UI 也会展示 server 地址。早期上传器范围不再能裁决。 处置：由“家庭账务事实系统边界”ADR supersede；保留敏感凭证不暴露和角色分面原则。"
+    },
+    {
+      "id": "0019",
+      "path": "docs/DECISIONS/0019-android-custom-background-local-only.md",
+      "title": "Android 自定义背景只做本机",
+      "summary": "Picker 单图 + 私有目录 + DataStore，不上传",
+      "current_scope": "Android 自定义背景只保存在本机私有空间且不得上传；格式、大小和异常 provider 必须有界",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "client-interaction",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "Photo Picker→私有目录→DataStore 成立；copy 无明确大小/格式上限，固定 JPEG/9:16 是实现细节。 处置：放宽固定实现，保留 local-only/不上传；补资源上限与异常 ContentProvider 测试。"
+    },
+    {
+      "id": "0020",
+      "path": "docs/DECISIONS/0020-alipay-receipt-rule-priority.md",
+      "title": "支付宝账单 OCR 规则优先级",
+      "summary": "候选 + 打分 + 维度模型，禁 if 分支堆砌",
+      "current_scope": "历史支付宝固定词表/权重；当前仅保留可解释候选、置信度、人工确认，算法进入版本化 registry/golden corpus",
+      "decision_status": "deprecated",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "parser 已演进成多 profile 候选评分；ADR 固定商家词和权重会阻碍算法演进，也缺 parser version。 处置：拆分：保留可解释候选+置信度+人工确认；权重/词表进入版本化算法 registry 与 golden corpus。"
+    },
+    {
+      "id": "0021",
+      "path": "docs/DECISIONS/0021-ocr-draft-field-provenance.md",
+      "title": "OCR 草稿字段来源",
+      "summary": "`ocr_draft_fields` 记录字段来源；用户改过不再覆盖",
+      "current_scope": "OCR/AI 建议按字段记录 ownership、fact/parser version；用户修改不得被后台覆盖，legacy heuristic 必须可退役",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0015",
+          "scope": "OCR 字段级 draft provenance"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "`ocr_draft_fields` 与用户 PATCH 清除 ownership 已实现；永久 5 分钟 legacy heuristic 和 SQLite 迁移叙述已失效。 处置：修订 per-field ownership/fact version 与 heuristic 退役触发；ADR-0037 refine。"
+    },
+    {
+      "id": "0022",
+      "path": "docs/DECISIONS/0022-family-ledger-permission-model.md",
+      "title": "家庭账本权限模型",
+      "summary": "owner / member / viewer 三态 + 邀请 token；账户隔离不破",
+      "current_scope": "历史家庭权限矩阵；当前 Account/Ledger/Device/Token/UploadLink/Web/恢复权限由 0068 裁决",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "domain",
+      "risk_level": "critical",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "当前权限来自 `permission_service.py`；owner transfer 已实现；member 不能管 UploadLink；`/web` 可公网 session-gated，只有 `/owner` loopback。 处置：supersede：新家庭 RBAC/credential/trust-boundary ADR；当前基线元数据不得继续写 implemented。"
+    },
+    {
+      "id": "0023",
+      "path": "docs/DECISIONS/0023-chart-library-policy.md",
+      "title": "图表库引入政策",
+      "summary": "阶段化：v0.9 经审计后可引入展示层图表库",
+      "current_scope": "图表仅消费结构化只读投影；依赖须可审计、可回退、无 CDN，失败不得改变账本",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "后端保留结构化统计；Android Canvas/Web ECharts 都只展示，失败不改变账本。 处置：保留；hash/许可证/包体/a11y/失败演练放供应链与验证，不扩写政策。"
+    },
+    {
+      "id": "0024",
+      "path": "docs/DECISIONS/0024-tri-surface-ui-ux-unification.md",
+      "title": "三端 UI/UX 美化统一",
+      "summary": "统一设计语言，不强行同屏复刻",
+      "current_scope": "member/owner/maintainer/auditor 跨端同语言不同布局；覆盖加载、失败、副作用、a11y 与极值输入",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "client-interaction",
+      "risk_level": "standard",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "跨端同语言不同布局仍合理；`/web` remote 403、普通用户永不见 server 地址均与当前代码冲突。 处置：修订为 member/owner/maintainer 分面，并补 loading/error/partial-side-effect/a11y/极值输入。"
+    },
+    {
+      "id": "0025",
+      "path": "docs/DECISIONS/0025-v0.9-android-chart-library-vico.md",
+      "title": "Android 图表库 Vico 3.1.0",
+      "summary": "Vico 进 Compose 展示层；已被 0055 回收",
+      "current_scope": "Vico 选型仅保留历史；Android 图表现由 0055 的原生 Canvas/token 决定取代",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "depends-on",
+          "target": "0023",
+          "scope": "Android 图表依赖政策"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "代码已移除 Vico，ADR-0055 明确替代。 处置：保持 superseded/stale，不得因不符合旧决定而报 nonconformant。"
+    },
+    {
+      "id": "0026",
+      "path": "docs/DECISIONS/0026-v0.9-web-chart-library-echarts.md",
+      "title": "/web 图表库 ECharts 6.0.0",
+      "summary": "自托管 ECharts，禁 CDN",
+      "current_scope": "公开 browser-session 下自托管 ECharts、CSP/digest、SSR fallback、导出与升级 gate",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "depends-on",
+          "target": "0023",
+          "scope": "Web 图表依赖政策"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "自托管 ECharts/fallback/export 成立；local-only 叙述错误，vendor 无机器 SHA-256。 处置：修订 browser-session/CSP 边界并固定 digest/升级 gate。"
+    },
+    {
+      "id": "0027",
+      "path": "docs/DECISIONS/0027-backend-authoritative-fx.md",
+      "title": "Backend Authoritative FX",
+      "summary": "后端唯一汇率权威；冻结快照；缺率返 pending",
+      "current_scope": "后端以 Decimal 和发生日裁决并冻结原币/home snapshot；0061/0073 补 currency binding 与更正事实",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "`exchange_rate_service.py` 用 Decimal、发生日、手工率优先并冻结 snapshot；原 CNY 固定由 ADR-0061 修订。 处置：保留并收紧；客户端不得提交权威 rate，非 CNY 在完整 binding/capability 前 fail closed。"
+    },
+    {
+      "id": "0028",
+      "path": "docs/DECISIONS/0028-public-web-session-gated.md",
+      "title": "Public Web Session-Gated Surface",
+      "summary": "`/web` 公网仅以后端 web session + Cloudflare allowlist 方式开放，`/owner` 仍 loopback",
+      "current_scope": "`/web` 可公网但 session-gated；`/owner` 永远 loopback；公网 admin 默认禁止并由 0068 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "nonconformant",
+      "verification_status": "failed",
+      "decision_type": "security-identity",
+      "risk_level": "critical",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "amends",
+          "target": "0022",
+          "scope": "公网 /web 权限入口"
+        },
+        {
+          "kind": "amends",
+          "target": "0024",
+          "scope": "/web loopback 网络边界"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "`/web` cookie/Cloudflare Access 与 `/owner` loopback 分离成立；`ALLOW_PUBLIC_ADMIN_API` 却能扩大 `/api/admin`，与“边缘拒绝 admin”冲突。 处置：收紧：默认移除公网 admin escape hatch；若确需开放必须独立 critical ADR、最小权限和故障演练。"
+    },
+    {
+      "id": "0029",
+      "path": "docs/DECISIONS/0029-household-bill-split-privacy.md",
+      "title": "Household Bill Split Privacy",
+      "summary": "跨账本邀请双 DTO 分桶；账本可见性 + 幂等 UNIQUE",
+      "current_scope": "邀请接受在单事务形成 member Expense/Debt/Claim/Audit fact bundle；可见性、撤销、双计数和重试显式",
+      "decision_status": "accepted",
+      "implementation_status": "nonconformant",
+      "verification_status": "failed",
+      "decision_type": "domain",
+      "risk_level": "critical",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "invitation accept 当前在同事务创建 Expense、Debt、Claim/Audit；原 ADR 的“只创建 expense、债务解耦”已失效。 处置：修订为单事务 member fact bundle，明确双计数防护、可见性、拒绝/撤销和重试语义。"
+    },
+    {
+      "id": "0030",
+      "path": "docs/DECISIONS/0030-long-task-execution-model.md",
+      "title": "Long Task Execution Model",
+      "summary": "单进程 ThreadPoolExecutor + PG progress table + orphan recovery",
+      "current_scope": "历史 SQLite/in-process 长任务模型；当前 PG task fact、幂等、恢复、背压与 executor adapter 由 0072 裁决",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "performance-capacity",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0016",
+          "scope": "内嵌长任务执行和容量边界"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "仍以 SQLite/in-process 为永久方案；当前 PostgreSQL task ledger 仍有 enqueue read-then-insert 尾部竞争，云 grace 不是 durable multi-worker queue。 处置：由 PG task/executor ADR supersede；executor 是 adapter，任务事实/幂等/恢复在 PG。"
+    },
+    {
+      "id": "0031",
+      "path": "docs/DECISIONS/0031-v1-data-migration-protocol.md",
+      "title": "v1.0 Data Migration Protocol",
+      "summary": "一次性 SQLite cut-over 历史；仅 compatibility gate 继续有效",
+      "current_scope": "仅保留 v1 SQLite cut-over 历史；现行 PostgreSQL/Alembic lifecycle、mixed-version 与 rollback 由 0067 裁决",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "migration-retirement",
+      "risk_level": "high",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "depends-on",
+          "target": "0030",
+          "scope": "历史 v1 migration 长任务"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "ADR 自身承认 cutover machinery retired；继续作为当前 schema 迁移权威会导致先 DDL、后备份等错误。 处置：废弃为 historical；新 PG/Alembic lifecycle ADR supersede 当前适用部分。"
+    },
+    {
+      "id": "0035",
+      "path": "docs/DECISIONS/0035-line-items-discount-tax-mismatch.md",
+      "title": "Line Items Discount/Tax Mismatch",
+      "summary": "line item kind enum + items_sum_status；items 不再要求总额等于 expense",
+      "current_scope": "ExpenseItem/折扣/税使用数据库约束和服务重算；sum status 是可重建投影并由 0073 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "DB CHECK 与 service recompute 已存在；`items_sum_status` 是可重建投影，不是另一套金额真源。 处置：保留并收紧权威/投影区分、修复与极值金额测试。"
+    },
+    {
+      "id": "0036",
+      "path": "docs/DECISIONS/0036-v1.1-ai-budget-provider-privacy-boundary.md",
+      "title": "v1.1 AI Budget Provider Privacy",
+      "summary": "AI 只看最小结构化摘要 + 本地映射表；不上传原始账本 / 图片 / 真名 / 路径",
+      "current_scope": "AI budget provider 逐个声明最小出站 allowlist；建议不写权威预算且采纳必须人工确认",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "critical",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "outbound allowlist fail-closed、建议不写预算成立；SQLite 字样和“所有未来 provider 自动合规”不成立。 处置：修订为 provider-by-provider egress contract；保留人工采纳和聚合最小化。"
+    },
+    {
+      "id": "0037",
+      "path": "docs/DECISIONS/0037-v1.2-learning-feedback-dual-tables.md",
+      "title": "v1.2 Learning Feedback Dual Tables",
+      "summary": "algorithm_decisions / ledger_learning_events / ocr_facts 三表 append-only 建议层，不污染账本",
+      "current_scope": "SuggestionEvent/LearningSignal/OcrFact 的 provenance、追加语义、retention、PII 与不可变证据等级",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0021",
+          "scope": "OCR facts 与学习反馈事实层"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "suggestion/event/OcrFact 追加模型成立，但标题“dual tables”已成三类且 append-only 主要靠 service 约定。 处置：修订当前 fact/provenance、retention/PII、DB 不可变证据等级；refine ADR-0021。"
+    },
+    {
+      "id": "0038",
+      "path": "docs/DECISIONS/0038-v1.3-multi-surface-sync.md",
+      "title": "v1.3 Multi-Surface Sync",
+      "summary": "row_version OCC + Android outbox + 显式冲突；当前扩展见后续 ADR",
+      "current_scope": "PostgreSQL 是账本真源，Room confirmed 是投影，outbox 是设备未提交 intent；退出、quarantine 与 mixed-version 由 0069 裁决",
+      "decision_status": "accepted",
+      "implementation_status": "nonconformant",
+      "verification_status": "failed",
+      "decision_type": "data-consistency",
+      "risk_level": "critical",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "PG/Room/OCC/outbox 基本方向正确；10→11 migration 会丢 pending intent。 处置：保留核心并由 offline-intent ADR refine；当前实现 `nonconformant`，不得把 outbox 当普通 cache。"
+    },
+    {
+      "id": "0039",
+      "path": "docs/DECISIONS/0039-adr-implementation-calibration.md",
+      "title": "ADR Implementation Calibration",
+      "summary": "`54c21841` 历史校准快照，不再承载当前状态",
+      "current_scope": "历史 ADR 手工校准机制；当前状态分层与机器投影由 0056/0065 取代",
+      "decision_status": "superseded",
+      "implementation_status": "implemented",
+      "verification_status": "stale",
+      "decision_type": "governance-calibration",
+      "risk_level": "standard",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "手工表仍称 ADR-0016/ADR-0025 current，并低估 ADR-0022 变化；它不能再当状态权威。 处置：保持 superseded/stale；机器 registry 取代手写状态，但真实实施仍由本审查/证据判断。"
+    },
+    {
+      "id": "0040",
+      "path": "docs/DECISIONS/0040-outbox-subresource-target-and-child-undo.md",
+      "title": "outbox 子资源 target_id + 子资源 undo 契约",
+      "summary": "子资源锚父 Expense `row_version`（无自有 token）；undo 只翻父行不重放子资源",
+      "current_scope": "子资源 intent 锚定 parent aggregate/CAS；撤销改为显式 compensation、残余副作用与 rebuild，由 0069/0073 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0038",
+          "scope": "子资源 outbox target 与 parent-only undo"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "parent target + CAS anchoring 合理；“undo 只翻 parent 且永久不逆副作用”把不完整补偿误冻为架构。 处置：拆分/修订：保留 aggregate concurrency；用显式 compensation matrix、残余副作用和 rebuild 规则替代通用 undo。"
+    },
+    {
+      "id": "0041",
+      "path": "docs/DECISIONS/0041-postgresql-engine-migration.md",
+      "title": "存储层完整性债清偿",
+      "summary": "当前运行时 PostgreSQL-only + row_version CAS；SQLite fallback 是 cut-over 前历史方案，已退役",
+      "current_scope": "PostgreSQL-only 与 row_version 仍有效；schema lifecycle 由 0067、容量与任务由 0072 裁决",
+      "decision_status": "accepted",
+      "implementation_status": "nonconformant",
+      "verification_status": "failed",
+      "decision_type": "deployment-runtime",
+      "risk_level": "critical",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "amends",
+          "target": "0016",
+          "scope": "SQLite 部署条款"
+        },
+        {
+          "kind": "amends",
+          "target": "0038",
+          "scope": "CAS token 改为 row_version"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "PG-only、row_version 方向正确；`create_all` 早于 backup/Alembic，compatibility gate 更晚，production superuser 仅 warning。 处置：保留 PG/row_version，supersede 生命周期部分；当前实现 partial/nonconformant，生产 superuser 与不兼容 schema fail closed。"
+    },
+    {
+      "id": "0042",
+      "path": "docs/DECISIONS/0042-offline-availability-and-request-idempotency.md",
+      "title": "离线可用性边界 + 请求幂等键",
+      "summary": "outbox-routed mutate 使用 intent-time key，分离 OCC 与安全 replay",
+      "current_scope": "outbox intent key、fingerprint、committed-but-unseen 与安全 replay；0057/0069 接管 stable result 和 binding exit",
+      "decision_status": "accepted",
+      "implementation_status": "nonconformant",
+      "verification_status": "failed",
+      "decision_type": "data-consistency",
+      "risk_level": "critical",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "amends",
+          "target": "0038",
+          "scope": "outbox-routed request idempotency"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "FIFO/KeepMine/age cap 大部成立，但 unknown-type 语义漂移、退出清队列、ADR-0057 stable result 未成立。 处置：修订并标 partial；offline binding successor 接管退出/quarantine，ADR-0057 接管服务端首次结果。"
+    },
+    {
+      "id": "0043",
+      "path": "docs/DECISIONS/0043-tag-management.md",
+      "title": "标签管理 rename / delete / merge",
+      "summary": "online-only mutate surface；Tag 进 row_version CAS；delete / merge 带 undo 表",
+      "current_scope": "标签 rename/delete/merge 的事实边界与 CAS；表结构不冻结，并补补偿、ABA、恢复与 mixed-version",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "rename/delete/merge 领域不变量有效；表名、单事务步骤和旧 SQLite migration 是实现协议。 处置：保留并放宽实现细节；补补偿/ABA/恢复与 mixed-version。"
+    },
+    {
+      "id": "0044",
+      "path": "docs/DECISIONS/0044-android-string-resourcing.md",
+      "title": "Android UI 字符串外置 strings.xml",
+      "summary": "resourcing 非翻译：只放中文、不建第二语言；按 screen/module 分 PR",
+      "current_scope": "Android 用户可见字符串外置到 strings.xml；只做资源化，不虚构第二语言或领域规则",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "client-interaction",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "strings.xml 外置方向仍成立，风险低。 处置：保留；无需升格成领域核心或增加沉重证据。"
+    },
+    {
+      "id": "0045",
+      "path": "docs/DECISIONS/0045-csrf-signing-key.md",
+      "title": "CSRF 持久化随机签名密钥",
+      "summary": "公开占位常量 → app_meta 随机秘密，启动 fail closed",
+      "current_scope": "持久随机 CSRF/session key 与 placeholder fail-closed；restore/clone/identity 生命周期由 0059/0068 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "security-identity",
+      "risk_level": "critical",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "持久随机 key、placeholder 拒绝方向正确；需与 clone/restore identity、Web session 和 bootstrap key 生命周期统一，不能把普通服务账户可读备份当安全恢复。 处置：保留并收紧；ADR-0059/身份 successor refine，恢复后做 effective-secret fingerprint 校验。"
+    },
+    {
+      "id": "0046",
+      "path": "docs/DECISIONS/0046-android-recurring-reminder-detection-source.md",
+      "title": "Android 固定支出提醒检测源",
+      "summary": "WorkManager 只作 Scheduler；Engine/Policy/Store/Dispatcher 分层",
+      "current_scope": "WorkManager 仅作持久 best-effort 检测器；投递 outcome、single-flight 与非 exactly-once 语义由 0058 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "client-interaction",
+      "risk_level": "high",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "WorkManager 持久周期任务作为检测器合理，具体 timing 不精确；ADR-0058 已补投递语义。 处置：保留并由 ADR-0058 refine；不声称 exact time/exactly once。"
+    },
+    {
+      "id": "0047",
+      "path": "docs/DECISIONS/0047-bundled-installer-windows-services.md",
+      "title": "捆绑安装器 + Windows 服务化 + 主机管理器",
+      "summary": "Windows 服务化与家庭分发方向；实施状态单独跟踪",
+      "current_scope": "Windows SCM/虚拟账户/ProgramData/loopback 仅是宿主 adapter；生命周期、bootstrap、provenance 分别由 0062–0064 接管",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "stale",
+      "decision_type": "deployment-runtime",
+      "risk_level": "critical",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "depends-on",
+          "target": "0041",
+          "scope": "PostgreSQL-only runtime"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0028",
+          "scope": "/owner loopback 与 /web 公网边界"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0045",
+          "scope": "持久 signing key"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "SCM、虚拟账户、ProgramData、loopback 是 Windows adapter 方向；LAN/mDNS、已入包 manager、精确 ACL/完整升级恢复不能按旧正文一概称实现。 处置：保留平台选择并修订状态；0062–0064 分别接管生命周期、bootstrap、provenance；领域核心不得依赖 SCM/Inno。"
+    },
+    {
+      "id": "0048",
+      "path": "docs/DECISIONS/0048-rive-mascot-animation.md",
+      "title": "Rive 吉祥物动画方案（已放弃）",
+      "summary": "Rive 导出付费墙导致方案撤回；当前使用原生 Compose",
+      "current_scope": "Rive 方案已拒绝且无代码消费者；仅保留历史，不得复活为实现债",
+      "decision_status": "rejected",
+      "implementation_status": "not-started",
+      "verification_status": "stale",
+      "decision_type": "dependency-technology",
+      "risk_level": "low",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "已明确放弃且代码无消费者。 处置：保持 rejected/stale，不得复活或制造实现债。"
+    },
+    {
+      "id": "0049",
+      "path": "docs/DECISIONS/0049-debt-domain-contract.md",
+      "title": "Debt Domain Contract",
+      "summary": "frozen obligation + append-only repayment/correction/forgiveness facts",
+      "current_scope": "Debt obligation 与 repayment/correction/forgiveness facts；身份依赖 0068，纯 fold/rebuild 由 0060/0073 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "critical",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "depends-on",
+          "target": "0001",
+          "scope": "整数金额"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0068",
+          "scope": "当前家庭身份、RBAC 与信任边界"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0027",
+          "scope": "FX authority"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0029",
+          "scope": "bill-split privacy"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0038",
+          "scope": "OCC/outbox"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0041",
+          "scope": "PostgreSQL row_version"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0042",
+          "scope": "idempotency"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "member/external debt、权限、OCC、repayment/forgiveness 事实已落地；旧 rollout 描述失真，append-only 尚缺 DB 级证明。 处置：修订 rollout 与证据等级；领域决定保留，ADR-0060 refine，未来退款不能借 Debt/discount 偷换。"
+    },
+    {
+      "id": "0050",
+      "path": "docs/DECISIONS/0050-android-baseline-profile-prerelease.md",
+      "title": "Android Baseline Profile 预发布工具",
+      "summary": "issue #64 A1：AGP 9.2 上稳定版 baselineprofile 报废（实证），owner 拍板采 1.5.0-alpha06；仅构建/测试期、不进运行时，回收=1.5.0 stable",
+      "current_scope": "Baseline Profile 1.5.0-alpha06 仅为构建/测试期有限例外；稳定版可用即复审退出",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "depends-on",
+          "target": "0009",
+          "scope": "Version Catalog"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0010",
+          "scope": "依赖审计"
+        },
+        {
+          "kind": "informational",
+          "target": "0011",
+          "scope": "AGP 9.2 工具链历史上下文"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "截至审查日官方仍无更新的 1.5 稳定版；例外有明确退出条件。 处置：保留限时例外；稳定版可用即复审，不把 alpha 例外扩散到其他依赖。"
+    },
+    {
+      "id": "0051",
+      "path": "docs/DECISIONS/0051-unified-recycle-bin.md",
+      "title": "统一回收站",
+      "summary": "owner / web / Android 回收站；5 分钟 undo 与 30 天 recycle 分离",
+      "current_scope": "回收站是带 OCC/retention 的用户恢复状态，不等于隐私擦除、备份 purge 或财务冲正；0073 refine",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "medium",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0038",
+          "scope": "删除恢复与 retention"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "soft-delete/restore 方向成立；回收站是用户恢复功能，不等于隐私删除或备份 purge。 处置：收紧 retention、OCC/ABA、备份删除和 owner/member 可见性。"
+    },
+    {
+      "id": "0052",
+      "path": "docs/DECISIONS/0052-master-delete-recycle-bin-scope.md",
+      "title": "主数据删除与回收站边界",
+      "summary": "历史事实不随 master 删除改写；按领域归档/隐藏",
+      "current_scope": "删除 master/catalog 不改写历史事实；在线删除、审计保留、备份擦除和恢复副本语义由 0073 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0051",
+          "scope": "主数据进入回收站的事实边界"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "master/fact 区分和 recycle scope 基本成立；在线 purge 与离线备份/审计保留未统一。 处置：收紧数据擦除与恢复副本语义；不得用 UI“删除”承诺所有备份立即消失。"
+    },
+    {
+      "id": "0053",
+      "path": "docs/DECISIONS/0053-merchant-catalog-contract.md",
+      "title": "商家目录与删除边界",
+      "summary": "ledger catalog 删除不批量改写历史 `Expense.merchant`",
+      "current_scope": "merchant catalog CRUD/recycle/alias 不改写历史账单，目录不是金额或账务事实真源",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0052",
+          "scope": "merchant catalog 删除边界"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "catalog/alias 边界与当前代码一致。 处置：保留；作为可重建/可迁移目录，不提升为金额真源。"
+    },
+    {
+      "id": "0054",
+      "path": "docs/DECISIONS/0054-merchant-catalog-merge-rename.md",
+      "title": "商家目录合并与重命名契约",
+      "summary": "rename 不修历史；merge 双 token + 显式 alias policy",
+      "current_scope": "merchant rename/merge 使用双 OCC 与显式 alias policy；不可逆影响、unmerge 和旧 outbox 冲突由 0073 收紧",
+      "decision_status": "accepted",
+      "implementation_status": "partial",
+      "verification_status": "unverified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "refines",
+          "target": "0053",
+          "scope": "merchant rename/merge"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "merge/rename 已实现且禁止历史事实重写；没有完整 unmerge，alias 会改变报表归类。 处置：收紧可逆性：执行前明示不可逆/残余影响，或另建可证明的 unmerge；旧 outbox 需显式冲突。"
+    },
+    {
+      "id": "0055",
+      "path": "docs/DECISIONS/0055-android-chart-native-canvas-tokens.md",
+      "title": "Android 图表回收到原生 Canvas 与设计 token",
+      "summary": "删除 Vico 运行时依赖；洞察页趋势图只用单一图表语义和 tokenized Canvas",
+      "current_scope": "Android 图表使用原生 Canvas 与 design token；作为只读投影，失败不改变账本事实",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "unverified",
+      "decision_type": "dependency-technology",
+      "risk_level": "standard",
+      "confidence": "high",
+      "owners": {
+        "decision": "owner / 项目维护者",
+        "implementation": "对应模块维护者",
+        "verification": "独立 reviewer + CI",
+        "risk": "owner / 项目维护者"
+      },
+      "relations": [
+        {
+          "kind": "supersedes",
+          "target": "0025",
+          "scope": "Android Vico 选型全部替换为原生 Canvas"
+        }
+      ],
+      "reviewed_at": "2026-07-11",
+      "reviewed_against_commit": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
+      "reason": "原生 Canvas + design token 已替代 Vico，并有未来库化触发条件。 处置：保留；图表失败不改变账本事实。"
+    }
+  ]
+}

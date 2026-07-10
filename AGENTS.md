@@ -14,7 +14,9 @@
 4. `docs/architecture/API.md`
 5. `docs/architecture/SECURITY.md`
 6. `docs/rules/REFERENCES.md`
-7. 与当前任务相关的 `docs/DECISIONS/*.md`
+7. 与当前任务相关的 `docs/DECISIONS/*.md`（`docs/current/adr-registry.json` 只用于定位当前状态/关系，
+   不替代 Decision 和真实代码）
+8. 修改 ADR/治理工具时再读 `docs/rules/ADR_CONTRACT_STANDARD.md`
 
 后端 / Android 任务的具体补充已合并入 `docs/rules/ENGINEERING_RULES.md` §14（项目特定补充）。
 
