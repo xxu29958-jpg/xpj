@@ -9,7 +9,7 @@
 | 部署 / 备份 / 排障 / 升级 | [runbook/](runbook/) |
 | 看产品路线、设计参考、未来能力 | [roadmap/](roadmap/) |
 | 查当前版本（v1.2）的设计资产和收口报告 | [current/](current/) |
-| 看某个具体技术选型为什么这么定 | [DECISIONS/](DECISIONS/)（0001–0049，0018 已撤回，索引见 [DECISIONS/README.md](DECISIONS/README.md)）|
+| 看某个具体技术选型为什么这么定 | [DECISIONS/](DECISIONS/)（人读索引见 [DECISIONS/README.md](DECISIONS/README.md)，机器状态/关系查询见 [adr-registry.json](current/adr-registry.json)）|
 | 拿设计稿原图与色板预览 | [design_reference/](design_reference/) |
 
 ## 必读顺序（与 [AGENTS.md](../AGENTS.md) 一致）
@@ -20,7 +20,8 @@
 4. [architecture/API.md](architecture/API.md) — 后端 API 契约
 5. [architecture/SECURITY.md](architecture/SECURITY.md) — 安全说明
 6. [rules/REFERENCES.md](rules/REFERENCES.md) — 官方资料与依赖来源
-7. 与当前任务相关的 [DECISIONS/](DECISIONS/)
+7. 与当前任务相关的 [DECISIONS/](DECISIONS/)（[adr-registry.json](current/adr-registry.json) 只用于定位状态/关系）
+8. 修改 ADR/治理工具时再读 [rules/ADR_CONTRACT_STANDARD.md](rules/ADR_CONTRACT_STANDARD.md)
 
 后端 / Android 任务的具体补充已合并入 [rules/ENGINEERING_RULES.md](rules/ENGINEERING_RULES.md) §14。
 OCR / 分类 / 重复检测 / 缩略图任务追加：[roadmap/V2_ROADMAP.md](roadmap/V2_ROADMAP.md)
@@ -36,7 +37,8 @@ OCR / 分类 / 重复检测 / 缩略图任务追加：[roadmap/V2_ROADMAP.md](ro
 - **runbook/**：操作类。读者多是运维角色，步骤要可粘贴执行。
 - **roadmap/**：规划类。多是规划、对照、参考；落地后逐步沉到 architecture/。
 - **current/**：版本资产。每发布一个 minor 就替换；过期内容直接删除（git 历史里仍可追溯）。
-- **DECISIONS/**：ADR。编号一旦下发不再修改；如方向变了写新的 ADR 标 supersedes。
+- **DECISIONS/**：ADR。已接受的决策本体保留历史；schema-v2 用 front matter，legacy 正文由 hash baseline
+  冻结、当前符合性由 calibration overlay 表达。方向改变写新 ADR 并声明 `amends` / `supersedes`。
 - **design_reference/**：设计稿。`thumbnails/*.png` 是真值，文字说明在该目录的 README.md。
 
 ## 这次重组的范围

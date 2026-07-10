@@ -1,6 +1,11 @@
 # 小票夹完整架构
 
-> **当前基线：v0.9.0a1**（身份契约 `identity_schema=v0.3` 不变）。版本真值源见 [docs/architecture/VERSION.md](VERSION.md)。
+> **当前代码基线：v1.2.0**（身份契约 `identity_schema=v0.3` 不变）。本文包含早期阶段的历史说明；
+> 版本真值源见 [docs/architecture/VERSION.md](VERSION.md)，ADR 当前实施状态见
+> [docs/current/ADR_STATUS.md](../current/ADR_STATUS.md)，机器查询接口见
+> [docs/current/adr-registry.json](../current/adr-registry.json)。跨域裁决还需对照
+> [核心不变量](CORE_INVARIANTS.md)、[权威源登记](AUTHORITY_SOURCE_REGISTER.md) 与
+> [mixed-version/schema 演进契约](PROTOCOL_EVOLUTION.md)。
 
 ## 灰度版总入口
 
@@ -18,7 +23,8 @@
 
 灰度版强制要求：
 
-- 普通用户主体验不显示服务器域名、token、接口名、Cloudflare、端口、日志和诊断脚本。
+- member 主体验不暴露 token、路径秘密、恢复材料和内部诊断；服务器地址在连接/作用域/恢复需要时可展示，
+  但必须给出用途和安全提示，不能与凭证混称“技术信息”。
 - 多账本按 `ledger_id` 隔离账单、图片、统计、分类规则、重复检测和 CSV。
 - iPhone 快捷指令和 Android App 均可上传截图。
 - OCR 只填草稿，不自动入账。
@@ -26,33 +32,22 @@
 
 ## 1. 项目定位
 
-小票夹是一个私人半自动记账系统，面向个人和灰度试用使用，不做商业云服务。当前核心目标是让账单截图从 iPhone 或 Android 进入 Windows 后端，由 OCR/规则生成草稿，再由 Android App 人工确认入账。
+小票夹是一个**本地优先的家庭账务事实系统**，不是早期的小票上传工具。截图、手工录入、通知解析、
+CSV 和家庭分账只是事实入口；核心是让一个家庭在明确的 Account/Ledger/Member/Device 权限下，形成可确认、
+可修订/补偿、可同步、可恢复的账务事实与只读投影。正式领域边界见 [[0066]]。
 
-当前已实现重点：
+当前代码已经覆盖：
 
-- iPhone 截图上传。
-- Android 截图上传。
-- Windows FastAPI 后端保存截图。
-- 后端创建 pending 待确认账单，并可按配置运行 OCR 草稿识别。
-- Android App 拉取 pending 账单。
-- 用户编辑金额、商家、分类、消费时间、备注。
-- 用户确认或拒绝账单。
-- confirmed 账单同步到 Android Room 本地缓存。
-- v0.3 身份系统：Account、Ledger、Device、AuthToken、UploadLink、PairingCode。
-- 多账本隔离账单、图片、统计、分类规则、重复检测和导出。
-- 分类规则、重复检测、缩略图和图片清理维护接口已落地。
+- 多账号/多账本/成员角色、设备会话、邀请与 owner transfer；
+- Android、公开 session-gated `/web` 和本机 `/owner` 三类交互面；
+- Expense、行项目/分摊、预算/目标、Debt、家庭分账、固定支出、商家/分类/标签/规则、回收站和报表；
+- iOS/Android 上传、OCR/规则草稿、人工确认以及 provider 失败时的手工路径；
+- PostgreSQL 结构化事实、Android Room confirmed cache 与持久 outbox；
+- Windows 后端/PostgreSQL 服务化、备份和安装/恢复方向。
 
-当前明确不做：
-
-- 商业账号注册和登录系统。
-- 邮箱、手机号、第三方登录。
-- 远程控制电脑。
-- 云端商业部署。
-- 自动读取 iPhone 相册。
-- 自动入账。
-- 微信、支付宝自动监听。
-- 银行卡接口。
-- 第三方支付接口。
+当前明确不做：商业多租户注册、支付/银行卡自动接入、后台自动确认入账、任意本机远程控制、未经决策的
+多 active writer 或企业级会计/关账。未来 Linux、云端、多机器或新客户端只能新增 adapter/协议能力，
+不得重写金额、账本、身份和人工确认核心。
 
 > v0.3.3 起后端已提供轻量网页版账本 `/web`；v1.0 公网形态只允许按
 > ADR-0028 通过 Cloudflare allowlist + Access（生产建议）+ 后端
@@ -65,25 +60,28 @@
 ## 2. 总体流程
 
 ```text
-iPhone 截图
-  -> iOS 快捷指令上传图片
-  -> https://api.我的域名.com/u/<upload_key>
-  -> Cloudflare Tunnel
-  -> Windows 主机 FastAPI 服务，监听 127.0.0.1:8000
-  -> PostgreSQL 数据库 + uploads 私有图片目录
-  -> Android App 拉取 pending 账单
-  -> 用户编辑/确认/删除
-  -> confirmed 账单同步到 Android Room
+受控入口（图片 / 手工 / 通知 / CSV / 家庭分账）
+  -> backend auth + ledger permission + validation
+  -> pending suggestion 或明确用户命令
+  -> 人工确认 / 显式批量操作
+  -> PostgreSQL 权威账务事实 + 私有规范化收据 bytes
+  -> Android / Web / 报表等可重建投影
+
+Android 离线写
+  -> Room outbox（设备未提交意图）
+  -> binding/version/OCC/idempotency 校验
+  -> PostgreSQL commit 后以服务端结果裁决
 ```
 
 系统边界：
 
-- iPhone 只负责上传图片。
-- 后端只负责保存、校验、建账单、提供 API。
-- Android App 是当前唯一人工确认入口。
-- PostgreSQL 数据库只能被本机后端访问。
-- uploads 目录不能被静态公开。
-- Cloudflare Tunnel 只映射 API，不映射 Windows 文件夹。
+- 后端 service + PostgreSQL 约束承载权威业务规则；Android/Web/GUI 不复制权威状态转换。
+- PostgreSQL 是结构化事实、权限、状态机和引用关系的唯一在线数据库；Room confirmed 数据可删除重建。
+- outbox 是设备未提交意图，不是普通缓存；退出、升级和换账本不得静默清除。
+- 收据图是私有规范化 bytes，与 PG ownership/lifecycle/digest 共同构成有效附件；uploads 不静态公开。
+- OCR/AI 只写建议/provenance，用户修改和人工确认优先，provider 失败不阻断手工记账。
+- `/web` 使用应用 session；`/owner` 保持 loopback adapter；Cloudflare/loopback/OS admin 都不替代账本授权。
+- Windows SCM、注册表、Inno、PowerShell 和 ProgramData 只属于宿主 adapter。
 
 ## 3. 后端技术栈
 

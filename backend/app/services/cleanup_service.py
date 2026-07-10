@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,6 +29,8 @@ from app.services.optimistic_concurrency import bump_row_version
 from app.services.soft_delete_policy import recycle_bin_retention_days
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -69,7 +73,19 @@ def _delete_relative_file_for_db_mark(relative_path: str | None, tenant_id: str)
     if candidate is None:
         return False, False
     if not candidate.exists():
-        return True, False
+        reference_digest = hashlib.sha256(
+            f"{tenant_id}\0{relative_path}".encode()
+        ).hexdigest()[:16]
+        logger.error(
+            "event=upload_integrity_missing reference_digest=%s "
+            "referenced upload is missing; database deletion marker remains unset",
+            reference_digest,
+            extra={
+                "event": "upload_integrity_missing",
+                "reference_digest": reference_digest,
+            },
+        )
+        return False, False
     if not candidate.is_file():
         return False, False
     try:

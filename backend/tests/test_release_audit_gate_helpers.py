@@ -76,6 +76,28 @@ def test_release_audit_compact_mode_suppresses_success_noise(monkeypatch, capsys
     assert calls[0]["capture_output"] is True
 
 
+def test_release_audit_discovers_adr_contract_lane() -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+
+    lanes = set(mod._discover_lanes(SCRIPTS))
+
+    assert ("adr-contracts", "_audit_adr_contracts.py") in lanes
+    assert ("adr-registry", "_audit_adr_registry.py") not in lanes
+
+
+def test_adr_contract_gate_is_present_in_a_clean_git_clone() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "backend/scripts/_audit_adr_contracts.py"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -> None:
     mod = importlib.reload(importlib.import_module("release_audit"))
 
