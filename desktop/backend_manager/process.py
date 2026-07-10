@@ -1,13 +1,12 @@
 """Real OS process primitives injected into [BackendSupervisor].
 
 Kept separate from the supervision logic so the latter stays unit-testable: these
-functions actually touch the OS (spawn uvicorn, tree-kill, free a port, HTTP probe)
+functions actually touch the OS (spawn uvicorn, tree-kill, HTTP probe)
 and are only exercised by the running app, not the unit tests.
 """
 
 from __future__ import annotations
 
-import contextlib
 import subprocess
 import threading
 import urllib.request
@@ -41,6 +40,12 @@ class UvicornProcess:
         with self._lock:
             return list(self._log)
 
+    def wait(self, timeout: float) -> int:
+        try:
+            return self._popen.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError from exc
+
     def _pump(self) -> None:
         stream = self._popen.stdout
         if stream is None:
@@ -70,38 +75,24 @@ def spawn_backend(*, backend_root: Path, venv_python: Path, host: str, port: int
     return UvicornProcess(popen)
 
 
-def tree_kill(pid: int) -> None:
+def tree_kill(pid: int) -> bool:
     """Force-kill a process AND its descendants (``/T``).
 
     uvicorn's worker is a child process; killing only the parent would orphan the
     worker (still bound to the port). ``taskkill /T`` takes down the whole tree, so a
     stop actually frees the port.
     """
-    with contextlib.suppress(subprocess.SubprocessError, OSError):
-        subprocess.run(
+    try:
+        result = subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],
             capture_output=True,
             timeout=15,
             creationflags=_CREATE_NO_WINDOW,
             check=False,
         )
-
-
-def kill_listeners_on_port(port: int) -> None:
-    """Kill any process currently listening on ``port`` (clears strays before a fresh start)."""
-    with contextlib.suppress(subprocess.SubprocessError, OSError):
-        subprocess.run(
-            [
-                "powershell", "-NoProfile", "-Command",
-                f"Get-NetTCPConnection -LocalPort {port} -State Listen "
-                f"-ErrorAction SilentlyContinue | ForEach-Object "
-                f"{{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}",
-            ],
-            capture_output=True,
-            timeout=15,
-            creationflags=_CREATE_NO_WINDOW,
-            check=False,
-        )
+    except (subprocess.SubprocessError, OSError):
+        return False
+    return result.returncode == 0
 
 
 def health_ok(url: str, *, timeout: float = 3.0) -> bool:

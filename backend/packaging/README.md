@@ -138,4 +138,4 @@ ticketbox-backend/
 
 ## 与 GUI 管理器的关系
 
-`desktop/` 的后端管理器（薄进程壳 + 状态面板）当前 spawn `python -m uvicorn`;后续可让它改 spawn 这个 EXE,实现「双击即开 GUI + 后端」的一体化分发。
+`desktop/` 的后端管理器已支持两种运行态:源码模式继续监督 `python -m uvicorn`;检测到 `HKLM\Software\Ticketbox` 后切到正式安装模式,通过 Windows SCM 管理 `TicketboxPg` / `TicketboxBackend`,并从 ProgramData 读取配置和日志。把管理器冻结成 EXE 并纳入 Inno 仍是下一打包切片。

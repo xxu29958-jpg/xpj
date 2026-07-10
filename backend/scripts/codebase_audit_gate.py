@@ -131,7 +131,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2403,  # Current collected pytest count. Ratchet provenance lives in PR history.
+    "backend_pytest_count": 2407,  # Current collected pytest count. Ratchet provenance lives in PR history.
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane

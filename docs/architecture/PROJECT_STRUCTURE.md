@@ -202,13 +202,18 @@ android\
 
 ## desktop
 
-Windows 桌面后端管理器（仿 SyncTrayzor 模式：只做进程壳，不重造后端管理功能）。
+Windows 桌面后端管理器。正式安装态通过 Windows SCM 管理后端/PG 服务，源码态保留进程监督；两者共用本机状态面板，不重造后端业务管理功能。
 CI 的 desktop-manager job 对它跑 compileall / ruff / pytest。详见 [desktop/README.md](../../desktop/README.md)。
 
 ```text
 desktop\
   backend_manager\
-    supervisor.py        # 后端进程监督（独占、崩溃重启、树 kill）
+    config.py            # 自动选择正式安装 / 源码运行态
+    installation.py      # Inno 注册表与 ProgramData 布局
+    runtime.py           # 两种运行态的共用状态/控制契约
+    elevation.py         # 固定 SCM 动作的短命 UAC helper
+    windows_service.py   # Windows SCM 服务控制与正式日志读取
+    supervisor.py        # 源码后端进程监督（独占、崩溃重启、树 kill）
     control_server.py
     ui.html
   tests\

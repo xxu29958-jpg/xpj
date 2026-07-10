@@ -111,7 +111,7 @@ jobs:
           PYTHONUTF8: "1"
         run: |
           .\.ci-venv\Scripts\python.exe -m pip install pip-audit
-          .\.ci-venv\Scripts\python.exe -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt
+          .\.ci-venv\Scripts\python.exe -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt -r ../desktop/requirements.txt
 
   backend-postgres:
     name: Backend (PostgreSQL)

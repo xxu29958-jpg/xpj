@@ -1,13 +1,8 @@
-"""Entry point — resolves config, wires the supervisor + control server + UI, runs until quit.
-
-No import-time side effects: everything is constructed inside [main], and every value
-comes from [load_config] (env / backend .env / discovery), never a hardcoded literal.
-
-Run:  backend/.venv/Scripts/python.exe -m backend_manager   (cwd = desktop/)
-"""
+"""Desktop Manager entry point for source and installed-service runtimes."""
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import secrets
 import shutil
@@ -17,16 +12,41 @@ import time
 from functools import partial
 from pathlib import Path
 
-from backend_manager.config import ManagerConfig, load_config
+from backend_manager.config import ConfigError, InstalledRuntimeConfig, ManagerConfig, SourceRuntimeConfig, load_config
 from backend_manager.control_server import ControlServer
+from backend_manager.elevation import (
+    HELPER_EXIT_ACCESS,
+    HELPER_EXIT_CONFIG,
+    HELPER_EXIT_MISSING_SERVICE,
+    HELPER_EXIT_NOT_ELEVATED,
+    HELPER_EXIT_OS,
+    HELPER_EXIT_TRANSITION,
+    ElevatedServiceActionRunner,
+    ServiceAction,
+    is_process_elevated,
+    start_helper_watchdog,
+)
 from backend_manager.netinfo import lan_ip
 from backend_manager.process import (
     health_ok,
-    kill_listeners_on_port,
     spawn_backend,
     tree_kill,
 )
+from backend_manager.runtime import (
+    BackendRuntime,
+    RuntimeControlError,
+    RuntimeStatus,
+    ServiceAccessError,
+    ServiceMissingError,
+    ServiceTransitionError,
+    SourceBackendRuntime,
+)
 from backend_manager.supervisor import BackendSupervisor
+from backend_manager.windows_service import (
+    BrokeredWindowsServiceRuntime,
+    WindowsServiceGateway,
+    WindowsServiceRuntime,
+)
 
 _CREATE_NO_WINDOW = 0x08000000
 _EDGE_CANDIDATES = (
@@ -54,74 +74,175 @@ def _open_app_window(url: str) -> None:
 
 
 class AppController:
-    """Adapts the supervisor + resolved config into the dict the control server serves."""
+    """Adapt one runtime into the stable JSON contract consumed by ``ui.html``."""
 
-    def __init__(self, supervisor: BackendSupervisor, config: ManagerConfig) -> None:
-        self._sup = supervisor
+    def __init__(self, runtime: BackendRuntime, config: ManagerConfig) -> None:
+        self._runtime = runtime
         self._config = config
+        self._last_error: str | None = None
+        self._lock = threading.RLock()
 
     def status(self) -> dict:
-        snapshot = self._sup.status()
+        status_error: str | None = None
+        try:
+            snapshot = self._runtime.status()
+        except RuntimeControlError as exc:
+            status_error = str(exc)
+            snapshot = self._unavailable_status()
         ip = lan_ip()
         port = self._config.backend_port
+        with self._lock:
+            last_error = status_error or snapshot.control_error or self._last_error
         return {
+            "runtime_mode": snapshot.mode,
             "running": snapshot.running,
             "health": snapshot.healthy,
             "uptime_seconds": snapshot.uptime_seconds,
             "pid": snapshot.pid,
             "port": port,
             "auto_restart": snapshot.auto_restart,
+            "auto_restart_configurable": snapshot.auto_restart_configurable,
             "restarts": snapshot.restarts,
+            "backend_service_state": snapshot.backend_service_state,
+            "database_service_state": snapshot.database_service_state,
             "lan": f"{ip}:{port}" if ip else "未发现局域网地址",
             "tunnel": self._config.public_base_url,
             "owner_url": self._config.owner_url,
             "log": snapshot.log,
+            "control_error": last_error,
         }
 
     def start(self) -> None:
-        self._sup.start()
+        self._control(self._runtime.start)
 
     def stop(self) -> None:
-        self._sup.stop()
+        self._control(self._runtime.stop)
 
     def restart(self) -> None:
-        self._sup.restart()
+        self._control(self._runtime.restart)
 
     def auto_restart(self) -> None:
-        self._sup.toggle_auto_restart()
+        self._control(self._runtime.toggle_auto_restart)
 
     def open_console(self) -> None:
         _open_in_browser(self._config.owner_url)
 
+    def _control(self, action) -> None:
+        try:
+            action()
+        except RuntimeControlError as exc:
+            with self._lock:
+                self._last_error = str(exc)
+        else:
+            with self._lock:
+                self._last_error = None
 
-def _build_supervisor(config: ManagerConfig) -> BackendSupervisor:
+    def _unavailable_status(self) -> RuntimeStatus:
+        return RuntimeStatus(
+            mode=self._config.runtime_mode,
+            running=False,
+            healthy=False,
+            pid=None,
+            uptime_seconds=0,
+            auto_restart=self._config.runtime_mode == "installed",
+            auto_restart_configurable=self._config.runtime_mode == "source",
+            restarts=0,
+            backend_service_state="unknown" if self._config.runtime_mode == "installed" else None,
+            database_service_state="unknown" if self._config.runtime_mode == "installed" else None,
+            log=[],
+            control_error=None,
+        )
+
+
+def _build_source_supervisor(config: ManagerConfig, runtime: SourceRuntimeConfig) -> BackendSupervisor:
     return BackendSupervisor(
         spawn=partial(
             spawn_backend,
-            backend_root=config.backend_root,
-            venv_python=config.venv_python,
+            backend_root=runtime.backend_root,
+            venv_python=runtime.venv_python,
             host=config.backend_host,
             port=config.backend_port,
         ),
         tree_kill=tree_kill,
-        kill_port=partial(kill_listeners_on_port, config.backend_port),
         health=partial(health_ok, config.health_url),
     )
 
 
-def main() -> None:
+def _build_direct_service_runtime(config: ManagerConfig, runtime: InstalledRuntimeConfig) -> WindowsServiceRuntime:
+    return WindowsServiceRuntime(
+        gateway=WindowsServiceGateway(),
+        backend_service_name=runtime.backend_service_name,
+        pg_service_name=runtime.pg_service_name,
+        health_url=config.health_url,
+        log_path=runtime.log_path,
+    )
+
+
+def _build_runtime(config: ManagerConfig) -> BackendRuntime:
+    runtime = config.runtime
+    if isinstance(runtime, SourceRuntimeConfig):
+        return SourceBackendRuntime(_build_source_supervisor(config, runtime))
+    if isinstance(runtime, InstalledRuntimeConfig):
+        return BrokeredWindowsServiceRuntime(
+            status_runtime=_build_direct_service_runtime(config, runtime),
+            action_runner=ElevatedServiceActionRunner(),
+        )
+    raise ConfigError(f"unsupported runtime: {type(runtime).__name__}")
+
+
+def _run_elevated_service_action(action: ServiceAction) -> int:
+    if not is_process_elevated():
+        return HELPER_EXIT_NOT_ELEVATED
+    watchdog = start_helper_watchdog()
+    try:
+        config = load_config(mode_override="installed")
+        runtime_config = config.runtime
+        if not isinstance(runtime_config, InstalledRuntimeConfig):
+            return HELPER_EXIT_CONFIG
+        runtime = _build_direct_service_runtime(config, runtime_config)
+        getattr(runtime, action)()
+        return 0
+    except ConfigError:
+        return HELPER_EXIT_CONFIG
+    except ServiceMissingError:
+        return HELPER_EXIT_MISSING_SERVICE
+    except ServiceTransitionError:
+        return HELPER_EXIT_TRANSITION
+    except ServiceAccessError:
+        return HELPER_EXIT_ACCESS
+    except (OSError, RuntimeControlError):
+        return HELPER_EXIT_OS
+    finally:
+        watchdog.set()
+
+
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--elevated-service-action", choices=("start", "stop", "restart"))
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    if args.elevated_service_action:
+        return _run_elevated_service_action(args.elevated_service_action)
+    if is_process_elevated():
+        raise ConfigError("小票夹管理器界面不能以管理员身份运行；服务操作会按需单独请求 UAC 授权。")
+
     config = load_config()
-    supervisor = _build_supervisor(config)
-    supervisor.start()
+    runtime = _build_runtime(config)
+    controller = AppController(runtime, config)
+    if config.runtime_mode == "source":
+        controller.start()
 
     stop_event = threading.Event()
-    threading.Thread(target=supervisor.run_monitor, args=(stop_event,), daemon=True).start()
+    threading.Thread(target=runtime.run_monitor, args=(stop_event,), daemon=True).start()
 
     token = secrets.token_urlsafe(24)
     server = ControlServer(
         config.manager_host,
         config.manager_port,
-        controller=AppController(supervisor, config),
+        controller=controller,
         token=token,
         ui_html=_UI_HTML,
     )
@@ -134,7 +255,8 @@ def main() -> None:
     except KeyboardInterrupt:
         stop_event.set()
         server.shutdown()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
