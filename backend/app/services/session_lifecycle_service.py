@@ -7,7 +7,9 @@ roles; they call these helpers for the shared atomic state transitions.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -18,12 +20,22 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import AuthToken, Device, PairingCode, UploadLink
+from app.services.session_credential_lock import (
+    lock_and_revalidate_credential_mint_context,
+    lock_bootstrap_owner_transaction,
+)
 from app.services.time_service import now_utc
+from app.tenants import AuthContext
 
 PairingConsumeResult = Literal["consumed", "used", "expired"]
 PAIRING_CODE_DIGITS = 8
 PAIRING_CODE_HASH_ITERATIONS = 120_000
 PAIRING_CODE_HASH_SALT = b"ticketbox-pairing-code-v2"
+# Cross-runtime protocol identifiers: never change a v1 context in place.
+BOOTSTRAP_ADMIN_TOKEN_CONTEXT = b"ticketbox/bootstrap-owner/v1/admin-token"
+BOOTSTRAP_UPLOAD_KEY_CONTEXT = b"ticketbox/bootstrap-owner/v1/upload-key"
+BOOTSTRAP_PAIRING_CODE_CONTEXT = b"ticketbox/bootstrap-owner/v1/pairing-code"
+BOOTSTRAP_SECRET_MIN_BYTES = 32
 
 
 @dataclass(frozen=True)
@@ -43,6 +55,42 @@ def hash_pairing_code(code: str) -> str:
         PAIRING_CODE_HASH_SALT,
         PAIRING_CODE_HASH_ITERATIONS,
     ).hex()
+
+
+def _derive_bootstrap_digest(secret: str, *, context: bytes) -> bytes:
+    secret_bytes = secret.encode("utf-8")
+    if len(secret_bytes) < BOOTSTRAP_SECRET_MIN_BYTES:
+        raise ValueError("bootstrap secret must contain at least 32 UTF-8 bytes")
+    return hmac.new(secret_bytes, context, hashlib.sha256).digest()
+
+
+def _base64url_without_padding(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def derive_bootstrap_admin_token(secret: str) -> str:
+    digest = _derive_bootstrap_digest(
+        secret,
+        context=BOOTSTRAP_ADMIN_TOKEN_CONTEXT,
+    )
+    return f"tbx_{_base64url_without_padding(digest)}"
+
+
+def derive_bootstrap_upload_key(secret: str) -> str:
+    digest = _derive_bootstrap_digest(
+        secret,
+        context=BOOTSTRAP_UPLOAD_KEY_CONTEXT,
+    )
+    return f"upl_{_base64url_without_padding(digest)}"
+
+
+def derive_bootstrap_pairing_code(secret: str) -> str:
+    digest = _derive_bootstrap_digest(
+        secret,
+        context=BOOTSTRAP_PAIRING_CODE_CONTEXT,
+    )
+    value = int.from_bytes(digest, byteorder="big", signed=False)
+    return f"{value % (10**PAIRING_CODE_DIGITS):0{PAIRING_CODE_DIGITS}d}"
 
 
 def new_pairing_code() -> str:
@@ -93,8 +141,9 @@ def issue_auth_token(
     ledger_id: str,
     scope: str,
     expires_at: datetime | None = None,
+    token_value: str | None = None,
 ) -> str:
-    token = new_session_token()
+    token = token_value if token_value is not None else new_session_token()
     db.add(
         AuthToken(
             token_hash=hash_secret(token),
@@ -117,8 +166,9 @@ def issue_upload_link(
     ledger_id: str,
     default_timezone: str | None,
     expires_at: datetime,
+    upload_key_value: str | None = None,
 ) -> str:
-    upload_key = new_upload_key()
+    upload_key = upload_key_value if upload_key_value is not None else new_upload_key()
     db.add(
         UploadLink(
             token_hash=hash_secret(upload_key),
@@ -137,12 +187,14 @@ def consume_pairing_code(
     db: Session,
     *,
     pairing_id: int,
+    expected_code_hash: str,
     used_at: datetime | None = None,
 ) -> PairingConsumeResult:
     used_at = used_at or now_utc()
     result = db.execute(
         update(PairingCode)
         .where(PairingCode.id == pairing_id)
+        .where(PairingCode.code_hash == expected_code_hash)
         .where(PairingCode.used_at.is_(None))
         .where(PairingCode.expires_at > used_at)
         .values(used_at=used_at)
@@ -166,6 +218,7 @@ def revoke_active_tokens(
     ledger_id: str | None = None,
     scope: str | None = None,
 ) -> int:
+    lock_bootstrap_owner_transaction(db)
     revoked_at = revoked_at or now_utc()
     statement = update(AuthToken).where(AuthToken.revoked_at.is_(None))
     if account_ids is not None:
@@ -203,6 +256,7 @@ def revoke_web_session_token(
     Returns ``True`` when this call revoked the token, ``False`` when
     nothing matched. Always commits.
     """
+    lock_bootstrap_owner_transaction(db)
     row = db.scalar(
         select(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)).limit(1)
     )
@@ -224,6 +278,7 @@ def revoke_token_value(
     revoked_at: datetime | None = None,
     scope: str | None = None,
 ) -> int:
+    lock_bootstrap_owner_transaction(db)
     revoked_at = revoked_at or now_utc()
     statement = (
         update(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)).where(AuthToken.revoked_at.is_(None))
@@ -241,6 +296,7 @@ def revoke_token_value(
 def rotate_app_token_for_ledger(
     db: Session,
     *,
+    auth: AuthContext,
     current_token_value: str,
     account_id: int,
     device_id: int,
@@ -249,6 +305,19 @@ def rotate_app_token_for_ledger(
     expires_at: datetime | None = None,
     allow_grace: bool = False,
 ) -> tuple[str, datetime]:
+    # Exposure recovery and normal app-token replacement share one transaction
+    # lock. Authentication happened before this service call, so re-read the
+    # exact credential id+hash under the lock before revoking or minting.
+    if hash_secret(current_token_value) != auth.credential_hash:
+        raise AppError("invalid_token", status_code=401)
+    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+    if (
+        locked_auth is None
+        or locked_auth.scope != "app"
+        or locked_auth.account_id != account_id
+        or locked_auth.device_id != device_id
+    ):
+        raise AppError("invalid_token", status_code=401)
     rotated_at = rotated_at or now_utc()
     current_hash = hash_secret(current_token_value)
     from app.config import get_settings
@@ -262,6 +331,7 @@ def rotate_app_token_for_ledger(
 
     result = db.execute(
         update(AuthToken)
+        .where(AuthToken.id == locked_auth.credential_id)
         .where(AuthToken.token_hash == current_hash)
         .where(AuthToken.account_id == account_id)
         .where(AuthToken.device_id == device_id)

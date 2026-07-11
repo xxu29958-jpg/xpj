@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from test_ci_gap_release_scope import _GITHUB_POLICY, _load, _write_valid_gitea
+from test_ci_gap_release_scope import _GITHUB_POLICY, _load
+
+from tests._infra.ci_gap_release_scope import write_valid_gitea as _write_valid_gitea
 
 
 def test_ci_gap_release_apk_scope_policy_rejects_github_non_pr_block_hop(

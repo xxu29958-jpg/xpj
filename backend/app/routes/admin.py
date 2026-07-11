@@ -130,6 +130,7 @@ def create_upload_link_endpoint(
         admin_account_id=auth.account_id,
         default_timezone=default_tz,
         ledger_ids=manageable_ledger_ids(db, auth),
+        auth=auth,
     )
     return AdminUploadLinkSecretResponse(
         link=_link_response(summary),
@@ -151,6 +152,7 @@ def rotate_upload_link_endpoint(
         db,
         public_id=public_id,
         ledger_ids=manageable_ledger_ids(db, auth),
+        auth=auth,
     )
     return AdminUploadLinkSecretResponse(
         link=_link_response(summary),

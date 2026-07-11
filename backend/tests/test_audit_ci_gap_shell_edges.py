@@ -48,6 +48,33 @@ jobs:
     assert mod._github_ci_release_apk_policy_violations(commands) == [
         "GitHub Android release APK builds must run gray/internal release tasks in one Gradle invocation"
     ]
+    _assert_multiple_heredoc_bodies_are_literal(mod, tmp_path / "multiple")
+
+
+def _assert_multiple_heredoc_bodies_are_literal(mod: object, tmp_path: Path) -> None:
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+jobs:
+  android:
+    steps:
+      - run: |
+          cat <<FIRST <<SECOND
+          first body
+          FIRST
+          ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease
+          SECOND
+          ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease
+""",
+        encoding="utf-8",
+    )
+    commands = mod._iter_workflow_run_commands(workflows)
+    assert ":app:assembleInternalRelease" in mod._missing_gradle_tasks(commands)
+    assert mod._github_ci_release_apk_policy_violations(commands) == [
+        "GitHub Android release APK builds must run gray/internal release tasks in one Gradle invocation"
+    ]
 
 
 def test_ci_gap_release_apk_policy_checks_gradle_after_output_command_chain(tmp_path: Path) -> None:

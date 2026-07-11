@@ -39,14 +39,22 @@ if ($Port -eq 5432 -or $Port -eq 5433) {
 }
 
 # Numeric version sort: a lingering 9.x client must not beat 17 by string order ("9" > "1").
-$pgctl = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\pg_ctl.exe' -ErrorAction SilentlyContinue |
-    Sort-Object {
-        $v = 0.0
-        if ([double]::TryParse($_.Directory.Parent.Name, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$v)) { $v } else { -1.0 }
-    } -Descending |
-    Select-Object -First 1
+$programFiles = [Environment]::GetFolderPath(
+    [Environment+SpecialFolder]::ProgramFiles
+)
+$pgctl = if ([string]::IsNullOrWhiteSpace($programFiles)) {
+    $null
+}
+else {
+    Get-ChildItem (Join-Path $programFiles 'PostgreSQL\*\bin\pg_ctl.exe') -ErrorAction SilentlyContinue |
+        Sort-Object {
+            $v = 0.0
+            if ([double]::TryParse($_.Directory.Parent.Name, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$v)) { $v } else { -1.0 }
+        } -Descending |
+        Select-Object -First 1
+}
 if (-not $pgctl) {
-    throw "PostgreSQL not installed (expected C:\Program Files\PostgreSQL\<ver>\bin\pg_ctl.exe)."
+    throw "PostgreSQL not installed (checked the OS Program Files root)."
 }
 $pgbin = $pgctl.DirectoryName
 

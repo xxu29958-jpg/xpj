@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -14,6 +16,78 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.owner_console import _require_local
 from app.services import windows_task_status_service as wts
+
+
+def _run_backup_script_contract(engine: str, script_path: Path, tmp_path: Path) -> None:
+    fake_dump = tmp_path / "fake_pg_dump.ps1"
+    capture_path = tmp_path / "pg_dump_capture.json"
+    target_path = tmp_path / "scheduled.dump"
+    explicit_offsite = tmp_path / "explicit-offsite"
+    fake_dump.write_text(
+        """$capture = [ordered]@{ Arguments = @($args); PgPassword = $env:PGPASSWORD }
+$capture | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:XPJ_BACKUP_CAPTURE -Encoding UTF8
+$fileIndex = [Array]::IndexOf([object[]]$args, '--file')
+[System.IO.File]::WriteAllBytes([string]$args[$fileIndex + 1], [byte[]](1, 2, 3))
+exit 0
+""",
+        encoding="utf-8-sig",
+    )
+    harness = tmp_path / f"backup_contract_{Path(engine).stem}.ps1"
+    harness.write_text(
+        fr""". '{script_path}'
+function Get-PgDumpBinary {{ return '{fake_dump}' }}
+function Test-PostgresBackup {{ param([string]$Path) }}
+$env:XPJ_BACKUP_CAPTURE = '{capture_path}'
+$env:PGPASSWORD = 'parent-password'
+Backup-PostgresDatabase `
+    -DatabaseUrl 'postgresql+psycopg://ticketbox:p%40ss%3Aword%2F%3F%23%25@localhost:5432/db' `
+    -TargetPath '{target_path}'
+$parentPassword = $env:PGPASSWORD
+$env:OneDrive = '{tmp_path / "automatic-onedrive"}'
+Remove-Item Env:\XPJ_OFFSITE_BACKUP_ENABLED -ErrorAction SilentlyContinue
+Remove-Item Env:\XPJ_OFFSITE_BACKUP_DIR -ErrorAction SilentlyContinue
+$defaultOffsite = Get-OffsiteBackupDir
+$env:XPJ_OFFSITE_BACKUP_ENABLED = 'true'
+$env:XPJ_OFFSITE_BACKUP_DIR = '{explicit_offsite}'
+$enabledOffsite = Get-OffsiteBackupDir
+Remove-Item Env:\XPJ_OFFSITE_BACKUP_DIR
+$missingDirectoryFailed = $false
+try {{ Get-OffsiteBackupDir | Out-Null }} catch {{ $missingDirectoryFailed = $true }}
+$encodedQueryPasswordFailed = $false
+try {{
+    ConvertTo-PgDumpConnection -Url 'postgresql://ticketbox@localhost/db?%70assword=query-secret'
+}} catch {{ $encodedQueryPasswordFailed = $true }}
+[ordered]@{{
+    ParentPassword = $parentPassword
+    DefaultOffsite = $defaultOffsite
+    EnabledOffsite = $enabledOffsite
+    MissingDirectoryFailed = $missingDirectoryFailed
+    EncodedQueryPasswordFailed = $encodedQueryPasswordFailed
+}} | ConvertTo-Json -Compress
+""",
+        encoding="utf-8-sig",
+    )
+    completed = subprocess.run(  # noqa: S603
+        [engine, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(harness)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    result = json.loads([line for line in completed.stdout.splitlines() if line.strip()][-1])
+    capture = json.loads(capture_path.read_text(encoding="utf-8-sig"))
+    arguments = capture["Arguments"]
+    assert capture["PgPassword"] == "p@ss:word/?#%"
+    assert "p@ss:word/?#%" not in arguments
+    assert "p%40ss%3Aword%2F%3F%23%25" not in " ".join(arguments)
+    assert arguments[arguments.index("--dbname") + 1] == "postgresql://ticketbox@localhost:5432/db"
+    assert result["ParentPassword"] == "parent-password"
+    assert result["DefaultOffsite"] is None
+    assert result["EnabledOffsite"] == str(explicit_offsite)
+    assert result["MissingDirectoryFailed"] is True
+    assert result["EncodedQueryPasswordFailed"] is True
 
 
 @pytest.fixture()
@@ -139,7 +213,7 @@ def test_owner_index_marks_nonzero_task_result_red(
     assert 'badge badge-err">1<' in body
 
 
-def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
+def test_db_maintenance_scripts_resolve_configured_database_url(tmp_path: Path) -> None:
     project_root = Path(__file__).resolve().parents[2]
     backup_text = (
         project_root / "backend" / "scripts" / "backup_database.ps1"
@@ -152,6 +226,17 @@ def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
     # PostgreSQL, dump via pg_dump and validate via pg_restore --list.
     assert "DATABASE_URL" in backup_text
     assert "app.services.postgres_backup_validation_service" in backup_text
+    assert "ConvertTo-PgDumpConnection" in backup_text
+    assert "XPJ_OFFSITE_BACKUP_ENABLED" in backup_text
+    assert "--dbname $connection.DatabaseUrl" in backup_text
+    assert "--dbname $libpqUrl" not in backup_text
+    assert "Join-Path $env:OneDrive" not in backup_text
+    assert "SpecialFolder]::ProgramFiles" in backup_text
+    assert 'GetEnvironmentVariable("ProgramFiles", "Machine")' not in backup_text
+    assert r"C:\Program Files\PostgreSQL" not in backup_text
+    assert backup_text.index("Backup-PostgresDatabase -DatabaseUrl") < backup_text.index(
+        "$offsiteDir = Get-OffsiteBackupDir"
+    )
 
     # The scheduled maintenance task delegates its backup to backup_database.ps1
     # rather than resolving the database itself.
@@ -164,6 +249,25 @@ def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
         assert "Resolve-DbPath" not in text
         assert "sqlite_backup_validation_service" not in text
         assert "Backup-SqliteDatabase" not in text
+
+    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
+    for engine in engines:
+        _run_backup_script_contract(engine, project_root / "backend/scripts/backup_database.ps1", tmp_path)
+
+
+def test_windows_postgres_discovery_uses_os_program_files_contract() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    script_paths = (
+        project_root / "backend" / "scripts" / "start_test_pg.ps1",
+        project_root / "backend" / "scripts" / "backup_database.ps1",
+        project_root / "backend" / "packaging" / "install_ticketbox.ps1",
+    )
+
+    for script_path in script_paths:
+        script = script_path.read_text(encoding="utf-8-sig")
+        assert "SpecialFolder]::ProgramFiles" in script
+        assert 'GetEnvironmentVariable("ProgramFiles", "Machine")' not in script
+        assert r"C:\Program Files\PostgreSQL" not in script
 
 
 def test_cloudflare_endpoint_script_does_not_accept_token_params() -> None:

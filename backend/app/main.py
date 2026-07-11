@@ -5,13 +5,15 @@ from contextlib import asynccontextmanager
 from datetime import UTC
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
-from app.config import get_settings
-from app.database import init_db, wait_for_db
+from app.config import get_settings, installation_identity
+from app.database import get_db, init_db, wait_for_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
 from app.middleware.cloudflare_access import cloudflare_access_guard
 from app.middleware.csrf import csrf_loopback_form_guard
@@ -19,6 +21,7 @@ from app.middleware.logging import SanitizedLoggingMiddleware
 from app.middleware.security_headers import security_headers
 from app.middleware.static_owner_guard import static_owner_guard
 from app.middleware.web_session import web_session_gate
+from app.network_boundary import require_owner_console_local
 from app.routes import admin as admin_routes
 from app.routes import (
     auth,
@@ -86,7 +89,6 @@ from app.routes import (
 from app.routes import web_rules as web_rules_routes
 from app.schemas import ErrorResponse, HealthResponse, StatusResponse
 from app.services import backup_service
-from app.services.app_meta_service import assert_binary_compatible_with_db
 from app.services.background_task_service import (
     recover_orphaned_tasks,
     shutdown_executor,
@@ -96,6 +98,10 @@ from app.services.budget_advisor_audit_cleanup_scheduler import (
 )
 from app.services.device_cleanup_scheduler import start_device_cleanup_scheduler
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
+from app.services.installation_health_service import (
+    InstallationDatabaseIdentityError,
+    assert_installation_database_ready,
+)
 from app.services.learning_cleanup_scheduler import (
     start_learning_cleanup_scheduler,
 )
@@ -150,14 +156,11 @@ async def lifespan(_: FastAPI):
     # already up (dev/test); prevents the "die after 4 seconds" startup race.
     wait_for_db()
     init_db()
-    # ADR-0031 binary↔DB compatibility check (refuse to start a binary
-    # older than the DB's schema_min_compatible).
     from app.database import SessionLocal as _SessionLocal
     from app.middleware.csrf import assert_csrf_signing_key_available, set_persisted_csrf_key
     from app.services.csrf_key_service import get_or_create_csrf_signing_key
 
     with _SessionLocal() as _db:
-        assert_binary_compatible_with_db(_db)
         # ADR-0045: provision + stash the per-install CSRF signing key so the HMAC
         # key is a real per-install secret, never the public placeholder ADMIN_TOKEN
         # default. Auto-generated in app_meta on first boot (no operator step, no brick).
@@ -359,6 +362,27 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 @app.get("/api/health", response_model=StatusResponse, tags=["health"])
 def health() -> StatusResponse:
     return StatusResponse()
+
+
+@app.get("/api/health/installation", response_model=dict[str, str], tags=["health"])
+def installation_health(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    require_owner_console_local(request)
+    try:
+        assert_installation_database_ready(db, database_url=get_settings().database_url)
+    except (InstallationDatabaseIdentityError, SQLAlchemyError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Ticketbox database is not ready for installed-service traffic.",
+        ) from exc
+    return {
+        "status": "ok",
+        "product": "ticketbox",
+        "backend_version": BACKEND_VERSION,
+        "installation_id": installation_identity(),
+    }
 
 
 @app.get("/api/status/private", response_model=HealthResponse, tags=["health"])

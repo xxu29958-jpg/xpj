@@ -29,6 +29,8 @@ What this lane counts
 - **backend_pytest_count** — exact count from ``pytest --collect-only``
   (NOT regex; regex has built-in error tolerance that would defeat the
   precise-reconciliation purpose).
+- **installer_pytest_count** — exact count from the isolated Windows installer
+  contract lane under ``packaging/tests``.
 
 Android ``@Test`` count is checked separately by the Android CI lane
 (``:app:assertAndroidTestCountEqualsBaseline`` gradle task against
@@ -116,8 +118,8 @@ def _count_mutate_token_metrics() -> dict[str, int]:
     return out
 
 
-def _count_backend_pytest_tests() -> int:
-    """Exact pytest test count via ``pytest tests --collect-only``.
+def _count_pytest_tests(target: str) -> int:
+    """Exact pytest test count for one explicit collection root.
 
     NOT regex on ``def test_*``. Per ADR-0038 prep design: regex has
     built-in tolerance for parametrize / commented-out tests / multiline
@@ -126,12 +128,11 @@ def _count_backend_pytest_tests() -> int:
     (parametrized expansions included), which is what cut-over PRs
     declare deltas against.
 
-    Explicit ``tests`` positional arg avoids relying on pyproject.toml's
-    testpaths default — making the count semantic ("pytest collected
-    under tests/") unambiguous and resilient to future config drift.
+    An explicit positional target avoids relying on pyproject.toml's testpaths
+    default, keeping business and installer contracts independently auditable.
     """
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "tests", "--collect-only", "-q"],
+        [sys.executable, "-m", "pytest", target, "--collect-only", "-q"],
         cwd=_BACKEND_ROOT,
         capture_output=True,
         text=True,
@@ -142,7 +143,7 @@ def _count_backend_pytest_tests() -> int:
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"`pytest tests --collect-only` failed (exit={result.returncode}).\n"
+            f"`pytest {target} --collect-only` failed (exit={result.returncode}).\n"
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
@@ -153,7 +154,7 @@ def _count_backend_pytest_tests() -> int:
         if match:
             return int(match.group(1))
     raise RuntimeError(
-        "could not parse `pytest --collect-only` output.\n"
+        f"could not parse `pytest {target} --collect-only` output.\n"
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
@@ -172,7 +173,8 @@ def main() -> int:
 
     counts: dict[str, int] = {}
     counts.update(_count_mutate_token_metrics())
-    counts["backend_pytest_count"] = _count_backend_pytest_tests()
+    counts["backend_pytest_count"] = _count_pytest_tests("tests")
+    counts["installer_pytest_count"] = _count_pytest_tests("packaging/tests")
 
     print("Actuals:")
     for key, value in sorted(counts.items()):

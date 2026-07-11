@@ -20,7 +20,6 @@ Key invariants:
 from __future__ import annotations
 
 import secrets
-from dataclasses import dataclass
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -30,12 +29,20 @@ from app.models import Account, AuthToken, Device, Ledger, LedgerAuditLog, Ledge
 from app.services.identity_service import (
     _ensure_membership,
 )
+from app.services.identity_service._bootstrap_exposure_guard import (
+    assert_bootstrap_sensitive_mutation_allowed,
+)
+from app.services.ledger_contracts import LedgerSummary, SwitchLedgerResult
+from app.services.session_credential_lock import (
+    lock_and_revalidate_credential_mint_context,
+    lock_bootstrap_owner_transaction,
+)
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     rotate_app_token_for_ledger,
 )
 from app.services.time_service import now_utc, to_iso
-from app.tenants import DEFAULT_TENANT_ID
+from app.tenants import DEFAULT_TENANT_ID, AuthContext
 
 LEDGER_ID_PREFIX = "ledger_"
 LEDGER_NAME_MAX_LEN = 60
@@ -45,31 +52,6 @@ LEDGER_ID_ALLOCATION_RETRIES = 8
 # Ledger-lifecycle audit actions (mirrors invitation_common's verb_noun naming).
 AUDIT_LEDGER_ARCHIVED = "ledger_archived"
 AUDIT_LEDGER_UNARCHIVED = "ledger_unarchived"
-
-
-@dataclass(frozen=True)
-class LedgerSummary:
-    ledger_id: str
-    name: str
-    role: str
-    is_default: bool
-    created_at: str | None
-    archived_at: str | None
-
-
-@dataclass(frozen=True)
-class SwitchLedgerResult:
-    session_token: str
-    expires_at: str | None
-    soft_refresh_after: str | None
-    ledger_id: str
-    ledger_name: str
-    role: str
-    is_default: bool
-    created_at: str | None
-    archived_at: str | None
-    account_name: str
-    device_name: str
 
 
 def _normalize_ledger_name(value: str | None) -> str:
@@ -219,6 +201,7 @@ def create_ledger(db: Session, *, account_id: int, name: str) -> LedgerSummary:
     * A fresh public ``ledger_id`` is minted; collisions retry.
     * The creating account is recorded as ``owner`` member.
     """
+    assert_bootstrap_sensitive_mutation_allowed(db, actor_account_id=account_id)
     cleaned = _normalize_ledger_name(name)
     account = db.get(Account, account_id)
     if account is None or account.disabled_at is not None:
@@ -280,6 +263,12 @@ def archive_ledger(db: Session, *, ledger_id: str, actor_account_id: int) -> boo
     decides the outcome, so two concurrent archives cannot both win or
     double-write the audit log.
     """
+    lock_bootstrap_owner_transaction(db)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids={ledger_id},
+    )
     ledger = _authorize_ledger_owner(db, ledger_id=ledger_id, actor_account_id=actor_account_id)
     if ledger.ledger_id == DEFAULT_TENANT_ID:
         raise AppError("cannot_archive_default_ledger", status_code=409)
@@ -306,6 +295,11 @@ def unarchive_ledger(db: Session, *, ledger_id: str, actor_account_id: int) -> b
     Mirror of :func:`archive_ledger`; the ``UPDATE ... WHERE archived_at IS NOT
     NULL`` rowcount gates the audit write so a double-restore is a clean no-op.
     """
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids={ledger_id},
+    )
     _authorize_ledger_owner(db, ledger_id=ledger_id, actor_account_id=actor_account_id)
     flipped = (
         db.execute(
@@ -343,31 +337,65 @@ def list_archived_ledgers_for_account(db: Session, *, account_id: int) -> list[L
     return [_summary(ledger, role) for ledger, role in rows]
 
 
+def _lock_ledger_switch_context(
+    db: Session,
+    *,
+    auth: AuthContext,
+    account_id: int,
+    device_id: int,
+    target_ledger_id: str,
+) -> tuple[AuthContext, Ledger, LedgerMember, Device]:
+    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+    if (
+        locked_auth is None
+        or locked_auth.scope != "app"
+        or locked_auth.account_id != account_id
+        or locked_auth.device_id != device_id
+    ):
+        raise AppError("invalid_token", status_code=401)
+
+    # Credential lock -> Ledger -> LedgerMember -> source AuthToken is the
+    # global order shared with archive/member-disable/token revocation.  The
+    # target rows are re-read under FOR UPDATE before the source token can be
+    # revoked, so a losing switch rolls back without stranding the caller.
+    ledger = db.scalar(
+        select(Ledger)
+        .where(Ledger.ledger_id == target_ledger_id)
+        .with_for_update()
+    )
+    if ledger is None or ledger.archived_at is not None:
+        raise AppError("ledger_forbidden", status_code=403)
+    membership = db.scalar(
+        select(LedgerMember)
+        .where(LedgerMember.ledger_id == ledger.ledger_id)
+        .where(LedgerMember.account_id == locked_auth.account_id)
+        .with_for_update()
+    )
+    if membership is None or membership.disabled_at is not None:
+        raise AppError("ledger_forbidden", status_code=403)
+    device = db.get(Device, locked_auth.device_id)
+    if device is None or device.revoked_at is not None:
+        raise AppError("invalid_token", status_code=401)
+    return locked_auth, ledger, membership, device
+
+
 def switch_ledger(
     db: Session,
     *,
+    auth: AuthContext,
     current_token_value: str,
     account_id: int,
     device_id: int,
     target_ledger_id: str,
 ) -> SwitchLedgerResult:
-    """Switch the calling device to ``target_ledger_id`` and rotate the token.
-
-    Steps (atomic per request):
-
-    1. Verify the account is an active member of the target ledger.
-    2. Revoke the caller's current app-scoped token so it cannot keep
-       reading the previous ledger after the swap.
-    3. Issue a new app-scoped ``AuthToken`` bound to ``(account, device,
-       target_ledger_id)``.
-    4. Commit. If any step fails, the transaction rolls back and the caller
-       keeps their original token.
-    """
-    ledger, role = get_ledger_for_account(db, account_id=account_id, ledger_id=target_ledger_id)
-    account = db.get(Account, account_id)
-    device = db.get(Device, device_id)
-    if account is None or device is None:
-        raise AppError("invalid_token", status_code=401)
+    """Atomically switch the calling device and rotate its app token."""
+    locked_auth, ledger, membership, device = _lock_ledger_switch_context(
+        db,
+        auth=auth,
+        account_id=account_id,
+        device_id=device_id,
+        target_ledger_id=target_ledger_id,
+    )
 
     from app.services.time_service import now_utc
 
@@ -375,8 +403,9 @@ def switch_ledger(
     expiry = app_token_expiry_window(switched_at)
     new_token, switched_at = rotate_app_token_for_ledger(
         db,
+        auth=locked_auth,
         current_token_value=current_token_value,
-        account_id=account.id,
+        account_id=locked_auth.account_id,
         device_id=device.id,
         target_ledger_id=ledger.ledger_id,
         rotated_at=switched_at,
@@ -391,11 +420,11 @@ def switch_ledger(
         soft_refresh_after=to_iso(expiry.soft_refresh_after),
         ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,
-        role=role,
+        role=membership.role,
         is_default=(ledger.ledger_id == DEFAULT_TENANT_ID),
         created_at=to_iso(ledger.created_at),
         archived_at=to_iso(ledger.archived_at),
-        account_name=account.display_name,
+        account_name=locked_auth.account_name,
         device_name=device.device_name,
     )
 

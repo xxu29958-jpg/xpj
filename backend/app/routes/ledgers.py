@@ -94,6 +94,7 @@ def switch_ledger_endpoint(
     current_token = _bearer_token(authorization)
     result = switch_ledger(
         db,
+        auth=auth,
         current_token_value=current_token,
         account_id=auth.account_id,
         device_id=auth.device_id,

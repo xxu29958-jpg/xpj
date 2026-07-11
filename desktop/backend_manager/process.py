@@ -7,14 +7,137 @@ and are only exercised by the running app, not the unit tests.
 
 from __future__ import annotations
 
+import contextlib
+import ctypes
+import json
+import os
+import re
 import subprocess
 import threading
+import urllib.error
+import urllib.parse
 import urllib.request
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 _CREATE_NO_WINDOW = 0x08000000  # don't pop a console window for child processes
 _LOG_LINES = 300
+_HEALTH_RESPONSE_LIMIT_BYTES = 4096
+_HEALTH_KEYS = frozenset({"status", "product", "backend_version", "installation_id"})
+_VERSION_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,63}\Z")
+_INSTALLATION_ID_PATTERN = re.compile(r"ticketbox-[0-9a-f]{32}\Z")
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+
+
+class _IoCounters(ctypes.Structure):
+    _fields_ = [
+        ("read_operation_count", ctypes.c_ulonglong),
+        ("write_operation_count", ctypes.c_ulonglong),
+        ("other_operation_count", ctypes.c_ulonglong),
+        ("read_transfer_count", ctypes.c_ulonglong),
+        ("write_transfer_count", ctypes.c_ulonglong),
+        ("other_transfer_count", ctypes.c_ulonglong),
+    ]
+
+
+class _BasicLimitInformation(ctypes.Structure):
+    _fields_ = [
+        ("per_process_user_time_limit", ctypes.c_longlong),
+        ("per_job_user_time_limit", ctypes.c_longlong),
+        ("limit_flags", ctypes.c_ulong),
+        ("minimum_working_set_size", ctypes.c_size_t),
+        ("maximum_working_set_size", ctypes.c_size_t),
+        ("active_process_limit", ctypes.c_ulong),
+        ("affinity", ctypes.c_size_t),
+        ("priority_class", ctypes.c_ulong),
+        ("scheduling_class", ctypes.c_ulong),
+    ]
+
+
+class _ExtendedLimitInformation(ctypes.Structure):
+    _fields_ = [
+        ("basic_limit_information", _BasicLimitInformation),
+        ("io_info", _IoCounters),
+        ("process_memory_limit", ctypes.c_size_t),
+        ("job_memory_limit", ctypes.c_size_t),
+        ("peak_process_memory_used", ctypes.c_size_t),
+        ("peak_job_memory_used", ctypes.c_size_t),
+    ]
+
+
+class WindowsKillOnCloseJob:
+    """One owning job handle; Windows kills every assigned descendant when it closes."""
+
+    def __init__(self, handle: int) -> None:
+        self._handle = handle
+
+    def close(self) -> None:
+        handle, self._handle = self._handle, 0
+        if handle:
+            kernel32 = ctypes.WinDLL("Kernel32", use_last_error=True)
+            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel32.CloseHandle.restype = ctypes.c_int
+            kernel32.CloseHandle(handle)
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def _attach_kill_on_close_job(popen: subprocess.Popen[str]) -> WindowsKillOnCloseJob:
+    if os.name != "nt":
+        raise OSError("Windows Job Object is unavailable on this platform")
+    kernel32 = ctypes.WinDLL("Kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+    kernel32.CreateJobObjectW.restype = ctypes.c_void_p
+    kernel32.SetInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
+    kernel32.SetInformationJobObject.restype = ctypes.c_int
+    kernel32.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    kernel32.AssignProcessToJobObject.restype = ctypes.c_int
+    handle = kernel32.CreateJobObjectW(None, None)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    job = WindowsKillOnCloseJob(handle)
+    info = _ExtendedLimitInformation()
+    info.basic_limit_information.limit_flags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    try:
+        if not kernel32.SetInformationJobObject(
+            handle,
+            _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        process_handle = getattr(popen, "_handle", None)
+        if not process_handle or not kernel32.AssignProcessToJobObject(handle, process_handle):
+            raise ctypes.WinError(ctypes.get_last_error())
+    except BaseException:
+        job.close()
+        raise
+    return job
+
+
+@dataclass(frozen=True)
+class TicketboxHealthExpectation:
+    installation_id: str
+    backend_version: str | None = None
+
+
+@dataclass(frozen=True)
+class HealthProbeResult:
+    state: Literal["healthy", "pending", "mismatch", "stopped"]
+    detail: str
+
+    @property
+    def healthy(self) -> bool:
+        return self.state == "healthy"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
+        return None
 
 
 class UvicornProcess:
@@ -23,8 +146,9 @@ class UvicornProcess:
     Satisfies the ``ManagedProcess`` protocol the supervisor depends on.
     """
 
-    def __init__(self, popen: subprocess.Popen[str]) -> None:
+    def __init__(self, popen: subprocess.Popen[str], job: WindowsKillOnCloseJob | None = None) -> None:
         self._popen = popen
+        self._job = job
         self._log: deque[str] = deque(maxlen=_LOG_LINES)
         self._lock = threading.Lock()
         threading.Thread(target=self._pump, daemon=True).start()
@@ -34,7 +158,10 @@ class UvicornProcess:
         return self._popen.pid
 
     def poll(self) -> int | None:
-        return self._popen.poll()
+        result = self._popen.poll()
+        if result is not None:
+            self._close_job()
+        return result
 
     def recent_log(self) -> list[str]:
         with self._lock:
@@ -42,9 +169,25 @@ class UvicornProcess:
 
     def wait(self, timeout: float) -> int:
         try:
-            return self._popen.wait(timeout=timeout)
+            result = self._popen.wait(timeout=timeout)
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError from exc
+        self._close_job()
+        return result
+
+    def terminate_owned(self) -> bool:
+        """Terminate this exact owned process tree through its Job handle."""
+        if self.poll() is not None:
+            return True
+        if self._job is None:
+            return False
+        self._close_job()
+        return True
+
+    def _close_job(self) -> None:
+        job, self._job = self._job, None
+        if job is not None:
+            job.close()
 
     def _pump(self) -> None:
         stream = self._popen.stdout
@@ -58,6 +201,8 @@ class UvicornProcess:
 
 def spawn_backend(*, backend_root: Path, venv_python: Path, host: str, port: int) -> UvicornProcess:
     """Launch ``uvicorn app.main:app`` from the backend's own venv."""
+    child_environment = os.environ.copy()
+    child_environment["XPJ_EXTRA_LOOPBACK_HOSTS"] = f"127.0.0.1:{port}"
     popen = subprocess.Popen(
         [
             str(venv_python), "-m", "uvicorn", "app.main:app",
@@ -71,8 +216,19 @@ def spawn_backend(*, backend_root: Path, venv_python: Path, host: str, port: int
         encoding="utf-8",
         errors="replace",
         creationflags=_CREATE_NO_WINDOW,
+        env=child_environment,
     )
-    return UvicornProcess(popen)
+    try:
+        job = _attach_kill_on_close_job(popen)
+    except BaseException:
+        kill_requested = tree_kill(popen.pid)
+        if not kill_requested:
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
+                popen.kill()
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            popen.wait(timeout=5)
+        raise
+    return UvicornProcess(popen, job)
 
 
 def tree_kill(pid: int) -> bool:
@@ -95,10 +251,78 @@ def tree_kill(pid: int) -> bool:
     return result.returncode == 0
 
 
-def health_ok(url: str, *, timeout: float = 3.0) -> bool:
-    """``True`` iff ``GET url`` returns HTTP 200."""
+def _validate_health_url(url: str) -> None:
+    parsed = urllib.parse.urlsplit(url)
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname != "127.0.0.1"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/api/health/installation"
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("健康检查 URL 不符合固定 loopback 身份契约。")
+    if parsed.port is None:
+        raise ValueError("健康检查 URL 缺少端口。")
+
+
+def _parse_health_payload(raw: bytes, expectation: TicketboxHealthExpectation) -> HealthProbeResult:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - fixed localhost URL
-            return response.status == 200
-    except (OSError, ValueError):
-        return False
+        decoded = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return HealthProbeResult("mismatch", "loopback 响应不是有效的 Ticketbox JSON。")
+    if not isinstance(decoded, dict) or set(decoded) != _HEALTH_KEYS:
+        return HealthProbeResult("mismatch", "loopback JSON 不符合 Ticketbox 身份字段契约。")
+    if decoded.get("status") != "ok" or decoded.get("product") != "ticketbox":
+        return HealthProbeResult("mismatch", "loopback 服务不是 Ticketbox 后端。")
+    version = decoded.get("backend_version")
+    installation_id = decoded.get("installation_id")
+    if not isinstance(version, str) or not _VERSION_PATTERN.fullmatch(version):
+        return HealthProbeResult("mismatch", "Ticketbox 后端版本身份无效。")
+    if not isinstance(installation_id, str) or not _INSTALLATION_ID_PATTERN.fullmatch(installation_id):
+        return HealthProbeResult("mismatch", "Ticketbox 安装身份无效。")
+    if expectation.backend_version is not None and version != expectation.backend_version:
+        return HealthProbeResult("mismatch", "运行中的 Ticketbox 版本与安装记录不一致。")
+    if installation_id != expectation.installation_id:
+        return HealthProbeResult("mismatch", "运行中的 Ticketbox 实例与本机安装记录不一致。")
+    return HealthProbeResult("healthy", "Ticketbox 产品、版本和安装身份已验证。")
+
+
+def probe_ticketbox_health(
+    url: str,
+    *,
+    expectation: TicketboxHealthExpectation,
+    timeout: float,
+) -> HealthProbeResult:
+    try:
+        _validate_health_url(url)
+    except ValueError as exc:
+        return HealthProbeResult("mismatch", str(exc))
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "Host": "127.0.0.1"},
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+    try:
+        with opener.open(request, timeout=timeout) as response:  # noqa: S310 - validated fixed loopback URL
+            if response.status != 200:
+                return HealthProbeResult("pending", f"Ticketbox 后端尚未就绪（HTTP {response.status}）。")
+            media_type = response.headers.get("Content-Type", "").partition(";")[0].strip().lower()
+            if media_type != "application/json":
+                return HealthProbeResult("mismatch", "loopback 200 响应不是 Ticketbox JSON。")
+            raw = response.read(_HEALTH_RESPONSE_LIMIT_BYTES + 1)
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        return HealthProbeResult("pending", f"Ticketbox 后端身份检查等待中（{type(exc).__name__}）。")
+    if len(raw) > _HEALTH_RESPONSE_LIMIT_BYTES:
+        return HealthProbeResult("mismatch", "loopback 健康响应超过 Ticketbox 上限。")
+    return _parse_health_payload(raw, expectation)
+
+
+def health_ok(
+    url: str,
+    *,
+    expectation: TicketboxHealthExpectation,
+    timeout: float,
+) -> bool:
+    return probe_ticketbox_health(url, expectation=expectation, timeout=timeout).healthy

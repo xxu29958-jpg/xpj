@@ -101,6 +101,7 @@ def refresh_session(
     expiry = app_token_expiry_window(rotated_at)
     new_token, _ = rotate_app_token_for_ledger(
         db,
+        auth=auth,
         current_token_value=current_token,
         account_id=auth.account_id,
         device_id=auth.device_id,

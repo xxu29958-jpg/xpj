@@ -62,7 +62,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -ExecutionPolicy Bypass -File scripts\check_dependency_versions.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $roots = @("backend/scripts", "android/scripts", "scripts") | Where-Object { Test-Path $_ }
+          $roots = @("backend/scripts", "backend/packaging", "android/scripts", "scripts") | Where-Object { Test-Path $_ }
           $files = Get-ChildItem -Path $roots -Filter *.ps1 -Recurse
           foreach ($file in $files) {
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
@@ -88,13 +88,46 @@ jobs:
 
       - name: Compile backend
         working-directory: backend
-        run: .\.ci-venv\Scripts\python.exe -m compileall app scripts tests
+        run: .\.ci-venv\Scripts\python.exe -m compileall app scripts tests packaging/tests
 
       - name: Lint backend
         working-directory: backend
-        run: .\.ci-venv\Scripts\ruff.exe check app scripts tests
+        run: .\.ci-venv\Scripts\ruff.exe check app scripts tests packaging/tests
 
-      # The full pytest suite AND the end-to-end smoke run on PostgreSQL in the
+      - name: Windows installer safety behavior
+        working-directory: backend
+        run: .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -p no:cacheprovider
+
+      - name: Installer source preflight (Windows PowerShell 5.1)
+        working-directory: backend
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
+
+      - name: Installer source preflight (PowerShell 7)
+        working-directory: backend
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
+
+      - name: Frozen backend locked release build
+        working-directory: backend
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
+      - name: Prepare pinned installer vendor inputs
+        working-directory: backend
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_build_toolchain.ps1 -Component Inno -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile authoritative Inno installer
+        working-directory: backend
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1
+
+      - name: Verify atomic Windows installer publish unit
+        working-directory: backend
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly
+
+      # The business pytest suite AND the end-to-end smoke run on PostgreSQL in the
       # backend-postgres job below (PG-only — debt #4): the SQLite engine is
       # retired, so neither a bare `pytest` nor the threaded smoke server can run
       # here without a cluster, which this job has none of. backend-full keeps
@@ -190,7 +223,6 @@ jobs:
           $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
           if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir }
           $pmpid = $null
-          $failed = $false
           try {
             & "$pgbin\initdb.exe" -D $datadir -U postgres --auth=trust -E UTF8 --locale=C | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "initdb failed" }
@@ -235,12 +267,8 @@ jobs:
             # DB (separate from xpj_smoke) so the smoke's rows never collide.
             Write-Host "--- PostgreSQL pytest suite ---"
             $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_test"
-            .\.ci-venv\Scripts\python.exe -m pytest -q -ra --tb=short -p no:cacheprovider
+            .\.ci-venv\Scripts\python.exe -m pytest tests -q -ra --tb=short -p no:cacheprovider
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL pytest suite failed" }
-          }
-          catch {
-            $failed = $true
-            Write-Host "##[error]PostgreSQL lane failed: $_"
           }
           finally {
             # Teardown MUST leave no live postgres (else the runner's post-step I/O
@@ -253,7 +281,6 @@ jobs:
             $global:LASTEXITCODE = 0
             Write-Host "ephemeral PostgreSQL torn down"
           }
-          if ($failed) { exit 1 } else { exit 0 }
 
       - name: Stop ephemeral PostgreSQL (backstop)
         if: always()
@@ -488,7 +515,7 @@ jobs:
         # Release builds still run R8 minify + shrinkResources for Android/CI
         # changes. Unsigned release APKs are expected in CI because the release
         # signingConfig is optional.
-        run: .\gradlew.bat --no-daemon :app:assembleGrayRelease :app:assembleInternalRelease
+        run: .\gradlew.bat --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
 
       - name: Skip Android release APK builds
         if: steps.release-apk-scope.outputs.release_apk_required != 'true'

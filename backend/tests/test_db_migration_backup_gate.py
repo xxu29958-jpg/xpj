@@ -1,173 +1,204 @@
-"""Pre-migration backup gate (P1 model-invariant hardening).
-
-An Alembic ``upgrade`` on an EXISTING tracked database is the one irreversible
-startup step. ``_backup_before_upgrade`` snapshots the DB (``pg_dump -Fc``)
-before the upgrade runs and fails CLOSED — a failed snapshot aborts the
-migration rather than risk a corrupt/half-applied schema with no restore point
-(data-correctness over availability, ADR-0049 §0). ``SKIP_PRE_MIGRATION_BACKUP``
-is the escape hatch for when ``pg_dump`` itself is unavailable and the operator
-backed up by hand.
-
-The backup-gate tests stamp ``alembic_version`` below head via a separate
-``engine.begin()`` connection (a real cross-connection commit) and then call
-``_stamp_alembic_baseline_if_needed`` which opens its own connection, so they
-need a real committed DB (``real_db``; the whole module is registered in
-conftest ``_PG_REAL_DB_NODES``). After ``reset_db_state`` the DB is freshly
-created and stamped to head, which is the substrate these tests mutate. The two
-config-WARN tests don't touch the DB but ride the same module marker.
-"""
+"""ADR-0067 inspect/compatibility/backup/Alembic startup ordering tests."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import inspect, text
+
+from app.database._lifecycle import DatabaseLifecycleKind
+
+_PREVIOUS_HEAD = "20260630_0002"
 
 
 def _stamp_below_head(db_pkg) -> None:
-    """Force ``current_revision != head`` on the existing tracked DB so the
-    upgrade block (and the pre-migration backup gate) runs."""
     with db_pkg.engine.begin() as conn:
-        conn.execute(text("UPDATE alembic_version SET version_num = '20260524_0002'"))
+        conn.execute(
+            text("UPDATE alembic_version SET version_num = :revision"),
+            {"revision": _PREVIOUS_HEAD},
+        )
+
+
+def _head_revision(db_pkg) -> str:
+    with db_pkg.engine.connect() as connection:
+        return str(connection.scalar(text("SELECT version_num FROM alembic_version")))
+
+
+def _catalog_snapshot(db_pkg) -> tuple[tuple[tuple[str, str], ...], tuple[str, ...]]:
+    with db_pkg.engine.connect() as connection:
+        objects = tuple(
+            connection.execute(
+                text(
+                    "SELECT c.relname, c.relkind FROM pg_class AS c "
+                    "JOIN pg_namespace AS n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' ORDER BY c.relname, c.relkind"
+                )
+            )
+        )
+        tables = set(inspect(connection).get_table_names())
+        revisions = (
+            tuple(
+                connection.scalars(
+                    text("SELECT version_num FROM alembic_version ORDER BY version_num")
+                )
+            )
+            if "alembic_version" in tables
+            else ()
+        )
+    return objects, revisions
+
+
+def _patch_database_writes(monkeypatch, db_pkg, calls: list[str]) -> None:
+    monkeypatch.setattr(db_pkg.Base.metadata, "create_all", lambda *a, **k: calls.append("create_all"))
+    monkeypatch.setattr(db_pkg, "record_schema_migration", lambda *a, **k: calls.append("seed"))
+    monkeypatch.setattr(db_pkg, "seed_identity_data", lambda: calls.append("seed"))
+    monkeypatch.setattr(db_pkg, "seed_runtime_data", lambda: calls.append("seed"))
+    monkeypatch.setattr(db_pkg, "reconcile_expense_tag_mirror_once", lambda: calls.append("seed"))
 
 
 def test_pre_migration_backup_runs_before_upgrade(monkeypatch):
-    """Wiring + ordering: a pre-existing tracked DB behind head must snapshot
-    BEFORE ``command.upgrade`` runs. Deleting the backup call (or moving it after
-    the upgrade) fails this — the snapshot is only a restore point if it predates
-    the irreversible step."""
+    """A managed database upgrades through real Alembic only after backup."""
+    from alembic import command
+
     import app.database as db_pkg
     from app.services import backup_service
 
     order: list[str] = []
+    original_upgrade = command.upgrade
 
     def _fake_backup():
         order.append("backup")
         return SimpleNamespace(file_name="ticketbox-pre-upgrade-test.dump")
 
+    def _tracked_upgrade(*args, **kwargs):
+        order.append("upgrade")
+        return original_upgrade(*args, **kwargs)
+
     monkeypatch.setattr(backup_service, "create_pre_upgrade_backup", _fake_backup)
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: order.append("upgrade"))
-    # Keep the test focused on the backup gate, not the owner-preflight guard.
-    monkeypatch.setattr(db_pkg, "_assert_role_can_alter_existing_schema", lambda conn: None)
+    monkeypatch.setattr(command, "upgrade", _tracked_upgrade)
 
     _stamp_below_head(db_pkg)
-    db_pkg._stamp_alembic_baseline_if_needed()
+    db_pkg.init_db()
 
-    assert order == ["backup", "upgrade"], "pre-migration backup must precede the upgrade"
+    assert order[:2] == ["backup", "upgrade"]
+    assert _head_revision(db_pkg) == db_pkg.load_alembic_context().head_revision
 
 
 def test_pre_migration_backup_failure_aborts_migration(monkeypatch):
-    """Fail-CLOSED: a failed snapshot raises and the migration upgrade must NOT
-    run (no migrating onto an existing DB without a restore point). Without the
-    fail-closed gate the upgrade would proceed — exactly the silent-brick class
-    this hardening prevents."""
+    """A failed pg_dump leaves the database catalog and rows untouched."""
     import app.database as db_pkg
     from app.services import backup_service
 
-    ran_upgrade: list[bool] = []
+    writes: list[str] = []
 
     def _boom():
         raise RuntimeError("pg_dump exploded")
 
     monkeypatch.setattr(backup_service, "create_pre_upgrade_backup", _boom)
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: ran_upgrade.append(True))
-    monkeypatch.setattr(db_pkg, "_assert_role_can_alter_existing_schema", lambda conn: None)
+    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: writes.append("upgrade"))
+    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: writes.append("stamp"))
+    _patch_database_writes(monkeypatch, db_pkg, writes)
 
     _stamp_below_head(db_pkg)
+    before = _catalog_snapshot(db_pkg)
 
     with pytest.raises(db_pkg.DatabaseMigrationPreflightError, match="迁移前自动备份失败"):
-        db_pkg._stamp_alembic_baseline_if_needed()
-    assert ran_upgrade == [], "upgrade must NOT run when the pre-migration backup fails"
+        db_pkg.init_db()
+    assert writes == []
+    assert _catalog_snapshot(db_pkg) == before
 
 
-def test_skip_pre_migration_backup_env_skips_snapshot(monkeypatch):
-    """Escape hatch: ``SKIP_PRE_MIGRATION_BACKUP`` skips the snapshot but the
-    upgrade still runs (for a hand-backed-up DB whose ``pg_dump`` is broken).
-    Pins that the env var is honoured AND that skipping the backup does not also
-    skip the migration."""
+def test_empty_database_first_start_uses_alembic_only(monkeypatch):
+    """A truly empty database reaches head without backup or create_all."""
     import app.database as db_pkg
     from app.services import backup_service
 
-    backup_calls: list[bool] = []
-    upgrade_calls: list[bool] = []
-    monkeypatch.setattr(
-        backup_service, "create_pre_upgrade_backup", lambda: backup_calls.append(True)
-    )
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: upgrade_calls.append(True))
-    monkeypatch.setattr(db_pkg, "_assert_role_can_alter_existing_schema", lambda conn: None)
-    monkeypatch.setenv("SKIP_PRE_MIGRATION_BACKUP", "true")
+    with db_pkg.engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
 
-    _stamp_below_head(db_pkg)
-    db_pkg._stamp_alembic_baseline_if_needed()
+    def _unexpected(*args, **kwargs):
+        raise AssertionError("empty first start must not call backup/create_all")
 
-    assert backup_calls == [], "SKIP_PRE_MIGRATION_BACKUP must skip the snapshot"
-    assert upgrade_calls == [True], "upgrade must still run after an explicit skip"
+    monkeypatch.setattr(backup_service, "create_pre_upgrade_backup", _unexpected)
+    monkeypatch.setattr(db_pkg.Base.metadata, "create_all", _unexpected)
+    assert db_pkg.inspect_database_lifecycle().kind is DatabaseLifecycleKind.EMPTY
+    db_pkg.init_db()
+
+    with db_pkg.engine.connect() as connection:
+        tables = set(inspect(connection).get_table_names())
+        category_rule_columns = {
+            column["name"] for column in inspect(connection).get_columns("category_rules")
+        }
+        audit_columns = {
+            column["name"] for column in inspect(connection).get_columns("ledger_audit_logs")
+        }
+    assert {"expenses", "app_meta", "alembic_version"}.issubset(tables)
+    assert "deleted_at" in category_rule_columns
+    assert {"resource_type", "resource_public_id"}.issubset(audit_columns)
+    assert _head_revision(db_pkg) == db_pkg.load_alembic_context().head_revision
 
 
-def test_no_backup_taken_when_already_at_head(monkeypatch):
-    """No pending migration → no snapshot. After ``reset_db_state`` the DB sits
-    at head, so the upgrade block never runs and no backup is taken (a no-op
-    restart must not shell out to ``pg_dump`` every time)."""
+def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
+    """At-head startup performs no lifecycle backup or Alembic mutation."""
     import app.database as db_pkg
     from app.services import backup_service
 
-    backup_calls: list[bool] = []
-    upgrade_calls: list[bool] = []
+    calls: list[str] = []
     monkeypatch.setattr(
-        backup_service, "create_pre_upgrade_backup", lambda: backup_calls.append(True)
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: (calls.append("backup") or SimpleNamespace(file_name="at-head.dump")),
     )
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: upgrade_calls.append(True))
+    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
+    _patch_database_writes(monkeypatch, db_pkg, calls)
+    db_pkg.init_db()
 
-    # Pre-condition: the freshly reset DB is already at head.
-    with db_pkg.engine.begin() as conn:
-        current = conn.scalar(text("SELECT version_num FROM alembic_version LIMIT 1"))
-    from pathlib import Path
-
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-
-    backend_root = Path(db_pkg.__file__).resolve().parents[2]
-    cfg = Config(str(backend_root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(backend_root / "migrations"))
-    head = ScriptDirectory.from_config(cfg).get_current_head()
-    assert current == head, "reset_db_state should leave the DB at head"
-
-    db_pkg._stamp_alembic_baseline_if_needed()
-
-    assert backup_calls == [], "no pending migration must take no pre-migration backup"
-    assert upgrade_calls == [], "no pending migration must run no upgrade"
+    assert "backup" not in calls
+    assert "upgrade" not in calls
+    assert "seed" in calls
 
 
-def test_fresh_db_without_version_table_takes_no_backup(monkeypatch):
-    """The ``has_version_table`` gate — this PR's headline safety claim. A fresh DB
-    with NO ``alembic_version`` table at entry (the ``create_all`` / first-start /
-    every ``reset_db_state`` shape) runs its guarded no-op migrations WITHOUT a
-    pre-backup. Dropping the version table reproduces that entry shape; ``_stamp``
-    then synthesizes ``current_revision`` (below head) and runs the upgrade — but
-    the gate must NOT back up, because the table was absent at entry. Otherwise
-    every fresh start / test reset would shell out to ``pg_dump`` and a missing
-    binary would fail-closed-brick a legitimate first start. Deleting the
-    ``if has_version_table:`` guard makes this test fail (the other tests stay
-    green under that deletion — this is the one that bites it)."""
+def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
+    """Unknown lineage is read-only refused before backup, DDL, or seed."""
     import app.database as db_pkg
     from app.services import backup_service
 
-    backup_calls: list[bool] = []
-    upgrade_calls: list[bool] = []
+    calls: list[str] = []
     monkeypatch.setattr(
-        backup_service, "create_pre_upgrade_backup", lambda: backup_calls.append(True)
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: (calls.append("backup") or SimpleNamespace(file_name="legacy.dump")),
     )
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: upgrade_calls.append(True))
-    monkeypatch.setattr(db_pkg, "_assert_role_can_alter_existing_schema", lambda conn: None)
+    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
+    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
+    _patch_database_writes(monkeypatch, db_pkg, calls)
 
     with db_pkg.engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    before = _catalog_snapshot(db_pkg)
 
-    db_pkg._stamp_alembic_baseline_if_needed()
+    with pytest.raises(db_pkg.DatabaseMigrationPreflightError, match="adoption"):
+        db_pkg.init_db()
+    assert calls == []
+    assert _catalog_snapshot(db_pkg) == before
 
-    assert backup_calls == [], "fresh DB (no alembic_version at entry) must NOT take a pre-migration backup"
-    assert upgrade_calls == [True], "fresh DB still runs the (guarded no-op) upgrade to head"
+    with db_pkg.engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE alembic_version "
+                "(version_num VARCHAR(32) PRIMARY KEY)"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES ('future_unknown')")
+        )
+    before_unknown = _catalog_snapshot(db_pkg)
+    with pytest.raises(db_pkg.DatabaseMigrationPreflightError, match="不属于当前 binary"):
+        db_pkg.init_db()
+    assert calls == []
+    assert _catalog_snapshot(db_pkg) == before_unknown
 
 
 def test_default_database_url_fallback_warns_at_startup(monkeypatch):

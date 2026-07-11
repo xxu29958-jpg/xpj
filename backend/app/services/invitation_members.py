@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Account, Ledger, LedgerMember
 from app.services import permission_service
+from app.services.identity_service._bootstrap_exposure_guard import (
+    assert_bootstrap_sensitive_mutation_allowed,
+)
 from app.services.invitation_audit import add_audit_log
 from app.services.invitation_common import (
     AUDIT_MEMBER_DISABLED,
@@ -18,8 +21,13 @@ from app.services.invitation_common import (
     active_member_by_id,
     require_active_owner,
 )
+from app.services.session_credential_lock import (
+    lock_and_revalidate_credential_mint_context,
+    lock_bootstrap_owner_transaction,
+)
 from app.services.session_lifecycle_service import revoke_active_tokens
 from app.services.time_service import now_utc, to_iso
+from app.tenants import AuthContext
 
 
 @dataclass(frozen=True)
@@ -88,6 +96,8 @@ def disable_member(
     member_id: int,
     requester_account_id: int,
 ) -> MemberSummary:
+    lock_bootstrap_owner_transaction(db)
+    assert_bootstrap_sensitive_mutation_allowed(db, ledger_ids={ledger_id})
     member = db.scalar(
         select(LedgerMember)
         .where(LedgerMember.id == member_id)
@@ -216,20 +226,41 @@ def _validate_owner_transfer(
     return ledger, current_owner, target, target_account
 
 
+def _lock_owner_transfer_actor(
+    db: Session,
+    *,
+    auth: AuthContext | None,
+    requester_account_id: int,
+    ledger_id: str,
+) -> None:
+    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+    if locked_auth is not None and (
+        locked_auth.account_id != requester_account_id
+        or locked_auth.ledger_id != ledger_id
+    ):
+        raise AppError("invalid_token", status_code=401)
+
+
 def transfer_ledger_owner(
     db: Session,
     *,
     ledger_id: str,
     member_id: int,
     requester_account_id: int,
+    auth: AuthContext | None = None,
 ) -> OwnerTransferResult:
-    """Transfer a ledger to one active non-owner member in one transaction.
+    """Atomically transfer the ledger to one active non-owner member.
 
-    The project intentionally keeps a single owner. The target becomes
-    ``owner`` and every existing active owner membership is demoted to
-    ``member`` in the same commit as the audit row and
-    ``Ledger.owner_account_id`` update.
+    The target becomes the sole owner; existing owners are demoted in the same
+    commit as the audit row and ``Ledger.owner_account_id`` update.
     """
+    _lock_owner_transfer_actor(
+        db,
+        auth=auth,
+        requester_account_id=requester_account_id,
+        ledger_id=ledger_id,
+    )
+    assert_bootstrap_sensitive_mutation_allowed(db, ledger_ids={ledger_id})
     ledger, current_owner, target, target_account = _validate_owner_transfer(
         db,
         ledger_id=ledger_id,

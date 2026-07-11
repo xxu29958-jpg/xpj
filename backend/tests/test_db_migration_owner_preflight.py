@@ -109,6 +109,40 @@ def test_owner_preflight_allows_member_of_owner_role(guard_role):
         eng.dispose()
 
 
+def test_owner_preflight_blocks_noinherit_member_of_owner_role(guard_role):
+    """Membership alone is not ALTER authority when the login is NOINHERIT."""
+    admin = create_engine(settings.database_url, isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            owner = conn.scalar(
+                text(
+                    "SELECT tableowner FROM pg_tables "
+                    "WHERE schemaname = 'public' ORDER BY tablename LIMIT 1"
+                )
+            )
+            assert owner is not None and owner != guard_role
+            conn.execute(text(f'ALTER ROLE "{_GUARD_ROLE}" NOINHERIT'))
+            conn.execute(text(f'GRANT "{owner}" TO "{_GUARD_ROLE}"'))
+    finally:
+        admin.dispose()
+
+    eng = _engine_as(guard_role)
+    try:
+        with eng.begin() as conn:
+            assert conn.scalar(
+                text("SELECT pg_has_role(current_user, :owner, 'MEMBER')"),
+                {"owner": owner},
+            )
+            assert not conn.scalar(
+                text("SELECT pg_has_role(current_user, :owner, 'USAGE')"),
+                {"owner": owner},
+            )
+            with pytest.raises(DatabaseMigrationPreflightError, match="表属主"):
+                _assert_role_can_alter_existing_schema(conn)
+    finally:
+        eng.dispose()
+
+
 def test_owner_preflight_allows_role_that_owns_the_tables():
     """The healthy / fresh-install shape: the connecting role owns every public
     table → zero flagged rows → no raise. The suite connects as that role."""
@@ -121,25 +155,23 @@ def test_owner_preflight_allows_role_that_owns_the_tables():
 
 
 def test_owner_preflight_is_invoked_before_the_migration_upgrade(monkeypatch):
-    """Pin the CALL SITE: the guard is only useful if
-    ``_stamp_alembic_baseline_if_needed`` actually invokes it before
-    ``command.upgrade``. Stub the guard to a spy and no-op the real upgrade,
-    stamp ``alembic_version`` below head so the upgrade block runs, then assert
-    the spy fired. Deleting the guard call at the upgrade site fails this test
-    (the 3 unit tests above only cover the function, not its wiring)."""
+    """The owner guard runs before a real managed-schema upgrade."""
     import app.database as db_pkg
+    from app.services import backup_service
 
     calls: list[bool] = []
     monkeypatch.setattr(
         db_pkg, "_assert_role_can_alter_existing_schema", lambda conn: calls.append(True)
     )
-    # Don't actually migrate — we only assert the guard runs first.
-    monkeypatch.setattr("alembic.command.upgrade", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: type("Backup", (), {"file_name": "owner-preflight.dump"})(),
+    )
 
-    # Force current_revision != head so the upgrade block (and the guard) runs.
     with db_pkg.engine.begin() as conn:
-        conn.execute(text("UPDATE alembic_version SET version_num = '20260524_0002'"))
+        conn.execute(text("UPDATE alembic_version SET version_num = '20260630_0002'"))
 
-    db_pkg._stamp_alembic_baseline_if_needed()
+    db_pkg.init_db()
 
-    assert calls == [True], "owner pre-flight guard was not called before command.upgrade"
+    assert calls == [True]

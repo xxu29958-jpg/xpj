@@ -5,6 +5,12 @@ from __future__ import annotations
 import pathlib
 import re
 
+from ci_gap_powershell import (
+    powershell_statement_depths,
+    powershell_without_here_string_literals,
+)
+from ci_gap_shell import shell_without_heredoc_literals
+
 _MISSING_WORKFLOW_VIOLATION = "required workflow missing from CI gap scan"
 _SCOPE_POLICY_VIOLATION = "Android release APK builds must be path-gated for non-Android changes"
 _EXPECTED_WORKFLOWS = ((".github", "ci.yml", True), (".gitea", "windows-ci.yml", False))
@@ -45,7 +51,13 @@ def _step_blocks(path: pathlib.Path) -> list[str]:
 
 def _metadata_value(block: str, key: str) -> str | None:
     prefix = f"{key}:"
+    lines = block.splitlines()
+    if not lines:
+        return None
+    metadata_indent = _line_indent(lines[0]) + 2
     for line in _active_lines(block):
+        if _line_indent(line) != metadata_indent:
+            continue
         stripped = line.lstrip()
         if stripped.startswith(prefix):
             value = stripped.removeprefix(prefix).strip()
@@ -63,8 +75,49 @@ def _active_text(block: str) -> str:
     return "\n".join(_active_lines(block))
 
 
-def _has_release_tasks(block: str) -> bool:
-    text = _active_text(block)
+def _run_script(block: str) -> str:
+    lines = block.splitlines()
+    if not lines:
+        return ""
+    metadata_indent = _line_indent(lines[0]) + 2
+    for index, line in enumerate(lines):
+        if _line_indent(line) != metadata_indent:
+            continue
+        stripped = line.lstrip()
+        if not stripped.startswith("run:"):
+            continue
+        value = stripped.removeprefix("run:").strip()
+        if value[:1] not in {"|", ">"}:
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                return value[1:-1]
+            return value
+        parent_indent = _line_indent(line)
+        body = lines[index + 1 :]
+        body_indents = [
+            _line_indent(child)
+            for child in body
+            if child.strip() and _line_indent(child) > parent_indent
+        ]
+        if not body_indents:
+            return ""
+        content_indent = min(body_indents)
+        return "\n".join(
+            child[content_indent:] if child.strip() else "" for child in body
+        )
+    return ""
+
+
+def _executable_script(block: str, *, github: bool) -> str:
+    script = _run_script(block)
+    return (
+        shell_without_heredoc_literals(script)
+        if github
+        else powershell_without_here_string_literals(script)
+    )
+
+
+def _has_release_tasks(block: str, *, github: bool) -> bool:
+    text = _executable_script(block, github=github)
     return all(task in text for task in _RELEASE_TASKS)
 
 
@@ -88,6 +141,26 @@ def _line_index(lines: list[str], pattern: str, *, start: int = 0, stop: int | N
         if re.search(pattern, lines[index]):
             return index
     return -1
+
+
+def _shell_statement_depths(text: str) -> list[int]:
+    depths: list[int] = []
+    depth = 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if re.match(r"^(?:fi\b|done\b|esac\b|})", stripped):
+            depth = max(0, depth - 1)
+        depths.append(depth)
+        opens_block = re.match(
+            r"^(?:if|for|while|until|select|case)\b", stripped
+        ) or re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)\s*\{", stripped)
+        if opens_block:
+            depth += 1
+    return depths
+
+
+def _indexes_are_top_level(depths: list[int], indexes: list[int]) -> bool:
+    return all(0 <= index < len(depths) and depths[index] == 0 for index in indexes)
 
 
 def _github_detect_step_valid(text: str) -> bool:
@@ -148,9 +221,16 @@ def _github_detect_step_valid(text: str) -> bool:
             path_fi,
         ]
     )
-    return has_required_shape and _line_index(
-        lines, r"^\s*exit\b", start=non_pr_fi + 1, stop=path_fi
-    ) == -1
+    top_level = _indexes_are_top_level(
+        _shell_statement_depths(text),
+        [non_pr_if, non_pr_fi, base_line, head_line, changed_line, path_if, path_fi],
+    )
+    return (
+        has_required_shape
+        and top_level
+        and _line_index(lines, r"^\s*exit\b", start=non_pr_fi + 1, stop=path_fi)
+        == -1
+    )
 
 
 def _has_line(text: str, pattern: str) -> bool:
@@ -261,13 +341,31 @@ def _gitea_detect_step_valid(text: str) -> bool:
     diff_indexes, diff_close = _gitea_diff_gate_indexes(lines, main_close)
     path_indexes, path_close = _gitea_path_gate_indexes(lines, diff_close, true_call, false_call)
     has_required_shape = _indexes_present(main_indexes + diff_indexes + path_indexes)
-    return has_required_shape and _line_index(
-        lines, r"^\s*exit\b", start=main_close + 1, stop=path_close
-    ) == -1
+    top_level = _indexes_are_top_level(
+        powershell_statement_depths(text),
+        [
+            main_indexes[0],
+            main_indexes[-1],
+            diff_indexes[0],
+            diff_indexes[1],
+            diff_indexes[3],
+            diff_indexes[4],
+            diff_indexes[-1],
+            path_indexes[0],
+            path_indexes[3],
+            path_indexes[-1],
+        ],
+    )
+    return (
+        has_required_shape
+        and top_level
+        and _line_index(lines, r"^\s*exit\b", start=main_close + 1, stop=path_close)
+        == -1
+    )
 
 
 def _detect_step_valid(block: str, *, github: bool) -> bool:
-    text = _active_text(block)
+    text = _executable_script(block, github=github)
     return (
         _has_metadata(block, "id", "release-apk-scope")
         and (_github_detect_step_valid(text) if github else _gitea_detect_step_valid(text))
@@ -276,7 +374,9 @@ def _detect_step_valid(block: str, *, github: bool) -> bool:
 
 def _workflow_scope_valid(path: pathlib.Path, *, github: bool) -> bool:
     blocks = _step_blocks(path)
-    release_blocks = [block for block in blocks if _has_release_tasks(block)]
+    release_blocks = [
+        block for block in blocks if _has_release_tasks(block, github=github)
+    ]
     detect_blocks = [block for block in blocks if _has_metadata(block, "id", "release-apk-scope")]
     if not release_blocks or not any(_detect_step_valid(block, github=github) for block in detect_blocks):
         return False

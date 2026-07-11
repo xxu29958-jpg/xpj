@@ -1,0 +1,1392 @@
+﻿const
+  GenericReadWrite = $C0000000;
+  OpenAlways = 4;
+  FileAttributeNormal = $80;
+  InvalidHandleValue = $FFFFFFFF;
+  ProcessSynchronize = $00100000;
+  WaitObject0 = 0;
+  WaitTimeout = 258;
+
+var
+  DataRootPage: TInputDirWizardPage;
+  PortPage: TInputQueryWizardPage;
+  ExistingInstall: Boolean;
+  ExistingDataRoot: String;
+  ExistingPgPort: String;
+  ExistingBackendPort: String;
+  SelectedPowerShellPath: String;
+  PortProbeFailed: Boolean;
+  LifecycleLockHandle: LongWord;
+  LifecycleLockOwnerPath: String;
+  LifecycleLockOwnerProcessId: LongWord;
+  LifecycleLockError: String;
+  LifecyclePrepared: Boolean;
+  LifecycleFilesMayBeReplaced: Boolean;
+  LifecycleInstallCompleted: Boolean;
+  InstallerLogSequence: Integer;
+  LastInstallerLogPath: String;
+  LastPowerShellChildSucceeded: Boolean;
+  OwnerHandoffExpected: Boolean;
+  OwnerHandoffMemo: TNewMemo;
+  OwnerHandoffConfirmation: TNewCheckBox;
+  DataRootGuardProcessId: LongWord;
+  DataRootGuardProcessHandle: LongWord;
+  DataRootGuardReadyPath: String;
+  DataRootGuardReleasePath: String;
+  DataRootGuardProcessStarted: Boolean;
+  DataRootGuardActive: Boolean;
+
+function CreateFile(
+  FileName: String;
+  DesiredAccess: LongWord;
+  ShareMode: LongWord;
+  SecurityAttributes: LongWord;
+  CreationDisposition: LongWord;
+  FlagsAndAttributes: LongWord;
+  TemplateFile: LongWord
+): LongWord;
+  external 'CreateFileW@kernel32.dll stdcall';
+function CloseHandle(Handle: LongWord): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+function GetCurrentProcessId(): LongWord;
+  external 'GetCurrentProcessId@kernel32.dll stdcall';
+function OpenProcess(
+  DesiredAccess: LongWord;
+  InheritHandle: Boolean;
+  ProcessId: LongWord
+): LongWord;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(Handle: LongWord; Milliseconds: LongWord): LongWord;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+
+function Quote(Value: String): String;
+var
+  Index: Integer;
+begin
+  if (Pos('"', Value) > 0) or (Pos(#0, Value) > 0) or
+     (Pos(#13, Value) > 0) or (Pos(#10, Value) > 0) then
+  begin
+    RaiseException('Windows command arguments cannot contain quotes or newlines.');
+  end;
+  Result := '"' + Value;
+  Index := Length(Value);
+  while (Index > 0) and (Value[Index] = '\') do
+  begin
+    Result := Result + '\';
+    Index := Index - 1;
+  end;
+  Result := Result + '"';
+end;
+
+function WindowsPowerShellExecutable(): String;
+begin
+  Result := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+end;
+
+function RunLifecycleIcacls(TargetPath: String; Arguments: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  if not Exec(
+    ExpandConstant('{sys}\icacls.exe'),
+    Quote(TargetPath) + ' ' + Arguments,
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    Result := False;
+    exit;
+  end;
+  Result := ResultCode = 0;
+end;
+
+function HardenLifecycleLockPath(TargetPath: String; IsDirectory: Boolean): Boolean;
+var
+  GrantArguments: String;
+begin
+  if IsDirectory then
+  begin
+    GrantArguments := '/grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"';
+  end
+  else
+  begin
+    GrantArguments := '/grant:r "*S-1-5-18:F" "*S-1-5-32-544:F"';
+  end;
+  Result :=
+    RunLifecycleIcacls(TargetPath, '/reset') and
+    RunLifecycleIcacls(TargetPath, GrantArguments) and
+    RunLifecycleIcacls(TargetPath, '/inheritance:r') and
+    RunLifecycleIcacls(TargetPath, '/setowner *S-1-5-18') and
+    RunLifecycleIcacls(TargetPath, '/verify');
+end;
+
+function AcquireLifecycleLock(): Boolean;
+var
+  LockDirectory: String;
+  LockPath: String;
+begin
+  LifecycleLockError := '';
+  LockDirectory := ExpandConstant('{commoncf64}\Ticketbox');
+  LockPath := LockDirectory + '\installer-lifecycle.lock';
+  LifecycleLockOwnerPath := LockDirectory + '\installer-lifecycle.owner';
+  if (not ForceDirectories(LockDirectory)) or
+     (not HardenLifecycleLockPath(LockDirectory, True)) then
+  begin
+    LifecycleLockError := '无法建立受保护的机器级安装锁目录。请确认安装器具有管理员权限。';
+    Result := False;
+    exit;
+  end;
+  LifecycleLockHandle := CreateFile(
+    LockPath,
+    GenericReadWrite,
+    0,
+    0,
+    OpenAlways,
+    FileAttributeNormal,
+    0);
+  if LifecycleLockHandle = InvalidHandleValue then
+  begin
+    LifecycleLockHandle := 0;
+    LifecycleLockError := '另一项小票夹安装、升级或卸载操作正在进行。请等待它完成后重试。';
+    Result := False;
+    exit;
+  end;
+  if not HardenLifecycleLockPath(LockPath, False) then
+  begin
+    CloseHandle(LifecycleLockHandle);
+    LifecycleLockHandle := 0;
+    LifecycleLockError := '无法收紧机器级安装锁文件权限，拒绝继续。';
+    Result := False;
+    exit;
+  end;
+  LifecycleLockOwnerProcessId := GetCurrentProcessId();
+  if (not SaveStringToFile(
+        LifecycleLockOwnerPath,
+        IntToStr(LifecycleLockOwnerProcessId),
+        False)) or
+     (not HardenLifecycleLockPath(LifecycleLockOwnerPath, False)) then
+  begin
+    DeleteFile(LifecycleLockOwnerPath);
+    CloseHandle(LifecycleLockHandle);
+    LifecycleLockHandle := 0;
+    LifecycleLockOwnerProcessId := 0;
+    LifecycleLockError := '无法写入受保护的安装锁所有者记录，拒绝继续。';
+    Result := False;
+    exit;
+  end;
+  Result := True;
+end;
+
+procedure ReleaseLifecycleLock();
+begin
+  if LifecycleLockHandle <> 0 then
+  begin
+    DeleteFile(LifecycleLockOwnerPath);
+    CloseHandle(LifecycleLockHandle);
+    LifecycleLockHandle := 0;
+    LifecycleLockOwnerPath := '';
+    LifecycleLockOwnerProcessId := 0;
+  end;
+end;
+
+function IsDecimalVersionComponent(Value: String): Boolean;
+var
+  Index: Integer;
+begin
+  Result := Value <> '';
+  if not Result then
+  begin
+    exit;
+  end;
+  for Index := 1 to Length(Value) do
+  begin
+    if (Value[Index] < '0') or (Value[Index] > '9') then
+    begin
+      Result := False;
+      exit;
+    end;
+  end;
+end;
+
+function ParseSupportedNumericVersion(
+  Value: String;
+  var Major: Integer;
+  var Minor: Integer;
+  var Patch: Integer;
+  var Revision: Integer
+): Boolean;
+var
+  Parts: TArrayOfString;
+  Index: Integer;
+  Component: Integer;
+begin
+  Result := False;
+  Major := 0;
+  Minor := 0;
+  Patch := 0;
+  Revision := 0;
+  Parts := StringSplit(Trim(Value), ['.'], stAll);
+  if (GetArrayLength(Parts) < 3) or (GetArrayLength(Parts) > 4) then
+  begin
+    exit;
+  end;
+  for Index := 0 to GetArrayLength(Parts) - 1 do
+  begin
+    if not IsDecimalVersionComponent(Parts[Index]) then
+    begin
+      exit;
+    end;
+    Component := StrToIntDef(Parts[Index], -1);
+    if (Component < 0) or (Component > 65535) then
+    begin
+      exit;
+    end;
+    case Index of
+      0: Major := Component;
+      1: Minor := Component;
+      2: Patch := Component;
+      3: Revision := Component;
+    end;
+  end;
+  Result := True;
+end;
+
+function CompareSupportedNumericVersions(LeftValue: String; RightValue: String; var Comparable: Boolean): Integer;
+var
+  LeftMajor: Integer;
+  LeftMinor: Integer;
+  LeftPatch: Integer;
+  LeftRevision: Integer;
+  RightMajor: Integer;
+  RightMinor: Integer;
+  RightPatch: Integer;
+  RightRevision: Integer;
+begin
+  Comparable :=
+    ParseSupportedNumericVersion(LeftValue, LeftMajor, LeftMinor, LeftPatch, LeftRevision) and
+    ParseSupportedNumericVersion(RightValue, RightMajor, RightMinor, RightPatch, RightRevision);
+  Result := 0;
+  if not Comparable then
+  begin
+    exit;
+  end;
+  if LeftMajor <> RightMajor then
+  begin
+    if LeftMajor < RightMajor then Result := -1 else Result := 1;
+  end
+  else if LeftMinor <> RightMinor then
+  begin
+    if LeftMinor < RightMinor then Result := -1 else Result := 1;
+  end
+  else if LeftPatch <> RightPatch then
+  begin
+    if LeftPatch < RightPatch then Result := -1 else Result := 1;
+  end
+  else if LeftRevision <> RightRevision then
+  begin
+    if LeftRevision < RightRevision then Result := -1 else Result := 1;
+  end;
+end;
+
+function VersionGateServiceExists(ServiceName: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  if not Exec(
+    ExpandConstant('{sys}\sc.exe'),
+    'query ' + ServiceName,
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    Result := True;
+    exit;
+  end;
+  Result := ResultCode = 0;
+end;
+
+function HasExistingTicketboxInstallMarkers(): Boolean;
+var
+  ExistingValue: String;
+begin
+  Result :=
+    RegQueryStringValue(HKLM64, 'Software\Ticketbox', 'InstallDir', ExistingValue) or
+    RegQueryStringValue(HKLM64, 'Software\Ticketbox', 'DataRoot', ExistingValue) or
+    VersionGateServiceExists('{#PgServiceName}') or
+    VersionGateServiceExists('{#BackendServiceName}');
+end;
+
+function PersistentIdentityDataRoot(): String;
+var
+  ParamValue: String;
+  RegisteredValue: String;
+begin
+  ParamValue := Trim(ExpandConstant('{param:TicketboxDataRoot|}'));
+  if ParamValue <> '' then
+  begin
+    Result := ExpandFileName(ParamValue);
+  end
+  else if RegQueryStringValue(HKLM64, 'Software\Ticketbox', 'DataRoot', RegisteredValue) and
+          (Trim(RegisteredValue) <> '') then
+  begin
+    Result := ExpandFileName(Trim(RegisteredValue));
+  end
+  else
+  begin
+    Result := ExpandFileName(ExpandConstant('{commonappdata}\Ticketbox'));
+  end;
+end;
+
+function PersistentIdentityPath(DataRoot: String): String;
+begin
+  Result := AddBackslash(DataRoot) + '.ticketbox-installation-identity';
+end;
+
+function HasProtectedPersistentIdentityAcl(IdentityPath: String): Boolean;
+var
+  ResultCode: Integer;
+  EscapedPath: String;
+  CommandText: String;
+begin
+  EscapedPath := IdentityPath;
+  StringChangeEx(EscapedPath, '''', '''''', True);
+  CommandText :=
+    '$p=''' + EscapedPath + ''';' +
+    '$ok=$true;' +
+    '$i=Get-Item -LiteralPath $p -Force;' +
+    'if(($i.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne 0){$ok=$false};' +
+    '$d=$i.Directory;while($null-ne$d){if(($d.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne 0){$ok=$false};$d=$d.Parent};' +
+    '$a=$i.GetAccessControl([Security.AccessControl.AccessControlSections]::All);' +
+    '$sid=[Security.Principal.SecurityIdentifier];' +
+    '$o=$a.Owner;' +
+    'try{$o=(New-Object Security.Principal.NTAccount -ArgumentList $o).Translate($sid).Value}catch{};' +
+    '$ok=$ok -and $a.AreAccessRulesProtected -and ($o -eq ''S-1-5-18'');' +
+    '$allow=@(''S-1-5-18'',''S-1-5-32-544'');' +
+    '$seen=@{};' +
+    'foreach($r in $a.GetAccessRules($true,$false,$sid)){' +
+    '$s=$r.IdentityReference.Value;' +
+    '$full=($r.FileSystemRights-band[Security.AccessControl.FileSystemRights]::FullControl)-eq[Security.AccessControl.FileSystemRights]::FullControl;' +
+    'if(($s -notin $allow) -or (-not $full) -or ($r.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow) -or $r.IsInherited){$ok=$false};$seen[$s]=$true};' +
+    'foreach($s in $allow){if(-not $seen.ContainsKey($s)){$ok=$false}};' +
+    'if($ok){exit 0}else{exit 1}';
+  Result := Exec(
+    WindowsPowerShellExecutable(),
+    '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ' + Quote(CommandText),
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) and (ResultCode = 0);
+end;
+
+function IsUpperHexSha256(Value: String): Boolean;
+var
+  Index: Integer;
+begin
+  Result := Length(Value) = 64;
+  if not Result then exit;
+  for Index := 1 to Length(Value) do
+  begin
+    if not (((Value[Index] >= '0') and (Value[Index] <= '9')) or
+            ((Value[Index] >= 'A') and (Value[Index] <= 'F'))) then
+    begin
+      Result := False;
+      exit;
+    end;
+  end;
+end;
+
+function IsCanonicalInstallationId(Value: String): Boolean;
+var
+  Index: Integer;
+begin
+  Result := Length(Value) = 36;
+  if not Result then exit;
+  for Index := 1 to Length(Value) do
+  begin
+    if (Index = 9) or (Index = 14) or (Index = 19) or (Index = 24) then
+    begin
+      if Value[Index] <> '-' then
+      begin
+        Result := False;
+        exit;
+      end;
+    end
+    else if not (((Value[Index] >= '0') and (Value[Index] <= '9')) or
+                 ((Value[Index] >= 'a') and (Value[Index] <= 'f')) or
+                 ((Value[Index] >= 'A') and (Value[Index] <= 'F'))) then
+    begin
+      Result := False;
+      exit;
+    end;
+  end;
+end;
+
+function TryGetPersistentBackendVersionFloor(
+  DataRoot: String;
+  var VersionFloor: String;
+  var FailureReason: String
+): Boolean;
+var
+  Lines: TArrayOfString;
+  IdentityPath: String;
+  ExpectedNames: TArrayOfString;
+  Values: TArrayOfString;
+  Index: Integer;
+  Separator: Integer;
+  Name: String;
+  Value: String;
+  Major: Integer;
+  Minor: Integer;
+  Patch: Integer;
+  Revision: Integer;
+begin
+  Result := False;
+  VersionFloor := '';
+  FailureReason := '';
+  IdentityPath := PersistentIdentityPath(DataRoot);
+  if not FileExists(IdentityPath) then
+  begin
+    FailureReason := '持久安装身份文件不存在：' + IdentityPath;
+    exit;
+  end;
+  if not HasProtectedPersistentIdentityAcl(IdentityPath) then
+  begin
+    FailureReason := '持久安装身份文件不是 SYSTEM/Administrators-only 精确 ACL。';
+    exit;
+  end;
+  if not LoadStringsFromFile(IdentityPath, Lines) then
+  begin
+    FailureReason := '无法以 UTF-8 读取持久安装身份文件。';
+    exit;
+  end;
+  SetArrayLength(ExpectedNames, 10);
+  ExpectedNames[0] := 'SCHEMA';
+  ExpectedNames[1] := 'BACKEND_VERSION_FLOOR';
+  ExpectedNames[2] := 'INSTALLATION_ID';
+  ExpectedNames[3] := 'BUILD_MANIFEST_SHA256';
+  ExpectedNames[4] := 'DATA_ROOT';
+  ExpectedNames[5] := 'INSTALL_DIR';
+  ExpectedNames[6] := 'PG_SERVICE_NAME';
+  ExpectedNames[7] := 'BACKEND_SERVICE_NAME';
+  ExpectedNames[8] := 'PG_PORT';
+  ExpectedNames[9] := 'BACKEND_PORT';
+  SetArrayLength(Values, GetArrayLength(ExpectedNames));
+  if GetArrayLength(Lines) <> GetArrayLength(ExpectedNames) then
+  begin
+    FailureReason := '持久安装身份字段数量不正确。';
+    exit;
+  end;
+  for Index := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    Separator := Pos('=', Lines[Index]);
+    if Separator <= 1 then
+    begin
+      FailureReason := '持久安装身份含有无效字段。';
+      exit;
+    end;
+    Name := Copy(Lines[Index], 1, Separator - 1);
+    Value := Copy(Lines[Index], Separator + 1, MaxInt);
+    if (Name <> ExpectedNames[Index]) or (Value = '') then
+    begin
+      FailureReason := '持久安装身份字段顺序、名称或值无效：' + Name;
+      exit;
+    end;
+    Values[Index] := Value;
+  end;
+  if Values[0] <> 'ticketbox-installation-identity-v1' then
+  begin
+    FailureReason := '持久安装身份 schema 不受支持。';
+    exit;
+  end;
+  if not ParseSupportedNumericVersion(Values[1], Major, Minor, Patch, Revision) then
+  begin
+    FailureReason := '持久 backend version floor 格式无效。';
+    exit;
+  end;
+  if (not IsCanonicalInstallationId(Values[2])) or (not IsUpperHexSha256(Values[3])) then
+  begin
+    FailureReason := '持久 installation/build identity 格式无效。';
+    exit;
+  end;
+  if Uppercase(AddBackslash(ExpandFileName(Values[4]))) <>
+     Uppercase(AddBackslash(ExpandFileName(DataRoot))) then
+  begin
+    FailureReason := '持久安装身份绑定的 DataRoot 与当前保留数据不一致。';
+    exit;
+  end;
+  if (Values[6] <> '{#PgServiceName}') or
+     (Values[7] <> '{#BackendServiceName}') or
+     (StrToIntDef(Values[8], -1) < 1) or (StrToIntDef(Values[8], -1) > 65535) or
+     (StrToIntDef(Values[9], -1) < 1) or (StrToIntDef(Values[9], -1) > 65535) or
+     (Values[8] = Values[9]) then
+  begin
+    FailureReason := '持久安装身份的服务或端口身份无效。';
+    exit;
+  end;
+  VersionFloor := Values[1];
+  Result := True;
+end;
+
+function TicketboxLegacyUninstallKey(): String;
+begin
+  Result :=
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{' +
+    '{#TicketboxAppIdGuid}' + '}_is1';
+end;
+
+function CanonicalVersionGateInstallPath(Value: String): String;
+begin
+  Result := '';
+  if Trim(Value) <> '' then
+  begin
+    Result := Uppercase(AddBackslash(ExpandFileName(Trim(Value))));
+  end;
+end;
+
+function TryGetTrustedLegacyBackendVersion(
+  var LegacyVersion: String;
+  var FailureReason: String
+): Boolean;
+var
+  UninstallKey: String;
+  DisplayName: String;
+  InstallLocation: String;
+  RegisteredInstallDir: String;
+  Major: Integer;
+  Minor: Integer;
+  Patch: Integer;
+  Revision: Integer;
+begin
+  Result := False;
+  LegacyVersion := '';
+  FailureReason := '';
+  UninstallKey := TicketboxLegacyUninstallKey();
+  if not RegKeyExists(HKLM64, UninstallKey) then
+  begin
+    FailureReason := '未找到同一稳定 AppId 的 HKLM64 Inno 卸载记录。';
+    exit;
+  end;
+  if (not RegQueryStringValue(HKLM64, UninstallKey, 'DisplayName', DisplayName)) or
+     (CompareText(Trim(DisplayName), '{#AppName}') <> 0) then
+  begin
+    FailureReason := '旧版 Inno 卸载记录的 DisplayName 与小票夹产品身份不一致。';
+    exit;
+  end;
+  if (not RegQueryStringValue(HKLM64, UninstallKey, 'InstallLocation', InstallLocation)) or
+     (not RegQueryStringValue(
+       HKLM64,
+       'Software\Ticketbox',
+       'InstallDir',
+       RegisteredInstallDir)) or
+     (not DirExists(ExpandFileName(Trim(InstallLocation)))) or
+     (CanonicalVersionGateInstallPath(InstallLocation) = '') or
+     (CanonicalVersionGateInstallPath(InstallLocation) <>
+       CanonicalVersionGateInstallPath(RegisteredInstallDir)) then
+  begin
+    FailureReason :=
+      '旧版 Inno 卸载记录的 InstallLocation 无法与 HKLM 小票夹 InstallDir 绑定。';
+    exit;
+  end;
+  if not RegQueryStringValue(HKLM64, UninstallKey, 'DisplayVersion', LegacyVersion) then
+  begin
+    FailureReason := '旧版 Inno 卸载记录缺少 DisplayVersion。';
+    exit;
+  end;
+  LegacyVersion := Trim(LegacyVersion);
+  if not ParseSupportedNumericVersion(
+    LegacyVersion,
+    Major,
+    Minor,
+    Patch,
+    Revision) then
+  begin
+    FailureReason :=
+      '旧版 Inno DisplayVersion 不符合受支持的三段或四段纯数字版本契约。';
+    exit;
+  end;
+  Result := True;
+end;
+
+function EvaluateBackendVersionFloorDecision(
+  TargetVersion: String;
+  HasFormalVersion: Boolean;
+  FormalVersion: String;
+  HasTrustedLegacyVersion: Boolean;
+  LegacyVersion: String;
+  HasExistingInstall: Boolean;
+  LegacyFailureReason: String;
+  var FailureReason: String
+): Boolean;
+var
+  InstalledVersion: String;
+  VersionFloorSource: String;
+  Comparable: Boolean;
+  Comparison: Integer;
+  TargetMajor: Integer;
+  TargetMinor: Integer;
+  TargetPatch: Integer;
+  TargetRevision: Integer;
+begin
+  FailureReason := '';
+  VersionFloorSource := '';
+  if not ParseSupportedNumericVersion(
+    TargetVersion,
+    TargetMajor,
+    TargetMinor,
+    TargetPatch,
+    TargetRevision) then
+  begin
+    FailureReason :=
+      '目标安装包版本不符合受支持的三段或四段纯数字版本契约：' + TargetVersion + #13#10 +
+      '安装器已停止且不会复制文件。';
+    Result := False;
+    exit;
+  end;
+  if HasFormalVersion then
+  begin
+    InstalledVersion := Trim(FormalVersion);
+    VersionFloorSource := '正式 BackendVersion';
+  end
+  else if HasTrustedLegacyVersion then
+  begin
+    InstalledVersion := Trim(LegacyVersion);
+    VersionFloorSource := '旧版 Inno DisplayVersion';
+  end
+  else if HasExistingInstall then
+  begin
+    FailureReason :=
+      '检测到已有小票夹安装，但无法读取 HKLM\Software\Ticketbox\BackendVersion。' + #13#10 +
+      '旧版版本记录也不可信：' + LegacyFailureReason + #13#10 +
+      '安装器无法安全判断是否降级，已停止且不会复制文件。';
+    Result := False;
+    exit;
+  end
+  else
+  begin
+    Result := True;
+    exit;
+  end;
+
+  Comparison := CompareSupportedNumericVersions(TargetVersion, InstalledVersion, Comparable);
+  if not Comparable then
+  begin
+    FailureReason :=
+      '无法按受支持的三段或四段数字版本契约比较版本。' + #13#10 +
+      '已安装版本：' + InstalledVersion + #13#10 +
+      '目标版本：' + TargetVersion + #13#10 +
+      '安装器已停止且不会复制文件。';
+    Result := False;
+    exit;
+  end;
+  if Comparison < 0 then
+  begin
+    FailureReason :=
+      '拒绝安装旧版本。' + #13#10 +
+      '版本下限来源：' + VersionFloorSource + #13#10 +
+      '已安装或保留的版本下限：' + InstalledVersion + #13#10 +
+      '目标版本：' + TargetVersion;
+    Result := False;
+    exit;
+  end;
+  Result := True;
+end;
+
+function CheckBackendVersionFloorForDataRoot(
+  PreservedDataRoot: String;
+  var FailureReason: String
+): Boolean;
+var
+  HasFormalVersion: Boolean;
+  FormalVersion: String;
+  HasTrustedLegacyVersion: Boolean;
+  LegacyVersion: String;
+  HasExistingInstall: Boolean;
+  LegacyFailureReason: String;
+  PersistentIdentityFile: String;
+  PersistentIdentityFailure: String;
+  HasPersistentIdentity: Boolean;
+  HasPreservedPgData: Boolean;
+  RegisteredDataRoot: String;
+begin
+  FormalVersion := '';
+  LegacyVersion := '';
+  LegacyFailureReason := '';
+  HasTrustedLegacyVersion := False;
+  HasExistingInstall := False;
+  PreservedDataRoot := ExpandFileName(PreservedDataRoot);
+  PersistentIdentityFile := PersistentIdentityPath(PreservedDataRoot);
+  HasPreservedPgData := FileExists(AddBackslash(PreservedDataRoot) + 'pgdata\PG_VERSION');
+  HasPersistentIdentity := FileExists(PersistentIdentityFile);
+  if HasPersistentIdentity then
+  begin
+    HasFormalVersion := TryGetPersistentBackendVersionFloor(
+      PreservedDataRoot,
+      FormalVersion,
+      PersistentIdentityFailure);
+    if not HasFormalVersion then
+    begin
+      FailureReason :=
+        '检测到保留的 PostgreSQL 数据或安装身份，但可信 version floor 缺失或损坏。' + #13#10 +
+        PersistentIdentityFailure + #13#10 +
+        '安装器已 fail closed，未读取服务/版本身份，也不会复制文件。';
+      Result := False;
+      exit;
+    end;
+  end
+  else if HasPreservedPgData then
+  begin
+    HasFormalVersion := False;
+    if (not RegQueryStringValue(
+          HKLM64,
+          'Software\Ticketbox',
+          'DataRoot',
+          RegisteredDataRoot)) or
+       (CanonicalVersionGateInstallPath(RegisteredDataRoot) <>
+        CanonicalVersionGateInstallPath(PreservedDataRoot)) then
+    begin
+      FailureReason :=
+        '检测到没有持久安装身份的 PostgreSQL 数据，但 HKLM DataRoot 无法与所选数据目录绑定。' + #13#10 +
+        '安装器已 fail closed，不会复制文件。';
+      Result := False;
+      exit;
+    end;
+    HasTrustedLegacyVersion := TryGetTrustedLegacyBackendVersion(
+      LegacyVersion,
+      LegacyFailureReason);
+    HasExistingInstall := True;
+    if not HasTrustedLegacyVersion then
+    begin
+      FailureReason :=
+        '检测到旧版 PostgreSQL 数据，但稳定 AppId、产品名、安装目录和版本证据不完整。' + #13#10 +
+        LegacyFailureReason + #13#10 +
+        '安装器已 fail closed，不会复制文件。';
+      Result := False;
+      exit;
+    end;
+  end
+  else
+  begin
+    HasFormalVersion := RegQueryStringValue(
+      HKLM64,
+      'Software\Ticketbox',
+      'BackendVersion',
+      FormalVersion);
+  end;
+  if (not HasFormalVersion) and (not HasTrustedLegacyVersion) then
+  begin
+    HasTrustedLegacyVersion := TryGetTrustedLegacyBackendVersion(
+      LegacyVersion,
+      LegacyFailureReason);
+    HasExistingInstall :=
+      HasExistingTicketboxInstallMarkers() or
+      RegKeyExists(HKLM64, TicketboxLegacyUninstallKey());
+  end;
+  Result := EvaluateBackendVersionFloorDecision(
+    '{#AppVersion}',
+    HasFormalVersion,
+    FormalVersion,
+    HasTrustedLegacyVersion,
+    LegacyVersion,
+    HasExistingInstall,
+    LegacyFailureReason,
+    FailureReason);
+end;
+
+function CheckBackendVersionFloor(var FailureReason: String): Boolean;
+begin
+  Result := CheckBackendVersionFloorForDataRoot(
+    PersistentIdentityDataRoot(),
+    FailureReason);
+end;
+
+function InitializeSetup(): Boolean;
+var
+  VersionFailureReason: String;
+begin
+  if WizardSilent then
+  begin
+    MsgBox(
+      '当前版本尚未提供经过安全验收的无人值守安装合同。请使用交互式安装向导。',
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
+  LifecyclePrepared := False;
+  LifecycleFilesMayBeReplaced := False;
+  LifecycleInstallCompleted := False;
+  InstallerLogSequence := 0;
+  LastInstallerLogPath := '';
+  DataRootGuardProcessId := 0;
+  DataRootGuardProcessHandle := InvalidHandleValue;
+  DataRootGuardReadyPath := '';
+  DataRootGuardReleasePath := '';
+  DataRootGuardProcessStarted := False;
+  DataRootGuardActive := False;
+  Result := AcquireLifecycleLock();
+  if not Result then
+  begin
+    MsgBox(LifecycleLockError, mbError, MB_OK);
+    exit;
+  end;
+  if not CheckBackendVersionFloor(VersionFailureReason) then
+  begin
+    MsgBox(VersionFailureReason, mbError, MB_OK);
+    ReleaseLifecycleLock();
+    Result := False;
+    exit;
+  end;
+  Result := True;
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := AcquireLifecycleLock();
+  if not Result then
+  begin
+    MsgBox(LifecycleLockError, mbError, MB_OK);
+  end;
+end;
+
+procedure DeinitializeUninstall();
+begin
+  ReleaseLifecycleLock();
+end;
+
+function CanRunPowerShell(PowerShellPath: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  if not FileExists(PowerShellPath) then
+  begin
+    Result := False;
+    exit;
+  end;
+  if not Exec(
+    PowerShellPath,
+    '-NoLogo -NoProfile -NonInteractive -Command "exit 0"',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    Result := False;
+    exit;
+  end;
+  Result := ResultCode = 0;
+end;
+
+function IsProtectedProgramFilesPath(Value: String): Boolean;
+var
+  CanonicalValue: String;
+  ProgramFilesRoot: String;
+  ProgramFilesX86Root: String;
+begin
+  CanonicalValue := Uppercase(ExpandFileName(Value));
+  ProgramFilesRoot := Uppercase(AddBackslash(ExpandFileName(ExpandConstant('{commonpf64}'))));
+  ProgramFilesX86Root := Uppercase(AddBackslash(ExpandFileName(ExpandConstant('{commonpf32}'))));
+  Result :=
+    (Copy(CanonicalValue, 1, Length(ProgramFilesRoot)) = ProgramFilesRoot) or
+    (Copy(CanonicalValue, 1, Length(ProgramFilesX86Root)) = ProgramFilesX86Root);
+end;
+
+function HasValidMicrosoftSignature(PowerShellPath: String): Boolean;
+var
+  ResultCode: Integer;
+  CommandText: String;
+  EscapedPath: String;
+begin
+  EscapedPath := PowerShellPath;
+  StringChangeEx(EscapedPath, '''', '''''', True);
+  CommandText :=
+    '$s=Get-AuthenticodeSignature -LiteralPath ''' + EscapedPath + '''; ' +
+    'if ($s.Status -eq ''Valid'' -and $s.SignerCertificate.Subject -match ''Microsoft Corporation'') ' +
+    '{ exit 0 } else { exit 1 }';
+  if not Exec(
+    WindowsPowerShellExecutable(),
+    '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ' + Quote(CommandText),
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    Result := False;
+    exit;
+  end;
+  Result := ResultCode = 0;
+end;
+
+function FindMachinePowerShell7(): String;
+var
+  VersionKeys: TArrayOfString;
+  Index: Integer;
+  InstallLocation: String;
+  Candidate: String;
+  VersionKey: String;
+begin
+  Result := '';
+  if not RegGetSubkeyNames(
+    HKLM64,
+    'SOFTWARE\Microsoft\PowerShellCore\InstalledVersions',
+    VersionKeys) then
+  begin
+    exit;
+  end;
+  for Index := 0 to GetArrayLength(VersionKeys) - 1 do
+  begin
+    VersionKey := 'SOFTWARE\Microsoft\PowerShellCore\InstalledVersions\' + VersionKeys[Index];
+    if RegQueryStringValue(HKLM64, VersionKey, 'InstallLocation', InstallLocation) then
+    begin
+      Candidate := AddBackslash(InstallLocation) + 'pwsh.exe';
+      if
+        FileExists(Candidate) and
+        IsProtectedProgramFilesPath(Candidate) and
+        HasValidMicrosoftSignature(Candidate) and
+        CanRunPowerShell(Candidate) then
+      begin
+        Result := Candidate;
+        exit;
+      end;
+    end;
+  end;
+end;
+
+function PowerShellExecutable(): String;
+var
+  PowerShell7: String;
+begin
+  if SelectedPowerShellPath <> '' then
+  begin
+    Result := SelectedPowerShellPath;
+    exit;
+  end;
+  PowerShell7 := FindMachinePowerShell7();
+  if PowerShell7 <> '' then
+  begin
+    SelectedPowerShellPath := PowerShell7;
+  end
+  else
+  begin
+    SelectedPowerShellPath := WindowsPowerShellExecutable();
+  end;
+  Result := SelectedPowerShellPath;
+end;
+
+function PowerShellContextChinese(Context: String): String;
+begin
+  if CompareText(Context, 'Ticketbox pre-upgrade backup and service preparation') = 0 then
+  begin
+    Result := '升级前备份与服务检查';
+  end
+  else if CompareText(Context, 'Ticketbox service installation') = 0 then
+  begin
+    Result := '安装并验证小票夹服务';
+  end
+  else if CompareText(Context, 'Ticketbox program-files copy boundary') = 0 then
+  begin
+    Result := '持久化程序文件复制边界';
+  end
+  else if CompareText(Context, 'Ticketbox installer lifecycle commit') = 0 then
+  begin
+    Result := '提交安装生命周期';
+  end
+  else if CompareText(Context, 'Ticketbox failed-install recovery') = 0 then
+  begin
+    Result := '安装失败后的自动恢复';
+  end
+  else if CompareText(Context, 'Ticketbox service uninstall') = 0 then
+  begin
+    Result := '卸载并验证小票夹服务';
+  end
+  else if CompareText(Context, 'Ticketbox owner bootstrap handoff completion') = 0 then
+  begin
+    Result := '确认并清理首次绑定凭据';
+  end
+  else
+  begin
+    Result := '安装子步骤（' + Context + '）';
+  end;
+end;
+
+function PrepareProtectedInstallerLog(var LogPath: String): Boolean;
+var
+  LogDirectory: String;
+  LogName: String;
+begin
+  Result := False;
+  LogPath := '';
+  LogDirectory := ExpandConstant('{commoncf64}\Ticketbox\installer-logs');
+  if (not ForceDirectories(LogDirectory)) or
+     (not HardenLifecycleLockPath(LogDirectory, True)) then
+  begin
+    exit;
+  end;
+  InstallerLogSequence := InstallerLogSequence + 1;
+  LogName :=
+    'installer-' + GetDateTimeString('yyyymmdd-hhnnss', #0, #0) + '-' +
+    IntToStr(GetCurrentProcessId()) + '-' + IntToStr(InstallerLogSequence) + '.log';
+  LogPath := AddBackslash(LogDirectory) + LogName;
+  if (not SaveStringToFile(LogPath, '小票夹安装子步骤日志' + #13#10, False)) or
+     (not HardenLifecycleLockPath(LogPath, False)) then
+  begin
+    DeleteFile(LogPath);
+    LogPath := '';
+    exit;
+  end;
+  LastInstallerLogPath := LogPath;
+  Result := True;
+end;
+
+function EnsureLoggedPowerShellRunner(var RunnerPath: String): Boolean;
+var
+  RunnerText: String;
+begin
+  RunnerPath := ExpandConstant('{tmp}\ticketbox-run-installer-child-logged.ps1');
+  RunnerText :=
+    '#Requires -Version 5.1' + #13#10 +
+    '[CmdletBinding()]' + #13#10 +
+    'param(' + #13#10 +
+    '    [Parameter(Mandatory=$true)][string]$TargetScript,' + #13#10 +
+    '    [Parameter(Mandatory=$true)][string]$LogPath,' + #13#10 +
+    '    [Parameter(ValueFromRemainingArguments=$true)][string[]]$TargetArguments' + #13#10 +
+    ')' + #13#10 +
+    '$ErrorActionPreference = "Stop"' + #13#10 +
+    '$exitCode = 0' + #13#10 +
+    '$transcriptStarted = $false' + #13#10 +
+    'try {' + #13#10 +
+    '    Start-Transcript -LiteralPath $LogPath -Append -Force | Out-Null' + #13#10 +
+    '    $transcriptStarted = $true' + #13#10 +
+    '    $command = Get-Command -Name $TargetScript -CommandType ExternalScript -ErrorAction Stop' + #13#10 +
+    '    if ([IO.Path]::GetFullPath($command.Source) -ine [IO.Path]::GetFullPath($TargetScript)) { throw "Child script resolution mismatch." }' + #13#10 +
+    '    $scriptName = [IO.Path]::GetFileName($command.Source)' + #13#10 +
+    '    $allowedByScript = @{' + #13#10 +
+    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced","HoldDataRootMutationGuard","DataRootGuardReadyPath","DataRootGuardReleasePath","DataRootGuardOwnerProcessId")' + #13#10 +
+    '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","LifecycleReceiptPath","InstallerLockOwnerProcessId","CompleteOwnerHandoffOnly")' + #13#10 +
+    '        "uninstall_bundled_services.ps1" = @("InstallDir","InstallerLockOwnerProcessId","DeleteData")' + #13#10 +
+    '    }' + #13#10 +
+    '    if (-not $allowedByScript.ContainsKey($scriptName)) { throw "Installer child script is not allowlisted: $scriptName" }' + #13#10 +
+    '    $allowed = @{}' + #13#10 +
+    '    foreach ($allowedName in $allowedByScript[$scriptName]) { $allowed[$allowedName] = $true }' + #13#10 +
+    '    $bound = @{}' + #13#10 +
+    '    for ($index = 0; $index -lt $TargetArguments.Count; $index++) {' + #13#10 +
+    '        $token = $TargetArguments[$index]' + #13#10 +
+    '        if (-not $token.StartsWith("-") -or $token.Length -lt 2) { throw "Unexpected child argument: $token" }' + #13#10 +
+    '        $name = $token.Substring(1)' + #13#10 +
+    '        if (-not $allowed.ContainsKey($name)) { throw "Child parameter is not allowlisted: $token" }' + #13#10 +
+    '        if ($bound.ContainsKey($name)) { throw "Duplicate child parameter: $token" }' + #13#10 +
+    '        if (-not $command.Parameters.ContainsKey($name)) { throw "Unknown child parameter: $token" }' + #13#10 +
+    '        $metadata = $command.Parameters[$name]' + #13#10 +
+    '        if ($metadata.ParameterType -eq [System.Management.Automation.SwitchParameter]) {' + #13#10 +
+    '            $bound[$name] = $true' + #13#10 +
+    '        } else {' + #13#10 +
+    '            $index++' + #13#10 +
+    '            if ($index -ge $TargetArguments.Count) { throw "Missing value for child parameter: $token" }' + #13#10 +
+    '            $bound[$name] = $TargetArguments[$index]' + #13#10 +
+    '        }' + #13#10 +
+    '    }' + #13#10 +
+    '    $global:LASTEXITCODE = 0' + #13#10 +
+    '    & $TargetScript @bound' + #13#10 +
+    '    if ($LASTEXITCODE -ne 0) { $exitCode = $LASTEXITCODE }' + #13#10 +
+    '} catch {' + #13#10 +
+    '    $exitCode = 1' + #13#10 +
+    '    Write-Host ("ERROR: " + $_.Exception.Message)' + #13#10 +
+    '    if ($_.ScriptStackTrace) { Write-Host $_.ScriptStackTrace }' + #13#10 +
+    '} finally {' + #13#10 +
+    '    if ($transcriptStarted) { try { Stop-Transcript | Out-Null } catch { } }' + #13#10 +
+    '}' + #13#10 +
+    'exit $exitCode' + #13#10;
+  Result := SaveStringToFile(RunnerPath, RunnerText, False);
+end;
+
+function RunPowerShellChecked(ScriptPath: String; Arguments: String; Context: String): Boolean;
+var
+  ResultCode: Integer;
+  Params: String;
+  PowerShellPath: String;
+  Started: Boolean;
+  LogPath: String;
+  RunnerPath: String;
+  ChineseContext: String;
+begin
+  ChineseContext := PowerShellContextChinese(Context);
+  LastPowerShellChildSucceeded := False;
+  if not PrepareProtectedInstallerLog(LogPath) then
+  begin
+    MsgBox(
+      '无法创建并收紧机器级安装日志，已拒绝运行 PowerShell 子脚本。' + #13#10 +
+      '操作：' + ChineseContext + #13#10 +
+      '日志目录：' + ExpandConstant('{commoncf64}\Ticketbox\installer-logs'),
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
+  if not EnsureLoggedPowerShellRunner(RunnerPath) then
+  begin
+    MsgBox(
+      '无法创建 PowerShell 日志运行器，已拒绝继续。' + #13#10 +
+      '操作：' + ChineseContext + #13#10 +
+      '日志：' + LogPath,
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
+  Params :=
+    '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + Quote(RunnerPath) +
+    ' -TargetScript ' + Quote(ScriptPath) +
+    ' -LogPath ' + Quote(LogPath) + ' ' + Arguments;
+  PowerShellPath := PowerShellExecutable();
+  Started := Exec(PowerShellPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if (not Started) and (CompareText(PowerShellPath, WindowsPowerShellExecutable()) <> 0) then
+  begin
+    Started := Exec(
+      WindowsPowerShellExecutable(),
+      Params,
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+  end;
+  if not Started then
+  begin
+    MsgBox(
+      '无法启动 PowerShell，安装子步骤未执行。' + #13#10 +
+      '操作：' + ChineseContext + #13#10 +
+      '日志：' + LogPath,
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  LastPowerShellChildSucceeded := ResultCode = 0;
+
+  if CompareText(Context, 'Ticketbox installer lifecycle commit') = 0 then
+  begin
+    if ResultCode <> 0 then
+    begin
+      MsgBox(
+        '小票夹安装生命周期最终提交失败。' + #13#10 +
+        'PowerShell 退出码：' + IntToStr(ResultCode) + #13#10 +
+        '详细日志：' + LogPath,
+        mbError,
+        MB_OK);
+      Result := False;
+      exit;
+    end;
+    Result := True;
+    exit;
+  end;
+
+  if not HardenLifecycleLockPath(LogPath, False) then
+  begin
+    MsgBox(
+      'PowerShell 子脚本已结束，但无法确认机器级日志权限，已按失败处理。' + #13#10 +
+      '操作：' + ChineseContext + #13#10 +
+      '日志：' + LogPath,
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  if ResultCode <> 0 then
+  begin
+    MsgBox(
+      '小票夹安装子步骤失败。' + #13#10 +
+      '操作：' + ChineseContext + #13#10 +
+      'PowerShell 退出码：' + IntToStr(ResultCode) + #13#10 +
+      '详细日志：' + LogPath,
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  if CompareText(Context, 'Ticketbox service installation') = 0 then
+  begin
+    if not RegWriteStringValue(
+      HKLM64,
+      'Software\Ticketbox',
+      'BackendVersion',
+      '{#AppVersion}') then
+    begin
+      MsgBox(
+        '服务已安装，但无法写入机器级 BackendVersion，无法建立防降级版本下限。' + #13#10 +
+        '安装器已按失败处理。' + #13#10 +
+        '日志：' + LogPath,
+        mbError,
+        MB_OK);
+      Result := False;
+      exit;
+    end;
+  end;
+
+  Result := True;
+end;
+
+function StartDataRootMutationGuard(
+  ScriptPath: String;
+  InstallDir: String;
+  DataRoot: String;
+  PgPort: String;
+  BackendPort: String
+): Boolean;
+var
+  Params: String;
+  PowerShellPath: String;
+  ResultCode: Integer;
+  Started: Boolean;
+  Attempt: Integer;
+  ReadyText: AnsiString;
+  ExpectedReadyText: String;
+begin
+  Result := False;
+  if DataRootGuardProcessStarted then
+  begin
+    MsgBox('DataRoot guard lease 已启动，拒绝在同一安装生命周期重复获取。', mbError, MB_OK);
+    exit;
+  end;
+  DataRootGuardReadyPath :=
+    ExpandConstant('{commoncf64}\Ticketbox\data-root-guard-') +
+    IntToStr(LifecycleLockOwnerProcessId) + '.ready';
+  DataRootGuardReleasePath :=
+    ExpandConstant('{commoncf64}\Ticketbox\data-root-guard-') +
+    IntToStr(LifecycleLockOwnerProcessId) + '.release';
+  if FileExists(DataRootGuardReadyPath) or FileExists(DataRootGuardReleasePath) then
+  begin
+    MsgBox('检测到当前 PID 对应的过期 DataRoot guard artifact，已拒绝复用。', mbError, MB_OK);
+    exit;
+  end;
+
+  Params :=
+    '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + Quote(ScriptPath) +
+    ' -InstallDir ' + Quote(InstallDir) +
+    ' -DataRoot ' + Quote(DataRoot) +
+    ' -PgPort ' + PgPort +
+    ' -BackendPort ' + BackendPort +
+    ' -TargetPgMajor {#TargetPgMajor}' +
+    ' -ReleaseConfigPath ' + Quote(ExpandConstant('{tmp}\windows-release-config.json')) +
+    ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
+    ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
+    ' -HoldDataRootMutationGuard' +
+    ' -DataRootGuardReadyPath ' + Quote(DataRootGuardReadyPath) +
+    ' -DataRootGuardReleasePath ' + Quote(DataRootGuardReleasePath) +
+    ' -DataRootGuardOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
+  PowerShellPath := PowerShellExecutable();
+  Started := Exec(PowerShellPath, Params, '', SW_HIDE, ewNoWait, ResultCode);
+  if (not Started) and (CompareText(PowerShellPath, WindowsPowerShellExecutable()) <> 0) then
+  begin
+    Started := Exec(
+      WindowsPowerShellExecutable(),
+      Params,
+      '',
+      SW_HIDE,
+      ewNoWait,
+      ResultCode);
+  end;
+  if not Started then
+  begin
+    MsgBox('无法启动持续 DataRoot guard 进程，安装尚未进入复制前阶段。', mbError, MB_OK);
+    exit;
+  end;
+
+  DataRootGuardProcessId := LongWord(ResultCode);
+  DataRootGuardProcessStarted := True;
+  DataRootGuardProcessHandle := OpenProcess(
+    ProcessSynchronize,
+    False,
+    DataRootGuardProcessId);
+  if DataRootGuardProcessHandle = 0 then
+  begin
+    MsgBox('无法取得 DataRoot guard 进程句柄，安装尚未进入复制前阶段。', mbError, MB_OK);
+    exit;
+  end;
+
+  ExpectedReadyText :=
+    'STATE=holding' + #13#10 +
+    'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10;
+  for Attempt := 1 to 300 do
+  begin
+    if WaitForSingleObject(DataRootGuardProcessHandle, 0) = WaitObject0 then
+    begin
+      MsgBox('DataRoot guard 在确认 ready artifact 前退出，安装尚未进入复制前阶段。', mbError, MB_OK);
+      exit;
+    end;
+    if FileExists(DataRootGuardReadyPath) then
+    begin
+      if (not LoadStringFromFile(DataRootGuardReadyPath, ReadyText)) or
+         (String(ReadyText) <> ExpectedReadyText) then
+      begin
+        MsgBox('DataRoot guard ready artifact 与当前安装器身份不匹配。', mbError, MB_OK);
+        exit;
+      end;
+      DataRootGuardActive := True;
+      Result := True;
+      exit;
+    end;
+    Sleep(100);
+  end;
+  MsgBox('DataRoot guard 未在 30 秒内就绪，安装尚未进入复制前阶段。', mbError, MB_OK);
+end;
+
+procedure AssertDataRootMutationGuardActive();
+begin
+  if (not DataRootGuardActive) or
+     (DataRootGuardProcessHandle = 0) or
+     (DataRootGuardProcessHandle = InvalidHandleValue) or
+     (WaitForSingleObject(DataRootGuardProcessHandle, 0) <> WaitTimeout) then
+  begin
+    RaiseException('DataRoot guard lease 未持续持有，拒绝继续安装生命周期 mutation。');
+  end;
+end;
+
+procedure ReleaseDataRootMutationGuard();
+var
+  ReleaseTempPath: String;
+  ReleaseText: String;
+  WaitResult: LongWord;
+begin
+  if not DataRootGuardProcessStarted then
+  begin
+    exit;
+  end;
+  if (DataRootGuardProcessHandle <> 0) and
+     (DataRootGuardProcessHandle <> InvalidHandleValue) and
+     (WaitForSingleObject(DataRootGuardProcessHandle, 0) = WaitTimeout) then
+  begin
+    ReleaseTempPath := DataRootGuardReleasePath + '.tmp';
+    ReleaseText :=
+      'STATE=release' + #13#10 +
+      'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10;
+    DeleteFile(ReleaseTempPath);
+    if SaveStringToFile(ReleaseTempPath, ReleaseText, False) and
+       HardenLifecycleLockPath(ReleaseTempPath, False) and
+       RenameFile(ReleaseTempPath, DataRootGuardReleasePath) then
+    begin
+      WaitResult := WaitForSingleObject(DataRootGuardProcessHandle, 10000);
+      if WaitResult <> WaitObject0 then
+      begin
+        Log('DataRoot guard did not exit before timeout; parent-process exit remains the fail-safe release.');
+      end;
+    end
+    else
+    begin
+      Log('Could not persist the DataRoot guard release artifact; parent-process exit remains the fail-safe release.');
+    end;
+  end;
+  if (DataRootGuardProcessHandle <> 0) and
+     (DataRootGuardProcessHandle <> InvalidHandleValue) then
+  begin
+    CloseHandle(DataRootGuardProcessHandle);
+  end;
+  DeleteFile(DataRootGuardReadyPath);
+  DeleteFile(DataRootGuardReleasePath);
+  DeleteFile(DataRootGuardReleasePath + '.tmp');
+  DataRootGuardProcessHandle := InvalidHandleValue;
+  DataRootGuardProcessStarted := False;
+  DataRootGuardActive := False;
+end;

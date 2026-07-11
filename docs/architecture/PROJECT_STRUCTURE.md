@@ -85,6 +85,11 @@ backend\
       receipt_parse_merchant.py
       receipt_parse_time.py
       receipt_parse_category.py
+      identity_service/
+        _bootstrap_exposure_guard.py # bootstrap 暴露期敏感身份变更闸门
+        _bootstrap_recovery.py       # 确定性 principal 恢复与凭据轮换
+      installation_health_service.py # loopback 安装探针的 DB/role/schema readiness
+      session_credential_lock.py     # bootstrap/session 轮换共享事务锁与凭据复核
       server_settings_service.py
       reports_service.py
       stats_service.py
@@ -150,9 +155,34 @@ backend\
     setup_backend.ps1
     start_backend.ps1
     uninstall_startup_task.ps1
+    build_backend_exe.ps1          # frozen onedir + backend BUILD_PROVENANCE.json
+    windows_build_provenance.ps1   # installer/shared 本地输入与 payload 证据协议
+    windows_backend_build_provenance.ps1 # frozen backend 完整 Python 执行树与发布证据
     smoke_test.py
+  packaging\
+    ticketbox-installer.iss          # Inno 安装器定义
+    ticketbox-installer-windows.isph # 安全 PowerShell 发现与 Inno 全周期持锁证明
+    ticketbox-installer-flow.isph    # 端口、向导与安装/卸载事件流程
+    build_inno_installer.ps1         # 安装包输入校验与编译入口
+    windows-build-toolchain.json     # Python/uv/PyInstaller 精确构建工具链合同
+    windows-release-config.json      # 服务、端口、SCM/就绪策略与 bootstrap 的单一真源
+    windows_release_config.ps1       # 构建/预检/安装/卸载共用的动态配置校验
+    prepare_bundled_upgrade.ps1      # 复制新文件前的升级备份与服务准备
+    windows_service_contract.ps1     # Windows 原生 argv 解析与 PG/Shawl 命令契约
+    windows_service_lifecycle.ps1    # 服务归属与 SCM 稳定态/终态控制
+    windows_lifecycle_lock.ps1       # CommonProgramFiles 独占锁与父进程持锁校验
+    windows_lifecycle_receipt.ps1    # 四模式/四阶段受保护安装事务回执
+    windows_installation_safety.ps1  # 数据根 owner/ACL、持久 version floor/身份与防误删边界
+    windows_database_safety.ps1      # loopback libpq、口令隔离、数据根身份与 dump 防护
+    windows_bundled_database.ps1     # PG 初始化、身份校验与升级备份
+    windows_backend_bootstrap.ps1    # 后端 deadline 就绪探测与首次 owner bootstrap
+    windows_bootstrap_exposure_recovery.ps1 # 监听器暴露后的停服凭据轮换
+    install_bundled_services.ps1     # 正式安装 / 升级后置配置
+    uninstall_bundled_services.ps1   # 归属安全的服务卸载，默认保留数据
+    tests/                            # PS5.1/7 安装器行为契约
   .env.example
   requirements.txt
+  requirements-build.lock            # Windows frozen build 的精确依赖与分发 hash
   requirements-dev.txt
   run.bat
   setup.bat
@@ -209,12 +239,15 @@ CI 的 desktop-manager job 对它跑 compileall / ruff / pytest。详见 [deskto
 desktop\
   backend_manager\
     config.py            # 自动选择正式安装 / 源码运行态
-    installation.py      # Inno 注册表与 ProgramData 布局
+    installation.py      # Inno 注册表动态身份、ProgramData 布局与服务契约复核
     runtime.py           # 两种运行态的共用状态/控制契约
     elevation.py         # 固定 SCM 动作的短命 UAC helper
+    helper_channel.py    # 提权 helper 的受保护单次结果通道
+    lifecycle_lock.py    # 与安装/升级/卸载共用的机器级独占锁
+    projection.py        # 普通用户可见的脱敏状态/诊断投影
     windows_service.py   # Windows SCM 服务控制与正式日志读取
     supervisor.py        # 源码后端进程监督（独占、崩溃重启、树 kill）
-    control_server.py
+    control_server.py     # 固定 Host/Origin 的控制面与单实例身份探针
     ui.html
   tests\
   pyproject.toml
@@ -269,7 +302,7 @@ docs\
     AUDIT_BASELINE_v1.2.0.md
     V0_9_DESIGN_FUNCTION_TABLE.md
     V0_9_DESIGN_TOKEN_REFERENCE.md
-  DECISIONS\                 # ADR（编号 0001-0049，0018 撤回）
+  DECISIONS\                 # ADR（当前至 0064；编号允许跳过，以 README 索引为准）
   design_reference\          # 设计稿真值（图片与说明）
 ```
 
@@ -277,4 +310,4 @@ docs\
 
 后端已经包含稳定闭环和灰度版增量 API：账本隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、v0.9 Reports、Goals、Dashboard 卡片配置、生活化统计和窄维护清理接口，并有 pytest API 契约测试、v0.9 集成测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、自定义背景与沉浸模式、受保护图片预览、重复保留、OCR retry、生活化统计、报表图表、Goals 摘要、Dashboard 卡片管理、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。
 
-v0.9 之后的主线增量（至 2026-06，决策记录在 [docs/DECISIONS/](../DECISIONS/)）：数据库切换为 PostgreSQL-only（ADR-0041，SQLite 退役）；新增 `/web` 浏览器端（Cloudflare Access + session cookie，ADR-0028）与桌面后端管理器（`desktop/`）；多币种汇率与家庭拆账（ADR-0029）、收入计划、请求幂等键（ADR-0042）、标签管理（ADR-0043）、Android string-resourcing（ADR-0044）、per-install CSRF 签名密钥（ADR-0045）、Android 固定支出提醒边界（ADR-0046）、捆绑安装器方向（ADR-0047）、Rive 吉祥物运行时（ADR-0048）、Debt 欠款/负债领域契约（ADR-0049）；CI 现以 GitHub Actions 云端为主、自托管 Gitea 为本地降级（含备份恢复演练与 instrumented 模拟器 lane，见 [docs/runbook/CI.md](../runbook/CI.md)）。
+v0.9 之后的主线增量（决策记录在 [docs/DECISIONS/](../DECISIONS/)）：数据库切换为 PostgreSQL-only（ADR-0041，SQLite 退役）；新增 `/web` 浏览器端（Cloudflare Access + session cookie，ADR-0028）与桌面后端管理器（`desktop/`）；多币种汇率与家庭拆账（ADR-0029）、请求幂等键（ADR-0042）、标签管理（ADR-0043）、Android string-resourcing（ADR-0044）、per-install CSRF 签名密钥（ADR-0045）、Android 固定支出提醒边界（ADR-0046）、捆绑安装器方向（ADR-0047）、Rive 吉祥物运行时（ADR-0048）、Debt 欠款/负债领域契约（ADR-0049）；Windows 安装器的生命周期事务、可恢复 bootstrap 与构建 provenance 分别由 ADR-0062–0064 固化。CI 现以 GitHub Actions 云端为主、自托管 Gitea 为本地降级（含备份恢复演练与 instrumented 模拟器 lane，见 [docs/runbook/CI.md](../runbook/CI.md)）。

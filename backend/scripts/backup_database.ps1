@@ -66,10 +66,54 @@ function Get-DatabaseUrl {
     return $url
 }
 
-function ConvertTo-LibpqUrl {
+function Assert-NoPasswordQuery {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Query
+    )
+
+    foreach ($part in $Query.TrimStart('?').Split('&')) {
+        if ([string]::IsNullOrWhiteSpace($part)) {
+            continue
+        }
+        $encodedKey = $part.Split(@('='), 2)[0]
+        try {
+            $key = [System.Uri]::UnescapeDataString($encodedKey)
+        }
+        catch {
+            throw "DATABASE_URL 查询参数格式无效。"
+        }
+        if ($key -in @("password", "sslpassword")) {
+            throw "DATABASE_URL 不得通过查询参数传递数据库口令。"
+        }
+    }
+}
+
+function ConvertTo-PgDumpConnection {
     param([Parameter(Mandatory = $true)][string]$Url)
-    # pg_dump/pg_restore want a libpq URL without the SQLAlchemy +driver tag.
-    return ($Url -replace '^postgresql\+\w+://', 'postgresql://')
+
+    try {
+        $builder = [System.UriBuilder]::new($Url)
+    }
+    catch {
+        throw "DATABASE_URL 格式无效，无法执行 PostgreSQL 备份。"
+    }
+    if ($builder.Scheme -notmatch '^postgresql(?:\+\w+)?$') {
+        throw "备份脚本只支持 PostgreSQL。"
+    }
+    Assert-NoPasswordQuery -Query $builder.Query.ToLowerInvariant()
+
+    $password = $null
+    if (-not [string]::IsNullOrEmpty($builder.Password)) {
+        $password = [System.Uri]::UnescapeDataString($builder.Password)
+    }
+    $builder.Scheme = "postgresql"
+    $builder.Password = ""
+    return [pscustomobject]@{
+        DatabaseUrl = $builder.Uri.AbsoluteUri
+        Password = $password
+    }
 }
 
 function Get-PgInstallVersionKey {
@@ -98,9 +142,17 @@ function Get-PgDumpBinary {
     if ($command) {
         return $command.Source
     }
-    $candidate = Get-ChildItem -Path "C:\Program Files\PostgreSQL\*\bin\pg_dump.exe" -ErrorAction SilentlyContinue |
-        Sort-Object { Get-PgInstallVersionKey $_.Directory.Parent.Name } -Descending |
-        Select-Object -First 1
+    $candidate = $null
+    $programFiles = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::ProgramFiles
+    )
+    if (-not [string]::IsNullOrWhiteSpace($programFiles)) {
+        $candidate = Get-ChildItem `
+            -Path (Join-Path $programFiles "PostgreSQL\*\bin\pg_dump.exe") `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { Get-PgInstallVersionKey $_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1
+    }
     if ($candidate) {
         return $candidate.FullName
     }
@@ -160,12 +212,30 @@ function Backup-PostgresDatabase {
     )
 
     $pgDump = Get-PgDumpBinary
-    $libpqUrl = ConvertTo-LibpqUrl -Url $DatabaseUrl
+    $connection = ConvertTo-PgDumpConnection -Url $DatabaseUrl
     $tempPath = "$TargetPath.tmp-$PID"
+    $hadPgPassword = Test-Path Env:\PGPASSWORD
+    $previousPgPassword = [Environment]::GetEnvironmentVariable("PGPASSWORD")
     try {
-        & $pgDump --format=custom --file $tempPath --dbname $libpqUrl
-        if ($LASTEXITCODE -ne 0) {
-            throw "pg_dump 失败。"
+        try {
+            if ($null -eq $connection.Password) {
+                Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:PGPASSWORD = $connection.Password
+            }
+            & $pgDump --format=custom --file $tempPath --dbname $connection.DatabaseUrl *> $null
+            if ($LASTEXITCODE -ne 0) {
+                throw "pg_dump 失败。"
+            }
+        }
+        finally {
+            if ($hadPgPassword) {
+                $env:PGPASSWORD = $previousPgPassword
+            }
+            else {
+                Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+            }
         }
         Test-PostgresBackup -Path $tempPath
         Move-Item -LiteralPath $tempPath -Destination $TargetPath -Force
@@ -193,19 +263,29 @@ function Get-UploadsSourceDir {
 }
 
 function Get-OffsiteBackupDir {
-    # 异地备份目标解析：XPJ_OFFSITE_BACKUP_DIR 显式优先（值为 off 表示禁用）；
-    # 未设置时检测到 OneDrive 即默认 %OneDrive%\TicketboxBackups；都没有则跳过。
-    $explicit = $env:XPJ_OFFSITE_BACKUP_DIR
-    if (-not [string]::IsNullOrWhiteSpace($explicit)) {
-        if ($explicit.Trim().ToLowerInvariant() -eq "off") {
-            return $null
+    # 隐私契约：只有显式 true + 显式绝对目录才允许把数据库/票据复制出本地数据根。
+    $enabled = $env:XPJ_OFFSITE_BACKUP_ENABLED
+    $destination = $env:XPJ_OFFSITE_BACKUP_DIR
+    if ([string]::IsNullOrWhiteSpace($enabled)) {
+        if (-not [string]::IsNullOrWhiteSpace($destination)) {
+            Write-Warning "已配置 XPJ_OFFSITE_BACKUP_DIR，但未显式启用异地备份；仅保留本地备份。"
         }
-        return $explicit.Trim()
+        return $null
     }
-    if (-not [string]::IsNullOrWhiteSpace($env:OneDrive)) {
-        return (Join-Path $env:OneDrive "TicketboxBackups")
+    if ($enabled.Trim().ToLowerInvariant() -eq "false") {
+        return $null
     }
-    return $null
+    if ($enabled.Trim().ToLowerInvariant() -ne "true") {
+        throw "XPJ_OFFSITE_BACKUP_ENABLED 只接受 true 或 false；仅保留本地备份。"
+    }
+    if ([string]::IsNullOrWhiteSpace($destination)) {
+        throw "异地备份已启用，但 XPJ_OFFSITE_BACKUP_DIR 未配置；本地备份已保留。"
+    }
+    $destination = $destination.Trim()
+    if (-not [System.IO.Path]::IsPathRooted($destination)) {
+        throw "XPJ_OFFSITE_BACKUP_DIR 必须是绝对路径；本地备份已保留。"
+    }
+    return $destination
 }
 
 function Invoke-Robocopy {
@@ -302,48 +382,48 @@ function Remove-BackupLock {
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
 }
 
-New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+function Invoke-BackupDatabase {
+    param([int]$KeepCount)
 
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
-$databaseUrl = Get-DatabaseUrl
-if ($databaseUrl -notmatch '^postgresql') {
-    throw "备份脚本只支持 PostgreSQL（DATABASE_URL=$databaseUrl）。"
-}
+    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
+    $databaseUrl = Get-DatabaseUrl
 
-# 并发守卫(BUG-2):手动备份 / Owner Console / 本计划任务同写 backups\ 时,轮转会互相
-# 删到对方的文件而报错。检测到在跑就跳过(良性,退出码 0,不让计划任务结果出红)。
-if (-not (Get-BackupLock -Path $BackupLockPath)) {
-    Write-Host "另一备份作业正在运行，跳过本次备份（并发守卫）。"
-    return
-}
+    # 并发守卫：检测到在跑就良性跳过，不让计划任务结果出红。
+    if (-not (Get-BackupLock -Path $BackupLockPath)) {
+        Write-Host "另一备份作业正在运行，跳过本次备份（并发守卫）。"
+        return
+    }
 
-try {
-    $target = Join-Path $BackupDir "ticketbox-$timestamp.dump"
-    $target = Assert-PathInside -Path $target -Root $BackupDir
-    Backup-PostgresDatabase -DatabaseUrl $databaseUrl -TargetPath $target
-    $rotateFilter = "ticketbox-*.dump"
-    Write-Host "已备份到 $target"
+    try {
+        $target = Join-Path $BackupDir "ticketbox-$timestamp.dump"
+        $target = Assert-PathInside -Path $target -Root $BackupDir
+        Backup-PostgresDatabase -DatabaseUrl $databaseUrl -TargetPath $target
+        Write-Host "已备份到 $target"
 
-    $resolvedBackupRoot = (Resolve-Path -LiteralPath $BackupDir).Path
-    $backups = Get-ChildItem -LiteralPath $BackupDir -Filter $rotateFilter |
-        Sort-Object LastWriteTime -Descending
+        $resolvedBackupRoot = (Resolve-Path -LiteralPath $BackupDir).Path
+        $backups = Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.dump" |
+            Sort-Object LastWriteTime -Descending
+        if ($KeepCount -gt 0 -and $backups.Count -gt $KeepCount) {
+            $backups | Select-Object -Skip $KeepCount | ForEach-Object {
+                $candidate = Assert-PathInside -Path $_.FullName -Root $resolvedBackupRoot
+                Remove-Item -LiteralPath $candidate -Force -ErrorAction SilentlyContinue
+            }
+        }
 
-    if ($Keep -gt 0 -and $backups.Count -gt $Keep) {
-        $backups | Select-Object -Skip $Keep | ForEach-Object {
-            $resolvedCandidate = Assert-PathInside -Path $_.FullName -Root $resolvedBackupRoot
-            # 并发轮转可能已删掉同一个旧文件 —— 已不在即达到目标状态,不算错(BUG-2)。
-            Remove-Item -LiteralPath $resolvedCandidate -Force -ErrorAction SilentlyContinue
+        $offsiteDir = Get-OffsiteBackupDir
+        if ($offsiteDir) {
+            Sync-BackupsOffsite -Destination $offsiteDir
+        }
+        else {
+            Write-Host "异地备份未显式启用；本次仅保留本地备份。"
         }
     }
-
-    $offsiteDir = Get-OffsiteBackupDir
-    if ($offsiteDir) {
-        Sync-BackupsOffsite -Destination $offsiteDir
-    }
-    else {
-        Write-Host "未配置异地备份目录（XPJ_OFFSITE_BACKUP_DIR / OneDrive 均缺席），跳过异地同步。"
+    finally {
+        Remove-BackupLock -Path $BackupLockPath
     }
 }
-finally {
-    Remove-BackupLock -Path $BackupLockPath
+
+if ($MyInvocation.InvocationName -ne ".") {
+    Invoke-BackupDatabase -KeepCount $Keep
 }

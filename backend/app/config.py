@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -31,6 +32,14 @@ def _resolve_data_root(backend_root: Path) -> Path:
 
 DATA_ROOT = _resolve_data_root(BACKEND_ROOT)
 load_dotenv(DATA_ROOT / ".env", encoding="utf-8-sig")
+_INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
+
+
+def installation_identity(data_root: Path = DATA_ROOT) -> str:
+    """Return a path-redacted identity stable for this installed data root."""
+    canonical = os.path.normcase(str(data_root.resolve())).encode("utf-8")
+    digest = hashlib.sha256(_INSTALLATION_ID_NAMESPACE + canonical).hexdigest()
+    return f"ticketbox-{digest[:32]}"
 
 # Hosts considered loopback for outbound calls from the backend (e.g. local
 # vision LLM). Anything else makes the URL effectively "off" — see

@@ -6,13 +6,12 @@ import ctypes
 import os
 import threading
 import time
-from collections import deque
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
-from backend_manager.process import health_ok
+from backend_manager.process import HealthProbeResult
 from backend_manager.runtime import (
     RuntimeControlError,
     RuntimeStatus,
@@ -30,9 +29,6 @@ _SC_STATUS_PROCESS_INFO = 0
 _ERROR_SERVICE_DOES_NOT_EXIST = 1060
 _ERROR_SERVICE_ALREADY_RUNNING = 1056
 _ERROR_SERVICE_NOT_ACTIVE = 1062
-_LOG_LINES = 300
-_LOG_READ_LIMIT_BYTES = 1024 * 1024
-
 _STATE_NAMES = {
     1: "stopped",
     2: "start_pending",
@@ -183,29 +179,6 @@ class WindowsServiceGateway:
                     raise ctypes.WinError(error)
 
 
-def _tail_text(path: Path, limit: int = _LOG_LINES) -> list[str]:
-    """Read a bounded log tail without loading a rotated multi-megabyte file every poll."""
-    try:
-        if not path.is_file():
-            return []
-        with path.open("rb") as stream:
-            stream.seek(0, 2)
-            remaining = min(stream.tell(), _LOG_READ_LIMIT_BYTES)
-            chunks: deque[bytes] = deque()
-            newline_count = 0
-            while remaining > 0 and newline_count <= limit:
-                size = min(8192, remaining)
-                stream.seek(-size, 1)
-                chunk = stream.read(size)
-                stream.seek(-size, 1)
-                chunks.appendleft(chunk)
-                newline_count += chunk.count(b"\n")
-                remaining -= size
-    except OSError:
-        return []
-    return b"".join(chunks).decode("utf-8", errors="replace").splitlines()[-limit:]
-
-
 class WindowsServiceRuntime:
     """Control the installer-owned backend service while observing its PG dependency."""
 
@@ -215,36 +188,57 @@ class WindowsServiceRuntime:
         gateway: ServiceGateway,
         backend_service_name: str,
         pg_service_name: str,
-        health_url: str,
-        log_path: Path,
-        health=health_ok,
-        wait_timeout_seconds: float = 45.0,
-        pg_wait_timeout_seconds: float = 90.0,
-        poll_seconds: float = 0.25,
+        health_probe: Callable[[], HealthProbeResult],
+        wait_timeout_seconds: float,
+        pg_wait_timeout_seconds: float,
+        poll_seconds: float,
+        backend_ready_timeout_seconds: float,
+        backend_ready_poll_seconds: float,
         clock=time.monotonic,
         sleep=time.sleep,
+        backend_stopped_validator: Callable[[], None] | None = None,
     ) -> None:
         self._gateway = gateway
         self._backend_service_name = backend_service_name
         self._pg_service_name = pg_service_name
-        self._health_url = health_url
-        self._log_path = log_path
-        self._health = health
+        self._health_probe = health_probe
         self._wait_timeout_seconds = wait_timeout_seconds
         self._pg_wait_timeout_seconds = pg_wait_timeout_seconds
         self._poll_seconds = poll_seconds
+        self._backend_ready_timeout_seconds = backend_ready_timeout_seconds
+        self._backend_ready_poll_seconds = backend_ready_poll_seconds
         self._clock = clock
         self._sleep = sleep
+        self._backend_stopped_validator = backend_stopped_validator or (lambda: None)
         self._lock = threading.RLock()
 
     def status(self) -> RuntimeStatus:
         backend = self._query(self._backend_service_name)
         database = self._query(self._pg_service_name)
         running = backend.state in {"running", "start_pending", "stop_pending"}
+        if database.state != "running":
+            health = HealthProbeResult(
+                "pending" if database.state.endswith("_pending") else "stopped",
+                f"PostgreSQL 服务未处于运行状态（当前：{database.state}），Ticketbox 暂不可用。",
+            )
+        elif backend.state == "running":
+            health = self._health_probe()
+        else:
+            health = HealthProbeResult(
+                "pending" if running else "stopped",
+                "Ticketbox 后端服务正在切换状态。" if running else "Ticketbox 后端服务已停止。",
+            )
+        healthy = backend.state == "running" and database.state == "running" and health.healthy
+        diagnostics = [
+            self._service_diagnostic("后端", backend),
+            self._service_diagnostic("PostgreSQL", database),
+            f"健康检查：{health.detail}",
+            "日志状态：受保护；管理器不读取或显示后端原始日志。",
+        ]
         return RuntimeStatus(
             mode="installed",
             running=running,
-            healthy=backend.state == "running" and self._health(self._health_url),
+            healthy=healthy,
             pid=backend.pid,
             uptime_seconds=0,
             auto_restart=True,
@@ -252,8 +246,10 @@ class WindowsServiceRuntime:
             restarts=0,
             backend_service_state=backend.state,
             database_service_state=database.state,
-            log=_tail_text(self._log_path),
+            log=diagnostics,
             control_error=None,
+            health_state=health.state,
+            health_detail=health.detail,
         )
 
     def start(self) -> None:
@@ -263,6 +259,7 @@ class WindowsServiceRuntime:
     def _start_services(self) -> None:
         self._ensure_started(self._pg_service_name, self._pg_wait_timeout_seconds)
         self._ensure_started(self._backend_service_name, self._wait_timeout_seconds)
+        self._wait_for_backend_health()
 
     def stop(self) -> None:
         with self._lock:
@@ -270,6 +267,7 @@ class WindowsServiceRuntime:
 
     def _stop_backend(self) -> None:
         self._ensure_stopped(self._backend_service_name, self._wait_timeout_seconds)
+        self._backend_stopped_validator()
 
     def restart(self) -> None:
         with self._lock:
@@ -284,6 +282,15 @@ class WindowsServiceRuntime:
 
     def run_monitor(self, stop_event: threading.Event) -> None:
         stop_event.wait()
+
+    def shutdown(self) -> None:
+        return
+
+    @staticmethod
+    def _service_diagnostic(label: str, snapshot: ServiceSnapshot) -> str:
+        pid = f"，PID {snapshot.pid}" if snapshot.pid else ""
+        exit_detail = f"，Windows exit {snapshot.win32_exit_code}" if snapshot.win32_exit_code else ""
+        return f"{label}服务 {snapshot.name}：{snapshot.state}{pid}{exit_detail}"
 
     def _query(self, name: str) -> ServiceSnapshot:
         try:
@@ -345,11 +352,29 @@ class WindowsServiceRuntime:
                 checkpoint_deadline = min(hard_deadline, self._clock() + progress_window)
             if last_checkpoint and self._clock() >= checkpoint_deadline:
                 break
-            self._sleep(self._poll_seconds)
+            remaining = hard_deadline - self._clock()
+            if remaining > 0:
+                self._sleep(min(self._poll_seconds, remaining))
         state = self._query(name).state
         target_text = "/".join(sorted(targets))
         raise ServiceTransitionError(
             f"服务 {name} 未在 {timeout_seconds:g} 秒内进入 {target_text}，当前状态：{state}，checkpoint={last_checkpoint}。",
+        )
+
+    def _wait_for_backend_health(self) -> None:
+        deadline = self._clock() + self._backend_ready_timeout_seconds
+        last = HealthProbeResult("pending", "Ticketbox 后端身份检查尚未开始。")
+        while self._clock() < deadline:
+            last = self._health_probe()
+            if last.healthy:
+                return
+            if last.state == "mismatch":
+                raise ServiceTransitionError(last.detail)
+            remaining = deadline - self._clock()
+            if remaining > 0:
+                self._sleep(min(self._backend_ready_poll_seconds, remaining))
+        raise ServiceTransitionError(
+            f"Ticketbox 后端未在 {self._backend_ready_timeout_seconds:g} 秒内通过身份就绪检查：{last.detail}",
         )
 
     @staticmethod
@@ -367,9 +392,11 @@ class WindowsServiceRuntime:
 
     @staticmethod
     def _friendly_os_error(action: str, exc: OSError) -> RuntimeControlError:
-        if getattr(exc, "winerror", None) == 5:
+        error = getattr(exc, "winerror", None)
+        if error == 5:
             return ServiceAccessError(f"{action}失败：Windows 拒绝访问，请修复安装或服务权限后重试。")
-        return RuntimeControlError(f"{action}失败：{exc}")
+        detail = f"Windows error={error}" if error is not None else type(exc).__name__
+        return RuntimeControlError(f"{action}失败（{detail}）；请刷新服务状态或修复安装后重试。")
 
 
 class BrokeredWindowsServiceRuntime:
@@ -396,3 +423,6 @@ class BrokeredWindowsServiceRuntime:
 
     def run_monitor(self, stop_event: threading.Event) -> None:
         stop_event.wait()
+
+    def shutdown(self) -> None:
+        return

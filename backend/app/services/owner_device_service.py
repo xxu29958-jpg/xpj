@@ -116,4 +116,5 @@ def create_my_pairing_code(
         account_id=auth.account_id,
         device_name_hint=device_name_hint,
         ttl_minutes=ttl_minutes,
+        auth=auth,
     )

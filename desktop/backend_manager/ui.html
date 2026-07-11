@@ -87,7 +87,7 @@
     <span class="oc-b">打开 /owner ›</span>
   </div>
   <div class="logwrap">
-    <div class="clabel" style="margin-bottom:9px">实时日志</div>
+    <div class="clabel" style="margin-bottom:9px">运行诊断</div>
     <div class="log mono" id="log"></div>
   </div>
 <script>
@@ -108,14 +108,16 @@ async function refresh(){
   if(refreshInFlight) return;
   refreshInFlight = true;
   try{
-    const s = await (await fetch("/api/status")).json();
+    const s = await (await fetch("/api/status", {headers:{"X-Control-Token": window.CONTROL_TOKEN}})).json();
     running = s.running;
     const healthy = s.running && s.health;
     setPill(healthy ? "ok" : (s.running ? "bad" : "off"));
-    $("health").textContent = healthy ? "● 正常" : (s.running ? "● 无响应" : "● 已停止");
+    const healthText = s.database_service_state && s.database_service_state !== "running" ? "● 数据库未运行" : (s.health_state === "mismatch" ? "● 身份不匹配" : (s.health_state === "pending" ? "● 正在就绪" : "● 无响应"));
+    $("health").textContent = healthy ? "● 正常" : (s.running ? healthText : "● 已停止");
+    $("health").title = s.health_detail || "";
     $("health").style.color = healthy ? "var(--ok)" : (s.running ? "var(--danger)" : "var(--muted)");
     $("uptime").textContent = fmtUptime(s.uptime_seconds);
-    $("port").textContent = s.port + (s.pid ? " · " + s.pid : "");
+    $("port").textContent = (s.port || "—") + (s.pid ? " · " + s.pid : "");
     const installed = s.runtime_mode === "installed";
     $("runtimeLabel").textContent = installed ? "Windows 服务 · 正式安装" : "localhost · 源码运行";
     $("backendServiceRow").style.display = installed ? "flex" : "none";
@@ -124,7 +126,7 @@ async function refresh(){
     $("databaseService").textContent = serviceState(s.database_service_state);
     $("autoState").textContent = s.auto_restart_configurable ? (s.auto_restart ? `已启用 · ${s.restarts} 次` : "已关闭") : "Windows 托管";
     $("lan").textContent = s.lan;
-    $("tunnel").textContent = s.tunnel || "未配置";
+    $("tunnel").textContent = s.tunnel || (s.public_endpoint_state === "protected_unknown" ? "受保护 · 状态未知" : (s.public_endpoint_state === "unknown" ? "状态未知" : "未配置"));
     $("autoSw").className = "sw" + (s.auto_restart ? " on" : "");
     $("autoControl").className = "tg" + (s.auto_restart_configurable ? "" : " disabled");
     $("toggleBtn").textContent = s.running ? "停止" : "启动";

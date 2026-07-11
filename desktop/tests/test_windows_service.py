@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from backend_manager.process import HealthProbeResult, TicketboxHealthExpectation, _parse_health_payload
 from backend_manager.runtime import RuntimeControlError, ServiceAccessError
 from backend_manager.windows_service import (
     BrokeredWindowsServiceRuntime,
@@ -55,22 +56,34 @@ class FakeActionRunner:
         self.actions.append(action)
 
 
-def _runtime(tmp_path: Path, gateway: FakeGateway, *, healthy: bool = True) -> WindowsServiceRuntime:
+def _runtime(
+    tmp_path: Path,
+    gateway: FakeGateway,
+    *,
+    healthy: bool = True,
+    health_result: HealthProbeResult | None = None,
+    backend_stopped_validator=None,
+) -> WindowsServiceRuntime:
+    result = health_result or HealthProbeResult(
+        "healthy" if healthy else "pending",
+        "verified" if healthy else "waiting",
+    )
     return WindowsServiceRuntime(
         gateway=gateway,
         backend_service_name="TicketboxBackend",
         pg_service_name="TicketboxPg",
-        health_url="http://127.0.0.1:8000/api/health",
-        log_path=tmp_path / "backend.log",
-        health=lambda _url: healthy,
+        health_probe=lambda: result,
+        wait_timeout_seconds=45,
+        pg_wait_timeout_seconds=90,
         poll_seconds=0,
+        backend_ready_timeout_seconds=120,
+        backend_ready_poll_seconds=1,
+        backend_stopped_validator=backend_stopped_validator,
     )
 
 
-def test_status_reports_both_services_health_and_log_tail(tmp_path: Path) -> None:
+def test_status_reports_services_and_redacted_identity_health_without_raw_logs(tmp_path: Path) -> None:
     gateway = FakeGateway(backend="running", database="running")
-    log_path = tmp_path / "backend.log"
-    log_path.write_text("first\nready\n", encoding="utf-8")
     runtime = _runtime(tmp_path, gateway)
 
     status = runtime.status()
@@ -83,19 +96,66 @@ def test_status_reports_both_services_health_and_log_tail(tmp_path: Path) -> Non
     assert status.database_service_state == "running"
     assert status.auto_restart is True
     assert status.auto_restart_configurable is False
-    assert status.log == ["first", "ready"]
+    assert status.log[0] == "后端服务 TicketboxBackend：running，PID 4321"
+    assert status.log[1] == "PostgreSQL服务 TicketboxPg：running，PID 4321"
+    assert status.log[-1] == "日志状态：受保护；管理器不读取或显示后端原始日志。"
+    assert status.health_state == "healthy"
+    assert status.health_detail == "verified"
 
 
-def test_status_limits_log_to_latest_300_lines(tmp_path: Path) -> None:
-    gateway = FakeGateway(backend="running", database="running")
-    log_path = tmp_path / "backend.log"
-    log_path.write_text("".join(f"line-{index}\n" for index in range(350)), encoding="utf-8")
+def test_health_json_requires_exact_product_version_and_installation_identity(tmp_path: Path) -> None:
+    expectation = TicketboxHealthExpectation(
+        backend_version="9.8.7-test",
+        installation_id="ticketbox-0123456789abcdef0123456789abcdef",
+    )
+    random_200 = _parse_health_payload(b'{"status":"ok"}', expectation)
+    valid = _parse_health_payload(
+        b'{"status":"ok","product":"ticketbox","backend_version":"9.8.7-test",'
+        b'"installation_id":"ticketbox-0123456789abcdef0123456789abcdef"}',
+        expectation,
+    )
+    wrong_install = _parse_health_payload(
+        b'{"status":"ok","product":"ticketbox","backend_version":"9.8.7-test",'
+        b'"installation_id":"ticketbox-ffffffffffffffffffffffffffffffff"}',
+        expectation,
+    )
 
-    status = _runtime(tmp_path, gateway).status()
+    assert random_200.state == "mismatch"
+    assert valid.healthy is True
+    assert wrong_install.state == "mismatch"
+    mismatch_status = _runtime(
+        tmp_path,
+        FakeGateway(backend="running", database="running"),
+        health_result=wrong_install,
+    ).status()
+    pending_status = _runtime(
+        tmp_path,
+        FakeGateway(backend="running", database="running"),
+        health_result=HealthProbeResult("pending", "listener not ready"),
+    ).status()
+    assert (mismatch_status.healthy, mismatch_status.health_state) == (False, "mismatch")
+    assert (pending_status.healthy, pending_status.health_state) == (False, "pending")
 
-    assert len(status.log) == 300
-    assert status.log[0] == "line-50"
-    assert status.log[-1] == "line-349"
+
+@pytest.mark.parametrize("database_state", ["stopped", "missing", "stop_pending"])
+def test_status_is_unhealthy_when_database_is_not_running(tmp_path: Path, database_state: str) -> None:
+    probed = False
+
+    def probe() -> HealthProbeResult:
+        nonlocal probed
+        probed = True
+        return HealthProbeResult("healthy", "verified")
+
+    runtime = _runtime(tmp_path, FakeGateway(backend="running", database=database_state))
+    runtime._health_probe = probe  # noqa: SLF001 - prove DB failure short-circuits HTTP health
+
+    status = runtime.status()
+
+    assert status.running is True
+    assert status.healthy is False
+    assert database_state in status.health_detail
+    assert "PostgreSQL" in status.health_detail
+    assert probed is False
 
 
 def test_start_brings_database_up_before_backend(tmp_path: Path) -> None:
@@ -122,12 +182,17 @@ def test_stop_leaves_database_running(tmp_path: Path) -> None:
 
 def test_restart_stops_backend_then_rechecks_database_before_start(tmp_path: Path) -> None:
     gateway = FakeGateway(backend="running", database="running")
-    runtime = _runtime(tmp_path, gateway)
+    runtime = _runtime(
+        tmp_path,
+        gateway,
+        backend_stopped_validator=lambda: gateway.actions.append(("validate", "backend-runtime")),
+    )
 
     runtime.restart()
 
     assert gateway.actions == [
         ("stop", "TicketboxBackend"),
+        ("validate", "backend-runtime"),
         ("start", "TicketboxBackend"),
     ]
 
@@ -200,12 +265,12 @@ def test_start_timeout_reports_service_and_current_state(tmp_path: Path) -> None
         gateway=StuckGateway(),
         backend_service_name="TicketboxBackend",
         pg_service_name="TicketboxPg",
-        health_url="http://127.0.0.1:8000/api/health",
-        log_path=tmp_path / "backend.log",
-        health=lambda _url: False,
+        health_probe=lambda: HealthProbeResult("pending", "waiting"),
         wait_timeout_seconds=1,
         pg_wait_timeout_seconds=1,
         poll_seconds=0.25,
+        backend_ready_timeout_seconds=1,
+        backend_ready_poll_seconds=0.25,
         clock=clock,
         sleep=clock.sleep,
     )
@@ -246,10 +311,12 @@ def test_postgres_progress_can_continue_for_more_than_45_seconds(tmp_path: Path)
         gateway=gateway,
         backend_service_name="TicketboxBackend",
         pg_service_name="TicketboxPg",
-        health_url="http://127.0.0.1:8000/api/health",
-        log_path=tmp_path / "backend.log",
-        health=lambda _url: False,
+        health_probe=lambda: HealthProbeResult("healthy", "verified"),
+        wait_timeout_seconds=60,
+        pg_wait_timeout_seconds=90,
         poll_seconds=1,
+        backend_ready_timeout_seconds=120,
+        backend_ready_poll_seconds=1,
         clock=clock,
         sleep=clock.sleep,
     )
@@ -266,19 +333,21 @@ def test_blocked_health_probe_does_not_block_service_stop(tmp_path: Path) -> Non
     release_health = threading.Event()
     control_done = threading.Event()
 
-    def blocked_health(_url: str) -> bool:
+    def blocked_health() -> HealthProbeResult:
         health_started.set()
         release_health.wait(timeout=2)
-        return False
+        return HealthProbeResult("pending", "waiting")
 
     runtime = WindowsServiceRuntime(
         gateway=gateway,
         backend_service_name="TicketboxBackend",
         pg_service_name="TicketboxPg",
-        health_url="http://127.0.0.1:8000/api/health",
-        log_path=tmp_path / "backend.log",
-        health=blocked_health,
+        health_probe=blocked_health,
+        wait_timeout_seconds=45,
+        pg_wait_timeout_seconds=90,
         poll_seconds=0,
+        backend_ready_timeout_seconds=120,
+        backend_ready_poll_seconds=1,
     )
     status_thread = threading.Thread(target=runtime.status)
     status_thread.start()
@@ -294,19 +363,19 @@ def test_blocked_health_probe_does_not_block_service_stop(tmp_path: Path) -> Non
     assert gateway.actions == [("stop", "TicketboxBackend")]
 
 
-def test_log_permission_error_does_not_hide_service_status(tmp_path: Path, monkeypatch) -> None:
+def test_status_never_opens_protected_backend_log(tmp_path: Path, monkeypatch) -> None:
     gateway = FakeGateway(backend="running", database="running")
 
-    def denied(_path: Path) -> bool:
-        raise PermissionError("denied")
+    def denied(*_args, **_kwargs):
+        raise AssertionError("ordinary GUI attempted to open a protected backend log")
 
-    monkeypatch.setattr(Path, "is_file", denied)
+    monkeypatch.setattr(Path, "open", denied)
 
     status = _runtime(tmp_path, gateway).status()
 
     assert status.running is True
     assert status.database_service_state == "running"
-    assert status.log == []
+    assert status.log[-1] == "日志状态：受保护；管理器不读取或显示后端原始日志。"
 
 
 def test_status_access_denial_never_recommends_elevating_http_manager(tmp_path: Path) -> None:

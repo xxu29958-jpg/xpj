@@ -13,10 +13,16 @@ from app.services.admin_service._dtos import UploadLinkSecret, UploadLinkSummary
 from app.services.identity_service import (
     _create_device,
     hash_secret,
+    lock_and_revalidate_credential_mint_context,
     new_upload_key,
 )
+from app.services.identity_service._bootstrap_exposure_guard import (
+    assert_bootstrap_sensitive_mutation_allowed,
+)
+from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import upload_link_expires_at
 from app.services.time_service import ensure_utc, now_utc, to_iso
+from app.tenants import AuthContext
 
 UPLOAD_LINK_PUBLIC_ID_CANDIDATE_COUNT = 8
 
@@ -122,7 +128,11 @@ def create_upload_link(
     admin_account_id: int,
     default_timezone: str | None,
     ledger_ids: set[str] | None = None,
+    auth: AuthContext | None = None,
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
+    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+    if locked_auth is not None and locked_auth.account_id != admin_account_id:
+        raise AppError("invalid_token", status_code=401)
     if ledger_ids is not None and ledger_id not in ledger_ids:
         raise AppError("invalid_request", "账本不存在。", status_code=404)
     ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
@@ -155,9 +165,15 @@ def create_upload_link(
 
 
 def rotate_upload_link(
-    db: Session, *, public_id: str, ledger_ids: set[str] | None = None
+    db: Session,
+    *,
+    public_id: str,
+    ledger_ids: set[str] | None = None,
+    auth: AuthContext | None = None,
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
+    lock_and_revalidate_credential_mint_context(db, auth)
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
     if link.revoked_at is not None:
         raise AppError(
             "invalid_request",
@@ -204,6 +220,7 @@ def extend_upload_link(
     ledger_ids: set[str] | None = None,
 ) -> UploadLinkSummary:
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
     if link.revoked_at is not None:
         raise AppError(
             "invalid_request",
@@ -232,7 +249,9 @@ def revoke_upload_link(
     public_id: str,
     ledger_ids: set[str] | None = None,
 ) -> UploadLinkSummary:
+    lock_bootstrap_owner_transaction(db)
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
     if link.revoked_at is None:
         link.revoked_at = now_utc()
         db.commit()
@@ -285,7 +304,9 @@ def delete_upload_link(
     Only allowed for already-revoked links so we never delete a key that an
     iPhone Shortcut might still be using.
     """
+    lock_bootstrap_owner_transaction(db)
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
     if link.revoked_at is None:
         raise AppError(
             "invalid_request",

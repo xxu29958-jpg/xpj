@@ -13,22 +13,65 @@ from backend_manager.config import (
     SourceRuntimeConfig,
     load_config,
 )
-from backend_manager.installation import InstalledLayout
+from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
+
+
+def _release_config() -> WindowsReleaseConfig:
+    return WindowsReleaseConfig(
+        backend_service_name="TicketboxBackendConfigured",
+        pg_service_name="TicketboxPgConfigured",
+        service_state_timeout_ms=17_000,
+        service_poll_interval_ms=125,
+        postgres_ready_timeout_ms=23_000,
+        backend_ready_timeout_ms=31_000,
+        backend_ready_poll_interval_ms=375,
+        backend_health_request_timeout_ms=1_750,
+    )
 
 
 def test_all_urls_derive_from_one_host_port_pair() -> None:
     cfg = ManagerConfig(
         runtime=SourceRuntimeConfig(backend_root=Path("x"), venv_python=Path("y")),
-        backend_host="10.0.0.5",
+        backend_host="0.0.0.0",
         backend_port=9001,
         manager_host="127.0.0.1",
         manager_port=8799,
         public_base_url="https://t.example",
+        expected_backend_version=None,
+        expected_installation_id="ticketbox-0123456789abcdef0123456789abcdef",
+        health_request_timeout_seconds=3.0,
     )
-    assert cfg.backend_origin == "http://10.0.0.5:9001"
-    assert cfg.health_url == "http://10.0.0.5:9001/api/health"
-    assert cfg.owner_url == "http://10.0.0.5:9001/owner"
+    assert cfg.backend_origin == "http://127.0.0.1:9001"
+    assert cfg.health_url == "http://127.0.0.1:9001/api/health/installation"
+    assert cfg.owner_url == "http://127.0.0.1:9001/owner"
     assert cfg.manager_url == "http://127.0.0.1:8799/"
+    assert cfg.manager_url_for_port(49152) == "http://127.0.0.1:49152/"
+
+
+@pytest.mark.parametrize(
+    ("host", "detected", "expected"),
+    [
+        ("127.0.0.1", "192.168.1.8", None),
+        ("localhost", "192.168.1.8", None),
+        ("0.0.0.0", "192.168.1.8", "192.168.1.8:9001"),
+    ],
+)
+def test_lan_endpoint_matches_backend_bind_semantics(host: str, detected: str, expected: str | None) -> None:
+    cfg = ManagerConfig(
+        runtime=SourceRuntimeConfig(backend_root=Path("x"), venv_python=Path("y")),
+        backend_host=host,
+        backend_port=9001,
+        manager_host="127.0.0.1",
+        manager_port=8799,
+        public_base_url=None,
+        expected_backend_version=None,
+        expected_installation_id="ticketbox-0123456789abcdef0123456789abcdef",
+        health_request_timeout_seconds=3.0,
+    )
+
+    assert cfg.lan_endpoint(detected) == expected
+    if host == "0.0.0.0":
+        assert cfg.backend_origin == "http://127.0.0.1:9001"
 
 
 def _fake_backend(tmp_path: Path, env_text: str = "PUBLIC_BASE_URL=https://api.example\n") -> Path:
@@ -81,22 +124,42 @@ def test_non_loopback_manager_host_raises(tmp_path: Path, monkeypatch) -> None:
     root = _fake_backend(tmp_path)
     monkeypatch.setenv("TICKETBOX_MANAGER_MODE", "source")
     monkeypatch.setenv("TICKETBOX_BACKEND_ROOT", str(root))
-    for host in ("0.0.0.0", "192.168.31.86", "::"):
+    for host in ("0.0.0.0", "192.168.31.86", "::", "127.evil.test"):
         monkeypatch.setenv("TICKETBOX_MANAGER_HOST", host)
         with pytest.raises(ConfigError):
             load_config()
 
 
-def test_loopback_manager_hosts_are_accepted(tmp_path: Path, monkeypatch) -> None:
+def test_supported_manager_hosts_are_accepted(tmp_path: Path, monkeypatch) -> None:
     root = _fake_backend(tmp_path)
     monkeypatch.setenv("TICKETBOX_MANAGER_MODE", "source")
     monkeypatch.setenv("TICKETBOX_BACKEND_ROOT", str(root))
-    for host in ("127.0.0.1", "127.0.0.5", "localhost", "::1"):
+    for host, expected in (
+        ("127.0.0.1", "127.0.0.1"),
+        ("127.0.0.5", "127.0.0.5"),
+        ("localhost", "localhost"),
+        ("  LOCALHOST  ", "localhost"),
+    ):
         monkeypatch.setenv("TICKETBOX_MANAGER_HOST", host)
-        assert load_config().manager_host == host
+        assert load_config().manager_host == expected
 
 
-def test_auto_mode_prefers_installed_layout_and_reads_program_data_env(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("host", ["10.0.0.5", "::", "::1", "127.evil.test"])
+def test_source_backend_requires_ipv4_loopback_or_wildcard(
+    tmp_path: Path,
+    monkeypatch,
+    host: str,
+) -> None:
+    root = _fake_backend(tmp_path)
+    monkeypatch.setenv("TICKETBOX_MANAGER_MODE", "source")
+    monkeypatch.setenv("TICKETBOX_BACKEND_ROOT", str(root))
+    monkeypatch.setenv("TICKETBOX_BACKEND_HOST", host)
+
+    with pytest.raises(ConfigError, match="IPv4 loopback or 0.0.0.0"):
+        load_config()
+
+
+def test_auto_mode_uses_safe_install_metadata_without_reading_protected_env(tmp_path: Path, monkeypatch) -> None:
     install_dir = tmp_path / "program"
     app_data = tmp_path / "data" / "app"
     install_dir.mkdir()
@@ -107,8 +170,16 @@ def test_auto_mode_prefers_installed_layout_and_reads_program_data_env(tmp_path:
         data_root=tmp_path / "data",
         backend_port=8123,
         pg_port=5544,
+        backend_service_name="TicketboxBackendConfigured",
+        pg_service_name="TicketboxPgConfigured",
+        backend_version="9.8.7-test",
     )
     monkeypatch.setattr("backend_manager.config.discover_installed_layout", lambda: layout)
+    monkeypatch.setattr("backend_manager.config.load_installed_release_config", lambda _layout: _release_config())
+    monkeypatch.setattr(
+        "backend_manager.config.dotenv_values",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("installed GUI read protected .env")),
+    )
     monkeypatch.delenv("TICKETBOX_BACKEND_ROOT", raising=False)
     monkeypatch.delenv("TICKETBOX_MANAGER_MODE", raising=False)
     monkeypatch.setenv("TICKETBOX_BACKEND_HOST", "10.0.0.9")
@@ -118,10 +189,16 @@ def test_auto_mode_prefers_installed_layout_and_reads_program_data_env(tmp_path:
 
     assert isinstance(cfg.runtime, InstalledRuntimeConfig)
     assert cfg.runtime.layout == layout
-    assert cfg.runtime.log_path == app_data / "logs" / "backend.log"
     assert cfg.backend_host == "127.0.0.1"
     assert cfg.backend_port == 8123
-    assert cfg.public_base_url == "https://public.example"
+    assert cfg.runtime.backend_service_name == "TicketboxBackendConfigured"
+    assert cfg.runtime.pg_service_name == "TicketboxPgConfigured"
+    assert cfg.public_base_url is None
+    assert cfg.public_endpoint_state == "protected_unknown"
+    assert cfg.expected_backend_version == "9.8.7-test"
+    assert cfg.expected_installation_id == layout.installation_id
+    assert cfg.health_request_timeout_seconds == 1.75
+    assert cfg.runtime.release.service_state_timeout_seconds == 17
 
 
 def test_installed_mode_requires_installer_registry(monkeypatch) -> None:

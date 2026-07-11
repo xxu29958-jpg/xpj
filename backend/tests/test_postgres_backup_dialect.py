@@ -9,19 +9,129 @@ is installed on the runner).
 
 from __future__ import annotations
 
+import logging
+import os
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 import app.services.postgres_backup_validation_service as pgval
 from app.errors import AppError
 from app.services import backup_service
+from scripts import postgres_backup_drill
 
 
-def test_libpq_url_strips_driver_tag() -> None:
-    assert backup_service._libpq_url("postgresql+psycopg://u:p@h:5432/db") == (  # noqa: SLF001
-        "postgresql://u:p@h:5432/db"
+def _assert_pg_restore_password_isolated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    encoded_password: str,
+    decoded_password: str,
+) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_restore(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed["arguments"] = arguments
+        observed["environment"] = kwargs["env"]
+        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(pgval, "find_pg_binary", lambda *_args: "pg_restore-probe")
+    monkeypatch.setattr(postgres_backup_drill.subprocess, "run", fake_restore)
+    postgres_backup_drill._pg_restore(tmp_path / "archive.dump", database_url)  # noqa: SLF001
+    arguments = observed["arguments"]
+    environment = observed["environment"]
+    assert isinstance(arguments, list)
+    assert isinstance(environment, dict)
+    assert decoded_password not in arguments
+    assert encoded_password not in " ".join(arguments)
+    assert environment["PGPASSWORD"] == decoded_password
+
+    monkeypatch.setattr(
+        postgres_backup_drill.subprocess,
+        "run",
+        lambda arguments, **_kwargs: subprocess.CompletedProcess(
+            arguments,
+            1,
+            stdout=database_url,
+            stderr=f"connection failed for password={decoded_password}",
+        ),
     )
-    # An already-bare libpq URL is left untouched.
-    assert backup_service._libpq_url("postgresql://u:p@h/db") == "postgresql://u:p@h/db"  # noqa: SLF001
+    with pytest.raises(SystemExit) as restore_error:
+        postgres_backup_drill._pg_restore(tmp_path / "archive.dump", database_url)  # noqa: SLF001
+    assert decoded_password not in str(restore_error.value)
+    assert encoded_password not in str(restore_error.value)
+
+
+def test_pg_tools_keep_password_out_of_process_arguments(tmp_path, monkeypatch, caplog) -> None:
+    encoded_password = "p%40ss%3Aword%2F%3F%23%25"
+    decoded_password = "p@ss:word/?#%"
+    database_url = (
+        f"postgresql+psycopg://ticketbox:{encoded_password}@localhost:5432/ticketbox"
+        "?sslmode=require"
+    )
+    connection = backup_service._pg_tool_connection(database_url)  # noqa: SLF001
+    assert connection.database_url == (
+        "postgresql://ticketbox@localhost:5432/ticketbox?sslmode=require"
+    )
+    assert connection.password == decoded_password
+    with pytest.raises(AppError) as query_password_error:
+        backup_service._pg_tool_connection(  # noqa: SLF001
+            "postgresql://ticketbox@localhost/ticketbox?password=query-secret"
+        )
+    assert "query-secret" not in str(query_password_error.value)
+
+    observed: dict[str, object] = {}
+
+    def fake_run(arguments, **kwargs):
+        observed["arguments"] = arguments
+        observed["environment"] = kwargs["env"]
+        Path(arguments[arguments.index("--file") + 1]).write_bytes(b"probe")
+        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    monkeypatch.setattr(backup_service, "get_settings", lambda: SimpleNamespace(database_url=database_url))
+    monkeypatch.setattr(backup_service, "_pg_dump_binary", lambda: "pg_dump-probe")
+    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", lambda _path: True)
+    monkeypatch.setattr(backup_service.subprocess, "run", fake_run)
+    monkeypatch.setenv("PGPASSWORD", "parent-password")
+
+    backup_service._run_pg_dump(prefix="ticketbox-manual", kind="manual")  # noqa: SLF001
+    arguments = observed["arguments"]
+    environment = observed["environment"]
+    assert isinstance(arguments, list)
+    assert isinstance(environment, dict)
+    assert decoded_password not in arguments
+    assert encoded_password not in " ".join(arguments)
+    assert environment["PGPASSWORD"] == decoded_password
+    assert os.environ["PGPASSWORD"] == "parent-password"
+    assert "PGPASSWORD" not in backup_service._pg_tool_environment(None)  # noqa: SLF001
+    assert os.environ["PGPASSWORD"] == "parent-password"
+
+    def failed_run(arguments, **_kwargs):
+        return subprocess.CompletedProcess(
+            arguments,
+            1,
+            stdout=database_url,
+            stderr=f"connection failed for password={decoded_password}",
+        )
+
+    monkeypatch.setattr(backup_service.subprocess, "run", failed_run)
+    with caplog.at_level(logging.WARNING), pytest.raises(AppError):
+        backup_service._run_pg_dump(prefix="ticketbox-manual", kind="manual")  # noqa: SLF001
+    assert decoded_password not in caplog.text
+    assert encoded_password not in caplog.text
+    assert database_url not in caplog.text
+    assert os.environ["PGPASSWORD"] == "parent-password"
+
+    _assert_pg_restore_password_isolated(
+        tmp_path,
+        monkeypatch,
+        database_url,
+        encoded_password,
+        decoded_password,
+    )
 
 
 def test_pg_dump_binary_missing_raises_app_error(monkeypatch) -> None:
@@ -35,7 +145,7 @@ def test_pg_dump_binary_missing_raises_app_error(monkeypatch) -> None:
 
 def test_find_pg_binary_windows_install_glob_fallback(tmp_path, monkeypatch) -> None:
     # env override and PATH both absent -> fall back to the newest
-    # C:\Program Files\PostgreSQL\<ver>\bin install (mirrors backup_database.ps1).
+    # OS Program Files/PostgreSQL/<ver>/bin install (mirrors backup_database.ps1).
     # This was the nightly-backup gap: the .ps1 globs for pg_dump, but validation
     # runs in Python where pg_restore previously had no such fallback.
     monkeypatch.delenv("PG_RESTORE_PATH", raising=False)

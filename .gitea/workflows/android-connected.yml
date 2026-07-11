@@ -178,14 +178,12 @@ jobs:
 
             $env:ANDROID_SERIAL = $serial
             .\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
-            if ($LASTEXITCODE -ne 0) {
-              Get-ChildItem "app\build\outputs\androidTest-results" -Recurse -Filter "*.xml" -ErrorAction SilentlyContinue |
-                ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 40 }
-              throw "connectedGrayDebugAndroidTest failed"
-            }
+            if ($LASTEXITCODE -ne 0) { throw "connectedGrayDebugAndroidTest failed" }
           }
           catch {
             $failed = $true
+            Get-ChildItem "app\build\outputs\androidTest-results" -Recurse -Filter "*.xml" -ErrorAction SilentlyContinue |
+              ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 40 }
             Write-Host "##[error]Connected lane failed: $_"
           }
           finally {

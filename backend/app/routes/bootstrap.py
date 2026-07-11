@@ -20,10 +20,8 @@ from app.services.admin_scope_service import require_admin_manages_current_ledge
 from app.services.identity_service import (
     bootstrap_owner,
     create_pairing_code,
-    hash_secret,
-    is_bootstrap_secret_consumed,
-    record_bootstrap_secret_consumption,
 )
+from app.services.session_lifecycle_service import BOOTSTRAP_SECRET_MIN_BYTES
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/bootstrap", tags=["bootstrap"])
@@ -43,14 +41,13 @@ def _bootstrap_disabled_error() -> AppError:
 
 def require_http_bootstrap_secret(
     request: Request,
-    db: Session = Depends(get_db),
 ) -> str:
     settings = get_settings()
     if not settings.enable_http_bootstrap:
         raise _bootstrap_disabled_error()
 
     expected = (settings.http_bootstrap_secret or "").strip()
-    if not expected:
+    if not expected or len(expected.encode("utf-8")) < BOOTSTRAP_SECRET_MIN_BYTES:
         # Fail closed: enabled without a secret is treated as disabled.
         raise _bootstrap_disabled_error()
 
@@ -62,10 +59,7 @@ def require_http_bootstrap_secret(
             status_code=401,
         )
 
-    secret_hash = hash_secret(expected)
-    if is_bootstrap_secret_consumed(
-        db, secret_hash=secret_hash
-    ) or not hmac.compare_digest(provided, expected):
+    if not hmac.compare_digest(provided, expected):
         raise AppError(
             "invalid_bootstrap_secret",
             "Bootstrap secret 无效或已使用。",
@@ -73,33 +67,6 @@ def require_http_bootstrap_secret(
         )
 
     return expected
-
-
-def _consume_secret(db: Session, secret: str) -> None:
-    """Mark a one-shot bootstrap secret as consumed.
-
-    Raises ``invalid_bootstrap_secret`` only when the failure is the expected
-    one — another request consumed the same hash between the precheck in
-    ``require_http_bootstrap_secret`` and this insert. All other integrity
-    errors propagate so we never silently translate an unrelated schema
-    failure into "secret already used".
-    """
-
-    if not secret:
-        return
-    secret_hash = hash_secret(secret)
-    if not record_bootstrap_secret_consumption(db, secret_hash=secret_hash):
-        raise AppError(
-            "invalid_bootstrap_secret",
-            "Bootstrap secret is invalid or already used.",
-            status_code=401,
-        )
-
-
-def _mark_secret_consumed(db: Session, secret: str) -> None:
-    if secret:
-        _consume_secret(db, secret)
-        db.commit()
 
 
 @router.post("/owner", response_model=BootstrapOwnerResponse)
@@ -116,17 +83,15 @@ def post_bootstrap_owner(
             ledger_name=payload.ledger_name,
             device_name=payload.device_name,
             default_timezone=payload.default_timezone,
+            bootstrap_secret=secret,
             commit=False,
         )
-        _consume_secret(db, secret)
         db.commit()
         committed = True
     finally:
         if not committed:
-            # AppError translation for the race-condition case is owned by
-            # _consume_secret. Everything else rolls back and propagates as-is
-            # so the global handler surfaces a generic server_error rather than
-            # a misleading "secret already used".
+            # Bootstrap identity rows and secret consumption share one
+            # transaction; no failed attempt may burn the recovery key.
             db.rollback()
     return BootstrapOwnerResponse(**result.__dict__)
 
@@ -155,6 +120,7 @@ def post_pairing_code(
         account_id=auth.account_id,
         device_name_hint=payload.device_name_hint,
         ttl_minutes=payload.ttl_minutes,
+        auth=auth,
     )
     return PairingCodeResponse(
         pairing_code=result.pairing_code,
