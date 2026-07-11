@@ -573,9 +573,8 @@ if (Test-Path -LiteralPath '{literal(secret_path)}') {{ throw 'sensitive file su
     x86_powershell = Path(os.environ["WINDIR"]) / "SysWOW64/WindowsPowerShell/v1.0/powershell.exe"
     if x86_powershell.is_file() and sys.maxsize > 2**32:
         command = (
-            f". '{literal(PACKAGING / 'windows_installation_safety.ps1')}'; "
             f". '{literal(PACKAGING / 'windows_lifecycle_lock.ps1')}'; "
-            "Enter-TicketboxLifecycleLock -ExternalOwnerProcessId $PID"
+            "Assert-TicketboxSupportedPowerShellHost"
         )
         rejected = subprocess.run(
             [x86_powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
