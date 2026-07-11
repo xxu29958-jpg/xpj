@@ -4,6 +4,40 @@ import pytest
 
 from tests._infra.ci_gap import load_ci_gap_audit
 
+_INSTALLER_RUN_STEP = """
+      - run: |
+          powershell -NoProfile -File packaging\\build_inno_installer.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+"""
+
+
+def _installer_upload_step(action_sha: str) -> str:
+    return f"""
+      - uses: actions/upload-artifact@{action_sha}
+        with:
+          name: ticketbox-windows-installer
+          path: ${{{{ env.INSTALLER_PUBLISH_PATH }}}}
+          if-no-files-found: error
+"""
+
+
+def _write_installer_workflow(
+    path: Path,
+    *,
+    action_sha: str = "",
+    upload_first: bool = False,
+    include_run: bool = True,
+) -> None:
+    steps = [_INSTALLER_RUN_STEP] if include_run else []
+    if action_sha:
+        steps.insert(0 if upload_first else len(steps), _installer_upload_step(action_sha))
+    path.write_text(
+        "name: CI\njobs:\n  installer:\n    steps:\n" + "".join(steps),
+        encoding="utf-8",
+    )
+
 
 def test_ci_gap_platform_buckets_reject_union_masking_mutation(tmp_path: Path) -> None:
     """Complementary platform workflows must not combine into a false green."""
@@ -242,20 +276,7 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
     workflows = tmp_path / platform_dir / "workflows"
     workflows.mkdir(parents=True)
     workflow_path = workflows / "ci.yml"
-    workflow_path.write_text(
-        """
-name: CI
-jobs:
-  installer:
-    steps:
-      - run: |
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-""",
-        encoding="utf-8",
-    )
+    _write_installer_workflow(workflow_path)
 
     commands = mod._iter_workflow_run_commands(workflows)
     segments = mod._iter_executable_command_segments(commands)
@@ -277,36 +298,25 @@ jobs:
         if platform_dir == ".github"
         else "a8a3f3ad30e3422c9c7b888a15615d19a852ae32"
     )
-    (workflows / "detached-upload.yml").write_text(
-        f"""
-name: detached upload
-jobs:
-  installer:
-    steps:
-      - uses: actions/upload-artifact@{action_sha}
-        with:
-          name: ticketbox-windows-installer
-          path: ${{{{ env.INSTALLER_PUBLISH_PATH }}}}
-          if-no-files-found: error
-""",
-        encoding="utf-8",
+    _write_installer_workflow(
+        workflows / "detached-upload.yml",
+        action_sha=action_sha,
+        include_run=False,
     )
     actions = mod._iter_workflow_actions(workflows)
     assert upload_label in mod._missing_installer_publish_actions_by_platform(
         commands, actions
     )
 
-    workflow_path.write_text(
-        workflow_path.read_text(encoding="utf-8")
-        + f"""
-      - uses: actions/upload-artifact@{action_sha}
-        with:
-          name: ticketbox-windows-installer
-          path: ${{{{ env.INSTALLER_PUBLISH_PATH }}}}
-          if-no-files-found: error
-""",
-        encoding="utf-8",
+    _write_installer_workflow(workflow_path, action_sha=action_sha, upload_first=True)
+    commands = mod._iter_workflow_run_commands(workflows)
+    actions = mod._iter_workflow_actions(workflows)
+    assert upload_label in mod._missing_installer_publish_actions_by_platform(
+        commands, actions
     )
+
+    _write_installer_workflow(workflow_path, action_sha=action_sha)
+    commands = mod._iter_workflow_run_commands(workflows)
     actions = mod._iter_workflow_actions(workflows)
     assert upload_label not in mod._missing_installer_publish_actions_by_platform(
         commands, actions

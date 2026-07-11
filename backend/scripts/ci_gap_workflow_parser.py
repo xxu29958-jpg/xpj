@@ -24,6 +24,7 @@ class WorkflowCommand:
     folded: bool = False
     job: str = ""
     step: str = ""
+    step_index: int = -1
     shell: str = ""
     protection_scope: str = "full"
     powershell_ast_digest: str = ""
@@ -36,6 +37,7 @@ class WorkflowAction:
     inputs: tuple[tuple[str, str], ...]
     job: str = ""
     step: str = ""
+    step_index: int = -1
     protection_scope: str = "full"
 
 
@@ -362,6 +364,7 @@ def _workflow_step_command(
         folded="\n" not in command,
         job=str(job_name),
         step=str(raw_step.get("name", index)),
+        step_index=index,
         shell=shell,
         protection_scope=protection_scope,
         powershell_ast_digest=(
@@ -485,6 +488,7 @@ def _iter_workflow_actions(
                 inputs=inputs,
                 job=str(job_name),
                 step=str(raw_step.get("name", index)),
+                step_index=index,
                 protection_scope=protection_scope,
             )
         )

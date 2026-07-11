@@ -332,29 +332,26 @@ def _missing_installer_publish_actions_by_platform(
             for command in _commands_for_platform(commands, platform)
             if command.protection_scope == "full"
         ]
-        segments_by_job: dict[tuple[pathlib.Path, str], list[str]] = {}
-        for command in platform_commands:
-            segments_by_job.setdefault((command.workflow, command.job), []).extend(
-                _iter_executable_command_segments([command])
-            )
-        publish_jobs = {
-            job
-            for job, segments in segments_by_job.items()
-            if all(
-                any(required.matches(segment) for segment in segments)
-                for required in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]
-            )
-        }
         platform_actions = [
             action
             for action in actions
             if PLATFORM_WORKFLOW_PARTS[platform] in action.workflow.parts
             and action.protection_scope == "full"
-            and (action.workflow, action.job) in publish_jobs
         ]
         for required in REQUIRED_CI_ACTIONS_BY_PLATFORM[platform]:
             if not any(
                 required.matches(action.uses, action.inputs)
+                and all(
+                    any(
+                        invocation.matches(segment)
+                        for command in platform_commands
+                        if command.workflow == action.workflow
+                        and command.job == action.job
+                        and command.step_index < action.step_index
+                        for segment in _iter_executable_command_segments([command])
+                    )
+                    for invocation in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]
+                )
                 for action in platform_actions
             ):
                 missing.append(f"{platform}: {required.label}")

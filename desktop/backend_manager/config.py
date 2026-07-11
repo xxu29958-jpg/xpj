@@ -218,8 +218,7 @@ def _resolve_runtime(mode_override: Literal["source", "installed"] | None = None
     mode = mode_override or _manager_mode()
     try:
         installed = discover_installed_layout() if mode != "source" else None
-        use_installed = mode == "installed" or (mode == "auto" and not os.getenv(_ENV_BACKEND_ROOT))
-        release = load_installed_release_config(installed) if installed is not None and use_installed else None
+        release = load_installed_release_config(installed) if installed is not None else None
     except InstallationConfigError as exc:
         raise ConfigError(str(exc)) from exc
 
@@ -228,7 +227,7 @@ def _resolve_runtime(mode_override: Literal["source", "installed"] | None = None
             raise ConfigError("未找到小票夹正式安装信息，请重新安装或改用 TICKETBOX_MANAGER_MODE=source。")
         assert release is not None
         return InstalledRuntimeConfig(installed, release)
-    if mode == "auto" and installed is not None and not os.getenv(_ENV_BACKEND_ROOT):
+    if mode == "auto" and installed is not None:
         assert release is not None
         return InstalledRuntimeConfig(installed, release)
     return _discover_source_runtime()
