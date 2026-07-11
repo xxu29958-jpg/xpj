@@ -62,7 +62,9 @@ def _audit_count(action: str, ledger_id: str) -> int:
 def test_archive_hides_ledger_and_records_audit(identity) -> None:
     owner_id = _owner_id()
     with SessionLocal() as db:
-        assert ledger_service.archive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id) is True
+        assert ledger_service.archive_ledger(
+            db, ledger_id="tester_1", actor_account_id=owner_id, auth=None
+        ) is True
 
     assert _archived_at("tester_1") is not None
     assert _audit_count(ledger_service.AUDIT_LEDGER_ARCHIVED, "tester_1") == 1
@@ -87,17 +89,25 @@ def test_archive_is_idempotent(identity) -> None:
     predicate, not a Python pre-check, gates the flip, so it never double-audits."""
     owner_id = _owner_id()
     with SessionLocal() as db:
-        assert ledger_service.archive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id) is True
-        assert ledger_service.archive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id) is False
+        assert ledger_service.archive_ledger(
+            db, ledger_id="tester_1", actor_account_id=owner_id, auth=None
+        ) is True
+        assert ledger_service.archive_ledger(
+            db, ledger_id="tester_1", actor_account_id=owner_id, auth=None
+        ) is False
     assert _audit_count(ledger_service.AUDIT_LEDGER_ARCHIVED, "tester_1") == 1
 
 
 def test_unarchive_restores(identity) -> None:
     owner_id = _owner_id()
     with SessionLocal() as db:
-        ledger_service.archive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id)
+        ledger_service.archive_ledger(
+            db, ledger_id="tester_1", actor_account_id=owner_id, auth=None
+        )
     with SessionLocal() as db:
-        assert ledger_service.unarchive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id) is True
+        assert ledger_service.unarchive_ledger(
+            db, ledger_id="tester_1", actor_account_id=owner_id, auth=None
+        ) is True
 
     assert _archived_at("tester_1") is None
     assert _audit_count(ledger_service.AUDIT_LEDGER_UNARCHIVED, "tester_1") == 1
@@ -109,14 +119,21 @@ def test_unarchive_restores(identity) -> None:
 def test_unarchive_idempotent_on_active(identity) -> None:
     owner_id = _owner_id()
     with SessionLocal() as db:
-        assert ledger_service.unarchive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id) is False
+        assert ledger_service.unarchive_ledger(
+            db, ledger_id="tester_1", actor_account_id=owner_id, auth=None
+        ) is False
     assert _audit_count(ledger_service.AUDIT_LEDGER_UNARCHIVED, "tester_1") == 0
 
 
 def test_cannot_archive_default_ledger(identity) -> None:
     owner_id = _owner_id()
     with SessionLocal() as db, pytest.raises(AppError) as excinfo:
-        ledger_service.archive_ledger(db, ledger_id=DEFAULT_TENANT_ID, actor_account_id=owner_id)
+        ledger_service.archive_ledger(
+            db,
+            ledger_id=DEFAULT_TENANT_ID,
+            actor_account_id=owner_id,
+            auth=None,
+        )
     assert excinfo.value.error == "cannot_archive_default_ledger"
     assert _archived_at(DEFAULT_TENANT_ID) is None
 
@@ -132,7 +149,9 @@ def test_non_owner_member_cannot_archive(identity) -> None:
         stranger_id = stranger.id
 
     with SessionLocal() as db, pytest.raises(AppError) as excinfo:
-        ledger_service.archive_ledger(db, ledger_id="tester_1", actor_account_id=stranger_id)
+        ledger_service.archive_ledger(
+            db, ledger_id="tester_1", actor_account_id=stranger_id, auth=None
+        )
     assert excinfo.value.error == "ledger_forbidden"
     assert _archived_at("tester_1") is None
 

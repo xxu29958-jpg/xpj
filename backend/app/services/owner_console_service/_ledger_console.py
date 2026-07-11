@@ -236,17 +236,32 @@ def _require_owner_id(db: Session) -> int:
 
 def do_create_ledger(db: Session, *, name: str) -> LedgerSummary:
     """Create a new ledger owned by the local owner account."""
-    return ledger_service_create_ledger(db, account_id=_require_owner_id(db), name=name)
+    return ledger_service_create_ledger(
+        db,
+        account_id=_require_owner_id(db),
+        name=name,
+        auth=None,
+    )
 
 
 def do_archive_ledger(db: Session, *, ledger_id: str) -> bool:
     """Archive a ledger owned by the local owner account (reversible soft-delete)."""
-    return archive_ledger(db, ledger_id=ledger_id, actor_account_id=_require_owner_id(db))
+    return archive_ledger(
+        db,
+        ledger_id=ledger_id,
+        actor_account_id=_require_owner_id(db),
+        auth=None,
+    )
 
 
 def do_unarchive_ledger(db: Session, *, ledger_id: str) -> bool:
     """Restore an archived ledger owned by the local owner account."""
-    return unarchive_ledger(db, ledger_id=ledger_id, actor_account_id=_require_owner_id(db))
+    return unarchive_ledger(
+        db,
+        ledger_id=ledger_id,
+        actor_account_id=_require_owner_id(db),
+        auth=None,
+    )
 
 
 def list_archived_console_ledgers(db: Session) -> list[LedgerConsoleVM]:

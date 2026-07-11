@@ -21,38 +21,40 @@ from __future__ import annotations
 
 import secrets
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, AuthToken, Device, Ledger, LedgerAuditLog, LedgerMember
+from app.models import Account, AuthToken, Device, Ledger, LedgerMember
 from app.services.identity_service import (
     _ensure_membership,
 )
 from app.services.identity_service._bootstrap_exposure_guard import (
     assert_bootstrap_sensitive_mutation_allowed,
 )
+from app.services.ledger_archive_service import (
+    AUDIT_LEDGER_ARCHIVED,
+    AUDIT_LEDGER_UNARCHIVED,
+    archive_ledger,
+    find_owner_account_id_for_ledger,
+    unarchive_ledger,
+)
 from app.services.ledger_contracts import LedgerSummary, SwitchLedgerResult
 from app.services.session_credential_lock import (
     lock_and_revalidate_credential_mint_context,
-    lock_bootstrap_owner_transaction,
+    lock_and_revalidate_mutation_actor,
 )
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     rotate_app_token_for_ledger,
 )
-from app.services.time_service import now_utc, to_iso
+from app.services.time_service import to_iso
 from app.tenants import DEFAULT_TENANT_ID, AuthContext
 
 LEDGER_ID_PREFIX = "ledger_"
 LEDGER_NAME_MAX_LEN = 60
 LEDGER_ID_RANDOM_BYTES = 6  # 12 hex chars; ledger_id stays well under 64 chars.
 LEDGER_ID_ALLOCATION_RETRIES = 8
-
-# Ledger-lifecycle audit actions (mirrors invitation_common's verb_noun naming).
-AUDIT_LEDGER_ARCHIVED = "ledger_archived"
-AUDIT_LEDGER_UNARCHIVED = "ledger_unarchived"
-
 
 def _normalize_ledger_name(value: str | None) -> str:
     cleaned = (value or "").strip()
@@ -124,23 +126,6 @@ def managed_ledger_ids_for_account(db: Session, *, account_id: int) -> set[str]:
     return {summary.ledger_id for summary in list_managed_ledgers_for_account(db, account_id=account_id)}
 
 
-def find_owner_account_id_for_ledger(db: Session, *, ledger_id: str) -> int | None:
-    """Return the active owner's ``account_id`` for ``ledger_id``, or ``None``.
-
-    Loopback fallbacks (``/web`` and ``/owner`` running on the home server
-    without a public-host session cookie) need this when the request itself
-    cannot identify the acting account. ``None`` means no active owner row
-    exists; callers must decide how to surface that (typically 400/500).
-    """
-    return db.scalar(
-        select(LedgerMember.account_id)
-        .where(LedgerMember.ledger_id == ledger_id)
-        .where(LedgerMember.role == "owner")
-        .where(LedgerMember.disabled_at.is_(None))
-        .limit(1)
-    )
-
-
 def list_writer_ledger_ids_for_account(db: Session, *, account_id: int) -> list[str]:
     """Return active ``(owner|member)`` ledger IDs for ``account_id``.
 
@@ -191,16 +176,28 @@ def get_ledger_for_account(db: Session, *, account_id: int, ledger_id: str) -> t
     return row[0], row[1]
 
 
-def create_ledger(db: Session, *, account_id: int, name: str) -> LedgerSummary:
+def create_ledger(
+    db: Session,
+    *,
+    account_id: int,
+    name: str,
+    auth: AuthContext | None,
+) -> LedgerSummary:
     """Create a new ledger owned by ``account_id`` and return the summary.
 
-    The caller's authorization (e.g. owner/admin scope) is enforced by the
-    HTTP layer; this function only enforces server-side invariants:
+    Network callers pass the authenticated context for lock-time credential
+    revalidation; loopback callers explicitly pass ``None``. The service then
+    enforces the remaining server-side invariants:
 
     * ``name`` is normalized and length-checked.
     * A fresh public ``ledger_id`` is minted; collisions retry.
     * The creating account is recorded as ``owner`` member.
     """
+    lock_and_revalidate_mutation_actor(
+        db,
+        auth,
+        actor_account_id=account_id,
+    )
     assert_bootstrap_sensitive_mutation_allowed(db, actor_account_id=account_id)
     cleaned = _normalize_ledger_name(name)
     account = db.get(Account, account_id)
@@ -215,106 +212,6 @@ def create_ledger(db: Session, *, account_id: int, name: str) -> LedgerSummary:
     db.commit()
     db.refresh(ledger)
     return _summary(ledger, "owner")
-
-
-def _authorize_ledger_owner(db: Session, *, ledger_id: str, actor_account_id: int) -> Ledger:
-    """Return the ``Ledger`` iff ``actor_account_id`` is its active owner.
-
-    Looks the ledger up regardless of archived state (so unarchive can authorize
-    an already-archived ledger), then checks active owner membership. Raises
-    ``ledger_not_found`` (404) when absent and ``ledger_forbidden`` (403) when the
-    actor is not its owner — the opaque code used across this module so callers
-    cannot probe another account's ledger namespace.
-    """
-    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
-    if ledger is None:
-        raise AppError("ledger_not_found", status_code=404)
-    owner_id = find_owner_account_id_for_ledger(db, ledger_id=ledger_id)
-    if owner_id is None or owner_id != actor_account_id:
-        raise AppError("ledger_forbidden", status_code=403)
-    return ledger
-
-
-def _record_ledger_audit(db: Session, *, ledger_id: str, action: str, actor_account_id: int) -> None:
-    db.add(
-        LedgerAuditLog(
-            ledger_id=ledger_id,
-            action=action,
-            actor_account_id=actor_account_id,
-            resource_type="ledger",
-            resource_public_id=ledger_id,
-            result="success",
-        )
-    )
-
-
-def archive_ledger(db: Session, *, ledger_id: str, actor_account_id: int) -> bool:
-    """Soft-delete a ledger (owner-only). ``True`` if it flipped active→archived,
-    ``False`` if it was already archived (idempotent no-op).
-
-    Archiving only sets ``archived_at``; every read surface (ledger lists, auth,
-    pairing, invitations, upload links) already filters ``archived_at IS NULL``,
-    so the ledger disappears from the app — and its bound sessions go inert —
-    without deleting a single row. Fully reversible via :func:`unarchive_ledger`.
-    The default tenant cannot be archived: the install would be left with no
-    active ledger to fall back to.
-
-    The flip is one ``UPDATE ... WHERE archived_at IS NULL`` whose rowcount
-    decides the outcome, so two concurrent archives cannot both win or
-    double-write the audit log.
-    """
-    lock_bootstrap_owner_transaction(db)
-    assert_bootstrap_sensitive_mutation_allowed(
-        db,
-        actor_account_id=actor_account_id,
-        ledger_ids={ledger_id},
-    )
-    ledger = _authorize_ledger_owner(db, ledger_id=ledger_id, actor_account_id=actor_account_id)
-    if ledger.ledger_id == DEFAULT_TENANT_ID:
-        raise AppError("cannot_archive_default_ledger", status_code=409)
-    flipped = (
-        db.execute(
-            update(Ledger)
-            .where(Ledger.ledger_id == ledger_id, Ledger.archived_at.is_(None))
-            .values(archived_at=now_utc())
-        ).rowcount
-        == 1
-    )
-    if not flipped:
-        db.rollback()
-        return False
-    _record_ledger_audit(db, ledger_id=ledger_id, action=AUDIT_LEDGER_ARCHIVED, actor_account_id=actor_account_id)
-    db.commit()
-    return True
-
-
-def unarchive_ledger(db: Session, *, ledger_id: str, actor_account_id: int) -> bool:
-    """Restore a soft-deleted ledger (owner-only). ``True`` if it flipped
-    archived→active, ``False`` if it was already active (idempotent no-op).
-
-    Mirror of :func:`archive_ledger`; the ``UPDATE ... WHERE archived_at IS NOT
-    NULL`` rowcount gates the audit write so a double-restore is a clean no-op.
-    """
-    assert_bootstrap_sensitive_mutation_allowed(
-        db,
-        actor_account_id=actor_account_id,
-        ledger_ids={ledger_id},
-    )
-    _authorize_ledger_owner(db, ledger_id=ledger_id, actor_account_id=actor_account_id)
-    flipped = (
-        db.execute(
-            update(Ledger)
-            .where(Ledger.ledger_id == ledger_id, Ledger.archived_at.is_not(None))
-            .values(archived_at=None)
-        ).rowcount
-        == 1
-    )
-    if not flipped:
-        db.rollback()
-        return False
-    _record_ledger_audit(db, ledger_id=ledger_id, action=AUDIT_LEDGER_UNARCHIVED, actor_account_id=actor_account_id)
-    db.commit()
-    return True
 
 
 def list_archived_ledgers_for_account(db: Session, *, account_id: int) -> list[LedgerSummary]:

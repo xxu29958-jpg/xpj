@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import app.services.invitation_members as invitation_members
+import app.services.ledger_archive_service as ledger_archive_service
 import app.services.ledger_service as ledger_service
 from app.config import get_settings
 from app.database import SessionLocal
@@ -366,7 +367,7 @@ def _assert_archived_target_rolls_back_switch(
 ) -> None:
     mutation_locked = threading.Event()
     release_mutation = threading.Event()
-    original_authorize = ledger_service._authorize_ledger_owner
+    original_authorize = ledger_archive_service._authorize_ledger_owner
 
     def gated_authorize(*args: object, **kwargs: object):
         mutation_locked.set()
@@ -379,10 +380,11 @@ def _assert_archived_target_rolls_back_switch(
                 db,
                 ledger_id="tester_1",
                 actor_account_id=account_id,
+                auth=None,
             )
 
     with monkeypatch.context() as patch:
-        patch.setattr(ledger_service, "_authorize_ledger_owner", gated_authorize)
+        patch.setattr(ledger_archive_service, "_authorize_ledger_owner", gated_authorize)
         _run_switch_target_race(
             token_value,
             "tester_1",
@@ -429,6 +431,7 @@ def _assert_disabled_target_rolls_back_switch(
                 ledger_id=ledger_id,
                 member_id=member_id,
                 requester_account_id=owner_id,
+                auth=None,
             )
 
     with monkeypatch.context() as patch:

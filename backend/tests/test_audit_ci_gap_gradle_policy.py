@@ -192,6 +192,36 @@ def _assert_gradle_failure_masking_is_rejected(mod: object) -> None:
     assert ":app:testGrayDebugUnitTest" in mod._missing_gradle_tasks([swallowed])
 
 
+def test_ci_gap_gradle_catch_must_propagate_guard_failure() -> None:
+    mod = _load()
+    workflow = Path("C:/.gitea/workflows/android-connected.yml")
+    swallowed = mod.WorkflowCommand(
+        workflow,
+        r"""
+try {
+  .\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
+  if ($LASTEXITCODE -ne 0) { throw "connected tests failed" }
+}
+catch {
+  $failed = $true
+}
+if ($failed) { exit 1 }
+""",
+        shell="powershell",
+    )
+    assert ":app:connectedGrayDebugAndroidTest" in mod._missing_gradle_tasks([swallowed])
+
+    rethrown = mod.WorkflowCommand(
+        workflow,
+        swallowed.text.replace("  $failed = $true", "  throw").replace(
+            "\nif ($failed) { exit 1 }",
+            "",
+        ),
+        shell="powershell",
+    )
+    assert ":app:connectedGrayDebugAndroidTest" not in mod._missing_gradle_tasks([rethrown])
+
+
 def test_ci_gap_release_apk_policy_does_not_merge_literal_block_without_continuation(
     tmp_path: Path,
 ) -> None:

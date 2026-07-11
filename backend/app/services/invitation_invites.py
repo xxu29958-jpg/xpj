@@ -22,7 +22,6 @@ from app.services.identity_service import (
     _ensure_membership,
     _ledger_by_id,
     hash_secret,
-    lock_and_revalidate_credential_mint_context,
     lock_bootstrap_owner_transaction,
 )
 from app.services.identity_service._bootstrap_exposure_guard import (
@@ -38,6 +37,7 @@ from app.services.invitation_common import (
     new_invite_token,
     require_active_owner,
 )
+from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     revoke_token_value,
@@ -123,14 +123,14 @@ def create_invitation(
     created_by_account_id: int,
     note: str | None = None,
     ttl_days: int = INVITATION_TTL_DAYS,
-    auth: AuthContext | None = None,
+    auth: AuthContext | None,
 ) -> CreateInvitationResult:
-    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
-    if locked_auth is not None and (
-        locked_auth.ledger_id != ledger_id
-        or locked_auth.account_id != created_by_account_id
-    ):
-        raise AppError("invalid_token", status_code=401)
+    lock_and_revalidate_mutation_actor(
+        db,
+        auth,
+        actor_account_id=created_by_account_id,
+        ledger_id=ledger_id,
+    )
     assert_bootstrap_sensitive_mutation_allowed(
         db,
         actor_account_id=created_by_account_id,
@@ -192,8 +192,19 @@ def revoke_invitation(
     ledger_id: str,
     public_id: str,
     actor_account_id: int | None = None,
+    auth: AuthContext | None,
 ) -> InvitationSummary:
-    lock_bootstrap_owner_transaction(db)
+    lock_and_revalidate_mutation_actor(
+        db,
+        auth,
+        actor_account_id=actor_account_id,
+        ledger_id=ledger_id,
+    )
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids={ledger_id},
+    )
     if actor_account_id is not None:
         require_active_owner(db, ledger_id=ledger_id, account_id=actor_account_id)
     invitation = db.scalar(

@@ -75,7 +75,12 @@ def create_ledger_endpoint(
     auth: AuthContext = Depends(get_current_owner_or_admin_context),
     db: Session = Depends(get_db),
 ) -> LedgerResponse:
-    summary = create_ledger(db, account_id=auth.account_id, name=payload.name)
+    summary = create_ledger(
+        db,
+        account_id=auth.account_id,
+        name=payload.name,
+        auth=auth,
+    )
     return _to_response(summary)
 
 

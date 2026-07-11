@@ -207,6 +207,7 @@ def owner_ledger_invite_post(
             created_by_account_id=owner_id,
             note=note,
             ttl_days=ttl_days,
+            auth=None,
         )
     except AppError as exc:
         ctx = _base(request, db)
@@ -248,6 +249,7 @@ def owner_ledger_invite_revoke_post(
             ledger_id=ledger_id,
             public_id=public_id,
             actor_account_id=owner_id,
+            auth=None,
         )
     except AppError:
         # Idempotent UI: ignore unknown/already-revoked.
@@ -277,6 +279,7 @@ def owner_ledger_member_role_post(
             member_id=member_id,
             requester_account_id=owner_id,
             role=role,
+            auth=None,
         )
     except AppError as exc:
         ctx = _base(request, db)
@@ -311,6 +314,7 @@ def owner_ledger_member_transfer_owner_post(
             ledger_id=ledger_id,
             member_id=member_id,
             requester_account_id=owner_id,
+            auth=None,
         )
     except AppError as exc:
         ctx = _base(request, db)
@@ -345,6 +349,7 @@ def owner_ledger_member_disable_post(
             ledger_id=ledger_id,
             member_id=member_id,
             requester_account_id=owner_id,
+            auth=None,
         )
     except AppError as exc:
         ctx = _base(request, db)

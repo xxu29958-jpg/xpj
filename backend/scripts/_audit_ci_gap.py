@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from ci_gap_action_pins import (
     github_external_uses_pin_violations as _github_external_uses_pin_violations,
 )
+from ci_gap_powershell import (
+    catch_blocks_propagate_failure as _catch_blocks_propagate_failure,
+)
 from ci_gap_powershell import contains_catch_block as _contains_catch_block
 from ci_gap_powershell import (
     is_native_failure_propagation_guard as _is_native_failure_propagation_guard,
@@ -187,6 +190,12 @@ def _iter_gradle_invocations(
     invocations: list[GradleInvocation] = []
     for command in commands:
         lines = _logical_command_lines(command.text, folded=command.folded)
+        if (
+            require_failure_propagation
+            and _contains_catch_block(lines)
+            and not _catch_blocks_propagate_failure(lines)
+        ):
+            continue
         for index, line in enumerate(lines):
             parsed = _gradle_invocations_from_line(
                 command.workflow,
