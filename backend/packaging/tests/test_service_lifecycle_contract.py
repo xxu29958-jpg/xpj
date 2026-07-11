@@ -1,4 +1,3 @@
-import os
 import shutil
 import subprocess
 import sys
@@ -394,6 +393,16 @@ $ErrorActionPreference = 'Stop'
 . '{literal(PACKAGING / "windows_installation_safety.ps1")}'
 . '{literal(PACKAGING / "windows_lifecycle_lock.ps1")}'
 . '{literal(PACKAGING / "windows_bundled_database.ps1")}'
+Assert-TicketboxPowerShellBitness -Is64BitOperatingSystem $true -Is64BitProcess $true
+$bitnessRejected = $false
+try {{
+    Assert-TicketboxPowerShellBitness -Is64BitOperatingSystem $true -Is64BitProcess $false
+}}
+catch {{
+    if ($_.Exception.Message -notlike '*64 位 PowerShell*') {{ throw }}
+    $bitnessRejected = $true
+}}
+if (-not $bitnessRejected) {{ throw '32-bit PowerShell host was accepted' }}
 $trustedSc = Get-TicketboxTrustedScExecutable
 $expectedSc = [System.IO.Path]::GetFullPath((Join-Path ([Environment]::SystemDirectory) 'sc.exe'))
 if (-not [System.IO.Path]::IsPathRooted($trustedSc) -or
@@ -569,21 +578,3 @@ if (Test-Path -LiteralPath '{literal(secret_path)}') {{ throw 'sensitive file su
             timeout=20,
         )
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
-
-    x86_powershell = Path(os.environ["WINDIR"]) / "SysWOW64/WindowsPowerShell/v1.0/powershell.exe"
-    if x86_powershell.is_file() and sys.maxsize > 2**32:
-        command = (
-            f". '{literal(PACKAGING / 'windows_lifecycle_lock.ps1')}'; "
-            "Assert-TicketboxSupportedPowerShellHost"
-        )
-        rejected = subprocess.run(
-            [x86_powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15,
-        )
-        assert rejected.returncode != 0
-        assert "64 位 PowerShell" in rejected.stdout + rejected.stderr
