@@ -378,6 +378,13 @@ def test_deadline_secret_cleanup_and_lock_bitness_fail_closed(tmp_path: Path) ->
     if sys.platform != "win32":
         pytest.skip("Windows PowerShell security behavior contract")
 
+    host_guard = """function Assert-TicketboxSupportedPowerShellHost {
+    Assert-TicketboxPowerShellBitness `
+        -Is64BitOperatingSystem ([Environment]::Is64BitOperatingSystem) `
+        -Is64BitProcess ([Environment]::Is64BitProcess)
+}"""
+    assert host_guard in _read("windows_lifecycle_lock.ps1")
+
     def literal(path: Path) -> str:
         return str(path).replace("'", "''")
 
