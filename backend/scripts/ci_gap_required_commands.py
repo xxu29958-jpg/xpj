@@ -21,6 +21,19 @@ class RequiredCommand:
         return self.pattern.search(command) is not None
 
 
+@dataclass(frozen=True)
+class RequiredAction:
+    label: str
+    uses: str
+    inputs: tuple[tuple[str, str], ...]
+
+    def matches(self, uses: str, inputs: tuple[tuple[str, str], ...]) -> bool:
+        supplied = dict(inputs)
+        return uses == self.uses and all(
+            supplied.get(key) == value for key, value in self.inputs
+        )
+
+
 _PYTHON_COMMAND = r"(?:python(?:\.exe)?|[^\s]+[\\/]python(?:\.exe)?)"
 _PYTHON_PREFIX = rf"(?i)^\s*(?:&\s+)?{_PYTHON_COMMAND}\s+"
 _RUFF_PREFIX = r"(?i)^\s*(?:&\s+)?(?:ruff(?:\.exe)?|[^\s]+[\\/]ruff(?:\.exe)?)\s+"
@@ -220,4 +233,26 @@ _REQUIRED_INNO_BUILD_INVOCATIONS = (
 REQUIRED_CI_INVOCATIONS_BY_PLATFORM = {
     "GitHub": _REQUIRED_INNO_BUILD_INVOCATIONS,
     "Gitea": _REQUIRED_INNO_BUILD_INVOCATIONS,
+}
+
+_INSTALLER_UPLOAD_INPUTS = (
+    ("name", "ticketbox-windows-installer"),
+    ("path", "${{ env.INSTALLER_PUBLISH_PATH }}"),
+    ("if-no-files-found", "error"),
+)
+REQUIRED_CI_ACTIONS_BY_PLATFORM = {
+    "GitHub": (
+        RequiredAction(
+            "atomic installer publish-unit artifact upload",
+            "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+            _INSTALLER_UPLOAD_INPUTS,
+        ),
+    ),
+    "Gitea": (
+        RequiredAction(
+            "atomic installer publish-unit artifact upload",
+            "actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32",
+            _INSTALLER_UPLOAD_INPUTS,
+        ),
+    ),
 }

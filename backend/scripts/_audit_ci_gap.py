@@ -19,6 +19,7 @@ from ci_gap_powershell import (
 )
 from ci_gap_release_scope import release_apk_scope_policy_violations
 from ci_gap_required_commands import (
+    REQUIRED_CI_ACTIONS_BY_PLATFORM,
     REQUIRED_CI_INVOCATIONS,
     REQUIRED_CI_INVOCATIONS_BY_PLATFORM,
 )
@@ -37,7 +38,9 @@ from ci_gap_shell import (
 )
 from ci_gap_shell import strip_inline_shell_comment as _strip_inline_shell_comment
 from ci_gap_workflow_parser import (
+    WorkflowAction,
     WorkflowCommand,
+    _iter_workflow_actions,
     _iter_workflow_run_commands,
     _locate_workflow_dirs,
 )
@@ -319,6 +322,45 @@ def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list
     return missing
 
 
+def _missing_installer_publish_actions_by_platform(
+    commands: list[WorkflowCommand], actions: list[WorkflowAction]
+) -> list[str]:
+    missing: list[str] = []
+    for platform in PLATFORM_WORKFLOW_PARTS:
+        platform_commands = [
+            command
+            for command in _commands_for_platform(commands, platform)
+            if command.protection_scope == "full"
+        ]
+        segments_by_job: dict[tuple[pathlib.Path, str], list[str]] = {}
+        for command in platform_commands:
+            segments_by_job.setdefault((command.workflow, command.job), []).extend(
+                _iter_executable_command_segments([command])
+            )
+        publish_jobs = {
+            job
+            for job, segments in segments_by_job.items()
+            if all(
+                any(required.matches(segment) for segment in segments)
+                for required in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]
+            )
+        }
+        platform_actions = [
+            action
+            for action in actions
+            if PLATFORM_WORKFLOW_PARTS[platform] in action.workflow.parts
+            and action.protection_scope == "full"
+            and (action.workflow, action.job) in publish_jobs
+        ]
+        for required in REQUIRED_CI_ACTIONS_BY_PLATFORM[platform]:
+            if not any(
+                required.matches(action.uses, action.inputs)
+                for action in platform_actions
+            ):
+                missing.append(f"{platform}: {required.label}")
+    return missing
+
+
 def _is_github_workflow(path: pathlib.Path) -> bool:
     return ".github" in path.parts and "workflows" in path.parts
 
@@ -406,6 +448,7 @@ def main() -> int:
         return 1
 
     commands = _iter_workflow_run_commands(workflow_dirs, protected_only=True)
+    actions = _iter_workflow_actions(workflow_dirs, protected_only=True)
     path_scoped_commands = _iter_workflow_run_commands(workflow_dirs)
     missing: list[str] = []
     for task in _missing_gradle_tasks_by_platform(
@@ -415,6 +458,8 @@ def main() -> int:
         missing.append(f"gradle task: {task}")
     for invocation in _missing_ci_invocations_by_platform(commands):
         missing.append(f"ci invocation: {invocation}")
+    for action in _missing_installer_publish_actions_by_platform(commands, actions):
+        missing.append(f"ci action: {action}")
     for violation in _github_ci_release_apk_policy_violations(path_scoped_commands):
         missing.append(f"ci policy: {violation}")
     for violation in _gitea_ci_release_apk_policy_violations(path_scoped_commands):
@@ -435,7 +480,7 @@ def main() -> int:
     print(
         f"=== CI gap audit: OK ({len(REQUIRED_GRADLE_TASKS)} gradle tasks + "
         f"{len(REQUIRED_CI_INVOCATIONS)} backend invocations per platform + dual-platform release APK "
-        f"and external uses SHA-pin policies verified independently across "
+        f"+ installer artifact parity and external uses SHA-pin policies verified independently across "
         f"Actions workflows: {workflow_labels}) ==="
     )
     return 0

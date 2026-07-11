@@ -626,6 +626,22 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
         uninstall.index("$PreservedIdentityNames = @(") : uninstall.index("$RegisteredDataRoot")
     ]
     assert identity_cleanup.index('"BackendPort"') < identity_cleanup.index('"DataRoot"')
+    assert '"BackendVersion"' not in identity_cleanup
+    remove_identity = uninstall[
+        uninstall.index("function Remove-TicketboxPreservedInstallationIdentity") : uninstall.index(
+            "function Remove-TicketboxDataRootForUninstall"
+        )
+    ]
+    assert 'if ($DeleteData)' in remove_identity
+    assert '$identityNamesToRemove += "BackendVersion"' in remove_identity
+    assert "foreach ($name in $identityNamesToRemove)" in remove_identity
+    retry_cleanup = uninstall[
+        uninstall.index("if ($InstallationIdentityAlreadyRemoved") : uninstall.index(
+            "$safeRoot = Assert-UninstallInputs"
+        )
+    ]
+    assert "if ($InstallationIdentityCleanupIncomplete -or $DeleteData)" in retry_cleanup
+    assert "Remove-TicketboxPreservedInstallationIdentity" in retry_cleanup
     assert "Service-Exists $BackendServiceName" in helper
     assert "Assert-TicketboxRuntimeProcessesStoppedForDataDeletion" in helper
     assert "if ($BackendPort -gt 0)" in helper

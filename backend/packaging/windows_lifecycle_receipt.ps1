@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 
-$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v5"
+$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v6"
 $script:TicketboxLifecycleReceiptModes = @(
     "fresh_install",
     "preserved_data_reinstall",
@@ -122,6 +122,104 @@ function Assert-TicketboxProtectedLifecycleReceipt([string]$Path) {
     }
 }
 
+function Get-TicketboxLifecycleBackupEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$Mode,
+        [switch]$KeepOpen
+    )
+
+    if ([string]::IsNullOrWhiteSpace($BackupPath)) {
+        throw "安装生命周期回执声明备份完成时必须记录备份路径。"
+    }
+    $canonicalPath = [System.IO.Path]::GetFullPath($BackupPath)
+    $backupRoot = Join-Path (ConvertTo-TicketboxCanonicalPath $DataRoot) "installer-backups"
+    $deferredBackupRoot = Get-TicketboxDeferredBackupRoot
+    $withinAllowedBackupRoot =
+        (Test-TicketboxPathWithin $canonicalPath $backupRoot) -or
+        (
+            $Mode -eq "preserved_data_reinstall" -and
+            (Test-TicketboxPathWithin $canonicalPath $deferredBackupRoot)
+        )
+    if (
+        -not $withinAllowedBackupRoot -or
+        -not (Test-Path -LiteralPath $canonicalPath -PathType Leaf)
+    ) {
+        throw "安装生命周期回执指向不存在或越界的备份文件。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $canonicalPath
+
+    $stream = New-Object System.IO.FileStream(
+        $canonicalPath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read,
+        4096,
+        [System.IO.FileOptions]::SequentialScan
+    )
+    $retainStream = $false
+    try {
+        Assert-NoTicketboxAncestorReparsePoints $canonicalPath
+        $item = Get-Item -LiteralPath $canonicalPath -Force
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "安装生命周期备份不能是重解析点：$canonicalPath"
+        }
+        Assert-TicketboxExactFileAcl `
+            -Path $canonicalPath `
+            -Accounts $script:TicketboxLifecycleReceiptAclAccounts `
+            -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+        $byteLength = [long]$stream.Length
+        if ($byteLength -le 0) {
+            throw "安装生命周期备份不能为空文件。"
+        }
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $digest = $sha256.ComputeHash($stream)
+        }
+        finally { $sha256.Dispose() }
+        $retainStream = [bool]$KeepOpen
+    }
+    finally {
+        if (-not $retainStream) { $stream.Dispose() }
+    }
+
+    return [pscustomobject]@{
+        Path = $canonicalPath
+        Sha256 = ([System.BitConverter]::ToString($digest) -replace "-", "").ToUpperInvariant()
+        ByteLength = $byteLength
+        GuardStream = if ($retainStream) { $stream } else { $null }
+    }
+}
+
+function Assert-TicketboxLifecycleBackupEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$Mode,
+        [Parameter(Mandatory = $true)][string]$ExpectedSha256,
+        [Parameter(Mandatory = $true)][long]$ExpectedByteLength,
+        [switch]$KeepOpen
+    )
+
+    if ($ExpectedSha256 -cnotmatch '^[0-9A-F]{64}$' -or $ExpectedByteLength -le 0) {
+        throw "安装生命周期回执缺少有效的备份摘要或字节长度。"
+    }
+    $evidence = Get-TicketboxLifecycleBackupEvidence `
+        -BackupPath $BackupPath `
+        -DataRoot $DataRoot `
+        -Mode $Mode `
+        -KeepOpen:$KeepOpen
+    if (
+        $evidence.Sha256 -cne $ExpectedSha256 -or
+        $evidence.ByteLength -ne $ExpectedByteLength
+    ) {
+        if ($null -ne $evidence.GuardStream) { $evidence.GuardStream.Dispose() }
+        throw "安装生命周期备份已被替换或损坏；拒绝继续恢复、安装或清理回执。"
+    }
+    return $evidence
+}
+
 function Write-TicketboxLifecycleReceipt {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -164,6 +262,8 @@ function Write-TicketboxLifecycleReceipt {
             "install_completed"
         )][string]$PreparationStage,
         [string]$BackupPath = "",
+        [string]$BackupSha256 = "",
+        [long]$BackupByteLength = 0,
         [bool]$FilesMayHaveBeenReplaced = $false,
         [bool]$InstallCompleted = $false,
         [bool]$TemporaryPgServiceCleanupPending = $false,
@@ -179,8 +279,21 @@ function Write-TicketboxLifecycleReceipt {
     if ($BackupCompleted -and -not $BackupRequired) {
         throw "不需要备份的安装生命周期不能声明备份已完成。"
     }
-    if ($BackupCompleted -and [string]::IsNullOrWhiteSpace($BackupPath)) {
-        throw "安装生命周期回执声明备份完成时必须记录备份路径。"
+    $backupEvidence = $null
+    if ($BackupCompleted) {
+        $backupEvidence = Assert-TicketboxLifecycleBackupEvidence `
+            -BackupPath $BackupPath `
+            -DataRoot $DataRoot `
+            -Mode $Mode `
+            -ExpectedSha256 $BackupSha256 `
+            -ExpectedByteLength $BackupByteLength
+    }
+    elseif (
+        -not [string]::IsNullOrWhiteSpace($BackupPath) -or
+        -not [string]::IsNullOrWhiteSpace($BackupSha256) -or
+        $BackupByteLength -ne 0
+    ) {
+        throw "未完成的安装生命周期备份不能携带路径、摘要或字节长度。"
     }
     if (
         ($PreviousPgState -eq "absent") -ne ($PreviousPgStartPolicy -eq "absent") -or
@@ -200,7 +313,7 @@ function Write-TicketboxLifecycleReceipt {
     ) {
         throw "安装生命周期回执阶段与文件替换/完成标记不一致。"
     }
-    if ($PreparationStage -eq "captured" -and ($BackupCompleted -or $BackupPath.Trim().Length -gt 0)) {
+    if ($PreparationStage -eq "captured" -and $BackupCompleted) {
         throw "captured 生命周期回执不能提前声明备份完成。"
     }
     if ($PreparationStage -in @(
@@ -210,8 +323,7 @@ function Write-TicketboxLifecycleReceipt {
         if (
             $Mode -ne "preserved_data_reinstall" -or
             -not $BackupRequired -or
-            $BackupCompleted -or
-            $BackupPath.Trim().Length -gt 0
+            $BackupCompleted
         ) {
             throw "延期备份阶段只允许用于尚未改动 DataRoot 的 preserved-data reinstall。"
         }
@@ -259,12 +371,9 @@ function Write-TicketboxLifecycleReceipt {
         temporary_pg_service_name = [string]$InstalledReleaseConfig.pg_service_name
         temporary_pg_service_account = "NT SERVICE\$([string]$InstalledReleaseConfig.pg_service_name)"
         temporary_pg_service_data_root = Join-Path (ConvertTo-TicketboxCanonicalPath $DataRoot) "pgdata"
-        backup_path = if ($BackupPath.Trim().Length -gt 0) {
-            [System.IO.Path]::GetFullPath($BackupPath)
-        }
-        else {
-            ""
-        }
+        backup_path = if ($null -ne $backupEvidence) { $backupEvidence.Path } else { "" }
+        backup_sha256 = if ($null -ne $backupEvidence) { $backupEvidence.Sha256 } else { "" }
+        backup_byte_length = if ($null -ne $backupEvidence) { $backupEvidence.ByteLength } else { 0 }
         installed_release_config = $InstalledReleaseConfig
         prepared_at_utc = [DateTime]::UtcNow.ToString("o")
     } | ConvertTo-Json -Depth 8
@@ -426,27 +535,30 @@ function Read-TicketboxLifecycleReceipt {
     ) {
         throw "需要保留数据的安装回执必须证明复制前备份已完成。"
     }
-    if ([bool]$receipt.backup_completed -and -not [bool]$receipt.install_completed) {
-        $backupPath = [System.IO.Path]::GetFullPath([string]$receipt.backup_path)
-        $backupRoot = Join-Path (ConvertTo-TicketboxCanonicalPath $DataRoot) "installer-backups"
-        $deferredBackupRoot = Get-TicketboxDeferredBackupRoot
-        $withinAllowedBackupRoot =
-            (Test-TicketboxPathWithin $backupPath $backupRoot) -or
-            (
-                [string]$receipt.mode -eq "preserved_data_reinstall" -and
-                (Test-TicketboxPathWithin $backupPath $deferredBackupRoot)
-            )
-        if (
-            -not $withinAllowedBackupRoot -or
-            -not (Test-Path -LiteralPath $backupPath -PathType Leaf)
-        ) {
-            throw "安装生命周期回执指向不存在或越界的备份文件。"
+    $backupByteLength = 0L
+    if (-not [long]::TryParse([string]$receipt.backup_byte_length, [ref]$backupByteLength)) {
+        throw "安装生命周期回执的备份字节长度无效。"
+    }
+    if ([bool]$receipt.backup_completed) {
+        $verifiedBackup = Assert-TicketboxLifecycleBackupEvidence `
+            -BackupPath ([string]$receipt.backup_path) `
+            -DataRoot $DataRoot `
+            -Mode ([string]$receipt.mode) `
+            -ExpectedSha256 ([string]$receipt.backup_sha256) `
+            -ExpectedByteLength $backupByteLength `
+            -KeepOpen:(-not [bool]$receipt.install_completed)
+        if ($null -ne $verifiedBackup.GuardStream) {
+            $receipt | Add-Member `
+                -NotePropertyName "backup_guard_stream" `
+                -NotePropertyValue $verifiedBackup.GuardStream
         }
-        Assert-NoTicketboxAncestorReparsePoints $backupPath
-        Assert-TicketboxExactFileAcl `
-            -Path $backupPath `
-            -Accounts $script:TicketboxLifecycleReceiptAclAccounts `
-            -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    }
+    elseif (
+        -not [string]::IsNullOrWhiteSpace([string]$receipt.backup_path) -or
+        -not [string]::IsNullOrWhiteSpace([string]$receipt.backup_sha256) -or
+        $backupByteLength -ne 0
+    ) {
+        throw "未完成的安装生命周期回执携带了备份证据。"
     }
     return $receipt
 }
@@ -563,6 +675,10 @@ function Set-TicketboxLifecycleReceiptDeferredBackupCompleted {
     if ([bool]$Receipt.temporary_pg_service_cleanup_pending) {
         throw "临时 PostgreSQL 服务尚未完成精确清理，不能提交 preserved-data 备份。"
     }
+    $backupEvidence = Get-TicketboxLifecycleBackupEvidence `
+        -BackupPath $BackupPath `
+        -DataRoot ([string]$Receipt.data_root) `
+        -Mode ([string]$Receipt.mode)
     Write-TicketboxLifecycleReceipt `
         -Path $Path `
         -Mode ([string]$Receipt.mode) `
@@ -579,7 +695,9 @@ function Set-TicketboxLifecycleReceiptDeferredBackupCompleted {
         -BackupRequired $true `
         -BackupCompleted $true `
         -PreparationStage "files_may_have_been_replaced" `
-        -BackupPath $BackupPath `
+        -BackupPath $backupEvidence.Path `
+        -BackupSha256 $backupEvidence.Sha256 `
+        -BackupByteLength $backupEvidence.ByteLength `
         -FilesMayHaveBeenReplaced $true `
         -InstallCompleted $false `
         -ReplaceProtectedReceipt
@@ -610,9 +728,12 @@ function Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced {
         -BackupCompleted ([bool]$Receipt.backup_completed) `
         -PreparationStage "files_may_have_been_replaced" `
         -BackupPath ([string]$Receipt.backup_path) `
+        -BackupSha256 ([string]$Receipt.backup_sha256) `
+        -BackupByteLength ([long]$Receipt.backup_byte_length) `
         -FilesMayHaveBeenReplaced $true `
         -InstallCompleted ([bool]$Receipt.install_completed) `
         -ReplaceProtectedReceipt
+    Close-TicketboxLifecycleBackupGuard $Receipt
 }
 
 function Set-TicketboxLifecycleReceiptInstallCompleted {
@@ -640,9 +761,12 @@ function Set-TicketboxLifecycleReceiptInstallCompleted {
         -BackupCompleted ([bool]$Receipt.backup_completed) `
         -PreparationStage "install_completed" `
         -BackupPath ([string]$Receipt.backup_path) `
+        -BackupSha256 ([string]$Receipt.backup_sha256) `
+        -BackupByteLength ([long]$Receipt.backup_byte_length) `
         -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
         -InstallCompleted $true `
         -ReplaceProtectedReceipt
+    Close-TicketboxLifecycleBackupGuard $Receipt
 }
 
 function Set-TicketboxLifecycleReceiptInstallerOwner {
@@ -677,10 +801,13 @@ function Set-TicketboxLifecycleReceiptInstallerOwner {
         -BackupCompleted ([bool]$Receipt.backup_completed) `
         -PreparationStage ([string]$Receipt.preparation_stage) `
         -BackupPath ([string]$Receipt.backup_path) `
+        -BackupSha256 ([string]$Receipt.backup_sha256) `
+        -BackupByteLength ([long]$Receipt.backup_byte_length) `
         -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
         -InstallCompleted ([bool]$Receipt.install_completed) `
         -TemporaryPgServiceCleanupPending ([bool]$Receipt.temporary_pg_service_cleanup_pending) `
         -ReplaceProtectedReceipt
+    Close-TicketboxLifecycleBackupGuard $Receipt
 }
 
 function Set-TicketboxLifecycleReceiptPrepared {
@@ -693,6 +820,13 @@ function Set-TicketboxLifecycleReceiptPrepared {
     )
 
     Assert-TicketboxLifecycleReceiptStage $Receipt "captured"
+    $backupEvidence = $null
+    if ($BackupCompleted) {
+        $backupEvidence = Get-TicketboxLifecycleBackupEvidence `
+            -BackupPath $BackupPath `
+            -DataRoot ([string]$Receipt.data_root) `
+            -Mode ([string]$Receipt.mode)
+    }
     Write-TicketboxLifecycleReceipt `
         -Path $Path `
         -Mode ([string]$Receipt.mode) `
@@ -710,6 +844,8 @@ function Set-TicketboxLifecycleReceiptPrepared {
         -BackupCompleted $BackupCompleted `
         -PreparationStage "prepared" `
         -BackupPath $BackupPath `
+        -BackupSha256 $(if ($null -ne $backupEvidence) { $backupEvidence.Sha256 } else { "" }) `
+        -BackupByteLength $(if ($null -ne $backupEvidence) { $backupEvidence.ByteLength } else { 0 }) `
         -FilesMayHaveBeenReplaced $false `
         -InstallCompleted $false `
         -ReplaceProtectedReceipt
@@ -820,7 +956,8 @@ function Write-TicketboxInstallerRecoveryMarker {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$Reason
     )
-    $parent = Split-Path -Parent ([System.IO.Path]::GetFullPath($Path))
+    $canonicalPath = [System.IO.Path]::GetFullPath($Path)
+    $parent = Split-Path -Parent $canonicalPath
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
@@ -833,9 +970,52 @@ function Write-TicketboxInstallerRecoveryMarker {
         data_root = ConvertTo-TicketboxCanonicalPath $DataRoot
         created_at_utc = [DateTime]::UtcNow.ToString("o")
     } | ConvertTo-Json
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($Path, $payload, $utf8NoBom)
+    Assert-NoTicketboxAncestorReparsePoints $parent
+    $markerAclAccounts = $script:TicketboxLifecycleReceiptAclAccounts
+    $markerOwnerAccount = $script:TicketboxLifecycleReceiptOwnerAccount
+    $protectTemporary = {
+        param($TemporaryPath)
+        Set-TicketboxExactFileAcl `
+            -Path $TemporaryPath `
+            -Accounts $markerAclAccounts `
+            -OwnerAccount $markerOwnerAccount
+    }.GetNewClosure()
+    Write-TicketboxUtf8FileDurable `
+        -Path $canonicalPath `
+        -Text $payload `
+        -ProtectTemporaryFile $protectTemporary `
+        -ReplaceExisting:(Test-Path -LiteralPath $canonicalPath)
     Set-TicketboxExactFileAcl `
-        -Path $Path `
-        -Accounts @("SYSTEM", "BUILTIN\Administrators")
+        -Path $canonicalPath `
+        -Accounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    Assert-TicketboxExactFileAcl `
+        -Path $canonicalPath `
+        -Accounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    try {
+        $published = Get-Content -LiteralPath $canonicalPath -Encoding UTF8 -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "安装恢复标记发布后无法复读为有效 JSON。"
+    }
+    if (
+        [string]$published.schema -cne "ticketbox-installer-recovery-required-v1" -or
+        [string]$published.reason -cne $Reason -or
+        $published.files_may_have_been_replaced -isnot [bool] -or
+        -not [bool]$published.files_may_have_been_replaced -or
+        [string]$published.recovery_action -cne "rerun_installer_repair" -or
+        -not (Test-TicketboxPathEquals ([string]$published.install_dir) $InstallDir) -or
+        -not (Test-TicketboxPathEquals ([string]$published.data_root) $DataRoot)
+    ) {
+        throw "安装恢复标记发布后内容校验失败。"
+    }
+}
+
+function Close-TicketboxLifecycleBackupGuard([object]$Receipt) {
+    $guardProperty = $Receipt.PSObject.Properties["backup_guard_stream"]
+    if ($null -ne $guardProperty -and $null -ne $guardProperty.Value) {
+        $guardProperty.Value.Dispose()
+        $Receipt.backup_guard_stream = $null
+    }
 }

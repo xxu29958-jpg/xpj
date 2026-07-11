@@ -41,6 +41,14 @@ if ($null -eq $ast -or $parseErrors.Count -ne 0) {
     exit 2
 }
 
+$traps = @($ast.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.TrapStatementAst]
+}, $true))
+if ($traps.Count -ne 0) {
+    exit 5
+}
+
 $tryStatements = @($ast.FindAll({
     param($node)
     $node -is [System.Management.Automation.Language.TryStatementAst]
@@ -53,6 +61,18 @@ foreach ($tryStatement in $tryStatements) {
             -not ($statements[-1] -is [System.Management.Automation.Language.ThrowStatementAst])
         ) {
             exit 3
+        }
+
+        $suppression = @($catchClause.Body.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.ExitStatementAst] -or
+            $node -is [System.Management.Automation.Language.ReturnStatementAst] -or
+            $node -is [System.Management.Automation.Language.BreakStatementAst] -or
+            $node -is [System.Management.Automation.Language.ContinueStatementAst] -or
+            $node -is [System.Management.Automation.Language.TrapStatementAst]
+        }, $true))
+        if ($suppression.Count -ne 0) {
+            exit 5
         }
     }
 

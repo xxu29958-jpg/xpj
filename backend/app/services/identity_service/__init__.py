@@ -25,6 +25,7 @@ from app.services.identity_service._auth import (
     authenticate_upload_link,
     authenticate_web_session_token,
     find_active_upload_link,
+    lock_and_revalidate_upload_link_commit_context,
     upload_link_default_timezone,
 )
 from app.services.identity_service._bootstrap import (
@@ -100,6 +101,7 @@ __all__ = [
     "authenticate_upload_link",
     "authenticate_web_session_token",
     "find_active_upload_link",
+    "lock_and_revalidate_upload_link_commit_context",
     "bootstrap_owner",
     "create_pairing_code",
     "is_bootstrap_secret_consumed",

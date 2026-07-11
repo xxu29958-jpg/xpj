@@ -455,7 +455,11 @@ function Remove-TicketboxPreservedInstallationIdentity {
     if (-not (Test-Path -LiteralPath $regPath)) {
         return
     }
-    foreach ($name in $PreservedIdentityNames) {
+    $identityNamesToRemove = @($PreservedIdentityNames)
+    if ($DeleteData) {
+        $identityNamesToRemove += "BackendVersion"
+    }
+    foreach ($name in $identityNamesToRemove) {
         $existing = Get-ItemProperty -LiteralPath $regPath -Name $name -ErrorAction SilentlyContinue
         if ($null -ne $existing -and $null -ne $existing.PSObject.Properties[$name]) {
             Remove-ItemProperty -LiteralPath $regPath -Name $name -Force -ErrorAction Stop
@@ -513,8 +517,10 @@ try {
         ) {
             Remove-TicketboxDataRootForUninstall $DataRoot
         }
-        if ($InstallationIdentityCleanupIncomplete) {
+        if ($InstallationIdentityCleanupIncomplete -or $DeleteData) {
             Remove-TicketboxPreservedInstallationIdentity
+        }
+        if ($InstallationIdentityCleanupIncomplete) {
             Write-Host "残留安装身份已完成清理；本次卸载重试已安全收口。" -ForegroundColor Green
         }
         else {

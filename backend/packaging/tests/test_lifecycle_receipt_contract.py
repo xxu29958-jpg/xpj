@@ -56,6 +56,16 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "Remove-TicketboxCompletedLifecycleReceipt" in receipt
     assert "拒绝静默覆盖旧的运行态或备份证据" in receipt
     assert 'recovery_action = "rerun_installer_repair"' in receipt
+    assert "backup_sha256" in receipt
+    assert "backup_byte_length" in receipt
+    assert "Assert-TicketboxLifecycleBackupEvidence" in receipt
+    marker_writer = receipt[receipt.index("function Write-TicketboxInstallerRecoveryMarker") :]
+    assert "Write-TicketboxUtf8FileDurable" in marker_writer
+    assert "ProtectTemporaryFile" in marker_writer
+    assert "ReplaceExisting" in marker_writer
+    assert "Assert-TicketboxExactFileAcl" in marker_writer
+    assert "ConvertFrom-Json" in marker_writer
+    assert "[System.IO.File]::WriteAllText" not in marker_writer
 
 
 def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None:
@@ -271,10 +281,44 @@ $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $script:TicketboxLifecycleReceiptAclAccounts = @($currentAccount)
 $script:TicketboxLifecycleReceiptOwnerAccount = $currentAccount
 function Get-TicketboxLifecycleLockPath {{ return '{_literal(root / "installer-lifecycle.lock")}' }}
+$markerPath = '{_literal(root / "installer-recovery-required.json")}'
+Write-TicketboxInstallerRecoveryMarker `
+    -Path $markerPath `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -Reason 'first reason'
+Write-TicketboxInstallerRecoveryMarker `
+    -Path $markerPath `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -Reason 'replacement reason'
+Assert-TicketboxExactFileAcl `
+    -Path $markerPath `
+    -Accounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$marker = Get-Content -LiteralPath $markerPath -Encoding UTF8 -Raw | ConvertFrom-Json
+if ($marker.reason -cne 'replacement reason' -or
+    $marker.schema -cne 'ticketbox-installer-recovery-required-v1' -or
+    -not $marker.files_may_have_been_replaced) {{
+    throw 'recovery marker atomic replacement was not reread and validated'
+}}
+if (@(Get-ChildItem -LiteralPath '{_literal(root)}' -Filter '.ticketbox-durable-*.tmp').Count -ne 0) {{
+    throw 'recovery marker left a durable temporary file'
+}}
 Set-TicketboxExactFileAcl `
     -Path '{_literal(backup_path)}' `
     -Accounts @($currentAccount) `
     -OwnerAccount $currentAccount
+function Set-TestBackupContent([string]$Text) {{
+    [System.IO.File]::WriteAllBytes(
+        '{_literal(backup_path)}',
+        [System.Text.Encoding]::UTF8.GetBytes($Text)
+    )
+    Set-TicketboxExactFileAcl `
+        -Path '{_literal(backup_path)}' `
+        -Accounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
 $freshMode = Get-TicketboxPreparedInstallMode $false $false $false $false $false
 $preservedMode = Get-TicketboxPreparedInstallMode $false $false $true $true $false
 $repairMode = Get-TicketboxPreparedInstallMode $true $false $true $true $false
@@ -332,6 +376,8 @@ $receipt = Read-TicketboxLifecycleReceipt `
     -InstallerOwnerProcessId $PID
 if ($receipt.mode -ne 'upgrade' -or
     -not $receipt.backup_completed -or
+    $receipt.backup_sha256 -cnotmatch '^[0-9A-F]{{64}}$' -or
+    [long]$receipt.backup_byte_length -ne 15 -or
     $receipt.preparation_stage -ne 'prepared' -or
     $receipt.previous_pg_start_policy -ne 'delayed_auto' -or
     $receipt.previous_backend_start_policy -ne 'manual') {{
@@ -380,6 +426,7 @@ try {{
 }}
 catch {{ $invalidTransitionRejected = $true }}
 if (-not $invalidTransitionRejected) {{ throw 'prepared receipt skipped the files-replaced stage' }}
+Close-TicketboxLifecycleBackupGuard $receipt
 $staleReceipt = Read-TicketboxLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -InstallDir '{_literal(install_dir)}' `
@@ -389,6 +436,12 @@ $staleReceipt = Read-TicketboxLifecycleReceipt `
     -TargetReleaseConfig $config `
     -InstallerOwnerProcessId ($PID + 1) `
     -AllowPreviousInstallerOwnerProcessId
+$backupMutationBlocked = $false
+try {{ Set-TestBackupContent 'tampered-backup' }}
+catch {{ $backupMutationBlocked = $true }}
+if (-not $backupMutationBlocked) {{
+    throw 'validated backup was mutable between preflight and recovery transition'
+}}
 Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced `
     -Path '{_literal(receipt_path)}' `
     -Receipt $staleReceipt `
@@ -407,7 +460,9 @@ if (-not $repairReceipt.files_may_have_been_replaced -or
     $repairReceipt.previous_pg_start_policy -ne 'delayed_auto' -or
     $repairReceipt.previous_backend_start_policy -ne 'manual' -or
     -not $repairReceipt.backup_completed -or
-    $repairReceipt.backup_path -ne [System.IO.Path]::GetFullPath('{_literal(backup_path)}')) {{
+    $repairReceipt.backup_path -ne [System.IO.Path]::GetFullPath('{_literal(backup_path)}') -or
+    $repairReceipt.backup_sha256 -cne $receipt.backup_sha256 -or
+    [long]$repairReceipt.backup_byte_length -ne [long]$receipt.backup_byte_length) {{
     throw 'repair rebind discarded previous state or backup evidence'
 }}
 Set-TicketboxLifecycleReceiptInstallerOwner `
@@ -448,7 +503,6 @@ Set-TicketboxLifecycleReceiptInstallCompleted `
     -Path '{_literal(receipt_path)}' `
     -Receipt $repairReceipt `
     -InstallerOwnerProcessId ($PID + 2)
-Remove-Item -LiteralPath '{_literal(backup_path)}' -Force
 $completedReceipt = Read-TicketboxLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -InstallDir '{_literal(install_dir)}' `
@@ -460,6 +514,39 @@ $completedReceipt = Read-TicketboxLifecycleReceipt `
 if (-not $completedReceipt.install_completed -or $completedReceipt.preparation_stage -ne 'install_completed') {{
     throw 'completed receipt was not persisted'
 }}
+Set-TestBackupContent 'completed-corruption'
+$completedCorruptionRejected = $false
+try {{
+    Read-TicketboxCompletedLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -TargetReleaseConfig $config | Out-Null
+}}
+catch {{ $completedCorruptionRejected = $true }}
+if (-not $completedCorruptionRejected) {{ throw 'completed receipt accepted corrupted backup evidence' }}
+Set-TestBackupContent 'verified-backup'
+$boundCompletedReceipt = Read-TicketboxCompletedLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -TargetReleaseConfig $config `
+    -ExpectedPgPort 5544 `
+    -ExpectedBackendPort 8765 `
+    -ExpectedPgServiceName ([string]$config.pg_service_name) `
+    -ExpectedBackendServiceName ([string]$config.backend_service_name)
+Remove-Item -LiteralPath '{_literal(backup_path)}' -Force
+$completedMissingBackupRejected = $false
+try {{
+    Read-TicketboxCompletedLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -TargetReleaseConfig $config | Out-Null
+}}
+catch {{ $completedMissingBackupRejected = $true }}
+if (-not $completedMissingBackupRejected) {{ throw 'completed receipt accepted missing backup evidence' }}
+Set-TestBackupContent 'verified-backup'
 $boundCompletedReceipt = Read-TicketboxCompletedLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -InstallDir '{_literal(install_dir)}' `

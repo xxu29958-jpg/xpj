@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadLink
 from app.services.identity_service._models import WebSessionAuthResult
+from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
@@ -220,6 +221,94 @@ def find_active_upload_link(db: Session, *, upload_key: str) -> UploadLink | Non
     )
 
 
+def _upload_link_context(db: Session, link: UploadLink) -> AuthContext:
+    account, device, ledger, role = _context_parts_from_ids(
+        db,
+        account_id=link.account_id,
+        device_id=link.device_id,
+        ledger_id=link.ledger_id,
+    )
+    return AuthContext(
+        account_id=account.id,
+        account_name=account.display_name,
+        ledger_id=ledger.ledger_id,
+        ledger_name=ledger.name,
+        device_id=device.id,
+        device_name=device.device_name,
+        role=role,
+        scope="upload",
+        credential_id=link.id,
+        credential_hash=link.token_hash,
+    )
+
+
+def _reload_upload_link(db: Session, upload_key: str) -> UploadLink | None:
+    return db.scalar(
+        select(UploadLink)
+        .where(UploadLink.token_hash == hash_secret(upload_key))
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+
+
+def _recheck_expired_upload_link(db: Session, upload_key: str) -> None:
+    """Serialize expiry revocation with admin extend/revoke operations."""
+    lock_bootstrap_owner_transaction(db)
+    link = _reload_upload_link(db, upload_key)
+    checked_at = now_utc()
+    expires_at = ensure_utc(link.expires_at) if link is not None else None
+    if link is None or link.revoked_at is not None:
+        db.rollback()
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
+    if expires_at is None or expires_at <= checked_at:
+        link.revoked_at = checked_at
+        db.commit()
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
+    # An extension won the lock. Release immediately; the commit-time guard
+    # below protects the actual expense write without holding a lock over I/O.
+    db.commit()
+
+
+def lock_and_revalidate_upload_link_commit_context(
+    db: Session,
+    *,
+    upload_key: str,
+    expected_auth: AuthContext,
+) -> AuthContext:
+    """Hold the lifecycle lock from final UploadLink validation to DB commit.
+
+    The caller must commit or roll back the current transaction promptly. This
+    function is intentionally called only after the request body is persisted,
+    so a slow client cannot hold the global identity lock during network I/O.
+    """
+    lock_bootstrap_owner_transaction(db)
+    link = _reload_upload_link(db, upload_key)
+    checked_at = now_utc()
+    expires_at = ensure_utc(link.expires_at) if link is not None else None
+    if link is None or link.revoked_at is not None:
+        db.rollback()
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
+    if expires_at is None or expires_at <= checked_at:
+        link.revoked_at = checked_at
+        db.commit()
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
+    if (
+        expected_auth.scope != "upload"
+        or expected_auth.credential_id != link.id
+        or expected_auth.credential_hash != link.token_hash
+        or expected_auth.account_id != link.account_id
+        or expected_auth.device_id != link.device_id
+        or expected_auth.ledger_id != link.ledger_id
+    ):
+        db.rollback()
+        raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
+    try:
+        return _upload_link_context(db, link)
+    except AppError:
+        db.rollback()
+        raise
+
+
 # /u upload-surface variant of the generic invalid_token copy. The default
 # ERROR_MESSAGES entry says「重新绑定设备」— an Android pairing action; iPhone
 # Shortcut users can only fix this by re-generating the UploadLink in the
@@ -236,25 +325,18 @@ def authenticate_upload_link(db: Session, upload_key: str) -> AuthContext:
     now = now_utc()
     expires_at = ensure_utc(link.expires_at)
     if expires_at is None or expires_at <= now:
-        link.revoked_at = now
-        db.commit()
+        _recheck_expired_upload_link(db, upload_key)
+        link = find_active_upload_link(db, upload_key=upload_key)
+        if link is None:
+            raise AppError(
+                "invalid_token",
+                UPLOAD_LINK_INVALID_MESSAGE,
+                status_code=401,
+            )
+    context = _upload_link_context(db, link)
+    device = db.get(Device, link.device_id)
+    if device is None:
         raise AppError("invalid_token", UPLOAD_LINK_INVALID_MESSAGE, status_code=401)
-    account, device, ledger, role = _context_parts_from_ids(
-        db,
-        account_id=link.account_id,
-        device_id=link.device_id,
-        ledger_id=link.ledger_id,
-    )
-    context = AuthContext(
-        account_id=account.id,
-        account_name=account.display_name,
-        ledger_id=ledger.ledger_id,
-        ledger_name=ledger.name,
-        device_id=device.id,
-        device_name=device.device_name,
-        role=role,
-        scope="upload",
-    )
     _refresh_upload_link_activity(db, link, device, now=now)
     return context
 
