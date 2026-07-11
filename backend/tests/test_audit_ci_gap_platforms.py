@@ -12,10 +12,20 @@ _INSTALLER_RUN_STEP = """
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 """
 
+_INSTALLER_VERIFY_FIRST_RUN_STEP = """
+      - run: |
+          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -File packaging\\build_inno_installer.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+"""
 
-def _installer_upload_step(action_sha: str) -> str:
+
+def _installer_upload_step(action_sha: str, condition: str = "") -> str:
+    condition_line = f"        if: {condition}\n" if condition else ""
     return f"""
       - uses: actions/upload-artifact@{action_sha}
+{condition_line.rstrip()}
         with:
           name: ticketbox-windows-installer
           path: ${{{{ env.INSTALLER_PUBLISH_PATH }}}}
@@ -28,11 +38,17 @@ def _write_installer_workflow(
     *,
     action_sha: str = "",
     upload_first: bool = False,
+    upload_condition: str = "",
+    verify_first: bool = False,
     include_run: bool = True,
 ) -> None:
-    steps = [_INSTALLER_RUN_STEP] if include_run else []
+    run_step = _INSTALLER_VERIFY_FIRST_RUN_STEP if verify_first else _INSTALLER_RUN_STEP
+    steps = [run_step] if include_run else []
     if action_sha:
-        steps.insert(0 if upload_first else len(steps), _installer_upload_step(action_sha))
+        steps.insert(
+            0 if upload_first else len(steps),
+            _installer_upload_step(action_sha, upload_condition),
+        )
     path.write_text(
         "name: CI\njobs:\n  installer:\n    steps:\n" + "".join(steps),
         encoding="utf-8",
@@ -308,16 +324,32 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
         commands, actions
     )
 
-    _write_installer_workflow(workflow_path, action_sha=action_sha, upload_first=True)
-    commands = mod._iter_workflow_run_commands(workflows)
-    actions = mod._iter_workflow_actions(workflows)
-    assert upload_label in mod._missing_installer_publish_actions_by_platform(
-        commands, actions
-    )
+    (workflows / "detached-upload.yml").unlink()
+    for mutation in (
+        {"upload_first": True},
+        {"verify_first": True},
+        {"upload_condition": "always()"},
+    ):
+        _write_installer_workflow(workflow_path, action_sha=action_sha, **mutation)
+        commands = mod._iter_workflow_run_commands(workflows)
+        actions = mod._iter_workflow_actions(workflows)
+        assert upload_label in mod._missing_installer_publish_actions_by_platform(
+            commands, actions
+        )
 
     _write_installer_workflow(workflow_path, action_sha=action_sha)
     commands = mod._iter_workflow_run_commands(workflows)
     actions = mod._iter_workflow_actions(workflows)
     assert upload_label not in mod._missing_installer_publish_actions_by_platform(
+        commands, actions
+    )
+
+    _write_installer_workflow(
+        workflows / "duplicate-upload.yml",
+        action_sha=action_sha,
+        include_run=False,
+    )
+    actions = mod._iter_workflow_actions(workflows)
+    assert upload_label in mod._missing_installer_publish_actions_by_platform(
         commands, actions
     )
