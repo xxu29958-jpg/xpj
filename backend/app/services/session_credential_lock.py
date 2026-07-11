@@ -1,4 +1,4 @@
-"""Serialize credential minting with bootstrap exposure recovery."""
+"""Serialize authenticated identity mutations with bootstrap recovery."""
 
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ _BOOTSTRAP_OWNER_LOCK_ID = int.from_bytes(
 
 
 def lock_bootstrap_owner_transaction(db: Session) -> None:
-    """Serialize bootstrap rotation and credential minting in this transaction."""
-    # The advisory lock is the first lock in every credential lifecycle
+    """Serialize bootstrap rotation and sensitive identity writes."""
+    # The advisory lock is the first lock in every credential/identity lifecycle
     # transaction.  Suppress autoflush so pending ORM changes cannot acquire a
     # row lock before this global ordering point.
     with db.no_autoflush:
@@ -94,3 +94,26 @@ def lock_and_revalidate_credential_mint_context(
     if refreshed != auth:
         raise AppError("invalid_token", status_code=401)
     return refreshed
+
+
+def lock_and_revalidate_mutation_actor(
+    db: Session,
+    auth: AuthContext | None,
+    *,
+    actor_account_id: int | None,
+    ledger_id: str | None = None,
+) -> AuthContext | None:
+    """Revalidate a network credential and bind it to the mutation actor.
+
+    ``auth=None`` is reserved for explicit loopback/internal callers such as the
+    Owner Console. It still acquires the global lifecycle lock so those writes
+    serialize with bootstrap recovery.
+    """
+    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+    if locked_auth is None:
+        return None
+    if actor_account_id is None or locked_auth.account_id != actor_account_id:
+        raise AppError("invalid_token", status_code=401)
+    if ledger_id is not None and locked_auth.ledger_id != ledger_id:
+        raise AppError("invalid_token", status_code=401)
+    return locked_auth

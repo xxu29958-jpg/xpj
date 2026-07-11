@@ -143,7 +143,6 @@ jobs:
           $proc = Start-Process -FilePath $emu -ArgumentList "-avd", $avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save" -PassThru -WindowStyle Hidden -RedirectStandardOutput $emuLog -RedirectStandardError $emuErr -ErrorAction Stop
           $env:ANDROID_HOME = $repoSdk
           $env:ANDROID_SDK_ROOT = $repoSdk
-          $failed = $false
           $serial = $null
           try {
             # Discover OUR serial: the one that appears after launch. Pinning
@@ -181,10 +180,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "connectedGrayDebugAndroidTest failed" }
           }
           catch {
-            $failed = $true
             Get-ChildItem "app\build\outputs\androidTest-results" -Recurse -Filter "*.xml" -ErrorAction SilentlyContinue |
               ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 40 }
             Write-Host "##[error]Connected lane failed: $_"
+            throw
           }
           finally {
             if ($serial) { & $adb -s $serial emu kill 2>$null; Start-Sleep -Seconds 5 }
@@ -192,4 +191,3 @@ jobs:
             $global:LASTEXITCODE = 0
             Write-Host "emulator torn down"
           }
-          if ($failed) { exit 1 } else { exit 0 }

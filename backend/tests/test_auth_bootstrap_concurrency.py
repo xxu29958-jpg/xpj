@@ -24,6 +24,10 @@ from app.services.session_credential_lock import lock_bootstrap_owner_transactio
 from app.services.session_lifecycle_service import derive_bootstrap_pairing_code
 from app.services.time_service import now_utc
 from tests._infra.bootstrap_exposure_rotation import assert_exposed_secret_rotation
+from tests._infra.bootstrap_owner_mutation_concurrency import (
+    REVOKED_OWNER_MUTATION_CASES,
+    assert_revoked_pre_authenticated_owner_mutation_is_rejected,
+)
 from tests._infra.bootstrap_recovery import (
     _VECTOR_ADMIN_TOKEN,
     _VECTOR_PAIRING_CODE,
@@ -71,6 +75,15 @@ def test_two_sessions_switch_revalidates_target_before_revoking_source(
         monkeypatch,
         token_value=identity.app_token,
     )
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("mutation", REVOKED_OWNER_MUTATION_CASES)
+def test_revoked_pre_authenticated_owner_token_cannot_commit_mutation(
+    identity: TestIdentity,
+    mutation: str,
+) -> None:
+    assert_revoked_pre_authenticated_owner_mutation_is_rejected(identity, mutation)
 
 
 def test_bootstrap_owner_rotates_credentials_after_listener_exposure(

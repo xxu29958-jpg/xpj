@@ -170,7 +170,7 @@ def test_count_open_external_debts_counts_only_open_external(identity) -> None:
         _seed_debt(db, tenant_id="owner", owner_id=owner_id, counterparty_type="external", status="voided")
         _seed_debt(db, tenant_id="owner", owner_id=owner_id, counterparty_type="member", status="open")
         # a second owner-managed ledger with 1 open external proves per-tenant grouping + isolation
-        other = create_ledger(db, account_id=owner_id, name="第二本")
+        other = create_ledger(db, account_id=owner_id, name="第二本", auth=None)
         _seed_debt(db, tenant_id=other.ledger_id, owner_id=owner_id, counterparty_type="external", status="open")
         db.flush()
         counts = count_open_external_debts(db, ["owner", other.ledger_id])
@@ -209,7 +209,7 @@ def test_ledger_has_goal_needing_review_isolated_per_tenant(identity) -> None:
     # (pins the list_debt_repayment_goals ledger scope — a dropped scope would leak).
     with SessionLocal() as db:
         owner_id = _owner_account_id(db)
-        other = create_ledger(db, account_id=owner_id, name="第二本")
+        other = create_ledger(db, account_id=owner_id, name="第二本", auth=None)
         _seed_debt_goal(db, tenant_id=other.ledger_id, owner_id=owner_id, link_status="voided")
         assert ledger_has_goal_needing_review(db, tenant_id=other.ledger_id) is True
         assert ledger_has_goal_needing_review(db, tenant_id="owner") is False
@@ -240,7 +240,7 @@ def test_owner_ledger_health_shows_open_external_debt_count(local_client: TestCl
         # a second managed ledger with a DIFFERENT open-external count proves the
         # per-row .get(ledger_id, 0) mapping in list_ledger_health, not just the
         # underlying grouped query (a key-mapping bug would render 1 on owner's row).
-        other = create_ledger(db, account_id=owner_id, name="第二本")
+        other = create_ledger(db, account_id=owner_id, name="第二本", auth=None)
         _seed_debt(db, tenant_id=other.ledger_id, owner_id=owner_id, counterparty_type="external", status="open")
         db.commit()
     body = local_client.get("/owner").text

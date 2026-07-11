@@ -165,6 +165,7 @@ def revoke_invitation_endpoint(
         ledger_id=ledger_id,
         public_id=public_id,
         actor_account_id=auth.account_id,
+        auth=auth,
     )
     return _to_invitation_response(summary)
 
@@ -246,6 +247,7 @@ def update_member_role_endpoint(
         member_id=member_id,
         requester_account_id=auth.account_id,
         role=payload.role,
+        auth=auth,
     )
     return _to_member_response(summary)
 
@@ -289,6 +291,7 @@ def disable_member_endpoint(
         ledger_id=ledger_id,
         member_id=member_id,
         requester_account_id=auth.account_id,
+        auth=auth,
     )
     return _to_member_response(summary)
 

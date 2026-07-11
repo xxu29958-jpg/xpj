@@ -151,6 +151,7 @@ def _seed_cross_ledger_descendant(
         ledger_id=ledger_id,
         role="member",
         created_by_account_id=bootstrap_account_id,
+        auth=None,
     )
     accepted = _accept_invitation_token(
         client,
@@ -174,6 +175,7 @@ def _seed_transitive_descendant(
         ledger_id=ledger_id,
         role="member",
         created_by_account_id=first_generation_account_id,
+        auth=None,
     )
     accepted = _accept_invitation_token(
         client,
@@ -187,6 +189,7 @@ def _seed_transitive_descendant(
         ledger_id=ledger_id,
         role="viewer",
         created_by_account_id=first_generation_account_id,
+        auth=None,
     )
     return accepted, pending_invitation.invite_token
 

@@ -257,3 +257,37 @@ def contains_catch_block(lines: list[str]) -> bool:
     return any(
         re.match(r"(?i)^\s*(?:}\s*)?catch(?:\s|{)", line) for line in lines
     )
+
+
+def catch_blocks_propagate_failure(lines: list[str]) -> bool:
+    """Require every PowerShell catch block to rethrow or exit non-zero."""
+    executable = powershell_without_here_string_literals("\n".join(lines)).splitlines()
+    depths = powershell_statement_depths("\n".join(executable))
+    catch_depth: int | None = None
+    propagates = False
+    saw_catch = False
+    for line, depth in zip(executable, depths, strict=True):
+        structural = _powershell_structure(line).strip()
+        if re.match(r"(?i)^(?:}\s*)?catch(?:\s|{)", structural):
+            if catch_depth is not None and not propagates:
+                return False
+            saw_catch = True
+            catch_depth = depth
+            propagates = re.search(
+                r"(?i){\s*(?:throw(?:\s+[^}]*)?|exit\s+[1-9][0-9]*)\s*;?\s*}",
+                structural,
+            ) is not None
+            continue
+        if catch_depth is None:
+            continue
+        if depth <= catch_depth and structural.startswith("}"):
+            if not propagates:
+                return False
+            catch_depth = None
+            continue
+        if depth == catch_depth + 1 and re.fullmatch(
+            r"(?i)(?:throw(?:\s+.*)?|exit\s+[1-9][0-9]*)\s*;?",
+            structural,
+        ):
+            propagates = True
+    return (not saw_catch) or (catch_depth is None and propagates)

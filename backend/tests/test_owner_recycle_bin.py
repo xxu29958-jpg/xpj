@@ -175,7 +175,12 @@ def test_owner_recycle_bin_lists_supported_items(
 ) -> None:
     owner_id = _owner_id()
     with SessionLocal() as db:
-        archive_ledger(db, ledger_id="tester_1", actor_account_id=owner_id)
+        archive_ledger(
+            db,
+            ledger_id="tester_1",
+            actor_account_id=owner_id,
+            auth=None,
+        )
     _seed_archived_income()
     _seed_archived_budget()
     _seed_archived_recurring()

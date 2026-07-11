@@ -22,8 +22,7 @@ from app.services.invitation_common import (
     require_active_owner,
 )
 from app.services.session_credential_lock import (
-    lock_and_revalidate_credential_mint_context,
-    lock_bootstrap_owner_transaction,
+    lock_and_revalidate_mutation_actor,
 )
 from app.services.session_lifecycle_service import revoke_active_tokens
 from app.services.time_service import now_utc, to_iso
@@ -89,15 +88,40 @@ def list_members(
     return summaries
 
 
+def _prepare_member_mutation(
+    db: Session,
+    *,
+    auth: AuthContext | None,
+    actor_account_id: int,
+    ledger_id: str,
+) -> None:
+    lock_and_revalidate_mutation_actor(
+        db,
+        auth,
+        actor_account_id=actor_account_id,
+        ledger_id=ledger_id,
+    )
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids={ledger_id},
+    )
+
+
 def disable_member(
     db: Session,
     *,
     ledger_id: str,
     member_id: int,
     requester_account_id: int,
+    auth: AuthContext | None,
 ) -> MemberSummary:
-    lock_bootstrap_owner_transaction(db)
-    assert_bootstrap_sensitive_mutation_allowed(db, ledger_ids={ledger_id})
+    _prepare_member_mutation(
+        db,
+        auth=auth,
+        actor_account_id=requester_account_id,
+        ledger_id=ledger_id,
+    )
     member = db.scalar(
         select(LedgerMember)
         .where(LedgerMember.id == member_id)
@@ -144,6 +168,7 @@ def update_member_role(
     member_id: int,
     requester_account_id: int,
     role: str,
+    auth: AuthContext | None,
 ) -> MemberSummary:
     """Change an active non-owner member between member/viewer.
 
@@ -153,6 +178,12 @@ def update_member_role(
     during token authentication.
     """
 
+    _prepare_member_mutation(
+        db,
+        auth=auth,
+        actor_account_id=requester_account_id,
+        ledger_id=ledger_id,
+    )
     if not permission_service.is_invitable_role(role):
         raise AppError("member_role_invalid", status_code=422)
     require_active_owner(db, ledger_id=ledger_id, account_id=requester_account_id)
@@ -226,41 +257,25 @@ def _validate_owner_transfer(
     return ledger, current_owner, target, target_account
 
 
-def _lock_owner_transfer_actor(
-    db: Session,
-    *,
-    auth: AuthContext | None,
-    requester_account_id: int,
-    ledger_id: str,
-) -> None:
-    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
-    if locked_auth is not None and (
-        locked_auth.account_id != requester_account_id
-        or locked_auth.ledger_id != ledger_id
-    ):
-        raise AppError("invalid_token", status_code=401)
-
-
 def transfer_ledger_owner(
     db: Session,
     *,
     ledger_id: str,
     member_id: int,
     requester_account_id: int,
-    auth: AuthContext | None = None,
+    auth: AuthContext | None,
 ) -> OwnerTransferResult:
     """Atomically transfer the ledger to one active non-owner member.
 
     The target becomes the sole owner; existing owners are demoted in the same
     commit as the audit row and ``Ledger.owner_account_id`` update.
     """
-    _lock_owner_transfer_actor(
+    _prepare_member_mutation(
         db,
         auth=auth,
-        requester_account_id=requester_account_id,
+        actor_account_id=requester_account_id,
         ledger_id=ledger_id,
     )
-    assert_bootstrap_sensitive_mutation_allowed(db, ledger_ids={ledger_id})
     ledger, current_owner, target, target_account = _validate_owner_transfer(
         db,
         ledger_id=ledger_id,
