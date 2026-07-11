@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import pathlib
+import re
 
 _ANDROID_PROTECTED_PATHS = frozenset(
     {
@@ -17,6 +18,26 @@ _ANDROID_PROTECTED_PATHS = frozenset(
         "android/settings.gradle.kts",
     }
 )
+_STATUS_FUNCTION = re.compile(r"(?i)\b(success|always|failure|cancelled)\s*\(")
+
+
+def workflow_action_requires_prior_success(value: object) -> bool:
+    if value is None or value is True:
+        return True
+    if not isinstance(value, str):
+        return False
+    expression = value.strip()
+    if expression.startswith("${{") and expression.endswith("}}"):
+        expression = expression[3:-2].strip()
+    status_functions = {match.lower() for match in _STATUS_FUNCTION.findall(expression)}
+    if not status_functions:
+        return True
+    if status_functions != {"success"} or "||" in expression:
+        return False
+    return any(
+        re.fullmatch(r"\(*\s*success\(\)\s*\)*", term, re.IGNORECASE)
+        for term in expression.split("&&")
+    )
 
 
 def _event_configuration(

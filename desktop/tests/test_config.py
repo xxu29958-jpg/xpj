@@ -202,6 +202,18 @@ def test_auto_mode_uses_safe_install_metadata_without_reading_protected_env(tmp_
     assert cfg.runtime.release.service_state_timeout_seconds == 17
 
 
+def test_auto_mode_falls_back_to_source_when_installation_is_absent(tmp_path: Path, monkeypatch) -> None:
+    source_root = _fake_backend(tmp_path)
+    monkeypatch.setenv("TICKETBOX_BACKEND_ROOT", str(source_root))
+    monkeypatch.delenv("TICKETBOX_MANAGER_MODE", raising=False)
+    monkeypatch.setattr("backend_manager.config.discover_installed_layout", lambda: None)
+
+    cfg = load_config()
+
+    assert isinstance(cfg.runtime, SourceRuntimeConfig)
+    assert cfg.runtime.backend_root == source_root.resolve()
+
+
 def test_installed_mode_requires_installer_registry(monkeypatch) -> None:
     monkeypatch.setenv("TICKETBOX_MANAGER_MODE", "installed")
     monkeypatch.setattr("backend_manager.config.discover_installed_layout", lambda: None)

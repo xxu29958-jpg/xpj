@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -329,6 +330,7 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
         {"upload_first": True},
         {"verify_first": True},
         {"upload_condition": "always()"},
+        {"upload_condition": "success() || github.event_name == 'pull_request'"},
     ):
         _write_installer_workflow(workflow_path, action_sha=action_sha, **mutation)
         commands = mod._iter_workflow_run_commands(workflows)
@@ -342,6 +344,10 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
     actions = mod._iter_workflow_actions(workflows)
     assert upload_label not in mod._missing_installer_publish_actions_by_platform(
         commands, actions
+    )
+    unknown_commands = [replace(command, step_index=-1) for command in commands]
+    assert upload_label in mod._missing_installer_publish_actions_by_platform(
+        unknown_commands, actions
     )
 
     _write_installer_workflow(
