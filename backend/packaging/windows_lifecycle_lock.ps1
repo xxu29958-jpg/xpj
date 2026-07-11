@@ -15,10 +15,19 @@ $script:TicketboxLifecycleLockOwnerFileName = "installer-lifecycle.owner"
 $script:TicketboxLifecycleOperationLockFileName = "installer-operation.lock"
 $script:TicketboxSharingViolationErrorCode = 32
 
-function Assert-TicketboxSupportedPowerShellHost {
-    if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) {
+function Assert-TicketboxPowerShellBitness(
+    [bool]$Is64BitOperatingSystem,
+    [bool]$Is64BitProcess
+) {
+    if ($Is64BitOperatingSystem -and -not $Is64BitProcess) {
         throw "小票夹服务脚本必须由 64 位 PowerShell 运行，拒绝使用会分裂机器锁路径的 32 位宿主。"
     }
+}
+
+function Assert-TicketboxSupportedPowerShellHost {
+    Assert-TicketboxPowerShellBitness `
+        -Is64BitOperatingSystem ([Environment]::Is64BitOperatingSystem) `
+        -Is64BitProcess ([Environment]::Is64BitProcess)
 }
 
 function Get-TicketboxLifecycleLockPath {
