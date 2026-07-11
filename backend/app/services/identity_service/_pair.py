@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models import Account, AuthToken, Device, PairingCode
+from app.models import Account, AuthToken, Device, Ledger, PairingCode
 from app.services.identity_service._auth import _role_for
 from app.services.identity_service._device import _create_auth_token, _create_device
 from app.services.identity_service._models import (
@@ -19,13 +19,50 @@ from app.services.identity_service._pairing_throttle import (
     _clear_pairing_failures,
     _reject_pairing,
 )
-from app.services.identity_service._seed import _ledger_by_id
+from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     consume_pairing_code,
     hash_pairing_code,
 )
 from app.services.time_service import ensure_utc, now_utc
+
+
+def _load_pairing_identity(
+    db: Session,
+    *,
+    code_hash: str,
+    remote_id: str | None,
+) -> tuple[PairingCode, Ledger, Account, str]:
+    pairing = db.scalar(
+        select(PairingCode)
+        .where(PairingCode.code_hash == code_hash)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+    if pairing is None or pairing.used_at is not None:
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+    if (ensure_utc(pairing.expires_at) or pairing.expires_at) <= now_utc():
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+
+    ledger = db.scalar(
+        select(Ledger)
+        .where(Ledger.ledger_id == pairing.ledger_id)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+    if ledger is None or ledger.archived_at is not None:
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+    account_id = pairing.account_id or ledger.owner_account_id
+    account = db.scalar(
+        select(Account)
+        .where(Account.id == account_id)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+    if account is None or account.disabled_at is not None:
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+    return pairing, ledger, account, _role_for(db, ledger.ledger_id, account.id)
 
 
 def pair_device(
@@ -37,26 +74,21 @@ def pair_device(
     remote_id: str | None = None,
 ) -> PairingResult:
     _check_pairing_attempt_limit(db, remote_id)
+    lock_bootstrap_owner_transaction(db)
     code_hash = hash_pairing_code(pairing_code.strip())
-    pairing = db.scalar(select(PairingCode).where(PairingCode.code_hash == code_hash).limit(1))
-    if pairing is None:
-        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
-    if pairing.used_at is not None:
-        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
-    if (ensure_utc(pairing.expires_at) or pairing.expires_at) <= now_utc():
-        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
-
-    ledger = _ledger_by_id(db, pairing.ledger_id)
-    if ledger is None or ledger.archived_at is not None:
-        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
-    account_id = pairing.account_id or ledger.owner_account_id
-    account = db.get(Account, account_id)
-    if account is None or account.disabled_at is not None:
-        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
-    role = _role_for(db, ledger.ledger_id, account.id)
+    pairing, ledger, account, role = _load_pairing_identity(
+        db,
+        code_hash=code_hash,
+        remote_id=remote_id,
+    )
 
     used_at = now_utc()
-    consume_result = consume_pairing_code(db, pairing_id=pairing.id, used_at=used_at)
+    consume_result = consume_pairing_code(
+        db,
+        pairing_id=pairing.id,
+        expected_code_hash=pairing.code_hash,
+        used_at=used_at,
+    )
     if consume_result != "consumed":
         db.rollback()
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)

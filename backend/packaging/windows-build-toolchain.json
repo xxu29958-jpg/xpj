@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "python_version": "3.11.15",
+  "uv_version": "0.11.7",
+  "pyinstaller_version": "6.21.0",
+  "build_tool_sources": {
+    "uv": {
+      "version": "0.11.7",
+      "archive_name": "uv-x86_64-pc-windows-msvc.zip",
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.7/uv-x86_64-pc-windows-msvc.zip",
+      "sha256": "fe0c7815acf4fc45f8a5eff58ed3cf7ae2e15c3cf1dceadbd10c816ec1690cc1",
+      "executable_relative_path": "uv.exe",
+      "executable_sha256": "831730243cf7bbd496ff96353dcdba6f5d4dcbd22576af398130381ab44ac160"
+    },
+    "python": {
+      "version": "3.11.15",
+      "archive_name": "cpython-3.11.15+20260414-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260414/cpython-3.11.15%2B20260414-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "sha256": "71ffdf290e0483f0881e02518ecb9cedb449807856ae7dc76aa630e5acd00919",
+      "archive_payload_root": "python",
+      "executable_relative_path": "python.exe",
+      "executable_sha256": "fee5ed8687d7e24ac045d833ecd1963396357988bc1d741212b8f372d0cf327a",
+      "runtime_relative_path": "python311.dll",
+      "runtime_sha256": "79434e33ee4a548f5d5201478407531220f99b84132c9c760abb0ae60741450a"
+    },
+    "inno_setup": {
+      "version": "6.7.1",
+      "archive_name": "innosetup-6.7.1.exe",
+      "url": "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe",
+      "sha256": "4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0",
+      "compiler_relative_path": "ISCC.exe",
+      "compiler_sha256": "eb6f4410c8db367a5f74127e8025ad2ccacc0afabbe783959d237df3050f97fb"
+    }
+  },
+  "installer_vendor_sources": {
+    "postgresql": {
+      "version": "17.10-1",
+      "archive_name": "postgresql-17.10-1-windows-x64-binaries.zip",
+      "url": "https://get.enterprisedb.com/postgresql/postgresql-17.10-1-windows-x64-binaries.zip",
+      "sha256": "f9aafca58e7026a1ef2caeee711acf761671e57904d430adc85f468374f5a821",
+      "payload_file_count": 1535,
+      "payload_fingerprint": "86ac11295eca1d64e7042f6dfc98db9869cf8d2cd065929fa518bf71b75f3ed8"
+    },
+    "shawl": {
+      "version": "1.9.0",
+      "archive_name": "shawl-v1.9.0-win64.zip",
+      "url": "https://github.com/mtkennerly/shawl/releases/download/v1.9.0/shawl-v1.9.0-win64.zip",
+      "sha256": "f883c5d09c9beae2efaeabd8513e7d3f57cd1d0864cec3df4f4a7b6ee904351c",
+      "executable_sha256": "0985555b71e7f943b8f3fc639952a9890aa62e66617942a2d0996985fe8e7c6d"
+    }
+  }
+}

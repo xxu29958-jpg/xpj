@@ -4,6 +4,15 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from tests._infra.ci_gap_release_scope import (
+    write_gitea_here_string_forgery as _write_gitea_here_string_forgery,
+)
+from tests._infra.ci_gap_release_scope import (
+    write_github_heredoc_forgery as _write_github_heredoc_forgery,
+)
+from tests._infra.ci_gap_release_scope import write_valid_gitea as _write_valid_gitea
+from tests._infra.ci_gap_release_scope import write_valid_github as _write_valid_github
+
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "ci_gap_release_scope.py"
 _GITHUB_POLICY = (
     ".github/workflows/ci.yml: Android release APK builds must be path-gated for non-Android changes"
@@ -24,96 +33,31 @@ def _load() -> object:
     return module
 
 
-def _write_valid_github(tmp_path: Path) -> Path:
-    workflows = tmp_path / ".github" / "workflows"
-    workflows.mkdir(parents=True, exist_ok=True)
-    ci = workflows / "ci.yml"
-    ci.write_text(
-        """
-name: CI
-jobs:
-  android:
-    steps:
-      - name: Detect release APK scope
-        id: release-apk-scope
-        run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "release_apk_required=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          changed="$(git diff --name-only "${base}...${head}")"
-          if printf '%s\\n' "$changed" | grep -E '^(android/|\\.github/workflows/|\\.gitea/workflows/)' >/dev/null; then
-            echo "release_apk_required=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "release_apk_required=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Android release APK builds
-        if: steps.release-apk-scope.outputs.release_apk_required == 'true'
-        run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease
-""",
-        encoding="utf-8",
-    )
-    return ci
-
-
-def _write_valid_gitea(tmp_path: Path) -> Path:
-    workflows = tmp_path / ".gitea" / "workflows"
-    workflows.mkdir(parents=True, exist_ok=True)
-    ci = workflows / "windows-ci.yml"
-    ci.write_text(
-        """
-name: Windows CI
-jobs:
-  android:
-    steps:
-      - name: Detect release APK scope
-        id: release-apk-scope
-        run: |
-          function Set-ReleaseApkRequired([string]$value) {
-            [System.IO.File]::AppendAllText(
-              $env:GITHUB_OUTPUT,
-              "release_apk_required=$value`n",
-              [System.Text.UTF8Encoding]::new($false)
-            )
-          }
-          $eventName = "${{ github.event_name }}"
-          $refName = "${{ github.ref_name }}"
-          if ($eventName -eq "workflow_dispatch" -or $refName -eq "main") {
-            Set-ReleaseApkRequired "true"
-            exit 0
-          }
-          $changed = @(git diff --name-only origin/main...HEAD)
-          if ($LASTEXITCODE -ne 0) {
-            $changed = @(git diff --name-only origin/main HEAD)
-          }
-          if ($LASTEXITCODE -ne 0) {
-            throw "Unable to compute changed files against origin/main"
-          }
-          $releaseRelevant = $changed | Where-Object {
-            $_ -match '^(android/|\\.github/workflows/|\\.gitea/workflows/)'
-          } | Select-Object -First 1
-          if ($releaseRelevant) {
-            Set-ReleaseApkRequired "true"
-          } else {
-            Set-ReleaseApkRequired "false"
-          }
-      - name: Android release APK builds
-        if: steps.release-apk-scope.outputs.release_apk_required == 'true'
-        run: .\\gradlew.bat --no-daemon :app:assembleGrayRelease :app:assembleInternalRelease
-""",
-        encoding="utf-8",
-    )
-    return ci
-
-
 def test_ci_gap_release_apk_scope_policy_accepts_pr_path_gate(tmp_path: Path) -> None:
     mod = _load()
     github = _write_valid_github(tmp_path)
     gitea = _write_valid_gitea(tmp_path)
 
     assert mod.release_apk_scope_policy_violations({github, gitea}) == []
+
+    github = _write_github_heredoc_forgery(tmp_path)
+    assert mod.release_apk_scope_policy_violations({github, gitea}) == [_GITHUB_POLICY]
+
+    github = _write_github_heredoc_forgery(tmp_path, multiple=True)
+    assert mod.release_apk_scope_policy_violations({github, gitea}) == [_GITHUB_POLICY]
+
+    github = _write_valid_github(tmp_path)
+    gitea = _write_gitea_here_string_forgery(tmp_path)
+    assert mod.release_apk_scope_policy_violations({github, gitea}) == [_GITEA_POLICY]
+    forged_metadata = """
+      - name: Android release APK builds
+        run: |
+          : <<'FORGED_METADATA'
+          if: steps.release-apk-scope.outputs.release_apk_required == 'true'
+          FORGED_METADATA
+          ./gradlew :app:assembleGrayRelease :app:assembleInternalRelease
+"""
+    assert mod._metadata_value(forged_metadata, "if") is None
 
 
 def test_ci_gap_release_apk_scope_policy_rejects_missing_expected_workflows() -> None:

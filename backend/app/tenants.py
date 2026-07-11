@@ -41,6 +41,8 @@ class AuthContext:
     device_name: str
     role: str
     scope: str
+    credential_id: int | None = None
+    credential_hash: str | None = None
 
     @property
     def tenant_id(self) -> str:

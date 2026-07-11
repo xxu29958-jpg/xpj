@@ -16,6 +16,8 @@ import importlib.util
 import os
 from pathlib import Path
 
+import pytest
+
 import app.config as config
 
 
@@ -169,6 +171,25 @@ def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_
 
     assert captured["dictconfig"]["handlers"]["file"]["filename"] == str(tmp_path / "logs" / "backend.log")
     assert captured["run_kwargs"]["log_config"] is None
+
+
+def test_main_refuses_http_startup_while_bootstrap_recovery_is_pending(
+    monkeypatch, tmp_path
+):
+    from app.services.identity_service import ReplacementCredentialCollisionError
+
+    launch = _load_launch_module()
+    assert (
+        launch._maintenance_error_code(ReplacementCredentialCollisionError())
+        == "replacement_credential_collision"
+    )
+    guard = tmp_path / "bootstrap-recovery-pending"
+    guard.write_text("STATE=pending\n", encoding="utf-8")
+    monkeypatch.setenv("TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", str(guard))
+    monkeypatch.setattr(launch, "configure_environment", lambda: tmp_path)
+
+    with pytest.raises(RuntimeError, match="bootstrap credential recovery is pending"):
+        launch.main()
 
 
 def test_alembic_env_skips_fileconfig_when_logging_already_configured():

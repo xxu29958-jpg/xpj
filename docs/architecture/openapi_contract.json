@@ -19060,6 +19060,51 @@
         ]
       }
     },
+    "/api/health/installation": {
+      "get": {
+        "operationId": "installation_health_api_health_installation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Installation Health Api Health Installation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Installation Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/imports/csv": {
       "post": {
         "operationId": "post_csv_import_batch_api_imports_csv_post",

@@ -16,7 +16,6 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-import re
 import subprocess
 import time
 from collections.abc import Iterator
@@ -24,6 +23,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
+
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError
 
 from app.config import DATA_ROOT, get_settings
 from app.errors import AppError
@@ -46,6 +48,12 @@ class BackupEntry:
     size_bytes: int
     created_at: datetime
     kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3" / "pre-upgrade"
+
+
+@dataclass(frozen=True)
+class _PgToolConnection:
+    database_url: str
+    password: str | None
 
 
 def _backup_dir() -> Path:
@@ -231,21 +239,30 @@ def _backup_lock() -> Iterator[None]:
 
 
 def _run_pg_dump(*, prefix: str, kind: str) -> BackupEntry:
-    libpq_url = _libpq_url(get_settings().database_url)
+    connection = _pg_tool_connection(get_settings().database_url)
     directory = _backup_dir()
     stamp = now_utc().astimezone().strftime("%Y%m%d-%H%M%S")
     target = directory / f"{prefix}-{stamp}-{uuid4().hex[:8]}{_SUFFIX}"
     temp_target = directory / f".{target.name}.tmp-{uuid4().hex}"
     try:
         result = subprocess.run(  # noqa: S603 (binary resolved from PATH/override, fixed args)
-            [_pg_dump_binary(), "--format=custom", "--file", str(temp_target), "--dbname", libpq_url],
+            [
+                _pg_dump_binary(),
+                "--format=custom",
+                "--file",
+                str(temp_target),
+                "--dbname",
+                connection.database_url,
+            ],
             capture_output=True,
             text=True,
             check=False,
+            env=_pg_tool_environment(connection.password),
         )
         if result.returncode != 0:
-            # pg_dump stderr can echo the DSN/host — log it, never surface it (§10).
-            _logger.warning("pg_dump failed (rc=%s): %s", result.returncode, result.stderr.strip())
+            # Native diagnostics may repeat connection material. Keep them out of
+            # logs entirely; the return code is enough for the operator-facing gate.
+            _logger.warning("pg_dump failed (rc=%s); diagnostic output omitted", result.returncode)
             raise AppError("server_error", "数据库备份失败，请查看后端日志。", status_code=500)
         if not is_postgres_backup_valid(temp_target):
             raise AppError(
@@ -266,9 +283,46 @@ def _run_pg_dump(*, prefix: str, kind: str) -> BackupEntry:
     )
 
 
-def _libpq_url(database_url: str) -> str:
-    """SQLAlchemy URL -> libpq URL: drop the ``+driver`` tag pg_dump rejects."""
-    return re.sub(r"^postgresql\+\w+://", "postgresql://", database_url, count=1)
+def _pg_tool_connection(database_url: str) -> _PgToolConnection:
+    """Split a SQLAlchemy URL into passwordless libpq URL + child-only password."""
+    try:
+        parsed = make_url(database_url)
+        backend_name = parsed.get_backend_name()
+    except (ArgumentError, TypeError, ValueError):
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
+    if backend_name != "postgresql":
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+
+    password = parsed.password
+    query = dict(parsed.query)
+    if any(key.casefold() in {"password", "sslpassword"} for key in query):
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+
+    try:
+        passwordless = URL.create(
+            drivername="postgresql",
+            username=parsed.username,
+            host=parsed.host,
+            port=parsed.port,
+            database=parsed.database,
+            query=query,
+        )
+        rendered_url = passwordless.render_as_string(hide_password=False)
+    except (TypeError, ValueError):
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
+    return _PgToolConnection(
+        database_url=rendered_url,
+        password=password,
+    )
+
+
+def _pg_tool_environment(password: str | None) -> dict[str, str]:
+    environment = os.environ.copy()
+    if password is None:
+        environment.pop("PGPASSWORD", None)
+    else:
+        environment["PGPASSWORD"] = password
+    return environment
 
 
 def _pg_dump_binary() -> str:

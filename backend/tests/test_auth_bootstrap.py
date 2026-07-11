@@ -9,10 +9,16 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import AuthToken, BootstrapSecretConsumption, Device, PairingCode, UploadLink
-from app.routes import bootstrap as bootstrap_route
 from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
+from tests._infra.bootstrap_recovery import (
+    assert_expired_pairing_recovery_renews,
+    assert_failure_rolls_back_and_retries,
+    assert_response_loss_recovery,
+    assert_revoked_admin_recovery_fails_closed,
+    assert_used_pairing_recovery_finalizes_existing_identity,
+)
 from tests._infra.env import TEST_APP_TOKEN, TEST_UPLOAD_TOKEN
 
 
@@ -115,7 +121,7 @@ def test_bootstrap_owner_disabled_by_default(client: TestClient) -> None:
 
 @pytest.fixture
 def http_bootstrap_enabled(monkeypatch: pytest.MonkeyPatch):
-    secret = "unit-test-bootstrap-secret"
+    secret = "unit-test-bootstrap-secret-with-32-byte-minimum"
     monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
     monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", secret)
     get_settings.cache_clear()
@@ -125,6 +131,25 @@ def http_bootstrap_enabled(monkeypatch: pytest.MonkeyPatch):
         with SessionLocal() as db:
             db.query(BootstrapSecretConsumption).delete()
             db.commit()
+        get_settings.cache_clear()
+
+
+def test_bootstrap_owner_rejects_weak_configured_secret(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
+    monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", "human-password")
+    get_settings.cache_clear()
+    try:
+        response = client.post(
+            "/api/bootstrap/owner",
+            headers={"X-Bootstrap-Secret": "human-password"},
+            json={},
+        )
+        assert response.status_code == 404
+        assert response.json()["error"] == "bootstrap_disabled"
+    finally:
         get_settings.cache_clear()
 
 
@@ -147,16 +172,36 @@ def test_bootstrap_owner_enabled_rejects_wrong_secret(
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_bootstrap_secret"
 
+    # A valid but previously unused secret must still respect an owner that
+    # came from another bootstrap path, and the rejected attempt must not burn it.
+    existing_owner = client.post(
+        "/api/bootstrap/owner",
+        headers={"X-Bootstrap-Secret": http_bootstrap_enabled},
+        json={},
+    )
+    assert existing_owner.status_code == 409
+    assert existing_owner.json()["error"] == "bootstrap_already_initialized"
+    with SessionLocal() as db:
+        assert (
+            db.query(BootstrapSecretConsumption)
+            .filter(BootstrapSecretConsumption.secret_hash == hash_secret(http_bootstrap_enabled))
+            .count()
+            == 0
+        )
+
 
 def test_bootstrap_owner_secret_is_one_shot(
     client: TestClient, http_bootstrap_enabled: str
 ) -> None:
-    # The HTTP route normally returns bootstrap_already_initialized in this
-    # test session because conftest seeds an owner via the service layer. Mark
-    # the secret as consumed directly so we can verify that, even without an
-    # already-initialized owner, a previously consumed secret is rejected.
+    # A consumption row alone is not a recovery grant. The derived credential
+    # hashes must prove that this exact secret completed the bootstrap ceremony.
     with SessionLocal() as db:
-        bootstrap_route._mark_secret_consumed(db, http_bootstrap_enabled)
+        db.add(
+            BootstrapSecretConsumption(
+                secret_hash=hash_secret(http_bootstrap_enabled)
+            )
+        )
+        db.commit()
 
     response = client.post(
         "/api/bootstrap/owner",
@@ -170,77 +215,63 @@ def test_bootstrap_owner_secret_is_one_shot(
 def test_bootstrap_owner_accepts_valid_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # End-to-end: with a fresh database and a valid secret, the HTTP endpoint
-    # must succeed. A second call with the same secret must be rejected as a
-    # consumed one-shot secret. We bypass the conftest `client` fixture so the
-    # database starts empty (no pre-seeded owner).
-    from app.database import Base, engine, init_db
-
-    secret = "e2e-bootstrap-secret"
-    monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
-    monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", secret)
-    get_settings.cache_clear()
-
-    Base.metadata.drop_all(bind=engine)
-    init_db()
-
-    try:
-        with TestClient(app) as fresh_client:
-            first = fresh_client.post(
-                "/api/bootstrap/owner",
-                headers={"X-Bootstrap-Secret": secret},
-                json={"account_name": "我", "ledger_name": "我的小票夹"},
-            )
-            assert first.status_code == 200, first.text
-            assert "admin_token" in first.json()
-
-            second = fresh_client.post(
-                "/api/bootstrap/owner",
-                headers={"X-Bootstrap-Secret": secret},
-                json={},
-            )
-            assert second.status_code == 401
-            assert second.json()["error"] == "invalid_bootstrap_secret"
-    finally:
-        get_settings.cache_clear()
+    assert_response_loss_recovery(monkeypatch)
 
 
 def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.identity_service as identity_service
-    from app.database import Base, engine, init_db
+    assert_failure_rolls_back_and_retries(monkeypatch)
 
-    secret = "rollback-bootstrap-secret"
-    monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
-    monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", secret)
-    get_settings.cache_clear()
 
-    Base.metadata.drop_all(bind=engine)
-    init_db()
+def test_bootstrap_owner_delayed_recovery_renews_expired_pairing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert_expired_pairing_recovery_renews(monkeypatch)
 
-    def fail_pairing_creation(*args, **kwargs):
-        raise RuntimeError("pairing creation failed")
 
-    # _bootstrap module imports _create_pairing_code from _device; patch the
-    # bind site that bootstrap_owner actually reads to make the monkey-patch land.
-    monkeypatch.setattr(identity_service._bootstrap, "_create_pairing_code", fail_pairing_creation)
+def test_bootstrap_owner_recovery_finalizes_after_pairing_is_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert_used_pairing_recovery_finalizes_existing_identity(monkeypatch)
 
-    try:
-        with TestClient(app) as fresh_client, pytest.raises(RuntimeError, match="pairing creation failed"):
-            fresh_client.post(
-                "/api/bootstrap/owner",
-                headers={"X-Bootstrap-Secret": secret},
-                json={"account_name": "owner", "ledger_name": "home"},
-            )
 
-        with SessionLocal() as db:
-            assert db.query(AuthToken).count() == 0
-            assert db.query(UploadLink).count() == 0
-            assert db.query(PairingCode).count() == 0
-            assert db.query(BootstrapSecretConsumption).count() == 0
-    finally:
-        get_settings.cache_clear()
+def test_bootstrap_owner_recovery_rejects_revoked_admin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert_revoked_admin_recovery_fails_closed(monkeypatch)
+
+
+def test_bootstrap_owner_rejects_new_identity_after_all_tokens_revoked(
+    client: TestClient,
+    http_bootstrap_enabled: str,
+) -> None:
+    revoked_at = now_utc()
+    with SessionLocal() as db:
+        before = {
+            "tokens": db.query(AuthToken).count(),
+            "devices": db.query(Device).count(),
+            "uploads": db.query(UploadLink).count(),
+            "pairings": db.query(PairingCode).count(),
+        }
+        db.query(AuthToken).update({AuthToken.revoked_at: revoked_at})
+        db.commit()
+
+    response = client.post(
+        "/api/bootstrap/owner",
+        headers={"X-Bootstrap-Secret": http_bootstrap_enabled},
+        json={},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"] == "bootstrap_already_initialized"
+    with SessionLocal() as db:
+        assert db.query(AuthToken).count() == before["tokens"]
+        assert db.query(Device).count() == before["devices"]
+        assert db.query(UploadLink).count() == before["uploads"]
+        assert db.query(PairingCode).count() == before["pairings"]
+        assert db.query(BootstrapSecretConsumption).filter(
+            BootstrapSecretConsumption.secret_hash == hash_secret(http_bootstrap_enabled)
+        ).count() == 0
 
 
 def test_upload_check_contract(client: TestClient) -> None:

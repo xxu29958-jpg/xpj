@@ -48,8 +48,21 @@ datas = [
     (os.path.join(BACKEND, "migrations"), "migrations"),
 ]
 
-# OCR + build tooling are intentionally excluded to keep the EXE lean.
-excludes = ["rapidocr", "onnxruntime", "cv2", "PyInstaller", "pytest", "ruff"]
+# OCR, build tooling, and non-PostgreSQL database drivers are intentionally excluded.
+# SQLAlchemy's generic PyInstaller hook otherwise bundles SQLite even though the runtime
+# contract rejects every non-PostgreSQL DATABASE_URL.
+excludes = [
+    "rapidocr",
+    "onnxruntime",
+    "cv2",
+    "PyInstaller",
+    "pytest",
+    "ruff",
+    "sqlite3",
+    "_sqlite3",
+    "pysqlite2",
+    "MySQLdb",
+]
 
 a = Analysis(
     [os.path.join(HERE, "launch.py")],

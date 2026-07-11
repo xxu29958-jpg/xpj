@@ -40,7 +40,7 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           # ADR-0038 PR-Δ gate needs ``git show <base_ref>:...`` to read the
           # base baseline; shallow clone can't reach it and the gate FAILs in
@@ -55,7 +55,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -ExecutionPolicy Bypass -File scripts\check_dependency_versions.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $roots = @("backend/scripts", "android/scripts", "scripts") | Where-Object { Test-Path $_ }
+          $roots = @("backend/scripts", "backend/packaging", "android/scripts", "scripts") | Where-Object { Test-Path $_ }
           $files = Get-ChildItem -Path $roots -Filter *.ps1 -Recurse
           foreach ($file in $files) {
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
@@ -72,7 +72,7 @@ jobs:
           }
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
           cache: pip
@@ -86,10 +86,78 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Compile
-        run: python -m compileall app scripts tests
+        run: python -m compileall app scripts tests packaging/tests
 
       - name: Lint
-        run: ruff check app scripts tests
+        run: ruff check app scripts tests packaging/tests
+
+      - name: Windows installer safety behavior
+        run: python -m pytest -q packaging/tests -p no:cacheprovider
+
+      - name: Installer source preflight (Windows PowerShell 5.1)
+        shell: powershell
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
+
+      - name: Installer source preflight (PowerShell 7)
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
+
+      - name: Cache pinned Windows build inputs
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            backend/build/windows-toolchain/archives
+            backend/packaging/vendor/archives
+            backend/packaging/vendor/pg
+            backend/packaging/vendor/shawl
+          key: windows-installer-vendor-${{ hashFiles('backend/packaging/windows-build-toolchain.json', 'backend/packaging/build_pg_bundle.ps1', 'backend/packaging/prepare_windows_installer_vendor.ps1') }}
+
+      - name: Frozen backend locked release build
+        shell: powershell
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
+      - name: Prepare pinned PostgreSQL and Shawl inputs
+        shell: powershell
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Prepare pinned Inno Setup compiler
+        shell: powershell
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_build_toolchain.ps1 -Component Inno -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile authoritative Inno installer
+        shell: powershell
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1
+
+      - name: Verify atomic Windows installer publish unit
+        shell: powershell
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly
+
+      - name: Resolve verified Windows installer publish path
+        shell: powershell
+        run: |
+          $versionText = Get-Content -LiteralPath app\version.py -Raw -Encoding UTF8
+          $versionMatch = [regex]::Match($versionText, '(?m)^\s*BACKEND_VERSION\s*=\s*"([^"]+)"\s*$')
+          if (-not $versionMatch.Success) { throw "Cannot resolve installer publish version." }
+          $publishPath = "dist/installer/Ticketbox-Setup-$($versionMatch.Groups[1].Value)"
+          if (-not (Test-Path -LiteralPath $publishPath -PathType Container)) {
+            throw "Verified installer publish path is missing: $publishPath"
+          }
+          [System.IO.File]::AppendAllText(
+            $env:GITHUB_ENV,
+            "INSTALLER_PUBLISH_PATH=backend/$publishPath" + [Environment]::NewLine,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+
+      - name: Upload atomic Windows installer publish unit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ticketbox-windows-installer
+          path: ${{ env.INSTALLER_PUBLISH_PATH }}
+          if-no-files-found: error
 
       - name: Audit (release lanes)
         # Single PR gate for every read-only audit (release_audit.py::LANES):
@@ -105,7 +173,7 @@ jobs:
       - name: API contract
         run: python scripts\check_api_contract.py
 
-      # NOTE: the pytest suite AND the end-to-end smoke run on PostgreSQL in the
+      # NOTE: the business pytest suite AND the end-to-end smoke run on PostgreSQL in the
       # backend-postgres job below. SQLite (the old dev dialect) was retired in
       # the PG-only migration, so neither a bare pytest nor the threaded smoke
       # server can run here — this Windows job is static checks only.
@@ -148,10 +216,10 @@ jobs:
           --tmpfs /var/lib/postgresql/data
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
           cache: pip
@@ -217,7 +285,7 @@ jobs:
         # keeps each diagnosable.
         env:
           XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
-        run: ./.ci-venv/bin/python -m pytest -q -ra --tb=short -p no:cacheprovider
+        run: ./.ci-venv/bin/python -m pytest tests -q -ra --tb=short -p no:cacheprovider
 
   desktop-manager:
     name: Desktop manager
@@ -230,10 +298,10 @@ jobs:
         shell: powershell
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
           cache: pip
@@ -271,7 +339,7 @@ jobs:
       NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           # assertAndroidTestCountEqualsBaseline reads the base baseline via
           # ``git show <base_ref>:android/audit/test_count_baseline.txt`` for the
@@ -279,7 +347,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
           java-version: "17"
@@ -346,7 +414,7 @@ jobs:
 
       - name: Upload regenerated Room schemas
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: room-schemas-regenerated
           path: android/app/schemas/com.ticketbox.data.local.AppDatabase/
@@ -391,9 +459,10 @@ jobs:
         # Release builds run R8 minify + shrinkResources, keeping keep-rules warm
         # in CI instead of discovering Retrofit/Moshi issues only on a manual
         # release assemble. Keep both release variants in one Gradle invocation:
-        # R8 stays serialized by max-workers=1, but configuration, caches, and
-        # the single-use daemon are reused instead of being paid twice.
-        run: ./gradlew --no-daemon --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease
+        # Two workers let the flavor-specific R8/resource pipelines overlap
+        # while both variants still share one configuration and daemon. A clean
+        # local no-build-cache benchmark reduced this lane from 438s to 300s.
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
 
       - name: Skip Android release APK builds
         if: steps.release-apk-scope.outputs.release_apk_required != 'true'
@@ -442,7 +511,7 @@ jobs:
         # whole point: kills the recurring NVD 520/524 gateway-timeout flake on
         # reruns/same-day runs and turns the full ~7min download into a cache hit.
         if: ${{ env.NVD_API_KEY != '' }}
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
           key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
@@ -560,7 +629,7 @@ jobs:
         run: echo "::warning::NVD_API_KEY is not configured in GitHub Actions secrets; skipping OWASP dependency-check until the secret is restored."
 
       - name: Upload gray debug APK
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ticketbox-gray-debug-apk
           path: android/app/build/outputs/apk/gray/debug/app-gray-debug.apk
@@ -568,7 +637,7 @@ jobs:
           retention-days: 7
 
       - name: Upload internal debug APK
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ticketbox-internal-debug-apk
           path: android/app/build/outputs/apk/internal/debug/app-internal-debug.apk

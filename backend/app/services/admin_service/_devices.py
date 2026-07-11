@@ -12,6 +12,10 @@ from app.config import get_settings
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, UploadLink
 from app.services.admin_service._dtos import DeviceSummary
+from app.services.identity_service._bootstrap_exposure_guard import (
+    assert_bootstrap_sensitive_mutation_allowed,
+)
+from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.time_service import now_utc, to_iso
 
 
@@ -232,6 +236,7 @@ def revoke_device(
     current_device_public_id: str,
     ledger_ids: set[str] | None = None,
 ) -> DeviceSummary:
+    lock_bootstrap_owner_transaction(db)
     if public_id == current_device_public_id:
         raise AppError(
             "invalid_request",
@@ -239,6 +244,7 @@ def revoke_device(
             status_code=409,
         )
     device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=device.id)
     now = now_utc()
     if device.revoked_at is None and ledger_ids is None:
         device.revoked_at = now
@@ -321,6 +327,7 @@ def delete_device(
     :class:`AuthToken` and :class:`UploadLink` rows; ``Expense`` has no FK to
     :class:`Device` and is left untouched.
     """
+    lock_bootstrap_owner_transaction(db)
     if public_id == current_device_public_id:
         raise AppError(
             "invalid_request",
@@ -328,6 +335,7 @@ def delete_device(
             status_code=409,
         )
     device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=device.id)
     if device.revoked_at is None and (
         ledger_ids is None or _active_device_dependents_exist(db, device.id, ledger_ids=ledger_ids)
     ):

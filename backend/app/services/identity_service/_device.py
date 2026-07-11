@@ -14,6 +14,7 @@ from app.services.identity_service._models import (
     PairingCodeResult,
 )
 from app.services.identity_service._seed import _clean_name, _ledger_by_id
+from app.services.session_credential_lock import lock_and_revalidate_credential_mint_context
 from app.services.session_lifecycle_service import (
     hash_pairing_code,
     issue_auth_token,
@@ -22,6 +23,7 @@ from app.services.session_lifecycle_service import (
     upload_link_expires_at,
 )
 from app.services.time_service import now_utc, to_iso
+from app.tenants import AuthContext
 
 PAIRING_CODE_CANDIDATE_COUNT = 16
 
@@ -45,6 +47,7 @@ def _create_auth_token(
     ledger_id: str,
     scope: str,
     expires_at: datetime | None = None,
+    token_value: str | None = None,
 ) -> str:
     return issue_auth_token(
         db,
@@ -53,6 +56,7 @@ def _create_auth_token(
         ledger_id=ledger_id,
         scope=scope,
         expires_at=expires_at,
+        token_value=token_value,
     )
 
 
@@ -63,6 +67,7 @@ def _create_upload_link(
     device_id: int,
     ledger_id: str,
     default_timezone: str | None,
+    upload_key_value: str | None = None,
 ) -> str:
     issued_at = now_utc()
     return issue_upload_link(
@@ -72,6 +77,7 @@ def _create_upload_link(
         ledger_id=ledger_id,
         default_timezone=default_timezone,
         expires_at=upload_link_expires_at(issued_at),
+        upload_key_value=upload_key_value,
     )
 
 
@@ -98,13 +104,18 @@ def _create_pairing_code(
     account_id: int | None,
     device_name_hint: str | None = None,
     ttl_minutes: int = PAIRING_CODE_TTL_MINUTES,
+    pairing_code_value: str | None = None,
 ) -> PairingCodeResult:
     ledger = _ledger_by_id(db, ledger_id)
     if ledger is None or ledger.archived_at is not None:
         raise AppError("invalid_request", status_code=422)
     ttl = max(1, min(ttl_minutes, 60))
     expires_at = now_utc() + timedelta(minutes=ttl)
-    code, code_hash = _new_unique_pairing_code(db)
+    if pairing_code_value is None:
+        code, code_hash = _new_unique_pairing_code(db)
+    else:
+        code = pairing_code_value
+        code_hash = hash_pairing_code(code)
     pairing = PairingCode(
         code_hash=code_hash,
         ledger_id=ledger.ledger_id,
@@ -124,7 +135,13 @@ def create_pairing_code(
     account_id: int | None,
     device_name_hint: str | None = None,
     ttl_minutes: int = PAIRING_CODE_TTL_MINUTES,
+    auth: AuthContext | None = None,
 ) -> PairingCodeResult:
+    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+    if locked_auth is not None and (
+        locked_auth.ledger_id != ledger_id or locked_auth.account_id != account_id
+    ):
+        raise AppError("invalid_token", status_code=401)
     result = _create_pairing_code(
         db,
         ledger_id=ledger_id,

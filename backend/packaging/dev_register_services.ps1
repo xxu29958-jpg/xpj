@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   ADR-0047 Slice 2-D：把捆绑 PG + 冻结后端 EXE 注册成两个 Windows 服务（Shawl 包后端 +
-  pg_ctl register PG），落 C:\ProgramData\Ticketbox，用于在 Inno 安装器（Slice 4）之前
+  pg_ctl register PG），落当前机器 CommonApplicationData\Ticketbox，用于在 Inno 安装器（Slice 4）之前
   *在开发机上*验证 Option D 的服务模型（独立虚拟服务账户 / ACL / depend= / connect-retry /
   优雅关停）。**不发给最终用户**——用户走 Inno 安装器。
 
@@ -52,7 +52,7 @@ param(
     [switch]$Force,
     [int]$PgPort = 5440,
     [int]$BackendPort = 8001,
-    [string]$Root = "C:\ProgramData\Ticketbox",
+    [string]$Root = "",
     [string]$PgServiceName = "TicketboxPg",
     [string]$BackendServiceName = "TicketboxBackend",
     [string]$DbName = "ticketbox",
@@ -68,6 +68,13 @@ $ErrorActionPreference = "Stop"
 # $PSScriptRoot 在 `powershell.exe -File` 调用、param() 默认值里取不到（5.1 已知坑），
 # 故脚本目录在**主体**用 $MyInvocation 解析（build_pg_bundle.ps1 / install_ticketbox.ps1 同款）。
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ($Root.Trim().Length -eq 0) {
+    $commonData = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
+    if ([string]::IsNullOrWhiteSpace($commonData)) {
+        throw "无法解析当前机器 CommonApplicationData 目录。"
+    }
+    $Root = Join-Path $commonData "Ticketbox"
+}
 if ($BundlePgDir.Trim().Length -eq 0)    { $BundlePgDir = Join-Path $ScriptDir "vendor\pg" }
 if ($BackendDistDir.Trim().Length -eq 0) { $BackendDistDir = Join-Path $ScriptDir "..\dist\ticketbox-backend" }
 if ($ShawlExe.Trim().Length -eq 0)       { $ShawlExe = Join-Path $ScriptDir "vendor\shawl\shawl.exe" }

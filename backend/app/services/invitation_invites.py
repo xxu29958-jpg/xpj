@@ -14,7 +14,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, Invitation
+from app.models import Account, Invitation, Ledger
 from app.services import permission_service
 from app.services.identity_service import (
     _create_auth_token,
@@ -22,6 +22,11 @@ from app.services.identity_service import (
     _ensure_membership,
     _ledger_by_id,
     hash_secret,
+    lock_and_revalidate_credential_mint_context,
+    lock_bootstrap_owner_transaction,
+)
+from app.services.identity_service._bootstrap_exposure_guard import (
+    assert_bootstrap_sensitive_mutation_allowed,
 )
 from app.services.invitation_audit import add_audit_log
 from app.services.invitation_common import (
@@ -38,6 +43,7 @@ from app.services.session_lifecycle_service import (
     revoke_token_value,
 )
 from app.services.time_service import ensure_utc, now_utc, to_iso
+from app.tenants import AuthContext
 
 INVITATION_TOKEN_CANDIDATE_COUNT = 8
 
@@ -117,7 +123,19 @@ def create_invitation(
     created_by_account_id: int,
     note: str | None = None,
     ttl_days: int = INVITATION_TTL_DAYS,
+    auth: AuthContext | None = None,
 ) -> CreateInvitationResult:
+    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+    if locked_auth is not None and (
+        locked_auth.ledger_id != ledger_id
+        or locked_auth.account_id != created_by_account_id
+    ):
+        raise AppError("invalid_token", status_code=401)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=created_by_account_id,
+        ledger_ids={ledger_id},
+    )
     if not permission_service.is_invitable_role(role):
         raise AppError("invitation_role_invalid", status_code=422)
     ledger = _ledger_by_id(db, ledger_id)
@@ -175,6 +193,7 @@ def revoke_invitation(
     public_id: str,
     actor_account_id: int | None = None,
 ) -> InvitationSummary:
+    lock_bootstrap_owner_transaction(db)
     if actor_account_id is not None:
         require_active_owner(db, ledger_id=ledger_id, account_id=actor_account_id)
     invitation = db.scalar(
@@ -203,7 +222,12 @@ def revoke_invitation(
 
 def resolve_active_invitation(db: Session, invite_token: str) -> Invitation:
     token_hash = hash_secret(invite_token.strip())
-    invitation = db.scalar(select(Invitation).where(Invitation.token_hash == token_hash).limit(1))
+    invitation = db.scalar(
+        select(Invitation)
+        .where(Invitation.token_hash == token_hash)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
     if invitation is None:
         raise AppError("invitation_invalid", status_code=400)
     if invitation.used_at is not None or invitation.revoked_at is not None:
@@ -235,6 +259,25 @@ def preview_invitation(db: Session, *, invite_token: str) -> InvitationPreviewRe
     )
 
 
+def _load_invitation_acceptance(
+    db: Session,
+    *,
+    invite_token: str,
+) -> tuple[Invitation, Ledger]:
+    invitation = resolve_active_invitation(db, invite_token)
+    if not permission_service.is_invitable_role(invitation.role):
+        raise AppError("invitation_invalid", status_code=400)
+    ledger = db.scalar(
+        select(Ledger)
+        .where(Ledger.ledger_id == invitation.ledger_id)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+    if ledger is None or ledger.archived_at is not None:
+        raise AppError("invitation_invalid", status_code=400)
+    return invitation, ledger
+
+
 def accept_invitation(
     db: Session,
     *,
@@ -246,12 +289,11 @@ def accept_invitation(
 ) -> AcceptInvitationResult:
     """Consume an invitation and issue a ledger-scoped app token."""
 
-    invitation = resolve_active_invitation(db, invite_token)
-    if not permission_service.is_invitable_role(invitation.role):
-        raise AppError("invitation_invalid", status_code=400)
-    ledger = _ledger_by_id(db, invitation.ledger_id)
-    if ledger is None or ledger.archived_at is not None:
-        raise AppError("invitation_invalid", status_code=400)
+    lock_bootstrap_owner_transaction(db)
+    invitation, ledger = _load_invitation_acceptance(
+        db,
+        invite_token=invite_token,
+    )
 
     cleaned_account_name = (account_name or "").strip() or "家庭成员"
     cleaned_device_name = (device_name or "").strip() or "未命名设备"

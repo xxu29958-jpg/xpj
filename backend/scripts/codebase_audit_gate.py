@@ -34,11 +34,11 @@ DebtCounts = dict[str, int]
 CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
-    "files_over_500": 15,
+    "files_over_500": 14,
     "long_functions": 5,  # 2026-07-09: bill-split invitation accept flow split.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
-    "service_public_no_private": 4,  # 2026-07-09: category summary extraction added a real private aggregation boundary.
+    "service_public_no_private": 3,
     "global_usage": 0,  # 2026-07-08: process-local CSRF/executor/Windows-task state moved behind lifecycle stores.
     "cached_singletons": 3,
     "nested_dict_args": 0,  # 2026-07-08: JSON/DTO boundary signatures use named contracts.
@@ -49,7 +49,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 223,  # Noisy lane; actual is lower, but keep unratcheted until a dedicated module-reference cleanup.
+    "unreferenced_modules": 218,  # Noisy lane; ratcheted to the current measured floor.
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -131,7 +131,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2470,  # ADR history/base mutation guards + image-integrity guard, collected 2026-07-11.
+    "backend_pytest_count": 2504,  # Installer lifecycle + bootstrap/CI anti-false-green coverage, collected 2026-07-11.
+    "installer_pytest_count": 61,
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane

@@ -47,6 +47,7 @@
 param(
     [string]$Zip = "",
     [string]$OutDir = "",
+    [string]$ToolchainConfigPath = "",
     [switch]$Download,
     [switch]$Verify,
     [int]$VerifyPort = 5439,
@@ -56,13 +57,49 @@ $ErrorActionPreference = "Stop"
 # $PSScriptRoot 在 `powershell.exe -File` 调用下、param() 默认值里取不到（5.1 已知坑），
 # 故脚本目录在**主体**用 $MyInvocation 解析（install_ticketbox.ps1 同款）。
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BackendRoot = (Resolve-Path -LiteralPath (Join-Path $ScriptDir "..")).Path
+$BuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_build_provenance.ps1"
+if (-not (Test-Path -LiteralPath $BuildProvenanceScript -PathType Leaf)) {
+    throw "缺少 Windows build provenance helper：$BuildProvenanceScript"
+}
+. $BuildProvenanceScript
 if ($OutDir.Trim().Length -eq 0) { $OutDir = Join-Path $ScriptDir "vendor\pg" }
+$VendorRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "vendor"))
+$OutDir = [System.IO.Path]::GetFullPath($OutDir)
+$vendorPrefix = $VendorRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+if (-not $OutDir.StartsWith($vendorPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "PostgreSQL bundle 输出目录必须位于已验证的 packaging\vendor root 下：$OutDir"
+}
 
-# ── pin（ADR §6：major=17 钉死；换 minor 时同步改这三行 + DEPENDENCIES.md）──────
-$PinnedVersion   = "17.10-1"
-$PinnedZipName   = "postgresql-17.10-1-windows-x64-binaries.zip"
-$PinnedZipSha256 = "f9aafca58e7026a1ef2caeee711acf761671e57904d430adc85f468374f5a821"
-$DownloadUrl     = "https://get.enterprisedb.com/postgresql/$PinnedZipName"
+if ($ToolchainConfigPath.Trim().Length -eq 0) {
+    $ToolchainConfigPath = Join-Path $ScriptDir "windows-build-toolchain.json"
+}
+if (-not (Test-Path -LiteralPath $ToolchainConfigPath -PathType Leaf)) {
+    throw "缺少 Windows 构建工具链合同：$ToolchainConfigPath"
+}
+try {
+    $toolchainConfig = Get-Content -LiteralPath $ToolchainConfigPath -Encoding UTF8 -Raw | ConvertFrom-Json
+    $postgresSource = $toolchainConfig.installer_vendor_sources.postgresql
+}
+catch {
+    throw "Windows 构建工具链合同无法读取 PostgreSQL 来源：$ToolchainConfigPath"
+}
+$PinnedVersion = [string]$postgresSource.version
+$PinnedZipName = [string]$postgresSource.archive_name
+$PinnedZipSha256 = ([string]$postgresSource.sha256).ToLowerInvariant()
+$DownloadUrl = [string]$postgresSource.url
+$PinnedPayloadFileCount = [int64]$postgresSource.payload_file_count
+$PinnedPayloadFingerprint = ([string]$postgresSource.payload_fingerprint).ToLowerInvariant()
+if (
+    $PinnedVersion -notmatch '^\d+\.\d+-\d+$' -or
+    $PinnedZipName -notmatch '^[A-Za-z0-9._-]+\.zip$' -or
+    $PinnedZipSha256 -notmatch '^[0-9a-f]{64}$' -or
+    $DownloadUrl -notmatch '^https://' -or
+    $PinnedPayloadFileCount -le 0 -or
+    $PinnedPayloadFingerprint -notmatch '^[0-9a-f]{64}$'
+) {
+    throw "Windows 构建工具链合同中的 PostgreSQL 来源字段无效。"
+}
 
 # bin 内保留的 EXE 白名单；所有 *.dll 无条件保留（运行时依赖）。
 # 单机内嵌单库部署用得到的最小集：server + 簇生命周期 + 管理客户端 + 备份/恢复 + 诊断。
@@ -84,6 +121,143 @@ $KeepTopFiles = @("server_license.txt", "commandlinetools_3rd_party_licenses.txt
 function Write-Step([string]$m) { Write-Host ""; Write-Host "==> $m" -ForegroundColor Cyan }
 function Write-Ok([string]$m)   { Write-Host "    $m" -ForegroundColor Green }
 
+function Assert-TicketboxNoReparseAncestors([string]$Path, [string]$Label) {
+    $cursor = [System.IO.Path]::GetFullPath($Path)
+    while ($true) {
+        if (Test-Path -LiteralPath $cursor) {
+            $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Label 路径含 reparse point：$cursor"
+            }
+        }
+        $parent = [System.IO.Directory]::GetParent($cursor)
+        if ($null -eq $parent) { break }
+        $cursor = $parent.FullName
+    }
+}
+
+function Assert-TicketboxNoReparseTree([string]$Path, [string]$Label) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    Assert-TicketboxNoReparseAncestors $Path $Label
+    $pending = New-Object 'System.Collections.Generic.Stack[string]'
+    $pending.Push([System.IO.Path]::GetFullPath($Path))
+    while ($pending.Count -gt 0) {
+        $current = $pending.Pop()
+        foreach ($item in @(Get-ChildItem -LiteralPath $current -Force -ErrorAction Stop)) {
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Label 目录树含 reparse point：$($item.FullName)"
+            }
+            if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+        }
+    }
+}
+
+function Remove-TicketboxVendorPath([string]$Path) {
+    $canonical = [System.IO.Path]::GetFullPath($Path)
+    if (-not $canonical.StartsWith($vendorPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "拒绝清理 packaging\vendor root 之外的路径：$canonical"
+    }
+    Assert-TicketboxNoReparseAncestors $VendorRoot "PostgreSQL vendor root"
+    if (Test-Path -LiteralPath $canonical) {
+        Assert-TicketboxNoReparseTree $canonical "PostgreSQL vendor cleanup"
+        Remove-Item -LiteralPath $canonical -Recurse -Force -ErrorAction Stop
+    }
+    if (Test-Path -LiteralPath $canonical) {
+        throw "PostgreSQL vendor 路径清理后仍存在：$canonical"
+    }
+}
+
+function Get-TicketboxStreamSha256([System.IO.Stream]$Stream) {
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $Stream.Position = 0
+        $hash = $sha256.ComputeHash($Stream)
+        $Stream.Position = 0
+        return ([System.BitConverter]::ToString($hash)).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function Get-TicketboxPathSha256([string]$Path) {
+    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+    try { return Get-TicketboxStreamSha256 $stream }
+    finally { $stream.Dispose() }
+}
+
+function New-TicketboxVerifiedPgArchiveLease([string]$ArchivePath, [string]$ExpectedSha256, [string]$WorkRoot) {
+    Assert-TicketboxNoReparseAncestors $ArchivePath "PostgreSQL archive cache"
+    Assert-TicketboxNoReparseAncestors $WorkRoot "PostgreSQL archive staging"
+    $privatePath = Join-Path $WorkRoot ([System.IO.Path]::GetFileName($ArchivePath))
+    $sourceHandle = $null
+    $destinationHandle = $null
+    $readHandle = $null
+    try {
+        $sourceHandle = [System.IO.File]::Open($ArchivePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $destinationHandle = [System.IO.File]::Open($privatePath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        $sourceHandle.CopyTo($destinationHandle)
+        $destinationHandle.Flush($true)
+        $destinationHandle.Dispose()
+        $destinationHandle = $null
+        $sourceHandle.Dispose()
+        $sourceHandle = $null
+        Assert-TicketboxNoReparseAncestors $privatePath "PostgreSQL private archive staging"
+        $readHandle = [System.IO.File]::Open($privatePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $actualHash = Get-TicketboxStreamSha256 $readHandle
+        if ($actualHash -cne $ExpectedSha256) {
+            throw "PostgreSQL 私有 staging archive SHA-256 不匹配。"
+        }
+        return [pscustomobject]@{ Path = $privatePath; Handle = $readHandle }
+    }
+    catch {
+        if ($null -ne $readHandle) { $readHandle.Dispose() }
+        throw
+    }
+    finally {
+        if ($null -ne $destinationHandle) { $destinationHandle.Dispose() }
+        if ($null -ne $sourceHandle) { $sourceHandle.Dispose() }
+    }
+}
+
+function Get-TicketboxValidatedPgZipEntry([System.IO.Compression.ZipArchiveEntry]$Entry, [string]$ValidationRoot, [System.Collections.Generic.HashSet[string]]$Seen) {
+    $entryName = [string]$Entry.FullName
+    $normalized = $entryName.Replace("\", "/").TrimEnd("/")
+    $segments = @($normalized.Split("/"))
+    if (
+        $normalized.Length -eq 0 -or
+        [System.IO.Path]::IsPathRooted($normalized.Replace("/", "\")) -or
+        $normalized.Contains(":") -or
+        @($segments | Where-Object { $_.Length -eq 0 -or $_ -eq "." -or $_ -eq ".." }).Count -gt 0
+    ) {
+        throw "PostgreSQL ZIP 含绝对、空段或 dot-segment entry：$entryName"
+    }
+    $unixType = (($Entry.ExternalAttributes -shr 16) -band 0xF000)
+    $windowsAttributes = ($Entry.ExternalAttributes -band 0xFFFF)
+    if (
+        $unixType -eq 0xA000 -or
+        $unixType -notin @(0, 0x4000, 0x8000) -or
+        ($windowsAttributes -band [int][System.IO.FileAttributes]::ReparsePoint) -ne 0
+    ) {
+        throw "PostgreSQL ZIP 含 symlink/reparse/特殊 entry：$entryName"
+    }
+    $root = [System.IO.Path]::GetFullPath($ValidationRoot)
+    $rootPrefix = $root.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+    $target = [System.IO.Path]::GetFullPath((Join-Path $root $normalized.Replace("/", "\")))
+    if (-not $target.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "PostgreSQL ZIP entry canonical path 逃逸 staging：$entryName"
+    }
+    if (-not $Seen.Add($target)) {
+        throw "PostgreSQL ZIP 含大小写冲突或重复 entry：$entryName"
+    }
+    return $normalized
+}
+
+$BuildLock = $null
+$PrimaryFailure = $null
+$CleanupFailures = New-Object System.Collections.Generic.List[string]
+try {
+$BuildLock = Enter-TicketboxWindowsBuildLock $BackendRoot
 # ── 1) 定位 / 下载 zip ────────────────────────────────────────────────────────
 if ($Zip.Trim().Length -eq 0) {
     $candidates = @(
@@ -97,45 +271,62 @@ if ($Zip.Trim().Length -eq 0 -or -not (Test-Path -LiteralPath $Zip)) {
         throw "未找到 $PinnedZipName。请把它放在 $ScriptDir 或 vendor\ 下、用 -Zip 指定，或加 -Download 联网拉取（~330MB）。来源：$DownloadUrl"
     }
     $vendorDir = Join-Path $ScriptDir "vendor"
+    Assert-TicketboxNoReparseAncestors $vendorDir "PostgreSQL vendor root"
     New-Item -ItemType Directory -Force -Path $vendorDir | Out-Null
+    Assert-TicketboxNoReparseAncestors $vendorDir "PostgreSQL vendor root"
     $Zip = Join-Path $vendorDir $PinnedZipName
-    $partFile = "$Zip.part"
+    $partFile = "$Zip.part-$PID-$([Guid]::NewGuid().ToString('N'))"
     Write-Step "下载 $PinnedZipName（~330MB）…"
     $oldPref = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
     try {
-        if (Test-Path -LiteralPath $partFile) { Remove-Item -LiteralPath $partFile -Force }
         Invoke-WebRequest -Uri $DownloadUrl -OutFile $partFile -UseBasicParsing
         # 下完整才落到最终路径——中断的半截 zip 不会留在 $Zip 毒化下次运行（再跑 sha 必失败且无救）。
         Move-Item -LiteralPath $partFile -Destination $Zip -Force
     }
     catch {
-        if (Test-Path -LiteralPath $partFile) { Remove-Item -LiteralPath $partFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $partFile) { Remove-TicketboxVendorPath $partFile }
         throw
     }
     finally { $ProgressPreference = $oldPref }
 }
 $Zip = (Resolve-Path -LiteralPath $Zip).Path
+Assert-TicketboxNoReparseAncestors $Zip "PostgreSQL archive cache"
 
 # ── 2) 校验 sha256（pin）─────────────────────────────────────────────────────
 Write-Step "校验 zip 完整性：$Zip"
-$actual = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLower()
+$actual = Get-TicketboxPathSha256 $Zip
 if ($actual -ne $PinnedZipSha256) {
     throw "zip sha256 不匹配！期望 $PinnedZipSha256，实际 $actual。拒绝使用来源不明的二进制（§9）。"
 }
 Write-Ok "sha256 OK（$PinnedVersion）。"
 
 # ── 3) 选择性解包到 staging（跳过 pgAdmin/doc/include/StackBuilder）────────────
+Add-Type -AssemblyName System.IO.Compression | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
-$staging = Join-Path ([System.IO.Path]::GetTempPath()) ("xpj_pgbundle_" + [System.Guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Force -Path $staging | Out-Null
+$workRoot = Join-Path $VendorRoot (".pg-build-{0}-{1}" -f $PID, [System.Guid]::NewGuid().ToString("N"))
+$staging = Join-Path $workRoot "payload"
+Assert-TicketboxNoReparseAncestors $VendorRoot "PostgreSQL vendor root"
+New-Item -ItemType Directory -Force -Path $VendorRoot, $workRoot, $staging | Out-Null
+Assert-TicketboxNoReparseAncestors $workRoot "PostgreSQL build staging"
 Write-Step "裁剪解包到 staging：$staging"
 $kept = 0; $kbytes = [long]0
-$archive = [System.IO.Compression.ZipFile]::OpenRead($Zip)
+$archiveLease = $null
+$publishedOutput = $false
 try {
+    $archiveLease = New-TicketboxVerifiedPgArchiveLease $Zip $PinnedZipSha256 $workRoot
+    $archive = New-Object System.IO.Compression.ZipArchive -ArgumentList @(
+        $archiveLease.Handle,
+        [System.IO.Compression.ZipArchiveMode]::Read,
+        $true
+    )
+    $validationRoot = Join-Path $workRoot "archive-view"
+    $seenEntries = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    try {
     foreach ($entry in $archive.Entries) {
-        $full = $entry.FullName            # 形如 "pgsql/bin/postgres.exe"
-        if ($full.EndsWith("/")) { continue }   # 目录条目，需要时再建
-        if (-not $full.StartsWith("pgsql/")) { continue }
+        $full = Get-TicketboxValidatedPgZipEntry $entry $validationRoot $seenEntries
+        if ($entry.FullName.EndsWith("/", [System.StringComparison]::Ordinal) -or
+            $entry.FullName.EndsWith("\", [System.StringComparison]::Ordinal)) { continue }
+        if (-not $full.StartsWith("pgsql/", [System.StringComparison]::Ordinal)) { continue }
         $rel = $full.Substring("pgsql/".Length)  # "bin/postgres.exe"
         if ($rel.Length -eq 0) { continue }
         $segs = $rel.Split([char]'/')
@@ -154,15 +345,39 @@ try {
             $keep = $true       # 顶层 license 文本
         }
         if (-not $keep) { continue }
-        $dest = Join-Path $staging ($rel -replace '/', '\')
+        $stagingPrefix = [System.IO.Path]::GetFullPath($staging).TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+        $dest = [System.IO.Path]::GetFullPath((Join-Path $staging ($rel -replace '/', '\')))
+        if (-not $dest.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "PostgreSQL ZIP selected entry 逃逸 payload staging：$($entry.FullName)"
+        }
         $destDir = Split-Path -Parent $dest
         if (-not (Test-Path -LiteralPath $destDir)) { New-Item -ItemType Directory -Force -Path $destDir | Out-Null }
         [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $dest, $true)
         $kept++; $kbytes += $entry.Length
     }
-}
-finally { $archive.Dispose() }
+    }
+    finally { $archive.Dispose() }
+    $archiveLease.Handle.Dispose()
+    $archiveLease = $null
+    Assert-TicketboxNoReparseTree $staging "PostgreSQL extracted payload"
 Write-Ok ("保留 {0:N0} 个文件，解包后约 {1:N1} MB。" -f $kept, ($kbytes / 1MB))
+
+$payloadPaths = @(
+    Get-ChildItem -LiteralPath $staging -Recurse -File |
+        ForEach-Object { $_.FullName }
+)
+$payloadSnapshot = Get-TicketboxFileSetSnapshot $staging $payloadPaths
+if (
+    @($payloadSnapshot.files).Count -ne $PinnedPayloadFileCount -or
+    $payloadSnapshot.fingerprint -cne $PinnedPayloadFingerprint
+) {
+    throw (
+        "PostgreSQL 裁剪 payload 与工具链合同不一致：" +
+        "count=$(@($payloadSnapshot.files).Count)/$PinnedPayloadFileCount，" +
+        "fingerprint=$($payloadSnapshot.fingerprint)/$PinnedPayloadFingerprint"
+    )
+}
+Write-Ok "裁剪 payload 指纹与固定 archive 合同一致。"
 
 # 必备目录存在性自检
 foreach ($d in @("bin", "share")) {
@@ -174,13 +389,17 @@ foreach ($e in @("bin\postgres.exe", "bin\initdb.exe", "bin\psql.exe", "bin\pg_c
 
 # ── 4) 落 OutDir（原子替换）────────────────────────────────────────────────────
 Write-Step "写入捆绑包：$OutDir"
+Assert-TicketboxNoReparseAncestors $OutDir "PostgreSQL bundle output"
 if (Test-Path -LiteralPath $OutDir) {
     if (-not $Force) { throw "$OutDir 已存在。加 -Force 覆盖重建。" }
-    Remove-Item -LiteralPath $OutDir -Recurse -Force
+    Remove-TicketboxVendorPath $OutDir
 }
 $parent = Split-Path -Parent $OutDir
 if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+Assert-TicketboxNoReparseAncestors $OutDir "PostgreSQL bundle output"
 Move-Item -LiteralPath $staging -Destination $OutDir
+$publishedOutput = $true
+Assert-TicketboxNoReparseTree $OutDir "PostgreSQL published bundle"
 
 # 产物清单（provenance）
 $exeCount = (Get-ChildItem -LiteralPath (Join-Path $OutDir "bin") -Filter *.exe).Count
@@ -192,6 +411,8 @@ $manifest = @(
     "source_zip      = $PinnedZipName",
     "source_sha256   = $PinnedZipSha256",
     "source_url      = $DownloadUrl",
+    "payload_file_count = $PinnedPayloadFileCount",
+    "payload_fingerprint = $PinnedPayloadFingerprint",
     "bin_exe_count   = $exeCount（白名单：$($KeepExe -join ', ')）",
     "bin_dll_count   = $dllCount（全保留）",
     "total_size_mb   = $totalMb",
@@ -208,13 +429,16 @@ if ($Verify) {
         throw "拒绝端口 ${VerifyPort}：5432=prod / 5433=CI / 5438=test。换专用端口（默认 5439）。"
     }
     $bin = Join-Path $OutDir "bin"
-    $cluster = Join-Path ([System.IO.Path]::GetTempPath()) ("xpj_pgbundle_smoke_" + $VerifyPort)
-    $pwfile = Join-Path ([System.IO.Path]::GetTempPath()) ("xpj_pgbundle_pw_" + [System.Guid]::NewGuid().ToString("N") + ".txt")
-    $logfile = Join-Path ([System.IO.Path]::GetTempPath()) ("xpj_pgbundle_smoke_" + $VerifyPort + ".log")
+    $verifyRoot = Join-Path $workRoot "verify"
+    New-Item -ItemType Directory -Force -Path $verifyRoot | Out-Null
+    Assert-TicketboxNoReparseAncestors $verifyRoot "PostgreSQL verification staging"
+    $cluster = Join-Path $verifyRoot "cluster"
+    $pwfile = Join-Path $verifyRoot "pw.txt"
+    $logfile = Join-Path $verifyRoot "postgres.log"
     Write-Step "独立冒烟：initdb 一次性簇 @ 127.0.0.1:$VerifyPort（簇=$cluster）"
     if (Test-Path -LiteralPath $cluster) {
         # 上次跑泄漏的同端口簇：尽量清；清不掉（被进程占用）给清晰错误，别让 initdb 报含糊的"非空目录"。
-        Remove-Item -LiteralPath $cluster -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-TicketboxVendorPath $cluster
         if (Test-Path -LiteralPath $cluster) { throw "残留簇目录无法清除（可能有进程占用）：$cluster。先停掉占用进程再重试。" }
     }
     "smokepw" | Out-File -LiteralPath $pwfile -Encoding ascii -NoNewline
@@ -256,10 +480,9 @@ if ($Verify) {
         }
         if ($null -ne $server -and -not $server.HasExited) { try { $server.Kill(); $server.WaitForExit(5000) | Out-Null } catch {} }
         Start-Sleep -Milliseconds 500
-        if (Test-Path -LiteralPath $cluster) { Remove-Item -LiteralPath $cluster -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path -LiteralPath $pwfile) { Remove-Item -LiteralPath $pwfile -Force -ErrorAction SilentlyContinue }
-        if (Test-Path -LiteralPath $logfile) { Remove-Item -LiteralPath $logfile -Force -ErrorAction SilentlyContinue }
-        if (Test-Path -LiteralPath $errlog) { Remove-Item -LiteralPath $errlog -Force -ErrorAction SilentlyContinue }
+        foreach ($cleanupPath in @($cluster, $pwfile, $logfile, $errlog)) {
+            if (Test-Path -LiteralPath $cleanupPath) { Remove-TicketboxVendorPath $cleanupPath }
+        }
     }
 }
 
@@ -269,3 +492,33 @@ Write-Host "输出目录: $OutDir"
 Write-Host "清单    : $(Join-Path $OutDir 'BUNDLE_MANIFEST.txt')"
 Write-Host "下一步  : 2-D 用 vendor\pg\bin\pg_ctl.exe register / Shawl 包后端，落 ProgramData。" -ForegroundColor DarkGray
 Write-Host "=============================================" -ForegroundColor Green
+}
+catch {
+    $bundleFailure = $_
+    if ($publishedOutput -and (Test-Path -LiteralPath $OutDir)) {
+        try { Remove-TicketboxVendorPath $OutDir }
+        catch { $CleanupFailures.Add("published PG output: $($_.Exception.Message)") }
+    }
+    throw $bundleFailure
+}
+finally {
+    try { if ($null -ne $archiveLease) { $archiveLease.Handle.Dispose() } }
+    catch { $CleanupFailures.Add("PG archive lease: $($_.Exception.Message)") }
+    try { if (Test-Path -LiteralPath $workRoot) { Remove-TicketboxVendorPath $workRoot } }
+    catch { $CleanupFailures.Add("PG work root: $($_.Exception.Message)") }
+}
+}
+catch { $PrimaryFailure = $_ }
+finally {
+    try { Exit-TicketboxWindowsBuildLock $BuildLock }
+    catch { $CleanupFailures.Add("Windows build lock: $($_.Exception.Message)") }
+}
+if ($null -ne $PrimaryFailure) {
+    if ($CleanupFailures.Count -gt 0) {
+        Write-Warning "PostgreSQL bundle cleanup also failed: $($CleanupFailures -join '; ')"
+    }
+    throw $PrimaryFailure
+}
+if ($CleanupFailures.Count -gt 0) {
+    throw "PostgreSQL bundle cleanup failed: $($CleanupFailures -join '; ')"
+}

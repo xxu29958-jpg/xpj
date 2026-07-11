@@ -40,6 +40,8 @@ class RuntimeStatus:
     database_service_state: str | None
     log: list[str]
     control_error: str | None = None
+    health_state: str = "pending"
+    health_detail: str | None = None
 
 
 class BackendRuntime(Protocol):
@@ -51,6 +53,7 @@ class BackendRuntime(Protocol):
     def restart(self) -> None: ...
     def toggle_auto_restart(self) -> bool: ...
     def run_monitor(self, stop_event: threading.Event) -> None: ...
+    def shutdown(self) -> None: ...
 
 
 class SourceBackendRuntime:
@@ -74,6 +77,8 @@ class SourceBackendRuntime:
             database_service_state=None,
             log=snapshot.log,
             control_error=snapshot.control_error,
+            health_state="healthy" if snapshot.healthy else ("pending" if snapshot.running else "stopped"),
+            health_detail=None,
         )
 
     def start(self) -> None:
@@ -90,6 +95,9 @@ class SourceBackendRuntime:
 
     def run_monitor(self, stop_event: threading.Event) -> None:
         self._supervisor.run_monitor(stop_event)
+
+    def shutdown(self) -> None:
+        self._control(self._supervisor.shutdown_owned)
 
     @staticmethod
     def _control(action) -> None:

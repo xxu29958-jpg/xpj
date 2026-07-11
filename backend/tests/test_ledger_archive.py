@@ -19,6 +19,7 @@ from app.models import Account, Ledger, LedgerAuditLog, LedgerMember
 from app.routes.owner_console import _require_local as _require_local_console
 from app.routes.owner_ledgers import _require_local as _require_local_ledgers
 from app.services import ledger_service
+from app.services.ledger_contracts import LedgerSummary
 from app.services.owner_console_service import get_owner_account_id
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -67,8 +68,16 @@ def test_archive_hides_ledger_and_records_audit(identity) -> None:
     assert _audit_count(ledger_service.AUDIT_LEDGER_ARCHIVED, "tester_1") == 1
 
     with SessionLocal() as db:
-        active = {s.ledger_id for s in ledger_service.list_managed_ledgers_for_account(db, account_id=owner_id)}
-        archived = {s.ledger_id for s in ledger_service.list_archived_ledgers_for_account(db, account_id=owner_id)}
+        active_summaries = ledger_service.list_managed_ledgers_for_account(
+            db, account_id=owner_id
+        )
+        archived_summaries = ledger_service.list_archived_ledgers_for_account(
+            db, account_id=owner_id
+        )
+    assert all(isinstance(item, LedgerSummary) for item in active_summaries)
+    assert all(isinstance(item, LedgerSummary) for item in archived_summaries)
+    active = {item.ledger_id for item in active_summaries}
+    archived = {item.ledger_id for item in archived_summaries}
     assert "tester_1" not in active
     assert "tester_1" in archived
 

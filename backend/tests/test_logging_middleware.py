@@ -70,6 +70,57 @@ def test_middleware_transparent_for_200(client: TestClient) -> None:
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
 
+    installation_health_public = client.get("/api/health/installation")
+    assert installation_health_public.status_code == 403
+    assert installation_health_public.json()["error"] == "invalid_request"
+
+    from app.main import app
+
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:8000",
+        client=("127.0.0.1", 50000),
+    ) as local_client:
+        installation_health = local_client.get("/api/health/installation")
+    assert installation_health.status_code == 200
+    installation_body = installation_health.json()
+    assert installation_body["status"] == "ok"
+    assert installation_body["product"] == "ticketbox"
+    assert installation_body["backend_version"]
+    assert installation_body["installation_id"]
+    assert all(":\\" not in value for value in installation_body.values())
+
+
+def test_installation_health_rejects_database_query_failure() -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from app.database import get_db
+    from app.main import app
+
+    class UnavailableDatabase:
+        def execute(self, *_args, **_kwargs):
+            raise OperationalError("installation health", {}, OSError("database unavailable"))
+
+    def unavailable_database():
+        yield UnavailableDatabase()
+
+    app.dependency_overrides[get_db] = unavailable_database
+    try:
+        with TestClient(
+            app,
+            base_url="http://127.0.0.1:8000",
+            client=("127.0.0.1", 50000),
+        ) as local_client:
+            response = local_client.get("/api/health/installation")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"] == "invalid_request"
+    assert payload["message"] == "Ticketbox database is not ready for installed-service traffic."
+    assert payload["request_id"]
+
 
 def test_mask_token_helper() -> None:
     from app.log_sanitize import mask_token

@@ -206,7 +206,20 @@ class BackendSupervisor:
     def _terminate(self) -> None:
         proc = self._proc
         if proc is not None:
-            kill_requested = self._tree_kill(proc.pid)
+            if proc.poll() is not None:
+                if self._health():
+                    self._adopt()
+                    raise SupervisorControlError(
+                        "后端父进程已退出，但服务端口仍有健康实例；管理器没有误杀该外部进程。",
+                    )
+                kill_requested = True
+            else:
+                terminate_owned = getattr(proc, "terminate_owned", None)
+                kill_requested = (
+                    bool(terminate_owned())
+                    if callable(terminate_owned)
+                    else self._tree_kill(proc.pid)
+                )
             try:
                 proc.wait(timeout=5.0)
             except TimeoutError as exc:
@@ -259,3 +272,14 @@ class BackendSupervisor:
                 self.tick()
             except (OSError, SupervisorControlError):
                 continue
+
+    def shutdown_owned(self) -> None:
+        """Stop only the child this supervisor spawned; never an adopted process."""
+        with self._lock:
+            self._managed = False
+            if self._adopted:
+                self._adopted = False
+                self._last_control_error = None
+                return
+            self._terminate()
+            self._last_control_error = None

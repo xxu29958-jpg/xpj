@@ -26,11 +26,13 @@ class PostgresBackupValidationError(RuntimeError):
     """Raised when a file is not a restorable Ticketbox pg_dump archive."""
 
 
-# Windows installs keep the client tools in C:\Program Files\PostgreSQL\<ver>\bin
-# without putting them on PATH; backup_database.ps1 already globs this root for
-# pg_dump, and the scheduled backup's validation step needs the same fallback.
-# Module-level so tests can repoint it.
-_PG_INSTALL_ROOT = Path(r"C:\Program Files\PostgreSQL")
+# Windows installs often keep client tools below the machine's ProgramFiles root
+# without putting them on PATH. Keep the resolved root injectable for tests, but
+# never assume the system drive or an English absolute path.
+_PROGRAM_FILES = os.getenv("PROGRAMFILES")
+_PG_INSTALL_ROOT: Path | None = (
+    Path(_PROGRAM_FILES) / "PostgreSQL" if _PROGRAM_FILES else None
+)
 
 
 def _install_version_key(binary_path: Path) -> tuple[int, ...]:
@@ -57,10 +59,14 @@ def find_pg_binary(name: str, env_var: str) -> str | None:
     located = shutil.which(name)
     if located:
         return located
-    candidates = sorted(
-        _PG_INSTALL_ROOT.glob(f"*/bin/{name}.exe"),
-        key=_install_version_key,
-        reverse=True,
+    candidates = (
+        sorted(
+            _PG_INSTALL_ROOT.glob(f"*/bin/{name}.exe"),
+            key=_install_version_key,
+            reverse=True,
+        )
+        if _PG_INSTALL_ROOT is not None
+        else []
     )
     if candidates:
         return str(candidates[0])

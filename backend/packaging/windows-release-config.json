@@ -1,0 +1,43 @@
+{
+  "schema": "ticketbox-windows-release-v1",
+  "postgres_version_policy": {
+    "minimum": "17.10",
+    "maximum_exclusive": "18.0"
+  },
+  "shawl_version_policy": {
+    "minimum": "1.9.0",
+    "maximum_exclusive": "2.0.0"
+  },
+  "iscc_version_policy": {
+    "minimum": "6.5.0",
+    "maximum_exclusive": "7.0.0"
+  },
+  "pg_service_name": "TicketboxPg",
+  "pg_recovery_service_name": "TicketboxPgRecovery",
+  "backend_service_name": "TicketboxBackend",
+  "default_pg_port": 5432,
+  "fallback_pg_port": 5440,
+  "default_backend_port": 8000,
+  "fallback_backend_port": 8001,
+  "db_name": "ticketbox",
+  "db_role": "ticketbox",
+  "bootstrap_account_name": "我",
+  "bootstrap_ledger_name": "我的小票夹",
+  "bootstrap_device_name": "Windows 后端",
+  "default_timezone": "Asia/Shanghai",
+  "secret_byte_count": 32,
+  "stop_timeout_ms": 25000,
+  "restart_delay_ms": 5000,
+  "service_state_timeout_ms": 60000,
+  "service_poll_interval_ms": 250,
+  "postgres_ready_timeout_ms": 90000,
+  "postgres_ready_poll_interval_ms": 1000,
+  "pre_upgrade_postgres_ready_timeout_ms": 60000,
+  "pre_upgrade_postgres_ready_poll_interval_ms": 500,
+  "backend_ready_timeout_ms": 120000,
+  "backend_ready_poll_interval_ms": 1000,
+  "backend_health_request_timeout_ms": 2000,
+  "bootstrap_request_timeout_ms": 20000,
+  "scm_failure_reset_seconds": 3600,
+  "scm_restart_delays_ms": [5000, 10000, 60000]
+}

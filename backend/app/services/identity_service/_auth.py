@@ -78,6 +78,8 @@ def _auth_context_from_parts(
         device_name=device.device_name,
         role=role,
         scope=token.scope,
+        credential_id=token.id,
+        credential_hash=token.token_hash,
     )
 
 

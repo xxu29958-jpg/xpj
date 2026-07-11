@@ -129,6 +129,7 @@ def create_invitation_endpoint(
         created_by_account_id=auth.account_id,
         note=payload.note,
         ttl_days=payload.ttl_days,
+        auth=auth,
     )
     return InvitationCreateResponse(
         invite_token=result.invite_token,
@@ -264,6 +265,7 @@ def transfer_owner_endpoint(
         ledger_id=ledger_id,
         member_id=member_id,
         requester_account_id=auth.account_id,
+        auth=auth,
     )
     return OwnerTransferResponse(
         ledger_id=ledger_id,

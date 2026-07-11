@@ -74,19 +74,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_ta
 
 凭证与二进制：
 
-- `pg_dump` / `pg_restore` 的发现链：环境变量（`PG_DUMP_PATH` / `PG_RESTORE_PATH`）→ `PATH` → `C:\Program Files\PostgreSQL\<最高版本>\bin\` 自动探测（脚本与 Python 校验服务同一条链；三者都没有才报错）。
-- 口令走 `DATABASE_URL` 内联，或 `PGPASSWORD` / `%APPDATA%\postgresql\pgpass.conf`（任务以哪个账户跑就配哪个账户的 `pgpass`）。
+- `pg_dump` / `pg_restore` 的发现链：环境变量（`PG_DUMP_PATH` / `PG_RESTORE_PATH`）→ `PATH` → 当前机器 `ProgramFiles` 根下的 PostgreSQL 最高版本自动探测（脚本与 Python 校验服务同一条链；三者都没有才报错）。
+- 任务从受保护配置读取 `DATABASE_URL`，但调用 `pg_dump` 时会把口令从 `--dbname` 参数中剥离，只放入该子进程的临时 `PGPASSWORD`；父进程环境会精确恢复，日志不记录原生输出或 DSN。
 
 PostgreSQL 恢复用 `pg_restore`（见下方「从备份恢复」与 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)）。
 
 ## 异地备份（offsite）
 
-每次备份成功后，`backup_database.ps1` 会把备份同步到异地目录（单机部署的盘损是主要数据风险）：
+本地备份成功后，只有同时满足显式开关与目标目录合同，`backup_database.ps1` 才会同步到异地目录：
 
-- 目标解析：`XPJ_OFFSITE_BACKUP_DIR` 显式优先（设为 `off` 禁用）；未设置且本机 OneDrive 在线时，默认 `%OneDrive%\TicketboxBackups`；两者都没有则跳过并提示。
+- 默认关闭，不因发现 OneDrive 自动外传数据库或票据图片。
+- 启用时必须同时设置 `XPJ_OFFSITE_BACKUP_ENABLED=true` 和绝对路径 `XPJ_OFFSITE_BACKUP_DIR`；缺项、相对路径或非法开关都会保留本地备份并明确报错。
 - `db\`：增量复制 `ticketbox-*.dump`（不做镜像删除——本地目录被清空时不殃及异地副本），异地保留 90 天（本地 30 天）。
 - `uploads\`：robocopy `/MIR` 镜像票据图片；本地 uploads 为空时跳过（空源守卫，防把异地副本一并清空）。
-- 同步目标是用户自己的 OneDrive / 指定目录；归档本身未加密——需要更强保密时把 `XPJ_OFFSITE_BACKUP_DIR` 指向加密盘 / NAS。
+- 目标目录可以由用户明确选择 OneDrive、加密盘或 NAS；归档本身未加密，选择会被云同步的目录前必须确认其隐私边界。
 
 ## 备份链健康自查
 
@@ -99,8 +100,8 @@ PostgreSQL 恢复用 `pg_restore`（见下方「从备份恢复」与 [POSTGRES_
 Get-ScheduledTaskInfo TicketboxBackup | Select-Object LastRunTime, LastTaskResult
 # 2. 备份目录应有近日归档
 Get-ChildItem "<DATA_ROOT>\backups\ticketbox-*.dump" | Sort-Object LastWriteTime -Descending | Select-Object -First 3
-# 3. 异地副本应在更新（配置了 offsite 时）
-Get-ChildItem "$env:OneDrive\TicketboxBackups\db" | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+# 3. 异地副本应在更新（显式启用了 offsite 时）
+Get-ChildItem (Join-Path $env:XPJ_OFFSITE_BACKUP_DIR "db") | Sort-Object LastWriteTime -Descending | Select-Object -First 3
 ```
 
 任一查不过：先看任务历史 / 手跑 `maintenance_ticketbox.ps1 -Backup` 拿真实报错，再对照
@@ -116,7 +117,7 @@ PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。恢复�
 
 - 不提交 `backend/backups/` 或 `ticketbox-data/backups/`(`.gitignore` 已覆盖)。
 - 不把真实 Token 写进备份文档、日志或 Git。
-- 备份在本机生成 `pg_dump` 归档；配置异地目录后同步到**用户自己的** OneDrive / 指定目录（见「异地备份」），不经任何第三方服务中转。
+- 备份默认只在本机生成 `pg_dump` 归档；只有显式启用后才同步到用户指定目录（见「异地备份」），应用不选择或发现第三方云目录。
 - 默认只保留最近 30 天的备份（`ticketbox-*.dump`）。
 - 恢复不删除 uploads 图片。
 - 清理图片不影响 confirmed 账本数据。

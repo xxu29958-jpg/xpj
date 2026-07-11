@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import UTC, datetime
+from json import dumps
 from pathlib import Path
 
 
@@ -43,7 +45,7 @@ def _resolve_writable_data_dir() -> Path:
     """Writable data root for files the backend *creates* (uploads, .env, backups).
 
     Honors an installer/service-preset ``TICKETBOX_DATA_DIR`` — the ADR-0047
-    service deployment points it at ``C:\\ProgramData\\Ticketbox\\app`` because the
+    service deployment points it at the machine ``CommonApplicationData/Ticketbox/app`` root because the
     onedir EXE lives in a read-only/locked location. Only when it is unset/blank
     do we fall back to a ``ticketbox-data/`` folder next to the EXE (dev / the
     single-folder 档 A install). Resolving a preset HERE — instead of computing
@@ -88,6 +90,118 @@ def configure_environment() -> Path:
     # default (the EXE assumes a local PostgreSQL service is installed).
     os.environ.setdefault("UPLOAD_DIR", str(data_dir / "uploads"))
     return data_dir
+
+
+def _maintenance_result_path(data_dir: Path) -> Path:
+    return data_dir / "logs" / "bootstrap-exposure-recovery-result.json"
+
+
+def _write_maintenance_result(
+    data_dir: Path,
+    *,
+    operation_id: str,
+    state: str,
+    error_code: str = "",
+    error_type: str = "",
+) -> None:
+    result_path = _maintenance_result_path(data_dir)
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "ticketbox-maintenance-result-v1",
+        "action": "rotate-exposed-bootstrap",
+        "operation_id": operation_id,
+        "state": state,
+        "error_code": error_code,
+        "error_type": error_type,
+        "recorded_at_utc": datetime.now(UTC).isoformat(),
+    }
+    temporary = result_path.with_name(f".{result_path.name}.{os.getpid()}.tmp")
+    temporary.write_text(dumps(payload, ensure_ascii=True), encoding="utf-8")
+    os.replace(temporary, result_path)
+
+
+def _maintenance_error_code(exc: BaseException) -> str:
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.errors import AppError
+    from app.services.identity_service import ReplacementCredentialCollisionError
+
+    if isinstance(exc, ReplacementCredentialCollisionError):
+        return "replacement_credential_collision"
+    if isinstance(exc, AppError):
+        return f"application:{exc.error}"
+    if isinstance(exc, SQLAlchemyError):
+        return "database_error"
+    if isinstance(exc, OSError):
+        return "io_error"
+    if isinstance(exc, ValueError):
+        return "validation_error"
+    return "runtime_error"
+
+
+def _run_maintenance_action(data_dir: Path) -> bool:
+    action = os.environ.pop("TICKETBOX_MAINTENANCE_ACTION", "").strip()
+    if not action:
+        return False
+    if action != "rotate-exposed-bootstrap":
+        raise RuntimeError(f"unsupported Ticketbox maintenance action: {action}")
+    exposed_secret = os.environ.pop("TICKETBOX_EXPOSED_BOOTSTRAP_SECRET", "")
+    replacement_secret = os.environ.pop("TICKETBOX_REPLACEMENT_BOOTSTRAP_SECRET", "")
+    operation_id = os.environ.pop("TICKETBOX_MAINTENANCE_OPERATION_ID", "").strip()
+    if not exposed_secret or not replacement_secret:
+        raise RuntimeError("bootstrap exposure recovery secrets are missing")
+    if not operation_id:
+        raise RuntimeError("bootstrap exposure recovery operation id is missing")
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.database import SessionLocal
+    from app.errors import AppError
+    from app.services.identity_service import rotate_exposed_bootstrap_credentials
+
+    _write_maintenance_result(data_dir, operation_id=operation_id, state="running")
+    try:
+        with SessionLocal() as db:
+            rotate_exposed_bootstrap_credentials(
+                db,
+                exposed_secret=exposed_secret,
+                replacement_secret=replacement_secret,
+            )
+    except (AppError, SQLAlchemyError, OSError, RuntimeError, ValueError) as exc:
+        error_code = _maintenance_error_code(exc)
+        _write_maintenance_result(
+            data_dir,
+            operation_id=operation_id,
+            state="failed",
+            error_code=error_code,
+            error_type=type(exc).__name__,
+        )
+        import logging
+
+        logging.getLogger(__name__).error(
+            "Ticketbox maintenance failed: code=%s type=%s",
+            error_code,
+            type(exc).__name__,
+        )
+        raise
+    _write_maintenance_result(data_dir, operation_id=operation_id, state="succeeded")
+    return True
+
+
+def _assert_bootstrap_recovery_not_pending() -> None:
+    """Refuse normal HTTP startup while an installer-owned rotation is pending."""
+    configured = os.environ.get("TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", "").strip()
+    if not configured:
+        return
+    guard_path = Path(configured).resolve()
+    try:
+        pending = guard_path.exists()
+    except OSError as exc:
+        raise RuntimeError("cannot verify bootstrap recovery startup guard") from exc
+    if pending:
+        raise RuntimeError(
+            "bootstrap credential recovery is pending; run installer repair before starting HTTP"
+        )
 
 
 def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:
@@ -155,14 +269,16 @@ def main() -> None:
     import logging.config
 
     data_dir = configure_environment()
-    host = os.getenv("TICKETBOX_HOST", "127.0.0.1")
-    port = int(os.getenv("TICKETBOX_PORT", "8000"))
-
     # Configure logging to a rotating file under the data dir BEFORE importing the
     # app, so the console=False service build (sys.stdout/stderr None) never falls
     # through to logging's lastResort stderr handler, and startup/import-time
     # diagnostics are captured. See _build_log_config + ADR-0047 §8.
     logging.config.dictConfig(_build_log_config(data_dir / "logs"))
+    if _run_maintenance_action(data_dir):
+        return
+    host = os.getenv("TICKETBOX_HOST", "127.0.0.1")
+    port = int(os.getenv("TICKETBOX_PORT", "8000"))
+    _assert_bootstrap_recovery_not_pending()
 
     # Import the app object directly (not the "app.main:app" string form):
     # uvicorn's string import re-resolves the module via importlib, which is

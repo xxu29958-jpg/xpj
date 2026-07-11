@@ -25,6 +25,16 @@ from app.database._core import (
     settings,
     wait_for_db,
 )
+from app.database._lifecycle import (
+    AlembicContext,
+    DatabaseLifecycleAction,
+    DatabaseLifecyclePlan,
+    DatabaseLifecycleState,
+    DatabaseMigrationPreflightError,
+    inspect_database_lifecycle,
+    load_alembic_context,
+    plan_database_lifecycle,
+)
 from app.database._seed import (
     BASELINE_MIGRATION_NAME,
     reconcile_expense_tag_mirror_once,
@@ -37,10 +47,6 @@ from app.errors import AppError
 from app.version import BACKEND_VERSION
 
 _logger = logging.getLogger(__name__)
-
-
-class DatabaseMigrationPreflightError(RuntimeError):
-    """Startup migration preflight failed before Alembic could safely run."""
 
 
 __all__ = [
@@ -66,14 +72,25 @@ def init_db() -> None:
     from app import models  # noqa: F401
 
     _warn_if_default_database_url()
-    Base.metadata.create_all(bind=engine)
+    lifecycle = inspect_database_lifecycle()
+    alembic = load_alembic_context()
+    plan = plan_database_lifecycle(lifecycle, alembic)
+    if lifecycle.has_existing_schema:
+        _assert_existing_schema_compatible(lifecycle)
+    if plan.action is DatabaseLifecycleAction.REFUSE:
+        raise DatabaseMigrationPreflightError(
+            f"拒绝自动变更数据库:{plan.refusal_reason}数据库未执行 backup/DDL/DML。"
+        )
+    if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
+        _assert_existing_schema_owner_ready()
+        _backup_before_upgrade(lifecycle.current_revision, alembic.head_revision)
+    _apply_schema_lifecycle(plan, alembic)
+    _assert_schema_at_head(alembic.head_revision)
     record_schema_migration(
         BASELINE_MIGRATION_NAME,
         backend_version=BACKEND_VERSION,
         note="schema baseline marker",
     )
-    _stamp_alembic_baseline_if_needed()
-    _seed_fresh_schema_metadata_if_needed()
     seed_identity_data()
     # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
     # paths remain readable through resolve_protected_image() after the route
@@ -84,86 +101,66 @@ def init_db() -> None:
     reconcile_expense_tag_mirror_once()
 
 
-def _stamp_alembic_baseline_if_needed() -> None:
-    """Bring Alembic's version table in line with the runtime schema.
+def _apply_schema_lifecycle(
+    plan: DatabaseLifecyclePlan, alembic: AlembicContext
+) -> None:
+    from alembic import command
 
-    Fresh databases are created from current ``Base.metadata`` and can be
-    stamped directly to head. Existing v1.1 databases are first stamped to
-    the baseline revision, then upgraded to head so real Alembic revisions
-    (starting with 20260524_0002) actually run.
-    """
-    from pathlib import Path
+    if plan.action is DatabaseLifecycleAction.NOOP:
+        return
+    if plan.action is DatabaseLifecycleAction.FRESH_UPGRADE:
+        with engine.begin() as connection:
+            alembic.config.attributes["connection"] = connection
+            if "alembic_version" in plan.state.table_names:
+                command.stamp(alembic.config, "base", purge=True)
+            command.upgrade(alembic.config, "head")
+        return
+    with engine.begin() as connection:
+        alembic.config.attributes["connection"] = connection
+        command.upgrade(alembic.config, "head")
 
+
+def _assert_existing_schema_compatible(lifecycle: DatabaseLifecycleState) -> None:
+    """Run the app_meta binary floor when that legacy schema exposes it."""
+
+    if "app_meta" not in lifecycle.table_names:
+        return
     from sqlalchemy import inspect, text
 
-    try:
-        from alembic import command
-        from alembic.config import Config
-        from alembic.script import ScriptDirectory
-        from alembic.util import CommandError
-    except ImportError:
-        return
+    from app.models.app_meta import SCHEMA_MIN_COMPATIBLE_KEY
+    from app.services.app_meta_service import assert_binary_compatible_with_minimum
 
-    backend_root = Path(__file__).resolve().parents[2]
-    ini_path = backend_root / "alembic.ini"
-    if not ini_path.is_file():
-        return
+    with engine.connect() as connection:
+        columns = {column["name"] for column in inspect(connection).get_columns("app_meta")}
+        if not {"key", "value"}.issubset(columns):
+            raise DatabaseMigrationPreflightError(
+                "拒绝启动数据库:app_meta 缺少 compatibility 所需的 key/value 列。"
+            )
+        minimum = connection.scalar(
+            text("SELECT value FROM app_meta WHERE key = :key LIMIT 1"),
+            {"key": SCHEMA_MIN_COMPATIBLE_KEY},
+        )
+    assert_binary_compatible_with_minimum(minimum)
 
-    cfg = Config(str(ini_path))
-    cfg.set_main_option("script_location", str(backend_root / "migrations"))
-    try:
-        head = ScriptDirectory.from_config(cfg).get_current_head()
-    except (CommandError, OSError):
-        return
-    if head is None:
-        return
 
-    current_revision: str | None = None
-    with engine.begin() as connection:
-        inspector = inspect(connection)
-        table_names = set(inspector.get_table_names())
-        has_version_table = "alembic_version" in table_names
-        if has_version_table:
-            current_revision = connection.scalar(
-                text("SELECT version_num FROM alembic_version LIMIT 1")
+def _assert_existing_schema_owner_ready() -> None:
+    with engine.connect() as connection:
+        _assert_role_can_alter_existing_schema(connection)
+
+
+def _assert_schema_at_head(expected_head: str) -> None:
+    from sqlalchemy import text
+
+    with engine.connect() as connection:
+        revisions = tuple(
+            connection.scalars(
+                text("SELECT version_num FROM alembic_version ORDER BY version_num")
             )
-        else:
-            has_retention_column = False
-            if "budget_advisor_audit_logs" in table_names:
-                has_retention_column = any(
-                    column["name"] == "retention_days"
-                    for column in inspector.get_columns("budget_advisor_audit_logs")
-                )
-            # Existing pre-Alembic databases may have this column because
-            # create_all() just created the current ORM table, but they still
-            # need later data migrations (for example OCR raw_text backfills).
-            current_revision = (
-                "20260524_0002" if has_retention_column else "20260524_0001"
-            )
-            connection.execute(
-                text(
-                    "CREATE TABLE IF NOT EXISTS alembic_version "
-                    "(version_num VARCHAR(32) PRIMARY KEY)"
-                )
-            )
-            connection.execute(
-                text("INSERT INTO alembic_version (version_num) VALUES (:v)"),
-                {"v": current_revision},
-            )
-    if current_revision != head:
-        # A pre-existing Alembic-tracked DB behind head (``alembic_version`` row
-        # present at entry) is the production restart / upgrade path the
-        # pre-migration snapshot protects. A fresh ``create_all``'d DB has no
-        # ``alembic_version`` table at entry and runs the same guarded migrations
-        # as no-ops with no data to lose — skip the backup there, otherwise every
-        # fresh start / test reset would needlessly shell out to ``pg_dump`` (and
-        # a missing binary would fail-closed-brick a legitimate fresh start).
-        if has_version_table:
-            _backup_before_upgrade(current_revision, head)
-        with engine.begin() as connection:
-            _assert_role_can_alter_existing_schema(connection)
-            cfg.attributes["connection"] = connection
-            command.upgrade(cfg, "head")
+        )
+    if revisions != (expected_head,):
+        raise DatabaseMigrationPreflightError(
+            f"数据库迁移后 revision 校验失败:expected={expected_head!r}, actual={revisions!r}。"
+        )
 
 
 def _assert_role_can_alter_existing_schema(connection) -> None:
@@ -178,15 +175,12 @@ def _assert_role_can_alter_existing_schema(connection) -> None:
     table-owner trap). This turns that failure mode into a clear, actionable
     pre-flight error listing the mis-owned tables.
 
-    Conservative by design: a table is flagged only when the connected role has
-    NO membership relationship to the owning role (``pg_has_role(... 'MEMBER')``
-    is false) — exactly the trap. A role is always a member of itself and a
-    superuser is a member of every role, so a freshly ``create_all``'d database
-    (every table owned by the current role) and the healthy production setup both
-    yield zero flagged rows; this never blocks a legitimate start. A
-    member-without-inherit edge case (rare, not the cut-over trap) is left to fail
-    naturally at the ALTER, same as today — fail-open there beats false-positive
-    bricking a legitimate startup.
+    PostgreSQL's ``USAGE`` role test reflects whether ``current_user`` can
+    actually exercise the owner role through inheritance. A bare membership is
+    insufficient when the login is ``NOINHERIT``; accepting that shape would let
+    the pre-flight pass and then fail at the first ALTER. A role has USAGE on
+    itself and a superuser has USAGE on every role, so healthy owner and migrator
+    configurations still yield zero flagged rows.
     """
     from sqlalchemy import text
 
@@ -197,7 +191,7 @@ def _assert_role_can_alter_existing_schema(connection) -> None:
             FROM pg_tables
             WHERE schemaname = 'public'
               AND tableowner <> current_user
-              AND NOT pg_has_role(current_user, tableowner, 'MEMBER')
+              AND NOT pg_has_role(current_user, tableowner, 'USAGE')
             ORDER BY tablename
             """
         )
@@ -210,7 +204,7 @@ def _assert_role_can_alter_existing_schema(connection) -> None:
     suffix = "" if len(rows) <= 8 else f" 等共 {len(rows)} 张表"
     raise DatabaseMigrationPreflightError(
         f"拒绝执行数据库迁移:当前数据库角色 '{current}' 不是下列表的属主、"
-        f"也不是属主角色的成员或超级用户,ALTER / ADD CONSTRAINT 迁移会失败"
+        f"也不能继承属主角色权限,ALTER / ADD CONSTRAINT 迁移会失败"
         f"(历史 cut-over 表属主错位陷阱)。请先用超级用户归位表属主"
         f"(见 docs/runbook/POSTGRES_MIGRATION.md §3 与 "
         f"backend/scripts/fix_table_owners.sql),再重启服务。受影响表:{sample}{suffix}。"
@@ -219,7 +213,7 @@ def _assert_role_can_alter_existing_schema(connection) -> None:
 
 def _warn_if_default_database_url() -> None:
     """WARN at startup when DATABASE_URL is unset and the superuser@localhost fallback
-    is in use (model-invariant hardening P1). Running create_all / migrations as the
+    is in use (model-invariant hardening P1). Running Alembic as the
     default ``postgres`` superuser is the 2026-06-04 cut-over setup that left tables
     owned by ``postgres`` and bricked startup for ~4 days (the table-owner trap). Real
     deployments must set DATABASE_URL to the app role; this surfaces the risk early.
@@ -229,42 +223,17 @@ def _warn_if_default_database_url() -> None:
     if database_url_is_default_fallback():
         _logger.warning(
             "DATABASE_URL 未设置,正使用默认的 postgres 超级用户@localhost:5432 回落。"
-            "以超级用户跑 create_all / 迁移会让表属主=postgres,埋下表属主错位陷阱"
+            "以超级用户跑 Alembic 会让表属主=postgres,埋下表属主错位陷阱"
             "(2026-06-04 静默停机根因)。生产请将 DATABASE_URL 指向应用角色。"
         )
 
 
 def _backup_before_upgrade(current_revision: str | None, head: str) -> None:
-    """Snapshot the EXISTING database BEFORE running pending Alembic migrations
-    (model-invariant hardening P1). An Alembic upgrade on an existing DB is the one
-    irreversible startup step; take a pg_dump restore point first so a migration that
-    corrupts or half-applies can be recovered. Fail-CLOSED: if the backup fails the
-    upgrade does NOT run (data-correctness over availability, ADR-0049 §0).
+    """Snapshot a supported behind schema immediately before Alembic writes.
 
-    Escape hatch: ``SKIP_PRE_MIGRATION_BACKUP=true`` skips the snapshot with a loud
-    WARN — for the case where pg_dump itself is broken/unavailable and the operator
-    has backed up by hand; without it a broken backup tool would permanently brick a
-    legitimate migration (the very silent-brick class this hardening prevents).
-
-    Only reached for a pre-existing Alembic-tracked DB behind head (caller gates on
-    ``has_version_table``); a fresh ``create_all``'d DB runs its guarded no-op
-    migrations without a pre-backup (nothing to lose, and no ``pg_dump`` dependency
-    on the first-start / test-reset path). Residual by design: a true pre-Alembic
-    v1.1 DB (real data but no ``alembic_version`` row at entry) also skips this
-    backup; that path is vestigial post-2026-06-04 cut-over (any prior startup
-    created the version table), and such an operator must back up by hand first.
+    Fail-CLOSED: if pg_dump fails, startup performs no database mutation.
+    Empty, at-head, and refused unknown-lineage plans never call this function.
     """
-    import os
-
-    if os.getenv("SKIP_PRE_MIGRATION_BACKUP", "").strip().lower() in {"1", "true", "yes"}:
-        _logger.warning(
-            "SKIP_PRE_MIGRATION_BACKUP 已设置——跳过迁移前自动备份(%s -> %s)。"
-            "请确认已手动备份数据库。",
-            current_revision,
-            head,
-        )
-        return
-
     from app.services.backup_service import create_pre_upgrade_backup
 
     try:
@@ -273,7 +242,7 @@ def _backup_before_upgrade(current_revision: str | None, head: str) -> None:
         raise DatabaseMigrationPreflightError(
             f"拒绝执行数据库迁移:迁移前自动备份失败({exc})。迁移是不可逆启动步骤,"
             f"未成功备份不迁移(数据安全优先)。请确认 pg_dump 可用、备份目录可写后重启;"
-            f"若已手动备份且确需跳过,设 SKIP_PRE_MIGRATION_BACKUP=true 再重启。"
+            "不得通过 unattended 环境变量跳过恢复点。"
         ) from exc
     _logger.info(
         "迁移前已写入数据库快照(%s),准备从 %s 迁移到 %s。",

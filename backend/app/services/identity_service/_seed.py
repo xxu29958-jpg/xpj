@@ -106,3 +106,8 @@ def ledger_ids(db: Session) -> list[str]:
 
 def active_auth_token_count(db: Session) -> int:
     return int(db.scalar(select(func.count()).select_from(AuthToken).where(AuthToken.revoked_at.is_(None))) or 0)
+
+
+def auth_token_count(db: Session) -> int:
+    """Count issued identity tokens, including revoked historical rows."""
+    return int(db.scalar(select(func.count()).select_from(AuthToken)) or 0)

@@ -1,6 +1,6 @@
-"""Identity service: bootstrap / seed / pairing / token issue / auth / pair.
+"""Identity service: bootstrap / recovery / seed / pairing / token issue / auth / pair.
 
-Split into 7 private sub-modules by responsibility:
+Split into private sub-modules by responsibility:
 
 - ``_models``: DTOs + numeric constants.
 - ``_pairing_throttle``: in-process rate limit for pair attempts (module-level state).
@@ -8,6 +8,7 @@ Split into 7 private sub-modules by responsibility:
 - ``_seed``: owner/ledger/membership ensure + ``ledger_ids`` query.
 - ``_device``: device + auth_token / upload_link / pairing_code issuance.
 - ``_bootstrap``: first-time ``bootstrap_owner`` ceremony.
+- ``_bootstrap_recovery``: credential rotation after listener exposure.
 - ``_auth``: ``authenticate_session_token`` / ``authenticate_web_session_token`` / ``authenticate_upload_link`` + ``_role_for``.
 - ``_pair``: ``pair_device`` (consume pairing_code → mint session token).
 
@@ -30,6 +31,10 @@ from app.services.identity_service._bootstrap import (
     bootstrap_owner,
     is_bootstrap_secret_consumed,
     record_bootstrap_secret_consumption,
+)
+from app.services.identity_service._bootstrap_recovery import (
+    ReplacementCredentialCollisionError,
+    rotate_exposed_bootstrap_credentials,
 )
 from app.services.identity_service._device import (
     _create_auth_token,
@@ -62,6 +67,10 @@ from app.services.identity_service._seed import (
     ensure_identity_seed,
     ledger_ids,
 )
+from app.services.session_credential_lock import (
+    lock_and_revalidate_credential_mint_context,
+    lock_bootstrap_owner_transaction,
+)
 from app.services.session_lifecycle_service import (
     hash_pairing_code,
     hash_secret,
@@ -83,6 +92,7 @@ __all__ = [
     "BootstrapResult",
     "PairingCodeResult",
     "PairingResult",
+    "ReplacementCredentialCollisionError",
     "WebSessionAuthResult",
     # public API
     "active_auth_token_count",
@@ -94,11 +104,14 @@ __all__ = [
     "create_pairing_code",
     "is_bootstrap_secret_consumed",
     "record_bootstrap_secret_consumption",
+    "rotate_exposed_bootstrap_credentials",
     "ensure_identity_for_existing_ledger_ids",
     "ensure_identity_seed",
     "is_legacy_app_token",
     "is_legacy_upload_token",
     "ledger_ids",
+    "lock_and_revalidate_credential_mint_context",
+    "lock_bootstrap_owner_transaction",
     "pair_device",
     "upload_link_default_timezone",
     # re-exported from session_lifecycle_service

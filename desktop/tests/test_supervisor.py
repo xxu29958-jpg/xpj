@@ -114,6 +114,18 @@ def test_stop_of_adopted_backend_reports_that_external_process_is_not_controllab
     assert h.tree_killed == []
 
 
+def test_shutdown_leaves_adopted_external_backend_untouched() -> None:
+    h = Harness()
+    h.healthy = True
+    sup = h.build()
+    sup.start()
+
+    sup.shutdown_owned()
+
+    assert h.tree_killed == []
+    assert sup.status().running is False
+
+
 def test_restart_of_adopted_backend_reports_that_external_process_is_not_controllable() -> None:
     h = Harness()
     h.healthy = True
@@ -186,7 +198,19 @@ def test_failed_tree_kill_with_dead_parent_adopts_surviving_healthy_worker() -> 
         sup.stop()
 
     assert sup.status().running is True
-    assert h.tree_killed == [100]
+    assert h.tree_killed == []
+
+
+def test_dead_owned_parent_is_never_terminated_again_by_reusable_pid() -> None:
+    h = Harness()
+    sup = h.build()
+    sup.start()
+    h.spawned[0].die()
+
+    sup.stop()
+
+    assert h.tree_killed == []
+    assert sup.status().running is False
 
 
 def test_monitor_survives_failed_automatic_restart_and_retries() -> None:
@@ -244,6 +268,18 @@ def test_auto_restart_off_does_not_revive_a_crash() -> None:
     h.spawned[0].die()
     sup.tick()
     assert len(h.spawned) == 1
+
+
+def test_shutdown_tree_kills_owned_backend() -> None:
+    h = Harness()
+    sup = h.build()
+    sup.start()
+    pid = h.spawned[0].pid
+
+    sup.shutdown_owned()
+
+    assert h.tree_killed == [pid]
+    assert sup.status().running is False
     assert sup.restarts == 0
 
 

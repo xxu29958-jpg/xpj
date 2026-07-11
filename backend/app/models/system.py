@@ -63,8 +63,9 @@ class BootstrapSecretConsumption(Base):
     """Persistent record for one-time HTTP bootstrap secrets.
 
     The configured secret itself is never stored; only its SHA-256 hash is
-    kept so process restarts cannot make an already-used bootstrap secret
-    usable again.
+    kept so process restarts preserve the one bootstrap transaction. The exact
+    high-entropy secret may recover that transaction's deterministic
+    credentials; it can never create a second identity set.
     """
 
     __tablename__ = "bootstrap_secret_consumptions"

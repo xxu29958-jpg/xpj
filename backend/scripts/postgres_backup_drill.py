@@ -51,12 +51,13 @@ def _counts(url: str) -> dict[str, int]:
 
 
 def _pg_restore(dump_path: Path, restore_url: str) -> None:
-    from app.services.backup_service import _libpq_url
+    from app.services.backup_service import _pg_tool_connection, _pg_tool_environment
     from app.services.postgres_backup_validation_service import find_pg_binary
 
     binary = find_pg_binary("pg_restore", "PG_RESTORE_PATH")
     if not binary:
         raise SystemExit("FAIL drill: pg_restore not found")
+    connection = _pg_tool_connection(restore_url)
     # --exit-on-error: stop at the FIRST failed item instead of pg_restore's
     # default keep-going mode. The drill restores as the ephemeral cluster's
     # superuser into a fresh DB, so there are no benign ownership/extension
@@ -64,19 +65,23 @@ def _pg_restore(dump_path: Path, restore_url: str) -> None:
     # constraints, tables) did not come back and the backup is not proven
     # restorable, even if the row counts of the tables that DID land match.
     result = subprocess.run(
-        [binary, "--dbname", _libpq_url(restore_url), "--no-owner", "--exit-on-error", str(dump_path)],
+        [
+            binary,
+            "--dbname",
+            connection.database_url,
+            "--no-owner",
+            "--exit-on-error",
+            str(dump_path),
+        ],
         capture_output=True,
         text=True,
         check=False,
+        env=_pg_tool_environment(connection.password),
     )
     if result.returncode != 0:
-        lines = result.stderr.strip().splitlines()
-        # Prefer the actual error line — pg_restore's last stderr line is
-        # often a SQL continuation fragment, not the message.
-        errors = [line for line in lines if "error" in line.lower()]
-        detail = errors[-1] if errors else (lines[-1] if lines else "")
-        suffix = f": {detail}" if detail else ""
-        raise SystemExit(f"FAIL drill: pg_restore exited {result.returncode}{suffix}")
+        raise SystemExit(
+            f"FAIL drill: pg_restore exited {result.returncode}; native diagnostics omitted"
+        )
 
 
 def main() -> int:

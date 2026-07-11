@@ -138,8 +138,14 @@ _PG_REAL_DB_NODES = (
     "tests/test_alembic_merchant_catalog_migration.py::",  # ADR-0053 merchant_catalog alembic round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
+    "tests/test_auth_bootstrap.py::test_bootstrap_owner_delayed_recovery_renews_expired_pairing",
+    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_finalizes_after_pairing_is_used",
+    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_rejects_revoked_admin",
+    "tests/test_auth_bootstrap_concurrency.py::test_bootstrap_owner_rotates_credentials_after_listener_exposure",
+    "tests/test_auth_bootstrap_concurrency.py::test_replacement_pairing_collision_is_reported_before_rotation",
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
     "tests/test_db_migration_owner_preflight.py::",  # P1: CREATE/DROP ROLE + separate-engine role switching to exercise the migration owner-trap pre-flight guard
+    "tests/test_alembic_runtime_schema_reconcile.py::",  # v1.2 baseline/reconcile CHECK round-trip via engine.begin DDL
     "tests/test_db_migration_backup_gate.py::",  # P1: stamp alembic_version below head via separate engine.begin connection to exercise the pre-migration backup gate
 
     # True concurrency: need real independent connections (2-session races, FOR
