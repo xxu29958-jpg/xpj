@@ -127,6 +127,29 @@ jobs:
         working-directory: backend
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly
 
+      - name: Resolve verified Windows installer publish path
+        working-directory: backend
+        run: |
+          $versionText = Get-Content -LiteralPath app\version.py -Raw -Encoding UTF8
+          $versionMatch = [regex]::Match($versionText, '(?m)^\s*BACKEND_VERSION\s*=\s*"([^"]+)"\s*$')
+          if (-not $versionMatch.Success) { throw "Cannot resolve installer publish version." }
+          $publishPath = "dist/installer/Ticketbox-Setup-$($versionMatch.Groups[1].Value)"
+          if (-not (Test-Path -LiteralPath $publishPath -PathType Container)) {
+            throw "Verified installer publish path is missing: $publishPath"
+          }
+          [System.IO.File]::AppendAllText(
+            $env:GITHUB_ENV,
+            "INSTALLER_PUBLISH_PATH=backend/$publishPath" + [Environment]::NewLine,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+
+      - name: Upload atomic Windows installer publish unit
+        uses: actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32 # v3.1.3
+        with:
+          name: ticketbox-windows-installer
+          path: ${{ env.INSTALLER_PUBLISH_PATH }}
+          if-no-files-found: error
+
       # The business pytest suite AND the end-to-end smoke run on PostgreSQL in the
       # backend-postgres job below (PG-only — debt #4): the SQLite engine is
       # retired, so neither a bare `pytest` nor the threaded smoke server can run

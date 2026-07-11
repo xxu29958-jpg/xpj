@@ -29,6 +29,16 @@ class WorkflowCommand:
     powershell_ast_digest: str = ""
 
 
+@dataclass(frozen=True)
+class WorkflowAction:
+    workflow: pathlib.Path
+    uses: str
+    inputs: tuple[tuple[str, str], ...]
+    job: str = ""
+    step: str = ""
+    protection_scope: str = "full"
+
+
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 _SCRIPT_EXECUTING_ACTIONS = {"reactivecircus/android-emulator-runner"}
 
@@ -362,12 +372,14 @@ def _workflow_step_command(
     )
 
 
-def _iter_workflow_run_commands(
+def _iter_reachable_workflow_steps(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
     *,
     protected_only: bool = False,
-) -> list[WorkflowCommand]:
-    commands: list[WorkflowCommand] = []
+) -> list[tuple[pathlib.Path, object, int, dict[object, object], str, str]]:
+    reachable: list[
+        tuple[pathlib.Path, object, int, dict[object, object], str, str]
+    ] = []
     for path in _iter_workflow_paths(workflow_dirs):
         workflow = _load_workflow(path)
         event_name = _required_protection_event(path)
@@ -414,14 +426,66 @@ def _iter_workflow_run_commands(
                     continue
                 if _allows_failure(raw_step.get("continue-on-error")):
                     continue
-                parsed = _workflow_step_command(
-                    path=path,
-                    job_name=job_name,
-                    index=index,
-                    raw_step=raw_step,
-                    job_shell=job_shell,
-                    protection_scope=protection_scope,
+                reachable.append(
+                    (path, job_name, index, raw_step, job_shell, protection_scope)
                 )
-                if parsed is not None:
-                    commands.append(parsed)
+    return reachable
+
+
+def _iter_workflow_run_commands(
+    workflow_dirs: pathlib.Path | list[pathlib.Path],
+    *,
+    protected_only: bool = False,
+) -> list[WorkflowCommand]:
+    commands: list[WorkflowCommand] = []
+    for path, job_name, index, raw_step, job_shell, protection_scope in (
+        _iter_reachable_workflow_steps(
+            workflow_dirs,
+            protected_only=protected_only,
+        )
+    ):
+        parsed = _workflow_step_command(
+            path=path,
+            job_name=job_name,
+            index=index,
+            raw_step=raw_step,
+            job_shell=job_shell,
+            protection_scope=protection_scope,
+        )
+        if parsed is not None:
+            commands.append(parsed)
     return commands
+
+
+def _iter_workflow_actions(
+    workflow_dirs: pathlib.Path | list[pathlib.Path],
+    *,
+    protected_only: bool = False,
+) -> list[WorkflowAction]:
+    actions: list[WorkflowAction] = []
+    for path, job_name, index, raw_step, _job_shell, protection_scope in (
+        _iter_reachable_workflow_steps(
+            workflow_dirs,
+            protected_only=protected_only,
+        )
+    ):
+        uses = raw_step.get("uses")
+        if not isinstance(uses, str):
+            continue
+        raw_inputs = raw_step.get("with")
+        inputs = (
+            tuple(sorted((str(key), str(value)) for key, value in raw_inputs.items()))
+            if isinstance(raw_inputs, dict)
+            else ()
+        )
+        actions.append(
+            WorkflowAction(
+                workflow=path,
+                uses=uses,
+                inputs=inputs,
+                job=str(job_name),
+                step=str(raw_step.get("name", index)),
+                protection_scope=protection_scope,
+            )
+        )
+    return actions

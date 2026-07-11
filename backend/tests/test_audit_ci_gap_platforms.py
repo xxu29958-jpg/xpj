@@ -241,7 +241,8 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
     mod = load_ci_gap_audit()
     workflows = tmp_path / platform_dir / "workflows"
     workflows.mkdir(parents=True)
-    (workflows / "ci.yml").write_text(
+    workflow_path = workflows / "ci.yml"
+    workflow_path.write_text(
         """
 name: CI
 jobs:
@@ -258,6 +259,7 @@ jobs:
 
     commands = mod._iter_workflow_run_commands(workflows)
     segments = mod._iter_executable_command_segments(commands)
+    actions = mod._iter_workflow_actions(workflows)
     platform = "GitHub" if platform_dir == ".github" else "Gitea"
     compile_matcher, verify_matcher = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[
         platform
@@ -265,3 +267,47 @@ jobs:
 
     assert any(compile_matcher.matches(segment) for segment in segments)
     assert any(verify_matcher.matches(segment) for segment in segments)
+    upload_label = f"{platform}: atomic installer publish-unit artifact upload"
+    assert upload_label in mod._missing_installer_publish_actions_by_platform(
+        commands, actions
+    )
+
+    action_sha = (
+        "ea165f8d65b6e75b540449e92b4886f43607fa02"
+        if platform_dir == ".github"
+        else "a8a3f3ad30e3422c9c7b888a15615d19a852ae32"
+    )
+    (workflows / "detached-upload.yml").write_text(
+        f"""
+name: detached upload
+jobs:
+  installer:
+    steps:
+      - uses: actions/upload-artifact@{action_sha}
+        with:
+          name: ticketbox-windows-installer
+          path: ${{{{ env.INSTALLER_PUBLISH_PATH }}}}
+          if-no-files-found: error
+""",
+        encoding="utf-8",
+    )
+    actions = mod._iter_workflow_actions(workflows)
+    assert upload_label in mod._missing_installer_publish_actions_by_platform(
+        commands, actions
+    )
+
+    workflow_path.write_text(
+        workflow_path.read_text(encoding="utf-8")
+        + f"""
+      - uses: actions/upload-artifact@{action_sha}
+        with:
+          name: ticketbox-windows-installer
+          path: ${{{{ env.INSTALLER_PUBLISH_PATH }}}}
+          if-no-files-found: error
+""",
+        encoding="utf-8",
+    )
+    actions = mod._iter_workflow_actions(workflows)
+    assert upload_label not in mod._missing_installer_publish_actions_by_platform(
+        commands, actions
+    )

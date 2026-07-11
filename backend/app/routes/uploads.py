@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from time import perf_counter
 from typing import TYPE_CHECKING
 
@@ -17,12 +18,18 @@ from app.errors import AppError
 from app.network_boundary import is_loopback_request, upload_link_remote_key
 from app.schemas import UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
-from app.services.file_service import SavedUpload, save_upload, save_upload_bytes
+from app.services.file_service import (
+    SavedUpload,
+    delete_relative_upload,
+    save_upload,
+    save_upload_bytes,
+)
 from app.services.identity_service import (
     UPLOAD_LINK_INVALID_MESSAGE,
     authenticate_upload_link,
     find_active_upload_link,
     is_legacy_upload_token,
+    lock_and_revalidate_upload_link_commit_context,
     upload_link_default_timezone,
 )
 from app.services.permission_service import require_create_pending_expense
@@ -172,6 +179,7 @@ async def _handle_upload(
     endpoint: str,
     timezone_name: str | None = None,
     max_size_bytes: int | None = None,
+    commit_guard: Callable[[], None] | None = None,
 ) -> UploadResponse:
     started_at = perf_counter()
     saved_file, timing_ms = await _save_request_upload(
@@ -179,6 +187,15 @@ async def _handle_upload(
         auth.ledger_id,
         max_size_bytes=max_size_bytes,
     )
+    guard_passed = commit_guard is None
+    try:
+        if commit_guard is not None:
+            commit_guard()
+        guard_passed = True
+    finally:
+        if not guard_passed:
+            db.rollback()
+            delete_relative_upload(saved_file.relative_path)
     db_started_at = perf_counter()
     expense = create_pending_expense(
         db,
@@ -319,6 +336,15 @@ async def upload_link_screenshot(
         or get_settings().ocr_default_timezone
     )
     reservation_finalized = False
+
+    def revalidate_before_commit() -> None:
+        refreshed_auth = lock_and_revalidate_upload_link_commit_context(
+            db,
+            upload_key=upload_key,
+            expected_auth=auth,
+        )
+        require_create_pending_expense(refreshed_auth)
+
     try:
         response = await _handle_upload(
             request=request,
@@ -333,6 +359,7 @@ async def upload_link_screenshot(
                 if reservation and reservation.reserved_bytes > 0
                 else None
             ),
+            commit_guard=revalidate_before_commit,
         )
         finalize_upload_bytes(
             db,

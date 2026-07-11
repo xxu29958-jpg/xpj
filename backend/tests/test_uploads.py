@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 from io import BytesIO
 
+import pytest
 from api_contract_helpers import (
     _stored_upload_files,
     make_heic_bytes,
@@ -23,6 +24,9 @@ from app.services.identity_service import authenticate_upload_link, hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_RELATIVE
+from tests._infra.upload_link_commit_concurrency import (
+    assert_upload_link_commit_races_are_serialized,
+)
 
 
 def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity) -> None:
@@ -195,6 +199,11 @@ def test_upload_link_rejects_viewer_after_role_downgrade_before_saving_file(
     assert response.status_code == 403
     assert response.json()["error"] == "permission_denied"
     assert _stored_upload_files() == []
+
+
+@pytest.mark.real_db
+def test_upload_link_commit_races_are_serialized(monkeypatch, *, identity) -> None:
+    assert_upload_link_commit_races_are_serialized(monkeypatch, identity)
 
 
 def test_shortcut_upload_rejects_app_token_before_saving_file(

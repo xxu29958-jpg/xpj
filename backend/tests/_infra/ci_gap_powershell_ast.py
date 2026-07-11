@@ -9,16 +9,7 @@ import pytest
 
 from tests._infra.ci_gap import load_ci_gap_audit
 
-
-def assert_ci_gap_uses_complete_powershell_ast(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    mod = load_ci_gap_audit()
-    workflows = tmp_path / ".gitea" / "workflows"
-    workflows.mkdir(parents=True)
-    (workflows / "ci.yml").write_text(
-        """
+_POWERSHELL_AST_WORKFLOW = """
 name: complete PowerShell AST
 on: push
 jobs:
@@ -64,7 +55,46 @@ jobs:
             ./gradlew --no-daemon :app:assembleInternalDebug
             if ($LASTEXITCODE -ne 0) { throw 'gradle failed' }
           } catch { throw } finally { trap { continue } }
-""",
+      - name: catch exit before throw suppresses propagation
+        run: |
+          try {
+            ./gradlew --no-daemon :app:testGrayDebugUnitTest
+            if ($LASTEXITCODE -ne 0) { throw 'gradle failed' }
+          } catch { exit 0; throw }
+      - name: catch return before throw suppresses propagation
+        run: |
+          try {
+            ./gradlew --no-daemon :app:detektGrayDebugUnitTest
+            if ($LASTEXITCODE -ne 0) { throw 'gradle failed' }
+          } catch { return; throw }
+      - name: catch loop terminator before throw suppresses propagation
+        run: |
+          try {
+            ./gradlew --no-daemon :app:assembleGrayDebug
+            if ($LASTEXITCODE -ne 0) { throw 'gradle failed' }
+          } catch { break; throw }
+      - name: catch trap before throw suppresses propagation
+        run: |
+          try {
+            ./gradlew --no-daemon :app:lintGrayDebug
+            if ($LASTEXITCODE -ne 0) { throw 'gradle failed' }
+          } catch { trap { continue }; throw }
+      - name: top-level trap suppresses propagation
+        run: |
+          trap { continue }
+          ./gradlew --no-daemon :app:lintGrayDebug
+"""
+
+
+def assert_ci_gap_uses_complete_powershell_ast(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mod = load_ci_gap_audit()
+    workflows = tmp_path / ".gitea" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        _POWERSHELL_AST_WORKFLOW,
         encoding="utf-8",
     )
 
@@ -78,6 +108,9 @@ jobs:
     assert ":app:lintGrayDebug" in missing
     assert ":app:detektGrayDebug" in missing
     assert ":app:assembleInternalDebug" in missing
+    assert ":app:testGrayDebugUnitTest" in missing
+    assert ":app:detektGrayDebugUnitTest" in missing
+    assert ":app:assembleGrayDebug" in missing
 
     powershell = sys.modules["ci_gap_powershell"]
     with monkeypatch.context() as context:
