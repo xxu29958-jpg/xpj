@@ -160,6 +160,7 @@ def test_source_backend_requires_ipv4_loopback_or_wildcard(
 
 
 def test_auto_mode_uses_safe_install_metadata_without_reading_protected_env(tmp_path: Path, monkeypatch) -> None:
+    stale_source_root = _fake_backend(tmp_path)
     install_dir = tmp_path / "program"
     app_data = tmp_path / "data" / "app"
     install_dir.mkdir()
@@ -180,7 +181,7 @@ def test_auto_mode_uses_safe_install_metadata_without_reading_protected_env(tmp_
         "backend_manager.config.dotenv_values",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("installed GUI read protected .env")),
     )
-    monkeypatch.delenv("TICKETBOX_BACKEND_ROOT", raising=False)
+    monkeypatch.setenv("TICKETBOX_BACKEND_ROOT", str(stale_source_root))
     monkeypatch.delenv("TICKETBOX_MANAGER_MODE", raising=False)
     monkeypatch.setenv("TICKETBOX_BACKEND_HOST", "10.0.0.9")
     monkeypatch.setenv("TICKETBOX_BACKEND_PORT", "9999")
