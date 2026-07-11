@@ -27,8 +27,15 @@ class _FakeOwnership:
 
 def test_legitimate_second_instance_reads_owners_protected_proof(monkeypatch, tmp_path: Path) -> None:
     handles = [_FakeOwnership(owner=True), _FakeOwnership(owner=False)]
+    acl_checks: list[tuple[Path, bool]] = []
     monkeypatch.setattr(instance_owner, "_instance_root", lambda: tmp_path / "relocated-local-state")
     monkeypatch.setattr(instance_owner, "_claim_os_ownership", lambda *_args: handles.pop(0))
+    monkeypatch.setattr(windows_user_security, "set_exact_user_acl", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        instance_owner,
+        "validate_exact_file_security",
+        lambda path, _sid, *, directory=False: acl_checks.append((path, directory)),
+    )
 
     with claim_manager_instance() as owner:
         assert owner.is_owner is True
@@ -43,6 +50,9 @@ def test_legitimate_second_instance_reads_owners_protected_proof(monkeypatch, tm
             assert second.read_secret() == owner.secret
             assert second.read_registration() == instance_owner.InstanceRegistration(owner.secret, 49152)
             assert owner.proof_path.is_file()
+
+        assert (owner.root, True) in acl_checks
+        assert (owner.proof_path, False) in acl_checks
 
     assert owner.proof_path.exists() is False
 
