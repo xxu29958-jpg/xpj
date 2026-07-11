@@ -38,11 +38,13 @@ class WorkflowAction:
     job: str = ""
     step: str = ""
     step_index: int = -1
+    requires_prior_success: bool = True
     protection_scope: str = "full"
 
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 _SCRIPT_EXECUTING_ACTIONS = {"reactivecircus/android-emulator-runner"}
+_FAIL_OPEN_STATUS = re.compile(r"(?i)\b(?:always|failure|cancelled)\s*\(")
 
 
 class _WorkflowLoader(yaml.SafeLoader):
@@ -489,6 +491,9 @@ def _iter_workflow_actions(
                 job=str(job_name),
                 step=str(raw_step.get("name", index)),
                 step_index=index,
+                requires_prior_success=not _FAIL_OPEN_STATUS.search(
+                    _strip_expression_wrapper(str(raw_step.get("if", "")))
+                ),
                 protection_scope=protection_scope,
             )
         )

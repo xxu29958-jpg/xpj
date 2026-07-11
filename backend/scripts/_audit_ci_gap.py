@@ -322,6 +322,29 @@ def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list
     return missing
 
 
+def _installer_publish_action_is_ordered(
+    action: WorkflowAction, commands: list[WorkflowCommand], platform: str
+) -> bool:
+    if not action.requires_prior_success:
+        return False
+    segments: list[str] = []
+    for command in sorted(commands, key=lambda item: item.step_index):
+        if (
+            command.workflow == action.workflow
+            and command.job == action.job
+            and command.step_index < action.step_index
+        ):
+            segments.extend(_iter_executable_command_segments([command]))
+    cursor = 0
+    for invocation in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]:
+        while cursor < len(segments) and not invocation.matches(segments[cursor]):
+            cursor += 1
+        if cursor == len(segments):
+            return False
+        cursor += 1
+    return True
+
+
 def _missing_installer_publish_actions_by_platform(
     commands: list[WorkflowCommand], actions: list[WorkflowAction]
 ) -> list[str]:
@@ -339,20 +362,11 @@ def _missing_installer_publish_actions_by_platform(
             and action.protection_scope == "full"
         ]
         for required in REQUIRED_CI_ACTIONS_BY_PLATFORM[platform]:
-            if not any(
-                required.matches(action.uses, action.inputs)
-                and all(
-                    any(
-                        invocation.matches(segment)
-                        for command in platform_commands
-                        if command.workflow == action.workflow
-                        and command.job == action.job
-                        and command.step_index < action.step_index
-                        for segment in _iter_executable_command_segments([command])
-                    )
-                    for invocation in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]
-                )
-                for action in platform_actions
+            matching_actions = [
+                action for action in platform_actions if required.matches(action.uses, action.inputs)
+            ]
+            if len(matching_actions) != 1 or not _installer_publish_action_is_ordered(
+                matching_actions[0], platform_commands, platform
             ):
                 missing.append(f"{platform}: {required.label}")
     return missing
