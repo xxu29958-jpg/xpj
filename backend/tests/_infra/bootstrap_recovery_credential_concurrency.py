@@ -73,6 +73,7 @@ def _mint_stale_credential(db: Session, label: str, auth: AuthContext) -> None:
             public_id=public_id,
             ledger_ids={auth.ledger_id},
             auth=auth,
+            actor_account_id=auth.account_id,
         )
         return
     invitation_service.create_invitation(
@@ -266,6 +267,8 @@ def _assert_device_revocation_blocks_pre_authenticated_mint(
                 db,
                 public_id=target_public_id,
                 current_device_public_id=current_public_id,
+                auth=None,
+                actor_account_id=None,
             )
 
     authenticated = threading.Event()

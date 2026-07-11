@@ -30,7 +30,7 @@ from app.services.session_lifecycle_service import (
     derive_bootstrap_pairing_code,
     derive_bootstrap_upload_key,
 )
-from app.services.time_service import ensure_utc, now_utc, to_iso
+from app.services.time_service import ensure_utc, now_utc
 
 _VECTOR_SECRET = "ticketbox-bootstrap-vector-2026-07-10"
 _VECTOR_ADMIN_TOKEN = "tbx_f1cz5I0IKi0r6iUzmoexescoDH0xYOF7_-R39LpN7lY"
@@ -246,12 +246,14 @@ def assert_failure_rolls_back_and_retries(monkeypatch: pytest.MonkeyPatch) -> No
         get_settings.cache_clear()
 
 
-def assert_expired_pairing_recovery_renews(monkeypatch: pytest.MonkeyPatch) -> None:
+def assert_expired_pairing_recovery_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
     Base.metadata.drop_all(bind=engine)
     init_db()
     advanced_now = now_utc() + timedelta(days=1)
-    expected_expiration = advanced_now + timedelta(minutes=15)
+    expired_at = advanced_now - timedelta(seconds=1)
 
     try:
         with TestClient(app) as client:
@@ -270,7 +272,7 @@ def assert_expired_pairing_recovery_renews(monkeypatch: pytest.MonkeyPatch) -> N
                 pairing = db.query(PairingCode).filter(
                     PairingCode.code_hash == hash_pairing_code(_VECTOR_PAIRING_CODE)
                 ).one()
-                pairing.expires_at = advanced_now - timedelta(seconds=1)
+                pairing.expires_at = expired_at
                 db.commit()
 
             with monkeypatch.context() as advanced_clock:
@@ -281,14 +283,14 @@ def assert_expired_pairing_recovery_renews(monkeypatch: pytest.MonkeyPatch) -> N
                 )
                 recovered = _post_bootstrap(client, secret=_VECTOR_SECRET)
 
-            assert recovered.status_code == 200, recovered.text
-            assert recovered.json()["pairing_code"] == _VECTOR_PAIRING_CODE
-            assert recovered.json()["pairing_expires_at"] == to_iso(expected_expiration)
+            assert recovered.status_code == 401, recovered.text
+            assert recovered.json()["error"] == "invalid_bootstrap_secret"
+            assert "pairing_code" not in recovered.json()
             with SessionLocal() as db:
                 pairing = db.query(PairingCode).filter(
                     PairingCode.code_hash == hash_pairing_code(_VECTOR_PAIRING_CODE)
                 ).one()
-                assert ensure_utc(pairing.expires_at) == expected_expiration
+                assert ensure_utc(pairing.expires_at) == expired_at
                 assert pairing.used_at is None
                 assert db.query(PairingCode).count() == 1
     finally:

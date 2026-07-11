@@ -58,7 +58,12 @@ def list_my_devices(db: Session, auth: AuthContext) -> list[MyDevice]:
 
 def rename_my_device(db: Session, auth: AuthContext, *, public_id: str, new_name: str) -> MyDevice:
     summary = admin_service.rename_device(
-        db, public_id=public_id, new_name=new_name, ledger_ids=_ledger_scope(auth)
+        db,
+        public_id=public_id,
+        new_name=new_name,
+        auth=auth,
+        actor_account_id=auth.account_id,
+        ledger_ids=_ledger_scope(auth),
     )
     return _as_my_device(summary, _current_public_id(db, auth))
 
@@ -78,6 +83,8 @@ def revoke_my_device(db: Session, auth: AuthContext, *, public_id: str) -> MyDev
         db,
         public_id=public_id,
         current_device_public_id=current,
+        auth=auth,
+        actor_account_id=auth.account_id,
         ledger_ids=_ledger_scope(auth),
     )
     return _as_my_device(summary, current)
@@ -103,6 +110,8 @@ def delete_my_device(db: Session, auth: AuthContext, *, public_id: str) -> None:
         db,
         public_id=public_id,
         current_device_public_id=current,
+        auth=auth,
+        actor_account_id=auth.account_id,
         ledger_ids=_ledger_scope(auth),
     )
 

@@ -138,7 +138,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_alembic_merchant_catalog_migration.py::",  # ADR-0053 merchant_catalog alembic round-trip via engine.begin DDL
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_delayed_recovery_renews_expired_pairing",
+    "tests/test_auth_bootstrap.py::test_bootstrap_owner_delayed_recovery_rejects_expired_pairing",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_finalizes_after_pairing_is_used",
     "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_rejects_revoked_admin",
     "tests/test_auth_bootstrap_concurrency.py::test_bootstrap_owner_rotates_credentials_after_listener_exposure",

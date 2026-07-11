@@ -13,7 +13,7 @@ from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.bootstrap_recovery import (
-    assert_expired_pairing_recovery_renews,
+    assert_expired_pairing_recovery_fails_closed,
     assert_failure_rolls_back_and_retries,
     assert_response_loss_recovery,
     assert_revoked_admin_recovery_fails_closed,
@@ -224,10 +224,10 @@ def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
     assert_failure_rolls_back_and_retries(monkeypatch)
 
 
-def test_bootstrap_owner_delayed_recovery_renews_expired_pairing(
+def test_bootstrap_owner_delayed_recovery_rejects_expired_pairing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert_expired_pairing_recovery_renews(monkeypatch)
+    assert_expired_pairing_recovery_fails_closed(monkeypatch)
 
 
 def test_bootstrap_owner_recovery_finalizes_after_pairing_is_used(

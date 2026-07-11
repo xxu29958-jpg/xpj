@@ -786,7 +786,7 @@ def test_owner_upload_links_default_and_list_are_ledger_scoped(
     from sqlalchemy import select
 
     from app.database import SessionLocal
-    from app.models import Account, Ledger, UploadLink
+    from app.models import Account, Ledger, LedgerMember, UploadLink
     from app.services import owner_console_service as svc
     from app.services.admin_service import create_upload_link
     from app.services.time_service import now_utc
@@ -806,11 +806,21 @@ def test_owner_upload_links_default_and_list_are_ledger_scoped(
             )
         )
         db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id="external_upload_first",
+                account_id=external.id,
+                role="owner",
+                created_at=now,
+            )
+        )
+        db.flush()
         create_upload_link(
             db,
             ledger_id="external_upload_first",
             admin_account_id=external.id,
             default_timezone="Asia/Shanghai",
+            auth=None,
         )
         visible_ids = {ledger.ledger_id for ledger in svc.list_console_ledger_choices(db)}
         before_ids = set(db.scalars(select(UploadLink.public_id)).all())

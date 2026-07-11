@@ -24,6 +24,7 @@ from app.services.admin_service import (
 )
 from app.services.owner_console_service._ledger_console import (
     _managed_console_ledger_ids,
+    _require_owner_id,
 )
 
 __all__ = [
@@ -55,7 +56,7 @@ def do_create_upload_link(
         ledger_id=ledger_id,
         admin_account_id=admin_account_id,
         default_timezone=default_timezone,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
     )
 
 
@@ -63,7 +64,8 @@ def do_rotate_upload_link(db: Session, public_id: str) -> tuple[UploadLinkSummar
     return rotate_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )
 
 
@@ -71,7 +73,8 @@ def do_extend_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
     return extend_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )
 
 
@@ -79,7 +82,8 @@ def do_revoke_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
     return revoke_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )
 
 
@@ -95,7 +99,8 @@ def do_update_upload_link_limits(
         public_id=public_id,
         daily_byte_budget=daily_byte_budget,
         per_remote_min_interval_seconds=per_remote_min_interval_seconds,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )
 
 
@@ -103,7 +108,8 @@ def do_delete_upload_link(db: Session, public_id: str) -> None:
     delete_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )
 
 

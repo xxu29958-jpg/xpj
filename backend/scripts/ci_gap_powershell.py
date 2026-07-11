@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
+from functools import lru_cache
 
 POWERSHELL_SHELLS = {"powershell", "pwsh"}
 _SCRIPTBLOCK_TYPE = r"\[\s*(?:system\.management\.automation\.)?scriptblock\s*\]"
@@ -22,6 +25,91 @@ POWERSHELL_UNREACHABLE_SCRIPTBLOCKS = tuple(
         r"(?i)(?:^|\|)\s*(?:foreach-object|where-object|%|\?)\b[^{}]*\{",
     )
 )
+
+_POWERSHELL_AST_ANALYZER = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+$source = [Console]::In.ReadToEnd()
+$tokens = $null
+$parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseInput(
+    $source,
+    [ref]$tokens,
+    [ref]$parseErrors
+)
+if ($null -eq $ast -or $parseErrors.Count -ne 0) {
+    exit 2
+}
+
+$tryStatements = @($ast.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.TryStatementAst]
+}, $true))
+foreach ($tryStatement in $tryStatements) {
+    foreach ($catchClause in $tryStatement.CatchClauses) {
+        $statements = @($catchClause.Body.Statements)
+        if (
+            $statements.Count -eq 0 -or
+            -not ($statements[-1] -is [System.Management.Automation.Language.ThrowStatementAst])
+        ) {
+            exit 3
+        }
+    }
+
+    if ($null -ne $tryStatement.Finally) {
+        $overrides = @($tryStatement.Finally.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.ExitStatementAst] -or
+            $node -is [System.Management.Automation.Language.ReturnStatementAst] -or
+            $node -is [System.Management.Automation.Language.TrapStatementAst]
+        }, $true))
+        if ($overrides.Count -ne 0) {
+            exit 4
+        }
+    }
+}
+
+[Console]::Out.Write('OK')
+"""
+
+
+def _powershell_executable() -> str | None:
+    return next(
+        (
+            executable
+            for name in ("powershell", "pwsh")
+            if (executable := shutil.which(name)) is not None
+        ),
+        None,
+    )
+
+
+@lru_cache(maxsize=256)
+def _powershell_ast_accepts(executable: str, text: str) -> bool:
+    try:
+        result = subprocess.run(
+            [
+                executable,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                _POWERSHELL_AST_ANALYZER,
+            ],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and result.stdout == b"OK"
+
+
+def powershell_ast_propagates_failure(text: str) -> bool:
+    """Parse a complete command and reject failure-suppressing try statements."""
+    executable = _powershell_executable()
+    return executable is not None and _powershell_ast_accepts(executable, text)
 
 
 def _powershell_structure(line: str) -> str:
@@ -191,6 +279,8 @@ def _powershell_terminal_prefix(line: str, structural: str) -> tuple[str, str | 
 
 def powershell_reachable_command_text(text: str) -> str:
     """Remove definitions, deferred scriptblocks, literals, and dead PowerShell."""
+    if not powershell_ast_propagates_failure(text):
+        return ""
     reachable: list[str] = []
     skipping = False
     waiting_for_open = False
@@ -251,43 +341,3 @@ def is_native_failure_propagation_guard(line: str) -> bool:
         )
         is not None
     )
-
-
-def contains_catch_block(lines: list[str]) -> bool:
-    return any(
-        re.match(r"(?i)^\s*(?:}\s*)?catch(?:\s|{)", line) for line in lines
-    )
-
-
-def catch_blocks_propagate_failure(lines: list[str]) -> bool:
-    """Require every PowerShell catch block to rethrow or exit non-zero."""
-    executable = powershell_without_here_string_literals("\n".join(lines)).splitlines()
-    depths = powershell_statement_depths("\n".join(executable))
-    catch_depth: int | None = None
-    propagates = False
-    saw_catch = False
-    for line, depth in zip(executable, depths, strict=True):
-        structural = _powershell_structure(line).strip()
-        if re.match(r"(?i)^(?:}\s*)?catch(?:\s|{)", structural):
-            if catch_depth is not None and not propagates:
-                return False
-            saw_catch = True
-            catch_depth = depth
-            propagates = re.search(
-                r"(?i){\s*(?:throw(?:\s+[^}]*)?|exit\s+[1-9][0-9]*)\s*;?\s*}",
-                structural,
-            ) is not None
-            continue
-        if catch_depth is None:
-            continue
-        if depth <= catch_depth and structural.startswith("}"):
-            if not propagates:
-                return False
-            catch_depth = None
-            continue
-        if depth == catch_depth + 1 and re.fullmatch(
-            r"(?i)(?:throw(?:\s+.*)?|exit\s+[1-9][0-9]*)\s*;?",
-            structural,
-        ):
-            propagates = True
-    return (not saw_catch) or (catch_depth is None and propagates)

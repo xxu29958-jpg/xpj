@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -30,7 +30,6 @@ from app.services.identity_service._device import (
 from app.services.identity_service._models import (
     DEFAULT_ACCOUNT_NAME,
     DEFAULT_BOOTSTRAP_DEVICE_NAME,
-    PAIRING_CODE_TTL_MINUTES,
     BootstrapResult,
 )
 from app.services.identity_service._seed import (
@@ -97,9 +96,9 @@ def _load_completed_bootstrap_credentials(
     upload_key: str,
     pairing_code: str,
 ) -> tuple[AuthToken, UploadLink, PairingCode] | None:
-    # Pairing consumption is the only recovery row that can be mutated here.
-    # Lock it first; all remaining checks are MVCC reads so device/token
-    # revocation cannot form a Device -> AuthToken -> recovery lock cycle.
+    # Lock pairing first so consumption cannot race the recovery validity check.
+    # All remaining checks are MVCC reads, avoiding a Device -> AuthToken ->
+    # recovery lock cycle during concurrent revocation.
     pairing = db.scalar(
         select(PairingCode)
         .where(PairingCode.code_hash == hash_pairing_code(pairing_code))
@@ -189,7 +188,7 @@ def _bootstrap_recovery_principal_is_active(
     )
 
 
-def _recover_pairing_expiration(
+def _pairing_expiration_for_recovery(
     pairing: PairingCode,
     *,
     recovered_at: datetime,
@@ -199,7 +198,7 @@ def _recover_pairing_expiration(
     if pairing_expiration is None:
         return None
     if pairing.used_at is None and pairing_expiration <= recovered_at:
-        pairing.expires_at = recovered_at + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
+        return None
     return to_iso(pairing.expires_at)
 
 
@@ -236,7 +235,10 @@ def _completed_bootstrap_result(
     ):
         return None
 
-    pairing_expires_at = _recover_pairing_expiration(pairing, recovered_at=recovered_at)
+    pairing_expires_at = _pairing_expiration_for_recovery(
+        pairing,
+        recovered_at=recovered_at,
+    )
     if pairing_expires_at is None:
         return None
     return BootstrapResult(

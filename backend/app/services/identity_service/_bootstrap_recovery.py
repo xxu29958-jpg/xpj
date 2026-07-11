@@ -361,17 +361,12 @@ def _recover_completed_rotation(
     if upload.revoked_at is not None:
         return None
 
-    previous_expiration = upload.expires_at
-    upload.expires_at = upload_link_expires_at(now_utc())
-    result = _completed_bootstrap_result(
+    return _completed_bootstrap_result(
         db,
         admin_token=credentials.admin_token,
         upload_key=credentials.upload_key,
         pairing_code=credentials.pairing_code,
     )
-    if result is None:
-        upload.expires_at = previous_expiration
-    return result
 
 
 def rotate_exposed_bootstrap_credentials(
