@@ -15,6 +15,7 @@ from ci_gap_powershell import (
     powershell_reachable_command_text as _powershell_reachable_command_text,
 )
 from ci_gap_trigger_scope import protected_workflow_scope as _protected_workflow_scope
+from ci_gap_trigger_scope import workflow_action_requires_prior_success
 
 
 @dataclass(frozen=True)
@@ -44,7 +45,6 @@ class WorkflowAction:
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 _SCRIPT_EXECUTING_ACTIONS = {"reactivecircus/android-emulator-runner"}
-_FAIL_OPEN_STATUS = re.compile(r"(?i)\b(?:always|failure|cancelled)\s*\(")
 
 
 class _WorkflowLoader(yaml.SafeLoader):
@@ -491,9 +491,7 @@ def _iter_workflow_actions(
                 job=str(job_name),
                 step=str(raw_step.get("name", index)),
                 step_index=index,
-                requires_prior_success=not _FAIL_OPEN_STATUS.search(
-                    _strip_expression_wrapper(str(raw_step.get("if", "")))
-                ),
+                requires_prior_success=workflow_action_requires_prior_success(raw_step.get("if")),
                 protection_scope=protection_scope,
             )
         )

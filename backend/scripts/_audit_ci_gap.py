@@ -325,14 +325,14 @@ def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list
 def _installer_publish_action_is_ordered(
     action: WorkflowAction, commands: list[WorkflowCommand], platform: str
 ) -> bool:
-    if not action.requires_prior_success:
+    if not action.requires_prior_success or action.step_index < 0:
         return False
     segments: list[str] = []
     for command in sorted(commands, key=lambda item: item.step_index):
         if (
             command.workflow == action.workflow
             and command.job == action.job
-            and command.step_index < action.step_index
+            and 0 <= command.step_index < action.step_index
         ):
             segments.extend(_iter_executable_command_segments([command]))
     cursor = 0
