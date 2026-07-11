@@ -349,6 +349,10 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
     assert upload_label in mod._missing_installer_publish_actions_by_platform(
         unknown_commands, actions
     )
+    unknown_actions = [replace(action, step_index=-1) for action in actions]
+    assert upload_label in mod._missing_installer_publish_actions_by_platform(
+        commands, unknown_actions
+    )
 
     _write_installer_workflow(
         workflows / "duplicate-upload.yml",
