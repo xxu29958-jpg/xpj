@@ -9,17 +9,16 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Account, Device, Ledger, UploadLink
+from app.services.admin_scope_service import lock_and_resolve_mutation_ledger_ids
 from app.services.admin_service._dtos import UploadLinkSecret, UploadLinkSummary
 from app.services.identity_service import (
     _create_device,
     hash_secret,
-    lock_and_revalidate_credential_mint_context,
     new_upload_key,
 )
 from app.services.identity_service._bootstrap_exposure_guard import (
     assert_bootstrap_sensitive_mutation_allowed,
 )
-from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import upload_link_expires_at
 from app.services.time_service import ensure_utc, now_utc, to_iso
 from app.tenants import AuthContext
@@ -127,17 +126,25 @@ def create_upload_link(
     ledger_id: str,
     admin_account_id: int,
     default_timezone: str | None,
+    auth: AuthContext | None,
     ledger_ids: set[str] | None = None,
-    auth: AuthContext | None = None,
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
-    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
-    if locked_auth is not None and locked_auth.account_id != admin_account_id:
-        raise AppError("invalid_token", status_code=401)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=admin_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     if ledger_ids is not None and ledger_id not in ledger_ids:
         raise AppError("invalid_request", "账本不存在。", status_code=404)
     ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
     if ledger is None or ledger.archived_at is not None:
         raise AppError("invalid_request", "账本不存在。", status_code=404)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=admin_account_id,
+        ledger_ids={ledger_id},
+    )
     # Each UploadLink is anchored on a synthetic device entry so the device
     # column stays meaningful (a revoked device should kill its links).
     issued_at = now_utc()
@@ -168,12 +175,23 @@ def rotate_upload_link(
     db: Session,
     *,
     public_id: str,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
-    auth: AuthContext | None = None,
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
-    lock_and_revalidate_credential_mint_context(db, auth)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
-    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=link.device_id,
+    )
     if link.revoked_at is not None:
         raise AppError(
             "invalid_request",
@@ -217,10 +235,23 @@ def extend_upload_link(
     db: Session,
     *,
     public_id: str,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
 ) -> UploadLinkSummary:
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
-    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=link.device_id,
+    )
     if link.revoked_at is not None:
         raise AppError(
             "invalid_request",
@@ -247,11 +278,23 @@ def revoke_upload_link(
     db: Session,
     *,
     public_id: str,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
 ) -> UploadLinkSummary:
-    lock_bootstrap_owner_transaction(db)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
-    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=link.device_id,
+    )
     if link.revoked_at is None:
         link.revoked_at = now_utc()
         db.commit()
@@ -265,9 +308,23 @@ def update_upload_link_limits(
     public_id: str,
     daily_byte_budget: int | None,
     per_remote_min_interval_seconds: int,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
 ) -> UploadLinkSummary:
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=link.device_id,
+    )
     if link.revoked_at is not None:
         raise AppError(
             "invalid_request",
@@ -297,6 +354,8 @@ def delete_upload_link(
     db: Session,
     *,
     public_id: str,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
 ) -> None:
     """Permanently remove an UploadLink row.
@@ -304,9 +363,19 @@ def delete_upload_link(
     Only allowed for already-revoked links so we never delete a key that an
     iPhone Shortcut might still be using.
     """
-    lock_bootstrap_owner_transaction(db)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
-    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=link.device_id)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=link.device_id,
+    )
     if link.revoked_at is None:
         raise AppError(
             "invalid_request",

@@ -11,12 +11,13 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, UploadLink
+from app.services.admin_scope_service import lock_and_resolve_mutation_ledger_ids
 from app.services.admin_service._dtos import DeviceSummary
 from app.services.identity_service._bootstrap_exposure_guard import (
     assert_bootstrap_sensitive_mutation_allowed,
 )
-from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.time_service import now_utc, to_iso
+from app.tenants import AuthContext
 
 
 @dataclass(frozen=True)
@@ -234,9 +235,16 @@ def revoke_device(
     *,
     public_id: str,
     current_device_public_id: str,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
 ) -> DeviceSummary:
-    lock_bootstrap_owner_transaction(db)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     if public_id == current_device_public_id:
         raise AppError(
             "invalid_request",
@@ -244,7 +252,12 @@ def revoke_device(
             status_code=409,
         )
     device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
-    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=device.id)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=device.id,
+    )
     now = now_utc()
     if device.revoked_at is None and ledger_ids is None:
         device.revoked_at = now
@@ -295,12 +308,26 @@ def rename_device(
     *,
     public_id: str,
     new_name: str,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
 ) -> DeviceSummary:
     name = (new_name or "").strip()
     if not name or len(name) > 120:
         raise AppError("invalid_request", "设备名称需在 1-120 字符之间。", status_code=422)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=device.id,
+    )
     device.device_name = name
     db.commit()
     db.refresh(device)
@@ -312,6 +339,8 @@ def delete_device(
     *,
     public_id: str,
     current_device_public_id: str,
+    auth: AuthContext | None,
+    actor_account_id: int | None,
     ledger_ids: set[str] | None = None,
 ) -> None:
     """Permanently remove a device row and its dependents.
@@ -327,7 +356,12 @@ def delete_device(
     :class:`AuthToken` and :class:`UploadLink` rows; ``Expense`` has no FK to
     :class:`Device` and is left untouched.
     """
-    lock_bootstrap_owner_transaction(db)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db,
+        auth=auth,
+        actor_account_id=actor_account_id,
+        requested_ledger_ids=ledger_ids,
+    )
     if public_id == current_device_public_id:
         raise AppError(
             "invalid_request",
@@ -335,7 +369,12 @@ def delete_device(
             status_code=409,
         )
     device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
-    assert_bootstrap_sensitive_mutation_allowed(db, target_device_id=device.id)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=actor_account_id,
+        ledger_ids=ledger_ids,
+        target_device_id=device.id,
+    )
     if device.revoked_at is None and (
         ledger_ids is None or _active_device_dependents_exist(db, device.id, ledger_ids=ledger_ids)
     ):

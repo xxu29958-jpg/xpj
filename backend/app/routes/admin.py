@@ -74,7 +74,8 @@ def revoke_device_endpoint(
         db,
         public_id=public_id,
         current_device_public_id=current,
-        ledger_ids=manageable_ledger_ids(db, auth),
+        auth=auth,
+        actor_account_id=auth.account_id,
     )
     return _device_response(summary)
 
@@ -93,7 +94,8 @@ def rename_device_endpoint(
         db,
         public_id=public_id,
         new_name=payload.device_name,
-        ledger_ids=manageable_ledger_ids(db, auth),
+        auth=auth,
+        actor_account_id=auth.account_id,
     )
     return _device_response(summary)
 
@@ -129,7 +131,6 @@ def create_upload_link_endpoint(
         ledger_id=target_ledger,
         admin_account_id=auth.account_id,
         default_timezone=default_tz,
-        ledger_ids=manageable_ledger_ids(db, auth),
         auth=auth,
     )
     return AdminUploadLinkSecretResponse(
@@ -151,8 +152,8 @@ def rotate_upload_link_endpoint(
     summary, secret = admin_service.rotate_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=manageable_ledger_ids(db, auth),
         auth=auth,
+        actor_account_id=auth.account_id,
     )
     return AdminUploadLinkSecretResponse(
         link=_link_response(summary),
@@ -174,7 +175,8 @@ def revoke_upload_link_endpoint(
         admin_service.revoke_upload_link(
             db,
             public_id=public_id,
-            ledger_ids=manageable_ledger_ids(db, auth),
+            auth=auth,
+            actor_account_id=auth.account_id,
         )
     )
 
@@ -192,6 +194,7 @@ def extend_upload_link_endpoint(
         admin_service.extend_upload_link(
             db,
             public_id=public_id,
-            ledger_ids=manageable_ledger_ids(db, auth),
+            auth=auth,
+            actor_account_id=auth.account_id,
         )
     )

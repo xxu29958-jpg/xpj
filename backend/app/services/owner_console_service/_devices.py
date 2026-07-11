@@ -14,6 +14,7 @@ from app.services.admin_service import (
 )
 from app.services.owner_console_service._ledger_console import (
     _managed_console_ledger_ids,
+    _require_owner_id,
 )
 
 __all__ = [
@@ -34,7 +35,8 @@ def do_revoke_device(db: Session, public_id: str, current_device_public_id: str)
         db,
         public_id=public_id,
         current_device_public_id=current_device_public_id,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )
 
 
@@ -43,7 +45,8 @@ def do_delete_device(db: Session, public_id: str, current_device_public_id: str)
         db,
         public_id=public_id,
         current_device_public_id=current_device_public_id,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )
 
 
@@ -52,5 +55,6 @@ def do_rename_device(db: Session, public_id: str, new_name: str) -> DeviceSummar
         db,
         public_id=public_id,
         new_name=new_name,
-        ledger_ids=_managed_console_ledger_ids(db),
+        auth=None,
+        actor_account_id=_require_owner_id(db),
     )

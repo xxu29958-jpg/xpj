@@ -5,16 +5,17 @@ from __future__ import annotations
 import pathlib
 import sys
 from dataclasses import dataclass
+from hashlib import sha256
 
 from ci_gap_action_pins import (
     github_external_uses_pin_violations as _github_external_uses_pin_violations,
 )
 from ci_gap_powershell import (
-    catch_blocks_propagate_failure as _catch_blocks_propagate_failure,
-)
-from ci_gap_powershell import contains_catch_block as _contains_catch_block
-from ci_gap_powershell import (
     is_native_failure_propagation_guard as _is_native_failure_propagation_guard,
+)
+from ci_gap_powershell import looks_like_powershell as _looks_like_powershell
+from ci_gap_powershell import (
+    powershell_ast_propagates_failure as _powershell_ast_propagates_failure,
 )
 from ci_gap_release_scope import release_apk_scope_policy_violations
 from ci_gap_required_commands import (
@@ -182,6 +183,15 @@ def _gradle_line_propagates_failure(lines: list[str], index: int) -> bool:
     return _is_native_failure_propagation_guard(lines[index + 1])
 
 
+def _command_passes_powershell_ast(command: WorkflowCommand) -> bool:
+    text_digest = sha256(command.text.encode("utf-8")).hexdigest()
+    if command.powershell_ast_digest == text_digest:
+        return True
+    if not _looks_like_powershell(shell=command.shell, command=command.text):
+        return True
+    return _powershell_ast_propagates_failure(command.text)
+
+
 def _iter_gradle_invocations(
     commands: list[WorkflowCommand],
     *,
@@ -189,13 +199,9 @@ def _iter_gradle_invocations(
 ) -> list[GradleInvocation]:
     invocations: list[GradleInvocation] = []
     for command in commands:
-        lines = _logical_command_lines(command.text, folded=command.folded)
-        if (
-            require_failure_propagation
-            and _contains_catch_block(lines)
-            and not _catch_blocks_propagate_failure(lines)
-        ):
+        if require_failure_propagation and not _command_passes_powershell_ast(command):
             continue
+        lines = _logical_command_lines(command.text, folded=command.folded)
         for index, line in enumerate(lines):
             parsed = _gradle_invocations_from_line(
                 command.workflow,
@@ -213,14 +219,14 @@ def _iter_gradle_invocations(
 def _iter_executable_command_segments(commands: list[WorkflowCommand]) -> list[str]:
     segments: list[str] = []
     for command in commands:
+        if not _command_passes_powershell_ast(command):
+            continue
         executable_lines = [
             line
             for line in _logical_command_lines(command.text, folded=command.folded)
             if not _is_output_command(line.strip())
         ]
         if len(executable_lines) != 1:
-            if _contains_catch_block(executable_lines):
-                continue
             for index, line in enumerate(executable_lines[:-1]):
                 if (
                     not _has_unquoted_shell_separator(line)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 import re
 from dataclasses import dataclass
+from hashlib import sha256
 
 import yaml
 from ci_gap_powershell import (
@@ -25,6 +26,7 @@ class WorkflowCommand:
     step: str = ""
     shell: str = ""
     protection_scope: str = "full"
+    powershell_ast_digest: str = ""
 
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
@@ -341,7 +343,8 @@ def _workflow_step_command(
         return None
     shell = str(raw_step.get("shell", job_shell))
     executable_text = _strip_comment_lines(command)
-    if _looks_like_powershell(shell=shell, command=executable_text):
+    is_powershell = _looks_like_powershell(shell=shell, command=executable_text)
+    if is_powershell:
         executable_text = _powershell_reachable_command_text(executable_text)
     return WorkflowCommand(
         path,
@@ -351,6 +354,11 @@ def _workflow_step_command(
         step=str(raw_step.get("name", index)),
         shell=shell,
         protection_scope=protection_scope,
+        powershell_ast_digest=(
+            sha256(executable_text.encode("utf-8")).hexdigest()
+            if is_powershell
+            else ""
+        ),
     )
 
 

@@ -8,10 +8,14 @@ from tests._infra.ci_gap_action_pins import (
     write_action_pin_workflows,
     write_action_pin_yaml_shapes,
 )
+from tests._infra.ci_gap_powershell_ast import (
+    assert_ci_gap_uses_complete_powershell_ast,
+)
 
 
 def test_github_external_uses_require_exact_commit_sha_across_all_workflows(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     mod = _load()
     workflows, mutations = write_action_pin_workflows(tmp_path)
@@ -52,6 +56,9 @@ def test_github_external_uses_require_exact_commit_sha_across_all_workflows(
     _assert_ci_gap_requires_reachable_needs_graph(tmp_path / "needs-graph")
     _assert_ci_gap_rejects_deferred_powershell_scriptblocks(
         tmp_path / "deferred-scriptblocks"
+    )
+    assert_ci_gap_uses_complete_powershell_ast(
+        tmp_path / "powershell-ast", monkeypatch
     )
 
 

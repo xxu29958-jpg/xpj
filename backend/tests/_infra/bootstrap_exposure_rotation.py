@@ -37,7 +37,7 @@ from app.services.session_lifecycle_service import (
     derive_bootstrap_upload_key,
     upload_link_expires_at,
 )
-from app.services.time_service import ensure_utc, now_utc, to_iso
+from app.services.time_service import ensure_utc, now_utc
 from tests._infra.bootstrap_exposure_setup import (
     _expire_exposed_upload_link,
     _ExposureWindow,
@@ -275,23 +275,20 @@ def _assert_exposure_rotation_persisted(
         )
 
 
-def _assert_expired_rotation_replay_commits(
+def _assert_valid_rotation_replay_preserves_expiry(
     *,
     replacement_secret: str,
     expected_result: object,
 ) -> None:
     replacement_upload_hash = hash_secret(derive_bootstrap_upload_key(replacement_secret))
     replacement_hash = hash_pairing_code(derive_bootstrap_pairing_code(replacement_secret))
-    expired_at = now_utc() - timedelta(seconds=1)
     with SessionLocal() as db:
         upload = db.query(UploadLink).filter(
             UploadLink.token_hash == replacement_upload_hash
         ).one()
         pairing = db.query(PairingCode).filter(PairingCode.code_hash == replacement_hash).one()
-        upload.expires_at = expired_at
-        pairing.expires_at = expired_at
-        db.commit()
-    replay_started_at = now_utc()
+        original_upload_expiration = upload.expires_at
+        original_pairing_expiration = pairing.expires_at
     with SessionLocal() as db:
         repeated = rotate_exposed_bootstrap_credentials(
             db,
@@ -310,19 +307,53 @@ def _assert_expired_rotation_replay_commits(
             "pairing_code",
         ):
             assert getattr(repeated, field) == getattr(expected_result, field)
-    replay_finished_at = now_utc()
+        assert repeated.pairing_expires_at == expected_result.pairing_expires_at
     with SessionLocal() as db:
         upload = db.query(UploadLink).filter(
             UploadLink.token_hash == replacement_upload_hash
         ).one()
         pairing = db.query(PairingCode).filter(PairingCode.code_hash == replacement_hash).one()
-        upload_expiration = ensure_utc(upload.expires_at)
-        assert upload_expiration is not None
         assert upload.revoked_at is None
-        assert upload_link_expires_at(replay_started_at) <= upload_expiration
-        assert upload_expiration <= upload_link_expires_at(replay_finished_at)
-        assert ensure_utc(pairing.expires_at) > now_utc()
-        assert to_iso(pairing.expires_at) == repeated.pairing_expires_at
+        assert upload.expires_at == original_upload_expiration
+        assert pairing.expires_at == original_pairing_expiration
+
+
+def _assert_expired_rotation_replay_is_rejected(
+    *,
+    replacement_secret: str,
+) -> None:
+    replacement_upload_hash = hash_secret(derive_bootstrap_upload_key(replacement_secret))
+    expired_at = now_utc() - timedelta(seconds=1)
+    with SessionLocal() as db:
+        upload = db.query(UploadLink).filter(
+            UploadLink.token_hash == replacement_upload_hash
+        ).one()
+        original_expiration = upload.expires_at
+        upload.expires_at = expired_at
+        db.commit()
+
+    with SessionLocal() as db:
+        with pytest.raises(AppError) as replay_error:
+            rotate_exposed_bootstrap_credentials(
+                db,
+                exposed_secret=_VECTOR_SECRET,
+                replacement_secret=replacement_secret,
+                commit=False,
+            )
+        assert replay_error.value.error == "invalid_bootstrap_secret"
+        upload = db.query(UploadLink).filter(
+            UploadLink.token_hash == replacement_upload_hash
+        ).one()
+        assert upload.expires_at == expired_at
+        db.rollback()
+
+    with SessionLocal() as db:
+        upload = db.query(UploadLink).filter(
+            UploadLink.token_hash == replacement_upload_hash
+        ).one()
+        assert upload.expires_at == expired_at
+        upload.expires_at = original_expiration
+        db.commit()
 
 
 def _assert_revoked_rotation_replay_is_rejected(*, replacement_secret: str) -> None:
@@ -362,9 +393,12 @@ def assert_exposed_secret_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
         historical_at = _seed_historical_revocation_evidence(exposure)
         rotated = _rotate_and_assert_initial_ttl(replacement_secret)
 
-        _assert_expired_rotation_replay_commits(
+        _assert_valid_rotation_replay_preserves_expiry(
             replacement_secret=replacement_secret,
             expected_result=rotated,
+        )
+        _assert_expired_rotation_replay_is_rejected(
+            replacement_secret=replacement_secret,
         )
         _assert_revoked_rotation_replay_is_rejected(replacement_secret=replacement_secret)
         _assert_stale_pairing_cannot_be_consumed(exposure)
